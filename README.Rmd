@@ -33,9 +33,20 @@ devtools::install_github("malcolmbarrett/propensity")
 
 This is a basic example which shows you how to solve a common problem:
 
-```{r example}
+```{r example, include = FALSE, eval = FALSE}
 library(propensity)
-## basic example code
+
+ps <- propensity(
+  model, 
+  exposure, 
+  stabilizer = model2, 
+  exposure_type = "categorical"
+)
+
+match(ps, data)
+
+data |> 
+  mutate(wts = wts(ps, estimand = "att"))
 ```
 
 What is special about using `README.Rmd` instead of just `README.md`? You can include R chunks like so:
