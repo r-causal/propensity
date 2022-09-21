@@ -115,8 +115,13 @@ wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "bi
 }
 
 transform_exposure_binary <- function(.exposure, .treated = NULL, .untreated = NULL) {
-  if (is_binary(.exposure)) {
+
+   if (is_binary(.exposure)) {
     return(.exposure)
+   }
+
+  if (is.logical(.exposure)) {
+    return(as.numeric(.exposure))
   }
 
   if (!is.null(.treated)) {
