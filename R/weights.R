@@ -143,7 +143,7 @@ transform_exposure_binary <- function(.exposure, .treated = NULL, .untreated = N
     return(ifelse(.exposure != .untreated, 1, 0))
   }
 
-  if (is.null(.treated) && is.null(.untreated) && has_two_levels(.treated)) {
+  if (is.null(.treated) && is.null(.untreated) && has_two_levels(.exposure)) {
     levels <- if (is.factor(.exposure)) levels(.exposure) else sort(unique(.exposure))
     alert_info("Setting treatment to {.var {levels[[2]]}}")
     return(ifelse(.exposure == levels[[2]], 1, 0))
