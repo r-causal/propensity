@@ -29,14 +29,23 @@ wt_ate <- function(.propensity, ...) {
 
 #' @export
 #' @rdname wt_ate
-wt_ate.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+wt_ate.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
     .untreated = .untreated
   )
 
-  (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
+  wt <- (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
+
+
+  if (isTRUE(stabilize) && is.null(stabilization_score)) {
+    wt <- wt * mean(.exposure, na.rm = TRUE)
+  } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
+    wt <- wt * stabilization_score
+  }
+
+  wt
 }
 
 #' @export
@@ -73,8 +82,10 @@ wt_atu.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "bi
     .untreated = .untreated
   )
 
-  (((1 - .propensity) * .exposure) / .propensity) +
+  wt <- (((1 - .propensity) * .exposure) / .propensity) +
     (((1 - .propensity) * (1 - .exposure)) / (1 - .propensity))
+
+  wt
 }
 
 #' @export

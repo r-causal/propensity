@@ -43,6 +43,8 @@ wt_atu(.propensity, ...)
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .treated = NULL,
   .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
   ...
 )
 
