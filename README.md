@@ -18,20 +18,21 @@ You can install the development version of propensity from
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("malcolmbarrett/propensity")
+devtools::install_github("r-causal/propensity")
 ```
 
 ## Example
 
-propensity is under very early development. Currently, it supports
-calculating propensity score weights for binary exposures:
+Currently, propensity supports calculating propensity score weights for
+binary exposures:
 
 ``` r
 library(propensity)
+
 propensity_scores <- c(.1, .3, .4, .3)
 x <- c(0, 0, 1, 0)
 
-# ATE weights
+# Average treatment effect (ATE) weights
 wt_ate(propensity_scores, .exposure = x)
 #> [1] 1.111111 1.428571 2.500000 1.428571
 
@@ -39,7 +40,7 @@ wt_ate(propensity_scores, .exposure = x)
 wt_ate(propensity_scores, .exposure = x, stabilize = TRUE)
 #> [1] 0.2777778 0.3571429 0.6250000 0.3571429
 
-# ATO weights
+# Average treatment effect in the overlap (ATO) weights
 wt_ato(propensity_scores, .exposure = x)
 #> [1] 0.1 0.3 0.6 0.3
 ```
