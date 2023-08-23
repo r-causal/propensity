@@ -54,9 +54,12 @@
 <span><span class="fu">wt_ate</span><span class="op">(</span></span>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
+<span>  .sigma <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -81,8 +84,6 @@
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -114,7 +115,9 @@
     <div class="section level2">
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
     <dl><dt>.propensity</dt>
-<dd><p>Either a vector of the predicted value of <code>.exposure</code> or a <code>data.frame</code> where each column is the predicted probability of a level of <code>.exposure</code>.</p></dd>
+<dd><p>Either a vector of the predicted value of <code>.exposure</code> or a
+<code>data.frame</code> where each column is the predicted probability of a level of
+<code>.exposure</code>.</p></dd>
 
 
 <dt>...</dt>
@@ -125,16 +128,37 @@
 <dd><p>The exposure for which <code>.propensity</code> is calculated.</p></dd>
 
 
+<dt>.sigma</dt>
+<dd><p>If <code>exposure_type</code> is continuous, a vector of observation-level
+standard errors passed to <code><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm()</a></code>. For an <code>lm</code> model this is
+<code>influence(model)$sigma</code>. For data frames produced by broom's <code>augment()</code>,
+this is the <code>.sigma</code> column.</p></dd>
+
+
 <dt>exposure_type</dt>
-<dd><p>The type of exposure. By default, automatically detected based on <code>.exposure</code>.</p></dd>
+<dd><p>The type of exposure. By default, automatically detected
+based on <code>.exposure</code>.</p></dd>
 
 
 <dt>.treated</dt>
-<dd><p>The treatment level of the exposure. Automatically detected by default.</p></dd>
+<dd><p>The treatment level of the exposure. Automatically detected
+by default.</p></dd>
 
 
 <dt>.untreated</dt>
-<dd><p>The control level of the exposure. Automatically detected by default.</p></dd>
+<dd><p>The control level of the exposure. Automatically detected
+by default.</p></dd>
+
+
+<dt>stabilize</dt>
+<dd><p>Logical. Stabilize the weights? By default, stabilizes with
+the mean of <code>.exposure</code>.</p></dd>
+
+
+<dt>stabilization_score</dt>
+<dd><p>if <code>stabilize</code> is <code>TRUE</code>, optionally include a
+score by which to stabilize the score, e.g. the predicted values from a
+regression model with no predictors.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -149,6 +173,7 @@
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">propensity_scores</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">.1</span>, <span class="fl">.3</span>, <span class="fl">.4</span>, <span class="fl">.3</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">x</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">0</span>, <span class="fl">1</span>, <span class="fl">0</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">propensity_scores</span>, .exposure <span class="op">=</span> <span class="va">x</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.111111 1.428571 2.500000 1.428571</span>
 </code></pre></div>
     </div>
