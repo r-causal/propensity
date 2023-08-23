@@ -4,6 +4,8 @@
 # propensity <img src="man/figures/logo.png" align="right" height="138" />
 
 <!-- badges: start -->
+
+[![R-CMD-check](https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 The goal of propensity is to calculate propensity scores and weights for
