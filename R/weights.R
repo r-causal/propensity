@@ -30,6 +30,15 @@ wt_ate <- function(.propensity, ...) {
 #' @export
 #' @rdname wt_ate
 wt_ate.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  if (exposure_type == "binary") {
+    ate_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+  } else {
+    abort_unsupported(exposure_type, "ATE")
+  }
+}
+
+ate_binary <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -57,6 +66,15 @@ wt_att <- function(.propensity, ...) {
 #' @export
 #' @rdname wt_ate
 wt_att.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  if (exposure_type == "binary") {
+    att_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+  } else {
+    abort_unsupported(exposure_type, "ATT")
+  }
+}
+
+att_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -76,6 +94,15 @@ wt_atu <- function(.propensity, ...) {
 #' @export
 #' @rdname wt_ate
 wt_atu.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  if (exposure_type == "binary") {
+    atu_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+  } else {
+    abort_unsupported(exposure_type, "ATU")
+  }
+}
+
+atu_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -97,6 +124,15 @@ wt_atm <- function(.propensity, ...) {
 #' @export
 #' @rdname wt_ate
 wt_atm.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  if (exposure_type == "binary") {
+    atm_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+  } else {
+    abort_unsupported(exposure_type, "ATM")
+  }
+}
+
+atm_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -107,6 +143,7 @@ wt_atm.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "bi
     (.exposure * .propensity + (1 - .exposure) * (1 - .propensity))
 }
 
+
 #' @export
 #' @rdname wt_ate
 wt_ato <- function(.propensity, ...) {
@@ -116,6 +153,16 @@ wt_ato <- function(.propensity, ...) {
 #' @export
 #' @rdname wt_ate
 wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  if (exposure_type == "binary") {
+    ato_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+  } else {
+    abort_unsupported(exposure_type, "ATO")
+  }
+}
+
+
+ato_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -125,40 +172,3 @@ wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "bi
   (1 - .propensity) * .exposure + .propensity * (1 - .exposure)
 }
 
-transform_exposure_binary <- function(.exposure, .treated = NULL, .untreated = NULL) {
-
-   if (is_binary(.exposure)) {
-    return(.exposure)
-   }
-
-  if (is.logical(.exposure)) {
-    return(as.numeric(.exposure))
-  }
-
-  if (!is.null(.treated)) {
-    return(ifelse(.exposure == .treated, 1, 0))
-  }
-
-  if (!is.null(.untreated)) {
-    return(ifelse(.exposure != .untreated, 1, 0))
-  }
-
-  if (is.null(.treated) && is.null(.untreated) && has_two_levels(.exposure)) {
-    levels <- if (is.factor(.exposure)) levels(.exposure) else sort(unique(.exposure))
-    alert_info("Setting treatment to {.var {levels[[2]]}}")
-    return(ifelse(.exposure == levels[[2]], 1, 0))
-  } else {
-    rlang::abort(c(
-      "Don't know how to transform `.exposure` to 0/1 binary variable.",
-      i = "Specify `.treated` and `.untreated.`"
-    ))
-  }
-}
-
-is_binary <- function(.exposure) {
-  identical(sort(unique(.exposure)), c(0, 1))
-}
-
-has_two_levels <- function(.x) {
-  length(unique(.x)) == 2
-}
