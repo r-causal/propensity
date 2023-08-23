@@ -9,12 +9,22 @@
 
 #' Calculate propensity score weights
 #'
-#' @param .propensity Either a vector of the predicted value of `.exposure` or a `data.frame` where each column is the predicted probability of a level of `.exposure`.
+#' @param .propensity Either a vector of the predicted value of `.exposure` or a
+#'   `data.frame` where each column is the predicted probability of a level of
+#'   `.exposure`.
 #' @param .exposure The exposure for which `.propensity` is calculated.
-#' @param exposure_type The type of exposure. By default, automatically detected based on `.exposure`.
-#' @param .treated The treatment level of the exposure. Automatically detected by default.
-#' @param .untreated The control level of the exposure. Automatically detected by default.
+#' @param exposure_type The type of exposure. By default, automatically detected
+#'   based on `.exposure`.
+#' @param .treated The treatment level of the exposure. Automatically detected
+#'   by default.
+#' @param .untreated The control level of the exposure. Automatically detected
+#'   by default.
 #' @param ... Passed to other functions Not currently used.
+#' @param stabilize Logical. Stabilize the weights? By default, stabilizes with
+#'   the mean of `.exposure`.
+#' @param stabilization_score if `stabilize` is `TRUE`, optionally include a
+#'   score by which to stabilize the score, e.g. the predicted values from a
+#'   regression model with no predictors.
 #'
 #' @return A vector of propensity score weights
 #' @export
@@ -68,7 +78,7 @@ wt_att <- function(.propensity, ...) {
 wt_att.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    att_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+    att_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATT")
   }
@@ -96,7 +106,7 @@ wt_atu <- function(.propensity, ...) {
 wt_atu.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    atu_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+    atu_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATU")
   }
@@ -126,7 +136,7 @@ wt_atm <- function(.propensity, ...) {
 wt_atm.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    atm_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+    atm_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATM")
   }
@@ -155,7 +165,7 @@ wt_ato <- function(.propensity, ...) {
 wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    ato_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+    ato_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATO")
   }

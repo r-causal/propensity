@@ -21,6 +21,8 @@ wt_ate(.propensity, ...)
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .treated = NULL,
   .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
   ...
 )
 
@@ -43,8 +45,6 @@ wt_atu(.propensity, ...)
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .treated = NULL,
   .untreated = NULL,
-  stabilize = FALSE,
-  stabilization_score = NULL,
   ...
 )
 
@@ -71,17 +71,29 @@ wt_ato(.propensity, ...)
 )
 }
 \arguments{
-\item{.propensity}{Either a vector of the predicted value of \code{.exposure} or a \code{data.frame} where each column is the predicted probability of a level of \code{.exposure}.}
+\item{.propensity}{Either a vector of the predicted value of \code{.exposure} or a
+\code{data.frame} where each column is the predicted probability of a level of
+\code{.exposure}.}
 
 \item{...}{Passed to other functions Not currently used.}
 
 \item{.exposure}{The exposure for which \code{.propensity} is calculated.}
 
-\item{exposure_type}{The type of exposure. By default, automatically detected based on \code{.exposure}.}
+\item{exposure_type}{The type of exposure. By default, automatically detected
+based on \code{.exposure}.}
 
-\item{.treated}{The treatment level of the exposure. Automatically detected by default.}
+\item{.treated}{The treatment level of the exposure. Automatically detected
+by default.}
 
-\item{.untreated}{The control level of the exposure. Automatically detected by default.}
+\item{.untreated}{The control level of the exposure. Automatically detected
+by default.}
+
+\item{stabilize}{Logical. Stabilize the weights? By default, stabilizes with
+the mean of \code{.exposure}.}
+
+\item{stabilization_score}{if \code{stabilize} is \code{TRUE}, optionally include a
+score by which to stabilize the score, e.g. the predicted values from a
+regression model with no predictors.}
 }
 \value{
 A vector of propensity score weights
