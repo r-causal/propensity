@@ -18,6 +18,7 @@ wt_ate(.propensity, ...)
 \method{wt_ate}{numeric}(
   .propensity,
   .exposure,
+  .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .treated = NULL,
   .untreated = NULL,
@@ -78,6 +79,11 @@ wt_ato(.propensity, ...)
 \item{...}{Passed to other functions Not currently used.}
 
 \item{.exposure}{The exposure for which \code{.propensity} is calculated.}
+
+\item{.sigma}{If \code{exposure_type} is continuous, a vector of observation-level
+standard errors passed to \code{dnorm()}. For an \code{lm} model this is
+\code{influence(model)$sigma}. For data frames produced by broom's \code{augment()},
+this is the \code{.sigma} column.}
 
 \item{exposure_type}{The type of exposure. By default, automatically detected
 based on \code{.exposure}.}

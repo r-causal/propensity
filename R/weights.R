@@ -15,6 +15,10 @@
 #' @param .exposure The exposure for which `.propensity` is calculated.
 #' @param exposure_type The type of exposure. By default, automatically detected
 #'   based on `.exposure`.
+#' @param .sigma If `exposure_type` is continuous, a vector of observation-level
+#'   standard errors passed to `dnorm()`. For an `lm` model this is
+#'   `influence(model)$sigma`. For data frames produced by broom's `augment()`,
+#'   this is the `.sigma` column.
 #' @param .treated The treatment level of the exposure. Automatically detected
 #'   by default.
 #' @param .untreated The control level of the exposure. Automatically detected
@@ -39,16 +43,18 @@ wt_ate <- function(.propensity, ...) {
 
 #' @export
 #' @rdname wt_ate
-wt_ate.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
+wt_ate.numeric <- function(.propensity, .exposure, .sigma = NULL, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
     ate_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+  } else if (exposure_type == "continuous") {
+    ate_continuous(.propensity = .propensity, .exposure = .exposure, .sigma = .sigma, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
   } else {
     abort_unsupported(exposure_type, "ATE")
   }
 }
 
-ate_binary <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
+ate_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -60,6 +66,23 @@ ate_binary <- function(.propensity, .exposure, exposure_type = c("auto", "binary
 
   if (isTRUE(stabilize) && is.null(stabilization_score)) {
     wt <- wt * mean(.exposure, na.rm = TRUE)
+  } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
+    wt <- wt * stabilization_score
+  }
+
+  wt
+}
+
+ate_continuous <- function(.propensity, .exposure, .sigma, stabilize = FALSE, stabilization_score = NULL, ...) {
+  .propensity <- stats::dnorm(.exposure, mean = .propensity, sd = mean(.sigma))
+  wt <- 1 / .propensity
+
+  if (isTRUE(stabilize) && is.null(stabilization_score)) {
+    wt <- wt * stats::dnorm(
+      .exposure,
+      mean(.exposure, na.rm = TRUE),
+      stats::sd(.exposure, na.rm = TRUE)
+    )
   } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
     wt <- wt * stabilization_score
   }
