@@ -20,7 +20,7 @@ You can install the development version of propensity from
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("malcolmbarrett/propensity")
+devtools::install_github("r-causal/propensity")
 ```
 
 ## Example
