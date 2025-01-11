@@ -14,7 +14,7 @@ test_that("ATE works for binary cases", {
 
   expect_equal(
     weights,
-    c(1.11, 1.43, 2.50, 1.43),
+    psw(c(1.11, 1.43, 2.50, 1.43), "ate"),
     tolerance = .01
   )
 })
@@ -43,6 +43,6 @@ test_that("ATE works for continuous cases", {
     stabilize = TRUE
   )
 
-  expect_equal(weights, wts, tolerance = .01)
-  expect_equal(stablized_weights, stb_wts, tolerance = .01)
+  expect_equal(weights, psw(wts, "ate"), tolerance = .01)
+  expect_equal(stablized_weights, psw(stb_wts, "ate"), tolerance = .01)
 })

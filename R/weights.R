@@ -46,12 +46,14 @@ wt_ate <- function(.propensity, ...) {
 wt_ate.numeric <- function(.propensity, .exposure, .sigma = NULL, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    ate_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+    wts <- ate_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
   } else if (exposure_type == "continuous") {
-    ate_continuous(.propensity = .propensity, .exposure = .exposure, .sigma = .sigma, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+    wts <- ate_continuous(.propensity = .propensity, .exposure = .exposure, .sigma = .sigma, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
   } else {
     abort_unsupported(exposure_type, "ATE")
   }
+
+  psw(wts, "ate")
 }
 
 ate_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
@@ -101,10 +103,12 @@ wt_att <- function(.propensity, ...) {
 wt_att.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    att_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
+    wts <- att_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATT")
   }
+
+  psw(wts, "att")
 }
 
 att_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
@@ -129,10 +133,12 @@ wt_atu <- function(.propensity, ...) {
 wt_atu.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    atu_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
+    wts <- atu_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATU")
   }
+
+  psw(wts, "atu")
 }
 
 atu_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
@@ -159,10 +165,12 @@ wt_atm <- function(.propensity, ...) {
 wt_atm.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    atm_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
+    wts <- atm_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATM")
   }
+
+  psw(wts, "atm")
 }
 
 atm_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
@@ -188,10 +196,12 @@ wt_ato <- function(.propensity, ...) {
 wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
-    ato_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
+    wts <- ato_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATO")
   }
+
+  psw(wts, "ato")
 }
 
 
