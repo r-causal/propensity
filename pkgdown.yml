@@ -1,9 +1,8 @@
 pandoc: 3.1.11
-pkgdown: 2.0.9
+pkgdown: 2.1.1
 pkgdown_sha: ~
 articles: {}
-last_built: 2024-05-17T16:20Z
+last_built: 2025-01-14T18:44Z
 urls:
   reference: https://r-causal.github.io/propensity/reference
   article: https://r-causal.github.io/propensity/articles
-
