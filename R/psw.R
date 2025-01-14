@@ -2,7 +2,7 @@
 #'
 #' Functions to create and manipulate `psw` objects, which are specialized
 #' vectors for propensity score weights with optional `estimand` attributes.
-#' Most users should use `wt_ate()` and friends, but these functions can help
+#' Most users should use [`wt_ate()`] and friends, but these functions can help
 #' extend the functionality of `psw` objects.
 #'
 #' @import vctrs
@@ -11,13 +11,17 @@
 #' @param x A numeric vector (default: `double()`).
 #' @param estimand A character string representing the estimand (e.g., "ate",
 #'   "att", "ato"). Default is `NULL`.
-#' @param psw An object to check or convert.
+#' @param stabilized A logical `TRUE`
+#' @param wt An object to check or convert.
+#' @param value The value to add to the attribute.
+#' @param ... Additional attributes to track in the weights.
 #' @return
-#' - `new_psw`: A `psw` object.
-#' - `psw`: A `psw` object.
-#' - `is_psw`: `TRUE` if the object is a `psw`, otherwise `FALSE`.
-#' - `as_psw`: A `psw` object.
-#' - `estimand`: The `estimand` attribute of a `psw` object.
+#' - `new_psw()`: A `psw` object.
+#' - `psw()`: A `psw` object.
+#' - `is_psw()`: `TRUE` if the object is a `psw`, otherwise `FALSE`.
+#' - `as_psw()`: A `psw` object.
+#' - `estimand()`: The `estimand` attribute of a `psw` object.
+#' - `is_stabilized()`: The `stabilized` attribute of a `psw` object.
 #' @examples
 #' psw_weights <- new_psw(c(0.1, 0.2, 0.3), estimand = "ate")
 #' is_psw(psw_weights)
@@ -31,42 +35,67 @@ NULL
 
 #' @rdname psw
 #' @export
-new_psw <- function(x = double(), estimand = NULL) {
+new_psw <- function(x = double(), estimand = NULL, stabilized = FALSE, ...) {
   vec_assert(x, ptype = double())
+  vec_assert(stabilized, ptype = logical(), size = 1)
 
   new_vctr(
     x,
     estimand = estimand,
-    class = "psw"
+    stabilized = stabilized,
+    ...,
+    class = c("psw", "causal_wts")
   )
 }
 
 #' @rdname psw
 #' @export
-psw <- function(x = double(), estimand = NULL) {
+psw <- function(x = double(), estimand = NULL, stabilized = FALSE) {
   x <- vec_cast(x, to = double())
   attributes(x) <- NULL
-  new_psw(x, estimand)
+  new_psw(x, estimand = estimand, stabilized = stabilized)
 }
 
 #' @rdname psw
 #' @export
-is_psw <- function(psw) {
-  inherits(psw, "psw")
+is_psw <- function(x) {
+  inherits(x, "psw")
 }
 
 #' @rdname psw
 #' @export
-as_psw <- function(psw, estimand = NULL) {
-  vec_cast(psw, to = new_psw(estimand = estimand))
+is_stabilized <- function(wt) {
+  stopifnot(is_psw(wt))
+  isTRUE(attr(wt, "stabilized"))
 }
 
 #' @rdname psw
 #' @export
-estimand <- function(psw) {
-  stopifnot(is_psw(psw))
-  attr(psw, "estimand")
+is_causal_wt <- function(x) {
+  inherits(x, "causal_wts")
 }
+
+#' @rdname psw
+#' @export
+as_psw <- function(x, estimand = NULL) {
+  vec_cast(x, to = new_psw(estimand = estimand))
+}
+
+#' @rdname psw
+#' @export
+estimand <- function(wt) {
+  stopifnot(is_causal_wt(wt))
+  attr(wt, "estimand")
+}
+
+#' @rdname psw
+#' @export
+`estimand<-` <- function(wt, value) {
+  stopifnot(is_causal_wt(wt))
+  attr(wt, "estimand") <- value
+  wt
+}
+
 
 #' @export
 vec_ptype_abbr.psw <- function(x, ...) {
@@ -79,6 +108,21 @@ vec_ptype_abbr.psw <- function(x, ...) {
 }
 
 #' @export
+vec_ptype_full.psw <- function(x, ...) {
+  estimand <- estimand(x)
+  if (is_stabilized(x)) {
+    stabilized <- "; stabilized"
+  } else {
+    stabilized <- NULL
+  }
+
+  if (is.null(estimand)) {
+    paste0("psw{estimand = unknown", stabilized, "}")
+  } else {
+    paste0("psw{estimand = ", estimand, stabilized, "}")
+  }
+}
+
 vec_ptype_full.psw <- function(x, ...) {
   estimand <- estimand(x)
   if (is.null(estimand)) {
@@ -105,13 +149,12 @@ vec_arith.psw.default <- function(op, x, y, ...) {
 vec_arith.psw.psw <- function(op, x, y, ...) {
   estimand_x <- estimand(x)
   estimand_y <- estimand(y)
-  estimand <- paste(estimand_x, op, estimand_y)
-#
-#   if (!identical(estimand_x, estimand_y)) {
-#     stop("Cannot perform arithmetic on psw objects with different estimands.", call. = FALSE)
-#   }
-  # should the estimand be "ate*ate"
-  # like it would be "ate*cnsr"
+  if (!identical(estimand_x, estimand_y)) {
+    estimand <- paste0(estimand_x, ", ", estimand_y)
+  } else {
+    estimand <- estimand_x
+  }
+
   rslts <- vec_arith_base(op, x, y)
   psw(rslts, estimand = estimand)
 }
@@ -181,4 +224,3 @@ vec_cast.psw.integer <- function(x, to, estimand = NULL, ...) psw(x, estimand = 
 vec_cast.integer.psw <- function(x, to, ...) {
   vec_cast(vec_data(x), integer(), x_arg = "psw")
 }
-

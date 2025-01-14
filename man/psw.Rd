@@ -4,19 +4,28 @@
 \alias{psw}
 \alias{new_psw}
 \alias{is_psw}
+\alias{is_stabilized}
+\alias{is_causal_wt}
 \alias{as_psw}
 \alias{estimand}
+\alias{estimand<-}
 \title{Create and Manipulate \code{psw} Objects}
 \usage{
-new_psw(x = double(), estimand = NULL)
+new_psw(x = double(), estimand = NULL, stabilized = FALSE, ...)
 
-psw(x = double(), estimand = NULL)
+psw(x = double(), estimand = NULL, stabilized = FALSE)
 
-is_psw(psw)
+is_psw(x)
 
-as_psw(psw, estimand = NULL)
+is_stabilized(wt)
 
-estimand(psw)
+is_causal_wt(x)
+
+as_psw(x, estimand = NULL)
+
+estimand(wt)
+
+estimand(wt) <- value
 }
 \arguments{
 \item{x}{A numeric vector (default: \code{double()}).}
@@ -24,21 +33,28 @@ estimand(psw)
 \item{estimand}{A character string representing the estimand (e.g., "ate",
 "att", "ato"). Default is \code{NULL}.}
 
-\item{psw}{An object to check or convert.}
+\item{stabilized}{A logical \code{TRUE}}
+
+\item{...}{Additional attributes to track in the weights.}
+
+\item{wt}{An object to check or convert.}
+
+\item{value}{The value to add to the attribute.}
 }
 \value{
 \itemize{
-\item \code{new_psw}: A \code{psw} object.
-\item \code{psw}: A \code{psw} object.
-\item \code{is_psw}: \code{TRUE} if the object is a \code{psw}, otherwise \code{FALSE}.
-\item \code{as_psw}: A \code{psw} object.
-\item \code{estimand}: The \code{estimand} attribute of a \code{psw} object.
+\item \code{new_psw()}: A \code{psw} object.
+\item \code{psw()}: A \code{psw} object.
+\item \code{is_psw()}: \code{TRUE} if the object is a \code{psw}, otherwise \code{FALSE}.
+\item \code{as_psw()}: A \code{psw} object.
+\item \code{estimand()}: The \code{estimand} attribute of a \code{psw} object.
+\item \code{is_stabilized()}: The \code{stabilized} attribute of a \code{psw} object.
 }
 }
 \description{
 Functions to create and manipulate \code{psw} objects, which are specialized
 vectors for propensity score weights with optional \code{estimand} attributes.
-Most users should use \code{wt_ate()} and friends, but these functions can help
+Most users should use \code{\link[=wt_ate]{wt_ate()}} and friends, but these functions can help
 extend the functionality of \code{psw} objects.
 }
 \examples{
