@@ -6,19 +6,21 @@ Authors@R:
            comment = c(ORCID = "0000-0003-0299-5825"))
 Description: What the package does (one paragraph).
 License: MIT + file LICENSE
-Encoding: UTF-8
-Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
-Suggests: 
-    spelling,
-    testthat (>= 3.0.0)
-Language: en-US
-Config/testthat/edition: 3
 URL: https://github.com/malcolmbarrett/propensity,
     https://r-causal.github.io/propensity/
 BugReports: https://github.com/malcolmbarrett/propensity/issues
+Depends: 
+    R (>= 3.5.0)
 Imports: 
     cli,
     rlang,
     stats,
     vctrs (>= 0.6.5)
+Suggests: 
+    spelling,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Encoding: UTF-8
+Language: en-US
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.1
