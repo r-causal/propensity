@@ -20,7 +20,7 @@
 #'   `outcome_mod`.
 #' @param estimand A character string specifying the causal estimand: `ate`,
 #'   `att`, `ato`, or `atm`. If `NULL`, the function attempts to infer it from
-#'   existing weights in `outcome_mod`, assuming the were calculated with
+#'   existing weights in `outcome_mod`, assuming they were calculated with
 #'   [wt_ate()], [wt_att()], [wt_atm()], or [wt_ato()].
 #' @param ps_link A character string specifying the link function for the
 #'   propensity score model: `logit`, `probit`, or `cloglog`. Defaults to
