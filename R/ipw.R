@@ -469,37 +469,53 @@ derive_weights <- function(exposure, ps, weight_matrix, ps_link = c("logit", "pr
   estimand <- match.arg(estimand)
   deriv_link_f <- derive_link(ps_link)
 
-  if (estimand == "ate") {
-    weights_vector <- ifelse(
-      exposure == 1,
-      -1 / (ps^2 * deriv_link_f(ps)),
-      1 / ((1 - ps)^2 * deriv_link_f(ps))
-    )
-  } else if (estimand == "att") {
-    weights_vector <- ifelse(
-      exposure == 1,
-      0,
-      1 / ((1 - ps)^2 * deriv_link_f(ps))
-    )
-  } else if (estimand == "ato") {
-    weights_vector <- ifelse(
-      exposure == 1,
-      -1 / (deriv_link_f(ps)),
-      1 / (deriv_link_f(ps))
-    )
-  } else if (estimand == "atm") {
-    weights_vector <- ifelse(
-      exposure == 1,
-      -1 / (ps^2 * deriv_link_f(ps)),
-      1 / ((1 - ps)^2 * deriv_link_f(ps))
-    )
+  deriv_vec <- switch(
+    estimand,
+    "ate" = ate_derivative(exposure, ps, deriv_link_f),
+    "att" = att_derivative(exposure, ps, deriv_link_f),
+    "ato" = ato_derivative(exposure, ps, deriv_link_f),
+    "atm" = atm_derivative(exposure, ps, deriv_link_f)
+  )
 
-    weights_vector[exposure == 1 & ps < 0.5] <- 0
-    weights_vector[exposure == 0 & ps > 0.5] <- 0
-  }
-
-  weight_matrix * weights_vector
+  weight_matrix * deriv_vec
 }
+
+ate_derivative <- function(exposure, ps, deriv_link_f) {
+  ifelse(
+    exposure == 1,
+    -1 / (ps^2 * deriv_link_f(ps)),
+    1 / ((1 - ps)^2 * deriv_link_f(ps))
+  )
+}
+
+att_derivative <- function(exposure, ps, deriv_link_f) {
+  ifelse(
+    exposure == 1,
+    0,
+    1 / ((1 - ps)^2 * deriv_link_f(ps))
+  )
+}
+
+ato_derivative <- function(exposure, ps, deriv_link_f) {
+  ifelse(
+    exposure == 1,
+    -1 / deriv_link_f(ps),
+    1 / deriv_link_f(ps)
+  )
+}
+
+atm_derivative <- function(exposure, ps, deriv_link_f) {
+  wv <- ifelse(
+    exposure == 1,
+    -1 / (ps^2 * deriv_link_f(ps)),
+    1 / ((1 - ps)^2 * deriv_link_f(ps))
+  )
+  # Then set parts to zero
+  wv[exposure == 1 & ps < 0.5] <- 0
+  wv[exposure == 0 & ps > 0.5] <- 0
+  wv
+}
+
 
 derive_link <- function(ps_link = c("logit", "probit", "cloglog")) {
   ps_link <- match.arg(ps_link)
