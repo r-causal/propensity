@@ -104,6 +104,8 @@ ipw <- function(ps_mod, outcome_mod, .df = NULL, estimand = NULL, ps_link = NULL
     exposure <- fmla_extract_left_vctr(ps_mod)
     outcome <- fmla_extract_left_vctr(outcome_mod)
   } else {
+    stopifnot(rlang::is_scalar_character(exposure_name) && rlang::is_scalar_character(exposure_name))
+    stopifnot(all(c(exposure_name, outcome_name) %in% names(.df)))
     exposure <- .df[[exposure_name]]
     outcome <- .df[[outcome_name]]
   }
@@ -576,6 +578,7 @@ check_estimand <- function(wts, estimand) {
 }
 
 check_exposure <- function(.df, .exposure_name) {
+  stopifnot(rlang::is_scalar_character(.exposure_name))
   if (!(.exposure_name %in% names(.df))) {
     stop(
       .exposure_name,
