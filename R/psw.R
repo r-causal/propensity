@@ -12,6 +12,8 @@
 #' @param estimand A character string representing the estimand (e.g., "ate",
 #'   "att", "ato"). Default is `NULL`.
 #' @param stabilized A logical `TRUE`
+#' @param trimmed Logical, whether these weights came from a trimmed PS.
+#' @param truncated Logical, whether these weights came from a truncated PS.
 #' @param wt An object to check or convert.
 #' @param value The value to add to the attribute.
 #' @param ... Additional attributes to track in the weights.
@@ -35,7 +37,14 @@ NULL
 
 #' @rdname psw
 #' @export
-new_psw <- function(x = double(), estimand = NULL, stabilized = FALSE, ...) {
+new_psw <- function(
+  x = double(),
+  estimand = NULL,
+  stabilized = FALSE,
+  trimmed = FALSE,
+  truncated = FALSE,
+  ...
+) {
   vec_assert(x, ptype = double())
   vec_assert(stabilized, ptype = logical(), size = 1)
 
@@ -43,17 +52,33 @@ new_psw <- function(x = double(), estimand = NULL, stabilized = FALSE, ...) {
     x,
     estimand = estimand,
     stabilized = stabilized,
+    trimmed = trimmed,
+    truncated = truncated,
     ...,
     class = c("psw", "causal_wts")
   )
 }
 
+
+
 #' @rdname psw
 #' @export
-psw <- function(x = double(), estimand = NULL, stabilized = FALSE) {
+psw <- function(
+  x = double(),
+  estimand = NULL,
+  stabilized = FALSE,
+  trimmed = FALSE,
+  truncated = FALSE
+) {
   x <- vec_cast(x, to = double())
   attributes(x) <- NULL
-  new_psw(x, estimand = estimand, stabilized = stabilized)
+  new_psw(
+    x,
+    estimand   = estimand,
+    stabilized = stabilized,
+    trimmed    = trimmed,
+    truncated  = truncated
+  )
 }
 
 #' @rdname psw
@@ -96,6 +121,24 @@ estimand <- function(wt) {
   wt
 }
 
+#' @export
+is_trimmed.psw <- function(x) {
+  isTRUE(attr(x, "trimmed"))
+}
+
+#' @export
+is_truncated.psw <- function(x) {
+  isTRUE(attr(x, "truncated"))
+}
+
+#' @export
+is_refit.psw <- function(x) {
+  meta <- ps_trim_meta(x)
+  if (!is.null(meta)) {
+    return(isTRUE(meta$refit))
+  }
+  FALSE
+}
 
 #' @export
 vec_ptype_abbr.psw <- function(x, ...) {
@@ -191,8 +234,10 @@ vec_math.psw <- function(.fn, .x, ...) {
 vec_ptype2.psw.psw <- function(x, y, ...) {
   if (!identical(estimand(x), estimand(y))) {
     stop_incompatible_type(
-      x, y,
-      x_arg = "x", y_arg = "y",
+      x,
+      y,
+      x_arg = "x",
+      y_arg = "y",
       message = "Can't combine weights with different estimands"
     )
   }

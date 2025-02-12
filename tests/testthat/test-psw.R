@@ -14,6 +14,8 @@ test_that("psw helper function works correctly", {
   expect_equal(vec_data(x), c(0.1, 0.2, 0.3))
   expect_equal(estimand(x), "att")
   expect_false(is_stabilized(x))
+  expect_false(is_trimmed(x))
+  expect_false(is_truncated(x))
   estimand(x) <- "ATT!"
   expect_equal(estimand(x), "ATT!")
 })
@@ -175,3 +177,12 @@ test_that("Combination of arithmetic and math works correctly for psw", {
   repeated_term2 <- sum(y * (1 - x) * wts) / sum((1 - x) * wts)
   expect_equal(repeated_term2, term2, tolerance = 1e-8)
 })
+
+test_that("Refit logic can be tracked if stored in attr", {
+  # If you store a 'refit' attribute in the final psw object:
+  w <- psw(c(0.1, 0.2), estimand = "ate", trimmed = TRUE)
+  attr(w, "ps_trim_meta") <- list(refit = TRUE)
+  # Suppose we define is_refit.psw() as checking attr(x, "refit")
+  expect_true(is_refit(w))
+})
+

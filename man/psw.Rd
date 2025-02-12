@@ -11,9 +11,22 @@
 \alias{estimand<-}
 \title{Create and Manipulate \code{psw} Objects}
 \usage{
-new_psw(x = double(), estimand = NULL, stabilized = FALSE, ...)
+new_psw(
+  x = double(),
+  estimand = NULL,
+  stabilized = FALSE,
+  trimmed = FALSE,
+  truncated = FALSE,
+  ...
+)
 
-psw(x = double(), estimand = NULL, stabilized = FALSE)
+psw(
+  x = double(),
+  estimand = NULL,
+  stabilized = FALSE,
+  trimmed = FALSE,
+  truncated = FALSE
+)
 
 is_psw(x)
 
@@ -34,6 +47,10 @@ estimand(wt) <- value
 "att", "ato"). Default is \code{NULL}.}
 
 \item{stabilized}{A logical \code{TRUE}}
+
+\item{trimmed}{Logical, whether these weights came from a trimmed PS.}
+
+\item{truncated}{Logical, whether these weights came from a truncated PS.}
 
 \item{...}{Additional attributes to track in the weights.}
 
