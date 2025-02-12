@@ -185,4 +185,3 @@ test_that("Refit logic can be tracked if stored in attr", {
   # Suppose we define is_refit.psw() as checking attr(x, "refit")
   expect_true(is_refit(w))
 })
-

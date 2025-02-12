@@ -172,11 +172,6 @@ vec_arith.ps_trunc.integer <- function(op, x, y, ...) {
   stop_incompatible_op(op, x, y)
 }
 
-#' @export
-vec_math.ps_trunc <- function(.fn, .x, ...) {
-  stop_incompatible_op(.fn, .x, subtype = "math")
-}
-
 # Combining / Casting
 #' @export
 vec_ptype2.ps_trunc.ps_trunc <- function(x, y, ...) {
@@ -185,6 +180,7 @@ vec_ptype2.ps_trunc.ps_trunc <- function(x, y, ...) {
 
 #' @export
 vec_ptype2.ps_trunc.double <- function(x, y, ...) double()
+
 #' @export
 vec_ptype2.double.ps_trunc <- function(x, y, ...) double()
 
@@ -192,6 +188,7 @@ vec_ptype2.double.ps_trunc <- function(x, y, ...) double()
 vec_cast.double.ps_trunc <- function(x, to, ...) {
   vec_data(x)
 }
+
 #' @export
 vec_cast.ps_trunc.double <- function(x, to, ...) {
   new_ps_trunc(
@@ -202,11 +199,13 @@ vec_cast.ps_trunc.double <- function(x, to, ...) {
 
 #' @export
 vec_ptype2.ps_trunc.integer <- function(x, y, ...) integer()
+
 #' @export
 vec_ptype2.integer.ps_trunc <- function(x, y, ...) integer()
 
 #' @export
 vec_cast.integer.ps_trunc <- function(x, to, ...) as.integer(vec_data(x))
+
 #' @export
 vec_cast.ps_trunc.integer <- function(x, to, ...) {
   xx <- as.double(x)

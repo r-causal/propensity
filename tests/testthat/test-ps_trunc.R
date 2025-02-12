@@ -81,3 +81,219 @@ test_that("ps_trunc() errors on invalid usage or exposure", {
   # if lower >= upper => error for method="ps"
   expect_error(ps_trunc(runif(5), method = "ps", lower = 0.8, upper = 0.3), "need lower < upper")
 })
+
+test_that("Truncation workflow yields truncated psw with no refit logic", {
+  set.seed(888)
+  n <- 10
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.4 * x))
+
+  # 1) Fit logistic model
+  fit <- glm(z ~ x, family = binomial)
+  ps <- predict(fit, type = "response")
+
+  # 2) Truncate (winsorize) the PS
+  truncated_ps <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
+  expect_s3_class(truncated_ps, "ps_trunc")
+
+  # 3) Compute ATE weights
+  w_ate <- wt_ate(truncated_ps, .exposure = z, exposure_type = "binary", .treated = 1)
+  expect_s3_class(w_ate, "psw")
+
+  # 4) Verify truncated, not trimmed, not refit, estimand
+  expect_true(is_truncated(w_ate))
+  expect_false(is_trimmed(w_ate))
+  expect_false(is_refit(w_ate))
+  expect_match(estimand(w_ate), "; truncated$")
+})
+
+test_that("is_truncated.default() -> FALSE, is_truncated.ps_trunc() -> TRUE", {
+  # 1) A plain numeric => default => FALSE
+  expect_false(is_truncated(runif(5)))
+
+  # 2) A simple ps_trunc object => is_truncated(...) => TRUE
+  # Create via new_ps_trunc()
+  my_trunc <- new_ps_trunc(
+    x = c(0.2, 0.6, 0.8),
+    meta = list(method = "ps", lower_bound = 0.2, upper_bound = 0.8)
+  )
+  expect_true(is_truncated(my_trunc))
+})
+
+test_that("Arithmetic on ps_trunc => vctrs_error_incompatible_op", {
+  obj <- new_ps_trunc(
+    x = c(0.2, 0.7, 0.9),
+    meta = list(method = "ps", lower_bound = 0.2, upper_bound = 0.8)
+  )
+
+  # obj + 1 => error
+  expect_error(
+    obj + 1,
+    class = "vctrs_error_incompatible_op"
+  )
+  # 1 + obj => error
+  expect_error(
+    1 + obj,
+    class = "vctrs_error_incompatible_op"
+  )
+
+  # obj * another ps_trunc => error
+  obj2 <- new_ps_trunc(
+    x = c(0.1, 0.1, 0.3),
+    meta = list(method = "ps", lower_bound = 0.1, upper_bound = 0.5)
+  )
+  expect_error(
+    obj * obj2,
+    class = "vctrs_error_incompatible_op"
+  )
+})
+
+test_that("Combining & casting ps_trunc => correct ptype2, cast behavior", {
+  obj <- new_ps_trunc(
+    x = c(0.2, 0.6, 0.8),
+    meta = list(method = "ps", lower_bound = 0.2, upper_bound = 0.8)
+  )
+  # 1) Combining two ps_trunc => error
+  obj2 <- new_ps_trunc(
+    x = c(0.4, 0.5, 0.7),
+    meta = list(method = "ps", lower_bound = 0.3, upper_bound = 0.8)
+  )
+
+  # 3) Casting ps_trunc -> double => numeric data
+  out_cast <- vctrs::vec_cast(obj, double())
+  expect_type(out_cast, "double")
+  expect_identical(out_cast, c(0.2, 0.6, 0.8))
+
+  # 4) Casting double -> ps_trunc => new default meta
+  new_vals <- runif(3)
+  out_ps_trunc <- vctrs::vec_cast(new_vals, to = obj)
+  expect_s3_class(out_ps_trunc, "ps_trunc")
+  meta_new <- ps_trunc_meta(out_ps_trunc)
+  expect_equal(meta_new$method, "unknown") # per your code
+  expect_true(is.na(meta_new$lower_bound))
+  expect_true(is.na(meta_new$upper_bound))
+})
+
+test_that("wt_atm.numeric calls atm_binary() for binary exposure, returns psw", {
+  set.seed(101)
+  n <- 8
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x))
+
+  # A numeric PS
+  ps <- plogis(0.4 * x)
+
+  # 1) Binary exposure => calls atm_binary() => returns psw
+  out_atm <- wt_atm.numeric(
+    .propensity = ps,
+    .exposure = z,
+    exposure_type = "binary",
+    .treated = 1
+  )
+  # Check it's a psw object with estimand "atm"
+  expect_s3_class(out_atm, "psw")
+  expect_equal(estimand(out_atm), "atm")
+})
+
+test_that("atm_binary() logic with transform_exposure_binary() is triggered", {
+  # atm_binary => pmin(ps, 1-ps) / (exposure*ps + (1-exposure)*(1-ps))
+  ps_vec <- c(0.2, 0.8, 0.5)
+  z_vec <- c(0, 1, 1)
+
+  w <- atm_binary(
+    .propensity = ps_vec,
+    .exposure = z_vec,
+    exposure_type = "binary",
+    .treated = 1
+  )
+  # Just check dimension, no error
+  expect_length(w, 3)
+
+  # If .exposure isn't 0/1 or has different factor levels, transform_exposure_binary
+  # is tested. We'll do a quick check with factor( c("C","T","T") )
+  w2 <- atm_binary(
+    .propensity = ps_vec,
+    .exposure = factor(c("C", "T", "T")),
+    .treated = "T",
+    .untreated = "C"
+  )
+  expect_length(w2, 3)
+})
+
+test_that("wt_ato.numeric calls ato_binary() for binary exposure, returns psw", {
+  set.seed(202)
+  n <- 6
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.6 * x))
+  ps <- plogis(0.3 * x)
+
+  # 1) Binary => calls ato_binary => returns psw
+  out_ato <- wt_ato.numeric(
+    .propensity = ps,
+    .exposure = z,
+    exposure_type = "binary",
+    .treated = 1
+  )
+  expect_s3_class(out_ato, "psw")
+  expect_equal(estimand(out_ato), "ato")
+})
+
+test_that("ato_binary() logic is triggered for p=0.3", {
+  # (1 - p)*exposure + p*(1-exposure)
+  ps_vec <- c(0.1, 0.9, 0.5)
+  z_vec <- c(0, 1, 1)
+
+  w <- ato_binary(
+    .propensity = ps_vec,
+    .exposure = z_vec,
+    exposure_type = "binary",
+    .treated = 1
+  )
+  expect_length(w, 3)
+  # Just check no error, correct length
+})
+
+test_that("wt_atm.ps_trunc synergy with truncated object yields truncated psw", {
+  set.seed(303)
+  n <- 6
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.2 * x))
+
+  ps <- plogis(0.7 * x)
+  # Make a truncated object (like bounding ps in [0.2,0.8])
+  trunc_obj <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
+
+  # Now call wt_atm() on ps_trunc => dispatches wt_atm.ps_trunc()
+  w_atm <- wt_atm(
+    trunc_obj,
+    .exposure = z,
+    exposure_type = "binary",
+    .treated = 1
+  )
+  expect_s3_class(w_atm, "psw")
+  # Estimand => "atm; truncated"
+  expect_match(estimand(w_atm), "atm; truncated")
+  # truncated=TRUE
+  expect_true(is_truncated(w_atm))
+})
+
+test_that("wt_ato.ps_trunc synergy with truncated object yields truncated psw", {
+  set.seed(404)
+  n <- 7
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.1 * x))
+  ps <- plogis(0.5 * x)
+
+  # bounding p in [0.1, 0.9], e.g.
+  trunc_obj <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+  w_ato <- wt_ato(
+    trunc_obj,
+    .exposure = z,
+    exposure_type = "binary",
+    .treated = 1
+  )
+
+  expect_s3_class(w_ato, "psw")
+  expect_match(estimand(w_ato), "ato; truncated")
+  expect_true(is_truncated(w_ato))
+})

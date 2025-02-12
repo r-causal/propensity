@@ -241,11 +241,6 @@ vec_arith.ps_trim.integer <- function(op, x, y, ...) {
 }
 
 #' @export
-vec_math.ps_trim <- function(.fn, .x, ...) {
-  vctrs::stop_incompatible_op(.fn, .x, subtype = "math")
-}
-
-#' @export
 vec_ptype2.ps_trim.ps_trim <- function(x, y, ...) {
   vctrs::stop_incompatible_type(
     x,
@@ -404,4 +399,3 @@ is_refit.ps_trim <- function(x) {
 ps_trim_meta <- function(x) {
   attr(x, "ps_trim_meta")
 }
-

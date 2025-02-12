@@ -246,15 +246,15 @@ test_that("Full workflow: trim -> refit -> weighting yields refit, trimmed psw",
 
   # 1) Fit initial logistic model, get ps
   fit <- glm(z ~ x, family = binomial)
-  ps  <- predict(fit, type = "response")
+  ps <- predict(fit, type = "response")
 
   # 2) Trim the PS (e.g. method="ps" with [0.2, 0.8])
   trimmed_ps <- ps_trim(ps, exposure = z, method = "ps", lower = 0.2, upper = 0.8)
-  expect_false(is_refit(trimmed_ps))  # not refit yet
+  expect_false(is_refit(trimmed_ps)) # not refit yet
 
   # 3) Refit on the subset
   trimmed_refit <- ps_refit(trimmed_ps, model = fit)
-  expect_true(is_refit(trimmed_refit))  # now refit=TRUE in ps_trim_meta
+  expect_true(is_refit(trimmed_refit)) # now refit=TRUE in ps_trim_meta
 
   # 4) Create ATE weights with the refitted ps_trim object
   w_ate <- wt_ate(trimmed_refit, .exposure = z, exposure_type = "binary", .treated = 1)
@@ -269,9 +269,162 @@ test_that("Full workflow: trim -> refit -> weighting yields refit, trimmed psw",
   expect_false(is_stabilized(w_ate))
 
   # Should preserve the refit info if you attach ps_trim_meta
-  expect_true(is_refit(w_ate))  # e.g. if is_refit.psw() checks ps_trim_meta
+  expect_true(is_refit(w_ate)) # e.g. if is_refit.psw() checks ps_trim_meta
 
   # The estimand should include "; trimmed"
   expect_match(estimand(w_ate), "; trimmed$")
 })
 
+test_that("adaptive method: triggers uniroot path (k < 0) coverage", {
+  # We'll craft a scenario where k = 2*mean(sum_wt) - max(sum_wt) < 0
+  # so that the else-branch is executed (lines 83-89).
+
+  set.seed(1234)
+  n <- 30
+  # We create some extreme p near 0 or 1 so sum_wt = 1/(p*(1-p)) varies greatly
+  # e.g. half near 0.01, half near 0.99
+  p_vec <- c(
+    runif(n / 2, min = 0.001, max = 0.01),
+    runif(n / 2, min = 0.99, max = 0.999)
+  )
+  # We'll treat them as if we have a binary z, not relevant for "adaptive"
+  z <- c(rep(0, n / 2), rep(1, n / 2))
+
+  # Now call ps_trim with method="adaptive"
+  # This should produce k < 0 => code path with uniroot
+  out_adapt <- ps_trim(p_vec, exposure = z, method = "adaptive")
+
+  # Check that the 'cutoff' field in the meta is present
+  meta <- ps_trim_meta(out_adapt)
+  expect_true("cutoff" %in% names(meta))
+
+  # Also confirm the result is a ps_trim object
+  expect_s3_class(out_adapt, "ps_trim")
+
+  # Because of the extremes, we likely see a fairly small cutoff
+  # Just check it's numeric and within (0, 0.5)
+  expect_true(is.numeric(meta$cutoff))
+  expect_gt(meta$cutoff, 0)
+  expect_lt(meta$cutoff, 0.5)
+
+  # Since many ps are out-of-range, we expect many NAs
+  out_data <- as.numeric(out_adapt)
+  # Just confirm there's at least some NA for the extreme values
+  # e.g. near 0.001 or 0.999
+  expect_true(any(is.na(out_data)))
+})
+
+test_that("Check defaults for helper functions", {
+  # 1) Any random object that is not ps_trim => default method => FALSE
+  not_trim_obj <- c(0.2, 0.4, 0.6)
+  expect_false(is_trimmed(not_trim_obj)) # triggers is_trimmed.default()
+  expect_false(is_refit(not_trim_obj))
+
+  # 2) A mock ps_trim object => method => TRUE
+  # For a real test, you'd create it via ps_trim(...). Here we simulate:
+  fake_ps_trim <- structure(
+    c(0.5, NA, 0.7),
+    class = "ps_trim"
+  )
+  expect_true(is_trimmed(fake_ps_trim)) # triggers is_trimmed.ps_trim()
+})
+
+# tests/test-ps_trim-vctrs.R
+
+library(testthat)
+library(vctrs)
+
+test_that("vec_ptype_abbr.ps_trim() and vec_ptype_full.ps_trim() coverage", {
+  # Create a minimal ps_trim object
+  # for demonstration, or use ps_trim() function if you like
+  ps_obj <- new_trimmed_ps(
+    c(0.1, NA, 0.7),
+    ps_trim_meta = list(
+      method      = "ps",
+      keep_idx    = c(1, 3),
+      trimmed_idx = 2
+    )
+  )
+
+  # 1) Abbreviation
+  abbr <- vec_ptype_abbr(ps_obj)
+  expect_identical(abbr, "ps_trim")
+
+  # 2) Full
+  full <- vec_ptype_full(ps_obj)
+  # E.g. "ps_trim; trimmed 1 of "
+  # Just check it's a character containing "ps_trim"
+  expect_true(is.character(full))
+  expect_true(grepl("ps_trim;", full))
+})
+
+test_that("Arithmetic with ps_trim fails (vec_arith.*)", {
+  # Create two ps_trim objects or combine with numeric
+  x <- new_trimmed_ps(c(0.2, 0.3), ps_trim_meta = list())
+  y <- new_trimmed_ps(c(0.4, 0.9), ps_trim_meta = list())
+
+  # Attempt numeric ops => should fail
+  expect_error(x + 1, class = "vctrs_error_incompatible_op")
+  expect_error(x + 1L, class = "vctrs_error_incompatible_op")
+  expect_error(1 + x, class = "vctrs_error_incompatible_op")
+  expect_error(1L + x, class = "vctrs_error_incompatible_op")
+  expect_error(x + list(1), class = "vctrs_error_incompatible_op")
+  # Combining two ps_trim
+  expect_error(x + y, class = "vctrs_error_incompatible_op")
+})
+
+test_that("Combining two ps_trim => error in vec_ptype2.ps_trim.ps_trim", {
+  x <- new_trimmed_ps(
+    c(0.2, 0.4),
+    ps_trim_meta = list(trimmed_idx = integer(0))
+  )
+  y <- new_trimmed_ps(
+    c(0.3, 0.5),
+    ps_trim_meta = list(trimmed_idx = integer(0))
+  )
+
+  # Attempt to combine, e.g. c(x,y) => triggers vctrs' combining rules
+  # or vctrs::vec_c
+  expect_error(vec_c(x, y), "Can't combine two ps_trim objects")
+})
+
+test_that("Combining ps_trim with double => double", {
+  x <- new_trimmed_ps(c(0.2, 0.5), ps_trim_meta = list())
+
+  # vctrs logic => ptype2 => double
+  combined <- vec_c(x, 0.7)
+  expect_type(combined, "double")
+  expect_false(inherits(combined, "ps_trim"))
+})
+
+test_that("Casting ps_trim -> double => underlying numeric data", {
+  x <- new_trimmed_ps(
+    c(0.2, NA, 0.9),
+    ps_trim_met = list(method = "ps", keep_idx = c(1, 3), trimmed_idx = 2)
+  )
+  casted <- vec_cast(x, to = double())
+  expect_type(casted, "double")
+  # Should match the underlying data
+  expect_equal(casted, c(0.2, NA, 0.9))
+})
+
+test_that("Casting double -> ps_trim => minimal ps_trim object", {
+  base_vec <- c(0.1, 0.7, NA, 0.4)
+  # If we do vec_cast(base_vec, ps_trim())
+  # => calls vec_cast.ps_trim.double
+  ps_t <- vec_cast(base_vec, to = structure(double(), class = "ps_trim"))
+  expect_s3_class(ps_t, "ps_trim")
+  # The meta is "unknown" method or similar
+  meta <- attr(ps_t, "ps_trim_meta")
+  expect_equal(meta$method, "unknown")
+  expect_equal(meta$keep_idx, seq_along(base_vec))
+  expect_length(meta$trimmed_idx, 0)
+})
+
+test_that("Casting integer->ps_trim likewise uses new_trimmed_ps", {
+  base_int <- c(0L, 1L, 999L)
+  ps_t <- vec_cast(base_int, to = structure(double(), class = "ps_trim"))
+  expect_s3_class(ps_t, "ps_trim")
+  # check the data is double
+  expect_equal(as.numeric(ps_t), c(0, 1, 999))
+})
