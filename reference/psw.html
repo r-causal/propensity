@@ -46,9 +46,22 @@ extend the functionality of <code>psw</code> objects.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">new_psw</span><span class="op">(</span>x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/double.html" class="external-link">double</a></span><span class="op">(</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="cn">NULL</span>, stabilized <span class="op">=</span> <span class="cn">FALSE</span>, <span class="va">...</span><span class="op">)</span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">new_psw</span><span class="op">(</span></span>
+<span>  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/double.html" class="external-link">double</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  estimand <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  stabilized <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  trimmed <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  truncated <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">psw</span><span class="op">(</span>x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/double.html" class="external-link">double</a></span><span class="op">(</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="cn">NULL</span>, stabilized <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="fu">psw</span><span class="op">(</span></span>
+<span>  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/double.html" class="external-link">double</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  estimand <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  stabilized <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  trimmed <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  truncated <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">is_psw</span><span class="op">(</span><span class="va">x</span><span class="op">)</span></span>
 <span></span>
@@ -78,6 +91,14 @@ extend the functionality of <code>psw</code> objects.</p>
 
 <dt id="arg-stabilized">stabilized<a class="anchor" aria-label="anchor" href="#arg-stabilized"></a></dt>
 <dd><p>A logical <code>TRUE</code></p></dd>
+
+
+<dt id="arg-trimmed">trimmed<a class="anchor" aria-label="anchor" href="#arg-trimmed"></a></dt>
+<dd><p>Logical, whether these weights came from a trimmed PS.</p></dd>
+
+
+<dt id="arg-truncated">truncated<a class="anchor" aria-label="anchor" href="#arg-truncated"></a></dt>
+<dd><p>Logical, whether these weights came from a truncated PS.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
