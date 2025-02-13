@@ -30,7 +30,7 @@ or \code{\link[stats:lm]{stats::lm()}}, with the outcome as the dependent variab
 
 \item{estimand}{A character string specifying the causal estimand: \code{ate},
 \code{att}, \code{ato}, or \code{atm}. If \code{NULL}, the function attempts to infer it from
-existing weights in \code{outcome_mod}, assuming the were calculated with
+existing weights in \code{outcome_mod}, assuming they were calculated with
 \code{\link[=wt_ate]{wt_ate()}}, \code{\link[=wt_att]{wt_att()}}, \code{\link[=wt_atm]{wt_atm()}}, or \code{\link[=wt_ato]{wt_ato()}}.}
 
 \item{ps_link}{A character string specifying the link function for the

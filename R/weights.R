@@ -1,12 +1,3 @@
-# propensity <- function(.propensity, .exposure, estimand = c("ate", "att", "atu", "atm", "ato"), exposure_type = c("auto", "binary", "categorical", "continuous")) {
-#
-# }
-#
-# add_weights <- function(.model, .exposure, estimand = c("ate", "att", "atu", "atm", "ato"), exposure_type = c("auto", "binary", "categorical", "continuous")) {
-#   # add via broom
-#   # check installed
-# }
-
 #' Calculate propensity score weights
 #'
 #' @param .propensity Either a vector of the predicted value of `.exposure` or a
@@ -215,3 +206,137 @@ ato_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NUL
   (1 - .propensity) * .exposure + .propensity * (1 - .exposure)
 }
 
+# --------------------------------------------------------------------
+#  Add methods for ps_trim
+#  (All 5 estimands: ate, att, atu, atm, ato)
+# --------------------------------------------------------------------
+
+#' @export
+wt_ate.ps_trim <- function(.propensity, .exposure, ...) {
+  check_refit(.propensity)
+
+  numeric_ps <- as.numeric(.propensity) # includes NA for trimmed rows
+  base_wt <- wt_ate.numeric(numeric_ps, .exposure, ...)
+
+  old_est <- estimand(base_wt)
+  estimand(base_wt) <- paste0(old_est, "; trimmed")
+  attr(base_wt, "trimmed") <- TRUE
+  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
+
+  base_wt
+}
+
+#' @export
+wt_att.ps_trim <- function(.propensity, .exposure, ...) {
+  check_refit(.propensity)
+
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_att.numeric(numeric_ps, .exposure, ...)
+
+  old_est <- estimand(base_wt)
+  estimand(base_wt) <- paste0(old_est, "; trimmed")
+  attr(base_wt, "trimmed") <- TRUE
+  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
+
+  base_wt
+}
+
+#' @export
+wt_atu.ps_trim <- function(.propensity, .exposure, ...) {
+  check_refit(.propensity)
+
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_atu.numeric(numeric_ps, .exposure, ...)
+
+  old_est <- estimand(base_wt)
+  estimand(base_wt) <- paste0(old_est, "; trimmed")
+  attr(base_wt, "trimmed") <- TRUE
+  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
+
+  base_wt
+}
+
+#' @export
+wt_atm.ps_trim <- function(.propensity, .exposure, ...) {
+  check_refit(.propensity)
+
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_atm.numeric(numeric_ps, .exposure, ...)
+
+  old_est <- estimand(base_wt)
+  estimand(base_wt) <- paste0(old_est, "; trimmed")
+  attr(base_wt, "trimmed") <- TRUE
+  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
+
+  base_wt
+}
+
+#' @export
+wt_ato.ps_trim <- function(.propensity, .exposure, ...) {
+  check_refit(.propensity)
+
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_ato.numeric(numeric_ps, .exposure, ...)
+
+  old_est <- estimand(base_wt)
+  estimand(base_wt) <- paste0(old_est, "; trimmed")
+  attr(base_wt, "trimmed") <- TRUE
+  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
+
+  base_wt
+}
+
+#' @export
+wt_ate.ps_trunc <- function(.propensity, .exposure, ...) {
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_ate.numeric(numeric_ps, .exposure, ...)
+
+  e <- estimand(base_wt)
+  estimand(base_wt) <- paste0(e, "; truncated")
+
+  # If you want to store the meta info in the weights:
+  attr(base_wt, "truncated") <- TRUE
+  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
+  base_wt
+}
+
+#' @export
+wt_att.ps_trunc <- function(.propensity, .exposure, ...) {
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_att.numeric(numeric_ps, .exposure, ...)
+  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+  attr(base_wt, "truncated") <- TRUE
+  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+  base_wt
+}
+
+#' @export
+wt_atu.ps_trunc <- function(.propensity, .exposure, ...) {
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_atu.numeric(numeric_ps, .exposure, ...)
+  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+  attr(base_wt, "truncated") <- TRUE
+  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+  base_wt
+}
+
+#' @export
+wt_atm.ps_trunc <- function(.propensity, .exposure, ...) {
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_atm.numeric(numeric_ps, .exposure, ...)
+  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+  attr(base_wt, "truncated") <- TRUE
+  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+  base_wt
+}
+
+#' @export
+wt_ato.ps_trunc <- function(.propensity, .exposure, ...) {
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_ato.numeric(numeric_ps, .exposure, ...)
+  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+  attr(base_wt, "truncated") <- TRUE
+  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+  base_wt
+}

@@ -68,3 +68,12 @@ is_categorical <- function(.exposure) {
 has_two_levels <- function(.x) {
   length(unique(.x)) == 2
 }
+
+check_refit <- function(.propensity) {
+  if (!is_refit(.propensity)) {
+    warning(
+      "It appears you trimmed your PS but did not refit the model. ",
+      "Consider using `ps_refit()` for more accurate re-estimation."
+    )
+  }
+}
