@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml)
+[![Codecov test coverage](https://codecov.io/gh/malcolmbarrett/propensity/graph/badge.svg)](https://app.codecov.io/gh/malcolmbarrett/propensity)
 <!-- badges: end -->
 
 The goal of propensity is to calculate propensity scores and weights for a wide variety of research questions.

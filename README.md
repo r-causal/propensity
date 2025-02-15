@@ -6,6 +6,8 @@
 <!-- badges: start -->
 
 [![R-CMD-check](https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml)
+[![Codecov test
+coverage](https://codecov.io/gh/malcolmbarrett/propensity/graph/badge.svg)](https://app.codecov.io/gh/malcolmbarrett/propensity)
 <!-- badges: end -->
 
 The goal of propensity is to calculate propensity scores and weights for
@@ -35,13 +37,19 @@ x <- c(0, 0, 1, 0)
 
 # ATE weights
 wt_ate(propensity_scores, .exposure = x)
+#> ℹ Treating `.exposure` as binary
+#> <psw{estimand = ate}[4]>
 #> [1] 1.111111 1.428571 2.500000 1.428571
 
 # Stabilized ATE weights
 wt_ate(propensity_scores, .exposure = x, stabilize = TRUE)
+#> ℹ Treating `.exposure` as binary
+#> <psw{estimand = ate}[4]>
 #> [1] 0.2777778 0.3571429 0.6250000 0.3571429
 
 # ATO weights
 wt_ato(propensity_scores, .exposure = x)
+#> ℹ Treating `.exposure` as binary
+#> <psw{estimand = ato}[4]>
 #> [1] 0.1 0.3 0.6 0.3
 ```
