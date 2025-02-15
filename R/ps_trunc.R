@@ -1,17 +1,17 @@
-#' @title Winsorize (Truncate) Propensity Scores
+#' Truncate (Winsorize) Propensity Scores
 #'
-#' @description
 #' **`ps_trunc()`** sets out‐of‐range propensity scores to fixed bounding values
 #' (a form of *winsorizing*). This is an alternative to [ps_trim()], which removes
 #' (sets `NA`) instead of bounding and is then refit with [ps_refit()]
 #'
-#' @param ps A numeric vector in (0, 1) that represents the probability of receiving `exposure`.
-#' @param exposure For method "cr", a 0/1 exposure vector.
+#' @param ps The propensity score, a numeric vector between 0 and 1.
+#' @param .exposure For method "cr", a binary exposure vector.
 #' @param method One of `"ps"`, `"pctl"`, or `"cr"`.
-#'   * `"ps"`: directly cut on `[lower, upper]`
+#'   * `"ps"`: directly cut on `[lower, upper]` of `ps`.
 #'   * `"pctl"`: use quantiles of `ps` as bounding values
-#'   * `"cr"`: for binary exposure, bounding `[min(ps[treated]), max(ps[untreated])]`
+#'   * `"cr"`: the common range of `ps` given `.exposure`, bounding `[min(ps[treated]), max(ps[untreated])]`
 #' @param lower,upper Numeric or quantile bounds. If `NULL`, defaults vary by method.
+#' @inheritParams wt_ate
 #'
 #' @details
 #' For each \eqn{ps[i]}:
@@ -23,27 +23,38 @@
 #'   `ps_trunc_meta` storing fields like `method`, `lower_bound`, and
 #'   `upper_bound`.
 #' @seealso [ps_trim()] and [ps_refit()] for removing extreme values vs. bounding
+#'
+#' @examples
+#' set.seed(2)
+#' n <- 30
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.4 * x))
+#' fit <- glm(z ~ x, family = binomial)
+#' ps <- predict(fit, type = "response")
+#'
+#' # truncate just the 99th percentile
+#' ps_trunc(ps, method = "pctl", lower = 0, upper = .99)
+#'
 #' @export
 ps_trunc <- function(
-  ps,
-  exposure = NULL,
-  method = c("ps", "pctl", "cr"),
-  lower = NULL,
-  upper = NULL
+    ps,
+    method = c("ps", "pctl", "cr"),
+    lower = NULL,
+    upper = NULL,
+    .exposure = NULL,
+    .treated = NULL,
+    .untreated = NULL
 ) {
-  method <- match.arg(method)
+  method <- rlang::arg_match(method)
   meta_list <- list(method = method)
 
-  if (any(ps <= 0 | ps >= 1)) {
-    stop("All propensity scores must be strictly between 0 and 1.")
-  }
+  check_ps_range(ps)
 
   if (method == "ps") {
     if (is.null(lower)) lower <- 0.1
     if (is.null(upper)) upper <- 0.9
-    if (lower >= upper) {
-      stop("For method='ps', need lower < upper. Got lower=", lower, ", upper=", upper)
-    }
+    check_lower_upper(lower, upper)
+
     lb <- lower
     ub <- upper
   } else if (method == "pctl") {
@@ -53,15 +64,14 @@ ps_trunc <- function(
     ub <- quantile(ps, probs = upper)
     meta_list$lower_pctl <- lower
     meta_list$upper_pctl <- upper
-  } else { # method == "cr"
-    if (is.null(exposure)) {
-      stop("For method='cr', must supply a 0/1 'exposure'.")
-    }
-    if (!all(exposure %in% c(0, 1))) {
-      stop("Exposure must be 0/1 for method='cr'.")
-    }
-    ps_treat <- ps[exposure == 1]
-    ps_untrt <- ps[exposure == 0]
+  } else {
+    .exposure <- transform_exposure_binary(
+      .exposure,
+      .treated = .treated,
+      .untreated = .untreated
+    )
+    ps_treat <- ps[.exposure == 1]
+    ps_untrt <- ps[.exposure == 0]
     lb <- min(ps_treat)
     ub <- max(ps_untrt)
   }

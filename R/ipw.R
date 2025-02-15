@@ -93,8 +93,8 @@
 #' @importFrom stats dnorm family formula model.frame model.matrix model.weights
 #' @importFrom stats pnorm predict printCoefmat qnorm var
 ipw <- function(ps_mod, outcome_mod, .df = NULL, estimand = NULL, ps_link = NULL, conf_level = 0.95) {
-  stopifnot(inherits(ps_mod, "glm"))
-  stopifnot(inherits(outcome_mod, "glm") || inherits(outcome_mod, "lm"))
+  assert_class(ps_mod, "glm")
+  assert_class(outcome_mod, c("glm", "lm"))
 
   weight_matrix <- model.matrix(ps_mod)
   exposure_name <- fmla_extract_left_chr(ps_mod)
@@ -104,8 +104,11 @@ ipw <- function(ps_mod, outcome_mod, .df = NULL, estimand = NULL, ps_link = NULL
     exposure <- fmla_extract_left_vctr(ps_mod)
     outcome <- fmla_extract_left_vctr(outcome_mod)
   } else {
-    stopifnot(rlang::is_scalar_character(exposure_name) && rlang::is_scalar_character(exposure_name))
-    stopifnot(all(c(exposure_name, outcome_name) %in% names(.df)))
+
+    assert_class(exposure_name, "character", .length = 1)
+    assert_class(outcome_name, "character", .length = 1)
+    assert_columns_exist(.df, c(exposure_name, outcome_name))
+
     exposure <- .df[[exposure_name]]
     outcome <- .df[[outcome_name]]
   }
@@ -116,7 +119,13 @@ ipw <- function(ps_mod, outcome_mod, .df = NULL, estimand = NULL, ps_link = NULL
     ps_link <- ps_mod$family$link
   }
 
-  stopifnot(identical(length(exposure), length(outcome)))
+  if (!identical(length(exposure), length(outcome))) {
+    abort(c(
+      "{.arg exposure} and {.arg outcome} must be the same length.",
+      x = "{.arg exposure} is length {length(exposure)}",
+      x = "{.arg outcome} is length {length(outcome)}"
+    ))
+  }
 
   # todo: allow user to specify existing weights
   # or automatically extract weights from outcome model if they exist
@@ -438,16 +447,24 @@ correct_for_ps <- function(exposure, exposure_actual = exposure, outcome, ps, mu
     unname()
 }
 
-estimate_marginal_means <- function(outcome_mod, wts, exposure, exposure_name, .df = NULL) {
+estimate_marginal_means <- function(outcome_mod, wts, exposure, exposure_name, .df = NULL, call = rlang::caller_env()) {
   # todo: this could be generalized with split() and lapply()
   if (is.null(.df)) {
     .df <- model.frame(outcome_mod)
-    check_exposure(.df, exposure_name)
+    check_exposure(.df, exposure_name, call = call)
   }
   # todo: make this more flexible for different values and model specs
   # maybe can optionally accept a function for g-comp
   exposure_values <- sort(unique(exposure))
-  stopifnot(isTRUE(length(exposure_values) == 2))
+
+  if (!isTRUE(length(exposure_values) == 2)) {
+    abort(c(
+      "{.code ipw()} currently only supports binary exposures.",
+      x = "There are {length(exposure_values)} unique value{?s} of the exposure.",
+      call = call
+    ))
+  }
+
   .df_1 <- .df
   .df_0 <- .df
   .df_1[[exposure_name]] <- exposure_values[[2]]
@@ -468,7 +485,7 @@ estimate_marginal_means <- function(outcome_mod, wts, exposure, exposure_name, .
 }
 
 derive_weights <- function(exposure, ps, weight_matrix, ps_link = c("logit", "probit", "cloglog"), estimand = c("ate", "att", "ato", "atm")) {
-  estimand <- match.arg(estimand)
+  estimand <- rlang::arg_match(estimand)
   deriv_link_f <- derive_link(ps_link)
 
   deriv_vec <- switch(
@@ -520,7 +537,7 @@ atm_derivative <- function(exposure, ps, deriv_link_f) {
 
 
 derive_link <- function(ps_link = c("logit", "probit", "cloglog")) {
-  ps_link <- match.arg(ps_link)
+  ps_link <- rlang::arg_match(ps_link)
   switch(ps_link,
          logit = function(x) 1 / (x * (1 - x)),
          probit = function(x) 1 / (dnorm(qnorm(x))),
@@ -545,7 +562,7 @@ extract_weights <- function(.mod) {
     model.weights()
 }
 
-check_estimand <- function(wts, estimand) {
+check_estimand <- function(wts, estimand, call = rlang::caller_env()) {
   if (is_causal_wt(wts)) {
     estimand_from_weights <- estimand(wts)
   } else {
@@ -555,11 +572,12 @@ check_estimand <- function(wts, estimand) {
   if (!is.null(estimand_from_weights) && !is.null(estimand)) {
     same_estimand <- identical(estimand_from_weights, estimand)
     if (!same_estimand) {
-      stop(
-        "Estimand in weights different from `estimand`: ",
-        estimand_from_weights,
-        " vs. ",
-        estimand
+      .estimand <- estimand
+      .estimand_from_weights <- estimand_from_weights
+      abort(
+        "Estimand in weights different from {.arg estimand}: \\
+        {.val { .estimand_from_weights}} vs. {.val { .estimand}}",
+        call = call
       )
     } else {
       return(estimand)
@@ -567,7 +585,12 @@ check_estimand <- function(wts, estimand) {
   }
 
   if (is.null(estimand_from_weights) && is.null(estimand)) {
-    stop("Can't determine estimand from weights. Please specify `estimand`.")
+    abort(
+      c(
+        "Can't determine the estimand from weights.",
+        i = "Please specify {.arg estimand}."
+      )
+    )
   }
 
   if (!is.null(estimand_from_weights)) {
@@ -577,14 +600,14 @@ check_estimand <- function(wts, estimand) {
   }
 }
 
-check_exposure <- function(.df, .exposure_name) {
-  stopifnot(rlang::is_scalar_character(.exposure_name))
+check_exposure <- function(.df, .exposure_name, call = rlang::caller_env()) {
+  assert_class(.exposure_name, "character", .length = 1, call = call)
   if (!(.exposure_name %in% names(.df))) {
-    stop(
-      .exposure_name,
-      " not found in `model.frame(outcome_mod)`. ",
-      "The outcome model may have transformations in the formula. ",
-      "Please specify `.df`")
+    abort(c(
+      "{.val { .exposure_name}} not found in {.code model.frame(outcome_mod)}.",
+      i = "The outcome model may have transformations in the formula.",
+      i = "Please specify {.arg .df}"
+    ), call = call, error_class = "propensity_columns_exist_error")
   }
 }
 

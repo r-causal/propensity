@@ -54,7 +54,7 @@ test_that("ps_trunc() - cr method uses min(ps_treat)/max(ps_untrt)", {
   fit <- glm(z ~ x, family = binomial)
   ps <- predict(fit, type = "response")
 
-  out_cr <- ps_trunc(ps, exposure = z, method = "cr")
+  out_cr <- ps_trunc(ps, .exposure = z, method = "cr", .treated = 1)
   expect_s3_class(out_cr, "ps_trunc")
 
   meta_cr <- ps_trunc_meta(out_cr)
@@ -71,15 +71,24 @@ test_that("ps_trunc() - cr method uses min(ps_treat)/max(ps_untrt)", {
   expect_true(all(out_data <= cr_upper + 1e-8))
 })
 
-test_that("ps_trunc() errors on invalid usage or exposure", {
-  # if method="cr" but no exposure => error
-  expect_error(ps_trunc(runif(10), method = "cr"), "0/1")
+test_that("ps_trunc() errors on invalid usage or .exposure", {
+  # if method="cr" but no .exposure => error
+  expect_error(
+    ps_trunc(runif(10), method = "cr"),
+    class = "propensity_binary_transform_error"
+  )
 
-  # if exposure not 0/1 => error
-  expect_error(ps_trunc(runif(5), exposure = 1:5, method = "cr"), "0/1")
+  # if .exposure not 0/1 => error
+  expect_error(
+    ps_trunc(runif(5), .exposure = 1:5, method = "cr"),
+    class = "propensity_binary_transform_error"
+  )
 
   # if lower >= upper => error for method="ps"
-  expect_error(ps_trunc(runif(5), method = "ps", lower = 0.8, upper = 0.3), "need lower < upper")
+  expect_error(
+    ps_trunc(runif(5), method = "ps", lower = 0.8, upper = 0.3),
+    class = "propensity_range_error"
+  )
 })
 
 test_that("Truncation workflow yields truncated psw with no refit logic", {
@@ -174,7 +183,7 @@ test_that("Combining & casting ps_trunc => correct ptype2, cast behavior", {
   expect_true(is.na(meta_new$upper_bound))
 })
 
-test_that("wt_atm.numeric calls atm_binary() for binary exposure, returns psw", {
+test_that("wt_atm.numeric calls atm_binary() for binary .exposure, returns psw", {
   set.seed(101)
   n <- 8
   x <- rnorm(n)
@@ -183,7 +192,7 @@ test_that("wt_atm.numeric calls atm_binary() for binary exposure, returns psw", 
   # A numeric PS
   ps <- plogis(0.4 * x)
 
-  # 1) Binary exposure => calls atm_binary() => returns psw
+  # 1) Binary .exposure => calls atm_binary() => returns psw
   out_atm <- wt_atm.numeric(
     .propensity = ps,
     .exposure = z,
@@ -195,8 +204,8 @@ test_that("wt_atm.numeric calls atm_binary() for binary exposure, returns psw", 
   expect_equal(estimand(out_atm), "atm")
 })
 
-test_that("atm_binary() logic with transform_exposure_binary() is triggered", {
-  # atm_binary => pmin(ps, 1-ps) / (exposure*ps + (1-exposure)*(1-ps))
+test_that("atm_binary() logic with transform_.exposure_binary() is triggered", {
+  # atm_binary => pmin(ps, 1-ps) / (.exposure*ps + (1-.exposure)*(1-ps))
   ps_vec <- c(0.2, 0.8, 0.5)
   z_vec <- c(0, 1, 1)
 
@@ -209,7 +218,7 @@ test_that("atm_binary() logic with transform_exposure_binary() is triggered", {
   # Just check dimension, no error
   expect_length(w, 3)
 
-  # If .exposure isn't 0/1 or has different factor levels, transform_exposure_binary
+  # If .exposure isn't 0/1 or has different factor levels, transform_.exposure_binary
   # is tested. We'll do a quick check with factor( c("C","T","T") )
   w2 <- atm_binary(
     .propensity = ps_vec,
@@ -220,7 +229,7 @@ test_that("atm_binary() logic with transform_exposure_binary() is triggered", {
   expect_length(w2, 3)
 })
 
-test_that("wt_ato.numeric calls ato_binary() for binary exposure, returns psw", {
+test_that("wt_ato.numeric calls ato_binary() for binary .exposure, returns psw", {
   set.seed(202)
   n <- 6
   x <- rnorm(n)
@@ -239,7 +248,7 @@ test_that("wt_ato.numeric calls ato_binary() for binary exposure, returns psw", 
 })
 
 test_that("ato_binary() logic is triggered for p=0.3", {
-  # (1 - p)*exposure + p*(1-exposure)
+  # (1 - p)*.exposure + p*(1-.exposure)
   ps_vec <- c(0.1, 0.9, 0.5)
   z_vec <- c(0, 1, 1)
 

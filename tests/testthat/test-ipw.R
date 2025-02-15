@@ -172,14 +172,33 @@ test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
   wts <- rep(1, n)
   outcome_mod <- glm(y ~ z, family = binomial(), weights = wts)
 
-  expect_error(ipw(ps_mod = bad_mod, outcome_mod = outcome_mod),
-               regexp = "inherits\\(ps_mod, \"glm\"\\) is not TRUE")
+  expect_error(
+    ipw(ps_mod = bad_mod, outcome_mod = outcome_mod),
+    class = "propensity_class_error"
+  )
+
+  expect_error(
+    assert_class("a", "character", .length = 2),
+    class = "propensity_class_error"
+  )
+
+  expect_error(
+    assert_class("a", c("numeric", "character"), .length = 2),
+    class = "propensity_class_error"
+  )
 
   # invalid outcome_mod
   bad_outcome <- list(call = quote(foo()), class = "list")
 
-  expect_error(ipw(ps_mod = ps_mod, outcome_mod = bad_outcome),
-               "inherits\\(outcome_mod, \"glm\"\\) \\|\\| inherits\\(outcome_mod, \"lm\"\\) is not TRUE")
+  expect_error(
+    ipw(ps_mod = ps_mod, outcome_mod = bad_outcome),
+    class = "propensity_class_error"
+  )
+
+  expect_error(
+    ipw(ps_mod = ps_mod, outcome_mod = outcome_mod, .df = data.frame(x)),
+    class = "propensity_columns_exist_error"
+  )
 })
 
 test_that("ipw handles .df = NULL properly", {
@@ -220,7 +239,7 @@ test_that("ipw handles various errors correctly", {
 
   expect_error(
     ipw(ps_mod, outcome_mod_no_estimand),
-    "Can't determine estimand from weights. Please specify `estimand`."
+    "Can't determine the estimand from weights"
   )
 })
 
@@ -338,5 +357,32 @@ test_that("ipw works for cloglog link in the propensity score model", {
   expect_true(any(res$estimates$effect == "rd"))
   expect_true(any(res$estimates$effect == "log(rr)"))
   expect_true(any(res$estimates$effect == "log(or)"))
+})
+
+test_that("ipw works for cloglog link in the propensity score model", {
+  set.seed(3003)
+  n <- 400
+  x3 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5*x3))
+  y <- rbinom(n, 1, plogis(-1 + 1.5*z + 0.8*x3))
+
+  dat <- data.frame(x3, z, y)
+
+  ps_mod <- glm(z ~ x3, data = dat, family = binomial())
+  ps <- predict(ps_mod, type = "response")
+  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+
+  outcome_mod_wrong <- glm(y ~ z, data = dat[1:100, ], family = quasibinomial(), weights = wts[1:100])
+
+  expect_error(
+    ipw(ps_mod, outcome_mod_wrong, estimand = "ate"),
+    "`exposure` and `outcome` must be the same length"
+  )
+
+  outcome_mod_transformed <- glm(y ~ I(z^2), family = quasibinomial(), weights = wts)
+  expect_error(
+    ipw(ps_mod, outcome_mod_transformed, estimand = "ate"),
+    class = "propensity_columns_exist_error"
+  )
 })
 

@@ -1,56 +1,63 @@
-#' Trim Propensity Scores With NAs (Preserving Original Length)
+#' Trim Propensity Scores
 #'
-#' `ps_trim()` applies various trimming methods to a propensity-score vector,
-#' returning a new vector of the *same length*, with trimmed entries replaced by NA.
-#' The object is given class `"ps_trim"`, and you can inspect further metadata in
-#' `ps_trim_meta(x)`. After running `ps_trim()`, you should refit the model with
-#' `ps_refit()`.
+#' `ps_trim()` applies trimming methods to a propensity-score vector, returning
+#' a new vector of the *same length*, with trimmed entries replaced by `NA.` You
+#' can inspect further metadata in `ps_trim_meta(x)`. After running `ps_trim()`,
+#' you should refit the model with `ps_refit()`.
 #'
-#' @param ps A numeric vector in (0,1).
-#' @param exposure For methods like `"pref"` or `"cr"`, a 0/1 vector.
+#' @param ps The propensity score, a numeric vector between 0 and 1.
+#' @param .exposure For methods like `"pref"` or `"cr"`, a vector for a binary
+#'   exposure.
 #' @param method One of `c("ps", "adaptive", "pctl", "pref", "cr")`.
-#' @param lower,upper Numeric cutoffs or quantiles. If `NULL`, defaults vary by method.
+#' @param lower,upper Numeric cutoffs or quantiles. If `NULL`, defaults vary by
+#'   method.
+#' @inheritParams wt_ate
 #'
-#' @details
-#' The returned object is a **`ps_trim`** vector of the same length as `ps`, but
-#' with trimmed entries replaced by `NA`.
-#' An attribute `ps_trim_meta` contains:
+#' @details The returned object is a **`ps_trim`** vector of the same length as
+#' `ps`, but with trimmed entries replaced by `NA`. An attribute `ps_trim_meta`
+#' contains:
 #'
 #' - `method`: Which trimming method was used
 #' - `keep_idx`: Indices retained
 #' - `trimmed_idx`: Indices replaced by `NA`
 #' - Possibly other fields such as final cutoffs, etc.
 #'
-#' @return
-#' A `ps_trim` object (numeric vector). The attribute `ps_trim_meta` stores metadata.
+#' @return A `ps_trim` object (numeric vector). The attribute `ps_trim_meta`
+#' stores metadata.
 #'
 #' @seealso [ps_trunc()] for bounding/winsorizing instead of discarding,
 #'   [is_refit()], [is_trimmed()]
+#' @examples
+#'
+#' set.seed(2)
+#' n <- 300
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(1.3 * x))
+#' fit <- glm(z ~ x, family = binomial)
+#' ps <- predict(fit, type = "response")
+#'
+#' ps_trim(ps, method = "adaptive")
 #'
 #' @export
 ps_trim <- function(
   ps,
-  exposure = NULL,
   method = c("ps", "adaptive", "pctl", "pref", "cr"),
   lower = NULL,
-  upper = NULL
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL
 ) {
-  method <- match.arg(method)
+  method <- rlang::arg_match(method)
+  check_ps_range(ps)
 
-  if (any(ps <= 0 | ps >= 1)) {
-    stop("All propensity scores must be strictly between 0 and 1.")
-  }
-
-  # Possibly set defaults or warn
   if (method == "ps") {
     if (is.null(lower)) lower <- 0.1
     if (is.null(upper)) upper <- 0.9
-    if (lower >= upper) {
-      stop("For method='ps', need lower < upper. Got lower=", lower, ", upper=", upper)
-    }
+    check_lower_upper(lower, upper)
   } else if (method == "adaptive") {
     if (!is.null(lower) || !is.null(upper)) {
-      warning("For method='adaptive', `lower`/`upper` are ignored.")
+      warn("For {.code method = 'adaptive'}, {.code lower} and {.code upper} are ignored.")
     }
   } else if (method == "pctl") {
     if (is.null(lower)) lower <- 0.05
@@ -59,9 +66,8 @@ ps_trim <- function(
     if (is.null(lower)) lower <- 0.3
     if (is.null(upper)) upper <- 0.7
   } else {
-    # "cr"
     if (!is.null(lower) || !is.null(upper)) {
-      warning("For method='cr', `lower`/`upper` are ignored.")
+      warn("For {.code method = 'cr'}, {.code lower} and {.code upper} are ignored.")
     }
   }
 
@@ -97,33 +103,29 @@ ps_trim <- function(
     meta_list$q_upper <- q_upper
     keep_idx <- which(ps >= q_lower & ps <= q_upper)
   } else if (method == "pref") {
-    if (is.null(exposure)) {
-      stop("For method='pref', must supply a binary `exposure`.")
+    if (is.null(.exposure)) {
+      abort("For {.code method = 'pref'}, must supply {.arg exposure}.")
     }
-    if (!all(exposure %in% c(0, 1))) {
-      stop("'exposure' must be 0/1 for preference scores.")
-    }
-    P <- mean(exposure)
-    if (P <= 0 || P >= 1) {
-      stop("Proportion of exposure is 0 or 1; cannot compute preference score.")
-    }
-    pref_score <- plogis(qlogis(ps) - qlogis(P))
-    meta_list$P <- P
-    meta_list$pref_formula <- "pref = expit(logit(ps) - logit(P))"
+    .exposure <- transform_exposure_binary(
+      .exposure,
+      .treated = .treated,
+      .untreated = .untreated
+    )
+    prop_exposure <- mean(.exposure)
+    pref_score <- plogis(qlogis(ps) - qlogis(prop_exposure))
+    meta_list$P <- prop_exposure
     keep_idx <- which(pref_score >= lower & pref_score <= upper)
   } else {
-    # cr
-    if (is.null(exposure)) {
-      stop("For method='cr', must supply a binary `exposure`.")
+    if (is.null(.exposure)) {
+      abort("For {.code method = 'cr'}, must supply {.arg exposure}.")
     }
-    if (!all(exposure %in% c(0, 1))) {
-      stop("'exposure' must be 0/1 for common range method.")
-    }
-    if (all(exposure == 0) || all(exposure == 1)) {
-      stop("Proportion of exposure is 0 or 1; cannot compute common range.")
-    }
-    ps_treat <- ps[exposure == 1]
-    ps_untrt <- ps[exposure == 0]
+    .exposure <- transform_exposure_binary(
+      .exposure,
+      .treated = .treated,
+      .untreated = .untreated
+    )
+    ps_treat <- ps[.exposure == 1]
+    ps_untrt <- ps[.exposure == 0]
     cr_lower <- min(ps_treat)
     cr_upper <- max(ps_untrt)
     meta_list$cr_lower <- cr_lower
@@ -151,8 +153,8 @@ ps_trim <- function(
 }
 
 new_trimmed_ps <- function(x, ps_trim_meta = list()) {
-  vctrs::vec_assert(x, ptype = double())
-  vctrs::new_vctr(
+  vec_assert(x, ptype = double())
+  new_vctr(
     x,
     ps_trim_meta = ps_trim_meta,
     class = "ps_trim"
@@ -213,36 +215,36 @@ vec_arith.ps_trim <- function(op, x, y, ...) {
 #' @export
 #' @method vec_arith.ps_trim default
 vec_arith.ps_trim.default <- function(op, x, y, ...) {
-  vctrs::stop_incompatible_op(op, x, y)
+  stop_incompatible_op(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trim ps_trim
 vec_arith.ps_trim.ps_trim <- function(op, x, y, ...) {
-  vctrs::stop_incompatible_op(op, x, y)
+  stop_incompatible_op(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trim numeric
 vec_arith.ps_trim.numeric <- function(op, x, y, ...) {
-  vctrs::stop_incompatible_op(op, x, y)
+  stop_incompatible_op(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.numeric ps_trim
 vec_arith.numeric.ps_trim <- function(op, x, y, ...) {
-  vctrs::stop_incompatible_op(op, x, y)
+  stop_incompatible_op(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trim integer
 vec_arith.ps_trim.integer <- function(op, x, y, ...) {
-  vctrs::stop_incompatible_op(op, x, y)
+  stop_incompatible_op(op, x, y)
 }
 
 #' @export
 vec_ptype2.ps_trim.ps_trim <- function(x, y, ...) {
-  vctrs::stop_incompatible_type(
+  stop_incompatible_type(
     x,
     y,
     x_arg = "x",
@@ -258,7 +260,7 @@ vec_ptype2.double.ps_trim <- function(x, y, ...) double()
 #' @export
 vec_cast.double.ps_trim <- function(x, to, ...) {
   # degrade to numeric with NAs
-  vctrs::vec_data(x)
+  vec_data(x)
 }
 
 #' @export
@@ -280,7 +282,7 @@ vec_ptype2.integer.ps_trim <- function(x, y, ...) integer()
 
 #' @export
 vec_cast.integer.ps_trim <- function(x, to, ...) {
-  as.integer(vctrs::vec_data(x))
+  as.integer(vec_data(x))
 }
 
 #' @export
@@ -296,19 +298,19 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
   )
 }
 
-#' Refit the PS Model on Retained Observations
+#' Refit the Propensity Score Model on Retained Observations
 #'
-#' Takes a `ps_trim` object (with `NA` where trimmed) and the original model
-#' used to get the PS, then:
-#' 1. Retrieves data from the model (or from `data` argument if provided)
+#' Takes a `ps_trim` object and the original model
+#' used to calculate the propensity score, then:
+#' 1. Retrieves data from the model (or from `.df` argument if provided)
 #' 2. Subsets rows to the non‐trimmed indices
 #' 3. Refits the model
-#' 4. Predicts new propensity scores for all rows (trimmed rows -> NA)
-#' 5. Returns a new `ps_trim` object with `refit=TRUE`.
+#' 4. Predicts new propensity scores for all rows (trimmed rows -> `NA`)
+#' 5. Returns a new `ps_trim` object with `refit = TRUE`.
 #'
-#' @param ps_trim_obj A `ps_trim` object (same length as data, NAs for trimmed).
+#' @param trimmed_ps A `ps_trim` object (same length as data, NAs for trimmed).
 #' @param model The fitted model used to get the original PS (e.g. a glm).
-#' @param data Optional. A data frame. If `NULL`, we try to retrieve from `model`.
+#' @param .df Optional. A data frame. If `NULL`, we try to retrieve from `model`.
 #' @param ... Additional arguments passed to `update()`.
 #'
 #' @return
@@ -317,47 +319,54 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
 #'
 #' @seealso [ps_trim()], [is_refit()], [is_trimmed()]
 #'
+#' @examples
+#' set.seed(2)
+#' n <- 30
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.4 * x))
+#' fit <- glm(z ~ x, family = binomial)
+#' ps <- predict(fit, type = "response")
+#'
+#' # trim and refit
+#' refit <- ps_trim(ps, lower = .2, upper = .8) |>
+#'   ps_refit(fit)
+#'
+#' is_refit(refit)
+#'
 #' @export
-ps_refit <- function(ps_trim_obj, model, data = NULL, ...) {
-  if (!inherits(ps_trim_obj, "ps_trim")) {
-    stop("`ps_refit()` expects a `ps_trim` object.")
-  }
-  meta <- attr(ps_trim_obj, "ps_trim_meta")
-  keep_idx <- meta$keep_idx
+ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
+  assert_class(trimmed_ps, "ps_trim")
+  meta <- ps_trim_meta(trimmed_ps)
 
-  if (length(keep_idx) == 0) {
-    stop("No retained rows to refit on (all were trimmed).")
+  if (length(meta$keep_idx) == 0) {
+    abort("No retained rows to refit on (all were trimmed).")
   }
 
-  # 1) If data is not provided, attempt to retrieve from the model
-  if (is.null(data)) {
-    data <- tryCatch(
-      stats::model.frame(model),
-      error = function(e) {
-        stop(
-          "Couldn't retrieve data from `model`. ",
-          "Please supply `data` explicitly."
-        )
-      }
-    )
+  if (is.null(.df)) {
+    .df <- model.frame(model)
   }
 
-  # 2) Check row counts
-  if (nrow(data) != length(ps_trim_obj)) {
-    stop("`data` must have the same number of rows as `length(ps_trim_obj)`.")
+  if (nrow(.df) != length(trimmed_ps)) {
+    abort(c(
+      "{.arg .df} must have the same number of rows as \\
+      {.code length(trimmed_ps)}.",
+      x = "{.arg .df} has {nrow(.df)} row{?s}.",
+      x = "{.arg trimmed_ps} has length {length(trimmed_ps)}."
+    ))
   }
 
-  data_sub <- data[keep_idx, , drop = FALSE]
-
-  # 3) Refit
-  # For a typical glm, `update(model, data=data_sub, ...)` often works
+  # refit on untrimmed rows
+  data_sub <- .df[meta$keep_idx, , drop = FALSE]
   refit_model <- stats::update(model, data = data_sub, ...)
 
-  # 4) Predict new PS for all rows
-  new_ps <- rep(NA_real_, length(ps_trim_obj))
-  new_ps[keep_idx] <- stats::predict(refit_model, newdata = data_sub, type = "response")
+  # predict new PS for all rows
+  new_ps <- rep(NA_real_, length(trimmed_ps))
+  new_ps[meta$keep_idx] <- stats::predict(
+    refit_model,
+    newdata = data_sub,
+    type = "response"
+  )
 
-  # 5) Create a brand-new ps_trim object with refit=TRUE
   meta$refit <- TRUE
 
   new_trimmed_ps(

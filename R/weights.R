@@ -37,6 +37,7 @@ wt_ate <- function(.propensity, ...) {
 wt_ate.numeric <- function(.propensity, .exposure, .sigma = NULL, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
+    check_ps_range(.propensity)
     wts <- ate_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
   } else if (exposure_type == "continuous") {
     wts <- ate_continuous(.propensity = .propensity, .exposure = .exposure, .sigma = .sigma, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
@@ -93,7 +94,9 @@ wt_att <- function(.propensity, ...) {
 #' @rdname wt_ate
 wt_att.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
+
   if (exposure_type == "binary") {
+    check_ps_range(.propensity)
     wts <- att_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATT")
@@ -124,6 +127,7 @@ wt_atu <- function(.propensity, ...) {
 wt_atu.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
+    check_ps_range(.propensity)
     wts <- atu_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATU")
@@ -156,6 +160,7 @@ wt_atm <- function(.propensity, ...) {
 wt_atm.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
+    check_ps_range(.propensity)
     wts <- atm_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATM")
@@ -187,6 +192,7 @@ wt_ato <- function(.propensity, ...) {
 wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
+    check_ps_range(.propensity)
     wts <- ato_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
   } else {
     abort_unsupported(exposure_type, "ATO")
@@ -291,10 +297,8 @@ wt_ate.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_ate.numeric(numeric_ps, .exposure, ...)
 
-  e <- estimand(base_wt)
-  estimand(base_wt) <- paste0(e, "; truncated")
+  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
 
-  # If you want to store the meta info in the weights:
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
 
@@ -305,9 +309,12 @@ wt_ate.ps_trunc <- function(.propensity, .exposure, ...) {
 wt_att.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_att.numeric(numeric_ps, .exposure, ...)
+
   estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
   base_wt
 }
 
@@ -315,9 +322,12 @@ wt_att.ps_trunc <- function(.propensity, .exposure, ...) {
 wt_atu.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_atu.numeric(numeric_ps, .exposure, ...)
+
   estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
   base_wt
 }
 
@@ -325,9 +335,12 @@ wt_atu.ps_trunc <- function(.propensity, .exposure, ...) {
 wt_atm.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_atm.numeric(numeric_ps, .exposure, ...)
+
   estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
   base_wt
 }
 
@@ -335,8 +348,11 @@ wt_atm.ps_trunc <- function(.propensity, .exposure, ...) {
 wt_ato.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_ato.numeric(numeric_ps, .exposure, ...)
+
   estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
   base_wt
 }

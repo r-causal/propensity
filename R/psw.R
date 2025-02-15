@@ -90,7 +90,6 @@ is_psw <- function(x) {
 #' @rdname psw
 #' @export
 is_stabilized <- function(wt) {
-  stopifnot(is_psw(wt))
   isTRUE(attr(wt, "stabilized"))
 }
 
@@ -109,14 +108,13 @@ as_psw <- function(x, estimand = NULL) {
 #' @rdname psw
 #' @export
 estimand <- function(wt) {
-  stopifnot(is_causal_wt(wt))
   attr(wt, "estimand")
 }
 
 #' @rdname psw
 #' @export
 `estimand<-` <- function(wt, value) {
-  stopifnot(is_causal_wt(wt))
+  assert_class(wt, "causal_wts")
   attr(wt, "estimand") <- value
   wt
 }

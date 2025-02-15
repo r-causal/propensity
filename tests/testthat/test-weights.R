@@ -5,12 +5,57 @@ test_that("ATE works for binary cases", {
   )
 
   expect_silent(
-    wt_ate(
+    weights2 <- wt_ate(
       c(.1, .3, .4, .3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
     )
   )
+
+  expect_identical(weights, weights2)
+
+  expect_message(
+    weights3 <- wt_ate(c(.1, .3, .4, .3), .exposure = as.logical(c(0, 0, 1, 0))),
+    "Treating `.exposure` as binary"
+  )
+
+  expect_identical(weights, weights3)
+
+  expect_silent(
+    weights4 <- wt_ate(
+      c(.1, .3, .4, .3),
+      .exposure = c(2, 2, 1, 2),
+      exposure_type = "binary",
+      .untreated = 2
+    )
+  )
+
+  expect_identical(weights, weights4)
+
+  expect_error(
+    wt_ate(
+      c(-.1, .3, .4, 3.3),
+      .exposure = c(0, 0, 1, 0),
+      exposure_type = "binary"
+    ),
+    class = "propensity_range_error"
+  )
+
+  .exposure <- factor(
+    c("untreated", "untreated", "treated", "untreated"),
+    levels = c("untreated", "treated")
+  )
+
+  expect_message(
+    weights5 <- wt_ate(
+      c(.1, .3, .4, .3),
+      exposure_type = "binary",
+      .exposure = .exposure
+    ),
+    "Setting treatment to `treated`"
+  )
+
+  expect_identical(weights, weights5)
 
   expect_equal(
     weights,
@@ -46,6 +91,19 @@ test_that("ATE works for continuous cases", {
   expect_equal(weights, psw(wts, "ate"), tolerance = .01)
   expect_equal(stablized_weights, psw(stb_wts, "ate"), tolerance = .01)
 })
+
+test_that("ATE works for categorical cases", {
+  # we don't currently support this!
+  expect_error(
+    wt_ate(
+      c(.1, .3, .4, .3),
+      .exposure = c(0, 2, 1, 4),
+      exposure_type = "categorical"
+    ),
+    class = "propensity_wt_not_supported_error"
+  )
+})
+
 test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning if refit", {
   set.seed(123)
   n <- 100
@@ -55,12 +113,12 @@ test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning i
   ps <- predict(fit, type = "response")
 
   # 1) Trim
-  trimmed_ps <- ps_trim(ps, exposure = z, method = "ps", lower = 0.2, upper = 0.8)
+  trimmed_ps <- ps_trim(ps, .exposure = z, method = "ps", lower = 0.2, upper = 0.8)
 
   # not refit => expect a warning
   expect_warning(
     w_ate_unfit <- wt_ate(trimmed_ps, .exposure = z, exposure_type = "binary", .treated = 1),
-    "did not refit"
+    class = "propensity_no_refit_warning"
   )
   expect_s3_class(w_ate_unfit, "psw")
   expect_true(grepl("; trimmed$", estimand(w_ate_unfit)))
@@ -103,11 +161,11 @@ test_that("Other estimands (att, atu, etc.) with ps_trim or ps_trunc", {
   ps <- predict(fit, type = "response")
 
   # Trim
-  trimmed_ps <- ps_trim(ps, exposure = z, method = "ps")
+  trimmed_ps <- ps_trim(ps, .exposure = z, method = "ps")
   # No refit => warning
   expect_warning(
     w_att_trim <- wt_att(trimmed_ps, .exposure = z, exposure_type = "binary", .treated = 1),
-    "did not refit"
+    class = "propensity_no_refit_warning"
   )
   # Check estimand
   expect_true(grepl("att; trimmed", estimand(w_att_trim)))
@@ -149,12 +207,12 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
   ps <- predict(fit, type = "response")
 
   # 1) Trim the PS
-  trimmed_obj <- ps_trim(ps, exposure = z, method = "ps", lower = 0.2, upper = 0.8)
+  trimmed_obj <- ps_trim(ps, .exposure = z, method = "ps", lower = 0.2, upper = 0.8)
 
   # Not refit => we get a warning
   expect_warning(
     w_atu_unfit <- wt_atu(trimmed_obj, .exposure = z, exposure_type = "binary", .treated = 1),
-    "did not refit"
+    class = "propensity_no_refit_warning"
   )
   expect_s3_class(w_atu_unfit, "psw")
   expect_match(estimand(w_atu_unfit), "atu; trimmed")
@@ -182,12 +240,12 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
   fit <- glm(z ~ x, family = binomial)
   ps <- predict(fit, type = "response")
 
-  trimmed_obj <- ps_trim(ps, exposure = z, method = "ps", lower = 0.2, upper = 0.8)
+  trimmed_obj <- ps_trim(ps, .exposure = z, method = "ps", lower = 0.2, upper = 0.8)
 
   # Not refit => warning
   expect_warning(
     w_atm_unfit <- wt_atm(trimmed_obj, .exposure = z, exposure_type = "binary", .treated = 1),
-    "did not refit"
+    class = "propensity_no_refit_warning"
   )
   expect_s3_class(w_atm_unfit, "psw")
   expect_match(estimand(w_atm_unfit), "atm; trimmed")
@@ -211,12 +269,12 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
   fit <- glm(z ~ x, family = binomial)
   ps <- predict(fit, type = "response")
 
-  trimmed_obj <- ps_trim(ps, exposure = z, method = "ps", lower = 0.1, upper = 0.9)
+  trimmed_obj <- ps_trim(ps, .exposure = z, method = "ps", lower = 0.1, upper = 0.9)
 
   # Not refit => warning
   expect_warning(
     w_ato_unfit <- wt_ato(trimmed_obj, .exposure = z, exposure_type = "binary", .treated = 1),
-    "did not refit"
+    class = "propensity_no_refit_warning"
   )
   expect_s3_class(w_ato_unfit, "psw")
   expect_match(estimand(w_ato_unfit), "ato; trimmed")
