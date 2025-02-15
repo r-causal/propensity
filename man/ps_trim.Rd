@@ -2,7 +2,7 @@
 % Please edit documentation in R/ps_trim.R
 \name{ps_trim}
 \alias{ps_trim}
-\title{Trim Propensity Scores With NAs (Preserving Original Length)}
+\title{Trim Propensity Scores}
 \usage{
 ps_trim(
   ps,
@@ -15,34 +15,54 @@ ps_trim(
 )
 }
 \arguments{
-\item{ps}{A numeric vector in (0,1).}
+\item{ps}{The propensity score, a numeric vector between 0 and 1.}
 
 \item{method}{One of \code{c("ps", "adaptive", "pctl", "pref", "cr")}.}
 
-\item{lower, upper}{Numeric cutoffs or quantiles. If \code{NULL}, defaults vary by method.}
+\item{lower, upper}{Numeric cutoffs or quantiles. If \code{NULL}, defaults vary by
+method.}
 
-\item{exposure}{For methods like \code{"pref"} or \code{"cr"}, a 0/1 vector.}
+\item{.exposure}{For methods like \code{"pref"} or \code{"cr"}, a vector for a binary
+exposure.}
+
+\item{.treated}{The treatment level of the exposure. Automatically detected
+by default.}
+
+\item{.untreated}{The control level of the exposure. Automatically detected
+by default.}
 }
 \value{
-A \code{ps_trim} object (numeric vector). The attribute \code{ps_trim_meta} stores metadata.
+A \code{ps_trim} object (numeric vector). The attribute \code{ps_trim_meta}
+stores metadata.
 }
 \description{
-\code{ps_trim()} applies various trimming methods to a propensity-score vector,
-returning a new vector of the \emph{same length}, with trimmed entries replaced by NA.
-The object is given class \code{"ps_trim"}, and you can inspect further metadata in
-\code{ps_trim_meta(x)}. After running \code{ps_trim()}, you should refit the model with
-\code{ps_refit()}.
+\code{ps_trim()} applies trimming methods to a propensity-score vector, returning
+a new vector of the \emph{same length}, with trimmed entries replaced by \code{NA.} You
+can inspect further metadata in \code{ps_trim_meta(x)}. After running \code{ps_trim()},
+you should refit the model with \code{ps_refit()}.
 }
 \details{
-The returned object is a \strong{\code{ps_trim}} vector of the same length as \code{ps}, but
-with trimmed entries replaced by \code{NA}.
-An attribute \code{ps_trim_meta} contains:
+The returned object is a \strong{\code{ps_trim}} vector of the same length as
+\code{ps}, but with trimmed entries replaced by \code{NA}. An attribute \code{ps_trim_meta}
+contains:
 \itemize{
 \item \code{method}: Which trimming method was used
 \item \code{keep_idx}: Indices retained
 \item \code{trimmed_idx}: Indices replaced by \code{NA}
 \item Possibly other fields such as final cutoffs, etc.
 }
+}
+\examples{
+
+set.seed(2)
+n <- 300
+x <- rnorm(n)
+z <- rbinom(n, 1, plogis(1.3 * x))
+fit <- glm(z ~ x, family = binomial)
+ps <- predict(fit, type = "response")
+
+ps_trim(ps, method = "adaptive")
+
 }
 \seealso{
 \code{\link[=ps_trunc]{ps_trunc()}} for bounding/winsorizing instead of discarding,

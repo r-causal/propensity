@@ -2,7 +2,7 @@
 % Please edit documentation in R/ps_trunc.R
 \name{ps_trunc}
 \alias{ps_trunc}
-\title{Winsorize (Truncate) Propensity Scores}
+\title{Truncate (Winsorize) Propensity Scores}
 \usage{
 ps_trunc(
   ps,
@@ -15,18 +15,24 @@ ps_trunc(
 )
 }
 \arguments{
-\item{ps}{A numeric vector in (0, 1) that represents the probability of receiving \code{exposure}.}
+\item{ps}{The propensity score, a numeric vector between 0 and 1.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}.
 \itemize{
-\item \code{"ps"}: directly cut on \verb{[lower, upper]}
+\item \code{"ps"}: directly cut on \verb{[lower, upper]} of \code{ps}.
 \item \code{"pctl"}: use quantiles of \code{ps} as bounding values
-\item \code{"cr"}: for binary exposure, bounding \verb{[min(ps[treated]), max(ps[untreated])]}
+\item \code{"cr"}: the common range of \code{ps} given \code{.exposure}, bounding \verb{[min(ps[treated]), max(ps[untreated])]}
 }}
 
 \item{lower, upper}{Numeric or quantile bounds. If \code{NULL}, defaults vary by method.}
 
-\item{exposure}{For method "cr", a 0/1 exposure vector.}
+\item{.exposure}{For method "cr", a binary exposure vector.}
+
+\item{.treated}{The treatment level of the exposure. Automatically detected
+by default.}
+
+\item{.untreated}{The control level of the exposure. Automatically detected
+by default.}
 }
 \value{
 A \strong{\code{ps_trunc}} object (numeric vector). It has an attribute
@@ -45,6 +51,18 @@ For each \eqn{ps[i]}:
 \item If \eqn{ps[i] > upper\_bound}, we set \eqn{ps[i] = upper\_bound}.
 This approach is often called \emph{winsorizing}.
 }
+}
+\examples{
+set.seed(2)
+n <- 30
+x <- rnorm(n)
+z <- rbinom(n, 1, plogis(0.4 * x))
+fit <- glm(z ~ x, family = binomial)
+ps <- predict(fit, type = "response")
+
+# truncate just the 99th percentile
+ps_trunc(ps, method = "pctl", lower = 0, upper = .99)
+
 }
 \seealso{
 \code{\link[=ps_trim]{ps_trim()}} and \code{\link[=ps_refit]{ps_refit()}} for removing extreme values vs. bounding

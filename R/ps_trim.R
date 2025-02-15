@@ -1,31 +1,42 @@
-#' Trim Propensity Scores With NAs (Preserving Original Length)
+#' Trim Propensity Scores
 #'
-#' `ps_trim()` applies various trimming methods to a propensity-score vector,
-#' returning a new vector of the *same length*, with trimmed entries replaced by NA.
-#' The object is given class `"ps_trim"`, and you can inspect further metadata in
-#' `ps_trim_meta(x)`. After running `ps_trim()`, you should refit the model with
-#' `ps_refit()`.
+#' `ps_trim()` applies trimming methods to a propensity-score vector, returning
+#' a new vector of the *same length*, with trimmed entries replaced by `NA.` You
+#' can inspect further metadata in `ps_trim_meta(x)`. After running `ps_trim()`,
+#' you should refit the model with `ps_refit()`.
 #'
-#' @param ps A numeric vector in (0,1).
-#' @param exposure For methods like `"pref"` or `"cr"`, a 0/1 vector.
+#' @param ps The propensity score, a numeric vector between 0 and 1.
+#' @param .exposure For methods like `"pref"` or `"cr"`, a vector for a binary
+#'   exposure.
 #' @param method One of `c("ps", "adaptive", "pctl", "pref", "cr")`.
-#' @param lower,upper Numeric cutoffs or quantiles. If `NULL`, defaults vary by method.
+#' @param lower,upper Numeric cutoffs or quantiles. If `NULL`, defaults vary by
+#'   method.
+#' @inheritParams wt_ate
 #'
-#' @details
-#' The returned object is a **`ps_trim`** vector of the same length as `ps`, but
-#' with trimmed entries replaced by `NA`.
-#' An attribute `ps_trim_meta` contains:
+#' @details The returned object is a **`ps_trim`** vector of the same length as
+#' `ps`, but with trimmed entries replaced by `NA`. An attribute `ps_trim_meta`
+#' contains:
 #'
 #' - `method`: Which trimming method was used
 #' - `keep_idx`: Indices retained
 #' - `trimmed_idx`: Indices replaced by `NA`
 #' - Possibly other fields such as final cutoffs, etc.
 #'
-#' @return
-#' A `ps_trim` object (numeric vector). The attribute `ps_trim_meta` stores metadata.
+#' @return A `ps_trim` object (numeric vector). The attribute `ps_trim_meta`
+#' stores metadata.
 #'
 #' @seealso [ps_trunc()] for bounding/winsorizing instead of discarding,
 #'   [is_refit()], [is_trimmed()]
+#' @examples
+#'
+#' set.seed(2)
+#' n <- 300
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(1.3 * x))
+#' fit <- glm(z ~ x, family = binomial)
+#' ps <- predict(fit, type = "response")
+#'
+#' ps_trim(ps, method = "adaptive")
 #'
 #' @export
 ps_trim <- function(
@@ -287,19 +298,19 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
   )
 }
 
-#' Refit the PS Model on Retained Observations
+#' Refit the Propensity Score Model on Retained Observations
 #'
-#' Takes a `ps_trim` object (with `NA` where trimmed) and the original model
-#' used to get the PS, then:
+#' Takes a `ps_trim` object and the original model
+#' used to calculate the propensity score, then:
 #' 1. Retrieves data from the model (or from `.df` argument if provided)
 #' 2. Subsets rows to the non‐trimmed indices
 #' 3. Refits the model
 #' 4. Predicts new propensity scores for all rows (trimmed rows -> `NA`)
 #' 5. Returns a new `ps_trim` object with `refit = TRUE`.
 #'
-#' @param ps_trim_obj A `ps_trim` object (same length as data, NAs for trimmed).
+#' @param trimmed_ps A `ps_trim` object (same length as data, NAs for trimmed).
 #' @param model The fitted model used to get the original PS (e.g. a glm).
-#' @param data Optional. A data frame. If `NULL`, we try to retrieve from `model`.
+#' @param .df Optional. A data frame. If `NULL`, we try to retrieve from `model`.
 #' @param ... Additional arguments passed to `update()`.
 #'
 #' @return
@@ -307,6 +318,20 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
 #' `ps_trim_meta(x)$refit` set to `TRUE`.
 #'
 #' @seealso [ps_trim()], [is_refit()], [is_trimmed()]
+#'
+#' @examples
+#' set.seed(2)
+#' n <- 30
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.4 * x))
+#' fit <- glm(z ~ x, family = binomial)
+#' ps <- predict(fit, type = "response")
+#'
+#' # trim and refit
+#' refit <- ps_trim(ps, lower = .2, upper = .8) |>
+#'   ps_refit(fit)
+#'
+#' is_refit(refit)
 #'
 #' @export
 ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {

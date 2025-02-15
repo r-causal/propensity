@@ -2,26 +2,26 @@
 % Please edit documentation in R/ps_trim.R
 \name{ps_refit}
 \alias{ps_refit}
-\title{Refit the PS Model on Retained Observations}
+\title{Refit the Propensity Score Model on Retained Observations}
 \usage{
 ps_refit(trimmed_ps, model, .df = NULL, ...)
 }
 \arguments{
+\item{trimmed_ps}{A \code{ps_trim} object (same length as data, NAs for trimmed).}
+
 \item{model}{The fitted model used to get the original PS (e.g. a glm).}
 
+\item{.df}{Optional. A data frame. If \code{NULL}, we try to retrieve from \code{model}.}
+
 \item{...}{Additional arguments passed to \code{update()}.}
-
-\item{ps_trim_obj}{A \code{ps_trim} object (same length as data, NAs for trimmed).}
-
-\item{data}{Optional. A data frame. If \code{NULL}, we try to retrieve from \code{model}.}
 }
 \value{
 A new \code{ps_trim} object with updated propensity scores and
 \code{ps_trim_meta(x)$refit} set to \code{TRUE}.
 }
 \description{
-Takes a \code{ps_trim} object (with \code{NA} where trimmed) and the original model
-used to get the PS, then:
+Takes a \code{ps_trim} object and the original model
+used to calculate the propensity score, then:
 \enumerate{
 \item Retrieves data from the model (or from \code{.df} argument if provided)
 \item Subsets rows to the non‐trimmed indices
@@ -29,6 +29,21 @@ used to get the PS, then:
 \item Predicts new propensity scores for all rows (trimmed rows -> \code{NA})
 \item Returns a new \code{ps_trim} object with \code{refit = TRUE}.
 }
+}
+\examples{
+set.seed(2)
+n <- 30
+x <- rnorm(n)
+z <- rbinom(n, 1, plogis(0.4 * x))
+fit <- glm(z ~ x, family = binomial)
+ps <- predict(fit, type = "response")
+
+# trim and refit
+refit <- ps_trim(ps, lower = .2, upper = .8) |>
+  ps_refit(fit)
+
+is_refit(refit)
+
 }
 \seealso{
 \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=is_refit]{is_refit()}}, \code{\link[=is_trimmed]{is_trimmed()}}

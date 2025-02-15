@@ -1,17 +1,17 @@
-#' @title Winsorize (Truncate) Propensity Scores
+#' Truncate (Winsorize) Propensity Scores
 #'
-#' @description
 #' **`ps_trunc()`** sets out‐of‐range propensity scores to fixed bounding values
 #' (a form of *winsorizing*). This is an alternative to [ps_trim()], which removes
 #' (sets `NA`) instead of bounding and is then refit with [ps_refit()]
 #'
-#' @param ps A numeric vector in (0, 1) that represents the probability of receiving `exposure`.
-#' @param exposure For method "cr", a 0/1 exposure vector.
+#' @param ps The propensity score, a numeric vector between 0 and 1.
+#' @param .exposure For method "cr", a binary exposure vector.
 #' @param method One of `"ps"`, `"pctl"`, or `"cr"`.
-#'   * `"ps"`: directly cut on `[lower, upper]`
+#'   * `"ps"`: directly cut on `[lower, upper]` of `ps`.
 #'   * `"pctl"`: use quantiles of `ps` as bounding values
-#'   * `"cr"`: for binary exposure, bounding `[min(ps[treated]), max(ps[untreated])]`
+#'   * `"cr"`: the common range of `ps` given `.exposure`, bounding `[min(ps[treated]), max(ps[untreated])]`
 #' @param lower,upper Numeric or quantile bounds. If `NULL`, defaults vary by method.
+#' @inheritParams wt_ate
 #'
 #' @details
 #' For each \eqn{ps[i]}:
@@ -23,6 +23,18 @@
 #'   `ps_trunc_meta` storing fields like `method`, `lower_bound`, and
 #'   `upper_bound`.
 #' @seealso [ps_trim()] and [ps_refit()] for removing extreme values vs. bounding
+#'
+#' @examples
+#' set.seed(2)
+#' n <- 30
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.4 * x))
+#' fit <- glm(z ~ x, family = binomial)
+#' ps <- predict(fit, type = "response")
+#'
+#' # truncate just the 99th percentile
+#' ps_trunc(ps, method = "pctl", lower = 0, upper = .99)
+#'
 #' @export
 ps_trunc <- function(
     ps,
