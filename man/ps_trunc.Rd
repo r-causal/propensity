@@ -6,16 +6,16 @@
 \usage{
 ps_trunc(
   ps,
-  exposure = NULL,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
-  upper = NULL
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL
 )
 }
 \arguments{
 \item{ps}{A numeric vector in (0, 1) that represents the probability of receiving \code{exposure}.}
-
-\item{exposure}{For method "cr", a 0/1 exposure vector.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}.
 \itemize{
@@ -25,6 +25,8 @@ ps_trunc(
 }}
 
 \item{lower, upper}{Numeric or quantile bounds. If \code{NULL}, defaults vary by method.}
+
+\item{exposure}{For method "cr", a 0/1 exposure vector.}
 }
 \value{
 A \strong{\code{ps_trunc}} object (numeric vector). It has an attribute

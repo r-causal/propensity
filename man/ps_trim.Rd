@@ -6,20 +6,22 @@
 \usage{
 ps_trim(
   ps,
-  exposure = NULL,
   method = c("ps", "adaptive", "pctl", "pref", "cr"),
   lower = NULL,
-  upper = NULL
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL
 )
 }
 \arguments{
 \item{ps}{A numeric vector in (0,1).}
 
-\item{exposure}{For methods like \code{"pref"} or \code{"cr"}, a 0/1 vector.}
-
 \item{method}{One of \code{c("ps", "adaptive", "pctl", "pref", "cr")}.}
 
 \item{lower, upper}{Numeric cutoffs or quantiles. If \code{NULL}, defaults vary by method.}
+
+\item{exposure}{For methods like \code{"pref"} or \code{"cr"}, a 0/1 vector.}
 }
 \value{
 A \code{ps_trim} object (numeric vector). The attribute \code{ps_trim_meta} stores metadata.

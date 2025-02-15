@@ -25,25 +25,24 @@
 #' @seealso [ps_trim()] and [ps_refit()] for removing extreme values vs. bounding
 #' @export
 ps_trunc <- function(
-  ps,
-  exposure = NULL,
-  method = c("ps", "pctl", "cr"),
-  lower = NULL,
-  upper = NULL
+    ps,
+    method = c("ps", "pctl", "cr"),
+    lower = NULL,
+    upper = NULL,
+    .exposure = NULL,
+    .treated = NULL,
+    .untreated = NULL
 ) {
-  method <- match.arg(method)
+  method <- rlang::arg_match(method)
   meta_list <- list(method = method)
 
-  if (any(ps <= 0 | ps >= 1)) {
-    stop("All propensity scores must be strictly between 0 and 1.")
-  }
+  check_ps_range(ps)
 
   if (method == "ps") {
     if (is.null(lower)) lower <- 0.1
     if (is.null(upper)) upper <- 0.9
-    if (lower >= upper) {
-      stop("For method='ps', need lower < upper. Got lower=", lower, ", upper=", upper)
-    }
+    check_lower_upper(lower, upper)
+
     lb <- lower
     ub <- upper
   } else if (method == "pctl") {
@@ -53,15 +52,14 @@ ps_trunc <- function(
     ub <- quantile(ps, probs = upper)
     meta_list$lower_pctl <- lower
     meta_list$upper_pctl <- upper
-  } else { # method == "cr"
-    if (is.null(exposure)) {
-      stop("For method='cr', must supply a 0/1 'exposure'.")
-    }
-    if (!all(exposure %in% c(0, 1))) {
-      stop("Exposure must be 0/1 for method='cr'.")
-    }
-    ps_treat <- ps[exposure == 1]
-    ps_untrt <- ps[exposure == 0]
+  } else {
+    .exposure <- transform_exposure_binary(
+      .exposure,
+      .treated = .treated,
+      .untreated = .untreated
+    )
+    ps_treat <- ps[.exposure == 1]
+    ps_untrt <- ps[.exposure == 0]
     lb <- min(ps_treat)
     ub <- max(ps_untrt)
   }

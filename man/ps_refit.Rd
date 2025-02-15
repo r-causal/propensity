@@ -4,16 +4,16 @@
 \alias{ps_refit}
 \title{Refit the PS Model on Retained Observations}
 \usage{
-ps_refit(ps_trim_obj, model, data = NULL, ...)
+ps_refit(trimmed_ps, model, .df = NULL, ...)
 }
 \arguments{
-\item{ps_trim_obj}{A \code{ps_trim} object (same length as data, NAs for trimmed).}
-
 \item{model}{The fitted model used to get the original PS (e.g. a glm).}
 
-\item{data}{Optional. A data frame. If \code{NULL}, we try to retrieve from \code{model}.}
-
 \item{...}{Additional arguments passed to \code{update()}.}
+
+\item{ps_trim_obj}{A \code{ps_trim} object (same length as data, NAs for trimmed).}
+
+\item{data}{Optional. A data frame. If \code{NULL}, we try to retrieve from \code{model}.}
 }
 \value{
 A new \code{ps_trim} object with updated propensity scores and
@@ -23,11 +23,11 @@ A new \code{ps_trim} object with updated propensity scores and
 Takes a \code{ps_trim} object (with \code{NA} where trimmed) and the original model
 used to get the PS, then:
 \enumerate{
-\item Retrieves data from the model (or from \code{data} argument if provided)
+\item Retrieves data from the model (or from \code{.df} argument if provided)
 \item Subsets rows to the non‐trimmed indices
 \item Refits the model
-\item Predicts new propensity scores for all rows (trimmed rows -> NA)
-\item Returns a new \code{ps_trim} object with \code{refit=TRUE}.
+\item Predicts new propensity scores for all rows (trimmed rows -> \code{NA})
+\item Returns a new \code{ps_trim} object with \code{refit = TRUE}.
 }
 }
 \seealso{

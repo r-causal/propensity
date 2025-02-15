@@ -172,14 +172,18 @@ test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
   wts <- rep(1, n)
   outcome_mod <- glm(y ~ z, family = binomial(), weights = wts)
 
-  expect_error(ipw(ps_mod = bad_mod, outcome_mod = outcome_mod),
-               regexp = "inherits\\(ps_mod, \"glm\"\\) is not TRUE")
+  expect_error(
+    ipw(ps_mod = bad_mod, outcome_mod = outcome_mod),
+    class = "propensity_class_error"
+  )
 
   # invalid outcome_mod
   bad_outcome <- list(call = quote(foo()), class = "list")
 
-  expect_error(ipw(ps_mod = ps_mod, outcome_mod = bad_outcome),
-               "inherits\\(outcome_mod, \"glm\"\\) \\|\\| inherits\\(outcome_mod, \"lm\"\\) is not TRUE")
+  expect_error(
+    ipw(ps_mod = ps_mod, outcome_mod = bad_outcome),
+    class = "propensity_class_error"
+  )
 })
 
 test_that("ipw handles .df = NULL properly", {
@@ -220,7 +224,7 @@ test_that("ipw handles various errors correctly", {
 
   expect_error(
     ipw(ps_mod, outcome_mod_no_estimand),
-    "Can't determine estimand from weights. Please specify `estimand`."
+    "Can't determine the estimand from weights"
   )
 })
 

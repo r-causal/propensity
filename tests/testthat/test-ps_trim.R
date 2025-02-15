@@ -10,7 +10,7 @@ test_that("ps_trim() - Basic structure and return types", {
   ps_vec <- predict(fit, type = "response")
 
   # 1) A default call with method="ps"
-  out <- ps_trim(ps_vec, exposure = z, method = "ps")
+  out <- ps_trim(ps_vec, method = "ps")
 
   # Basic checks
   # Now 'out' is a ps_trim object
@@ -81,7 +81,7 @@ test_that("adaptive method: ignores lower/upper, warns appropriately", {
   # 2) If user sets lower/upper, we expect a warning
   expect_warning(
     out_adapt_warn <- ps_trim(ps, method = "adaptive", lower = 0.2, upper = 0.8),
-    "ignored"
+    "For `method = 'adaptive'`, `lower` and `upper` are ignored."
   )
 })
 
@@ -129,25 +129,25 @@ test_that("pref method: requires exposure, fails with all 0 or all 1", {
   # 1) If exposure = NULL, should fail
   expect_error(
     ps_trim(ps, method = "pref"),
-    "must supply a binary `exposure`"
+    "For `method = 'pref'`, must supply `exposure`."
   )
 
   # 2) If exposure is all 0 or all 1 => fail
   expect_error(
-    ps_trim(ps, exposure = rep(0, n), method = "pref"),
-    "cannot compute preference score"
+    ps_trim(ps, .exposure = rep(0, n), method = "pref"),
+    class = "propensity_binary_transform_error"
   )
+
   expect_error(
-    ps_trim(ps, exposure = rep(1, n), method = "pref"),
-    "cannot compute preference score"
+    ps_trim(ps, .exposure = rep(1, n), method = "pref"),
+    class = "propensity_binary_transform_error"
   )
 
   # 3) Valid usage
-  out_pref <- ps_trim(ps, exposure = z, method = "pref")
+  out_pref <- ps_trim(ps, .exposure = z, method = "pref", .treated = 1)
   meta_pref <- ps_trim_meta(out_pref)
   expect_equal(meta_pref$lower, 0.3)
   expect_equal(meta_pref$upper, 0.7)
-  expect_true("pref_formula" %in% names(meta_pref))
 
   # Check final
   out_pref_data <- as.numeric(out_pref)
@@ -167,16 +167,19 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
   ps <- predict(fit, type = "response")
 
   # Must have exposure
-  expect_error(ps_trim(ps, method = "cr"), "must supply a binary `exposure`")
+  expect_error(
+    ps_trim(ps, method = "cr"),
+    "For `method = 'cr'`, must supply `exposure`."
+  )
 
   # If all 0 or all 1 => fail
   expect_error(
-    ps_trim(ps, exposure = rep(1, n), method = "cr"),
-    "cannot compute common range"
+    ps_trim(ps, .exposure = rep(1, n), method = "cr"),
+    class = "propensity_binary_transform_error"
   )
 
   # Valid usage
-  out_cr <- ps_trim(ps, exposure = z, method = "cr")
+  out_cr <- ps_trim(ps, .exposure = z, method = "cr", .treated = 1)
   meta_cr <- ps_trim_meta(out_cr)
   ps_treat <- ps[z == 1]
   ps_untrt <- ps[z == 0]
@@ -187,8 +190,8 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
 
   # Check that user-specified lower/upper => warning
   expect_warning(
-    ps_trim(ps, exposure = z, method = "cr", lower = 0.2, upper = 0.8),
-    "ignored"
+    ps_trim(ps, .exposure = z, method = "cr", lower = 0.2, upper = 0.8, .treated = 1),
+    "For `method = 'cr'`, `lower` and `upper` are ignored."
   )
 })
 
@@ -221,7 +224,7 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
   ps <- predict(fit, type = "response")
 
   # Trim to [0.2, 0.8], then refit
-  out <- ps_trim(ps, exposure = z, method = "ps", lower = 0.2, upper = 0.8)
+  out <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
   # Suppose we do a normal refit
   refit_out <- ps_refit(out, model = fit)
   expect_s3_class(refit_out, "ps_trim")
@@ -231,7 +234,7 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
   # If everything is trimmed => error
   ps_edge <- c(0.01, 0.01, 0.99, 0.99)
   z_edge <- c(0, 1, 1, 0)
-  out_empty <- ps_trim(ps_edge, exposure = z_edge, method = "ps", lower = 1.1, upper = 2)
+  out_empty <- ps_trim(ps_edge, method = "ps", lower = 1.1, upper = 2)
   expect_error(
     ps_refit(out_empty, model = fit),
     "No retained rows to refit on"
@@ -249,7 +252,7 @@ test_that("Full workflow: trim -> refit -> weighting yields refit, trimmed psw",
   ps <- predict(fit, type = "response")
 
   # 2) Trim the PS (e.g. method="ps" with [0.2, 0.8])
-  trimmed_ps <- ps_trim(ps, exposure = z, method = "ps", lower = 0.2, upper = 0.8)
+  trimmed_ps <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
   expect_false(is_refit(trimmed_ps)) # not refit yet
 
   # 3) Refit on the subset
@@ -292,7 +295,7 @@ test_that("adaptive method: triggers uniroot path (k < 0) coverage", {
 
   # Now call ps_trim with method="adaptive"
   # This should produce k < 0 => code path with uniroot
-  out_adapt <- ps_trim(p_vec, exposure = z, method = "adaptive")
+  out_adapt <- ps_trim(p_vec, .exposure = z, method = "adaptive", .treated = 1)
 
   # Check that the 'cutoff' field in the meta is present
   meta <- ps_trim_meta(out_adapt)
@@ -400,7 +403,7 @@ test_that("Combining ps_trim with double => double", {
 test_that("Casting ps_trim -> double => underlying numeric data", {
   x <- new_trimmed_ps(
     c(0.2, NA, 0.9),
-    ps_trim_met = list(method = "ps", keep_idx = c(1, 3), trimmed_idx = 2)
+    ps_trim_meta = list(method = "ps", keep_idx = c(1, 3), trimmed_idx = 2)
   )
   casted <- vec_cast(x, to = double())
   expect_type(casted, "double")

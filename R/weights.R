@@ -291,10 +291,8 @@ wt_ate.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_ate.numeric(numeric_ps, .exposure, ...)
 
-  e <- estimand(base_wt)
-  estimand(base_wt) <- paste0(e, "; truncated")
+  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
 
-  # If you want to store the meta info in the weights:
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
 
@@ -305,9 +303,12 @@ wt_ate.ps_trunc <- function(.propensity, .exposure, ...) {
 wt_att.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_att.numeric(numeric_ps, .exposure, ...)
+
   estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
   base_wt
 }
 
@@ -315,9 +316,12 @@ wt_att.ps_trunc <- function(.propensity, .exposure, ...) {
 wt_atu.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_atu.numeric(numeric_ps, .exposure, ...)
+
   estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
   base_wt
 }
 
@@ -325,9 +329,12 @@ wt_atu.ps_trunc <- function(.propensity, .exposure, ...) {
 wt_atm.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_atm.numeric(numeric_ps, .exposure, ...)
+
   estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
   base_wt
 }
 
@@ -335,8 +342,11 @@ wt_atm.ps_trunc <- function(.propensity, .exposure, ...) {
 wt_ato.ps_trunc <- function(.propensity, .exposure, ...) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_ato.numeric(numeric_ps, .exposure, ...)
+
   estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
   attr(base_wt, "truncated") <- TRUE
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
   base_wt
 }
