@@ -14,7 +14,7 @@
 #'   by default.
 #' @param .untreated The control level of the exposure. Automatically detected
 #'   by default.
-#' @param ... Passed to other functions Not currently used.
+#' @param ... Reserved for future expansion. Not currently used.
 #' @param stabilize Logical. Stabilize the weights? By default, stabilizes with
 #'   the mean of `.exposure`.
 #' @param stabilization_score if `stabilize` is `TRUE`, optionally include a
@@ -35,10 +35,11 @@ wt_ate <- function(.propensity, ...) {
 #' @export
 #' @rdname wt_ate
 wt_ate.numeric <- function(.propensity, .exposure, .sigma = NULL, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
+  rlang::check_dots_empty()
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
-    wts <- ate_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
+    wts <- ate_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score)
   } else if (exposure_type == "continuous") {
     wts <- ate_continuous(.propensity = .propensity, .exposure = .exposure, .sigma = .sigma, .treated = .treated, .untreated = .untreated, stabilize = stabilize, stabilization_score = stabilization_score, ...)
   } else {
@@ -48,7 +49,7 @@ wt_ate.numeric <- function(.propensity, .exposure, .sigma = NULL, exposure_type 
   psw(wts, "ate")
 }
 
-ate_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL, ...) {
+ate_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, stabilize = FALSE, stabilization_score = NULL) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -67,7 +68,7 @@ ate_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NUL
   wt
 }
 
-ate_continuous <- function(.propensity, .exposure, .sigma, stabilize = FALSE, stabilization_score = NULL, ...) {
+ate_continuous <- function(.propensity, .exposure, .sigma, stabilize = FALSE, stabilization_score = NULL) {
   .propensity <- stats::dnorm(.exposure, mean = .propensity, sd = mean(.sigma))
   wt <- 1 / .propensity
 
@@ -93,11 +94,12 @@ wt_att <- function(.propensity, ...) {
 #' @export
 #' @rdname wt_ate
 wt_att.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+  rlang::check_dots_empty()
   exposure_type <- match_exposure_type(exposure_type, .exposure)
 
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
-    wts <- att_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
+    wts <- att_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated)
   } else {
     abort_unsupported(exposure_type, "ATT")
   }
@@ -105,7 +107,7 @@ wt_att.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "bi
   psw(wts, "att")
 }
 
-att_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
+att_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -125,10 +127,11 @@ wt_atu <- function(.propensity, ...) {
 #' @export
 #' @rdname wt_ate
 wt_atu.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+  rlang::check_dots_empty()
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
-    wts <- atu_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
+    wts <- atu_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated)
   } else {
     abort_unsupported(exposure_type, "ATU")
   }
@@ -136,7 +139,7 @@ wt_atu.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "bi
   psw(wts, "atu")
 }
 
-atu_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
+atu_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -157,7 +160,8 @@ wt_atm <- function(.propensity, ...) {
 
 #' @export
 #' @rdname wt_ate
-wt_atm.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+wt_atm.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL) {
+  rlang::check_dots_empty()
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
@@ -169,7 +173,7 @@ wt_atm.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "bi
   psw(wts, "atm")
 }
 
-atm_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
+atm_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -189,11 +193,11 @@ wt_ato <- function(.propensity, ...) {
 
 #' @export
 #' @rdname wt_ate
-wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL, ...) {
+wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "binary", "categorical", "continuous"), .treated = NULL, .untreated = NULL) {
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
-    wts <- ato_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated, ...)
+    wts <- ato_binary(.propensity = .propensity, .exposure = .exposure, .treated = .treated, .untreated = .untreated)
   } else {
     abort_unsupported(exposure_type, "ATO")
   }
@@ -202,7 +206,7 @@ wt_ato.numeric <- function(.propensity, .exposure, exposure_type = c("auto", "bi
 }
 
 
-ato_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL, ...) {
+ato_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NULL) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .treated = .treated,
@@ -221,7 +225,7 @@ ato_binary <- function(.propensity, .exposure, .treated = NULL, .untreated = NUL
 wt_ate.ps_trim <- function(.propensity, .exposure, ...) {
   check_refit(.propensity)
 
-  numeric_ps <- as.numeric(.propensity) # includes NA for trimmed rows
+  numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_ate.numeric(numeric_ps, .exposure, ...)
 
   old_est <- estimand(base_wt)
