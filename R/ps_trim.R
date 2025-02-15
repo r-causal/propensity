@@ -343,15 +343,7 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
   }
 
   if (is.null(.df)) {
-    .df <- tryCatch(
-      stats::model.frame(model),
-      error = function(e) {
-        abort(c(
-          "Couldn't retrieve data from {.arg model}.",
-          i = "Please supply {.arg .df} explicitly."
-        ))
-      }
-    )
+    .df <- model.frame(model)
   }
 
   if (nrow(.df) != length(trimmed_ps)) {

@@ -42,7 +42,7 @@ assert_class <- function(x, classes, .length = NULL, arg = rlang::caller_arg(x),
     .class_msg <- "It has class {.val {class(x)}}."
   }
 
-  if (!is.null(.length) && length(x) > .length) {
+  if (!is.null(.length) && length(x) != .length) {
     .stop <- TRUE
     .msg <- if (length(classes) == 1) {
       "{.arg {arg}} must be of class {.val {classes}} and length {.val { .length}}."

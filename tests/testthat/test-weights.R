@@ -5,12 +5,57 @@ test_that("ATE works for binary cases", {
   )
 
   expect_silent(
-    wt_ate(
+    weights2 <- wt_ate(
       c(.1, .3, .4, .3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
     )
   )
+
+  expect_identical(weights, weights2)
+
+  expect_message(
+    weights3 <- wt_ate(c(.1, .3, .4, .3), .exposure = as.logical(c(0, 0, 1, 0))),
+    "Treating `.exposure` as binary"
+  )
+
+  expect_identical(weights, weights3)
+
+  expect_silent(
+    weights4 <- wt_ate(
+      c(.1, .3, .4, .3),
+      .exposure = c(2, 2, 1, 2),
+      exposure_type = "binary",
+      .untreated = 2
+    )
+  )
+
+  expect_identical(weights, weights4)
+
+  expect_error(
+    wt_ate(
+      c(-.1, .3, .4, 3.3),
+      .exposure = c(0, 0, 1, 0),
+      exposure_type = "binary"
+    ),
+    class = "propensity_range_error"
+  )
+
+  .exposure <- factor(
+    c("untreated", "untreated", "treated", "untreated"),
+    levels = c("untreated", "treated")
+  )
+
+  expect_message(
+    weights5 <- wt_ate(
+      c(.1, .3, .4, .3),
+      exposure_type = "binary",
+      .exposure = .exposure
+    ),
+    "Setting treatment to `treated`"
+  )
+
+  expect_identical(weights, weights5)
 
   expect_equal(
     weights,
@@ -46,6 +91,19 @@ test_that("ATE works for continuous cases", {
   expect_equal(weights, psw(wts, "ate"), tolerance = .01)
   expect_equal(stablized_weights, psw(stb_wts, "ate"), tolerance = .01)
 })
+
+test_that("ATE works for categorical cases", {
+  # we don't currently support this!
+  expect_error(
+    wt_ate(
+      c(.1, .3, .4, .3),
+      .exposure = c(0, 2, 1, 4),
+      exposure_type = "categorical"
+    ),
+    class = "propensity_wt_not_supported_error"
+  )
+})
+
 test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning if refit", {
   set.seed(123)
   n <- 100

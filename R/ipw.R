@@ -123,7 +123,7 @@ ipw <- function(ps_mod, outcome_mod, .df = NULL, estimand = NULL, ps_link = NULL
     abort(c(
       "{.arg exposure} and {.arg outcome} must be the same length.",
       x = "{.arg exposure} is length {length(exposure)}",
-      x = "{.arg outcome} is length {length(exposure)}"
+      x = "{.arg outcome} is length {length(outcome)}"
     ))
   }
 
@@ -451,7 +451,7 @@ estimate_marginal_means <- function(outcome_mod, wts, exposure, exposure_name, .
   # todo: this could be generalized with split() and lapply()
   if (is.null(.df)) {
     .df <- model.frame(outcome_mod)
-    check_exposure(.df, exposure_name)
+    check_exposure(.df, exposure_name, call = call)
   }
   # todo: make this more flexible for different values and model specs
   # maybe can optionally accept a function for g-comp
@@ -604,10 +604,10 @@ check_exposure <- function(.df, .exposure_name, call = rlang::caller_env()) {
   assert_class(.exposure_name, "character", .length = 1, call = call)
   if (!(.exposure_name %in% names(.df))) {
     abort(c(
-      "{.val .exposure_name} not found in {.code model.frame(outcome_mod)}.",
+      "{.val { .exposure_name}} not found in {.code model.frame(outcome_mod)}.",
       i = "The outcome model may have transformations in the formula.",
       i = "Please specify {.arg .df}"
-    ))
+    ), call = call, error_class = "propensity_columns_exist_error")
   }
 }
 

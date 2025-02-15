@@ -1,7 +1,8 @@
 abort_unsupported <- function(exposure_type, what, call = rlang::caller_env()) {
   abort(
-    "Exposure type {.val exposure_type} not currently supported for {.field what}",
-    call = call
+    "Exposure type {.val {exposure_type}} not currently supported for {.field {what}}",
+    call = call,
+    error_class = "propensity_wt_not_supported_error"
   )
 }
 
@@ -84,12 +85,13 @@ check_refit <- function(.propensity) {
 }
 
 check_ps_range <- function(ps, call = rlang::caller_env()) {
-  if (any(ps <= 0 | ps >= 1)) {
+  ps <- as.numeric(ps)
+  if (any(ps <= 0 | ps >= 1, na.rm = TRUE)) {
     abort(c(
       "The propensity score must be between 0 and 1.",
       i = "The range of {.arg ps} is \\
       {format(range(ps), nsmall = 1, digits = 1)}"
-    ), call = call)
+    ), call = call, error_class = "propensity_range_error")
   }
 
   invisible(TRUE)

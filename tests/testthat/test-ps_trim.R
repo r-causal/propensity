@@ -231,6 +231,11 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
   meta_r <- ps_trim_meta(refit_out)
   expect_true(isTRUE(meta_r$refit))
 
+  expect_error(
+    ps_refit(out, model = fit, .df = data.frame(z, x)[1:10, ]),
+    "must have the same number of rows as"
+  )
+
   # If everything is trimmed => error
   ps_edge <- c(0.01, 0.01, 0.99, 0.99)
   z_edge <- c(0, 1, 1, 0)
@@ -239,6 +244,8 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
     ps_refit(out_empty, model = fit),
     "No retained rows to refit on"
   )
+
+  ps_trim(ps_edge, method = "ps", lower = 1.1, upper = 2)
 })
 
 test_that("Full workflow: trim -> refit -> weighting yields refit, trimmed psw", {
