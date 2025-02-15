@@ -74,14 +74,20 @@
 <span></span>
 <span><span class="co"># ATE weights</span></span>
 <span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">propensity_scores</span>, .exposure <span class="op">=</span> <span class="va">x</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span><span class="co">#&gt; &lt;psw{estimand = ate}[4]&gt;</span></span>
 <span><span class="co">#&gt; [1] 1.111111 1.428571 2.500000 1.428571</span></span>
 <span></span>
 <span><span class="co"># Stabilized ATE weights</span></span>
 <span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">propensity_scores</span>, .exposure <span class="op">=</span> <span class="va">x</span>, stabilize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span><span class="co">#&gt; &lt;psw{estimand = ate}[4]&gt;</span></span>
 <span><span class="co">#&gt; [1] 0.2777778 0.3571429 0.6250000 0.3571429</span></span>
 <span></span>
 <span><span class="co"># ATO weights</span></span>
 <span><span class="fu"><a href="reference/wt_ate.html">wt_ato</a></span><span class="op">(</span><span class="va">propensity_scores</span>, .exposure <span class="op">=</span> <span class="va">x</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span><span class="co">#&gt; &lt;psw{estimand = ato}[4]&gt;</span></span>
 <span><span class="co">#&gt; [1] 0.1 0.3 0.6 0.3</span></span></code></pre></div>
 </div>
 </div>
@@ -120,6 +126,7 @@
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
 <li><a href="https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://app.codecov.io/gh/malcolmbarrett/propensity" class="external-link"><img src="https://codecov.io/gh/malcolmbarrett/propensity/graph/badge.svg" alt="Codecov test coverage"></a></li>
 </ul>
 </div>
 
