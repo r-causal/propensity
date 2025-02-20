@@ -212,7 +212,6 @@ test_that("atm_binary() logic with transform_.exposure_binary() is triggered", {
   w <- atm_binary(
     .propensity = ps_vec,
     .exposure = z_vec,
-    exposure_type = "binary",
     .treated = 1
   )
   # Just check dimension, no error
@@ -255,7 +254,6 @@ test_that("ato_binary() logic is triggered for p=0.3", {
   w <- ato_binary(
     .propensity = ps_vec,
     .exposure = z_vec,
-    exposure_type = "binary",
     .treated = 1
   )
   expect_length(w, 3)

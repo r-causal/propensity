@@ -89,7 +89,7 @@ test_that("ATE works for continuous cases", {
   )
 
   expect_equal(weights, psw(wts, "ate"), tolerance = .01)
-  expect_equal(stablized_weights, psw(stb_wts, "ate"), tolerance = .01)
+  expect_equal(stablized_weights, psw(stb_wts, "ate", stabilized = TRUE), tolerance = .01)
 })
 
 test_that("ATE works for categorical cases", {

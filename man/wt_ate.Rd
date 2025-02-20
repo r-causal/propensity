@@ -2,20 +2,13 @@
 % Please edit documentation in R/weights.R
 \name{wt_ate}
 \alias{wt_ate}
-\alias{wt_ate.numeric}
 \alias{wt_att}
-\alias{wt_att.numeric}
 \alias{wt_atu}
-\alias{wt_atu.numeric}
 \alias{wt_atm}
-\alias{wt_atm.numeric}
 \alias{wt_ato}
-\alias{wt_ato.numeric}
-\title{Calculate propensity score weights}
+\title{Calculate Propensity Score Weights for Causal Inference}
 \usage{
-wt_ate(.propensity, ...)
-
-\method{wt_ate}{numeric}(
+wt_ate(
   .propensity,
   .exposure,
   .sigma = NULL,
@@ -27,9 +20,7 @@ wt_ate(.propensity, ...)
   ...
 )
 
-wt_att(.propensity, ...)
-
-\method{wt_att}{numeric}(
+wt_att(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
@@ -38,9 +29,7 @@ wt_att(.propensity, ...)
   ...
 )
 
-wt_atu(.propensity, ...)
-
-\method{wt_atu}{numeric}(
+wt_atu(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
@@ -49,9 +38,7 @@ wt_atu(.propensity, ...)
   ...
 )
 
-wt_atm(.propensity, ...)
-
-\method{wt_atm}{numeric}(
+wt_atm(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
@@ -60,9 +47,7 @@ wt_atm(.propensity, ...)
   ...
 )
 
-wt_ato(.propensity, ...)
-
-\method{wt_ato}{numeric}(
+wt_ato(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
@@ -72,43 +57,131 @@ wt_ato(.propensity, ...)
 )
 }
 \arguments{
-\item{.propensity}{Either a vector of the predicted value of \code{.exposure} or a
-\code{data.frame} where each column is the predicted probability of a level of
-\code{.exposure}.}
+\item{.propensity}{Either a numeric vector of predicted probabilities or a
+\code{data.frame} where each column corresponds to a level of the exposure.}
 
-\item{...}{Passed to other functions Not currently used.}
+\item{.exposure}{The exposure variable. For binary exposures, a vector of 0s
+and 1s; for continuous exposures, a numeric vector.}
 
-\item{.exposure}{The exposure for which \code{.propensity} is calculated.}
+\item{.sigma}{For continuous exposures, a numeric vector of standard errors
+used with \code{dnorm()}. For example, this can be derived from the influence
+measures of a model (e.g., \code{influence(model)$sigma}).}
 
-\item{.sigma}{If \code{exposure_type} is continuous, a vector of observation-level
-standard errors passed to \code{dnorm()}. For an \code{lm} model this is
-\code{influence(model)$sigma}. For data frames produced by broom's \code{augment()},
-this is the \code{.sigma} column.}
+\item{exposure_type}{Character string specifying the type of exposure.
+Options are \code{"auto"}, \code{"binary"}, \code{"categorical"}, and \code{"continuous"}.
+Defaults to \code{"auto"}, which detects the type automatically.}
 
-\item{exposure_type}{The type of exposure. By default, automatically detected
-based on \code{.exposure}.}
+\item{.treated}{The value representing the treatment group. If not provided,
+it is automatically detected.}
 
-\item{.treated}{The treatment level of the exposure. Automatically detected
-by default.}
+\item{.untreated}{The value representing the control group. If not provided,
+it is automatically detected.}
 
-\item{.untreated}{The control level of the exposure. Automatically detected
-by default.}
+\item{stabilize}{Logical indicating whether to stabilize the weights. For ATE
+weights, stabilization multiplies the weight by either the mean of
+\code{.exposure} or the supplied \code{stabilization_score}.}
 
-\item{stabilize}{Logical. Stabilize the weights? By default, stabilizes with
-the mean of \code{.exposure}.}
+\item{stabilization_score}{Optional numeric value for stabilizing the weights
+(e.g., a predicted value from a regression model without predictors). Only
+used when \code{stabilize} is \code{TRUE}.}
 
-\item{stabilization_score}{if \code{stabilize} is \code{TRUE}, optionally include a
-score by which to stabilize the score, e.g. the predicted values from a
-regression model with no predictors.}
+\item{...}{Reserved for future expansion. Not currently used.}
 }
 \value{
-A vector of propensity score weights
+A \code{psw} object (a numeric vector) with additional attributes:
+\itemize{
+\item \strong{estimand}: A description of the estimand (e.g., "ate", "att").
+\item \strong{stabilized}: A logical flag indicating if stabilization was applied.
+\item \strong{trimmed}: A logical flag indicating if the weights are based on trimmed propensity scores.
+\item \strong{truncated}: A logical flag indicating if the weights are based on truncated propensity scores.
+}
 }
 \description{
-Calculate propensity score weights
+This family of functions computes propensity score weights for
+various causal estimands:
+\itemize{
+\item \strong{ATE} (Average Treatment Effect)
+\item \strong{ATT} (Average Treatment Effect on the Treated)
+\item \strong{ATU} (Average Treatment Effect on the Untreated, sometimes called
+the \strong{ATC}, where the "C" stands for "control")
+\item \strong{ATM} (Average Treatment Effect for the Evenly Matchable)
+\item \strong{ATO} (Average Treatment Effect for the Overlap population)
+
+The propensity score can be provided as a numeric vector of predicted
+probabilities or as a \code{data.frame} where each column represents the
+predicted probability for a level of the exposure. They can also be
+propensity score objects created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_refit]{ps_refit()}}, or
+\code{\link[=ps_trunc]{ps_trunc()}}
+
+The returned weights are encapsulated in a \code{psw} object, which is a numeric
+vector with additional attributes that record the estimand, and whether the
+weights have been stabilized, trimmed, or truncated.
+}
+}
+\details{
+\subsection{Exposure Types}{
+
+The functions support different types of exposures:
+\itemize{
+\item \strong{\code{binary}}: For dichotomous treatments (e.g. 0/1).
+\item \strong{\code{continuous}}: For numeric exposures. Here, weights are calculated via the normal density using
+\code{dnorm()}.
+\item \strong{\code{categorical}}: Currently not supported (an error will be raised).
+\item \strong{\code{auto}}: Automatically detects the exposure type based on \code{.exposure}.
+}
+
+\subsection{Stabilization}{
+
+For ATE weights, stabilization can improve the performance of the estimator
+by reducing variance. When \code{stabilize} is \code{TRUE} and no
+\code{stabilization_score} is provided, the weights are multiplied by the mean
+of \code{.exposure}. Alternatively, if a \code{stabilization_score} is provided, it
+is used as the multiplier.
+}
+
+\subsection{Trimmed and Truncated Weights}{
+
+In addition to the standard weight functions, versions exist for trimmed
+and truncated propensity score weights created by \code{\link[=ps_trim]{ps_trim()}},
+\code{\link[=ps_trunc]{ps_trunc()}}, and \code{\link[=ps_refit]{ps_refit()}}. These variants calculate the weights using
+modified propensity scores (trimmed or truncated) and update the estimand
+attribute accordingly.
+
+The main functions (\code{wt_ate}, \code{wt_att}, \code{wt_atu}, \code{wt_atm}, and \code{wt_ato})
+dispatch on the class of \code{.propensity}. For binary exposures, the weights
+are computed using inverse probability formulas. For continuous exposures
+(supported only for ATE), weights are computed as the inverse of the
+density function evaluated at the observed exposure.
+}
+}
 }
 \examples{
-propensity_scores <- c(.1, .3, .4, .3)
-x <- c(0, 0, 1, 0)
-wt_ate(propensity_scores, .exposure = x)
+## ATE Weights with a Binary Exposure
+
+# Simulate a binary treatment and corresponding propensity scores
+propensity_scores <- c(0.2, 0.7, 0.5, 0.8)
+treatment <- c(0, 1, 0, 1)
+
+# Compute ATE weights (unstabilized)
+weights_ate <- wt_ate(propensity_scores, .exposure = treatment)
+weights_ate
+
+# Compute ATE weights with stabilization using the mean of the exposure
+weights_ate_stab <- wt_ate(propensity_scores, .exposure = treatment, stabilize = TRUE)
+weights_ate_stab
+
+## ATT Weights for a Binary Exposure
+
+propensity_scores <- c(0.3, 0.6, 0.4, 0.7)
+treatment <- c(1, 1, 0, 0)
+
+# Compute ATT weights
+weights_att <- wt_att(propensity_scores, .exposure = treatment)
+weights_att
+
+}
+\seealso{
+\itemize{
+\item \code{\link[=psw]{psw()}} for details on the structure of the returned weight objects.
+}
 }
