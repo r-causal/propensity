@@ -25,11 +25,11 @@ method.}
 \item{.exposure}{For methods like \code{"pref"} or \code{"cr"}, a vector for a binary
 exposure.}
 
-\item{.treated}{The treatment level of the exposure. Automatically detected
-by default.}
+\item{.treated}{The value representing the treatment group. If not provided,
+it is automatically detected.}
 
-\item{.untreated}{The control level of the exposure. Automatically detected
-by default.}
+\item{.untreated}{The value representing the control group. If not provided,
+it is automatically detected.}
 }
 \value{
 A \code{ps_trim} object (numeric vector). The attribute \code{ps_trim_meta}
