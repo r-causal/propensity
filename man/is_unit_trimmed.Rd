@@ -17,6 +17,5 @@ A logical scalar (\code{TRUE} or \code{FALSE}).
 values, representing if the unit was trimmed. \code{is_unit_trimmed()} is a
 question about which \emph{units} have been trimmed, as opposed to
 \code{\link[=is_ps_trimmed]{is_ps_trimmed()}}, which is a question about whether or not the propensity
-scores
-\emph{have} been trimmed.
+scores \emph{have} been trimmed.
 }

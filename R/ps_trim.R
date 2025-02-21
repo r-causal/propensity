@@ -199,8 +199,7 @@ is_ps_trimmed.ps_trim <- function(x) {
 #'   values, representing if the unit was trimmed. `is_unit_trimmed()` is a
 #'   question about which *units* have been trimmed, as opposed to
 #'   [is_ps_trimmed()], which is a question about whether or not the propensity
-#'   scores
-#'   *have* been trimmed.
+#'   scores *have* been trimmed.
 #'
 #' @param x An object.
 #' @return A logical scalar (`TRUE` or `FALSE`).
