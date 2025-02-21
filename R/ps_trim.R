@@ -26,7 +26,7 @@
 #' stores metadata.
 #'
 #' @seealso [ps_trunc()] for bounding/winsorizing instead of discarding,
-#'   [is_refit()], [is_trimmed()]
+#'   [is_refit()], [is_ps_trimmed()]
 #' @examples
 #'
 #' set.seed(2)
@@ -163,31 +163,66 @@ new_trimmed_ps <- function(x, ps_trim_meta = list()) {
 
 #' Check if object is trimmed
 #'
-#' @description `is_trimmed()` is an S3 generic that returns `TRUE` if its
-#' argument represents a ps_trim object or psw object flagged as trimmed.
+#' @description `is_ps_trimmed()` is an S3 generic that returns `TRUE` if its
+#'   argument represents a `ps_trim` object or `psw` object created from trimmed
+#'   propensity scores. `is_ps_trimmed()` is a question about whether or not the
+#'   propensity scores *have* been trimmed, as opposed to [is_unit_trimmed()],
+#'   which is a question about which *units* have been trimmed.
 #'
 #' @param x An object.
 #' @return A logical scalar (`TRUE` or `FALSE`).
 #' @export
-is_trimmed <- function(x) {
-  UseMethod("is_trimmed")
+is_ps_trimmed <- function(x) {
+  UseMethod("is_ps_trimmed")
 }
 
 #' @export
-is_trimmed.default <- function(x) FALSE
+is_ps_trimmed.default <- function(x) FALSE
 
-is_trimmed <- function(x) {
-  UseMethod("is_trimmed")
+is_ps_trimmed <- function(x) {
+  UseMethod("is_ps_trimmed")
 }
 
 #' @export
-is_trimmed.default <- function(x) {
+is_ps_trimmed.default <- function(x) {
   FALSE
 }
 
 #' @export
-is_trimmed.ps_trim <- function(x) {
+is_ps_trimmed.ps_trim <- function(x) {
   TRUE
+}
+
+#' Check if units have been trimmed
+#'
+#' @description `is_unit_trimmed()` is an that vector of `TRUE` or `FALSE`
+#'   values, reprenting if the unit was trimmed. `is_unit_trimmed()` is a
+#'   question about which *units* have been trimmed, as opposed to
+#'   [is_ps_trimmed()], which is a question about whether or not the propensity
+#'   scores
+#'   *have* been trimmed.
+#'
+#' @param x An object.
+#' @return A logical scalar (`TRUE` or `FALSE`).
+#' @export
+is_unit_trimmed <- function(x) {
+  UseMethod("is_unit_trimmed")
+}
+
+#' @export
+is_unit_trimmed.default <- function(x) {
+  abort(
+    "{.code is_unit_trimmed()} not supported for class {.val {class(x)}}"
+  )
+}
+
+#' @export
+is_unit_trimmed.ps_trim <- function(x) {
+  meta <- ps_trim_meta(x)
+  out <- vector("logical", length = length(x))
+  out[meta$trimmed_idx] <- TRUE
+
+  out
 }
 
 
@@ -317,7 +352,7 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
 #' A new `ps_trim` object with updated propensity scores and
 #' `ps_trim_meta(x)$refit` set to `TRUE`.
 #'
-#' @seealso [ps_trim()], [is_refit()], [is_trimmed()]
+#' @seealso [ps_trim()], [is_refit()], [is_ps_trimmed()]
 #'
 #' @examples
 #' set.seed(2)

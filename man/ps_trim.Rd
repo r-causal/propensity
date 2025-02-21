@@ -66,5 +66,5 @@ ps_trim(ps, method = "adaptive")
 }
 \seealso{
 \code{\link[=ps_trunc]{ps_trunc()}} for bounding/winsorizing instead of discarding,
-\code{\link[=is_refit]{is_refit()}}, \code{\link[=is_trimmed]{is_trimmed()}}
+\code{\link[=is_refit]{is_refit()}}, \code{\link[=is_ps_trimmed]{is_ps_trimmed()}}
 }

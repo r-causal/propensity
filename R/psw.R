@@ -120,14 +120,33 @@ estimand <- function(wt) {
 }
 
 #' @export
-is_trimmed.psw <- function(x) {
+is_ps_trimmed.psw <- function(x) {
   isTRUE(attr(x, "trimmed"))
 }
 
 #' @export
-is_truncated.psw <- function(x) {
+is_unit_trimmed.psw <- function(x) {
+  out <- vector("logical", length = length(x))
+  if (!is_ps_trimmed(x)) {
+    return(out)
+  }
+
+  meta <- ps_trim_meta(x)
+  out[meta$trimmed_idx] <- TRUE
+
+  out
+}
+
+#' @export
+is_ps_truncated.psw <- function(x) {
   isTRUE(attr(x, "truncated"))
 }
+
+#' @export
+is_unit_truncated.psw <- function(x) {
+  isTRUE(attr(x, "truncated"))
+}
+
 
 #' @export
 is_refit.psw <- function(x) {

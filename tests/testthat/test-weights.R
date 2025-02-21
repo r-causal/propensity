@@ -193,8 +193,8 @@ test_that("wt_ate() with ps_trunc sets truncated=TRUE in final psw", {
   trunc_obj <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
   w_ate <- wt_ate(trunc_obj, .exposure = z, exposure_type = "binary", .treated = 1)
 
-  expect_true(is_truncated(w_ate))
-  expect_false(is_trimmed(w_ate))
+  expect_true(is_ps_truncated(w_ate))
+  expect_false(is_ps_trimmed(w_ate))
   expect_match(estimand(w_ate), "; truncated$")
 })
 
