@@ -6,9 +6,11 @@
 <url><loc>https://r-causal.github.io/propensity/index.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/index.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ipw.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/is_ps_trimmed.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/is_ps_truncated.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/is_refit.html</loc></url>
-<url><loc>https://r-causal.github.io/propensity/reference/is_trimmed.html</loc></url>
-<url><loc>https://r-causal.github.io/propensity/reference/is_truncated.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/is_unit_trimmed.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/is_unit_truncated.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/propensity-package.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_refit.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_trim.html</loc></url>
