@@ -76,18 +76,24 @@ ps_trunc <- function(
     ub <- max(ps_untrt)
   }
 
-  # Winsorize
-  ps2 <- pmin(pmax(ps, lb), ub)
+  # winsorize
+  pinned_low  <- which(ps < lb)
+  pinned_high <- which(ps > ub)
+  truncated_idx <- sort(c(pinned_low, pinned_high))
+
+  ps[pinned_low]  <- lb
+  ps[pinned_high] <- ub
 
   meta <- c(
     meta_list,
     list(
       lower_bound = lb,
-      upper_bound = ub
+      upper_bound = ub,
+      truncated_idx = truncated_idx
     )
   )
 
-  new_ps_trunc(ps2, meta)
+  new_ps_trunc(ps, meta)
 }
 
 new_ps_trunc <- function(x, meta) {
@@ -110,25 +116,82 @@ ps_trunc_meta <- function(x) {
 
 #' Check if object is truncated
 #'
+#' @description `is_ps_truncated()` is an S3 generic that returns `TRUE` if its
+#' argument represents a `ps_trunc` object or `psw` object created from
+#' truncated propensity scores. `is_ps_truncated()` is a question about whether
+#' the propensity scores *have* been truncated, as opposed to
+#' [is_unit_truncated()], which is a question about which *units* have been
+#' truncated.
+#'
+#' @param x An object.
+#' @return A logical scalar (`TRUE` or `FALSE`).
+#' @export
+is_ps_truncated <- function(x) {
+  UseMethod("is_ps_truncated")
+}
+
+#' @export
+is_ps_truncated.default <- function(x) {
+  FALSE
+}
+
+#' @export
+is_ps_truncated.ps_trunc <- function(x) {
+  TRUE
+}
+
+#' Check if units have been truncated
+#'
+#' @description `is_ps_truncated()` is an S3 generic that returns a vector of
+#'   `TRUE` or `FALSE`, representing if the element has been truncated.
+#'   [is_unit_truncated()] is a question about which *units* have been
+#'   truncated, as opposed to `is_ps_truncated()`, which is a question about
+#'   whether the propensity scores *have* been truncated.
+#'
+#' @param x An object.
+#' @return A logical vector.
+#' @export
+is_unit_truncated <- function(x) {
+  UseMethod("is_unit_truncated")
+}
+
+#' @export
+is_unit_truncated.default <- function(x) {
+  abort(
+    "{.code is_unit_truncated()} not supported for class {.val {class(x)}}"
+  )
+}
+
+#' @export
+is_unit_truncated.ps_trunc <- function(x) {
+  meta <- ps_trunc_meta(x)
+  out <- vector("logical", length = length(x))
+  out[meta$truncated_idx] <- TRUE
+
+  out
+}
+
+
+#' Check if object is truncated
+#'
 #' @description
-#' `is_truncated()` is an S3 generic that returns `TRUE` if its argument represents a
+#' `is_ps_truncated()` is an S3 generic that returns `TRUE` if its argument represents a
 #' ps_trunc object or psw object flagged as truncated.
 #'
 #' @param x An R object.
 #' @return A logical scalar (`TRUE` or `FALSE`).
 #' @export
-is_truncated <- function(x) {
-  UseMethod("is_truncated")
+is_ps_truncated <- function(x) {
+  UseMethod("is_ps_truncated")
 }
 
-
 #' @export
-is_truncated.default <- function(x) {
+is_ps_truncated.default <- function(x) {
   FALSE
 }
 
 #' @export
-is_truncated.ps_trunc <- function(x) {
+is_ps_truncated.ps_trunc <- function(x) {
   TRUE
 }
 

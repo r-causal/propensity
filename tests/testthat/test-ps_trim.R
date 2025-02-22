@@ -273,9 +273,9 @@ test_that("Full workflow: trim -> refit -> weighting yields refit, trimmed psw",
   expect_s3_class(w_ate, "psw")
 
   # Should be trimmed, per the weighting method's logic
-  expect_true(is_trimmed(w_ate))
+  expect_true(is_ps_trimmed(w_ate))
   # Should NOT be truncated or stabilized
-  expect_false(is_truncated(w_ate))
+  expect_false(is_ps_truncated(w_ate))
   expect_false(is_stabilized(w_ate))
 
   # Should preserve the refit info if you attach ps_trim_meta
@@ -327,7 +327,7 @@ test_that("adaptive method: triggers uniroot path (k < 0) coverage", {
 test_that("Check defaults for helper functions", {
   # 1) Any random object that is not ps_trim => default method => FALSE
   not_trim_obj <- c(0.2, 0.4, 0.6)
-  expect_false(is_trimmed(not_trim_obj)) # triggers is_trimmed.default()
+  expect_false(is_ps_trimmed(not_trim_obj)) # triggers is_ps_trimmed.default()
   expect_false(is_refit(not_trim_obj))
 
   # 2) A mock ps_trim object => method => TRUE
@@ -336,7 +336,7 @@ test_that("Check defaults for helper functions", {
     c(0.5, NA, 0.7),
     class = "ps_trim"
   )
-  expect_true(is_trimmed(fake_ps_trim)) # triggers is_trimmed.ps_trim()
+  expect_true(is_ps_trimmed(fake_ps_trim)) # triggers is_ps_trimmed.ps_trim()
 })
 
 # tests/test-ps_trim-vctrs.R
@@ -438,3 +438,25 @@ test_that("Casting integer->ps_trim likewise uses new_trimmed_ps", {
   # check the data is double
   expect_equal(as.numeric(ps_t), c(0, 1, 999))
 })
+
+test_that("is_unit_trimmed.ps_trim returns expected row-level booleans", {
+  set.seed(100)
+  ps_vec <- c(0.1, 0.2, 0.5, 0.85, 0.95)
+
+  # Trim outside [0.2, 0.8]
+  trimmed_obj <- ps_trim(
+    ps_vec,
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  expect_s3_class(trimmed_obj, "ps_trim")
+
+  row_trim <- is_unit_trimmed(trimmed_obj)
+  expect_type(row_trim, "logical")
+  expect_length(row_trim, length(ps_vec))
+
+  expect_equal(which(row_trim), c(1, 4, 5))
+})
+

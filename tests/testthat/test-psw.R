@@ -14,8 +14,8 @@ test_that("psw helper function works correctly", {
   expect_equal(vec_data(x), c(0.1, 0.2, 0.3))
   expect_equal(estimand(x), "att")
   expect_false(is_stabilized(x))
-  expect_false(is_trimmed(x))
-  expect_false(is_truncated(x))
+  expect_false(is_ps_trimmed(x))
+  expect_false(is_ps_truncated(x))
   estimand(x) <- "ATT!"
   expect_equal(estimand(x), "ATT!")
 })

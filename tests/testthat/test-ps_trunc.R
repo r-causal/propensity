@@ -110,23 +110,23 @@ test_that("Truncation workflow yields truncated psw with no refit logic", {
   expect_s3_class(w_ate, "psw")
 
   # 4) Verify truncated, not trimmed, not refit, estimand
-  expect_true(is_truncated(w_ate))
-  expect_false(is_trimmed(w_ate))
+  expect_true(is_ps_truncated(w_ate))
+  expect_false(is_ps_trimmed(w_ate))
   expect_false(is_refit(w_ate))
   expect_match(estimand(w_ate), "; truncated$")
 })
 
-test_that("is_truncated.default() -> FALSE, is_truncated.ps_trunc() -> TRUE", {
+test_that("is_ps_truncated.default() -> FALSE, is_ps_truncated.ps_trunc() -> TRUE", {
   # 1) A plain numeric => default => FALSE
-  expect_false(is_truncated(runif(5)))
+  expect_false(is_ps_truncated(runif(5)))
 
-  # 2) A simple ps_trunc object => is_truncated(...) => TRUE
+  # 2) A simple ps_trunc object => is_ps_truncated(...) => TRUE
   # Create via new_ps_trunc()
   my_trunc <- new_ps_trunc(
     x = c(0.2, 0.6, 0.8),
     meta = list(method = "ps", lower_bound = 0.2, upper_bound = 0.8)
   )
-  expect_true(is_truncated(my_trunc))
+  expect_true(is_ps_truncated(my_trunc))
 })
 
 test_that("Arithmetic on ps_trunc => vctrs_error_incompatible_op", {
@@ -281,7 +281,7 @@ test_that("wt_atm.ps_trunc synergy with truncated object yields truncated psw", 
   # Estimand => "atm; truncated"
   expect_match(estimand(w_atm), "atm; truncated")
   # truncated=TRUE
-  expect_true(is_truncated(w_atm))
+  expect_true(is_ps_truncated(w_atm))
 })
 
 test_that("wt_ato.ps_trunc synergy with truncated object yields truncated psw", {
@@ -302,5 +302,29 @@ test_that("wt_ato.ps_trunc synergy with truncated object yields truncated psw", 
 
   expect_s3_class(w_ato, "psw")
   expect_match(estimand(w_ato), "ato; truncated")
-  expect_true(is_truncated(w_ato))
+  expect_true(is_ps_truncated(w_ato))
 })
+
+test_that("is_unit_truncated.ps_trunc returns expected row-level booleans", {
+  set.seed(101)
+  ps_vec <- c(0.1, 0.2, 0.5, 0.85, 0.95)
+
+  # Truncate outside [0.2, 0.8]
+  truncated_obj <- ps_trunc(
+    ps_vec,
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  expect_s3_class(truncated_obj, "ps_trunc")
+
+  row_trunc <- is_unit_truncated(truncated_obj)
+  expect_type(row_trunc, "logical")
+  expect_length(row_trunc, length(ps_vec))
+
+  truncated_data <- as.numeric(truncated_obj)
+  expect_equal(which(row_trunc), c(1, 4, 5))
+  expect_equal(truncated_data, c(0.2, 0.2, 0.5, 0.8, 0.8))
+})
+

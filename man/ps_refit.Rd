@@ -46,5 +46,5 @@ is_refit(refit)
 
 }
 \seealso{
-\code{\link[=ps_trim]{ps_trim()}}, \code{\link[=is_refit]{is_refit()}}, \code{\link[=is_trimmed]{is_trimmed()}}
+\code{\link[=ps_trim]{ps_trim()}}, \code{\link[=is_refit]{is_refit()}}, \code{\link[=is_ps_trimmed]{is_ps_trimmed()}}
 }
