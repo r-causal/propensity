@@ -185,3 +185,8 @@ test_that("Refit logic can be tracked if stored in attr", {
   # Suppose we define is_refit.psw() as checking attr(x, "refit")
   expect_true(is_refit(w))
 })
+
+test_that("psw objects can convert to character", {
+  x <- as.character(new_psw(c(0.1, 0.2, 0.3), estimand = "ate"))
+  expect_type(x, "character")
+})
