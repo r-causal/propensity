@@ -328,3 +328,9 @@ test_that("is_unit_truncated.ps_trunc returns expected row-level booleans", {
   expect_equal(truncated_data, c(0.2, 0.2, 0.5, 0.8, 0.8))
 })
 
+test_that("ps_trunc objects can convert to character", {
+  ps <- c(0.01, 0.1, 0.3, 0.8, 0.95)
+  out <- as.character(ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8))
+  expect_type(out, "character")
+})
+

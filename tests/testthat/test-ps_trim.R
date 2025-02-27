@@ -460,3 +460,9 @@ test_that("is_unit_trimmed.ps_trim returns expected row-level booleans", {
   expect_equal(which(row_trim), c(1, 4, 5))
 })
 
+
+test_that("ps_trim objects can convert to character", {
+  ps <- c(0.01, 0.1, 0.3, 0.8, 0.95)
+  out <- as.character(ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8))
+  expect_type(out, "character")
+})
