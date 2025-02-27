@@ -274,6 +274,16 @@ vec_cast.psw.double <- function(x, to, ...) psw(x, estimand = estimand(to))
 vec_cast.double.psw <- function(x, to, ...) vec_data(x)
 
 #' @export
+vec_ptype2.psw.character <- function(x, y, ...) character()
+
+#' @export
+vec_ptype2.character.psw <- function(x, y, ...) character()
+
+#' @export
+vec_cast.character.psw <- function(x, to, ...) as.character(vec_data(x))
+
+
+#' @export
 vec_ptype2.psw.integer <- function(x, y, ...) integer()
 
 #' @export

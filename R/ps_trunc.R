@@ -271,6 +271,15 @@ vec_cast.ps_trunc.double <- function(x, to, ...) {
 }
 
 #' @export
+vec_ptype2.psw.ps_trunc <- function(x, y, ...) character()
+
+#' @export
+vec_ptype2.ps_trunc.psw <- function(x, y, ...) character()
+
+#' @export
+vec_cast.character.ps_trunc <- function(x, to, ...) as.character(vec_data(x))
+
+#' @export
 vec_ptype2.ps_trunc.integer <- function(x, y, ...) integer()
 
 #' @export

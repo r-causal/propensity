@@ -309,6 +309,16 @@ vec_cast.ps_trim.double <- function(x, to, ...) {
     )
   )
 }
+
+#' @export
+vec_ptype2.psw.ps_trim <- function(x, y, ...) character()
+
+#' @export
+vec_ptype2.ps_trim.psw <- function(x, y, ...) character()
+
+#' @export
+vec_cast.character.ps_trim <- function(x, to, ...) as.character(vec_data(x))
+
 #' @export
 vec_ptype2.ps_trim.integer <- function(x, y, ...) integer()
 #' @export
