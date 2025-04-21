@@ -28,6 +28,10 @@ ps_calibrate <- function(ps, treat,
     abort("`ps` must be a numeric vector.")
   }
 
+  if (is_causal_wt(ps) && is_ps_calibrated(ps)) {
+    abort("`ps` already calibrated.")
+  }
+
   if (any(ps < 0 | ps > 1, na.rm = TRUE)) {
     abort("`ps` values must be between 0 and 1.")
   }
@@ -68,6 +72,14 @@ ps_calibrate <- function(ps, treat,
     estimand = estimand,
     stabilized = stabilized,
     trimmed = trimmed,
-    truncated = truncated
+    truncated = truncated,
+    calibrated = TRUE
   )
 }
+
+#' @rdname psw
+#' @export
+is_ps_calibrated <- function(wt) {
+  isTRUE(attr(wt, "calibrated"))
+}
+
