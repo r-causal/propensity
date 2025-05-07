@@ -1,13 +1,14 @@
 #' Calibrate propensity scores
 #'
-#' This function calibrates propensity scores to improve their accuracy
-#' using Platt scaling (logistic regression).
-#' It preserves the attributes of causal weight objects when applicable.
+#' This function calibrates propensity scores to improve their accuracy using
+#' Platt scaling (logistic regression). It preserves the attributes of causal
+#' weight objects when applicable.
 #'
 #' @param ps Numeric vector of propensity scores between 0 and 1
 #' @param treat A binary vector of treatment assignments
 #' @param .treated Value that represents the treated units in the `treat` vector
-#' @param .untreated Value that represents the untreated units in the `treat` vector
+#' @param .untreated Value that represents the untreated units in the `treat`
+#'   vector
 #' @param estimand Character indicating the estimand type.
 #'
 #' @return A calibrated propensity score object (`psw`)
@@ -17,7 +18,6 @@
 #' ps <- runif(100)
 #' treat <- rbinom(100, 1, ps)
 #'
-#' # Calibrate using Platt scaling
 #' calibrated <- ps_calibrate(ps, treat)
 #' @export
 ps_calibrate <- function(ps, treat,
