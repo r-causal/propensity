@@ -103,7 +103,8 @@ is_causal_wt <- function(x) {
 #' @rdname psw
 #' @export
 as_psw <- function(x, estimand = NULL) {
-  vec_cast(x, to = new_psw(estimand = estimand))
+  x <- vec_cast(x, to = double())
+  psw(x, estimand = estimand)
 }
 
 #' @rdname psw
@@ -181,15 +182,6 @@ vec_ptype_full.psw <- function(x, ...) {
     paste0("psw{estimand = unknown", stabilized, "}")
   } else {
     paste0("psw{estimand = ", estimand, stabilized, "}")
-  }
-}
-
-vec_ptype_full.psw <- function(x, ...) {
-  estimand <- estimand(x)
-  if (is.null(estimand)) {
-    "psw{estimand = unknown}"
-  } else {
-    paste0("psw{estimand = ", estimand, "}")
   }
 }
 
@@ -297,3 +289,4 @@ vec_cast.psw.integer <- function(x, to, estimand = NULL, ...) psw(x, estimand = 
 vec_cast.integer.psw <- function(x, to, ...) {
   vec_cast(vec_data(x), integer(), x_arg = "psw")
 }
+
