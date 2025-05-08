@@ -103,7 +103,8 @@ is_causal_wt <- function(x) {
 #' @rdname psw
 #' @export
 as_psw <- function(x, estimand = NULL) {
-  vec_cast(x, to = new_psw(estimand = estimand))
+  x <- vec_cast(x, to = double())
+  psw(x, estimand = estimand)
 }
 
 #' @rdname psw
