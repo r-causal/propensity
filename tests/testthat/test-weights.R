@@ -66,31 +66,60 @@ test_that("ATE works for binary cases", {
 
 test_that("ATE works for continuous cases", {
   denom_model <- lm(mpg ~ gear + am + carb, data = mtcars)
-  num <- dnorm(mtcars$mpg, mean(mtcars$mpg), sd(mtcars$mpg))
-  denom <- dnorm(mtcars$mpg, predict(denom_model), mean(influence(denom_model)$sigma))
-  wts <- 1 / denom
-  stb_wts <- num / denom
+
+  # Compute population variances
+  un_mean <- mean(mtcars$mpg)
+  un_var <- mean((mtcars$mpg - un_mean)^2)
+  cond_var <- mean((mtcars$mpg - predict(denom_model))^2)
+
+  # Compute z-scores and densities
+  z_num <- (mtcars$mpg - un_mean) / sqrt(un_var)
+  z_den <- (mtcars$mpg - predict(denom_model)) / sqrt(cond_var)
+  f_num <- dnorm(z_num)
+  f_den <- dnorm(z_den)
+
+  # Expected weights
+  wts <- 1 / f_den
+  stb_wts <- f_num / f_den
 
   expect_message(
     weights <- wt_ate(
       predict(denom_model),
       .exposure = mtcars$mpg,
-      .sigma = influence(denom_model)$sigma
+      .sigma = influence(denom_model)$sigma,
+      exposure_type = "continuous"
     ),
-    "Treating `.exposure` as continuous",
+    "Using unstabilized weights for continuous exposures is not recommended"
   )
 
-  stablized_weights <- wt_ate(
-    predict(denom_model),
-    .exposure = mtcars$mpg,
-    .sigma = influence(denom_model)$sigma,
-    exposure_type = "continuous",
-    stabilize = TRUE
+  expect_equal(weights, psw(wts, "ate"), tolerance = 0.01)
+  expect_message(
+    stablized_weights <- wt_ate(
+      predict(denom_model),
+      .exposure = mtcars$mpg,
+      .sigma = influence(denom_model)$sigma,
+      stabilize = TRUE,
+    ),
+    "Treating `.exposure` as continuous"
   )
-
-  expect_equal(weights, psw(wts, "ate"), tolerance = .01)
-  expect_equal(stablized_weights, psw(stb_wts, "ate", stabilized = TRUE), tolerance = .01)
+  expect_equal(stablized_weights, psw(stb_wts, "ate", stabilized = TRUE), tolerance = 0.01)
 })
+
+test_that("stabilized weights use P(A=1) and P(A=0) as numerators", {
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+  A <- c(1, 0, 1, 0)
+
+  p1 <- mean(A)
+  p0 <- 1 - p1
+  inv_ps <- 1 / ps
+  inv_1m <- 1 / (1 - ps)
+  expected <- A * inv_ps * p1 + (1 - A) * inv_1m * p0
+
+  got <- ate_binary(ps, A, stabilize = TRUE)
+
+  expect_equal(got, expected)
+})
+
 
 test_that("ATE works for categorical cases", {
   # we don't currently support this!
