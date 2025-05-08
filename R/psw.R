@@ -184,15 +184,6 @@ vec_ptype_full.psw <- function(x, ...) {
   }
 }
 
-vec_ptype_full.psw <- function(x, ...) {
-  estimand <- estimand(x)
-  if (is.null(estimand)) {
-    "psw{estimand = unknown}"
-  } else {
-    paste0("psw{estimand = ", estimand, "}")
-  }
-}
-
 #' @export
 #' @method vec_arith psw
 vec_arith.psw <- function(op, x, y, ...) {
