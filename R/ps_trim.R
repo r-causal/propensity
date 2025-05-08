@@ -157,7 +157,8 @@ new_trimmed_ps <- function(x, ps_trim_meta = list()) {
   new_vctr(
     x,
     ps_trim_meta = ps_trim_meta,
-    class = "ps_trim"
+    class = "ps_trim",
+    inherit_base_type = TRUE
   )
 }
 

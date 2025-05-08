@@ -55,7 +55,8 @@ new_psw <- function(
     trimmed = trimmed,
     truncated = truncated,
     ...,
-    class = c("psw", "causal_wts")
+    class = c("psw", "causal_wts"),
+    inherit_base_type = TRUE
   )
 }
 
