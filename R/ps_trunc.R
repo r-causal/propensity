@@ -101,7 +101,8 @@ new_ps_trunc <- function(x, meta) {
   new_vctr(
     x,
     ps_trunc_meta = meta,
-    class = "ps_trunc"
+    class = "ps_trunc",
+    inherit_base_type = TRUE
   )
 }
 
