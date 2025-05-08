@@ -14,6 +14,7 @@
 #' @param stabilized A logical `TRUE`
 #' @param trimmed Logical, whether these weights came from a trimmed PS.
 #' @param truncated Logical, whether these weights came from a truncated PS.
+#' @param calibrated Logical, whether these weights came from a calibrated PS.
 #' @param wt An object to check or convert.
 #' @param value The value to add to the attribute.
 #' @param ... Additional attributes to track in the weights.
@@ -68,7 +69,8 @@ psw <- function(
   estimand = NULL,
   stabilized = FALSE,
   trimmed = FALSE,
-  truncated = FALSE
+  truncated = FALSE,
+  calibrated = FALSE
 ) {
   x <- vec_cast(x, to = double())
   attributes(x) <- NULL
