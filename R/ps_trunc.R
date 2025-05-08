@@ -297,3 +297,8 @@ vec_cast.ps_trunc.integer <- function(x, to, ...) {
     meta = list(method = "unknown", lower_bound = NA, upper_bound = NA)
   )
 }
+
+#' @export
+vec_math.ps_trunc <- function(.fn, .x, ...) {
+  vec_math_base(.fn, vec_data(.x), ...)
+}

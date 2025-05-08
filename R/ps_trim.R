@@ -343,6 +343,11 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
   )
 }
 
+#' @export
+vec_math.ps_trim <- function(.fn, .x, ...) {
+  vec_math_base(.fn, vec_data(.x), ...)
+}
+
 #' Refit the Propensity Score Model on Retained Observations
 #'
 #' Takes a `ps_trim` object and the original model
