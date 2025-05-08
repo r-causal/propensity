@@ -289,3 +289,14 @@ vec_cast.psw.integer <- function(x, to, estimand = NULL, ...) psw(x, estimand = 
 vec_cast.integer.psw <- function(x, to, ...) {
   vec_cast(vec_data(x), integer(), x_arg = "psw")
 }
+
+#' @export
+vec_restore.psw <- function(x, to, ...) {
+  new_psw(
+    x,
+    estimand = attr(to, "estimand"),
+    stabilized = attr(to, "stabilized"),
+    trimmed = attr(to, "trimmed"),
+    truncated = attr(to, "truncated")
+  )
+}
