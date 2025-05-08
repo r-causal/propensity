@@ -89,12 +89,12 @@ test_that("ATE works for continuous cases", {
       .sigma = influence(denom_model)$sigma,
       exposure_type = "continuous"
     ),
-    "Using unstabilized weights for continuous exposures is not recommended"
+    "Using unstabilized weights for continuous exposures is not recommended."
   )
 
   expect_equal(weights, psw(wts, "ate"), tolerance = 0.01)
   expect_message(
-    stablized_weights <- wt_ate(
+    stabilized_weights <- wt_ate(
       predict(denom_model),
       .exposure = mtcars$mpg,
       .sigma = influence(denom_model)$sigma,
@@ -102,7 +102,12 @@ test_that("ATE works for continuous cases", {
     ),
     "Treating `.exposure` as continuous"
   )
-  expect_equal(stablized_weights, psw(stb_wts, "ate", stabilized = TRUE), tolerance = 0.01)
+
+  expect_equal(
+    stabilized_weights,
+    psw(stb_wts, "ate", stabilized = TRUE),
+    tolerance = 0.01
+  )
 })
 
 test_that("stabilized weights use P(A=1) and P(A=0) as numerators", {
