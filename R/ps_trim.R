@@ -57,7 +57,9 @@ ps_trim <- function(
     check_lower_upper(lower, upper)
   } else if (method == "adaptive") {
     if (!is.null(lower) || !is.null(upper)) {
-      warn("For {.code method = 'adaptive'}, {.code lower} and {.code upper} are ignored.")
+      warn(
+        "For {.code method = 'adaptive'}, {.code lower} and {.code upper} are ignored."
+      )
     }
   } else if (method == "pctl") {
     if (is.null(lower)) lower <- 0.05
@@ -67,7 +69,9 @@ ps_trim <- function(
     if (is.null(upper)) upper <- 0.7
   } else {
     if (!is.null(lower) || !is.null(upper)) {
-      warn("For {.code method = 'cr'}, {.code lower} and {.code upper} are ignored.")
+      warn(
+        "For {.code method = 'cr'}, {.code lower} and {.code upper} are ignored."
+      )
     }
   }
 
@@ -145,7 +149,7 @@ ps_trim <- function(
     ps_trim_meta = c(
       meta_list,
       list(
-        keep_idx    = keep_idx,
+        keep_idx = keep_idx,
         trimmed_idx = trimmed_idx
       )
     )
@@ -304,8 +308,8 @@ vec_cast.ps_trim.double <- function(x, to, ...) {
   new_trimmed_ps(
     x,
     ps_trim_meta = list(
-      method      = "unknown",
-      keep_idx    = seq_along(x),
+      method = "unknown",
+      keep_idx = seq_along(x),
       trimmed_idx = integer(0)
     )
   )
@@ -336,8 +340,8 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
   new_trimmed_ps(
     xx,
     ps_trim_meta = list(
-      method      = "unknown",
-      keep_idx    = seq_along(xx),
+      method = "unknown",
+      keep_idx = seq_along(xx),
       trimmed_idx = integer(0)
     )
   )

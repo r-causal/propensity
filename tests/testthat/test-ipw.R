@@ -6,12 +6,12 @@ test_that("variance works", {
   # these objects calculated from Kostouraki et al. See ?ipw
   l0_ATEW_cor <- readRDS(testthat::test_path("data", "l0_ATEW_cor.rds"))
   l0_ATTW_cor <- readRDS(testthat::test_path("data", "l0_ATTW_cor.rds"))
-  l0_MW_cor   <- readRDS(testthat::test_path("data", "l0_MW_cor.rds"))
-  l0_OW_cor   <- readRDS(testthat::test_path("data", "l0_OW_cor.rds"))
+  l0_MW_cor <- readRDS(testthat::test_path("data", "l0_MW_cor.rds"))
+  l0_OW_cor <- readRDS(testthat::test_path("data", "l0_OW_cor.rds"))
   l1_ATEW_cor <- readRDS(testthat::test_path("data", "l1_ATEW_cor.rds"))
   l1_ATTW_cor <- readRDS(testthat::test_path("data", "l1_ATTW_cor.rds"))
-  l1_MW_cor   <- readRDS(testthat::test_path("data", "l1_MW_cor.rds"))
-  l1_OW_cor   <- readRDS(testthat::test_path("data", "l1_OW_cor.rds"))
+  l1_MW_cor <- readRDS(testthat::test_path("data", "l1_MW_cor.rds"))
+  l1_OW_cor <- readRDS(testthat::test_path("data", "l1_OW_cor.rds"))
   .df <- readRDS(testthat::test_path("data", "df.rds"))
 
   ps_mod <- glm(
@@ -22,10 +22,30 @@ test_that("variance works", {
 
   ps <- predict(ps_mod, type = "response")
 
-  outcome_mod_ate <- glm(Y ~ Z, weights = wt_ate(ps, .df$Z, exposure_type = "binary", .treated = 1), data = .df, family = quasibinomial())
-  outcome_mod_att <- glm(Y ~ Z, weights = wt_att(ps, .df$Z, exposure_type = "binary", .treated = 1), data = .df, family = quasibinomial())
-  outcome_mod_ato <- glm(Y ~ Z, weights = wt_ato(ps, .df$Z, exposure_type = "binary", .treated = 1), data = .df, family = quasibinomial())
-  outcome_mod_atm <- glm(Y ~ Z, weights = wt_atm(ps, .df$Z, exposure_type = "binary", .treated = 1), data = .df, family = quasibinomial())
+  outcome_mod_ate <- glm(
+    Y ~ Z,
+    weights = wt_ate(ps, .df$Z, exposure_type = "binary", .treated = 1),
+    data = .df,
+    family = quasibinomial()
+  )
+  outcome_mod_att <- glm(
+    Y ~ Z,
+    weights = wt_att(ps, .df$Z, exposure_type = "binary", .treated = 1),
+    data = .df,
+    family = quasibinomial()
+  )
+  outcome_mod_ato <- glm(
+    Y ~ Z,
+    weights = wt_ato(ps, .df$Z, exposure_type = "binary", .treated = 1),
+    data = .df,
+    family = quasibinomial()
+  )
+  outcome_mod_atm <- glm(
+    Y ~ Z,
+    weights = wt_atm(ps, .df$Z, exposure_type = "binary", .treated = 1),
+    data = .df,
+    family = quasibinomial()
+  )
 
   est <- ipw(ps_mod, outcome_mod_ate)
 
@@ -65,10 +85,10 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
   x2 <- rbinom(n, 1, 0.3)
 
   # Exposure depends on both confounders:
-  z <- rbinom(n, 1, plogis(0.2*x1 - 0.8*x2))
+  z <- rbinom(n, 1, plogis(0.2 * x1 - 0.8 * x2))
 
   # Binary outcome depends on exposure + confounders:
-  y <- rbinom(n, 1, plogis(-1 + 1.5*z + 0.4*x1 - 0.5*x2))
+  y <- rbinom(n, 1, plogis(-1 + 1.5 * z + 0.4 * x1 - 0.5 * x2))
 
   dat <- data.frame(x1, x2, z, y)
 
@@ -101,8 +121,19 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
   # For binary outcomes, we should see 'rd', 'log(rr)', 'log(or)'
   est_df <- res$estimates
   expect_s3_class(est_df, "data.frame")
-  expect_named(est_df, c("effect", "estimate", "std.err", "z",
-                        "ci.lower", "ci.upper", "conf.level", "p.value"))
+  expect_named(
+    est_df,
+    c(
+      "effect",
+      "estimate",
+      "std.err",
+      "z",
+      "ci.lower",
+      "ci.upper",
+      "conf.level",
+      "p.value"
+    )
+  )
 
   expect_true("rd" %in% est_df$effect)
   expect_true("log(rr)" %in% est_df$effect)
@@ -119,10 +150,10 @@ test_that("ipw works for continuous outcome with a confounder, using logistic ps
   x2 <- rbinom(n, 1, 0.4)
 
   # Exposure depends on confounders
-  z <- rbinom(n, 1, plogis(0.2*x1 + 0.3*x2))
+  z <- rbinom(n, 1, plogis(0.2 * x1 + 0.3 * x2))
 
   # Continuous outcome depends on exposure and confounders
-  y <- 5 + 2*z + 1*x1 - 0.5*x2 + rnorm(n)
+  y <- 5 + 2 * z + 1 * x1 - 0.5 * x2 + rnorm(n)
 
   dat <- data.frame(x1, x2, z, y)
 
@@ -149,8 +180,19 @@ test_that("ipw works for continuous outcome with a confounder, using logistic ps
   expect_equal(nrow(est_df), 1)
 
   # Check columns
-  expect_named(est_df, c("effect", "estimate", "std.err", "z",
-                    "ci.lower", "ci.upper", "conf.level", "p.value"))
+  expect_named(
+    est_df,
+    c(
+      "effect",
+      "estimate",
+      "std.err",
+      "z",
+      "ci.lower",
+      "ci.upper",
+      "conf.level",
+      "p.value"
+    )
+  )
 
   expect_no_error(ipw(ps_mod, outcome_mod2, .df = dat, estimand = "ate"))
 })
@@ -205,8 +247,8 @@ test_that("ipw handles .df = NULL properly", {
   set.seed(104)
   n <- 200
   x <- rnorm(n)
-  z <- rbinom(n, 1, plogis(0.2*x))
-  y <- rbinom(n, 1, plogis(-1 + 1.5*z + 0.5*x))
+  z <- rbinom(n, 1, plogis(0.2 * x))
+  y <- rbinom(n, 1, plogis(-1 + 1.5 * z + 0.5 * x))
 
   data_no_df <- data.frame(x, z, y)
 
@@ -214,7 +256,12 @@ test_that("ipw handles .df = NULL properly", {
   ps <- predict(ps_mod, type = "response")
   wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
 
-  outcome_mod <- glm(y ~ z, data = data_no_df, family = quasibinomial(), weights = wts)
+  outcome_mod <- glm(
+    y ~ z,
+    data = data_no_df,
+    family = quasibinomial(),
+    weights = wts
+  )
 
   # .df = NULL => ipw should extract from model frames
   res <- ipw(ps_mod, outcome_mod, .df = NULL)
@@ -226,8 +273,8 @@ test_that("ipw handles various errors correctly", {
   set.seed(104)
   n <- 200
   x <- rnorm(n)
-  z <- rbinom(n, 1, plogis(0.2*x))
-  y <- rbinom(n, 1, plogis(-1 + 1.5*z + 0.5*x))
+  z <- rbinom(n, 1, plogis(0.2 * x))
+  y <- rbinom(n, 1, plogis(-1 + 1.5 * z + 0.5 * x))
 
   df <- data.frame(x, z, y)
 
@@ -235,7 +282,12 @@ test_that("ipw handles various errors correctly", {
   ps <- predict(ps_mod, type = "response")
   wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
 
-  outcome_mod_no_estimand <- glm(y ~ z, data = df, family = quasibinomial(), weights = as.double(wts))
+  outcome_mod_no_estimand <- glm(
+    y ~ z,
+    data = df,
+    family = quasibinomial(),
+    weights = as.double(wts)
+  )
 
   expect_error(
     ipw(ps_mod, outcome_mod_no_estimand),
@@ -247,8 +299,8 @@ test_that("exponentiate=TRUE in as.data.frame.ipw transforms log(rr), log(or)", 
   set.seed(105)
   n <- 500
   x <- rnorm(n)
-  z <- rbinom(n, 1, plogis(0.5*x))
-  y <- rbinom(n, 1, plogis(-0.5 + 1.2*z + 0.3*x))
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  y <- rbinom(n, 1, plogis(-0.5 + 1.2 * z + 0.3 * x))
 
   dat <- data.frame(x, z, y)
 
@@ -282,8 +334,8 @@ test_that("Estimand mismatch triggers an error if outcome weights differ from us
   set.seed(106)
   n <- 300
   x <- rnorm(n)
-  z <- rbinom(n, 1, plogis(0.2*x))
-  y <- rbinom(n, 1, plogis(1 + 0.8*z + 0.4*x))
+  z <- rbinom(n, 1, plogis(0.2 * x))
+  y <- rbinom(n, 1, plogis(1 + 0.8 * z + 0.4 * x))
 
   dat <- data.frame(x, z, y)
 
@@ -292,11 +344,21 @@ test_that("Estimand mismatch triggers an error if outcome weights differ from us
   wts_ate <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
 
   # Weighted outcome model with ATE
-  outcome_mod_ate <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts_ate)
+  outcome_mod_ate <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts_ate
+  )
 
   # If your code properly checks mismatch, this should raise an error
   expect_error(
-    ipw(ps_mod = ps_mod, outcome_mod = outcome_mod_ate, .df = dat, estimand = "att"),
+    ipw(
+      ps_mod = ps_mod,
+      outcome_mod = outcome_mod_ate,
+      .df = dat,
+      estimand = "att"
+    ),
     "Estimand in weights different from `estimand`"
   )
 })
@@ -305,8 +367,8 @@ test_that("ipw works for probit link in the propensity score model", {
   set.seed(2002)
   n <- 400
   x2 <- rnorm(n)
-  z  <- rbinom(n, 1, pnorm(0.4*x2))
-  y  <- rbinom(n, 1, plogis(-0.5 + 1.2*z + 0.3*x2))
+  z <- rbinom(n, 1, pnorm(0.4 * x2))
+  y <- rbinom(n, 1, plogis(-0.5 + 1.2 * z + 0.3 * x2))
 
   dat <- data.frame(x2, z, y)
 
@@ -335,8 +397,8 @@ test_that("ipw works for cloglog link in the propensity score model", {
   # Generating exposure from a cloglog perspective is trickier,
   # but we can just stick to logistic generation for simplicity
   # and fit cloglog anyway:
-  z <- rbinom(n, 1, plogis(0.5*x3))
-  y <- rbinom(n, 1, plogis(-1 + 1.5*z + 0.8*x3))
+  z <- rbinom(n, 1, plogis(0.5 * x3))
+  y <- rbinom(n, 1, plogis(-1 + 1.5 * z + 0.8 * x3))
 
   dat <- data.frame(x3, z, y)
 
@@ -363,8 +425,8 @@ test_that("ipw works for cloglog link in the propensity score model", {
   set.seed(3003)
   n <- 400
   x3 <- rnorm(n)
-  z <- rbinom(n, 1, plogis(0.5*x3))
-  y <- rbinom(n, 1, plogis(-1 + 1.5*z + 0.8*x3))
+  z <- rbinom(n, 1, plogis(0.5 * x3))
+  y <- rbinom(n, 1, plogis(-1 + 1.5 * z + 0.8 * x3))
 
   dat <- data.frame(x3, z, y)
 
@@ -372,17 +434,25 @@ test_that("ipw works for cloglog link in the propensity score model", {
   ps <- predict(ps_mod, type = "response")
   wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
 
-  outcome_mod_wrong <- glm(y ~ z, data = dat[1:100, ], family = quasibinomial(), weights = wts[1:100])
+  outcome_mod_wrong <- glm(
+    y ~ z,
+    data = dat[1:100, ],
+    family = quasibinomial(),
+    weights = wts[1:100]
+  )
 
   expect_error(
     ipw(ps_mod, outcome_mod_wrong, estimand = "ate"),
     "`exposure` and `outcome` must be the same length"
   )
 
-  outcome_mod_transformed <- glm(y ~ I(z^2), family = quasibinomial(), weights = wts)
+  outcome_mod_transformed <- glm(
+    y ~ I(z^2),
+    family = quasibinomial(),
+    weights = wts
+  )
   expect_error(
     ipw(ps_mod, outcome_mod_transformed, estimand = "ate"),
     class = "propensity_columns_exist_error"
   )
 })
-
