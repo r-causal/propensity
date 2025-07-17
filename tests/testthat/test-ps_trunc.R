@@ -106,7 +106,12 @@ test_that("Truncation workflow yields truncated psw with no refit logic", {
   expect_s3_class(truncated_ps, "ps_trunc")
 
   # 3) Compute ATE weights
-  w_ate <- wt_ate(truncated_ps, .exposure = z, exposure_type = "binary", .treated = 1)
+  w_ate <- wt_ate(
+    truncated_ps,
+    .exposure = z,
+    exposure_type = "binary",
+    .treated = 1
+  )
   expect_s3_class(w_ate, "psw")
 
   # 4) Verify truncated, not trimmed, not refit, estimand
@@ -355,4 +360,3 @@ test_that("ps_trunc works with summarize(mean = mean(ps))", {
   expect_named(out, c("truncated", "mean"))
   expect_type(out$mean, "double")
 })
-

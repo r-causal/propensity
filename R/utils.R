@@ -2,7 +2,12 @@ be_quiet <- function() {
   getOption("propensity.quiet", default = FALSE)
 }
 
-abort <- function(..., error_class = NULL, call = rlang::caller_env(), .envir = parent.frame()) {
+abort <- function(
+  ...,
+  error_class = NULL,
+  call = rlang::caller_env(),
+  .envir = parent.frame()
+) {
   cli::cli_abort(
     ...,
     class = c(error_class, "propensity_error"),
@@ -11,7 +16,12 @@ abort <- function(..., error_class = NULL, call = rlang::caller_env(), .envir = 
   )
 }
 
-warn <- function(..., warning_class = NULL, call = rlang::caller_env(), .envir = parent.frame()) {
+warn <- function(
+  ...,
+  warning_class = NULL,
+  call = rlang::caller_env(),
+  .envir = parent.frame()
+) {
   cli::cli_warn(
     ...,
     class = c(warning_class, "propensity_warning"),
@@ -26,7 +36,13 @@ alert_info <- function(.message, .envir = parent.frame()) {
   }
 }
 
-assert_class <- function(x, classes, .length = NULL, arg = rlang::caller_arg(x), call = rlang::caller_env()) {
+assert_class <- function(
+  x,
+  classes,
+  .length = NULL,
+  arg = rlang::caller_arg(x),
+  call = rlang::caller_env()
+) {
   classes <- as.character(classes)
   .stop <- FALSE
   .msg <- if (length(classes) == 1) {
@@ -67,7 +83,12 @@ assert_class <- function(x, classes, .length = NULL, arg = rlang::caller_arg(x),
   invisible(TRUE)
 }
 
-assert_columns_exist <- function(.df, names_vec, arg = rlang::caller_arg(.df), call = rlang::caller_env()) {
+assert_columns_exist <- function(
+  .df,
+  names_vec,
+  arg = rlang::caller_arg(.df),
+  call = rlang::caller_env()
+) {
   missing <- setdiff(names_vec, names(.df))
   if (length(missing) > 0) {
     abort(

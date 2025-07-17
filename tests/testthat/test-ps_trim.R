@@ -22,7 +22,9 @@ test_that("ps_trim() - Basic structure and return types", {
   meta <- ps_trim_meta(out)
   expect_true(is.list(meta))
   # e.g. method, lower, upper, keep_idx, trimmed_idx
-  expect_true(all(c("method", "lower", "upper", "keep_idx", "trimmed_idx") %in% names(meta)))
+  expect_true(all(
+    c("method", "lower", "upper", "keep_idx", "trimmed_idx") %in% names(meta)
+  ))
 
   # Check that the kept indices and trimmed indices are disjoint
   expect_length(intersect(meta$keep_idx, meta$trimmed_idx), 0)
@@ -80,7 +82,12 @@ test_that("adaptive method: ignores lower/upper, warns appropriately", {
 
   # 2) If user sets lower/upper, we expect a warning
   expect_warning(
-    out_adapt_warn <- ps_trim(ps, method = "adaptive", lower = 0.2, upper = 0.8),
+    out_adapt_warn <- ps_trim(
+      ps,
+      method = "adaptive",
+      lower = 0.2,
+      upper = 0.8
+    ),
     "For `method = 'adaptive'`, `lower` and `upper` are ignored."
   )
 })
@@ -190,7 +197,14 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
 
   # Check that user-specified lower/upper => warning
   expect_warning(
-    ps_trim(ps, .exposure = z, method = "cr", lower = 0.2, upper = 0.8, .treated = 1),
+    ps_trim(
+      ps,
+      .exposure = z,
+      method = "cr",
+      lower = 0.2,
+      upper = 0.8,
+      .treated = 1
+    ),
     "For `method = 'cr'`, `lower` and `upper` are ignored."
   )
 })
@@ -267,7 +281,12 @@ test_that("Full workflow: trim -> refit -> weighting yields refit, trimmed psw",
   expect_true(is_refit(trimmed_refit)) # now refit=TRUE in ps_trim_meta
 
   # 4) Create ATE weights with the refitted ps_trim object
-  w_ate <- wt_ate(trimmed_refit, .exposure = z, exposure_type = "binary", .treated = 1)
+  w_ate <- wt_ate(
+    trimmed_refit,
+    .exposure = z,
+    exposure_type = "binary",
+    .treated = 1
+  )
 
   # 5) Check final psw object
   expect_s3_class(w_ate, "psw")
@@ -350,8 +369,8 @@ test_that("vec_ptype_abbr.ps_trim() and vec_ptype_full.ps_trim() coverage", {
   ps_obj <- new_trimmed_ps(
     c(0.1, NA, 0.7),
     ps_trim_meta = list(
-      method      = "ps",
-      keep_idx    = c(1, 3),
+      method = "ps",
+      keep_idx = c(1, 3),
       trimmed_idx = 2
     )
   )
@@ -489,4 +508,3 @@ test_that("ps_trim works with summarize(mean = mean(ps))", {
   expect_named(out, c("trimmed", "mean"))
   expect_type(out$mean, "double")
 })
-

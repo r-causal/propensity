@@ -6,7 +6,10 @@ abort_unsupported <- function(exposure_type, what, call = rlang::caller_env()) {
   )
 }
 
-match_exposure_type <- function(exposure_type = c("auto", "binary", "categorical", "continuous"), .exposure) {
+match_exposure_type <- function(
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .exposure
+) {
   .exposure_type <- rlang::arg_match(exposure_type)
   if (.exposure_type == "auto") {
     detect_exposure_type(.exposure)
@@ -29,7 +32,12 @@ detect_exposure_type <- function(.exposure) {
   exposure_type
 }
 
-transform_exposure_binary <- function(.exposure, .treated = NULL, .untreated = NULL, call = rlang::caller_env()) {
+transform_exposure_binary <- function(
+  .exposure,
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::caller_env()
+) {
   if (is_binary(.exposure)) {
     return(.exposure)
   }
@@ -47,17 +55,19 @@ transform_exposure_binary <- function(.exposure, .treated = NULL, .untreated = N
   }
 
   if (is.null(.treated) && is.null(.untreated) && has_two_levels(.exposure)) {
-    levels <- if (is.factor(.exposure)) levels(.exposure) else sort(unique(.exposure))
+    levels <- if (is.factor(.exposure)) levels(.exposure) else
+      sort(unique(.exposure))
     alert_info("Setting treatment to {.var {levels[[2]]}}")
     return(ifelse(.exposure == levels[[2]], 1, 0))
   } else {
-    abort(c(
-      "Don't know how to transform `.exposure` to 0/1 binary variable.",
-      i = "Specify `.treated` and `.untreated.`"
-    ),
-    call = call,
-    error_class = "propensity_binary_transform_error"
-  )
+    abort(
+      c(
+        "Don't know how to transform `.exposure` to 0/1 binary variable.",
+        i = "Specify `.treated` and `.untreated.`"
+      ),
+      call = call,
+      error_class = "propensity_binary_transform_error"
+    )
   }
 }
 
@@ -77,21 +87,28 @@ has_two_levels <- function(.x) {
 
 check_refit <- function(.propensity) {
   if (!is_refit(.propensity)) {
-    warn(c(
-      "It appears you trimmed your propensity score but did not refit the model.",
-      i = "Use {.code ps_refit()} for more accurate re-estimation."
-    ), warning_class = "propensity_no_refit_warning")
+    warn(
+      c(
+        "It appears you trimmed your propensity score but did not refit the model.",
+        i = "Use {.code ps_refit()} for more accurate re-estimation."
+      ),
+      warning_class = "propensity_no_refit_warning"
+    )
   }
 }
 
 check_ps_range <- function(ps, call = rlang::caller_env()) {
   ps <- as.numeric(ps)
   if (any(ps <= 0 | ps >= 1, na.rm = TRUE)) {
-    abort(c(
-      "The propensity score must be between 0 and 1.",
-      i = "The range of {.arg ps} is \\
+    abort(
+      c(
+        "The propensity score must be between 0 and 1.",
+        i = "The range of {.arg ps} is \\
       {format(range(ps), nsmall = 1, digits = 1)}"
-    ), call = call, error_class = "propensity_range_error")
+      ),
+      call = call,
+      error_class = "propensity_range_error"
+    )
   }
 
   invisible(TRUE)
@@ -99,10 +116,14 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
 
 check_lower_upper <- function(lower, upper, call = rlang::caller_env()) {
   if (lower >= upper) {
-    abort(c(
-      "{.arg lower} must be smaller than {.arg upper}",
-      x = "{.arg lower} is {lower} and {.arg upper} is {upper}"
-    ), call = call, error_class = "propensity_range_error")
+    abort(
+      c(
+        "{.arg lower} must be smaller than {.arg upper}",
+        x = "{.arg lower} is {lower} and {.arg upper} is {upper}"
+      ),
+      call = call,
+      error_class = "propensity_range_error"
+    )
   }
 
   invisible(TRUE)
