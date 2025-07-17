@@ -85,7 +85,10 @@ test_that("vec_ptype2 combines psw and other types correctly", {
 
   # Different estimands should fail
   z <- psw(c(0.5, 0.6), estimand = "att")
-  expect_error(vec_ptype2(x, z), "Can't combine weights with different estimands")
+  expect_error(
+    vec_ptype2(x, z),
+    "Can't combine weights with different estimands"
+  )
 
   # Combining with double
   expect_equal(vec_ptype2(x, double()), double())

@@ -106,7 +106,12 @@ test_that("Truncation workflow yields truncated psw with no refit logic", {
   expect_s3_class(truncated_ps, "ps_trunc")
 
   # 3) Compute ATE weights
-  w_ate <- wt_ate(truncated_ps, .exposure = z, exposure_type = "binary", .treated = 1)
+  w_ate <- wt_ate(
+    truncated_ps,
+    .exposure = z,
+    exposure_type = "binary",
+    .treated = 1
+  )
   expect_s3_class(w_ate, "psw")
 
   # 4) Verify truncated, not trimmed, not refit, estimand
@@ -333,4 +338,3 @@ test_that("ps_trunc objects can convert to character", {
   out <- as.character(ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8))
   expect_type(out, "character")
 })
-

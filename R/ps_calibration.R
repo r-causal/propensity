@@ -20,9 +20,13 @@
 #'
 #' calibrated <- ps_calibrate(ps, treat)
 #' @export
-ps_calibrate <- function(ps, treat,
-                         .treated = 1, .untreated = 0,
-                         estimand = NULL) {
+ps_calibrate <- function(
+  ps,
+  treat,
+  .treated = 1,
+  .untreated = 0,
+  estimand = NULL
+) {
   # Check that ps is numeric and in valid range
   if (!is.numeric(ps)) {
     abort("`ps` must be a numeric vector.")
@@ -82,4 +86,3 @@ ps_calibrate <- function(ps, treat,
 is_ps_calibrated <- function(wt) {
   isTRUE(attr(wt, "calibrated"))
 }
-

@@ -37,13 +37,13 @@
 #'
 #' @export
 ps_trunc <- function(
-    ps,
-    method = c("ps", "pctl", "cr"),
-    lower = NULL,
-    upper = NULL,
-    .exposure = NULL,
-    .treated = NULL,
-    .untreated = NULL
+  ps,
+  method = c("ps", "pctl", "cr"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   method <- rlang::arg_match(method)
   meta_list <- list(method = method)
@@ -77,11 +77,11 @@ ps_trunc <- function(
   }
 
   # winsorize
-  pinned_low  <- which(ps < lb)
+  pinned_low <- which(ps < lb)
   pinned_high <- which(ps > ub)
   truncated_idx <- sort(c(pinned_low, pinned_high))
 
-  ps[pinned_low]  <- lb
+  ps[pinned_low] <- lb
   ps[pinned_high] <- ub
 
   meta <- c(
@@ -205,7 +205,15 @@ vec_ptype_abbr.ps_trunc <- function(x, ...) {
 #' @export
 vec_ptype_full.ps_trunc <- function(x, ...) {
   m <- ps_trunc_meta(x)
-  paste0("ps_trunc{[", m$lower_bound, ",", m$upper_bound, "], method=", m$method, "}")
+  paste0(
+    "ps_trunc{[",
+    m$lower_bound,
+    ",",
+    m$upper_bound,
+    "], method=",
+    m$method,
+    "}"
+  )
 }
 
 # Arithmetic disallowed

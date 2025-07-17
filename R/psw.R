@@ -61,7 +61,6 @@ new_psw <- function(
 }
 
 
-
 #' @rdname psw
 #' @export
 psw <- function(
@@ -76,10 +75,10 @@ psw <- function(
   attributes(x) <- NULL
   new_psw(
     x,
-    estimand   = estimand,
+    estimand = estimand,
     stabilized = stabilized,
-    trimmed    = trimmed,
-    truncated  = truncated
+    trimmed = trimmed,
+    truncated = truncated
   )
 }
 
@@ -292,7 +291,8 @@ vec_ptype2.psw.integer <- function(x, y, ...) integer()
 vec_ptype2.integer.psw <- function(x, y, ...) integer()
 
 #' @export
-vec_cast.psw.integer <- function(x, to, estimand = NULL, ...) psw(x, estimand = estimand(to))
+vec_cast.psw.integer <- function(x, to, estimand = NULL, ...)
+  psw(x, estimand = estimand(to))
 
 #' @export
 vec_cast.integer.psw <- function(x, to, ...) {

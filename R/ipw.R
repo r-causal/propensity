@@ -92,7 +92,14 @@
 #' @export
 #' @importFrom stats dnorm family formula model.frame model.matrix model.weights
 #' @importFrom stats pnorm predict printCoefmat qnorm var
-ipw <- function(ps_mod, outcome_mod, .df = NULL, estimand = NULL, ps_link = NULL, conf_level = 0.95) {
+ipw <- function(
+  ps_mod,
+  outcome_mod,
+  .df = NULL,
+  estimand = NULL,
+  ps_link = NULL,
+  conf_level = 0.95
+) {
   assert_class(ps_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
 
@@ -104,7 +111,6 @@ ipw <- function(ps_mod, outcome_mod, .df = NULL, estimand = NULL, ps_link = NULL
     exposure <- fmla_extract_left_vctr(ps_mod)
     outcome <- fmla_extract_left_vctr(outcome_mod)
   } else {
-
     assert_class(exposure_name, "character", .length = 1)
     assert_class(outcome_name, "character", .length = 1)
     assert_columns_exist(.df, c(exposure_name, outcome_name))
@@ -207,8 +213,19 @@ print.ipw <- function(x, ...) {
 #' @param row.names,optional,... Passed to `as.data.frame()`.
 #' @export
 #' @rdname ipw
-as.data.frame.ipw <- function(x, row.names = NULL, optional = NULL, exponentiate = FALSE, ...) {
-  df <- as.data.frame(x$estimates, row.names = row.names, optional = optional, ...)
+as.data.frame.ipw <- function(
+  x,
+  row.names = NULL,
+  optional = NULL,
+  exponentiate = FALSE,
+  ...
+) {
+  df <- as.data.frame(
+    x$estimates,
+    row.names = row.names,
+    optional = optional,
+    ...
+  )
 
   if (!exponentiate) {
     # Return as-is
@@ -240,7 +257,13 @@ as.data.frame.ipw <- function(x, row.names = NULL, optional = NULL, exponentiate
   df
 }
 
-calculate_estimates <- function(lin_vars, marginal_means, n, linear_regression, conf_level) {
+calculate_estimates <- function(
+  lin_vars,
+  marginal_means,
+  n,
+  linear_regression,
+  conf_level
+) {
   z_val <- qnorm(1 - ((1 - conf_level) / 2))
 
   ### RISK DIFFERENCE (raw scale)
@@ -285,7 +308,9 @@ calculate_estimates <- function(lin_vars, marginal_means, n, linear_regression, 
   log_rr_est <- log(rr_raw_est)
 
   # Influence for RR on the raw scale: (l1 / mu1 - l0 / mu0)
-  rr_inf_raw <- lin_vars$l1 / marginal_means$mu1 - lin_vars$l0 / marginal_means$mu0
+  rr_inf_raw <- lin_vars$l1 /
+    marginal_means$mu1 -
+    lin_vars$l0 / marginal_means$mu0
   # Then for log(RR), the influence is  (1 / RR) * rr_inf_raw
   log_rr_inf <- (1 / rr_raw_est) * rr_inf_raw
 
@@ -302,12 +327,15 @@ calculate_estimates <- function(lin_vars, marginal_means, n, linear_regression, 
   # ---------------------------
   # OR = [mu1/(1 - mu1)] / [mu0/(1 - mu0)]
 
-  or_raw_est <- (marginal_means$mu1 / (1 - marginal_means$mu1)) / (marginal_means$mu0 / (1 - marginal_means$mu0))
+  or_raw_est <- (marginal_means$mu1 / (1 - marginal_means$mu1)) /
+    (marginal_means$mu0 / (1 - marginal_means$mu0))
   log_or_est <- log(or_raw_est)
 
   # Influence for OR on the raw scale:
   #   l_or_raw = l1 / [mu1*(1 - mu1)] - l0 / [mu0*(1 - mu0)]
-  or_inf_raw <- (lin_vars$l1 / (marginal_means$mu1 * (1 - marginal_means$mu1))) - (lin_vars$l0 / (marginal_means$mu0 * (1 - marginal_means$mu0)))
+  or_inf_raw <- (lin_vars$l1 /
+    (marginal_means$mu1 * (1 - marginal_means$mu1))) -
+    (lin_vars$l0 / (marginal_means$mu0 * (1 - marginal_means$mu0)))
   # Then log(OR) influence =  (1 / OR) * or_inf_raw
   log_or_inf <- (1 / or_raw_est) * or_inf_raw
 
@@ -319,7 +347,6 @@ calculate_estimates <- function(lin_vars, marginal_means, n, linear_regression, 
 
   or_z <- log_or_est / log_or_se
   or_p <- 2 * (1 - pnorm(abs(or_z)))
-
 
   data.frame(
     effect = c("rd", "log(rr)", "log(or)"),
@@ -352,7 +379,17 @@ linearize_variables_for_wts <- function(Z, Y, wts, marginal_means) {
 
 
 # additionally adds variability for the estimation of the PS
-linearize_variables_for_ps <- function(exposure, outcome, wts, ps, estimand, weight_matrix, marginal_means, uncorrected_lin_vars, ps_link) {
+linearize_variables_for_ps <- function(
+  exposure,
+  outcome,
+  wts,
+  ps,
+  estimand,
+  weight_matrix,
+  marginal_means,
+  uncorrected_lin_vars,
+  ps_link
+) {
   n <- length(exposure)
   weight_derivatives <- derive_weights(
     exposure = exposure,
@@ -369,30 +406,32 @@ linearize_variables_for_ps <- function(exposure, outcome, wts, ps, estimand, wei
     n = n
   )
 
-  l1 <- uncorrected_lin_vars$l1 + correct_for_ps(
-    exposure = exposure,
-    outcome = outcome,
-    ps = ps,
-    mu = marginal_means$mu1,
-    n_group = marginal_means$n1,
-    weight_matrix = weight_matrix,
-    weight_derivatives = weight_derivatives,
-    correction_mat = correction_mat,
-    n = n
-  )
+  l1 <- uncorrected_lin_vars$l1 +
+    correct_for_ps(
+      exposure = exposure,
+      outcome = outcome,
+      ps = ps,
+      mu = marginal_means$mu1,
+      n_group = marginal_means$n1,
+      weight_matrix = weight_matrix,
+      weight_derivatives = weight_derivatives,
+      correction_mat = correction_mat,
+      n = n
+    )
 
-  l0 <- uncorrected_lin_vars$l0 + correct_for_ps(
-    exposure = exposure,
-    exposure_actual = 1 - exposure,
-    outcome = outcome,
-    ps = ps,
-    mu = marginal_means$mu0,
-    n_group = marginal_means$n0,
-    weight_matrix = weight_matrix,
-    weight_derivatives = weight_derivatives,
-    correction_mat = correction_mat,
-    n = n
-  )
+  l0 <- uncorrected_lin_vars$l0 +
+    correct_for_ps(
+      exposure = exposure,
+      exposure_actual = 1 - exposure,
+      outcome = outcome,
+      ps = ps,
+      mu = marginal_means$mu0,
+      n_group = marginal_means$n0,
+      weight_matrix = weight_matrix,
+      weight_derivatives = weight_derivatives,
+      correction_mat = correction_mat,
+      n = n
+    )
 
   list(l1 = l1, l0 = l0)
 }
@@ -425,11 +464,23 @@ t_tcrossprod_over_rows <- function(mat) {
   out
 }
 
-correct_for_ps <- function(exposure, exposure_actual = exposure, outcome, ps, mu, n_group, weight_matrix, weight_derivatives, correction_mat, n) {
+correct_for_ps <- function(
+  exposure,
+  exposure_actual = exposure,
+  outcome,
+  ps,
+  mu,
+  n_group,
+  weight_matrix,
+  weight_derivatives,
+  correction_mat,
+  n
+) {
   # first, compute partial-derivative sums over subjects (averaged by n)
   partial_derivative_sums <- colSums(
     weight_derivatives * exposure_actual * (outcome - mu)
-  ) / n
+  ) /
+    n
 
   # then build the transformation matrix for correction
   transformation_mat <- correction_mat %*% t((exposure - ps) * weight_matrix)
@@ -447,7 +498,14 @@ correct_for_ps <- function(exposure, exposure_actual = exposure, outcome, ps, mu
     unname()
 }
 
-estimate_marginal_means <- function(outcome_mod, wts, exposure, exposure_name, .df = NULL, call = rlang::caller_env()) {
+estimate_marginal_means <- function(
+  outcome_mod,
+  wts,
+  exposure,
+  exposure_name,
+  .df = NULL,
+  call = rlang::caller_env()
+) {
   # todo: this could be generalized with split() and lapply()
   if (is.null(.df)) {
     .df <- model.frame(outcome_mod)
@@ -478,13 +536,21 @@ estimate_marginal_means <- function(outcome_mod, wts, exposure, exposure_name, .
 
   list(
     # exposure = 1
-    n1 = n1, mu1 = mu1,
+    n1 = n1,
+    mu1 = mu1,
     # exposure = 0
-    n0 = n0, mu0 = mu0
+    n0 = n0,
+    mu0 = mu0
   )
 }
 
-derive_weights <- function(exposure, ps, weight_matrix, ps_link = c("logit", "probit", "cloglog"), estimand = c("ate", "att", "ato", "atm")) {
+derive_weights <- function(
+  exposure,
+  ps,
+  weight_matrix,
+  ps_link = c("logit", "probit", "cloglog"),
+  estimand = c("ate", "att", "ato", "atm")
+) {
   estimand <- rlang::arg_match(estimand)
   deriv_link_f <- derive_link(ps_link)
 
@@ -538,10 +604,11 @@ atm_derivative <- function(exposure, ps, deriv_link_f) {
 
 derive_link <- function(ps_link = c("logit", "probit", "cloglog")) {
   ps_link <- rlang::arg_match(ps_link)
-  switch(ps_link,
-         logit = function(x) 1 / (x * (1 - x)),
-         probit = function(x) 1 / (dnorm(qnorm(x))),
-         cloglog = function(x) -1 / ((1 - x) * log(1 - x))
+  switch(
+    ps_link,
+    logit = function(x) 1 / (x * (1 - x)),
+    probit = function(x) 1 / (dnorm(qnorm(x))),
+    cloglog = function(x) -1 / ((1 - x) * log(1 - x))
   )
 }
 
@@ -603,11 +670,15 @@ check_estimand <- function(wts, estimand, call = rlang::caller_env()) {
 check_exposure <- function(.df, .exposure_name, call = rlang::caller_env()) {
   assert_class(.exposure_name, "character", .length = 1, call = call)
   if (!(.exposure_name %in% names(.df))) {
-    abort(c(
-      "{.val { .exposure_name}} not found in {.code model.frame(outcome_mod)}.",
-      i = "The outcome model may have transformations in the formula.",
-      i = "Please specify {.arg .df}"
-    ), call = call, error_class = "propensity_columns_exist_error")
+    abort(
+      c(
+        "{.val { .exposure_name}} not found in {.code model.frame(outcome_mod)}.",
+        i = "The outcome model may have transformations in the formula.",
+        i = "Please specify {.arg .df}"
+      ),
+      call = call,
+      error_class = "propensity_columns_exist_error"
+    )
   }
 }
 
