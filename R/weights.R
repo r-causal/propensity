@@ -176,12 +176,17 @@ ate_binary <- function(
     .untreated = .untreated
   )
 
-  wt <- (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
-
   if (isTRUE(stabilize) && is.null(stabilization_score)) {
-    wt <- wt * mean(.exposure, na.rm = TRUE)
+    p1 <- mean(.exposure, na.rm = TRUE)
+    p0 <- 1 - p1
+
+    wt <- (.exposure * p1 / .propensity) +
+      ((1 - .exposure) * p0 / (1 - .propensity))
   } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
+    wt <- (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
     wt <- wt * stabilization_score
+  } else {
+    wt <- (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
   }
 
   wt
@@ -194,22 +199,41 @@ ate_continuous <- function(
   stabilize = FALSE,
   stabilization_score = NULL
 ) {
-  .propensity <- stats::dnorm(.exposure, mean = .propensity, sd = mean(.sigma))
-  wt <- 1 / .propensity
+  # Compute population mean & variance of A
+  un_mean <- mean(.exposure, na.rm = TRUE)
+  # sum(A−μ)^2 / n
+  un_var <- mean((.exposure - un_mean)^2, na.rm = TRUE)
+
+  # compute population residual variance E[(A − E[A|X])^2]
+  # sum(residual^2) / n
+  cond_var <- mean((.exposure - .propensity)^2, na.rm = TRUE)
+
+  # standardize into Z-scores
+  z_num <- (.exposure - un_mean) / sqrt(un_var)
+  z_den <- (.exposure - .propensity) / sqrt(cond_var)
+
+  # evaluate standard normal densities on those Z's
+  # f_A(A_i)
+  f_num <- stats::dnorm(z_num)
+  # f_{A|X}(A_i | X_i)
+  f_den <- stats::dnorm(z_den)
+
+  # build base weight = 1 / f_{A|X}
+  wt <- 1 / f_den
 
   if (isTRUE(stabilize) && is.null(stabilization_score)) {
-    wt <- wt *
-      stats::dnorm(
-        .exposure,
-        mean(.exposure, na.rm = TRUE),
-        stats::sd(.exposure, na.rm = TRUE)
-      )
+    wt <- wt * f_num
   } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
     wt <- wt * stabilization_score
+  } else {
+    alert_info(
+      "Using unstabilized weights for continuous exposures is not recommended."
+    )
   }
 
   wt
 }
+
 
 #' @export
 #' @rdname wt_ate

@@ -338,3 +338,25 @@ test_that("ps_trunc objects can convert to character", {
   out <- as.character(ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8))
   expect_type(out, "character")
 })
+
+test_that("ps_trunc works with summarize(mean = mean(ps))", {
+  skip_if_not_installed("dplyr")
+  library(dplyr, warn.conflicts = FALSE)
+
+  set.seed(200)
+  n <- 600
+  x <- rnorm(n)
+  z <- rbinom(n, size = 1, prob = plogis(x + rnorm(n)))
+  fit <- glm(z ~ x, family = binomial)
+
+  ps <- predict(fit, type = "response") |>
+    ps_trunc(method = "ps", lower = 0.3, upper = 0.7)
+
+  out <- tibble(x, z, ps) |>
+    group_by(truncated = is_unit_truncated(ps)) |>
+    summarize(mean = mean(ps), .groups = "drop")
+
+  expect_s3_class(out, "tbl_df")
+  expect_named(out, c("truncated", "mean"))
+  expect_type(out$mean, "double")
+})

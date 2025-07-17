@@ -3,14 +3,22 @@ library(vctrs)
 
 test_that("new_psw creates valid psw objects", {
   x <- new_psw(c(0.1, 0.2, 0.3), estimand = "ate")
-  expect_s3_class(x, c("psw", "causal_wts", "vctrs_vctr"), exact = TRUE)
+  expect_s3_class(
+    x,
+    c("psw", "causal_wts", "vctrs_vctr", "double"),
+    exact = TRUE
+  )
   expect_equal(vec_data(x), c(0.1, 0.2, 0.3))
   expect_equal(estimand(x), "ate")
 })
 
 test_that("psw helper function works correctly", {
   x <- psw(c(0.1, 0.2, 0.3), estimand = "att")
-  expect_s3_class(x, c("psw", "causal_wts", "vctrs_vctr"), exact = TRUE)
+  expect_s3_class(
+    x,
+    c("psw", "causal_wts", "vctrs_vctr", "double"),
+    exact = TRUE
+  )
   expect_equal(vec_data(x), c(0.1, 0.2, 0.3))
   expect_equal(estimand(x), "att")
   expect_false(is_stabilized(x))
@@ -51,7 +59,11 @@ test_that("vec_cast works for psw and double", {
 
   # Cast back to psw
   psw_x <- as_psw(double_x, estimand = "ate")
-  expect_s3_class(psw_x, c("psw", "causal_wts", "vctrs_vctr"), exact = TRUE)
+  expect_s3_class(
+    psw_x,
+    c("psw", "causal_wts", "vctrs_vctr", "double"),
+    exact = TRUE
+  )
   expect_equal(vec_data(psw_x), double_x)
   expect_equal(estimand(psw_x), "ate")
 })
@@ -66,7 +78,11 @@ test_that("vec_cast works for psw and integer with precision checks", {
 
   # Cast back to psw
   psw_x <- as_psw(int_x, estimand = "ate")
-  expect_s3_class(psw_x, c("psw", "causal_wts", "vctrs_vctr"), exact = TRUE)
+  expect_s3_class(
+    psw_x,
+    c("psw", "causal_wts", "vctrs_vctr", "double"),
+    exact = TRUE
+  )
   expect_equal(vec_data(psw_x), as.numeric(int_x))
   expect_equal(estimand(psw_x), "ate")
 
@@ -104,27 +120,29 @@ test_that("vec_arith performs arithmetic on psw objects", {
   y <- psw(c(0.5, 1.5, 2.5), estimand = "ate")
   cens <- psw(c(3, 2, 1), estimand = "cens")
 
+  classes <- c("psw", "causal_wts", "vctrs_vctr", "double")
+
   # same estimand
   result <- x + y
-  expect_s3_class(result, c("psw", "causal_wts", "vctrs_vctr"), exact = TRUE)
+  expect_s3_class(result, classes, exact = TRUE)
   expect_equal(vec_data(result), c(1.5, 3.5, 5.5))
   expect_equal(estimand(result), "ate")
 
   # different estimand
   result <- x * cens
-  expect_s3_class(result, c("psw", "causal_wts", "vctrs_vctr"), exact = TRUE)
+  expect_s3_class(result, classes, exact = TRUE)
   expect_equal(vec_data(result), c(3, 4, 3))
   expect_equal(estimand(result), "ate, cens")
 
   # Arithmetic with double
   result <- x * 2
-  expect_s3_class(result, c("psw", "causal_wts", "vctrs_vctr"), exact = TRUE)
+  expect_s3_class(result, classes, exact = TRUE)
   expect_equal(vec_data(result), c(2, 4, 6))
   expect_equal(estimand(result), "ate")
 
   # Arithmetic with integer
   result <- x - 1L
-  expect_s3_class(result, c("psw", "causal_wts", "vctrs_vctr"), exact = TRUE)
+  expect_s3_class(result, classes, exact = TRUE)
   expect_equal(vec_data(result), c(0, 1, 2))
   expect_equal(estimand(result), "ate")
 
@@ -192,4 +210,13 @@ test_that("Refit logic can be tracked if stored in attr", {
 test_that("psw objects can convert to character", {
   x <- as.character(new_psw(c(0.1, 0.2, 0.3), estimand = "ate"))
   expect_type(x, "character")
+})
+
+test_that("psw works with ggplot2", {
+  skip_if_not_installed("ggplot2")
+  expect_silent(
+    type <- ggplot2::scale_type(psw(1))
+  )
+
+  expect_identical(type, "continuous")
 })

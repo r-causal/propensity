@@ -161,7 +161,8 @@ new_trimmed_ps <- function(x, ps_trim_meta = list()) {
   new_vctr(
     x,
     ps_trim_meta = ps_trim_meta,
-    class = "ps_trim"
+    class = "ps_trim",
+    inherit_base_type = TRUE
   )
 }
 
@@ -344,6 +345,11 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
       trimmed_idx = integer(0)
     )
   )
+}
+
+#' @export
+vec_math.ps_trim <- function(.fn, .x, ...) {
+  vec_math_base(.fn, vec_data(.x), ...)
 }
 
 #' Refit the Propensity Score Model on Retained Observations

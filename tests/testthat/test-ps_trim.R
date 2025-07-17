@@ -485,3 +485,26 @@ test_that("ps_trim objects can convert to character", {
   out <- as.character(ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8))
   expect_type(out, "character")
 })
+
+test_that("ps_trim works with summarize(mean = mean(ps))", {
+  skip_if_not_installed("dplyr")
+  library(dplyr, warn.conflicts = FALSE)
+
+  set.seed(200)
+  n <- 600
+  x <- rnorm(n)
+  z <- rbinom(n, size = 1, prob = plogis(x + rnorm(n)))
+  fit <- glm(z ~ x, family = binomial)
+
+  ps <- predict(fit, type = "response") |>
+    ps_trim(method = "ps", lower = 0.3, upper = 0.7) |>
+    ps_refit(fit)
+
+  out <- tibble(x, z, ps) |>
+    group_by(trimmed = is_unit_trimmed(ps)) |>
+    summarize(mean = mean(ps), .groups = "drop")
+
+  expect_s3_class(out, "tbl_df")
+  expect_named(out, c("trimmed", "mean"))
+  expect_type(out$mean, "double")
+})
