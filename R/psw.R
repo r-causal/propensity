@@ -79,7 +79,8 @@ psw <- function(
     estimand = estimand,
     stabilized = stabilized,
     trimmed = trimmed,
-    truncated = truncated
+    truncated = truncated,
+    calibrated = calibrated
   )
 }
 

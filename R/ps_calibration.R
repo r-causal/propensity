@@ -67,6 +67,10 @@ ps_calibrate <- function(
   # Fit logistic regression: treat ~ ps (using ps as sole predictor)
   calib_model <- stats::glm(treat ~ ps, family = stats::binomial())
 
+  if (!calib_model$converged) {
+    warn("Calibration model did not converge", warning_class = "propensity_convergence_warning")
+  }
+
   # Calibrated probabilities are the fitted values from this model
   calib_ps <- stats::fitted(calib_model)
 
