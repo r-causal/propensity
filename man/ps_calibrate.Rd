@@ -4,16 +4,27 @@
 \alias{ps_calibrate}
 \title{Calibrate propensity scores}
 \usage{
-ps_calibrate(ps, treat, .treated = 1, .untreated = 0, estimand = NULL)
+ps_calibrate(
+  ps,
+  treat,
+  method = c("platt", "isoreg"),
+  .treated = 1,
+  .untreated = 0,
+  estimand = NULL
+)
 }
 \arguments{
 \item{ps}{Numeric vector of propensity scores between 0 and 1}
 
 \item{treat}{A binary vector of treatment assignments}
 
+\item{method}{Calibration method, either "platt" (default) for logistic
+calibration or "isoreg" for isotonic regression calibration}
+
 \item{.treated}{Value that represents the treated units in the \code{treat} vector}
 
-\item{.untreated}{Value that represents the untreated units in the \code{treat} vector}
+\item{.untreated}{Value that represents the untreated units in the \code{treat}
+vector}
 
 \item{estimand}{Character indicating the estimand type.}
 }
@@ -21,15 +32,18 @@ ps_calibrate(ps, treat, .treated = 1, .untreated = 0, estimand = NULL)
 A calibrated propensity score object (\code{psw})
 }
 \description{
-This function calibrates propensity scores to improve their accuracy
-using Platt scaling (logistic regression).
-It preserves the attributes of causal weight objects when applicable.
+This function calibrates propensity scores to improve their accuracy using
+either Platt scaling (logistic regression) or isotonic regression. It
+preserves the attributes of causal weight objects when applicable.
 }
 \examples{
 # Generate example data
 ps <- runif(100)
 treat <- rbinom(100, 1, ps)
 
-# Calibrate using Platt scaling
-calibrated <- ps_calibrate(ps, treat)
+# Platt scaling (default)
+calibrated_platt <- ps_calibrate(ps, treat)
+
+# Isotonic regression
+calibrated_iso <- ps_calibrate(ps, treat, method = "isoreg")
 }

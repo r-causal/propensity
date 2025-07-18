@@ -22,6 +22,9 @@ estimand
 estimands
 et
 glm
+isoreg
+isotonic
+platt
 ps
 psw
 trunc
