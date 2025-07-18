@@ -408,7 +408,7 @@ test_that("error when mgcv is not available for smooth calibration", {
   # and test that the error message is correct
 })
 
-# Cross-validation tests against WeightIt and probably packages
+# Cross-validation tests against WeightIt and the probably package
 
 test_that("ps_calibrate with smooth=FALSE matches WeightIt::calibrate for logistic calibration", {
   skip_if_not_installed("WeightIt")
