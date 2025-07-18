@@ -133,7 +133,7 @@ ps_calibrate <- function(
       }
     }
 
-    if (!calib_model$converged) {
+    if (isFALSE(calib_model$converged)) {
       warn(
         "Calibration model did not converge",
         warning_class = "propensity_convergence_warning"
