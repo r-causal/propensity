@@ -63,7 +63,7 @@ ps_calibrate <- function(
   }
 
   if (is_causal_wt(ps) && is_ps_calibrated(ps)) {
-    abort("`ps` already calibrated.")
+    abort("`ps` is already calibrated. Cannot calibrate already calibrated propensity scores.")
   }
 
   if (any(ps < 0 | ps > 1, na.rm = TRUE)) {
