@@ -10,6 +10,7 @@ IPW
 Kostouraki
 Matchable
 ORCID
+Platt
 Rachet
 Winsorize
 al
@@ -21,6 +22,9 @@ estimand
 estimands
 et
 glm
+isoreg
+isotonic
+platt
 ps
 psw
 trunc

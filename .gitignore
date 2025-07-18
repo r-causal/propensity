@@ -4,3 +4,6 @@
 .httr-oauth
 .DS_Store
 docs
+scratch/
+.claude/
+CLAUDE.md
