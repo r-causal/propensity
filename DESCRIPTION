@@ -19,6 +19,7 @@ Imports:
 Suggests: 
     dplyr,
     ggplot2,
+    mgcv,
     probably,
     spelling,
     testthat (>= 3.0.0),

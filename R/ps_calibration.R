@@ -6,8 +6,24 @@
 #'
 #' @param ps Numeric vector of propensity scores between 0 and 1
 #' @param treat A binary vector of treatment assignments
-#' @param method Calibration method, either "platt" (default) for logistic
-#'   calibration or "isoreg" for isotonic regression calibration
+#' @param method Calibration method:
+#'   \describe{
+#'     \item{`"logistic"`}{(Default) Logistic calibration (also known as Platt scaling). 
+#'       Assumes a sigmoid relationship between observed and true probabilities.
+#'       Best when: propensity scores follow a logistic pattern but are 
+#'       systematically biased. Provides smooth, parametric calibration.
+#'       Faster and more stable with small samples.}
+#'     \item{`"isoreg"`}{Isotonic regression calibration. Uses a non-parametric
+#'       monotonic transformation. Best when: the relationship between observed
+#'       and true probabilities is non-linear or when you want to preserve
+#'       the rank order without assuming a specific functional form.
+#'       More flexible but requires larger samples for stable estimates.}
+#'   }
+#' @param smooth Logical. For `method = "logistic"`, whether to use a smoothed
+#'   logistic spline model (`smooth = TRUE`, default) or simple logistic 
+#'   regression (`smooth = FALSE`). When `TRUE`, uses `mgcv::gam()` with
+#'   spline smoothing. When `FALSE`, uses `stats::glm()`. Ignored for 
+#'   `method = "isoreg"`.
 #' @param .treated Value that represents the treated units in the `treat` vector
 #' @param .untreated Value that represents the untreated units in the `treat`
 #'   vector
@@ -20,8 +36,11 @@
 #' ps <- runif(100)
 #' treat <- rbinom(100, 1, ps)
 #'
-#' # Platt scaling (default)
-#' calibrated_platt <- ps_calibrate(ps, treat)
+#' # Logistic calibration with smoothing (default)
+#' calibrated_smooth <- ps_calibrate(ps, treat)
+#'
+#' # Logistic calibration without smoothing (simple logistic regression)
+#' calibrated_simple <- ps_calibrate(ps, treat, smooth = FALSE)
 #'
 #' # Isotonic regression
 #' calibrated_iso <- ps_calibrate(ps, treat, method = "isoreg")
@@ -30,7 +49,8 @@
 ps_calibrate <- function(
   ps,
   treat,
-  method = c("platt", "isoreg"),
+  method = c("logistic", "isoreg"),
+  smooth = TRUE,
   .treated = 1,
   .untreated = 0,
   estimand = NULL
@@ -77,9 +97,39 @@ ps_calibrate <- function(
   na_idx <- is.na(ps) | is.na(treat)
 
   # Perform calibration based on method
-  if (method == "platt") {
-    # Fit logistic regression: treat ~ ps (using ps as sole predictor)
-    calib_model <- stats::glm(treat ~ ps, family = stats::binomial())
+  if (method == "logistic") {
+    if (smooth) {
+      # Check if mgcv is available for smooth calibration
+      rlang::check_installed(
+        "mgcv",
+        reason = "for smooth calibration using GAM (Generalized Additive Model)."
+      )
+
+      # Create data frame for GAM fitting (only non-NA values)
+      calib_data <- data.frame(
+        treat = treat[!na_idx],
+        ps = ps[!na_idx]
+      )
+      
+      # Check if we have enough unique values for smoothing (like probably does)
+      n_unique <- length(unique(calib_data$ps))
+      if (n_unique < 10) {
+        # Fall back to simple logistic regression if too few unique values
+        smooth <- FALSE
+        calib_model <- stats::glm(treat ~ ps, data = calib_data, family = stats::binomial())
+      } else {
+        # Fit GAM with smooth spline: treat ~ s(ps)
+        calib_model <- mgcv::gam(treat ~ s(ps), data = calib_data, family = "binomial")
+      }
+    }
+    
+    if (!smooth) {
+      # For simple logistic regression, fit on original data (not data frame)
+      # This handles the case where smooth was originally FALSE or was set to FALSE due to fallback
+      if (!exists("calib_model")) {
+        calib_model <- stats::glm(treat ~ ps, family = stats::binomial())
+      }
+    }
 
     if (!calib_model$converged) {
       warn(
@@ -90,10 +140,19 @@ ps_calibrate <- function(
 
     # Calibrated probabilities are the fitted values from this model
     # This will be shorter if there are NAs, so we need to expand back
-    fitted_vals <- stats::fitted(calib_model)
-    calib_ps <- numeric(length(ps))
-    calib_ps[!na_idx] <- fitted_vals
-    calib_ps[na_idx] <- NA
+    if (smooth) {
+      # For GAM models, predict on the full ps vector (including NAs)
+      # Create prediction data frame
+      pred_data <- data.frame(ps = ps)
+      fitted_vals <- as.numeric(predict(calib_model, newdata = pred_data, type = "response"))
+      calib_ps <- fitted_vals
+    } else {
+      # For GLM models, use fitted values and expand back
+      fitted_vals <- stats::fitted(calib_model)
+      calib_ps <- numeric(length(ps))
+      calib_ps[!na_idx] <- fitted_vals
+      calib_ps[na_idx] <- NA
+    }
   } else if (method == "isoreg") {
     # Isotonic regression calibration
     if (any(na_idx)) {

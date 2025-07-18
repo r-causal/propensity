@@ -7,7 +7,8 @@
 ps_calibrate(
   ps,
   treat,
-  method = c("platt", "isoreg"),
+  method = c("logistic", "isoreg"),
+  smooth = TRUE,
   .treated = 1,
   .untreated = 0,
   estimand = NULL
@@ -18,8 +19,25 @@ ps_calibrate(
 
 \item{treat}{A binary vector of treatment assignments}
 
-\item{method}{Calibration method, either "platt" (default) for logistic
-calibration or "isoreg" for isotonic regression calibration}
+\item{method}{Calibration method:
+\describe{
+\item{\code{"logistic"}}{(Default) Logistic calibration (also known as Platt scaling).
+Assumes a sigmoid relationship between observed and true probabilities.
+Best when: propensity scores follow a logistic pattern but are
+systematically biased. Provides smooth, parametric calibration.
+Faster and more stable with small samples.}
+\item{\code{"isoreg"}}{Isotonic regression calibration. Uses a non-parametric
+monotonic transformation. Best when: the relationship between observed
+and true probabilities is non-linear or when you want to preserve
+the rank order without assuming a specific functional form.
+More flexible but requires larger samples for stable estimates.}
+}}
+
+\item{smooth}{Logical. For \code{method = "logistic"}, whether to use a smoothed
+logistic spline model (\code{smooth = TRUE}, default) or simple logistic
+regression (\code{smooth = FALSE}). When \code{TRUE}, uses \code{mgcv::gam()} with
+spline smoothing. When \code{FALSE}, uses \code{stats::glm()}. Ignored for
+\code{method = "isoreg"}.}
 
 \item{.treated}{Value that represents the treated units in the \code{treat} vector}
 
@@ -41,8 +59,11 @@ preserves the attributes of causal weight objects when applicable.
 ps <- runif(100)
 treat <- rbinom(100, 1, ps)
 
-# Platt scaling (default)
-calibrated_platt <- ps_calibrate(ps, treat)
+# Logistic calibration with smoothing (default)
+calibrated_smooth <- ps_calibrate(ps, treat)
+
+# Logistic calibration without smoothing (simple logistic regression)
+calibrated_simple <- ps_calibrate(ps, treat, smooth = FALSE)
 
 # Isotonic regression
 calibrated_iso <- ps_calibrate(ps, treat, method = "isoreg")
