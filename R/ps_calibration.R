@@ -24,9 +24,10 @@
 #'   regression (`smooth = FALSE`). When `TRUE`, uses `mgcv::gam()` with
 #'   spline smoothing. When `FALSE`, uses `stats::glm()`. Ignored for 
 #'   `method = "isoreg"`.
-#' @param .treated Value that represents the treated units in the `treat` vector
-#' @param .untreated Value that represents the untreated units in the `treat`
-#'   vector
+#' @param .treated The value representing the treatment group. If not provided,
+#'   `ps_calibrate()` will attempt to automatically determine the treatment coding.
+#' @param .untreated The value representing the control group. If not provided,
+#'   `ps_calibrate()` will attempt to automatically determine the control coding.
 #' @param estimand Character indicating the estimand type.
 #'
 #' @return A calibrated propensity score object (`psw`)
@@ -51,8 +52,8 @@ ps_calibrate <- function(
   treat,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
-  .treated = 1,
-  .untreated = 0,
+  .treated = NULL,
+  .untreated = NULL,
   estimand = NULL
 ) {
   method <- match.arg(method)
@@ -97,6 +98,7 @@ ps_calibrate <- function(
   na_idx <- is.na(ps) | is.na(treat)
 
   # Perform calibration based on method
+  calib_model <- NULL
   if (method == "logistic") {
     if (smooth) {
       # Check if mgcv is available for smooth calibration
@@ -126,7 +128,7 @@ ps_calibrate <- function(
     if (!smooth) {
       # For simple logistic regression, fit on original data (not data frame)
       # This handles the case where smooth was originally FALSE or was set to FALSE due to fallback
-      if (!exists("calib_model")) {
+      if (is.null(calib_model)) {
         calib_model <- stats::glm(treat ~ ps, family = stats::binomial())
       }
     }

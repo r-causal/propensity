@@ -9,8 +9,8 @@ ps_calibrate(
   treat,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
-  .treated = 1,
-  .untreated = 0,
+  .treated = NULL,
+  .untreated = NULL,
   estimand = NULL
 )
 }
@@ -39,10 +39,11 @@ regression (\code{smooth = FALSE}). When \code{TRUE}, uses \code{mgcv::gam()} wi
 spline smoothing. When \code{FALSE}, uses \code{stats::glm()}. Ignored for
 \code{method = "isoreg"}.}
 
-\item{.treated}{Value that represents the treated units in the \code{treat} vector}
+\item{.treated}{The value representing the treatment group. If not provided,
+\code{ps_calibrate()} will attempt to automatically determine the treatment coding.}
 
-\item{.untreated}{Value that represents the untreated units in the \code{treat}
-vector}
+\item{.untreated}{The value representing the control group. If not provided,
+\code{ps_calibrate()} will attempt to automatically determine the control coding.}
 
 \item{estimand}{Character indicating the estimand type.}
 }

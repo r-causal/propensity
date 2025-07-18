@@ -126,6 +126,88 @@ test_that("works with different treatment codings", {
   expect_equal(as.numeric(calib1), as.numeric(calib4))
 })
 
+test_that(".treated and .untreated parameters work consistently with package patterns", {
+  set.seed(123)
+  ps <- runif(30, 0.3, 0.7)
+  
+  # Test automatic detection with 0/1 coding
+  treat_01 <- rbinom(30, 1, ps)
+  calib_auto <- ps_calibrate(ps, treat_01)
+  expect_s3_class(calib_auto, "psw")
+  
+  # Test explicit specification with 0/1 coding
+  calib_explicit <- ps_calibrate(ps, treat_01, .treated = 1, .untreated = 0)
+  expect_equal(as.numeric(calib_auto), as.numeric(calib_explicit))
+  
+  # Test with character coding
+  treat_char <- ifelse(treat_01 == 1, "treat", "control")
+  calib_char_explicit <- ps_calibrate(ps, treat_char, .treated = "treat", .untreated = "control")
+  expect_equal(as.numeric(calib_auto), as.numeric(calib_char_explicit))
+  
+  # Test automatic detection with factor
+  treat_factor <- factor(treat_char, levels = c("control", "treat"))
+  calib_factor_auto <- ps_calibrate(ps, treat_factor)
+  expect_equal(as.numeric(calib_auto), as.numeric(calib_factor_auto))
+  
+  # Test with logical coding (should be automatic)
+  treat_logical <- as.logical(treat_01)
+  calib_logical <- ps_calibrate(ps, treat_logical)
+  expect_equal(as.numeric(calib_auto), as.numeric(calib_logical))
+})
+
+test_that(".treated/.untreated defaults are NULL like other package functions", {
+  # Check that the defaults match the package pattern
+  ps_calibrate_formals <- formals(ps_calibrate)
+  expect_null(ps_calibrate_formals$.treated)
+  expect_null(ps_calibrate_formals$.untreated)
+  
+  # Compare with other weight functions to ensure consistency
+  wt_ate_formals <- formals(wt_ate)
+  expect_equal(ps_calibrate_formals$.treated, wt_ate_formals$.treated)
+  expect_equal(ps_calibrate_formals$.untreated, wt_ate_formals$.untreated)
+})
+
+test_that("automatic treatment detection works with binary vectors", {
+  set.seed(789)
+  ps <- runif(40, 0.2, 0.8)
+  
+  # Test with different binary representations
+  treat_01 <- rbinom(40, 1, ps)
+  treat_12 <- treat_01 + 1  # 1/2 coding
+  treat_neg <- ifelse(treat_01 == 1, 1, -1)  # -1/1 coding
+  
+  # All should work with automatic detection
+  calib_01 <- ps_calibrate(ps, treat_01)
+  expect_s3_class(calib_01, "psw")
+  
+  # These require explicit specification
+  calib_12 <- ps_calibrate(ps, treat_12, .treated = 2, .untreated = 1)
+  calib_neg <- ps_calibrate(ps, treat_neg, .treated = 1, .untreated = -1)
+  
+  # All should produce valid results
+  expect_true(all(calib_01 >= 0 & calib_01 <= 1))
+  expect_true(all(calib_12 >= 0 & calib_12 <= 1))
+  expect_true(all(calib_neg >= 0 & calib_neg <= 1))
+})
+
+test_that("error handling for ambiguous treatment coding", {
+  set.seed(456)
+  ps <- runif(20, 0.3, 0.7)
+  
+  # Three-level factor should require explicit specification
+  treat_three <- factor(sample(c("A", "B", "C"), 20, replace = TRUE))
+  expect_error(
+    ps_calibrate(ps, treat_three),
+    "Specify.*treated.*untreated"
+  )
+  
+  # Should work with explicit specification
+  treat_binary_from_three <- ifelse(treat_three == "A", 1, 0)
+  expect_no_error(
+    ps_calibrate(ps, treat_binary_from_three)
+  )
+})
+
 test_that("is_ps_calibrated works correctly", {
   ps <- runif(20)
   treat <- rbinom(20, 1, ps)
