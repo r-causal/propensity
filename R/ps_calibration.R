@@ -8,9 +8,9 @@
 #' @param treat A binary vector of treatment assignments
 #' @param method Calibration method:
 #'   \describe{
-#'     \item{`"logistic"`}{(Default) Logistic calibration (also known as Platt scaling). 
+#'     \item{`"logistic"`}{(Default) Logistic calibration (also known as Platt scaling).
 #'       Assumes a sigmoid relationship between observed and true probabilities.
-#'       Best when: propensity scores follow a logistic pattern but are 
+#'       Best when: propensity scores follow a logistic pattern but are
 #'       systematically biased. Provides smooth, parametric calibration.
 #'       Faster and more stable with small samples.}
 #'     \item{`"isoreg"`}{Isotonic regression calibration. Uses a non-parametric
@@ -20,9 +20,9 @@
 #'       More flexible but requires larger samples for stable estimates.}
 #'   }
 #' @param smooth Logical. For `method = "logistic"`, whether to use a smoothed
-#'   logistic spline model (`smooth = TRUE`, default) or simple logistic 
+#'   logistic spline model (`smooth = TRUE`, default) or simple logistic
 #'   regression (`smooth = FALSE`). When `TRUE`, uses `mgcv::gam()` with
-#'   spline smoothing. When `FALSE`, uses `stats::glm()`. Ignored for 
+#'   spline smoothing. When `FALSE`, uses `stats::glm()`. Ignored for
 #'   `method = "isoreg"`.
 #' @param .treated The value representing the treatment group. If not provided,
 #'   `ps_calibrate()` will attempt to automatically determine the treatment coding.
@@ -63,7 +63,9 @@ ps_calibrate <- function(
   }
 
   if (is_causal_wt(ps) && is_ps_calibrated(ps)) {
-    abort("`ps` is already calibrated. Cannot calibrate already calibrated propensity scores.")
+    abort(
+      "`ps` is already calibrated. Cannot calibrate already calibrated propensity scores."
+    )
   }
 
   if (any(ps < 0 | ps > 1, na.rm = TRUE)) {
@@ -112,19 +114,27 @@ ps_calibrate <- function(
         treat = treat[!na_idx],
         ps = ps[!na_idx]
       )
-      
+
       # Check if we have enough unique values for smoothing (like probably does)
       n_unique <- length(unique(calib_data$ps))
       if (n_unique < 10) {
         # Fall back to simple logistic regression if too few unique values
         smooth <- FALSE
-        calib_model <- stats::glm(treat ~ ps, data = calib_data, family = stats::binomial())
+        calib_model <- stats::glm(
+          treat ~ ps,
+          data = calib_data,
+          family = stats::binomial()
+        )
       } else {
         # Fit GAM with smooth spline: treat ~ s(ps)
-        calib_model <- mgcv::gam(treat ~ s(ps), data = calib_data, family = "binomial")
+        calib_model <- mgcv::gam(
+          treat ~ s(ps),
+          data = calib_data,
+          family = "binomial"
+        )
       }
     }
-    
+
     if (!smooth) {
       # For simple logistic regression, fit on original data (not data frame)
       # This handles the case where smooth was originally FALSE or was set to FALSE due to fallback
@@ -146,7 +156,11 @@ ps_calibrate <- function(
       # For GAM models, predict on the full ps vector (including NAs)
       # Create prediction data frame
       pred_data <- data.frame(ps = ps)
-      fitted_vals <- as.numeric(predict(calib_model, newdata = pred_data, type = "response"))
+      fitted_vals <- as.numeric(predict(
+        calib_model,
+        newdata = pred_data,
+        type = "response"
+      ))
       calib_ps <- fitted_vals
     } else {
       # For GLM models, use fitted values and expand back
