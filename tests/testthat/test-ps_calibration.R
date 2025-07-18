@@ -44,7 +44,7 @@ test_that("constant ps yields calibrated = observed prevalence", {
   expect_equal(unique(as.numeric(out)), 0.5)
 })
 
-test_that("preserves psw attributes from an existing causal‐weights object", {
+test_that("preserves psw attributes from an existing causal-weights object", {
   # Create a dummy psw object
   ps_orig <- psw(
     x = runif(10),
