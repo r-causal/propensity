@@ -9,6 +9,7 @@
 #'   the **ATC**, where the "C" stands for "control")
 #' - **ATM** (Average Treatment Effect for the Evenly Matchable)
 #' - **ATO** (Average Treatment Effect for the Overlap population)
+#' - **Entropy** (Average Treatment Effect for the Entropy-weighted population)
 #'
 #'   The propensity score can be provided as a numeric vector of predicted
 #'   probabilities or as a `data.frame` where each column represents the
