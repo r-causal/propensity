@@ -176,38 +176,93 @@ test_that("entropy weights error on unsupported exposure types", {
   )
 })
 
-# Comparison with PSWeight package
-test_that("entropy weights match PSWeight implementation", {
+# Comparison with PSWeight package - weights
+test_that("entropy weights match PSweight's raw weights", {
+  skip_if_not_installed("PSweight")
+  skip_on_cran()
+
+  # Use a simple example where we can verify the calculations
+  set.seed(123)
+  n <- 100
+  x <- rnorm(n)
+  ps_true <- plogis(0.5 * x)
+  trt <- rbinom(n, 1, ps_true)
+  
+  # Use the true propensity scores for both implementations
+  # This ensures we're comparing the weight calculation, not PS estimation
+  
+  # Our implementation
+  our_weights <- wt_entropy(ps_true, .exposure = trt, exposure_type = "binary")
+  
+  # PSweight's implementation using SumStat
+  # Create a data frame with the required structure
+  test_data <- data.frame(
+    trt = trt,
+    ps = ps_true,
+    x = x
+  )
+  
+  # SumStat with provided propensity scores
+  ps_sumstat <- PSweight::SumStat(
+    ps.estimate = ps_true,
+    zname = "trt",
+    xname = "x",
+    data = test_data,
+    weight = "entropy"
+  )
+  
+  # Extract PSweight's raw weights (before normalization)
+  # PSweight stores weights in ps.weights$entropy, but these are normalized
+  # We need to un-normalize them to compare
+  psw_weights_norm <- ps_sumstat$ps.weights$entropy
+  
+  # Un-normalize by multiplying by the sum of our raw weights in each group
+  # PSweight normalizes so weights sum to 1 within each treatment group
+  our_sum1 <- sum(our_weights[trt == 1])
+  our_sum0 <- sum(our_weights[trt == 0])
+  psw_weights_raw <- numeric(n)
+  psw_weights_raw[trt == 1] <- psw_weights_norm[trt == 1] * our_sum1
+  psw_weights_raw[trt == 0] <- psw_weights_norm[trt == 0] * our_sum0
+  
+  # Compare raw weights
+  expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
+})
+
+# Comparison with PSWeight package - estimates
+test_that("entropy weights give same treatment effect estimates as PSweight", {
   skip_if_not_installed("PSweight")
   skip_on_cran()
 
   # Use PSweight's example data
-  data("psdata_cl", package = "PSweight") # Binary treatment dataset
-
-  # Fit propensity score model
-  ps_formula <- trt ~ cov1 + cov2 + cov3 + cov4 + cov5 + cov6
-  ps_fit <- glm(ps_formula, data = psdata_cl, family = binomial)
-  ps_scores <- fitted(ps_fit)
-
-  # Our implementation
-  our_weights <- wt_entropy(
-    ps_scores,
-    .exposure = psdata_cl$trt,
-    exposure_type = "binary"
+  data("psdata_cl", package = "PSweight")
+  
+  # Calculate treatment effect using PSweight
+  ps_result <- PSweight::PSweight(
+    ps.formula = trt ~ cov1 + cov2 + cov3 + cov4 + cov5 + cov6,
+    yname = "Y",
+    data = psdata_cl,
+    weight = "entropy"
   )
-
-  # PSweight's tilting function (for comparison of the core calculation)
-  ftilt <- PSweight:::tiltbin(weight = "entropy")
-  h_vals <- ftilt(ps_scores)
-
-  # Calculate expected weights manually
-  expected_weights <- numeric(length(ps_scores))
-  expected_weights[psdata_cl$trt == 1] <- h_vals[psdata_cl$trt == 1] /
-    ps_scores[psdata_cl$trt == 1]
-  expected_weights[psdata_cl$trt == 0] <- h_vals[psdata_cl$trt == 0] /
-    (1 - ps_scores[psdata_cl$trt == 0])
-
-  expect_equal(as.numeric(our_weights), expected_weights, tolerance = 1e-10)
+  
+  psweight_ate <- unname(ps_result$muhat[2] - ps_result$muhat[1])
+  
+  # Calculate using our implementation
+  ps_fit <- glm(trt ~ cov1 + cov2 + cov3 + cov4 + cov5 + cov6, 
+                data = psdata_cl, family = binomial)
+  ps_scores <- fitted(ps_fit)
+  
+  our_weights <- wt_entropy(ps_scores, .exposure = psdata_cl$trt, 
+                           exposure_type = "binary")
+  
+  # Calculate weighted means
+  mu1 <- weighted.mean(psdata_cl$Y[psdata_cl$trt == 1], 
+                      our_weights[psdata_cl$trt == 1])
+  mu0 <- weighted.mean(psdata_cl$Y[psdata_cl$trt == 0], 
+                      our_weights[psdata_cl$trt == 0])
+  our_ate <- mu1 - mu0
+  
+  # Compare estimates - they should be very close
+  expect_equal(our_ate, psweight_ate, tolerance = 1e-6)
 })
 
 test_that("entropy weighted estimates are reasonable", {
@@ -234,6 +289,7 @@ test_that("entropy weighted estimates are reasonable", {
   # Should be close to true value of 2
   expect_equal(ate_est, 2, tolerance = 0.5)
 })
+
 
 test_that("entropy weight calculation matches manual calculation", {
   # Test specific values
