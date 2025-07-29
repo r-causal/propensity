@@ -459,6 +459,71 @@ ato_binary <- function(
   (1 - .propensity) * .exposure + .propensity * (1 - .exposure)
 }
 
+#' @export
+#' @rdname wt_ate
+wt_entropy <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  UseMethod("wt_entropy")
+}
+
+#' @export
+wt_entropy.numeric <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  rlang::check_dots_empty()
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  if (exposure_type == "binary") {
+    check_ps_range(.propensity)
+    wts <- entropy_binary(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      .treated = .treated,
+      .untreated = .untreated
+    )
+  } else {
+    abort_unsupported(exposure_type, "entropy")
+  }
+
+  psw(wts, "entropy")
+}
+
+entropy_binary <- function(
+  .propensity,
+  .exposure,
+  .treated = NULL,
+  .untreated = NULL
+) {
+  .exposure <- transform_exposure_binary(
+    .exposure,
+    .treated = .treated,
+    .untreated = .untreated
+  )
+
+  # Entropy tilting function: h(e) = -[e*log(e) + (1-e)*log(1-e)]
+  h_e <- -.propensity *
+    log(.propensity) -
+    (1 - .propensity) * log(1 - .propensity)
+
+  # Calculate weights: w = h(e)/e for treated, w = h(e)/(1-e) for control
+  weights <- numeric(length(.propensity))
+  weights[.exposure == 1] <- h_e[.exposure == 1] / .propensity[.exposure == 1]
+  weights[.exposure == 0] <- h_e[.exposure == 0] /
+    (1 - .propensity[.exposure == 0])
+
+  weights
+}
+
 # --------------------------------------------------------------------
 #  methods for `ps_trim()`
 # --------------------------------------------------------------------
@@ -739,6 +804,62 @@ wt_ato.ps_trunc <- function(
 ) {
   numeric_ps <- as.numeric(.propensity)
   base_wt <- wt_ato.numeric(
+    numeric_ps,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+
+  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+
+  attr(base_wt, "truncated") <- TRUE
+  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+
+  base_wt
+}
+
+#' @export
+wt_entropy.ps_trim <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  check_refit(.propensity)
+
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_entropy.numeric(
+    numeric_ps,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+
+  old_est <- estimand(base_wt)
+  estimand(base_wt) <- paste0(old_est, "; trimmed")
+  attr(base_wt, "trimmed") <- TRUE
+  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
+
+  base_wt
+}
+
+#' @export
+wt_entropy.ps_trunc <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  numeric_ps <- as.numeric(.propensity)
+  base_wt <- wt_entropy.numeric(
     numeric_ps,
     .exposure = .exposure,
     exposure_type = exposure_type,
