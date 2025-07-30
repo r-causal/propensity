@@ -515,11 +515,10 @@ entropy_binary <- function(
     log(.propensity) -
     (1 - .propensity) * log(1 - .propensity)
 
-  # Calculate weights: w = h(e)/e for treated, w = h(e)/(1-e) for control
-  weights <- numeric(length(.propensity))
-  weights[.exposure == 1] <- h_e[.exposure == 1] / .propensity[.exposure == 1]
-  weights[.exposure == 0] <- h_e[.exposure == 0] /
-    (1 - .propensity[.exposure == 0])
+  # Calculate weights using equation approach
+  # w = h(e)/e for treated (exposure=1), w = h(e)/(1-e) for control (exposure=0)
+  weights <- h_e /
+    (.exposure * .propensity + (1 - .exposure) * (1 - .propensity))
 
   weights
 }
