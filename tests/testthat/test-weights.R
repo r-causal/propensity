@@ -524,7 +524,7 @@ test_that("entropy weights have expected properties", {
   # Weights at e=0.5 should be around log(2)/0.5 ≈ 1.386
   ps_near_half <- abs(ps - 0.5) < 0.01
   if (any(ps_near_half)) {
-    expect_true(all(abs(weights[ps_near_half] - 1.386) < 0.1))
+    expect_true(all(abs(weights[ps_near_half] - log(2)/0.5) < 0.1))
   }
 })
 
