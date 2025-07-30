@@ -9,3 +9,4 @@
 ^codecov\.yml$
 ^CLAUDE\.md$
 ^\.claude$
+^scratch$

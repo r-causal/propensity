@@ -21,6 +21,7 @@ Suggests:
     ggplot2,
     mgcv,
     probably,
+    PSweight,
     spelling,
     testthat (>= 3.0.0),
     tidyselect,

@@ -6,6 +6,7 @@
 \alias{wt_atu}
 \alias{wt_atm}
 \alias{wt_ato}
+\alias{wt_entropy}
 \title{Calculate Propensity Score Weights for Causal Inference}
 \usage{
 wt_ate(
@@ -48,6 +49,15 @@ wt_atm(
 )
 
 wt_ato(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+)
+
+wt_entropy(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
@@ -106,6 +116,7 @@ various causal estimands:
 the \strong{ATC}, where the "C" stands for "control")
 \item \strong{ATM} (Average Treatment Effect for the Evenly Matchable)
 \item \strong{ATO} (Average Treatment Effect for the Overlap population)
+\item \strong{Entropy} (Average Treatment Effect for the Entropy-weighted population)
 
 The propensity score can be provided as a numeric vector of predicted
 probabilities or as a \code{data.frame} where each column represents the
