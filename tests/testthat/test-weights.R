@@ -524,7 +524,7 @@ test_that("entropy weights have expected properties", {
   # Weights at e=0.5 should be around log(2)/0.5 ≈ 1.386
   ps_near_half <- abs(ps - 0.5) < 0.01
   if (any(ps_near_half)) {
-    expect_true(all(abs(weights[ps_near_half] - log(2)/0.5) < 0.1))
+    expect_true(all(abs(weights[ps_near_half] - log(2) / 0.5) < 0.1))
   }
 })
 
@@ -548,7 +548,7 @@ test_that("entropy weights handle extreme propensity scores", {
   # Theoretical upper bound for entropy weights based on extreme propensity scores
   # For extreme values near 0 or 1, weights can grow large but remain finite.
   # Here, we use a calculated bound derived from the entropy function properties.
-  max_weight_bound <- log(2) / min(ps_extreme)  # Example calculation
+  max_weight_bound <- log(2) / min(ps_extreme) # Example calculation
   expect_true(max(weights_extreme) < max_weight_bound)
 })
 
