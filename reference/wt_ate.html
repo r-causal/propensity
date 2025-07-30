@@ -7,6 +7,7 @@ ATU (Average Treatment Effect on the Untreated, sometimes called
 the ATC, where the "C" stands for "control")
 ATM (Average Treatment Effect for the Evenly Matchable)
 ATO (Average Treatment Effect for the Overlap population)
+Entropy (Average Treatment Effect for the Entropy-weighted population)
 The propensity score can be provided as a numeric vector of predicted
 probabilities or as a data.frame where each column represents the
 predicted probability for a level of the exposure. They can also be
@@ -24,6 +25,7 @@ ATU (Average Treatment Effect on the Untreated, sometimes called
 the ATC, where the "C" stands for "control")
 ATM (Average Treatment Effect for the Evenly Matchable)
 ATO (Average Treatment Effect for the Overlap population)
+Entropy (Average Treatment Effect for the Entropy-weighted population)
 The propensity score can be provided as a numeric vector of predicted
 probabilities or as a data.frame where each column represents the
 predicted probability for a level of the exposure. They can also be
@@ -72,7 +74,8 @@ various causal estimands:</p><ul><li><p><strong>ATE</strong> (Average Treatment 
 <li><p><strong>ATU</strong> (Average Treatment Effect on the Untreated, sometimes called
 the <strong>ATC</strong>, where the "C" stands for "control")</p></li>
 <li><p><strong>ATM</strong> (Average Treatment Effect for the Evenly Matchable)</p></li>
-<li><p><strong>ATO</strong> (Average Treatment Effect for the Overlap population)</p>
+<li><p><strong>ATO</strong> (Average Treatment Effect for the Overlap population)</p></li>
+<li><p><strong>Entropy</strong> (Average Treatment Effect for the Entropy-weighted population)</p>
 <p>The propensity score can be provided as a numeric vector of predicted
 probabilities or as a <code>data.frame</code> where each column represents the
 predicted probability for a level of the exposure. They can also be
@@ -125,6 +128,15 @@ weights have been stabilized, trimmed, or truncated.</p></li>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">wt_ato</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">wt_entropy</span><span class="op">(</span></span>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
