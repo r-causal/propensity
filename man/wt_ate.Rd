@@ -130,6 +130,39 @@ weights have been stabilized, trimmed, or truncated.
 }
 }
 \details{
+\subsection{Theoretical Background}{
+
+Propensity score weighting is a method for estimating causal effects by
+creating a pseudo-population where the exposure is independent of measured
+confounders. The propensity score, \eqn{e(X)}, is the probability of receiving
+treatment given observed covariates \eqn{X}. By weighting observations inversely
+proportional to their propensity scores, we can balance the distribution of
+covariates between treatment groups. Other weights allow for different target populations.
+}
+
+\subsection{Mathematical Formulas}{
+\subsection{Binary Exposures}{
+
+For binary treatments (\eqn{A = 0} or \eqn{1}), the weights are:
+\itemize{
+\item \strong{ATE}: \eqn{w = \frac{A}{e(X)} + \frac{1-A}{1-e(X)}}
+\item \strong{ATT}: \eqn{w = A + \frac{(1-A) \cdot e(X)}{1-e(X)}}
+\item \strong{ATU}: \eqn{w = \frac{A \cdot (1-e(X))}{e(X)} + (1-A)}
+\item \strong{ATM}: \eqn{w = \frac{\min(e(X), 1-e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}
+\item \strong{ATO}: \eqn{w = A \cdot (1-e(X)) + (1-A) \cdot e(X)}
+\item \strong{Entropy}: \eqn{w = \frac{h(e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}, where \eqn{h(e) = -[e \cdot \log(e) + (1-e) \cdot \log(1-e)]}
+}
+}
+
+\subsection{Continuous Exposures}{
+
+For continuous treatments, weights use the density ratio:
+\eqn{w = \frac{f_A(A)}{f_{A|X}(A|X)}}, where \eqn{f_A} is the marginal density of \eqn{A}
+and \eqn{f_{A|X}} is the conditional density given \eqn{X}.
+}
+
+}
+
 \subsection{Exposure Types}{
 
 The functions support different types of exposures:
@@ -140,6 +173,7 @@ The functions support different types of exposures:
 \item \strong{\code{categorical}}: Currently not supported (an error will be raised).
 \item \strong{\code{auto}}: Automatically detects the exposure type based on \code{.exposure}.
 }
+}
 
 \subsection{Stabilization}{
 
@@ -147,7 +181,24 @@ For ATE weights, stabilization can improve the performance of the estimator
 by reducing variance. When \code{stabilize} is \code{TRUE} and no
 \code{stabilization_score} is provided, the weights are multiplied by the mean
 of \code{.exposure}. Alternatively, if a \code{stabilization_score} is provided, it
-is used as the multiplier.
+is used as the multiplier. Stabilized weights have the form:
+\eqn{w_s = f_A(A) \times w}, where \eqn{f_A(A)} is the marginal probability or density.
+}
+
+\subsection{Weight Properties and Diagnostics}{
+
+Extreme weights can indicate:
+\itemize{
+\item Positivity violations (near 0 or 1 propensity scores)
+\item Poor model specification
+\item Lack of overlap between treatment groups
+}
+
+See the halfmoon package for tools to diagnose and visualize weights.
+
+You can address extreme weights in several ways. The first is to modify the target population:
+use trimming, truncation, or alternative estimands (ATM, ATO, entropy).
+Another technique that can help is stabilization, which reduces variance of the weights.
 }
 
 \subsection{Trimmed and Truncated Weights}{
@@ -157,42 +208,100 @@ and truncated propensity score weights created by \code{\link[=ps_trim]{ps_trim(
 \code{\link[=ps_trunc]{ps_trunc()}}, and \code{\link[=ps_refit]{ps_refit()}}. These variants calculate the weights using
 modified propensity scores (trimmed or truncated) and update the estimand
 attribute accordingly.
-
-The main functions (\code{wt_ate}, \code{wt_att}, \code{wt_atu}, \code{wt_atm}, and \code{wt_ato})
-dispatch on the class of \code{.propensity}. For binary exposures, the weights
-are computed using inverse probability formulas. For continuous exposures
-(supported only for ATE), weights are computed as the inverse of the
-density function evaluated at the observed exposure.
-}
 }
 }
 \examples{
-## ATE Weights with a Binary Exposure
+## Basic Usage with Binary Exposures
 
-# Simulate a binary treatment and corresponding propensity scores
-propensity_scores <- c(0.2, 0.7, 0.5, 0.8)
-treatment <- c(0, 1, 0, 1)
+# Simulate a simple dataset
+set.seed(123)
+n <- 100
+propensity_scores <- runif(n, 0.1, 0.9)
+treatment <- rbinom(n, 1, propensity_scores)
 
-# Compute ATE weights (unstabilized)
-weights_ate <- wt_ate(propensity_scores, .exposure = treatment)
-weights_ate
+# Calculate different weight types
+weights_ate <- wt_ate(propensity_scores, treatment)
+weights_att <- wt_att(propensity_scores, treatment)
+weights_atu <- wt_atu(propensity_scores, treatment)
+weights_atm <- wt_atm(propensity_scores, treatment)
+weights_ato <- wt_ato(propensity_scores, treatment)
+weights_entropy <- wt_entropy(propensity_scores, treatment)
 
-# Compute ATE weights with stabilization using the mean of the exposure
-weights_ate_stab <- wt_ate(propensity_scores, .exposure = treatment, stabilize = TRUE)
-weights_ate_stab
+# Compare weight distributions
+summary(weights_ate)
+summary(weights_ato)  # Often more stable than ATE
 
-## ATT Weights for a Binary Exposure
+## Stabilized Weights
 
-propensity_scores <- c(0.3, 0.6, 0.4, 0.7)
-treatment <- c(1, 1, 0, 0)
+# Stabilization reduces variance
+weights_ate_stab <- wt_ate(propensity_scores, treatment, stabilize = TRUE)
 
-# Compute ATT weights
-weights_att <- wt_att(propensity_scores, .exposure = treatment)
-weights_att
+# Compare coefficient of variation
+sd(weights_ate) / mean(weights_ate)      # Unstabilized
+sd(weights_ate_stab) / mean(weights_ate_stab)  # Stabilized (lower is better)
 
+## Handling Extreme Propensity Scores
+
+# Create data with positivity violations
+ps_extreme <- c(0.01, 0.02, 0.98, 0.99, rep(0.5, 4))
+trt_extreme <- c(0, 0, 1, 1, 0, 1, 0, 1)
+
+# Standard ATE weights can be extreme
+wt_extreme <- wt_ate(ps_extreme, trt_extreme)
+# Very large!
+max(wt_extreme)  
+
+# ATO weights are bounded, 
+wt_extreme_atm <- wt_ato(ps_extreme, trt_extreme)
+# Much more reasonable
+max(wt_extreme_atm)  
+# but they target a different population
+estimand(wt_extreme_atm) # "ato"
+
+}
+\references{
+For detailed guidance on causal inference in R, see \href{https://www.r-causal.org/}{\emph{Causal Inference in R}}
+by Malcolm Barrett, Lucy D'Agostino McGowan, and Travis Gerke.
+\subsection{Foundational Papers}{
+
+Rosenbaum, P. R., & Rubin, D. B. (1983). The central role of the propensity
+score in observational studies for causal effects. \emph{Biometrika}, 70(1), 41-55.
+}
+
+\subsection{Estimand-Specific Methods}{
+
+Li, L., & Greene, T. (2013). A weighting analogue to pair matching in
+propensity score analysis. \emph{The International Journal of Biostatistics}, 9(2),
+215-234. (ATM weights)
+
+Li, F., Morgan, K. L., & Zaslavsky, A. M. (2018). Balancing covariates via
+propensity score weighting. \emph{Journal of the American Statistical Association},
+113(521), 390-400. (ATO weights)
+
+Zhou, Y., Matsouaka, R. A., & Thomas, L. (2020). Propensity score weighting
+under limited overlap and model misspecification. \emph{Statistical Methods in
+Medical Research}, 29(12), 3721-3756. (Entropy weights)
+}
+
+\subsection{Continuous Exposures}{
+
+Hirano, K., & Imbens, G. W. (2004). The propensity score with continuous
+treatments. \emph{Applied Bayesian Modeling and Causal Inference from
+Incomplete-Data Perspectives}, 226164, 73-84.
+}
+
+\subsection{Practical Guidance}{
+
+Austin, P. C., & Stuart, E. A. (2015). Moving towards best practice when
+using inverse probability of treatment weighting (IPTW) using the propensity
+score to estimate causal treatment effects in observational studies.
+\emph{Statistics in Medicine}, 34(28), 3661-3679.
+}
 }
 \seealso{
 \itemize{
 \item \code{\link[=psw]{psw()}} for details on the structure of the returned weight objects.
+\item \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}}, and \code{\link[=ps_refit]{ps_refit()}} for handling extreme weights.
+\item \code{\link[=ps_calibrate]{ps_calibrate()}} for calibrating weights.
 }
 }
