@@ -209,6 +209,45 @@ used when <code>stabilize</code> is <code>TRUE</code>.</p></dd>
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
 
 <div class="section">
+<h3 id="theoretical-background">Theoretical Background<a class="anchor" aria-label="anchor" href="#theoretical-background"></a></h3>
+
+
+<p>Propensity score weighting is a method for estimating causal effects by
+creating a pseudo-population where the exposure is independent of measured
+confounders. The propensity score, \(e(X)\), is the probability of receiving
+treatment given observed covariates \(X\). By weighting observations inversely
+proportional to their propensity scores, we can balance the distribution of
+covariates between treatment groups. Other weights allow for different target populations.</p>
+</div>
+
+<div class="section">
+<h3 id="mathematical-formulas">Mathematical Formulas<a class="anchor" aria-label="anchor" href="#mathematical-formulas"></a></h3>
+
+<div class="section">
+<h4 id="binary-exposures">Binary Exposures<a class="anchor" aria-label="anchor" href="#binary-exposures"></a></h4>
+
+
+<p>For binary treatments (\(A = 0\) or \(1\)), the weights are:</p><ul><li><p><strong>ATE</strong>: \(w = \frac{A}{e(X)} + \frac{1-A}{1-e(X)}\)</p></li>
+<li><p><strong>ATT</strong>: \(w = A + \frac{(1-A) \cdot e(X)}{1-e(X)}\)</p></li>
+<li><p><strong>ATU</strong>: \(w = \frac{A \cdot (1-e(X))}{e(X)} + (1-A)\)</p></li>
+<li><p><strong>ATM</strong>: \(w = \frac{\min(e(X), 1-e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}\)</p></li>
+<li><p><strong>ATO</strong>: \(w = A \cdot (1-e(X)) + (1-A) \cdot e(X)\)</p></li>
+<li><p><strong>Entropy</strong>: \(w = \frac{h(e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}\), where \(h(e) = -[e \cdot \log(e) + (1-e) \cdot \log(1-e)]\)</p></li>
+</ul></div>
+
+<div class="section">
+<h4 id="continuous-exposures">Continuous Exposures<a class="anchor" aria-label="anchor" href="#continuous-exposures"></a></h4>
+
+
+<p>For continuous treatments, weights use the density ratio:
+\(w = \frac{f_A(A)}{f_{A|X}(A|X)}\), where \(f_A\) is the marginal density of \(A\)
+and \(f_{A|X}\) is the conditional density given \(X\).</p>
+</div>
+
+
+</div>
+
+<div class="section">
 <h3 id="exposure-types">Exposure Types<a class="anchor" aria-label="anchor" href="#exposure-types"></a></h3>
 
 
@@ -217,19 +256,35 @@ used when <code>stabilize</code> is <code>TRUE</code>.</p></dd>
 <code><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm()</a></code>.</p></li>
 <li><p><strong><code>categorical</code></strong>: Currently not supported (an error will be raised).</p></li>
 <li><p><strong><code>auto</code></strong>: Automatically detects the exposure type based on <code>.exposure</code>.</p></li>
-</ul><div class="section">
-<h4 id="stabilization">Stabilization<a class="anchor" aria-label="anchor" href="#stabilization"></a></h4>
+</ul></div>
+
+<div class="section">
+<h3 id="stabilization">Stabilization<a class="anchor" aria-label="anchor" href="#stabilization"></a></h3>
 
 
 <p>For ATE weights, stabilization can improve the performance of the estimator
 by reducing variance. When <code>stabilize</code> is <code>TRUE</code> and no
 <code>stabilization_score</code> is provided, the weights are multiplied by the mean
 of <code>.exposure</code>. Alternatively, if a <code>stabilization_score</code> is provided, it
-is used as the multiplier.</p>
+is used as the multiplier. Stabilized weights have the form:
+\(w_s = f_A(A) \times w\), where \(f_A(A)\) is the marginal probability or density.</p>
 </div>
 
 <div class="section">
-<h4 id="trimmed-and-truncated-weights">Trimmed and Truncated Weights<a class="anchor" aria-label="anchor" href="#trimmed-and-truncated-weights"></a></h4>
+<h3 id="weight-properties-and-diagnostics">Weight Properties and Diagnostics<a class="anchor" aria-label="anchor" href="#weight-properties-and-diagnostics"></a></h3>
+
+
+<p>Extreme weights can indicate:</p><ul><li><p>Positivity violations (near 0 or 1 propensity scores)</p></li>
+<li><p>Poor model specification</p></li>
+<li><p>Lack of overlap between treatment groups</p></li>
+</ul><p>See the halfmoon package for tools to diagnose and visualize weights.</p>
+<p>You can address extreme weights in several ways. The first is to modify the target population:
+use trimming, truncation, or alternative estimands (ATM, ATO, entropy).
+Another technique that can help is stabilization, which reduces variance of the weights.</p>
+</div>
+
+<div class="section">
+<h3 id="trimmed-and-truncated-weights">Trimmed and Truncated Weights<a class="anchor" aria-label="anchor" href="#trimmed-and-truncated-weights"></a></h3>
 
 
 <p>In addition to the standard weight functions, versions exist for trimmed
@@ -237,13 +292,52 @@ and truncated propensity score weights created by <code><a href="ps_trim.html">p
 <code><a href="ps_trunc.html">ps_trunc()</a></code>, and <code><a href="ps_refit.html">ps_refit()</a></code>. These variants calculate the weights using
 modified propensity scores (trimmed or truncated) and update the estimand
 attribute accordingly.</p>
-<p>The main functions (<code>wt_ate</code>, <code>wt_att</code>, <code>wt_atu</code>, <code>wt_atm</code>, and <code>wt_ato</code>)
-dispatch on the class of <code>.propensity</code>. For binary exposures, the weights
-are computed using inverse probability formulas. For continuous exposures
-(supported only for ATE), weights are computed as the inverse of the
-density function evaluated at the observed exposure.</p>
 </div>
 
+    </div>
+    <div class="section level2">
+    <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>
+    <p>For detailed guidance on causal inference in R, see <a href="https://www.r-causal.org/" class="external-link"><em>Causal Inference in R</em></a>
+by Malcolm Barrett, Lucy D'Agostino McGowan, and Travis Gerke.</p><div class="section">
+<h3 id="foundational-papers">Foundational Papers<a class="anchor" aria-label="anchor" href="#foundational-papers"></a></h3>
+
+
+<p>Rosenbaum, P. R., &amp; Rubin, D. B. (1983). The central role of the propensity
+score in observational studies for causal effects. <em>Biometrika</em>, 70(1), 41-55.</p>
+</div>
+
+<div class="section">
+<h3 id="estimand-specific-methods">Estimand-Specific Methods<a class="anchor" aria-label="anchor" href="#estimand-specific-methods"></a></h3>
+
+
+<p>Li, L., &amp; Greene, T. (2013). A weighting analogue to pair matching in
+propensity score analysis. <em>The International Journal of Biostatistics</em>, 9(2),
+215-234. (ATM weights)</p>
+<p>Li, F., Morgan, K. L., &amp; Zaslavsky, A. M. (2018). Balancing covariates via
+propensity score weighting. <em>Journal of the American Statistical Association</em>,
+113(521), 390-400. (ATO weights)</p>
+<p>Zhou, Y., Matsouaka, R. A., &amp; Thomas, L. (2020). Propensity score weighting
+under limited overlap and model misspecification. <em>Statistical Methods in
+Medical Research</em>, 29(12), 3721-3756. (Entropy weights)</p>
+</div>
+
+<div class="section">
+<h3 id="continuous-exposures-1">Continuous Exposures<a class="anchor" aria-label="anchor" href="#continuous-exposures-1"></a></h3>
+
+
+<p>Hirano, K., &amp; Imbens, G. W. (2004). The propensity score with continuous
+treatments. <em>Applied Bayesian Modeling and Causal Inference from
+Incomplete-Data Perspectives</em>, 226164, 73-84.</p>
+</div>
+
+<div class="section">
+<h3 id="practical-guidance">Practical Guidance<a class="anchor" aria-label="anchor" href="#practical-guidance"></a></h3>
+
+
+<p>Austin, P. C., &amp; Stuart, E. A. (2015). Moving towards best practice when
+using inverse probability of treatment weighting (IPTW) using the propensity
+score to estimate causal treatment effects in observational studies.
+<em>Statistics in Medicine</em>, 34(28), 3661-3679.</p>
 </div>
 
     </div>
@@ -251,42 +345,86 @@ density function evaluated at the observed exposure.</p>
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index">
 <ul><li><p><code><a href="psw.html">psw()</a></code> for details on the structure of the returned weight objects.</p></li>
+<li><p><code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_trunc.html">ps_trunc()</a></code>, and <code><a href="ps_refit.html">ps_refit()</a></code> for handling extreme weights.</p></li>
+<li><p><code><a href="ps_calibrate.html">ps_calibrate()</a></code> for calibrating weights.</p></li>
 </ul></div>
     </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co">## ATE Weights with a Binary Exposure</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co">## Basic Usage with Binary Exposures</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Simulate a binary treatment and corresponding propensity scores</span></span></span>
-<span class="r-in"><span><span class="va">propensity_scores</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.2</span>, <span class="fl">0.7</span>, <span class="fl">0.5</span>, <span class="fl">0.8</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">treatment</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Simulate a simple dataset</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">123</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">100</span></span></span>
+<span class="r-in"><span><span class="va">propensity_scores</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">0.1</span>, <span class="fl">0.9</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">treatment</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Binomial.html" class="external-link">rbinom</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">1</span>, <span class="va">propensity_scores</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Compute ATE weights (unstabilized)</span></span></span>
-<span class="r-in"><span><span class="va">weights_ate</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">propensity_scores</span>, .exposure <span class="op">=</span> <span class="va">treatment</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Calculate different weight types</span></span></span>
+<span class="r-in"><span><span class="va">weights_ate</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-in"><span><span class="va">weights_ate</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[4]&gt;</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.250000 1.428571 2.000000 1.250000</span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Compute ATE weights with stabilization using the mean of the exposure</span></span></span>
-<span class="r-in"><span><span class="va">weights_ate_stab</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">propensity_scores</span>, .exposure <span class="op">=</span> <span class="va">treatment</span>, stabilize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
+<span class="r-in"><span><span class="va">weights_att</span> <span class="op">&lt;-</span> <span class="fu">wt_att</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-in"><span><span class="va">weights_ate_stab</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate; stabilized}[4]&gt;</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.6250000 0.7142857 1.0000000 0.6250000</span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ATT Weights for a Binary Exposure</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="va">propensity_scores</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.3</span>, <span class="fl">0.6</span>, <span class="fl">0.4</span>, <span class="fl">0.7</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">treatment</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">0</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Compute ATT weights</span></span></span>
-<span class="r-in"><span><span class="va">weights_att</span> <span class="op">&lt;-</span> <span class="fu">wt_att</span><span class="op">(</span><span class="va">propensity_scores</span>, .exposure <span class="op">=</span> <span class="va">treatment</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
+<span class="r-in"><span><span class="va">weights_atu</span> <span class="op">&lt;-</span> <span class="fu">wt_atu</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-in"><span><span class="va">weights_att</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = att}[4]&gt;</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.0000000 1.0000000 0.6666667 2.3333333</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
+<span class="r-in"><span><span class="va">weights_atm</span> <span class="op">&lt;-</span> <span class="fu">wt_atm</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
+<span class="r-in"><span><span class="va">weights_ato</span> <span class="op">&lt;-</span> <span class="fu">wt_ato</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
+<span class="r-in"><span><span class="va">weights_entropy</span> <span class="op">&lt;-</span> <span class="fu">wt_entropy</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Compare weight distributions</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">weights_ate</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   1.112   1.317   1.591   2.044   2.047   7.482 </span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">weights_ato</span><span class="op">)</span>  <span class="co"># Often more stable than ATE</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  0.1005  0.2406  0.3713  0.3976  0.5113  0.8664 </span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## Stabilized Weights</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Stabilization reduces variance</span></span></span>
+<span class="r-in"><span><span class="va">weights_ate_stab</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span>, stabilize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Compare coefficient of variation</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">weights_ate</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">weights_ate</span><span class="op">)</span>      <span class="co"># Unstabilized</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.6473316</span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">weights_ate_stab</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">weights_ate_stab</span><span class="op">)</span>  <span class="co"># Stabilized (lower is better)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.647046</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## Handling Extreme Propensity Scores</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Create data with positivity violations</span></span></span>
+<span class="r-in"><span><span class="va">ps_extreme</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.01</span>, <span class="fl">0.02</span>, <span class="fl">0.98</span>, <span class="fl">0.99</span>, <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">0.5</span>, <span class="fl">4</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">trt_extreme</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">0</span>, <span class="fl">1</span>, <span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Standard ATE weights can be extreme</span></span></span>
+<span class="r-in"><span><span class="va">wt_extreme</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_extreme</span>, <span class="va">trt_extreme</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-in"><span><span class="co"># Very large!</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">wt_extreme</span><span class="op">)</span>  </span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[1]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># ATO weights are bounded</span></span></span>
+<span class="r-in"><span><span class="va">wt_extreme_atm</span> <span class="op">&lt;-</span> <span class="fu">wt_ato</span><span class="op">(</span><span class="va">ps_extreme</span>, <span class="va">trt_extreme</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-in"><span><span class="co"># Much more reasonable</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">wt_extreme_atm</span><span class="op">)</span>  </span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ato}[1]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.5</span>
+<span class="r-in"><span><span class="co"># but they target a different population</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="psw.html">estimand</a></span><span class="op">(</span><span class="va">wt_extreme_atm</span><span class="op">)</span> <span class="co"># "ato"</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "ato"</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
