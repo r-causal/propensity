@@ -8,9 +8,10 @@ abort_unsupported <- function(exposure_type, what, call = rlang::caller_env()) {
 
 match_exposure_type <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .exposure
+  .exposure,
+  valid_types = c("auto", "binary", "categorical", "continuous")
 ) {
-  .exposure_type <- rlang::arg_match(exposure_type)
+  .exposure_type <- rlang::arg_match(exposure_type, valid_types)
   if (.exposure_type == "auto") {
     detect_exposure_type(.exposure)
   } else {
@@ -123,6 +124,29 @@ check_lower_upper <- function(lower, upper, call = rlang::caller_env()) {
       ),
       call = call,
       error_class = "propensity_range_error"
+    )
+  }
+
+  invisible(TRUE)
+}
+
+check_lengths_match <- function(
+  .propensity,
+  .exposure,
+  call = rlang::caller_env()
+) {
+  len_prop <- length(.propensity)
+  len_exp <- length(.exposure)
+
+  if (len_prop != len_exp) {
+    abort(
+      c(
+        "{.arg .propensity} and {.arg .exposure} must have the same length.",
+        i = "{.arg .propensity} has length {len_prop}",
+        i = "{.arg .exposure} has length {len_exp}"
+      ),
+      call = call,
+      error_class = "propensity_length_error"
     )
   }
 
