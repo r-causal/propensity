@@ -436,13 +436,6 @@ test_that("smooth parameter is ignored for isotonic regression", {
   expect_equal(as.numeric(iso_smooth_true), as.numeric(iso_smooth_false))
 })
 
-test_that("error when mgcv is not available for smooth calibration", {
-  # Mock unavailable mgcv package by using a non-existent namespace
-  skip("This test would require mocking requireNamespace which is complex in R")
-  # In a real scenario, you'd mock requireNamespace to return FALSE
-  # and test that the error message is correct
-})
-
 # Cross-validation tests against WeightIt and the probably package
 
 test_that("ps_calibrate with smooth=FALSE matches WeightIt::calibrate for logistic calibration", {

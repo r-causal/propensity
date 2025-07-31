@@ -292,3 +292,8 @@ vec_cast.psw.integer <- function(x, to, estimand = NULL, ...)
 vec_cast.integer.psw <- function(x, to, ...) {
   vec_cast(vec_data(x), integer(), x_arg = "psw")
 }
+
+#' @export
+summary.psw <- function(object, ...) {
+  summary(as.numeric(object), ...)
+}
