@@ -595,11 +595,12 @@ test_that("entropy weights error on unsupported exposure types", {
     class = "propensity_wt_not_supported_error"
   )
 
+  # Now that continuous is not even an option for entropy,
+  # the function will error during auto-detection if given continuous data
   expect_error(
     wt_entropy(
       rnorm(10),
-      .exposure = rnorm(10),
-      exposure_type = "continuous"
+      .exposure = rnorm(10)
     ),
     class = "propensity_wt_not_supported_error"
   )

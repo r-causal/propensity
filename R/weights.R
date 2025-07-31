@@ -541,7 +541,7 @@ ate_continuous <- function(
 wt_att <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -553,7 +553,7 @@ wt_att <- function(
 wt_att.default <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -571,13 +571,17 @@ wt_att.default <- function(
 wt_att.numeric <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
 ) {
   rlang::check_dots_empty()
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
 
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
@@ -599,7 +603,7 @@ wt_att.numeric <- function(
 wt_att.data.frame <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -626,7 +630,7 @@ wt_att.data.frame <- function(
 wt_att.glm <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -666,7 +670,7 @@ att_binary <- function(
 wt_atu <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -678,7 +682,7 @@ wt_atu <- function(
 wt_atu.default <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -696,13 +700,17 @@ wt_atu.default <- function(
 wt_atu.numeric <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
 ) {
   rlang::check_dots_empty()
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
     wts <- atu_binary(
@@ -723,7 +731,7 @@ wt_atu.numeric <- function(
 wt_atu.data.frame <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -750,7 +758,7 @@ wt_atu.data.frame <- function(
 wt_atu.glm <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -792,7 +800,7 @@ atu_binary <- function(
 wt_atm <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -804,7 +812,7 @@ wt_atm <- function(
 wt_atm.default <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -822,13 +830,17 @@ wt_atm.default <- function(
 wt_atm.numeric <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
 ) {
   rlang::check_dots_empty()
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
     wts <- atm_binary(
@@ -849,7 +861,7 @@ wt_atm.numeric <- function(
 wt_atm.data.frame <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -876,7 +888,7 @@ wt_atm.data.frame <- function(
 wt_atm.glm <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -917,7 +929,7 @@ atm_binary <- function(
 wt_ato <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -929,7 +941,7 @@ wt_ato <- function(
 wt_ato.default <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -947,12 +959,16 @@ wt_ato.default <- function(
 wt_ato.numeric <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
 ) {
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
     wts <- ato_binary(
@@ -973,7 +989,7 @@ wt_ato.numeric <- function(
 wt_ato.data.frame <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -1000,7 +1016,7 @@ wt_ato.data.frame <- function(
 wt_ato.glm <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1039,7 +1055,7 @@ ato_binary <- function(
 wt_entropy <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1051,7 +1067,7 @@ wt_entropy <- function(
 wt_entropy.default <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1069,13 +1085,17 @@ wt_entropy.default <- function(
 wt_entropy.numeric <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
 ) {
   rlang::check_dots_empty()
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
     wts <- entropy_binary(
@@ -1096,7 +1116,7 @@ wt_entropy.numeric <- function(
 wt_entropy.data.frame <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -1123,7 +1143,7 @@ wt_entropy.data.frame <- function(
 wt_entropy.glm <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1210,7 +1230,7 @@ wt_ate.ps_trim <- function(
 wt_att.ps_trim <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1239,7 +1259,7 @@ wt_att.ps_trim <- function(
 wt_atu.ps_trim <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1268,7 +1288,7 @@ wt_atu.ps_trim <- function(
 wt_atm.ps_trim <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1297,7 +1317,7 @@ wt_atm.ps_trim <- function(
 wt_ato.ps_trim <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1359,7 +1379,7 @@ wt_ate.ps_trunc <- function(
 wt_att.ps_trunc <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1386,7 +1406,7 @@ wt_att.ps_trunc <- function(
 wt_atu.ps_trunc <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1413,7 +1433,7 @@ wt_atu.ps_trunc <- function(
 wt_atm.ps_trunc <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1440,7 +1460,7 @@ wt_atm.ps_trunc <- function(
 wt_ato.ps_trunc <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1467,7 +1487,7 @@ wt_ato.ps_trunc <- function(
 wt_entropy.ps_trim <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical"),
+  exposure_type = c("auto", "binary"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1496,7 +1516,7 @@ wt_entropy.ps_trim <- function(
 wt_entropy.ps_trunc <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical"),
+  exposure_type = c("auto", "binary"),
   .treated = NULL,
   .untreated = NULL,
   ...

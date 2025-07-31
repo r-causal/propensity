@@ -8,9 +8,10 @@ abort_unsupported <- function(exposure_type, what, call = rlang::caller_env()) {
 
 match_exposure_type <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .exposure
+  .exposure,
+  valid_types = c("auto", "binary", "categorical", "continuous")
 ) {
-  .exposure_type <- rlang::arg_match(exposure_type)
+  .exposure_type <- rlang::arg_match(exposure_type, valid_types)
   if (.exposure_type == "auto") {
     detect_exposure_type(.exposure)
   } else {

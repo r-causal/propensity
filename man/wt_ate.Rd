@@ -43,7 +43,7 @@ wt_ate(
 wt_att(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -52,7 +52,7 @@ wt_att(
 \method{wt_att}{data.frame}(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -62,7 +62,7 @@ wt_att(
 wt_atu(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -71,7 +71,7 @@ wt_atu(
 \method{wt_atu}{data.frame}(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -81,7 +81,7 @@ wt_atu(
 wt_atm(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -90,7 +90,7 @@ wt_atm(
 \method{wt_atm}{data.frame}(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -100,7 +100,7 @@ wt_atm(
 wt_ato(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -109,7 +109,7 @@ wt_ato(
 \method{wt_ato}{data.frame}(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
@@ -119,7 +119,7 @@ wt_ato(
 wt_entropy(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -128,7 +128,7 @@ wt_entropy(
 \method{wt_entropy}{data.frame}(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
