@@ -9,10 +9,10 @@ ATM (Average Treatment Effect for the Evenly Matchable)
 ATO (Average Treatment Effect for the Overlap population)
 Entropy (Average Treatment Effect for the Entropy-weighted population)
 The propensity score can be provided as a numeric vector of predicted
-probabilities or as a data.frame where each column represents the
-predicted probability for a level of the exposure. They can also be
-propensity score objects created by ps_trim(), ps_refit(), or
-ps_trunc()
+probabilities, as a data.frame where each column represents the
+predicted probability for a level of the exposure, or as a fitted
+GLM object. They can also be propensity score objects created by
+ps_trim(), ps_refit(), or ps_trunc()
 The returned weights are encapsulated in a psw object, which is a numeric
 vector with additional attributes that record the estimand, and whether the
 weights have been stabilized, trimmed, or truncated.
@@ -27,10 +27,10 @@ ATM (Average Treatment Effect for the Evenly Matchable)
 ATO (Average Treatment Effect for the Overlap population)
 Entropy (Average Treatment Effect for the Entropy-weighted population)
 The propensity score can be provided as a numeric vector of predicted
-probabilities or as a data.frame where each column represents the
-predicted probability for a level of the exposure. They can also be
-propensity score objects created by ps_trim(), ps_refit(), or
-ps_trunc()
+probabilities, as a data.frame where each column represents the
+predicted probability for a level of the exposure, or as a fitted
+GLM object. They can also be propensity score objects created by
+ps_trim(), ps_refit(), or ps_trunc()
 The returned weights are encapsulated in a psw object, which is a numeric
 vector with additional attributes that record the estimand, and whether the
 weights have been stabilized, trimmed, or truncated.
@@ -77,10 +77,10 @@ the <strong>ATC</strong>, where the "C" stands for "control")</p></li>
 <li><p><strong>ATO</strong> (Average Treatment Effect for the Overlap population)</p></li>
 <li><p><strong>Entropy</strong> (Average Treatment Effect for the Entropy-weighted population)</p>
 <p>The propensity score can be provided as a numeric vector of predicted
-probabilities or as a <code>data.frame</code> where each column represents the
-predicted probability for a level of the exposure. They can also be
-propensity score objects created by <code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_refit.html">ps_refit()</a></code>, or
-<code><a href="ps_trunc.html">ps_trunc()</a></code></p>
+probabilities, as a <code>data.frame</code> where each column represents the
+predicted probability for a level of the exposure, or as a fitted
+GLM object. They can also be propensity score objects created by
+<code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_refit.html">ps_refit()</a></code>, or <code><a href="ps_trunc.html">ps_trunc()</a></code></p>
 <p>The returned weights are encapsulated in a <code>psw</code> object, which is a numeric
 vector with additional attributes that record the estimand, and whether the
 weights have been stabilized, trimmed, or truncated.</p></li>
@@ -100,49 +100,118 @@ weights have been stabilized, trimmed, or truncated.</p></li>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">wt_att</span><span class="op">(</span></span>
+<span><span class="co"># S3 method for class 'data.frame'</span></span>
+<span><span class="fu">wt_ate</span><span class="op">(</span></span>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
+<span>  .sigma <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">wt_att</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'data.frame'</span></span>
+<span><span class="fu">wt_att</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">wt_atu</span><span class="op">(</span></span>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
-<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'data.frame'</span></span>
+<span><span class="fu">wt_atu</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">wt_atm</span><span class="op">(</span></span>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
-<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'data.frame'</span></span>
+<span><span class="fu">wt_atm</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">wt_ato</span><span class="op">(</span></span>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
-<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
+<span><span class="co"># S3 method for class 'data.frame'</span></span>
+<span><span class="fu">wt_ato</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span>
+<span></span>
 <span><span class="fu">wt_entropy</span><span class="op">(</span></span>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
-<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'data.frame'</span></span>
+<span><span class="fu">wt_entropy</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -151,8 +220,12 @@ weights have been stabilized, trimmed, or truncated.</p></li>
 
 
 <dl><dt id="arg--propensity">.propensity<a class="anchor" aria-label="anchor" href="#arg--propensity"></a></dt>
-<dd><p>Either a numeric vector of predicted probabilities or a
-<code>data.frame</code> where each column corresponds to a level of the exposure.</p></dd>
+<dd><p>Either a numeric vector of predicted probabilities, a
+<code>data.frame</code> where each column corresponds to a level of the exposure,
+or a fitted GLM object. For data frames, the second column is used by
+default for binary exposures unless specified otherwise with
+<code>.propensity_col</code>. For GLM objects, fitted values are extracted
+automatically.</p></dd>
 
 
 <dt id="arg--exposure">.exposure<a class="anchor" aria-label="anchor" href="#arg--exposure"></a></dt>
@@ -196,6 +269,13 @@ used when <code>stabilize</code> is <code>TRUE</code>.</p></dd>
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Reserved for future expansion. Not currently used.</p></dd>
+
+
+<dt id="arg--propensity-col">.propensity_col<a class="anchor" aria-label="anchor" href="#arg--propensity-col"></a></dt>
+<dd><p>When <code>.propensity</code> is a data frame, specifies which
+column to use for propensity scores. Can be a column name (quoted or
+unquoted) or a numeric index. Defaults to the second column if available,
+otherwise the first.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -411,7 +491,7 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-in"><span><span class="va">wt_extreme</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_extreme</span>, <span class="va">trt_extreme</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-in"><span><span class="co"># Very large!</span></span></span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">wt_extreme</span><span class="op">)</span>  </span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">wt_extreme</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[1]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
 <span class="r-in"><span></span></span>
@@ -419,12 +499,56 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-in"><span><span class="va">wt_extreme_atm</span> <span class="op">&lt;-</span> <span class="fu">wt_ato</span><span class="op">(</span><span class="va">ps_extreme</span>, <span class="va">trt_extreme</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-in"><span><span class="co"># Much more reasonable</span></span></span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">wt_extreme_atm</span><span class="op">)</span>  </span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">wt_extreme_atm</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ato}[1]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.5</span>
 <span class="r-in"><span><span class="co"># but they target a different population</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="psw.html">estimand</a></span><span class="op">(</span><span class="va">wt_extreme_atm</span><span class="op">)</span> <span class="co"># "ato"</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "ato"</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## Working with Data Frames</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Example with custom data frame</span></span></span>
+<span class="r-in"><span><span class="va">ps_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>  control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.9</span>, <span class="fl">0.7</span>, <span class="fl">0.3</span>, <span class="fl">0.1</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  treated <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.1</span>, <span class="fl">0.3</span>, <span class="fl">0.7</span>, <span class="fl">0.9</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">exposure</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">0</span>, <span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Uses second column by default (treated probabilities)</span></span></span>
+<span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_df</span>, <span class="va">exposure</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[4]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.111111 1.428571 1.428571 1.111111</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Explicitly specify column by name</span></span></span>
+<span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_df</span>, <span class="va">exposure</span>, .propensity_col <span class="op">=</span> <span class="st">"treated"</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[4]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.111111 1.428571 1.428571 1.111111</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Or by position</span></span></span>
+<span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_df</span>, <span class="va">exposure</span>, .propensity_col <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[4]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.111111 1.428571 1.428571 1.111111</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## Working with GLM Objects</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Fit a propensity score model</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">123</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">100</span></span></span>
+<span class="r-in"><span><span class="va">x1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">x2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">treatment</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Binomial.html" class="external-link">rbinom</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/stats/Logistic.html" class="external-link">plogis</a></span><span class="op">(</span><span class="fl">0.5</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">x2</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="va">ps_model</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">treatment</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, family <span class="op">=</span> <span class="va">binomial</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Use GLM directly for weight calculation</span></span></span>
+<span class="r-in"><span><span class="va">weights_from_glm</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_model</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
