@@ -159,7 +159,7 @@
 #' # Very large!
 #' max(wt_extreme)  
 #'
-#' # ATO weights are bounded, 
+#' # ATO weights are bounded
 #' wt_extreme_atm <- wt_ato(ps_extreme, trt_extreme)
 #' # Much more reasonable
 #' max(wt_extreme_atm)  
