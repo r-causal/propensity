@@ -129,3 +129,26 @@ check_lower_upper <- function(lower, upper, call = rlang::caller_env()) {
 
   invisible(TRUE)
 }
+
+check_lengths_match <- function(
+  .propensity,
+  .exposure,
+  call = rlang::caller_env()
+) {
+  len_prop <- length(.propensity)
+  len_exp <- length(.exposure)
+
+  if (len_prop != len_exp) {
+    abort(
+      c(
+        "{.arg .propensity} and {.arg .exposure} must have the same length.",
+        i = "{.arg .propensity} has length {len_prop}",
+        i = "{.arg .exposure} has length {len_exp}"
+      ),
+      call = call,
+      error_class = "propensity_length_error"
+    )
+  }
+
+  invisible(TRUE)
+}

@@ -297,6 +297,7 @@ wt_ate.numeric <- function(
   ...
 ) {
   rlang::check_dots_empty()
+  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(exposure_type, .exposure)
   if (exposure_type == "binary") {
     check_ps_range(.propensity)
@@ -577,6 +578,7 @@ wt_att.numeric <- function(
   ...
 ) {
   rlang::check_dots_empty()
+  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -706,6 +708,7 @@ wt_atu.numeric <- function(
   ...
 ) {
   rlang::check_dots_empty()
+  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -836,6 +839,7 @@ wt_atm.numeric <- function(
   ...
 ) {
   rlang::check_dots_empty()
+  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -1091,6 +1095,7 @@ wt_entropy.numeric <- function(
   ...
 ) {
   rlang::check_dots_empty()
+  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,

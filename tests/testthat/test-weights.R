@@ -305,7 +305,7 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
   )
   expect_s3_class(w_atu_unfit, "psw")
   expect_match(estimand(w_atu_unfit), "atu; trimmed")
-  expect_true(attr(w_atu_unfit, "trimmed"))
+  expect_true(is_ps_trimmed(w_atu_unfit))
   # ps_trim_meta copied
   expect_identical(
     attr(w_atu_unfit, "ps_trim_meta"),
@@ -324,7 +324,7 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
   )
   expect_s3_class(w_atu_fit, "psw")
   expect_match(estimand(w_atu_fit), "atu; trimmed")
-  expect_true(attr(w_atu_fit, "trimmed"))
+  expect_true(is_ps_trimmed(w_atu_fit))
   # confirm ps_trim_meta matches
   expect_identical(
     attr(w_atu_fit, "ps_trim_meta"),
@@ -360,7 +360,7 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
   )
   expect_s3_class(w_atm_unfit, "psw")
   expect_match(estimand(w_atm_unfit), "atm; trimmed")
-  expect_true(attr(w_atm_unfit, "trimmed"))
+  expect_true(is_ps_trimmed(w_atm_unfit))
 
   # Refit => no warning
   refit_obj <- ps_refit(trimmed_obj, model = fit)
@@ -374,7 +374,7 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
   )
   expect_s3_class(w_atm_fit, "psw")
   expect_match(estimand(w_atm_fit), "atm; trimmed")
-  expect_true(attr(w_atm_fit, "trimmed"))
+  expect_true(is_ps_trimmed(w_atm_fit))
 })
 
 test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
@@ -405,7 +405,7 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
   )
   expect_s3_class(w_ato_unfit, "psw")
   expect_match(estimand(w_ato_unfit), "ato; trimmed")
-  expect_true(attr(w_ato_unfit, "trimmed"))
+  expect_true(is_ps_trimmed(w_ato_unfit))
 
   # Refit => no warning
   refit_obj <- ps_refit(trimmed_obj, model = fit)
@@ -419,7 +419,7 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
   )
   expect_s3_class(w_ato_fit, "psw")
   expect_match(estimand(w_ato_fit), "ato; trimmed")
-  expect_true(attr(w_ato_fit, "trimmed"))
+  expect_true(is_ps_trimmed(w_ato_fit))
 })
 
 # Entropy weight tests
@@ -567,7 +567,7 @@ test_that("wt_entropy works with ps_trim objects", {
 
   expect_s3_class(weights, "psw")
   expect_equal(estimand(weights), "entropy; trimmed")
-  expect_true(attr(weights, "trimmed"))
+  expect_true(is_ps_trimmed(weights))
 })
 
 test_that("wt_entropy works with ps_trunc objects", {
@@ -582,7 +582,7 @@ test_that("wt_entropy works with ps_trunc objects", {
 
   expect_s3_class(weights, "psw")
   expect_equal(estimand(weights), "entropy; truncated")
-  expect_true(attr(weights, "truncated"))
+  expect_true(is_ps_truncated(weights))
 })
 
 test_that("entropy weights error on unsupported exposure types", {
@@ -994,7 +994,7 @@ test_that("GLM methods handle continuous exposures", {
   )
   expect_s3_class(weights_ate, "psw")
   expect_equal(estimand(weights_ate), "ate")
-  expect_true(attr(weights_ate, "stabilized"))
+  expect_true(is_stabilized(weights_ate))
 
   # Check that weights are reasonable
   expect_true(all(is.finite(weights_ate)))
@@ -1012,4 +1012,647 @@ test_that("GLM methods error on non-GLM objects", {
     wt_att(list(a = 1, b = 2), c(0, 1, 0, 1)),
     class = "propensity_method_error"
   )
+})
+
+# Edge case tests for all wt_* functions ----
+
+test_that("wt_* functions handle edge case propensity scores", {
+  # Edge case: propensity scores at boundaries
+  ps_boundary <- c(1e-10, 0.001, 0.5, 0.999, 1 - 1e-10)
+  exposure_boundary <- c(0, 0, 1, 1, 1)
+
+  # Test all functions with boundary values
+  for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
+    weights <- fn(ps_boundary, exposure_boundary, exposure_type = "binary")
+    expect_s3_class(weights, "psw")
+    expect_true(all(is.finite(weights)))
+    expect_true(all(weights > 0))
+  }
+
+  # Edge case: all propensity scores identical
+  ps_constant <- rep(0.5, 5)
+  exposure_mixed <- c(0, 0, 1, 1, 0)
+
+  for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
+    weights <- fn(ps_constant, exposure_mixed, exposure_type = "binary")
+    expect_s3_class(weights, "psw")
+    # For constant propensity scores, weights should be constant within treatment groups
+    expect_equal(length(unique(weights[exposure_mixed == 0])), 1)
+    expect_equal(length(unique(weights[exposure_mixed == 1])), 1)
+  }
+
+  # Edge case: single observation
+  ps_single <- 0.3
+  exposure_single <- 1
+
+  # Single observation needs explicit .treated/.untreated
+  for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
+    weights <- fn(
+      ps_single,
+      exposure_single,
+      exposure_type = "binary",
+      .treated = 1
+    )
+    expect_s3_class(weights, "psw")
+    expect_length(weights, 1)
+    expect_true(is.finite(weights))
+  }
+
+  # Edge case: all treated or all control
+  ps_various <- c(0.2, 0.4, 0.6, 0.8)
+
+  for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
+    # All treated - need to specify .treated since there's only one level
+    weights_all_1 <- fn(
+      ps_various,
+      rep(1, 4),
+      exposure_type = "binary",
+      .treated = 1
+    )
+    expect_s3_class(weights_all_1, "psw")
+    expect_true(all(is.finite(weights_all_1)))
+
+    # All control - need to specify .untreated since there's only one level
+    weights_all_0 <- fn(
+      ps_various,
+      rep(0, 4),
+      exposure_type = "binary",
+      .untreated = 0
+    )
+    expect_s3_class(weights_all_0, "psw")
+    expect_true(all(is.finite(weights_all_0)))
+  }
+})
+
+test_that("wt_* functions handle extreme weight scenarios", {
+  # Create scenario that produces very large weights
+  ps_extreme <- c(0.001, 0.999, 0.5, 0.5)
+  exposure_extreme <- c(1, 0, 0, 1) # Misaligned with propensity
+
+  # ATE should produce extreme weights
+  weights_ate <- wt_ate(ps_extreme, exposure_extreme, exposure_type = "binary")
+  expect_true(max(weights_ate) > 100) # Very large weight expected
+
+  # ATO and ATM should be bounded
+  weights_ato <- wt_ato(ps_extreme, exposure_extreme, exposure_type = "binary")
+  weights_atm <- wt_atm(ps_extreme, exposure_extreme, exposure_type = "binary")
+  expect_true(all(weights_ato <= 1)) # ATO weights bounded by 1
+  expect_true(all(weights_atm <= 2)) # ATM weights bounded
+})
+
+# Additional error handling tests ----
+
+test_that("wt_* functions error appropriately on invalid inputs", {
+  # Invalid propensity scores (outside [0,1])
+  expect_error(
+    wt_ate(c(-0.1, 0.5, 1.1), c(0, 1, 0), exposure_type = "binary"),
+    class = "propensity_range_error"
+  )
+
+  expect_error(
+    wt_att(c(0, 0.5, 1), c(0, 1, 0), exposure_type = "binary"),
+    class = "propensity_range_error"
+  )
+
+  # Length mismatch should error
+  expect_error(
+    wt_ate(c(0.1, 0.5), c(0, 1, 0), exposure_type = "binary"),
+    class = "propensity_length_error"
+  )
+
+  # Invalid exposure type
+  expect_error(
+    wt_ate(c(0.1, 0.5), c(0, 1), exposure_type = "invalid"),
+    "must be one of"
+  )
+
+  # Non-numeric propensity scores
+  expect_error(
+    wt_ate(c("a", "b"), c(0, 1)),
+    class = "propensity_method_error"
+  )
+
+  # Empty vectors
+  expect_error(
+    wt_ate(numeric(0), numeric(0))
+  )
+
+  # Categorical exposure (not supported for most estimands)
+  expect_error(
+    wt_att(c(0.3, 0.3, 0.4), c(1, 2, 3), exposure_type = "categorical"),
+    class = "propensity_wt_not_supported_error"
+  )
+})
+
+test_that("data frame methods error appropriately", {
+  # Empty data frame
+  expect_error(
+    wt_ate(data.frame(), c(0, 1)),
+    class = "propensity_df_ncol_error"
+  )
+
+  # Non-existent column
+  df <- data.frame(a = c(0.1, 0.9), b = c(0.9, 0.1))
+  expect_error(
+    wt_ate(df, c(0, 1), .propensity_col = "nonexistent"),
+    class = "propensity_df_column_error"
+  )
+
+  # Column index out of bounds
+  expect_error(
+    wt_ate(df, c(0, 1), .propensity_col = 5),
+    class = "propensity_df_column_error"
+  )
+
+  # Non-numeric column
+  df_char <- data.frame(a = c("high", "low"), b = c(0.9, 0.1))
+  suppressWarnings({
+    expect_error(
+      wt_ate(df_char, c(0, 1), .propensity_col = 1)
+    )
+  })
+
+  # Column with invalid values
+  df_invalid <- data.frame(a = c(0.5, 1.5), b = c(0.9, 0.1))
+  expect_error(
+    wt_ate(df_invalid, c(0, 1), .propensity_col = 1),
+    class = "propensity_range_error"
+  )
+})
+
+test_that("GLM methods error appropriately", {
+  # Non-GLM object
+  expect_error(
+    wt_ate(lm(mpg ~ wt, data = mtcars), rep(0:1, 16)),
+    class = "propensity_method_error"
+  )
+
+  # GLM with wrong dimensions
+  small_glm <- glm(c(0, 1) ~ c(1, 2), family = binomial)
+  expect_error(
+    wt_ate(small_glm, c(0, 1, 0, 1)), # Mismatch in length
+    class = "propensity_length_error"
+  )
+})
+
+# Default method dispatch tests ----
+
+test_that("default methods provide informative errors", {
+  # Custom class that doesn't have a method
+  custom_obj <- structure(list(x = 1:5), class = "my_custom_class")
+
+  expect_error(
+    wt_ate(custom_obj, c(0, 1, 0, 1, 0)),
+    class = "propensity_method_error"
+  )
+
+  expect_error(
+    wt_att(custom_obj, c(0, 1, 0, 1, 0)),
+    class = "propensity_method_error"
+  )
+
+  expect_error(
+    wt_atu(custom_obj, c(0, 1, 0, 1, 0)),
+    class = "propensity_method_error"
+  )
+
+  expect_error(
+    wt_atm(custom_obj, c(0, 1, 0, 1, 0)),
+    class = "propensity_method_error"
+  )
+
+  expect_error(
+    wt_ato(custom_obj, c(0, 1, 0, 1, 0)),
+    class = "propensity_method_error"
+  )
+
+  expect_error(
+    wt_entropy(custom_obj, c(0, 1, 0, 1, 0)),
+    class = "propensity_method_error"
+  )
+})
+
+# Data frame method tests with various column types ----
+
+test_that("data frame methods handle various column configurations", {
+  # Data frame with many columns
+  ps_multi <- data.frame(
+    col1 = runif(10, 0.1, 0.9),
+    col2 = runif(10, 0.1, 0.9),
+    col3 = runif(10, 0.1, 0.9),
+    col4 = runif(10, 0.1, 0.9),
+    col5 = runif(10, 0.1, 0.9)
+  )
+  exposure <- rbinom(10, 1, 0.5)
+
+  # Test column selection by position
+  for (i in 1:5) {
+    weights <- suppressWarnings(wt_ate(
+      ps_multi,
+      exposure,
+      .propensity_col = i,
+      exposure_type = "binary"
+    ))
+    expected <- wt_ate(ps_multi[[i]], exposure, exposure_type = "binary")
+    expect_equal(weights, expected)
+  }
+
+  # Test with tibble
+  if (requireNamespace("tibble", quietly = TRUE)) {
+    ps_tibble <- tibble::as_tibble(ps_multi)
+    weights_tibble <- wt_ate(
+      ps_tibble,
+      exposure,
+      .propensity_col = 3,
+      exposure_type = "binary"
+    )
+    weights_df <- wt_ate(
+      ps_multi,
+      exposure,
+      .propensity_col = 3,
+      exposure_type = "binary"
+    )
+    expect_equal(weights_tibble, weights_df)
+  }
+
+  # Test with column names containing spaces
+  ps_spaces <- data.frame(
+    `control probability` = runif(5, 0.1, 0.9),
+    `treatment probability` = runif(5, 0.1, 0.9),
+    check.names = FALSE
+  )
+  exposure_small <- c(0, 0, 1, 1, 0)
+
+  weights_spaces <- wt_ate(
+    ps_spaces,
+    exposure_small,
+    .propensity_col = "treatment probability",
+    exposure_type = "binary"
+  )
+  expect_s3_class(weights_spaces, "psw")
+
+  # Test tidyselect helpers
+  weights_last <- wt_ate(
+    ps_multi,
+    exposure,
+    .propensity_col = tidyselect::last_col(),
+    exposure_type = "binary"
+  )
+  expected_last <- wt_ate(ps_multi$col5, exposure, exposure_type = "binary")
+  expect_equal(weights_last, expected_last)
+})
+
+# GLM method tests with different families ----
+
+test_that("GLM methods handle non-binomial families appropriately", {
+  # Gaussian family (for continuous exposures)
+  set.seed(123)
+  n <- 50
+  x <- rnorm(n)
+  exposure_cont <- 2 + 0.5 * x + rnorm(n)
+
+  glm_gaussian <- glm(exposure_cont ~ x, family = gaussian)
+
+  # Should work for ATE with continuous exposure
+  weights_gaussian <- wt_ate(
+    glm_gaussian,
+    exposure_cont,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_s3_class(weights_gaussian, "psw")
+  expect_true(all(is.finite(weights_gaussian)))
+
+  # Should error for estimands that don't support continuous
+  # ATT doesn't accept continuous as a valid exposure type
+  expect_error(
+    wt_att(glm_gaussian, exposure_cont, exposure_type = "continuous"),
+    "must be one of"
+  )
+
+  # Poisson family (should extract fitted values)
+  # For non-binomial GLMs, the fitted values might not be valid propensity scores
+  # Skip this test as it's not a valid use case
+})
+
+# Attribute preservation tests ----
+
+test_that("attributes are preserved across all weight methods", {
+  # Create trimmed propensity scores with attributes
+  ps <- runif(20, 0.05, 0.95)
+  exposure <- rbinom(20, 1, ps)
+
+  ps_trimmed <- ps_trim(
+    ps,
+    .exposure = exposure,
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  # Test that all weight functions preserve trim attributes
+  for (fn_name in c(
+    "wt_ate",
+    "wt_att",
+    "wt_atu",
+    "wt_atm",
+    "wt_ato",
+    "wt_entropy"
+  )) {
+    fn <- get(fn_name)
+
+    # Suppress refit warning
+    suppressWarnings({
+      weights <- fn(ps_trimmed, exposure, exposure_type = "binary")
+    })
+
+    expect_true(is_ps_trimmed(weights))
+    expect_equal(
+      attr(weights, "ps_trim_meta"),
+      attr(ps_trimmed, "ps_trim_meta")
+    )
+    expect_match(estimand(weights), "; trimmed$")
+  }
+
+  # Test with truncated propensity scores
+  ps_truncated <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+
+  for (fn_name in c(
+    "wt_ate",
+    "wt_att",
+    "wt_atu",
+    "wt_atm",
+    "wt_ato",
+    "wt_entropy"
+  )) {
+    fn <- get(fn_name)
+    weights <- fn(ps_truncated, exposure, exposure_type = "binary")
+
+    expect_true(is_ps_truncated(weights))
+    expect_equal(
+      attr(weights, "ps_trunc_meta"),
+      attr(ps_truncated, "ps_trunc_meta")
+    )
+    expect_match(estimand(weights), "; truncated$")
+  }
+})
+
+test_that("stabilization attributes are set correctly", {
+  ps <- runif(20, 0.1, 0.9)
+  exposure <- rbinom(20, 1, ps)
+
+  # Test ATE with stabilization
+  weights_unstab <- wt_ate(
+    ps,
+    exposure,
+    stabilize = FALSE,
+    exposure_type = "binary"
+  )
+  weights_stab <- wt_ate(
+    ps,
+    exposure,
+    stabilize = TRUE,
+    exposure_type = "binary"
+  )
+
+  expect_false(is_stabilized(weights_unstab))
+  expect_true(is_stabilized(weights_stab))
+
+  # Test with custom stabilization score
+  weights_custom <- wt_ate(
+    ps,
+    exposure,
+    stabilize = TRUE,
+    stabilization_score = 0.4,
+    exposure_type = "binary"
+  )
+  expect_true(is_stabilized(weights_custom))
+})
+
+# Stabilization tests across methods ----
+
+test_that("stabilization works correctly for all applicable methods", {
+  set.seed(456)
+  ps <- runif(30, 0.2, 0.8)
+  exposure <- rbinom(30, 1, ps)
+
+  # ATE supports stabilization
+  weights_ate_unstab <- wt_ate(
+    ps,
+    exposure,
+    stabilize = FALSE,
+    exposure_type = "binary"
+  )
+  weights_ate_stab <- wt_ate(
+    ps,
+    exposure,
+    stabilize = TRUE,
+    exposure_type = "binary"
+  )
+
+  # Check that stabilization was applied
+  expect_true(is_stabilized(weights_ate_stab))
+})
+
+# NA handling tests ----
+
+test_that("all methods handle NAs appropriately", {
+  # Propensity scores with NAs
+  ps_na <- c(0.2, NA, 0.5, 0.8, NA)
+  exposure_na <- c(0, 1, 1, 0, 1)
+
+  # All methods should handle NAs by producing NA weights
+  for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
+    weights <- fn(ps_na, exposure_na, exposure_type = "binary")
+    expect_s3_class(weights, "psw")
+    expect_true(any(is.na(weights)))
+  }
+
+  # Exposure with NAs
+  ps_good <- c(0.2, 0.3, 0.5, 0.8, 0.7)
+  exposure_with_na <- c(0, NA, 1, 0, 1)
+
+  for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
+    weights <- fn(ps_good, exposure_with_na, exposure_type = "binary")
+    expect_s3_class(weights, "psw")
+    expect_true(any(is.na(weights)))
+  }
+
+  # Data frame with NAs
+  df_na <- data.frame(
+    col1 = c(0.1, NA, 0.5),
+    col2 = c(0.9, 0.5, NA)
+  )
+
+  # Data frame with NAs produces NA weights
+  weights_df_na <- wt_ate(df_na, c(0, 1, 0), exposure_type = "binary")
+  expect_s3_class(weights_df_na, "psw")
+  expect_true(any(is.na(weights_df_na)))
+
+  # GLM predictions with NAs
+  set.seed(789)
+  n <- 20
+  x <- c(rnorm(18), NA, NA)
+  y <- c(rbinom(18, 1, plogis(0.5 * x[1:18])), 0, 1)
+
+  # GLM will handle NAs in predictors
+  glm_na <- glm(y ~ x, family = binomial)
+
+  # GLM with NA predictions will have shorter output
+  # The NA observations are dropped during model fitting
+  suppressWarnings({
+    # GLM drops NA observations, so output is shorter
+    expect_error(
+      wt_ate(glm_na, y, exposure_type = "binary"),
+      "must have the same length"
+    )
+  })
+})
+
+# Integration tests ----
+
+test_that("weight functions integrate correctly with ps_trim and ps_trunc", {
+  set.seed(999)
+  n <- 100
+  ps <- runif(n, 0.05, 0.95)
+  exposure <- rbinom(n, 1, ps)
+
+  # Create a model for refitting
+  x <- rnorm(n)
+  model <- glm(exposure ~ x + I(x^2), family = binomial)
+
+  # Trim and refit
+  ps_trim_obj <- ps_trim(
+    ps,
+    .exposure = exposure,
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+  ps_refit_obj <- ps_refit(ps_trim_obj, model = model)
+
+  # Should not warn after refit
+  suppressMessages({
+    weights_refit <- wt_ate(ps_refit_obj, exposure, exposure_type = "binary")
+  })
+  expect_true(is_ps_trimmed(weights_refit))
+  expect_true(is_refit(weights_refit))
+
+  # Truncate
+  ps_trunc_obj <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+
+  # Should not warn for truncation
+  suppressMessages({
+    weights_trunc <- wt_ate(ps_trunc_obj, exposure, exposure_type = "binary")
+  })
+  expect_true(is_ps_truncated(weights_trunc))
+  expect_false(is_ps_trimmed(weights_trunc))
+})
+
+test_that("data frame and GLM methods produce consistent results", {
+  set.seed(111)
+  n <- 50
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  true_ps <- plogis(0.5 * x1 + 0.3 * x2)
+  treatment <- rbinom(n, 1, true_ps)
+
+  # Fit GLM
+  model <- glm(treatment ~ x1 + x2, family = binomial)
+  ps_fitted <- fitted(model)
+
+  # Create data frame
+  ps_df <- data.frame(
+    control_prob = 1 - ps_fitted,
+    treatment_prob = ps_fitted
+  )
+
+  # All methods should give same results
+  for (fn_name in c(
+    "wt_ate",
+    "wt_att",
+    "wt_atu",
+    "wt_atm",
+    "wt_ato",
+    "wt_entropy"
+  )) {
+    fn <- get(fn_name)
+
+    # From GLM
+    weights_glm <- fn(model, treatment, exposure_type = "binary")
+
+    # From fitted values
+    weights_numeric <- fn(ps_fitted, treatment, exposure_type = "binary")
+
+    # From data frame (using treatment column)
+    weights_df <- fn(
+      ps_df,
+      treatment,
+      .propensity_col = 2,
+      exposure_type = "binary"
+    )
+
+    expect_equal(weights_glm, weights_numeric)
+    expect_equal(weights_glm, weights_df)
+  }
+})
+
+# Additional mathematical property tests ----
+
+test_that("weight functions satisfy mathematical properties", {
+  set.seed(222)
+  n <- 100
+  ps <- runif(n, 0.1, 0.9)
+  treatment <- rbinom(n, 1, ps)
+
+  # ATT weights: treated units should have weight 1
+  weights_att <- wt_att(ps, treatment, exposure_type = "binary")
+  expect_true(all(weights_att[treatment == 1] == 1))
+
+  # ATU weights: control units should have weight 1
+  weights_atu <- wt_atu(ps, treatment, exposure_type = "binary")
+  expect_true(all(weights_atu[treatment == 0] == 1))
+
+  # ATO weights: A * (1-e) + (1-A) * e
+  weights_ato <- wt_ato(ps, treatment, exposure_type = "binary")
+  # ATO weights are bounded by 1
+  expect_true(all(weights_ato <= 1 + 1e-10))
+
+  # ATM weights: symmetric for e and 1-e
+  # Create symmetric propensity scores
+  ps_sym <- c(0.3, 0.7, 0.4, 0.6)
+  treatment_sym <- c(0, 1, 1, 0)
+  weights_atm <- wt_atm(ps_sym, treatment_sym, exposure_type = "binary")
+
+  # Weights for symmetric PS pairs should be equal
+  expect_equal(weights_atm[1], weights_atm[2], tolerance = 1e-10)
+  expect_equal(weights_atm[3], weights_atm[4], tolerance = 1e-10)
+})
+
+test_that("continuous exposure weights have correct properties", {
+  set.seed(333)
+  n <- 100
+  x <- rnorm(n)
+  exposure <- 2 + 0.5 * x + rnorm(n, sd = 1.5)
+
+  # Fit model
+  model <- lm(exposure ~ x)
+  mu_hat <- fitted(model)
+  sigma <- summary(model)$sigma
+
+  # Calculate weights
+  weights_cont <- wt_ate(
+    mu_hat,
+    .exposure = exposure,
+    .sigma = rep(sigma, n),
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+
+  expect_s3_class(weights_cont, "psw")
+  expect_true(all(is.finite(weights_cont)))
+  expect_true(all(weights_cont > 0))
+
+  # Stabilized continuous weights should have mean approximately 1
+  expect_equal(mean(weights_cont), 1, tolerance = 0.2)
 })
