@@ -12,10 +12,10 @@
 #' - **Entropy** (Average Treatment Effect for the Entropy-weighted population)
 #'
 #'   The propensity score can be provided as a numeric vector of predicted
-#'   probabilities or as a `data.frame` where each column represents the
-#'   predicted probability for a level of the exposure. They can also be
-#'   propensity score objects created by [ps_trim()], [ps_refit()], or
-#'   [ps_trunc()]
+#'   probabilities, as a `data.frame` where each column represents the
+#'   predicted probability for a level of the exposure, or as a fitted
+#'   GLM object. They can also be propensity score objects created by
+#'   [ps_trim()], [ps_refit()], or [ps_trunc()]
 #'
 #'   The returned weights are encapsulated in a `psw` object, which is a numeric
 #'   vector with additional attributes that record the estimand, and whether the
@@ -90,10 +90,12 @@
 #' modified propensity scores (trimmed or truncated) and update the estimand
 #' attribute accordingly.
 #'
-#' @param .propensity Either a numeric vector of predicted probabilities or a
-#'   `data.frame` where each column corresponds to a level of the exposure.
-#'   For data frames, the second column is used by default for binary exposures
-#'   unless specified otherwise with `.propensity_col`.
+#' @param .propensity Either a numeric vector of predicted probabilities, a
+#'   `data.frame` where each column corresponds to a level of the exposure,
+#'   or a fitted GLM object. For data frames, the second column is used by
+#'   default for binary exposures unless specified otherwise with
+#'   `.propensity_col`. For GLM objects, fitted values are extracted
+#'   automatically.
 #' @param .exposure The exposure variable. For binary exposures, a vector of 0s
 #'   and 1s; for continuous exposures, a numeric vector.
 #' @param exposure_type Character string specifying the type of exposure.
@@ -180,15 +182,29 @@
 #'   treated = c(0.1, 0.3, 0.7, 0.9)
 #' )
 #' exposure <- c(0, 0, 1, 1)
-#' 
+#'
 #' # Uses second column by default (treated probabilities)
 #' wt_ate(ps_df, exposure)
-#' 
+#'
 #' # Explicitly specify column by name
 #' wt_ate(ps_df, exposure, .propensity_col = "treated")
-#' 
+#'
 #' # Or by position
 #' wt_ate(ps_df, exposure, .propensity_col = 2)
+#'
+#' ## Working with GLM Objects
+#'
+#' # Fit a propensity score model
+#' set.seed(123)
+#' n <- 100
+#' x1 <- rnorm(n)
+#' x2 <- rnorm(n)
+#' treatment <- rbinom(n, 1, plogis(0.5 * x1 + 0.3 * x2))
+#'
+#' ps_model <- glm(treatment ~ x1 + x2, family = binomial)
+#'
+#' # Use GLM directly for weight calculation
+#' weights_from_glm <- wt_ate(ps_model, treatment)
 #'
 #' @references
 #'
@@ -245,6 +261,27 @@ wt_ate <- function(
   ...
 ) {
   UseMethod("wt_ate")
+}
+
+#' @export
+wt_ate.default <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+) {
+  abort(
+    paste0(
+      "No method for objects of class ",
+      paste(class(.propensity), collapse = ", ")
+    ),
+    error_class = "propensity_method_error"
+  )
 }
 
 #' @export
@@ -320,6 +357,43 @@ wt_ate.data.frame <- function(
   )
 }
 
+#' @export
+wt_ate.glm <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+) {
+  # Extract fitted values (propensity scores) from GLM
+  ps_vec <- extract_propensity_from_glm(.propensity)
+
+  # For continuous exposures, extract sigma if not provided
+  if (
+    is.null(.sigma) &&
+      match_exposure_type(exposure_type, .exposure) == "continuous"
+  ) {
+    .sigma <- stats::influence(.propensity)$sigma
+  }
+
+  # Call the numeric method
+  wt_ate.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    .sigma = .sigma,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    ...
+  )
+}
+
 # Helper function to extract propensity scores from data frames
 extract_propensity_from_df <- function(
   .propensity,
@@ -359,6 +433,31 @@ extract_propensity_from_df <- function(
         error_class = "propensity_df_ncol_error"
       )
     }
+  }
+
+  ps_vec
+}
+
+# Helper function to extract propensity scores from GLM objects
+extract_propensity_from_glm <- function(.propensity) {
+  # Check if it's a valid GLM object
+  if (!inherits(.propensity, "glm")) {
+    abort(
+      "`.propensity` must be a GLM object.",
+      error_class = "propensity_glm_type_error"
+    )
+  }
+
+  # Check if it's a binomial GLM for binary propensity scores
+  if (
+    !is.null(.propensity$family) &&
+      .propensity$family$family == "binomial"
+  ) {
+    # Get predicted probabilities
+    ps_vec <- stats::predict(.propensity, type = "response")
+  } else {
+    # For non-binomial GLMs, get linear predictor
+    ps_vec <- stats::fitted(.propensity)
   }
 
   ps_vec
@@ -451,6 +550,24 @@ wt_att <- function(
 }
 
 #' @export
+wt_att.default <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  abort(
+    paste0(
+      "No method for objects of class ",
+      paste(class(.propensity), collapse = ", ")
+    ),
+    error_class = "propensity_method_error"
+  )
+}
+
+#' @export
 wt_att.numeric <- function(
   .propensity,
   .exposure,
@@ -505,6 +622,29 @@ wt_att.data.frame <- function(
   )
 }
 
+#' @export
+wt_att.glm <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # Extract fitted values (propensity scores) from GLM
+  ps_vec <- extract_propensity_from_glm(.propensity)
+
+  # Call the numeric method
+  wt_att.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
 att_binary <- function(
   .propensity,
   .exposure,
@@ -532,6 +672,24 @@ wt_atu <- function(
   ...
 ) {
   UseMethod("wt_atu")
+}
+
+#' @export
+wt_atu.default <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  abort(
+    paste0(
+      "No method for objects of class ",
+      paste(class(.propensity), collapse = ", ")
+    ),
+    error_class = "propensity_method_error"
+  )
 }
 
 #' @export
@@ -588,6 +746,29 @@ wt_atu.data.frame <- function(
   )
 }
 
+#' @export
+wt_atu.glm <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # Extract fitted values (propensity scores) from GLM
+  ps_vec <- extract_propensity_from_glm(.propensity)
+
+  # Call the numeric method
+  wt_atu.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
 atu_binary <- function(
   .propensity,
   .exposure,
@@ -617,6 +798,24 @@ wt_atm <- function(
   ...
 ) {
   UseMethod("wt_atm")
+}
+
+#' @export
+wt_atm.default <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  abort(
+    paste0(
+      "No method for objects of class ",
+      paste(class(.propensity), collapse = ", ")
+    ),
+    error_class = "propensity_method_error"
+  )
 }
 
 #' @export
@@ -673,6 +872,29 @@ wt_atm.data.frame <- function(
   )
 }
 
+#' @export
+wt_atm.glm <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # Extract fitted values (propensity scores) from GLM
+  ps_vec <- extract_propensity_from_glm(.propensity)
+
+  # Call the numeric method
+  wt_atm.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
 atm_binary <- function(
   .propensity,
   .exposure,
@@ -701,6 +923,24 @@ wt_ato <- function(
   ...
 ) {
   UseMethod("wt_ato")
+}
+
+#' @export
+wt_ato.default <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  abort(
+    paste0(
+      "No method for objects of class ",
+      paste(class(.propensity), collapse = ", ")
+    ),
+    error_class = "propensity_method_error"
+  )
 }
 
 #' @export
@@ -756,6 +996,28 @@ wt_ato.data.frame <- function(
   )
 }
 
+#' @export
+wt_ato.glm <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # Extract fitted values (propensity scores) from GLM
+  ps_vec <- extract_propensity_from_glm(.propensity)
+
+  # Call the numeric method
+  wt_ato.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
 
 ato_binary <- function(
   .propensity,
@@ -783,6 +1045,24 @@ wt_entropy <- function(
   ...
 ) {
   UseMethod("wt_entropy")
+}
+
+#' @export
+wt_entropy.default <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  abort(
+    paste0(
+      "No method for objects of class ",
+      paste(class(.propensity), collapse = ", ")
+    ),
+    error_class = "propensity_method_error"
+  )
 }
 
 #' @export
@@ -827,6 +1107,29 @@ wt_entropy.data.frame <- function(
 
   # Extract propensity scores from data frame
   ps_vec <- extract_propensity_from_df(.propensity, col_quo)
+
+  # Call the numeric method
+  wt_entropy.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+wt_entropy.glm <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # Extract fitted values (propensity scores) from GLM
+  ps_vec <- extract_propensity_from_glm(.propensity)
 
   # Call the numeric method
   wt_entropy.numeric(

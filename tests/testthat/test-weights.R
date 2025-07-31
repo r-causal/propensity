@@ -770,7 +770,7 @@ test_that("wt_ate works with data frames", {
     exposure_type = "binary"
   )
   expect_equal(weights_quoted, expected)
-  
+
   # Test unquoted column selection
   weights_unquoted <- wt_ate(
     ps_df,
@@ -906,5 +906,109 @@ test_that("wt_* functions work with parsnip output", {
   expect_s3_class(
     wt_entropy(ps_preds, treatment_numeric, exposure_type = "binary"),
     "psw"
+  )
+})
+
+test_that("wt_* functions work with GLM objects", {
+  # Simulate data
+  set.seed(123)
+  n <- 100
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  ps_true <- plogis(0.5 * x1 + 0.3 * x2)
+  treatment <- rbinom(n, 1, ps_true)
+
+  # Fit GLM model
+  ps_model <- glm(treatment ~ x1 + x2, family = binomial)
+  ps_fitted <- fitted(ps_model)
+
+  # Test ATE
+  weights_ate_glm <- wt_ate(ps_model, treatment, exposure_type = "binary")
+  weights_ate_numeric <- wt_ate(ps_fitted, treatment, exposure_type = "binary")
+  expect_equal(weights_ate_glm, weights_ate_numeric)
+  expect_s3_class(weights_ate_glm, "psw")
+  expect_equal(estimand(weights_ate_glm), "ate")
+
+  # Test ATT
+  weights_att_glm <- wt_att(ps_model, treatment, exposure_type = "binary")
+  weights_att_numeric <- wt_att(ps_fitted, treatment, exposure_type = "binary")
+  expect_equal(weights_att_glm, weights_att_numeric)
+  expect_s3_class(weights_att_glm, "psw")
+  expect_equal(estimand(weights_att_glm), "att")
+
+  # Test ATU
+  weights_atu_glm <- wt_atu(ps_model, treatment, exposure_type = "binary")
+  weights_atu_numeric <- wt_atu(ps_fitted, treatment, exposure_type = "binary")
+  expect_equal(weights_atu_glm, weights_atu_numeric)
+  expect_s3_class(weights_atu_glm, "psw")
+  expect_equal(estimand(weights_atu_glm), "atu")
+
+  # Test ATM
+  weights_atm_glm <- wt_atm(ps_model, treatment, exposure_type = "binary")
+  weights_atm_numeric <- wt_atm(ps_fitted, treatment, exposure_type = "binary")
+  expect_equal(weights_atm_glm, weights_atm_numeric)
+  expect_s3_class(weights_atm_glm, "psw")
+  expect_equal(estimand(weights_atm_glm), "atm")
+
+  # Test ATO
+  weights_ato_glm <- wt_ato(ps_model, treatment, exposure_type = "binary")
+  weights_ato_numeric <- wt_ato(ps_fitted, treatment, exposure_type = "binary")
+  expect_equal(weights_ato_glm, weights_ato_numeric)
+  expect_s3_class(weights_ato_glm, "psw")
+  expect_equal(estimand(weights_ato_glm), "ato")
+
+  # Test Entropy
+  weights_entropy_glm <- wt_entropy(
+    ps_model,
+    treatment,
+    exposure_type = "binary"
+  )
+  weights_entropy_numeric <- wt_entropy(
+    ps_fitted,
+    treatment,
+    exposure_type = "binary"
+  )
+  expect_equal(weights_entropy_glm, weights_entropy_numeric)
+  expect_s3_class(weights_entropy_glm, "psw")
+  expect_equal(estimand(weights_entropy_glm), "entropy")
+})
+
+test_that("GLM methods handle continuous exposures", {
+  # Simulate continuous exposure data
+  set.seed(456)
+  n <- 100
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  exposure <- 2 + 0.5 * x1 + 0.3 * x2 + rnorm(n)
+
+  # Fit linear model
+  exposure_model <- glm(exposure ~ x1 + x2, family = gaussian)
+
+  # Test ATE with continuous exposure
+  weights_ate <- wt_ate(
+    exposure_model,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_s3_class(weights_ate, "psw")
+  expect_equal(estimand(weights_ate), "ate")
+  expect_true(attr(weights_ate, "stabilized"))
+
+  # Check that weights are reasonable
+  expect_true(all(is.finite(weights_ate)))
+  expect_true(all(weights_ate > 0))
+})
+
+test_that("GLM methods error on non-GLM objects", {
+  # Try with a non-GLM object
+  expect_error(
+    wt_ate("not a glm", c(0, 1, 0, 1)),
+    class = "propensity_method_error"
+  )
+
+  expect_error(
+    wt_att(list(a = 1, b = 2), c(0, 1, 0, 1)),
+    class = "propensity_method_error"
   )
 })

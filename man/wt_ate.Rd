@@ -136,10 +136,12 @@ wt_entropy(
 )
 }
 \arguments{
-\item{.propensity}{Either a numeric vector of predicted probabilities or a
-\code{data.frame} where each column corresponds to a level of the exposure.
-For data frames, the second column is used by default for binary exposures
-unless specified otherwise with \code{.propensity_col}.}
+\item{.propensity}{Either a numeric vector of predicted probabilities, a
+\code{data.frame} where each column corresponds to a level of the exposure,
+or a fitted GLM object. For data frames, the second column is used by
+default for binary exposures unless specified otherwise with
+\code{.propensity_col}. For GLM objects, fitted values are extracted
+automatically.}
 
 \item{.exposure}{The exposure variable. For binary exposures, a vector of 0s
 and 1s; for continuous exposures, a numeric vector.}
@@ -195,10 +197,10 @@ the \strong{ATC}, where the "C" stands for "control")
 \item \strong{Entropy} (Average Treatment Effect for the Entropy-weighted population)
 
 The propensity score can be provided as a numeric vector of predicted
-probabilities or as a \code{data.frame} where each column represents the
-predicted probability for a level of the exposure. They can also be
-propensity score objects created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_refit]{ps_refit()}}, or
-\code{\link[=ps_trunc]{ps_trunc()}}
+probabilities, as a \code{data.frame} where each column represents the
+predicted probability for a level of the exposure, or as a fitted
+GLM object. They can also be propensity score objects created by
+\code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_trunc]{ps_trunc()}}
 
 The returned weights are encapsulated in a \code{psw} object, which is a numeric
 vector with additional attributes that record the estimand, and whether the
@@ -351,6 +353,20 @@ wt_ate(ps_df, exposure, .propensity_col = "treated")
 
 # Or by position
 wt_ate(ps_df, exposure, .propensity_col = 2)
+
+## Working with GLM Objects
+
+# Fit a propensity score model
+set.seed(123)
+n <- 100
+x1 <- rnorm(n)
+x2 <- rnorm(n)
+treatment <- rbinom(n, 1, plogis(0.5 * x1 + 0.3 * x2))
+
+ps_model <- glm(treatment ~ x1 + x2, family = binomial)
+
+# Use GLM directly for weight calculation
+weights_from_glm <- wt_ate(ps_model, treatment)
 
 }
 \references{
