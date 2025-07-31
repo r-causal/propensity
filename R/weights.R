@@ -75,11 +75,11 @@
 #' - Positivity violations (near 0 or 1 propensity scores)
 #' - Poor model specification
 #' - Lack of overlap between treatment groups
-#' 
+#'
 #' See the halfmoon package for tools to diagnose and visualize weights.
-#' 
+#'
 #' You can address extreme weights in several ways. The first is to modify the target population:
-#' use trimming, truncation, or alternative estimands (ATM, ATO, entropy). 
+#' use trimming, truncation, or alternative estimands (ATM, ATO, entropy).
 #' Another technique that can help is stabilization, which reduces variance of the weights.
 #'
 #' ## Trimmed and Truncated Weights
@@ -92,6 +92,8 @@
 #'
 #' @param .propensity Either a numeric vector of predicted probabilities or a
 #'   `data.frame` where each column corresponds to a level of the exposure.
+#'   For data frames, the second column is used by default for binary exposures
+#'   unless specified otherwise with `.propensity_col`.
 #' @param .exposure The exposure variable. For binary exposures, a vector of 0s
 #'   and 1s; for continuous exposures, a numeric vector.
 #' @param exposure_type Character string specifying the type of exposure.
@@ -111,6 +113,10 @@
 #' @param stabilization_score Optional numeric value for stabilizing the weights
 #'   (e.g., a predicted value from a regression model without predictors). Only
 #'   used when `stabilize` is `TRUE`.
+#' @param .propensity_col When `.propensity` is a data frame, specifies which
+#'   column to use for propensity scores. Can be a column name (quoted or
+#'   unquoted) or a numeric index. Defaults to the second column if available,
+#'   otherwise the first.
 #'
 #' @return A `psw` object (a numeric vector) with additional attributes:
 #'   - **estimand**: A description of the estimand (e.g., "ate", "att").
@@ -157,20 +163,38 @@
 #' # Standard ATE weights can be extreme
 #' wt_extreme <- wt_ate(ps_extreme, trt_extreme)
 #' # Very large!
-#' max(wt_extreme)  
+#' max(wt_extreme)
 #'
 #' # ATO weights are bounded
 #' wt_extreme_atm <- wt_ato(ps_extreme, trt_extreme)
 #' # Much more reasonable
-#' max(wt_extreme_atm)  
+#' max(wt_extreme_atm)
 #' # but they target a different population
 #' estimand(wt_extreme_atm) # "ato"
 #'
+#' ## Working with Data Frames
+#'
+#' # Example with custom data frame
+#' ps_df <- data.frame(
+#'   control = c(0.9, 0.7, 0.3, 0.1),
+#'   treated = c(0.1, 0.3, 0.7, 0.9)
+#' )
+#' exposure <- c(0, 0, 1, 1)
+#' 
+#' # Uses second column by default (treated probabilities)
+#' wt_ate(ps_df, exposure)
+#' 
+#' # Explicitly specify column by name
+#' wt_ate(ps_df, exposure, .propensity_col = "treated")
+#' 
+#' # Or by position
+#' wt_ate(ps_df, exposure, .propensity_col = 2)
+#'
 #' @references
-#' 
-#' For detailed guidance on causal inference in R, see [*Causal Inference in R*](https://www.r-causal.org/) 
+#'
+#' For detailed guidance on causal inference in R, see [*Causal Inference in R*](https://www.r-causal.org/)
 #' by Malcolm Barrett, Lucy D'Agostino McGowan, and Travis Gerke.
-#' 
+#'
 #' ## Foundational Papers
 #'
 #' Rosenbaum, P. R., & Rubin, D. B. (1983). The central role of the propensity
@@ -260,6 +284,84 @@ wt_ate.numeric <- function(
   }
 
   psw(wts, "ate", stabilized = isTRUE(stabilize))
+}
+
+#' @export
+#' @rdname wt_ate
+wt_ate.data.frame <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...,
+  .propensity_col = NULL
+) {
+  # Capture the column selection expression
+  col_quo <- rlang::enquo(.propensity_col)
+
+  # Extract propensity scores from data frame
+  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
+
+  # Call the numeric method
+  wt_ate.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    .sigma = .sigma,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    ...
+  )
+}
+
+# Helper function to extract propensity scores from data frames
+extract_propensity_from_df <- function(
+  .propensity,
+  .propensity_col_quo = NULL
+) {
+  if (!rlang::quo_is_null(.propensity_col_quo)) {
+    col_pos <- tryCatch(
+      tidyselect::eval_select(
+        .propensity_col_quo,
+        data = .propensity
+      ),
+      error = function(e) {
+        abort(
+          paste0("Column selection failed: ", e$message),
+          error_class = "propensity_df_column_error"
+        )
+      }
+    )
+
+    if (length(col_pos) != 1) {
+      abort(
+        "`.propensity_col` must select exactly one column.",
+        error_class = "propensity_df_column_error"
+      )
+    }
+
+    ps_vec <- .propensity[[col_pos]]
+  } else {
+    # Default behavior: use second column if available, otherwise first
+    if (ncol(.propensity) >= 2) {
+      ps_vec <- .propensity[[2]]
+    } else if (ncol(.propensity) == 1) {
+      ps_vec <- .propensity[[1]]
+    } else {
+      abort(
+        "`.propensity` data frame must have at least one column.",
+        error_class = "propensity_df_ncol_error"
+      )
+    }
+  }
+
+  ps_vec
 }
 
 ate_binary <- function(
@@ -375,6 +477,34 @@ wt_att.numeric <- function(
   psw(wts, "att")
 }
 
+#' @export
+#' @rdname wt_ate
+wt_att.data.frame <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
+) {
+  # Capture the column selection expression
+  col_quo <- rlang::enquo(.propensity_col)
+
+  # Extract propensity scores from data frame
+  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
+
+  # Call the numeric method
+  wt_att.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
 att_binary <- function(
   .propensity,
   .exposure,
@@ -428,6 +558,34 @@ wt_atu.numeric <- function(
   }
 
   psw(wts, "atu")
+}
+
+#' @export
+#' @rdname wt_ate
+wt_atu.data.frame <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
+) {
+  # Capture the column selection expression
+  col_quo <- rlang::enquo(.propensity_col)
+
+  # Extract propensity scores from data frame
+  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
+
+  # Call the numeric method
+  wt_atu.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
 }
 
 atu_binary <- function(
@@ -487,6 +645,34 @@ wt_atm.numeric <- function(
   psw(wts, "atm")
 }
 
+#' @export
+#' @rdname wt_ate
+wt_atm.data.frame <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
+) {
+  # Capture the column selection expression
+  col_quo <- rlang::enquo(.propensity_col)
+
+  # Extract propensity scores from data frame
+  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
+
+  # Call the numeric method
+  wt_atm.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
 atm_binary <- function(
   .propensity,
   .exposure,
@@ -542,6 +728,34 @@ wt_ato.numeric <- function(
   psw(wts, "ato")
 }
 
+#' @export
+#' @rdname wt_ate
+wt_ato.data.frame <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
+) {
+  # Capture the column selection expression
+  col_quo <- rlang::enquo(.propensity_col)
+
+  # Extract propensity scores from data frame
+  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
+
+  # Call the numeric method
+  wt_ato.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
 
 ato_binary <- function(
   .propensity,
@@ -595,6 +809,34 @@ wt_entropy.numeric <- function(
   }
 
   psw(wts, "entropy")
+}
+
+#' @export
+#' @rdname wt_ate
+wt_entropy.data.frame <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
+) {
+  # Capture the column selection expression
+  col_quo <- rlang::enquo(.propensity_col)
+
+  # Extract propensity scores from data frame
+  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
+
+  # Call the numeric method
+  wt_entropy.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
 }
 
 entropy_binary <- function(

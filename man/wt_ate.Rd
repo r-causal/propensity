@@ -2,11 +2,17 @@
 % Please edit documentation in R/weights.R
 \name{wt_ate}
 \alias{wt_ate}
+\alias{wt_ate.data.frame}
 \alias{wt_att}
+\alias{wt_att.data.frame}
 \alias{wt_atu}
+\alias{wt_atu.data.frame}
 \alias{wt_atm}
+\alias{wt_atm.data.frame}
 \alias{wt_ato}
+\alias{wt_ato.data.frame}
 \alias{wt_entropy}
+\alias{wt_entropy.data.frame}
 \title{Calculate Propensity Score Weights for Causal Inference}
 \usage{
 wt_ate(
@@ -21,6 +27,19 @@ wt_ate(
   ...
 )
 
+\method{wt_ate}{data.frame}(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...,
+  .propensity_col = NULL
+)
+
 wt_att(
   .propensity,
   .exposure,
@@ -28,6 +47,16 @@ wt_att(
   .treated = NULL,
   .untreated = NULL,
   ...
+)
+
+\method{wt_att}{data.frame}(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
 )
 
 wt_atu(
@@ -39,6 +68,16 @@ wt_atu(
   ...
 )
 
+\method{wt_atu}{data.frame}(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
+)
+
 wt_atm(
   .propensity,
   .exposure,
@@ -46,6 +85,16 @@ wt_atm(
   .treated = NULL,
   .untreated = NULL,
   ...
+)
+
+\method{wt_atm}{data.frame}(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
 )
 
 wt_ato(
@@ -57,6 +106,16 @@ wt_ato(
   ...
 )
 
+\method{wt_ato}{data.frame}(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
+)
+
 wt_entropy(
   .propensity,
   .exposure,
@@ -65,10 +124,22 @@ wt_entropy(
   .untreated = NULL,
   ...
 )
+
+\method{wt_entropy}{data.frame}(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  .propensity_col = NULL
+)
 }
 \arguments{
 \item{.propensity}{Either a numeric vector of predicted probabilities or a
-\code{data.frame} where each column corresponds to a level of the exposure.}
+\code{data.frame} where each column corresponds to a level of the exposure.
+For data frames, the second column is used by default for binary exposures
+unless specified otherwise with \code{.propensity_col}.}
 
 \item{.exposure}{The exposure variable. For binary exposures, a vector of 0s
 and 1s; for continuous exposures, a numeric vector.}
@@ -96,6 +167,11 @@ weights, stabilization multiplies the weight by either the mean of
 used when \code{stabilize} is \code{TRUE}.}
 
 \item{...}{Reserved for future expansion. Not currently used.}
+
+\item{.propensity_col}{When \code{.propensity} is a data frame, specifies which
+column to use for propensity scores. Can be a column name (quoted or
+unquoted) or a numeric index. Defaults to the second column if available,
+otherwise the first.}
 }
 \value{
 A \code{psw} object (a numeric vector) with additional attributes:
@@ -249,14 +325,32 @@ trt_extreme <- c(0, 0, 1, 1, 0, 1, 0, 1)
 # Standard ATE weights can be extreme
 wt_extreme <- wt_ate(ps_extreme, trt_extreme)
 # Very large!
-max(wt_extreme)  
+max(wt_extreme)
 
 # ATO weights are bounded
 wt_extreme_atm <- wt_ato(ps_extreme, trt_extreme)
 # Much more reasonable
-max(wt_extreme_atm)  
+max(wt_extreme_atm)
 # but they target a different population
 estimand(wt_extreme_atm) # "ato"
+
+## Working with Data Frames
+
+# Example with custom data frame
+ps_df <- data.frame(
+  control = c(0.9, 0.7, 0.3, 0.1),
+  treated = c(0.1, 0.3, 0.7, 0.9)
+)
+exposure <- c(0, 0, 1, 1)
+
+# Uses second column by default (treated probabilities)
+wt_ate(ps_df, exposure)
+
+# Explicitly specify column by name
+wt_ate(ps_df, exposure, .propensity_col = "treated")
+
+# Or by position
+wt_ate(ps_df, exposure, .propensity_col = 2)
 
 }
 \references{

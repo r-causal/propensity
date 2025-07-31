@@ -747,3 +747,164 @@ test_that("entropy weight calculation matches manual calculation", {
 
   expect_equal(as.numeric(weights), expected, tolerance = 1e-10)
 })
+
+# Tests for data.frame methods
+test_that("wt_ate works with data frames", {
+  # Create test data frame
+  ps_df <- data.frame(
+    control = c(0.9, 0.7, 0.3, 0.1),
+    treated = c(0.1, 0.3, 0.7, 0.9)
+  )
+  exposure <- c(0, 0, 1, 1)
+
+  # Test default behavior (uses second column)
+  weights <- wt_ate(ps_df, exposure, exposure_type = "binary")
+  expected <- wt_ate(ps_df$treated, exposure, exposure_type = "binary")
+  expect_equal(weights, expected)
+
+  # Test explicit column selection by name (quoted)
+  weights_quoted <- wt_ate(
+    ps_df,
+    exposure,
+    .propensity_col = "treated",
+    exposure_type = "binary"
+  )
+  expect_equal(weights_quoted, expected)
+  
+  # Test unquoted column selection
+  weights_unquoted <- wt_ate(
+    ps_df,
+    exposure,
+    .propensity_col = treated,
+    exposure_type = "binary"
+  )
+  expect_equal(weights_unquoted, expected)
+
+  # Test column selection by index
+  weights_idx <- wt_ate(
+    ps_df,
+    exposure,
+    .propensity_col = 2,
+    exposure_type = "binary"
+  )
+  expect_equal(weights_idx, expected)
+
+  # Test single column data frame
+  ps_single <- data.frame(prob = c(0.1, 0.3, 0.7, 0.9))
+  weights_single <- wt_ate(ps_single, exposure, exposure_type = "binary")
+  expected_single <- wt_ate(ps_single$prob, exposure, exposure_type = "binary")
+  expect_equal(weights_single, expected_single)
+
+  # Test error with empty data frame
+  expect_error(
+    wt_ate(data.frame(), exposure),
+    class = "propensity_df_ncol_error"
+  )
+
+  # Test error with invalid column selection
+  expect_error(
+    wt_ate(ps_df, exposure, .propensity_col = "nonexistent"),
+    class = "propensity_df_column_error"
+  )
+})
+
+test_that("all wt_* functions work with data frames", {
+  ps_df <- data.frame(
+    control = c(0.9, 0.7, 0.3, 0.1),
+    treated = c(0.1, 0.3, 0.7, 0.9)
+  )
+  exposure <- c(0, 0, 1, 1)
+
+  # Test ATT
+  weights_att <- wt_att(ps_df, exposure, exposure_type = "binary")
+  expected_att <- wt_att(ps_df$treated, exposure, exposure_type = "binary")
+  expect_equal(weights_att, expected_att)
+
+  # Test ATU
+  weights_atu <- wt_atu(ps_df, exposure, exposure_type = "binary")
+  expected_atu <- wt_atu(ps_df$treated, exposure, exposure_type = "binary")
+  expect_equal(weights_atu, expected_atu)
+
+  # Test ATM
+  weights_atm <- wt_atm(ps_df, exposure, exposure_type = "binary")
+  expected_atm <- wt_atm(ps_df$treated, exposure, exposure_type = "binary")
+  expect_equal(weights_atm, expected_atm)
+
+  # Test ATO
+  weights_ato <- wt_ato(ps_df, exposure, exposure_type = "binary")
+  expected_ato <- wt_ato(ps_df$treated, exposure, exposure_type = "binary")
+  expect_equal(weights_ato, expected_ato)
+
+  # Test Entropy
+  weights_entropy <- wt_entropy(ps_df, exposure, exposure_type = "binary")
+  expected_entropy <- wt_entropy(
+    ps_df$treated,
+    exposure,
+    exposure_type = "binary"
+  )
+  expect_equal(weights_entropy, expected_entropy)
+})
+
+test_that("wt_* functions work with parsnip output", {
+  skip_if_not_installed("parsnip")
+  skip_on_cran()
+
+  # Simulate data
+  set.seed(123)
+  n <- 100
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  ps_true <- plogis(0.5 * x1 + 0.3 * x2)
+  treatment_numeric <- rbinom(n, 1, ps_true)
+  treatment_factor <- factor(treatment_numeric, levels = c("0", "1"))
+
+  df <- data.frame(
+    treatment = treatment_factor,
+    x1 = x1,
+    x2 = x2
+  )
+
+  # Fit model with parsnip
+  ps_spec <- parsnip::logistic_reg()
+  ps_spec <- parsnip::set_engine(ps_spec, "glm")
+  ps_model <- parsnip::fit(ps_spec, treatment ~ x1 + x2, data = df)
+
+  # Get predictions
+  ps_preds <- predict(ps_model, df, type = "prob")
+
+  # Test that it works with default (second column)
+  weights_ate <- wt_ate(ps_preds, treatment_numeric, exposure_type = "binary")
+  expect_s3_class(weights_ate, "psw")
+  expect_equal(estimand(weights_ate), "ate")
+
+  # Test explicit column selection with parsnip column names
+  weights_ate2 <- wt_ate(
+    ps_preds,
+    treatment_numeric,
+    .propensity_col = ".pred_1",
+    exposure_type = "binary"
+  )
+  expect_equal(weights_ate, weights_ate2)
+
+  # Test with all estimands
+  expect_s3_class(
+    wt_att(ps_preds, treatment_numeric, exposure_type = "binary"),
+    "psw"
+  )
+  expect_s3_class(
+    wt_atu(ps_preds, treatment_numeric, exposure_type = "binary"),
+    "psw"
+  )
+  expect_s3_class(
+    wt_atm(ps_preds, treatment_numeric, exposure_type = "binary"),
+    "psw"
+  )
+  expect_s3_class(
+    wt_ato(ps_preds, treatment_numeric, exposure_type = "binary"),
+    "psw"
+  )
+  expect_s3_class(
+    wt_entropy(ps_preds, treatment_numeric, exposure_type = "binary"),
+    "psw"
+  )
+})
