@@ -539,6 +539,7 @@ test_that("data.frame input works for categorical exposures", {
 
 test_that("stabilization works for ATE categorical exposures", {
   exposure <- factor(c("A", "B", "C", "A", "B", "C"))
+  set.seed(123)
   ps_matrix <- matrix(runif(18), ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix) # Normalize
 
