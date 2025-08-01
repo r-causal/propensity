@@ -50,6 +50,19 @@
 #' \eqn{w = \frac{f_A(A)}{f_{A|X}(A|X)}}, where \eqn{f_A} is the marginal density of \eqn{A}
 #' and \eqn{f_{A|X}} is the conditional density given \eqn{X}.
 #'
+#' ### Categorical Exposures
+#'
+#' For categorical treatments with \eqn{K} levels, weights use a tilting function approach:
+#' \eqn{w_i = \frac{h(e_i)}{e_{i,Z_i}}}, where \eqn{e_{i,Z_i}} is the propensity score for unit \eqn{i}'s
+#' observed treatment level, and \eqn{h(e_i)} is a tilting function that depends on the estimand:
+#'
+#' - **ATE**: \eqn{h(e) = 1}
+#' - **ATT**: \eqn{h(e) = e_{focal}} (propensity score for the focal category)
+#' - **ATU**: \eqn{h(e) = 1 - e_{focal}} (complement of focal category propensity)
+#' - **ATM**: \eqn{h(e) = \min(e_1, ..., e_K)}
+#' - **ATO**: \eqn{h(e) = 1 / \sum_k(1/e_k)} (reciprocal of harmonic mean denominator)
+#' - **Entropy**: \eqn{h(e) = -\sum_k[e_k \cdot \log(e_k)]} (entropy of propensity scores)
+#'
 #' ## Exposure Types
 #'
 #' The functions support different types of exposures:
@@ -57,7 +70,8 @@
 #' - **`binary`**: For dichotomous treatments (e.g. 0/1).
 #' - **`continuous`**: For numeric exposures. Here, weights are calculated via the normal density using
 #'   `dnorm()`.
-#' - **`categorical`**: Currently not supported (an error will be raised).
+#' - **`categorical`**: For exposures with more than 2 categories. Requires `.propensity` to be a
+#'   matrix or data frame with columns representing propensity scores for each category.
 #' - **`auto`**: Automatically detects the exposure type based on `.exposure`.
 #'
 #' ## Stabilization
@@ -108,17 +122,22 @@
 #'   it is automatically detected.
 #' @param .untreated The value representing the control group. If not provided,
 #'   it is automatically detected.
+#' @param focal For categorical exposures with ATT or ATU estimands, specifies
+#'   the focal category. Must be one of the levels of the exposure variable.
+#'   Required for `wt_att()` and `wt_atu()` with categorical exposures.
 #' @param ... Reserved for future expansion. Not currently used.
 #' @param stabilize Logical indicating whether to stabilize the weights. For ATE
 #'   weights, stabilization multiplies the weight by either the mean of
-#'   `.exposure` or the supplied `stabilization_score`.
+#'   `.exposure` or the supplied `stabilization_score`. Note: for categorical
+#'   exposures, stabilization is only supported for ATE.
 #' @param stabilization_score Optional numeric value for stabilizing the weights
 #'   (e.g., a predicted value from a regression model without predictors). Only
 #'   used when `stabilize` is `TRUE`.
 #' @param .propensity_col When `.propensity` is a data frame, specifies which
 #'   column to use for propensity scores. Can be a column name (quoted or
 #'   unquoted) or a numeric index. Defaults to the second column if available,
-#'   otherwise the first.
+#'   otherwise the first. For categorical exposures, the entire data frame is
+#'   used as a matrix of propensity scores.
 #'
 #' @return A `psw` object (a numeric vector) with additional attributes:
 #'   - **estimand**: A description of the estimand (e.g., "ate", "att").
@@ -297,9 +316,10 @@ wt_ate.numeric <- function(
   ...
 ) {
   rlang::check_dots_empty()
-  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(exposure_type, .exposure)
+
   if (exposure_type == "binary") {
+    check_lengths_match(.propensity, .exposure)
     check_ps_range(.propensity)
     wts <- ate_binary(
       .propensity = .propensity,
@@ -310,6 +330,7 @@ wt_ate.numeric <- function(
       stabilization_score = stabilization_score
     )
   } else if (exposure_type == "continuous") {
+    check_lengths_match(.propensity, .exposure)
     wts <- ate_continuous(
       .propensity = .propensity,
       .exposure = .exposure,
@@ -317,11 +338,31 @@ wt_ate.numeric <- function(
       stabilize = stabilize,
       stabilization_score = stabilization_score
     )
+  } else if (exposure_type == "categorical") {
+    # For categorical, let calculate_categorical_weights handle all validation
+    # including the more specific matrix checks
+    wts <- calculate_categorical_weights(
+      ps_matrix = .propensity,
+      .exposure = .exposure,
+      estimand = "ate",
+      focal = NULL,
+      stabilize = stabilize,
+      stabilization_score = stabilization_score
+    )
   } else {
     abort_unsupported(exposure_type, "ATE")
   }
 
-  psw(wts, "ate", stabilized = isTRUE(stabilize))
+  # Create psw object with appropriate attributes
+  psw_obj <- psw(wts, "ate", stabilized = isTRUE(stabilize))
+
+  # Preserve categorical attributes if they exist
+  if (exposure_type == "categorical") {
+    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
+    attr(psw_obj, "category_names") <- attr(wts, "category_names")
+  }
+
+  psw_obj
 }
 
 #' @export
@@ -338,10 +379,26 @@ wt_ate.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # Capture the column selection expression
-  col_quo <- rlang::enquo(.propensity_col)
+  # For categorical exposures, pass the whole data frame
+  exposure_type_check <- match_exposure_type(exposure_type, .exposure)
 
-  # Extract propensity scores from data frame
+  if (exposure_type_check == "categorical") {
+    # Call the numeric method with the data frame as matrix
+    return(wt_ate.numeric(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      .sigma = .sigma,
+      exposure_type = exposure_type,
+      .treated = .treated,
+      .untreated = .untreated,
+      stabilize = stabilize,
+      stabilization_score = stabilization_score,
+      ...
+    ))
+  }
+
+  # For non-categorical exposures, extract single column
+  col_quo <- rlang::enquo(.propensity_col)
   ps_vec <- extract_propensity_from_df(.propensity, col_quo)
 
   # Call the numeric method
@@ -545,7 +602,8 @@ wt_att <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 ) {
   UseMethod("wt_att")
 }
@@ -557,7 +615,8 @@ wt_att.default <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 ) {
   abort(
     paste0(
@@ -575,10 +634,10 @@ wt_att.numeric <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 ) {
   rlang::check_dots_empty()
-  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -586,6 +645,7 @@ wt_att.numeric <- function(
   )
 
   if (exposure_type == "binary") {
+    check_lengths_match(.propensity, .exposure)
     check_ps_range(.propensity)
     wts <- att_binary(
       .propensity = .propensity,
@@ -593,11 +653,31 @@ wt_att.numeric <- function(
       .treated = .treated,
       .untreated = .untreated
     )
+  } else if (exposure_type == "categorical") {
+    # For categorical, let calculate_categorical_weights handle all validation
+    wts <- calculate_categorical_weights(
+      ps_matrix = .propensity,
+      .exposure = .exposure,
+      estimand = "att",
+      focal = focal,
+      stabilize = FALSE,
+      stabilization_score = NULL
+    )
   } else {
     abort_unsupported(exposure_type, "ATT")
   }
 
-  psw(wts, "att")
+  # Create psw object with appropriate attributes
+  psw_obj <- psw(wts, "att")
+
+  # Preserve categorical attributes if they exist
+  if (exposure_type == "categorical") {
+    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
+    attr(psw_obj, "category_names") <- attr(wts, "category_names")
+    attr(psw_obj, "focal_category") <- attr(wts, "focal_category")
+  }
+
+  psw_obj
 }
 
 #' @export
@@ -609,12 +689,31 @@ wt_att.data.frame <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  focal = NULL
 ) {
-  # Capture the column selection expression
-  col_quo <- rlang::enquo(.propensity_col)
+  # For categorical exposures, pass the whole data frame
+  exposure_type_check <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
 
-  # Extract propensity scores from data frame
+  if (exposure_type_check == "categorical") {
+    # Call the numeric method with the data frame as matrix
+    return(wt_att.numeric(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      exposure_type = exposure_type,
+      .treated = .treated,
+      .untreated = .untreated,
+      focal = focal,
+      ...
+    ))
+  }
+
+  # For binary exposures, extract single column
+  col_quo <- rlang::enquo(.propensity_col)
   ps_vec <- extract_propensity_from_df(.propensity, col_quo)
 
   # Call the numeric method
@@ -624,6 +723,7 @@ wt_att.data.frame <- function(
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
+    focal = focal,
     ...
   )
 }
@@ -635,7 +735,8 @@ wt_att.glm <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 ) {
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
@@ -647,6 +748,7 @@ wt_att.glm <- function(
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
+    focal = focal,
     ...
   )
 }
@@ -675,7 +777,8 @@ wt_atu <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 ) {
   UseMethod("wt_atu")
 }
@@ -687,7 +790,8 @@ wt_atu.default <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 ) {
   abort(
     paste0(
@@ -705,16 +809,18 @@ wt_atu.numeric <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 ) {
   rlang::check_dots_empty()
-  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical")
   )
+
   if (exposure_type == "binary") {
+    check_lengths_match(.propensity, .exposure)
     check_ps_range(.propensity)
     wts <- atu_binary(
       .propensity = .propensity,
@@ -722,11 +828,31 @@ wt_atu.numeric <- function(
       .treated = .treated,
       .untreated = .untreated
     )
+  } else if (exposure_type == "categorical") {
+    # For categorical, let calculate_categorical_weights handle all validation
+    wts <- calculate_categorical_weights(
+      ps_matrix = .propensity,
+      .exposure = .exposure,
+      estimand = "atu",
+      focal = focal,
+      stabilize = FALSE,
+      stabilization_score = NULL
+    )
   } else {
     abort_unsupported(exposure_type, "ATU")
   }
 
-  psw(wts, "atu")
+  # Create psw object with appropriate attributes
+  psw_obj <- psw(wts, "atu")
+
+  # Preserve categorical attributes if they exist
+  if (exposure_type == "categorical") {
+    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
+    attr(psw_obj, "category_names") <- attr(wts, "category_names")
+    attr(psw_obj, "focal_category") <- attr(wts, "focal_category")
+  }
+
+  psw_obj
 }
 
 #' @export
@@ -738,12 +864,31 @@ wt_atu.data.frame <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  focal = NULL
 ) {
-  # Capture the column selection expression
-  col_quo <- rlang::enquo(.propensity_col)
+  # For categorical exposures, pass the whole data frame
+  exposure_type_check <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
 
-  # Extract propensity scores from data frame
+  if (exposure_type_check == "categorical") {
+    # Call the numeric method with the data frame as matrix
+    return(wt_atu.numeric(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      exposure_type = exposure_type,
+      .treated = .treated,
+      .untreated = .untreated,
+      focal = focal,
+      ...
+    ))
+  }
+
+  # For binary exposures, extract single column
+  col_quo <- rlang::enquo(.propensity_col)
   ps_vec <- extract_propensity_from_df(.propensity, col_quo)
 
   # Call the numeric method
@@ -753,6 +898,7 @@ wt_atu.data.frame <- function(
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
+    focal = focal,
     ...
   )
 }
@@ -764,7 +910,8 @@ wt_atu.glm <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 ) {
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
@@ -776,6 +923,7 @@ wt_atu.glm <- function(
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
+    focal = focal,
     ...
   )
 }
@@ -839,13 +987,14 @@ wt_atm.numeric <- function(
   ...
 ) {
   rlang::check_dots_empty()
-  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical")
   )
+
   if (exposure_type == "binary") {
+    check_lengths_match(.propensity, .exposure)
     check_ps_range(.propensity)
     wts <- atm_binary(
       .propensity = .propensity,
@@ -853,11 +1002,30 @@ wt_atm.numeric <- function(
       .treated = .treated,
       .untreated = .untreated
     )
+  } else if (exposure_type == "categorical") {
+    # For categorical, let calculate_categorical_weights handle all validation
+    wts <- calculate_categorical_weights(
+      ps_matrix = .propensity,
+      .exposure = .exposure,
+      estimand = "atm",
+      focal = NULL,
+      stabilize = FALSE,
+      stabilization_score = NULL
+    )
   } else {
     abort_unsupported(exposure_type, "ATM")
   }
 
-  psw(wts, "atm")
+  # Create psw object with appropriate attributes
+  psw_obj <- psw(wts, "atm")
+
+  # Preserve categorical attributes if they exist
+  if (exposure_type == "categorical") {
+    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
+    attr(psw_obj, "category_names") <- attr(wts, "category_names")
+  }
+
+  psw_obj
 }
 
 #' @export
@@ -871,10 +1039,27 @@ wt_atm.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # Capture the column selection expression
-  col_quo <- rlang::enquo(.propensity_col)
+  # For categorical exposures, pass the whole data frame
+  exposure_type_check <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
 
-  # Extract propensity scores from data frame
+  if (exposure_type_check == "categorical") {
+    # Call the numeric method with the data frame as matrix
+    return(wt_atm.numeric(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      exposure_type = exposure_type,
+      .treated = .treated,
+      .untreated = .untreated,
+      ...
+    ))
+  }
+
+  # For binary exposures, extract single column
+  col_quo <- rlang::enquo(.propensity_col)
   ps_vec <- extract_propensity_from_df(.propensity, col_quo)
 
   # Call the numeric method
@@ -968,12 +1153,15 @@ wt_ato.numeric <- function(
   .untreated = NULL,
   ...
 ) {
+  rlang::check_dots_empty()
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical")
   )
+
   if (exposure_type == "binary") {
+    check_lengths_match(.propensity, .exposure)
     check_ps_range(.propensity)
     wts <- ato_binary(
       .propensity = .propensity,
@@ -981,11 +1169,30 @@ wt_ato.numeric <- function(
       .treated = .treated,
       .untreated = .untreated
     )
+  } else if (exposure_type == "categorical") {
+    # For categorical, let calculate_categorical_weights handle all validation
+    wts <- calculate_categorical_weights(
+      ps_matrix = .propensity,
+      .exposure = .exposure,
+      estimand = "ato",
+      focal = NULL,
+      stabilize = FALSE,
+      stabilization_score = NULL
+    )
   } else {
     abort_unsupported(exposure_type, "ATO")
   }
 
-  psw(wts, "ato")
+  # Create psw object with appropriate attributes
+  psw_obj <- psw(wts, "ato")
+
+  # Preserve categorical attributes if they exist
+  if (exposure_type == "categorical") {
+    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
+    attr(psw_obj, "category_names") <- attr(wts, "category_names")
+  }
+
+  psw_obj
 }
 
 #' @export
@@ -999,10 +1206,27 @@ wt_ato.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # Capture the column selection expression
-  col_quo <- rlang::enquo(.propensity_col)
+  # For categorical exposures, pass the whole data frame
+  exposure_type_check <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
 
-  # Extract propensity scores from data frame
+  if (exposure_type_check == "categorical") {
+    # Call the numeric method with the data frame as matrix
+    return(wt_ato.numeric(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      exposure_type = exposure_type,
+      .treated = .treated,
+      .untreated = .untreated,
+      ...
+    ))
+  }
+
+  # For binary exposures, extract single column
+  col_quo <- rlang::enquo(.propensity_col)
   ps_vec <- extract_propensity_from_df(.propensity, col_quo)
 
   # Call the numeric method
@@ -1095,13 +1319,14 @@ wt_entropy.numeric <- function(
   ...
 ) {
   rlang::check_dots_empty()
-  check_lengths_match(.propensity, .exposure)
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical")
   )
+
   if (exposure_type == "binary") {
+    check_lengths_match(.propensity, .exposure)
     check_ps_range(.propensity)
     wts <- entropy_binary(
       .propensity = .propensity,
@@ -1109,11 +1334,30 @@ wt_entropy.numeric <- function(
       .treated = .treated,
       .untreated = .untreated
     )
+  } else if (exposure_type == "categorical") {
+    # For categorical, let calculate_categorical_weights handle all validation
+    wts <- calculate_categorical_weights(
+      ps_matrix = .propensity,
+      .exposure = .exposure,
+      estimand = "entropy",
+      focal = NULL,
+      stabilize = FALSE,
+      stabilization_score = NULL
+    )
   } else {
     abort_unsupported(exposure_type, "entropy")
   }
 
-  psw(wts, "entropy")
+  # Create psw object with appropriate attributes
+  psw_obj <- psw(wts, "entropy")
+
+  # Preserve categorical attributes if they exist
+  if (exposure_type == "categorical") {
+    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
+    attr(psw_obj, "category_names") <- attr(wts, "category_names")
+  }
+
+  psw_obj
 }
 
 #' @export
@@ -1127,10 +1371,27 @@ wt_entropy.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # Capture the column selection expression
-  col_quo <- rlang::enquo(.propensity_col)
+  # For categorical exposures, pass the whole data frame
+  exposure_type_check <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "categorical")
+  )
 
-  # Extract propensity scores from data frame
+  if (exposure_type_check == "categorical") {
+    # Call the numeric method with the data frame as matrix
+    return(wt_entropy.numeric(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      exposure_type = exposure_type,
+      .treated = .treated,
+      .untreated = .untreated,
+      ...
+    ))
+  }
+
+  # For binary exposures, extract single column
+  col_quo <- rlang::enquo(.propensity_col)
   ps_vec <- extract_propensity_from_df(.propensity, col_quo)
 
   # Call the numeric method
@@ -1542,4 +1803,124 @@ wt_entropy.ps_trunc <- function(
   attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
 
   base_wt
+}
+
+# --------------------------------------------------------------------
+#  Categorical exposure weight calculations
+# --------------------------------------------------------------------
+
+calculate_categorical_weights <- function(
+  ps_matrix,
+  .exposure,
+  estimand,
+  focal = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL
+) {
+  # Ensure exposure is a factor
+  .exposure <- transform_exposure_categorical(.exposure, focal)
+
+  # Validate propensity score matrix
+  ps_matrix <- check_ps_matrix(ps_matrix, .exposure)
+
+  # Get dimensions
+  n <- length(.exposure)
+  k <- nlevels(.exposure)
+  levels_exp <- levels(.exposure)
+
+  # Create indicator matrix for exposures
+  # Each row i has a 1 in column j if observation i has exposure level j
+  Z <- matrix(0, nrow = n, ncol = k)
+  for (j in 1:k) {
+    Z[.exposure == levels_exp[j], j] <- 1
+  }
+
+  # Extract the propensity score for each unit's actual exposure
+  # e_{i,Z_i} = sum over j of Z_{ij} * e_{ij}
+  e_actual <- rowSums(Z * ps_matrix)
+
+  # Calculate tilting function h(e_i) based on estimand
+  h_e <- switch(
+    estimand,
+    "ate" = rep(1, n), # h(e) = 1 for ATE
+    "att" = {
+      if (is.null(focal)) {
+        abort(
+          "Focal category must be specified for ATT with categorical exposures.",
+          error_class = "propensity_focal_required_error"
+        )
+      }
+      # h(e) = e_focal
+      focal_idx <- which(levels_exp == focal)
+      ps_matrix[, focal_idx]
+    },
+    "atu" = {
+      if (is.null(focal)) {
+        abort(
+          "Focal category must be specified for ATU with categorical exposures.",
+          error_class = "propensity_focal_required_error"
+        )
+      }
+      # For ATU, we want weights for all non-focal categories
+      # h(e) = 1 - e_focal
+      focal_idx <- which(levels_exp == focal)
+      1 - ps_matrix[, focal_idx]
+    },
+    "ato" = {
+      # h(e) = 1 / sum(1/e_k) - harmonic mean denominator
+      1 / rowSums(1 / ps_matrix)
+    },
+    "atm" = {
+      # h(e) = min(e_1, ..., e_K)
+      apply(ps_matrix, 1, min)
+    },
+    "entropy" = {
+      # h(e) = -sum(e_k * log(e_k)) - entropy
+      # Need to handle e_k = 0 case to avoid -Inf
+      ps_safe <- ps_matrix
+      ps_safe[ps_matrix == 0] <- .Machine$double.eps
+      -rowSums(ps_safe * log(ps_safe))
+    },
+    abort(
+      "Unknown estimand: {estimand}",
+      error_class = "propensity_unknown_estimand_error"
+    )
+  )
+
+  # Calculate weights: w_i = h(e_i) / e_{i,Z_i}
+  weights <- h_e / e_actual
+
+  # Apply stabilization only for ATE
+  if (isTRUE(stabilize)) {
+    if (estimand != "ate") {
+      abort(
+        "Stabilization is only supported for ATE with categorical exposures.",
+        error_class = "propensity_stabilize_categorical_error"
+      )
+    }
+
+    if (!is.null(stabilization_score)) {
+      weights <- weights * stabilization_score
+    } else {
+      # For categorical, use marginal probabilities
+      p_marginal <- table(.exposure) / n
+
+      # Create stabilization weights based on marginal probabilities
+      stab_wts <- numeric(n)
+      for (j in 1:k) {
+        stab_wts[.exposure == levels_exp[j]] <- p_marginal[j]
+      }
+
+      weights <- weights * stab_wts
+    }
+  }
+
+  # Add attributes for categorical weights
+  attr(weights, "n_categories") <- k
+  attr(weights, "category_names") <- levels_exp
+  if (!is.null(focal)) {
+    attr(weights, "focal_category") <- focal
+  }
+
+  weights
 }
