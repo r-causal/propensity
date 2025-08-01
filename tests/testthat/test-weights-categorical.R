@@ -1,6 +1,7 @@
 test_that("categorical exposure detection works correctly", {
   # Factor with 3 levels
   exposure_3 <- factor(c("A", "B", "C", "A", "B", "C"))
+  set.seed(123)
   ps_matrix <- matrix(runif(18), ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix) # Normalize
 
