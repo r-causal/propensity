@@ -368,7 +368,7 @@ test_that("categorical weights work with parsnip models", {
 
   # Get predictions as probabilities (data frame)
   ps_probs <- predict(ps_fit, new_data = test_data, type = "prob")
-  
+
   # Test that we can calculate weights directly with the data frame
   expect_no_error(
     w_ate <- wt_ate(ps_probs, trt, exposure_type = "categorical")

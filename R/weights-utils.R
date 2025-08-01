@@ -257,7 +257,7 @@ check_ps_matrix <- function(
 
   # Check that rows sum to 1 (within tolerance)
   row_sums <- rowSums(ps_matrix)
-  ROW_SUM_TOLERANCE <- 1e-6  # Tolerance for floating point comparison
+  ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
   if (any(abs(row_sums - 1) > ROW_SUM_TOLERANCE)) {
     bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE)
     abort(
@@ -276,6 +276,53 @@ check_ps_matrix <- function(
       "All propensity scores must be between 0 and 1.",
       call = call,
       error_class = "propensity_range_error"
+    )
+  }
+
+  # Ensure columns are in the same order as factor levels
+  # This is critical for correct weight calculation
+  exp_levels <- levels(.exposure)
+
+  # Check if columns have names
+  if (!is.null(colnames(ps_matrix))) {
+    # Try to match column names to factor levels
+    # Handle both plain names (A, B, C) and parsnip-style names (.pred_A, .pred_B, .pred_C)
+    col_names <- colnames(ps_matrix)
+
+    # Remove common prefixes like ".pred_"
+    clean_names <- gsub("^\\.pred_", "", col_names)
+
+    # Check if clean names match factor levels
+    if (setequal(clean_names, exp_levels)) {
+      # Reorder columns to match factor levels
+      if (!identical(clean_names, exp_levels)) {
+        col_order <- match(exp_levels, clean_names)
+        ps_matrix <- ps_matrix[, col_order, drop = FALSE]
+        # Update column names to match
+        colnames(ps_matrix) <- col_names[col_order]
+      }
+    } else {
+      # Column names don't match factor levels
+      abort(
+        c(
+          "Column names of propensity score matrix must match exposure levels.",
+          i = "Expected levels: {.val {exp_levels}}",
+          i = "Found columns: {.val {clean_names}}"
+        ),
+        call = call,
+        error_class = "propensity_matrix_names_error"
+      )
+    }
+  } else {
+    # No column names - assume they're in factor level order
+    # Issue a warning as this is risky
+    warn(
+      c(
+        "Propensity score matrix has no column names.",
+        i = "Assuming columns are in factor level order: {.val {exp_levels}}",
+        i = "This may lead to incorrect results if columns are misaligned."
+      ),
+      warning_class = "propensity_matrix_no_names_warning"
     )
   }
 

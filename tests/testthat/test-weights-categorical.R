@@ -503,13 +503,31 @@ test_that("Entropy weights work for categorical exposures", {
 
 test_that("data.frame input works for categorical exposures", {
   exposure <- factor(c("A", "B", "C", "A", "B", "C"))
+
+  # Test with plain column names
   ps_df <- data.frame(
-    prob_A = c(0.5, 0.2, 0.1, 0.6, 0.3, 0.2),
-    prob_B = c(0.3, 0.5, 0.2, 0.3, 0.4, 0.2),
-    prob_C = c(0.2, 0.3, 0.7, 0.1, 0.3, 0.6)
+    A = c(0.5, 0.2, 0.1, 0.6, 0.3, 0.2),
+    B = c(0.3, 0.5, 0.2, 0.3, 0.4, 0.2),
+    C = c(0.2, 0.3, 0.7, 0.1, 0.3, 0.6)
   )
 
   weights_df <- wt_ate(ps_df, exposure, exposure_type = "categorical")
+
+  # Test with parsnip-style column names
+  ps_df_parsnip <- data.frame(
+    .pred_A = c(0.5, 0.2, 0.1, 0.6, 0.3, 0.2),
+    .pred_B = c(0.3, 0.5, 0.2, 0.3, 0.4, 0.2),
+    .pred_C = c(0.2, 0.3, 0.7, 0.1, 0.3, 0.6)
+  )
+
+  weights_df_parsnip <- wt_ate(
+    ps_df_parsnip,
+    exposure,
+    exposure_type = "categorical"
+  )
+
+  # Both should give same results
+  expect_equal(as.numeric(weights_df), as.numeric(weights_df_parsnip))
 
   # Compare to matrix input
   ps_matrix <- as.matrix(ps_df)
@@ -526,5 +544,102 @@ test_that("stabilization works for ATE categorical exposures", {
   # Test that stabilization works for ATE
   expect_no_error(
     wt_ate(ps_matrix, exposure, exposure_type = "categorical", stabilize = TRUE)
+  )
+})
+
+test_that("categorical weights handle different column orders correctly", {
+  set.seed(456)
+  n <- 100
+
+  # Create treatment with 3 categories
+  trt <- factor(sample(c("low", "medium", "high"), n, replace = TRUE))
+
+  # Create propensity score matrix in CORRECT order (matching factor levels)
+  ps_correct <- matrix(runif(n * 3), nrow = n, ncol = 3)
+  ps_correct <- ps_correct / rowSums(ps_correct)
+  colnames(ps_correct) <- levels(trt) # "high", "low", "medium" (alphabetical)
+
+  # Create same matrix with columns in WRONG order
+  ps_wrong <- ps_correct[, c("medium", "high", "low")]
+
+  # Calculate weights with both matrices
+  w_ate_correct <- wt_ate(ps_correct, trt, exposure_type = "categorical")
+  w_ate_wrong <- wt_ate(ps_wrong, trt, exposure_type = "categorical")
+
+  # Weights should be identical after reordering
+  expect_equal(as.numeric(w_ate_correct), as.numeric(w_ate_wrong))
+
+  # Test with ATT
+  w_att_correct <- wt_att(
+    ps_correct,
+    trt,
+    exposure_type = "categorical",
+    focal = "medium"
+  )
+  w_att_wrong <- wt_att(
+    ps_wrong,
+    trt,
+    exposure_type = "categorical",
+    focal = "medium"
+  )
+
+  expect_equal(as.numeric(w_att_correct), as.numeric(w_att_wrong))
+
+  # Verify ATT weights are correct (focal group should have weight 1)
+  expect_equal(unique(as.numeric(w_att_correct[trt == "medium"])), 1)
+  expect_equal(unique(as.numeric(w_att_wrong[trt == "medium"])), 1)
+})
+
+test_that("categorical weights work with parsnip-style column names", {
+  set.seed(789)
+  n <- 50
+
+  trt <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+
+  # Create matrix with parsnip-style names
+  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- c(".pred_A", ".pred_B", ".pred_C")
+
+  # Should work without error
+  expect_no_error(
+    w_ate <- wt_ate(ps_matrix, trt, exposure_type = "categorical")
+  )
+
+  # Test focal matching works correctly
+  expect_no_error(
+    w_att <- wt_att(ps_matrix, trt, exposure_type = "categorical", focal = "B")
+  )
+
+  # Focal group should have weight 1
+  expect_equal(unique(as.numeric(w_att[trt == "B"])), 1)
+})
+
+test_that("categorical weights error on mismatched column names", {
+  n <- 50
+  trt <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+
+  # Matrix with wrong column names
+  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- c("X", "Y", "Z")
+
+  expect_error(
+    wt_ate(ps_matrix, trt, exposure_type = "categorical"),
+    class = "propensity_matrix_names_error"
+  )
+})
+
+test_that("categorical weights warn on unnamed columns", {
+  n <- 50
+  trt <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+
+  # Matrix with no column names
+  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+
+  expect_warning(
+    wt_ate(ps_matrix, trt, exposure_type = "categorical"),
+    class = "propensity_matrix_no_names_warning"
   )
 })

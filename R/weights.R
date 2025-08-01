@@ -128,7 +128,7 @@
 #' @param ... Reserved for future expansion. Not currently used.
 #' @param stabilize Logical indicating whether to stabilize the weights. For ATE
 #'   weights, stabilization multiplies the weight by either the mean of
-#'   `.exposure` or the supplied `stabilization_score`. Note: stabilization is only 
+#'   `.exposure` or the supplied `stabilization_score`. Note: stabilization is only
 #'   supported for ATE and continuous exposures.
 #' @param stabilization_score Optional numeric value for stabilizing the weights
 #'   (e.g., a predicted value from a regression model without predictors). Only
@@ -170,7 +170,7 @@
 #'
 #' # Stabilization reduces variance
 #' weights_ate_stab <- wt_ate(propensity_scores, treatment, stabilize = TRUE)
-#' 
+#'
 #' ## Handling Extreme Propensity Scores
 #'
 #' # Create data with positivity violations
