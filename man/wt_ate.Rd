@@ -166,8 +166,8 @@ it is automatically detected.}
 
 \item{stabilize}{Logical indicating whether to stabilize the weights. For ATE
 weights, stabilization multiplies the weight by either the mean of
-\code{.exposure} or the supplied \code{stabilization_score}. Note: for categorical
-exposures, stabilization is only supported for ATE.}
+\code{.exposure} or the supplied \code{stabilization_score}. Note: stabilization is only
+supported for ATE and continuous exposures.}
 
 \item{stabilization_score}{Optional numeric value for stabilizing the weights
 (e.g., a predicted value from a regression model without predictors). Only
@@ -175,7 +175,7 @@ used when \code{stabilize} is \code{TRUE}.}
 
 \item{...}{Reserved for future expansion. Not currently used.}
 
-\item{.propensity_col}{When \code{.propensity} is a data frame, specifies which
+\item{.propensity_col}{With a binary exposure, when \code{.propensity} is a data frame, specifies which
 column to use for propensity scores. Can be a column name (quoted or
 unquoted) or a numeric index. Defaults to the second column if available,
 otherwise the first. For categorical exposures, the entire data frame is
@@ -340,10 +340,6 @@ summary(weights_ato)  # Often more stable than ATE
 # Stabilization reduces variance
 weights_ate_stab <- wt_ate(propensity_scores, treatment, stabilize = TRUE)
 
-# Compare coefficient of variation
-sd(weights_ate) / mean(weights_ate)      # Unstabilized
-sd(weights_ate_stab) / mean(weights_ate_stab)  # Stabilized (lower is better)
-
 ## Handling Extreme Propensity Scores
 
 # Create data with positivity violations
@@ -356,11 +352,11 @@ wt_extreme <- wt_ate(ps_extreme, trt_extreme)
 max(wt_extreme)
 
 # ATO weights are bounded
-wt_extreme_atm <- wt_ato(ps_extreme, trt_extreme)
+wt_extreme_ato <- wt_ato(ps_extreme, trt_extreme)
 # Much more reasonable
-max(wt_extreme_atm)
+max(wt_extreme_ato)
 # but they target a different population
-estimand(wt_extreme_atm) # "ato"
+estimand(wt_extreme_ato) # "ato"
 
 ## Working with Data Frames
 
