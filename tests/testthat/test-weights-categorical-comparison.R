@@ -7,7 +7,7 @@ test_that("categorical weights match WeightIt for all estimands", {
 
   # Note: WeightIt uses its own multinom_weightit() implementation for multi-category
   # treatments while we use nnet::multinom. Small differences are expected due to
-  # different optimization algorithms. We use 1e-5 tolerance throughout.
+  # different optimization algorithms.
 
   # Create test dataset with 3-category treatment
   set.seed(123)

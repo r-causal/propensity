@@ -257,8 +257,9 @@ check_ps_matrix <- function(
 
   # Check that rows sum to 1 (within tolerance)
   row_sums <- rowSums(ps_matrix)
-  if (any(abs(row_sums - 1) > 1e-6)) {
-    bad_rows <- which(abs(row_sums - 1) > 1e-6)
+  ROW_SUM_TOLERANCE <- 1e-6  # Tolerance for floating point comparison
+  if (any(abs(row_sums - 1) > ROW_SUM_TOLERANCE)) {
+    bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE)
     abort(
       c(
         "Propensity score matrix rows must sum to 1.",
