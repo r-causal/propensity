@@ -21,6 +21,7 @@ Suggests:
     dplyr,
     ggplot2,
     mgcv,
+    nnet,
     parsnip,
     probably,
     PSweight,

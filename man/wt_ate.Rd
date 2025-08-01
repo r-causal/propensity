@@ -46,7 +46,8 @@ wt_att(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 )
 
 \method{wt_att}{data.frame}(
@@ -56,7 +57,8 @@ wt_att(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  focal = NULL
 )
 
 wt_atu(
@@ -65,7 +67,8 @@ wt_atu(
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
-  ...
+  ...,
+  focal = NULL
 )
 
 \method{wt_atu}{data.frame}(
@@ -75,7 +78,8 @@ wt_atu(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  focal = NULL
 )
 
 wt_atm(
@@ -162,7 +166,8 @@ it is automatically detected.}
 
 \item{stabilize}{Logical indicating whether to stabilize the weights. For ATE
 weights, stabilization multiplies the weight by either the mean of
-\code{.exposure} or the supplied \code{stabilization_score}.}
+\code{.exposure} or the supplied \code{stabilization_score}. Note: stabilization is only
+supported for ATE and continuous exposures.}
 
 \item{stabilization_score}{Optional numeric value for stabilizing the weights
 (e.g., a predicted value from a regression model without predictors). Only
@@ -170,10 +175,15 @@ used when \code{stabilize} is \code{TRUE}.}
 
 \item{...}{Reserved for future expansion. Not currently used.}
 
-\item{.propensity_col}{When \code{.propensity} is a data frame, specifies which
+\item{.propensity_col}{With a binary exposure, when \code{.propensity} is a data frame, specifies which
 column to use for propensity scores. Can be a column name (quoted or
 unquoted) or a numeric index. Defaults to the second column if available,
-otherwise the first.}
+otherwise the first. For categorical exposures, the entire data frame is
+used as a matrix of propensity scores.}
+
+\item{focal}{For categorical exposures with ATT or ATU estimands, specifies
+the focal category. Must be one of the levels of the exposure variable.
+Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 }
 \value{
 A \code{psw} object (a numeric vector) with additional attributes:
@@ -239,6 +249,21 @@ For continuous treatments, weights use the density ratio:
 and \eqn{f_{A|X}} is the conditional density given \eqn{X}.
 }
 
+\subsection{Categorical Exposures}{
+
+For categorical treatments with \eqn{K} levels, weights use a tilting function approach:
+\eqn{w_i = \frac{h(e_i)}{e_{i,Z_i}}}, where \eqn{e_{i,Z_i}} is the propensity score for unit \eqn{i}'s
+observed treatment level, and \eqn{h(e_i)} is a tilting function that depends on the estimand:
+\itemize{
+\item \strong{ATE}: \eqn{h(e) = 1}
+\item \strong{ATT}: \eqn{h(e) = e_{focal}} (propensity score for the focal category)
+\item \strong{ATU}: \eqn{h(e) = 1 - e_{focal}} (complement of focal category propensity)
+\item \strong{ATM}: \eqn{h(e) = \min(e_1, ..., e_K)}
+\item \strong{ATO}: \eqn{h(e) = 1 / \sum_k(1/e_k)} (reciprocal of harmonic mean denominator)
+\item \strong{Entropy}: \eqn{h(e) = -\sum_k[e_k \cdot \log(e_k)]} (entropy of propensity scores)
+}
+}
+
 }
 
 \subsection{Exposure Types}{
@@ -248,7 +273,8 @@ The functions support different types of exposures:
 \item \strong{\code{binary}}: For dichotomous treatments (e.g. 0/1).
 \item \strong{\code{continuous}}: For numeric exposures. Here, weights are calculated via the normal density using
 \code{dnorm()}.
-\item \strong{\code{categorical}}: Currently not supported (an error will be raised).
+\item \strong{\code{categorical}}: For exposures with more than 2 categories. Requires \code{.propensity} to be a
+matrix or data frame with columns representing propensity scores for each category.
 \item \strong{\code{auto}}: Automatically detects the exposure type based on \code{.exposure}.
 }
 }
@@ -314,10 +340,6 @@ summary(weights_ato)  # Often more stable than ATE
 # Stabilization reduces variance
 weights_ate_stab <- wt_ate(propensity_scores, treatment, stabilize = TRUE)
 
-# Compare coefficient of variation
-sd(weights_ate) / mean(weights_ate)      # Unstabilized
-sd(weights_ate_stab) / mean(weights_ate_stab)  # Stabilized (lower is better)
-
 ## Handling Extreme Propensity Scores
 
 # Create data with positivity violations
@@ -330,11 +352,11 @@ wt_extreme <- wt_ate(ps_extreme, trt_extreme)
 max(wt_extreme)
 
 # ATO weights are bounded
-wt_extreme_atm <- wt_ato(ps_extreme, trt_extreme)
+wt_extreme_ato <- wt_ato(ps_extreme, trt_extreme)
 # Much more reasonable
-max(wt_extreme_atm)
+max(wt_extreme_ato)
 # but they target a different population
-estimand(wt_extreme_atm) # "ato"
+estimand(wt_extreme_ato) # "ato"
 
 ## Working with Data Frames
 

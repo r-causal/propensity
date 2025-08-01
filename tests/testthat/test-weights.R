@@ -129,15 +129,15 @@ test_that("stabilized weights use P(A=1) and P(A=0) as numerators", {
 })
 
 
-test_that("ATE works for categorical cases", {
-  # we don't currently support this!
+test_that("ATE errors appropriately for categorical with vector propensity scores", {
+  # For categorical exposures, propensity scores must be a matrix
   expect_error(
     wt_ate(
       c(.1, .3, .4, .3),
       .exposure = c(0, 2, 1, 4),
       exposure_type = "categorical"
     ),
-    class = "propensity_wt_not_supported_error"
+    class = "propensity_matrix_type_error"
   )
 })
 
@@ -586,13 +586,14 @@ test_that("wt_entropy works with ps_trunc objects", {
 })
 
 test_that("entropy weights error on unsupported exposure types", {
+  # For categorical exposures, propensity scores must be a matrix
   expect_error(
     wt_entropy(
       c(.1, .3, .4, .3),
       .exposure = c(1, 2, 3, 4),
       exposure_type = "categorical"
     ),
-    class = "propensity_wt_not_supported_error"
+    class = "propensity_matrix_type_error"
   )
 
   # Now that continuous is not even an option for entropy,
@@ -1134,10 +1135,10 @@ test_that("wt_* functions error appropriately on invalid inputs", {
     wt_ate(numeric(0), numeric(0))
   )
 
-  # Categorical exposure (not supported for most estimands)
+  # Categorical exposure requires matrix propensity scores
   expect_error(
     wt_att(c(0.3, 0.3, 0.4), c(1, 2, 3), exposure_type = "categorical"),
-    class = "propensity_wt_not_supported_error"
+    class = "propensity_matrix_type_error"
   )
 })
 
