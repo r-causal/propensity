@@ -366,24 +366,18 @@ test_that("categorical weights work with parsnip models", {
   ps_fit <- ps_spec %>%
     parsnip::fit(trt ~ x1 + x2 + x3, data = test_data)
 
-  # Get predictions as probabilities
+  # Get predictions as probabilities (data frame)
   ps_probs <- predict(ps_fit, new_data = test_data, type = "prob")
-  ps_matrix <- as.matrix(ps_probs)
-
-  # Ensure columns are in correct order (matching factor levels)
-  col_names <- gsub("^\\.pred_", "", colnames(ps_matrix))
-  ps_matrix <- ps_matrix[, paste0(".pred_", levels(trt))]
-  colnames(ps_matrix) <- levels(trt)
-
-  # Test that we can calculate weights
+  
+  # Test that we can calculate weights directly with the data frame
   expect_no_error(
-    w_ate <- wt_ate(ps_matrix, trt, exposure_type = "categorical")
+    w_ate <- wt_ate(ps_probs, trt, exposure_type = "categorical")
   )
   expect_no_error(
-    w_att <- wt_att(ps_matrix, trt, focal = "A", exposure_type = "categorical")
+    w_att <- wt_att(ps_probs, trt, focal = "A", exposure_type = "categorical")
   )
   expect_no_error(
-    w_ato <- wt_ato(ps_matrix, trt, exposure_type = "categorical")
+    w_ato <- wt_ato(ps_probs, trt, exposure_type = "categorical")
   )
 
   # Check basic properties
