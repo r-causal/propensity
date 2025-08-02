@@ -59,17 +59,24 @@ ps_calibrate <- function(
   method <- match.arg(method)
   # Check that ps is numeric and in valid range
   if (!is.numeric(ps)) {
-    abort("`ps` must be a numeric vector.")
+    abort(
+      "`ps` must be a numeric vector.",
+      error_class = "propensity_type_error"
+    )
   }
 
   if (is_causal_wt(ps) && is_ps_calibrated(ps)) {
     abort(
-      "`ps` is already calibrated. Cannot calibrate already calibrated propensity scores."
+      "`ps` is already calibrated. Cannot calibrate already calibrated propensity scores.",
+      error_class = "propensity_already_calibrated_error"
     )
   }
 
   if (any(ps < 0 | ps > 1, na.rm = TRUE)) {
-    abort("`ps` values must be between 0 and 1.")
+    abort(
+      "`ps` values must be between 0 and 1.",
+      error_class = "propensity_range_error"
+    )
   }
 
   # Transform treatment to binary if needed
@@ -80,7 +87,10 @@ ps_calibrate <- function(
   )
 
   if (length(ps) != length(treat)) {
-    abort("Propensity score vector `ps` must be the same length as `treat`.")
+    abort(
+      "Propensity score vector `ps` must be the same length as `treat`.",
+      error_class = "propensity_length_error"
+    )
   }
 
   # Extract attributes from causal weight objects if applicable
@@ -223,8 +233,25 @@ ps_calibrate <- function(
   )
 }
 
-#' @rdname psw
+#' Check if object is calibrated
+#'
+#' @description
+#' `is_ps_calibrated()` is an S3 generic that returns `TRUE` if its argument represents
+#' calibrated propensity scores.
+#'
+#' @param x An R object.
+#' @return A logical scalar (`TRUE` or `FALSE`).
 #' @export
-is_ps_calibrated <- function(wt) {
-  isTRUE(attr(wt, "calibrated"))
+is_ps_calibrated <- function(x) {
+  UseMethod("is_ps_calibrated")
+}
+
+#' @export
+is_ps_calibrated.default <- function(x) {
+  FALSE
+}
+
+#' @export
+is_ps_calibrated.psw <- function(x) {
+  isTRUE(attr(x, "calibrated"))
 }

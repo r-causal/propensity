@@ -6,6 +6,17 @@ abort_unsupported <- function(exposure_type, what, call = rlang::caller_env()) {
   )
 }
 
+abort_no_method <- function(.propensity, call = rlang::caller_env()) {
+  abort(
+    paste0(
+      "No method for objects of class ",
+      paste(class(.propensity), collapse = ", ")
+    ),
+    call = call,
+    error_class = "propensity_method_error"
+  )
+}
+
 match_exposure_type <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .exposure,
@@ -327,4 +338,188 @@ check_ps_matrix <- function(
   }
 
   ps_matrix
+}
+
+# Helper for ps_trim and ps_trunc methods
+calculate_weight_from_modified_ps <- function(
+  .propensity,
+  .exposure,
+  weight_fn,
+  modification_type = c("trim", "trunc"),
+  ...
+) {
+  modification_type <- match.arg(modification_type)
+
+  # Only check refit for trim
+  if (modification_type == "trim") {
+    check_refit(.propensity)
+  }
+
+  # Convert to numeric
+  numeric_ps <- as.numeric(.propensity)
+
+  # Call the weight function with the numeric propensity scores
+  base_wt <- weight_fn(
+    numeric_ps,
+    .exposure = .exposure,
+    ...
+  )
+
+  # Update estimand
+  if (modification_type == "trim") {
+    old_est <- estimand(base_wt)
+    estimand(base_wt) <- paste0(old_est, "; trimmed")
+    attr(base_wt, "trimmed") <- TRUE
+    attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
+  } else {
+    estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+    attr(base_wt, "truncated") <- TRUE
+    attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+  }
+
+  base_wt
+}
+
+# Helper to preserve categorical attributes on psw objects
+preserve_categorical_attrs <- function(psw_obj, wts, exposure_type) {
+  if (exposure_type == "categorical") {
+    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
+    attr(psw_obj, "category_names") <- attr(wts, "category_names")
+    # focal_category might not always exist
+    if (!is.null(attr(wts, "focal_category"))) {
+      attr(psw_obj, "focal_category") <- attr(wts, "focal_category")
+    }
+  }
+  psw_obj
+}
+
+# Helper function to extract propensity scores from data frames
+# This consolidates the logic used across multiple weight functions
+extract_propensity_from_df <- function(
+  .propensity,
+  .propensity_col_quo = NULL,
+  call = rlang::caller_env()
+) {
+  if (!rlang::quo_is_null(.propensity_col_quo)) {
+    col_pos <- tryCatch(
+      tidyselect::eval_select(
+        .propensity_col_quo,
+        data = .propensity
+      ),
+      error = function(e) {
+        abort(
+          paste0("Column selection failed: ", e$message),
+          call = call,
+          error_class = "propensity_df_column_error"
+        )
+      }
+    )
+
+    if (length(col_pos) != 1) {
+      abort(
+        "`.propensity_col` must select exactly one column.",
+        call = call,
+        error_class = "propensity_df_column_error"
+      )
+    }
+
+    ps_vec <- .propensity[[col_pos]]
+  } else {
+    # Default behavior: use second column if available, otherwise first
+    if (ncol(.propensity) >= 2) {
+      ps_vec <- .propensity[[2]]
+    } else if (ncol(.propensity) == 1) {
+      ps_vec <- .propensity[[1]]
+    } else {
+      abort(
+        "`.propensity` data frame must have at least one column.",
+        call = call,
+        error_class = "propensity_df_ncol_error"
+      )
+    }
+  }
+
+  ps_vec
+}
+
+# Helper function to extract propensity scores from GLM objects
+extract_propensity_from_glm <- function(
+  .propensity,
+  call = rlang::caller_env()
+) {
+  # Check if it's a valid GLM object
+  if (!inherits(.propensity, "glm")) {
+    abort(
+      "`.propensity` must be a GLM object.",
+      call = call,
+      error_class = "propensity_glm_type_error"
+    )
+  }
+
+  # Check if it's a binomial GLM for binary propensity scores
+  if (
+    !is.null(.propensity$family) &&
+      .propensity$family$family == "binomial"
+  ) {
+    # Get predicted probabilities
+    ps_vec <- stats::predict(.propensity, type = "response")
+  } else {
+    # For non-binomial GLMs, get linear predictor
+    ps_vec <- stats::fitted(.propensity)
+  }
+
+  ps_vec
+}
+
+# Helper function to handle common data frame method pattern
+# This encapsulates the logic used across all weight function data.frame methods
+handle_data_frame_weight_calculation <- function(
+  weight_fn_numeric,
+  .propensity,
+  .exposure,
+  exposure_type,
+  valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+  .propensity_col_quo,
+  ...
+) {
+  # Validate inputs
+  if (!is.data.frame(.propensity)) {
+    abort(
+      "`.propensity` must be a data frame.",
+      call = rlang::caller_env(2),
+      error_class = "propensity_matrix_type_error"
+    )
+  }
+
+  # Check exposure type
+  exposure_type_check <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    valid_exposure_types
+  )
+
+  if (exposure_type_check == "categorical") {
+    # For categorical exposures, pass the whole data frame
+    return(weight_fn_numeric(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      exposure_type = exposure_type,
+      ...
+    ))
+  }
+
+  # For non-categorical exposures, extract single column
+  ps_vec <- extract_propensity_from_df(
+    .propensity,
+    .propensity_col_quo,
+    call = rlang::caller_env(2)
+  )
+
+  # Call the numeric method
+  weight_fn_numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    ...
+  )
 }

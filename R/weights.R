@@ -290,13 +290,7 @@ wt_ate.default <- function(
   stabilization_score = NULL,
   ...
 ) {
-  abort(
-    paste0(
-      "No method for objects of class ",
-      paste(class(.propensity), collapse = ", ")
-    ),
-    error_class = "propensity_method_error"
-  )
+  abort_no_method(.propensity)
 }
 
 #' @export
@@ -353,12 +347,7 @@ wt_ate.numeric <- function(
   psw_obj <- psw(wts, "ate", stabilized = isTRUE(stabilize))
 
   # Preserve categorical attributes if they exist
-  if (exposure_type == "categorical") {
-    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
-    attr(psw_obj, "category_names") <- attr(wts, "category_names")
-  }
-
-  psw_obj
+  preserve_categorical_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -375,34 +364,15 @@ wt_ate.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(exposure_type, .exposure)
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_ate.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      .sigma = .sigma,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      stabilize = stabilize,
-      stabilization_score = stabilization_score,
-      ...
-    ))
-  }
-
-  # For non-categorical exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_ate.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_ate.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
-    .sigma = .sigma,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    .propensity_col_quo = col_quo,
+    .sigma = .sigma,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,
@@ -448,74 +418,6 @@ wt_ate.glm <- function(
   )
 }
 
-# Helper function to extract propensity scores from data frames
-extract_propensity_from_df <- function(
-  .propensity,
-  .propensity_col_quo = NULL
-) {
-  if (!rlang::quo_is_null(.propensity_col_quo)) {
-    col_pos <- tryCatch(
-      tidyselect::eval_select(
-        .propensity_col_quo,
-        data = .propensity
-      ),
-      error = function(e) {
-        abort(
-          paste0("Column selection failed: ", e$message),
-          error_class = "propensity_df_column_error"
-        )
-      }
-    )
-
-    if (length(col_pos) != 1) {
-      abort(
-        "`.propensity_col` must select exactly one column.",
-        error_class = "propensity_df_column_error"
-      )
-    }
-
-    ps_vec <- .propensity[[col_pos]]
-  } else {
-    # Default behavior: use second column if available, otherwise first
-    if (ncol(.propensity) >= 2) {
-      ps_vec <- .propensity[[2]]
-    } else if (ncol(.propensity) == 1) {
-      ps_vec <- .propensity[[1]]
-    } else {
-      abort(
-        "`.propensity` data frame must have at least one column.",
-        error_class = "propensity_df_ncol_error"
-      )
-    }
-  }
-
-  ps_vec
-}
-
-# Helper function to extract propensity scores from GLM objects
-extract_propensity_from_glm <- function(.propensity) {
-  # Check if it's a valid GLM object
-  if (!inherits(.propensity, "glm")) {
-    abort(
-      "`.propensity` must be a GLM object.",
-      error_class = "propensity_glm_type_error"
-    )
-  }
-
-  # Check if it's a binomial GLM for binary propensity scores
-  if (
-    !is.null(.propensity$family) &&
-      .propensity$family$family == "binomial"
-  ) {
-    # Get predicted probabilities
-    ps_vec <- stats::predict(.propensity, type = "response")
-  } else {
-    # For non-binomial GLMs, get linear predictor
-    ps_vec <- stats::fitted(.propensity)
-  }
-
-  ps_vec
-}
 
 ate_binary <- function(
   .propensity,
@@ -614,13 +516,7 @@ wt_att.default <- function(
   ...,
   focal = NULL
 ) {
-  abort(
-    paste0(
-      "No method for objects of class ",
-      paste(class(.propensity), collapse = ", ")
-    ),
-    error_class = "propensity_method_error"
-  )
+  abort_no_method(.propensity)
 }
 
 #' @export
@@ -667,13 +563,7 @@ wt_att.numeric <- function(
   psw_obj <- psw(wts, "att")
 
   # Preserve categorical attributes if they exist
-  if (exposure_type == "categorical") {
-    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
-    attr(psw_obj, "category_names") <- attr(wts, "category_names")
-    attr(psw_obj, "focal_category") <- attr(wts, "focal_category")
-  }
-
-  psw_obj
+  preserve_categorical_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -688,35 +578,14 @@ wt_att.data.frame <- function(
   .propensity_col = NULL,
   focal = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_att.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      focal = focal,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_att.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_att.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     focal = focal,
@@ -789,13 +658,7 @@ wt_atu.default <- function(
   ...,
   focal = NULL
 ) {
-  abort(
-    paste0(
-      "No method for objects of class ",
-      paste(class(.propensity), collapse = ", ")
-    ),
-    error_class = "propensity_method_error"
-  )
+  abort_no_method(.propensity)
 }
 
 #' @export
@@ -842,13 +705,7 @@ wt_atu.numeric <- function(
   psw_obj <- psw(wts, "atu")
 
   # Preserve categorical attributes if they exist
-  if (exposure_type == "categorical") {
-    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
-    attr(psw_obj, "category_names") <- attr(wts, "category_names")
-    attr(psw_obj, "focal_category") <- attr(wts, "focal_category")
-  }
-
-  psw_obj
+  preserve_categorical_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -863,35 +720,14 @@ wt_atu.data.frame <- function(
   .propensity_col = NULL,
   focal = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_atu.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      focal = focal,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_atu.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_atu.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     focal = focal,
@@ -964,13 +800,7 @@ wt_atm.default <- function(
   .untreated = NULL,
   ...
 ) {
-  abort(
-    paste0(
-      "No method for objects of class ",
-      paste(class(.propensity), collapse = ", ")
-    ),
-    error_class = "propensity_method_error"
-  )
+  abort_no_method(.propensity)
 }
 
 #' @export
@@ -1016,12 +846,7 @@ wt_atm.numeric <- function(
   psw_obj <- psw(wts, "atm")
 
   # Preserve categorical attributes if they exist
-  if (exposure_type == "categorical") {
-    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
-    attr(psw_obj, "category_names") <- attr(wts, "category_names")
-  }
-
-  psw_obj
+  preserve_categorical_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -1035,34 +860,14 @@ wt_atm.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_atm.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_atm.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_atm.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1131,13 +936,7 @@ wt_ato.default <- function(
   .untreated = NULL,
   ...
 ) {
-  abort(
-    paste0(
-      "No method for objects of class ",
-      paste(class(.propensity), collapse = ", ")
-    ),
-    error_class = "propensity_method_error"
-  )
+  abort_no_method(.propensity)
 }
 
 #' @export
@@ -1183,12 +982,7 @@ wt_ato.numeric <- function(
   psw_obj <- psw(wts, "ato")
 
   # Preserve categorical attributes if they exist
-  if (exposure_type == "categorical") {
-    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
-    attr(psw_obj, "category_names") <- attr(wts, "category_names")
-  }
-
-  psw_obj
+  preserve_categorical_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -1202,34 +996,14 @@ wt_ato.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_ato.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_ato.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_ato.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1296,13 +1070,7 @@ wt_entropy.default <- function(
   .untreated = NULL,
   ...
 ) {
-  abort(
-    paste0(
-      "No method for objects of class ",
-      paste(class(.propensity), collapse = ", ")
-    ),
-    error_class = "propensity_method_error"
-  )
+  abort_no_method(.propensity)
 }
 
 #' @export
@@ -1348,12 +1116,7 @@ wt_entropy.numeric <- function(
   psw_obj <- psw(wts, "entropy")
 
   # Preserve categorical attributes if they exist
-  if (exposure_type == "categorical") {
-    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
-    attr(psw_obj, "category_names") <- attr(wts, "category_names")
-  }
-
-  psw_obj
+  preserve_categorical_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -1367,34 +1130,14 @@ wt_entropy.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_entropy.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_entropy.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_entropy.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1465,12 +1208,11 @@ wt_ate.ps_trim <- function(
   stabilization_score = NULL,
   ...
 ) {
-  check_refit(.propensity)
-
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_ate.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_ate.numeric,
+    modification_type = "trim",
     .sigma = .sigma,
     exposure_type = exposure_type,
     .treated = .treated,
@@ -1479,13 +1221,6 @@ wt_ate.ps_trim <- function(
     stabilization_score = stabilization_score,
     ...
   )
-
-  old_est <- estimand(base_wt)
-  estimand(base_wt) <- paste0(old_est, "; trimmed")
-  attr(base_wt, "trimmed") <- TRUE
-  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
-
-  base_wt
 }
 
 #' @export
@@ -1497,24 +1232,16 @@ wt_att.ps_trim <- function(
   .untreated = NULL,
   ...
 ) {
-  check_refit(.propensity)
-
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_att.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_att.numeric,
+    modification_type = "trim",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  old_est <- estimand(base_wt)
-  estimand(base_wt) <- paste0(old_est, "; trimmed")
-  attr(base_wt, "trimmed") <- TRUE
-  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
-
-  base_wt
 }
 
 #' @export
@@ -1526,24 +1253,16 @@ wt_atu.ps_trim <- function(
   .untreated = NULL,
   ...
 ) {
-  check_refit(.propensity)
-
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_atu.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_atu.numeric,
+    modification_type = "trim",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  old_est <- estimand(base_wt)
-  estimand(base_wt) <- paste0(old_est, "; trimmed")
-  attr(base_wt, "trimmed") <- TRUE
-  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
-
-  base_wt
 }
 
 #' @export
@@ -1555,24 +1274,16 @@ wt_atm.ps_trim <- function(
   .untreated = NULL,
   ...
 ) {
-  check_refit(.propensity)
-
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_atm.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_atm.numeric,
+    modification_type = "trim",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  old_est <- estimand(base_wt)
-  estimand(base_wt) <- paste0(old_est, "; trimmed")
-  attr(base_wt, "trimmed") <- TRUE
-  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
-
-  base_wt
 }
 
 #' @export
@@ -1584,24 +1295,16 @@ wt_ato.ps_trim <- function(
   .untreated = NULL,
   ...
 ) {
-  check_refit(.propensity)
-
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_ato.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_ato.numeric,
+    modification_type = "trim",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  old_est <- estimand(base_wt)
-  estimand(base_wt) <- paste0(old_est, "; trimmed")
-  attr(base_wt, "trimmed") <- TRUE
-  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
-
-  base_wt
 }
 
 #' @export
@@ -1616,10 +1319,11 @@ wt_ate.ps_trunc <- function(
   stabilization_score = NULL,
   ...
 ) {
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_ate.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_ate.numeric,
+    modification_type = "trunc",
     .sigma = .sigma,
     exposure_type = exposure_type,
     .treated = .treated,
@@ -1628,13 +1332,6 @@ wt_ate.ps_trunc <- function(
     stabilization_score = stabilization_score,
     ...
   )
-
-  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
-
-  attr(base_wt, "truncated") <- TRUE
-  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
-
-  base_wt
 }
 
 #' @export
@@ -1646,22 +1343,16 @@ wt_att.ps_trunc <- function(
   .untreated = NULL,
   ...
 ) {
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_att.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_att.numeric,
+    modification_type = "trunc",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
-
-  attr(base_wt, "truncated") <- TRUE
-  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
-
-  base_wt
 }
 
 #' @export
@@ -1673,22 +1364,16 @@ wt_atu.ps_trunc <- function(
   .untreated = NULL,
   ...
 ) {
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_atu.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_atu.numeric,
+    modification_type = "trunc",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
-
-  attr(base_wt, "truncated") <- TRUE
-  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
-
-  base_wt
 }
 
 #' @export
@@ -1700,22 +1385,16 @@ wt_atm.ps_trunc <- function(
   .untreated = NULL,
   ...
 ) {
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_atm.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_atm.numeric,
+    modification_type = "trunc",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
-
-  attr(base_wt, "truncated") <- TRUE
-  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
-
-  base_wt
 }
 
 #' @export
@@ -1727,22 +1406,16 @@ wt_ato.ps_trunc <- function(
   .untreated = NULL,
   ...
 ) {
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_ato.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_ato.numeric,
+    modification_type = "trunc",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
-
-  attr(base_wt, "truncated") <- TRUE
-  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
-
-  base_wt
 }
 
 #' @export
@@ -1754,24 +1427,16 @@ wt_entropy.ps_trim <- function(
   .untreated = NULL,
   ...
 ) {
-  check_refit(.propensity)
-
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_entropy.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_entropy.numeric,
+    modification_type = "trim",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  old_est <- estimand(base_wt)
-  estimand(base_wt) <- paste0(old_est, "; trimmed")
-  attr(base_wt, "trimmed") <- TRUE
-  attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
-
-  base_wt
 }
 
 #' @export
@@ -1783,22 +1448,16 @@ wt_entropy.ps_trunc <- function(
   .untreated = NULL,
   ...
 ) {
-  numeric_ps <- as.numeric(.propensity)
-  base_wt <- wt_entropy.numeric(
-    numeric_ps,
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
     .exposure = .exposure,
+    weight_fn = wt_entropy.numeric,
+    modification_type = "trunc",
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
     ...
   )
-
-  estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
-
-  attr(base_wt, "truncated") <- TRUE
-  attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
-
-  base_wt
 }
 
 # --------------------------------------------------------------------

@@ -1,25 +1,25 @@
 test_that("errors for non-numeric ps", {
   expect_error(
     ps_calibrate("not numeric", c(0, 1)),
-    "`ps` must be a numeric vector"
+    class = "propensity_type_error"
   )
 })
 
 test_that("errors for out-of-range ps", {
   expect_error(
     ps_calibrate(c(-0.1, 0.2), c(0, 1)),
-    "`ps` values must be between 0 and 1"
+    class = "propensity_range_error"
   )
   expect_error(
     ps_calibrate(c(0.5, 1.1), c(0, 1)),
-    "`ps` values must be between 0 and 1"
+    class = "propensity_range_error"
   )
 })
 
 test_that("errors when ps and treat have different lengths", {
   expect_error(
     ps_calibrate(runif(5), rep(0:1, length.out = 6)),
-    "same length"
+    class = "propensity_length_error"
   )
 })
 
@@ -257,7 +257,7 @@ test_that("errors when trying to calibrate already calibrated ps", {
 
   expect_error(
     ps_calibrate(calibrated, treat),
-    "already calibrated"
+    class = "propensity_already_calibrated_error"
   )
 })
 

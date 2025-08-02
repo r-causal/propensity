@@ -247,7 +247,7 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
 
   expect_error(
     ps_refit(out, model = fit, .df = data.frame(z, x)[1:10, ]),
-    "must have the same number of rows as"
+    class = "propensity_length_error"
   )
 
   # If everything is trimmed => error
@@ -256,7 +256,7 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
   out_empty <- ps_trim(ps_edge, method = "ps", lower = 1.1, upper = 2)
   expect_error(
     ps_refit(out_empty, model = fit),
-    "No retained rows to refit on"
+    class = "propensity_no_data_error"
   )
 
   ps_trim(ps_edge, method = "ps", lower = 1.1, upper = 2)
@@ -507,4 +507,23 @@ test_that("ps_trim works with summarize(mean = mean(ps))", {
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("trimmed", "mean"))
   expect_type(out$mean, "double")
+})
+
+test_that("ps_trim errors when exposure is missing for methods that require it", {
+  ps <- runif(20, 0.1, 0.9)
+
+  # Test pref method without exposure
+  expect_error(
+    ps_trim(ps, method = "pref"),
+    class = "propensity_missing_arg_error"
+  )
+
+  # Test cr method without exposure
+  expect_error(
+    ps_trim(ps, method = "cr"),
+    class = "propensity_missing_arg_error"
+  )
+
+  # Should work fine with ps method (no exposure needed)
+  expect_no_error(ps_trim(ps, method = "ps"))
 })
