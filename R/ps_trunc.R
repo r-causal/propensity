@@ -159,7 +159,8 @@ is_unit_truncated <- function(x) {
 #' @export
 is_unit_truncated.default <- function(x) {
   abort(
-    "{.code is_unit_truncated()} not supported for class {.val {class(x)}}"
+    "{.code is_unit_truncated()} not supported for class {.val {class(x)}}",
+    error_class = "propensity_method_error"
   )
 }
 

@@ -6,6 +6,17 @@ abort_unsupported <- function(exposure_type, what, call = rlang::caller_env()) {
   )
 }
 
+abort_no_method <- function(.propensity, call = rlang::caller_env()) {
+  abort(
+    paste0(
+      "No method for objects of class ",
+      paste(class(.propensity), collapse = ", ")
+    ),
+    call = call,
+    error_class = "propensity_method_error"
+  )
+}
+
 match_exposure_type <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .exposure,
@@ -327,4 +338,57 @@ check_ps_matrix <- function(
   }
 
   ps_matrix
+}
+
+# Helper for ps_trim and ps_trunc methods
+calculate_weight_from_modified_ps <- function(
+  .propensity,
+  .exposure,
+  weight_fn,
+  modification_type = c("trim", "trunc"),
+  ...
+) {
+  modification_type <- match.arg(modification_type)
+
+  # Only check refit for trim
+  if (modification_type == "trim") {
+    check_refit(.propensity)
+  }
+
+  # Convert to numeric
+  numeric_ps <- as.numeric(.propensity)
+
+  # Call the weight function with the numeric propensity scores
+  base_wt <- weight_fn(
+    numeric_ps,
+    .exposure = .exposure,
+    ...
+  )
+
+  # Update estimand
+  if (modification_type == "trim") {
+    old_est <- estimand(base_wt)
+    estimand(base_wt) <- paste0(old_est, "; trimmed")
+    attr(base_wt, "trimmed") <- TRUE
+    attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
+  } else {
+    estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
+    attr(base_wt, "truncated") <- TRUE
+    attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+  }
+
+  base_wt
+}
+
+# Helper to preserve categorical attributes on psw objects
+preserve_categorical_attrs <- function(psw_obj, wts, exposure_type) {
+  if (exposure_type == "categorical") {
+    attr(psw_obj, "n_categories") <- attr(wts, "n_categories")
+    attr(psw_obj, "category_names") <- attr(wts, "category_names")
+    # focal_category might not always exist
+    if (!is.null(attr(wts, "focal_category"))) {
+      attr(psw_obj, "focal_category") <- attr(wts, "focal_category")
+    }
+  }
+  psw_obj
 }

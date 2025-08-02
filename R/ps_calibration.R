@@ -59,17 +59,24 @@ ps_calibrate <- function(
   method <- match.arg(method)
   # Check that ps is numeric and in valid range
   if (!is.numeric(ps)) {
-    abort("`ps` must be a numeric vector.")
+    abort(
+      "`ps` must be a numeric vector.",
+      error_class = "propensity_type_error"
+    )
   }
 
   if (is_causal_wt(ps) && is_ps_calibrated(ps)) {
     abort(
-      "`ps` is already calibrated. Cannot calibrate already calibrated propensity scores."
+      "`ps` is already calibrated. Cannot calibrate already calibrated propensity scores.",
+      error_class = "propensity_already_calibrated_error"
     )
   }
 
   if (any(ps < 0 | ps > 1, na.rm = TRUE)) {
-    abort("`ps` values must be between 0 and 1.")
+    abort(
+      "`ps` values must be between 0 and 1.",
+      error_class = "propensity_range_error"
+    )
   }
 
   # Transform treatment to binary if needed
@@ -80,7 +87,10 @@ ps_calibrate <- function(
   )
 
   if (length(ps) != length(treat)) {
-    abort("Propensity score vector `ps` must be the same length as `treat`.")
+    abort(
+      "Propensity score vector `ps` must be the same length as `treat`.",
+      error_class = "propensity_length_error"
+    )
   }
 
   # Extract attributes from causal weight objects if applicable
