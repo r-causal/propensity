@@ -645,3 +645,4 @@ test_that("categorical weights warn on unnamed columns", {
     class = "propensity_matrix_no_names_warning"
   )
 })
+
