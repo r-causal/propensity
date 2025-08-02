@@ -470,3 +470,4 @@ extract_propensity_from_glm <- function(
 
   ps_vec
 }
+
