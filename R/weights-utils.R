@@ -471,3 +471,55 @@ extract_propensity_from_glm <- function(
   ps_vec
 }
 
+# Helper function to handle common data frame method pattern
+# This encapsulates the logic used across all weight function data.frame methods
+handle_data_frame_weight_calculation <- function(
+  weight_fn_numeric,
+  .propensity,
+  .exposure,
+  exposure_type,
+  valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+  .propensity_col_quo,
+  ...
+) {
+  # Validate inputs
+  if (!is.data.frame(.propensity)) {
+    abort(
+      "`.propensity` must be a data frame.",
+      call = rlang::caller_env(2),
+      error_class = "propensity_matrix_type_error"
+    )
+  }
+
+  # Check exposure type
+  exposure_type_check <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    valid_exposure_types
+  )
+
+  if (exposure_type_check == "categorical") {
+    # For categorical exposures, pass the whole data frame
+    return(weight_fn_numeric(
+      .propensity = .propensity,
+      .exposure = .exposure,
+      exposure_type = exposure_type,
+      ...
+    ))
+  }
+
+  # For non-categorical exposures, extract single column
+  ps_vec <- extract_propensity_from_df(
+    .propensity,
+    .propensity_col_quo,
+    call = rlang::caller_env(2)
+  )
+
+  # Call the numeric method
+  weight_fn_numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    ...
+  )
+}

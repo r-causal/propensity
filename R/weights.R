@@ -364,34 +364,15 @@ wt_ate.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(exposure_type, .exposure)
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_ate.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      .sigma = .sigma,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      stabilize = stabilize,
-      stabilization_score = stabilization_score,
-      ...
-    ))
-  }
-
-  # For non-categorical exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_ate.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_ate.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
-    .sigma = .sigma,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    .propensity_col_quo = col_quo,
+    .sigma = .sigma,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,
@@ -597,35 +578,14 @@ wt_att.data.frame <- function(
   .propensity_col = NULL,
   focal = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_att.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      focal = focal,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_att.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_att.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     focal = focal,
@@ -760,35 +720,14 @@ wt_atu.data.frame <- function(
   .propensity_col = NULL,
   focal = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_atu.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      focal = focal,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_atu.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_atu.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     focal = focal,
@@ -921,34 +860,14 @@ wt_atm.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_atm.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_atm.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_atm.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1077,34 +996,14 @@ wt_ato.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_ato.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_ato.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_ato.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1231,34 +1130,14 @@ wt_entropy.data.frame <- function(
   ...,
   .propensity_col = NULL
 ) {
-  # For categorical exposures, pass the whole data frame
-  exposure_type_check <- match_exposure_type(
-    exposure_type,
-    .exposure,
-    c("auto", "binary", "categorical")
-  )
-
-  if (exposure_type_check == "categorical") {
-    # Call the numeric method with the data frame as matrix
-    return(wt_entropy.numeric(
-      .propensity = .propensity,
-      .exposure = .exposure,
-      exposure_type = exposure_type,
-      .treated = .treated,
-      .untreated = .untreated,
-      ...
-    ))
-  }
-
-  # For binary exposures, extract single column
   col_quo <- rlang::enquo(.propensity_col)
-  ps_vec <- extract_propensity_from_df(.propensity, col_quo)
-
-  # Call the numeric method
-  wt_entropy.numeric(
-    .propensity = ps_vec,
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_entropy.numeric,
+    .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
     ...
