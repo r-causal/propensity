@@ -5,15 +5,11 @@
 \title{Check if object is truncated}
 \usage{
 is_ps_truncated(x)
-
-is_ps_truncated(x)
 }
 \arguments{
-\item{x}{An R object.}
+\item{x}{An object.}
 }
 \value{
-A logical scalar (\code{TRUE} or \code{FALSE}).
-
 A logical scalar (\code{TRUE} or \code{FALSE}).
 }
 \description{
@@ -23,7 +19,4 @@ truncated propensity scores. \code{is_ps_truncated()} is a question about whethe
 the propensity scores \emph{have} been truncated, as opposed to
 \code{\link[=is_unit_truncated]{is_unit_truncated()}}, which is a question about which \emph{units} have been
 truncated.
-
-\code{is_ps_truncated()} is an S3 generic that returns \code{TRUE} if its argument represents a
-ps_trunc object or psw object flagged as truncated.
 }

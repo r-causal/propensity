@@ -233,8 +233,25 @@ ps_calibrate <- function(
   )
 }
 
-#' @rdname psw
+#' Check if object is calibrated
+#'
+#' @description
+#' `is_ps_calibrated()` is an S3 generic that returns `TRUE` if its argument represents
+#' calibrated propensity scores.
+#'
+#' @param x An R object.
+#' @return A logical scalar (`TRUE` or `FALSE`).
 #' @export
-is_ps_calibrated <- function(wt) {
-  isTRUE(attr(wt, "calibrated"))
+is_ps_calibrated <- function(x) {
+  UseMethod("is_ps_calibrated")
+}
+
+#' @export
+is_ps_calibrated.default <- function(x) {
+  FALSE
+}
+
+#' @export
+is_ps_calibrated.psw <- function(x) {
+  isTRUE(attr(x, "calibrated"))
 }

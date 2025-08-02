@@ -108,7 +108,10 @@ ps_trim <- function(
     keep_idx <- which(ps >= q_lower & ps <= q_upper)
   } else if (method == "pref") {
     if (is.null(.exposure)) {
-      abort("For {.code method = 'pref'}, must supply {.arg exposure}.")
+      abort(
+        "For {.code method = 'pref'}, must supply {.arg exposure}.",
+        error_class = "propensity_missing_arg_error"
+      )
     }
     .exposure <- transform_exposure_binary(
       .exposure,
@@ -121,7 +124,10 @@ ps_trim <- function(
     keep_idx <- which(pref_score >= lower & pref_score <= upper)
   } else {
     if (is.null(.exposure)) {
-      abort("For {.code method = 'cr'}, must supply {.arg exposure}.")
+      abort(
+        "For {.code method = 'cr'}, must supply {.arg exposure}.",
+        error_class = "propensity_missing_arg_error"
+      )
     }
     .exposure <- transform_exposure_binary(
       .exposure,
@@ -182,13 +188,6 @@ is_ps_trimmed <- function(x) {
 }
 
 #' @export
-is_ps_trimmed.default <- function(x) FALSE
-
-is_ps_trimmed <- function(x) {
-  UseMethod("is_ps_trimmed")
-}
-
-#' @export
 is_ps_trimmed.default <- function(x) {
   FALSE
 }
@@ -216,7 +215,8 @@ is_unit_trimmed <- function(x) {
 #' @export
 is_unit_trimmed.default <- function(x) {
   abort(
-    "{.code is_unit_trimmed()} not supported for class {.val {class(x)}}"
+    "{.code is_unit_trimmed()} not supported for class {.val {class(x)}}",
+    error_class = "propensity_method_error"
   )
 }
 
@@ -393,7 +393,10 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
   meta <- ps_trim_meta(trimmed_ps)
 
   if (length(meta$keep_idx) == 0) {
-    abort("No retained rows to refit on (all were trimmed).")
+    abort(
+      "No retained rows to refit on (all were trimmed).",
+      error_class = "propensity_no_data_error"
+    )
   }
 
   if (is.null(.df)) {
@@ -401,12 +404,15 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
   }
 
   if (nrow(.df) != length(trimmed_ps)) {
-    abort(c(
-      "{.arg .df} must have the same number of rows as \\
-      {.code length(trimmed_ps)}.",
-      x = "{.arg .df} has {nrow(.df)} row{?s}.",
-      x = "{.arg trimmed_ps} has length {length(trimmed_ps)}."
-    ))
+    abort(
+      c(
+        "{.arg .df} must have the same number of rows as \\
+        {.code length(trimmed_ps)}.",
+        x = "{.arg .df} has {nrow(.df)} row{?s}.",
+        x = "{.arg trimmed_ps} has length {length(trimmed_ps)}."
+      ),
+      error_class = "propensity_length_error"
+    )
   }
 
   # refit on untrimmed rows

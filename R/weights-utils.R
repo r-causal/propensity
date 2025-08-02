@@ -392,3 +392,81 @@ preserve_categorical_attrs <- function(psw_obj, wts, exposure_type) {
   }
   psw_obj
 }
+
+# Helper function to extract propensity scores from data frames
+# This consolidates the logic used across multiple weight functions
+extract_propensity_from_df <- function(
+  .propensity,
+  .propensity_col_quo = NULL,
+  call = rlang::caller_env()
+) {
+  if (!rlang::quo_is_null(.propensity_col_quo)) {
+    col_pos <- tryCatch(
+      tidyselect::eval_select(
+        .propensity_col_quo,
+        data = .propensity
+      ),
+      error = function(e) {
+        abort(
+          paste0("Column selection failed: ", e$message),
+          call = call,
+          error_class = "propensity_df_column_error"
+        )
+      }
+    )
+
+    if (length(col_pos) != 1) {
+      abort(
+        "`.propensity_col` must select exactly one column.",
+        call = call,
+        error_class = "propensity_df_column_error"
+      )
+    }
+
+    ps_vec <- .propensity[[col_pos]]
+  } else {
+    # Default behavior: use second column if available, otherwise first
+    if (ncol(.propensity) >= 2) {
+      ps_vec <- .propensity[[2]]
+    } else if (ncol(.propensity) == 1) {
+      ps_vec <- .propensity[[1]]
+    } else {
+      abort(
+        "`.propensity` data frame must have at least one column.",
+        call = call,
+        error_class = "propensity_df_ncol_error"
+      )
+    }
+  }
+
+  ps_vec
+}
+
+# Helper function to extract propensity scores from GLM objects
+extract_propensity_from_glm <- function(
+  .propensity,
+  call = rlang::caller_env()
+) {
+  # Check if it's a valid GLM object
+  if (!inherits(.propensity, "glm")) {
+    abort(
+      "`.propensity` must be a GLM object.",
+      call = call,
+      error_class = "propensity_glm_type_error"
+    )
+  }
+
+  # Check if it's a binomial GLM for binary propensity scores
+  if (
+    !is.null(.propensity$family) &&
+      .propensity$family$family == "binomial"
+  ) {
+    # Get predicted probabilities
+    ps_vec <- stats::predict(.propensity, type = "response")
+  } else {
+    # For non-binomial GLMs, get linear predictor
+    ps_vec <- stats::fitted(.propensity)
+  }
+
+  ps_vec
+}

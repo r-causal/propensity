@@ -174,29 +174,6 @@ is_unit_truncated.ps_trunc <- function(x) {
 }
 
 
-#' Check if object is truncated
-#'
-#' @description
-#' `is_ps_truncated()` is an S3 generic that returns `TRUE` if its argument represents a
-#' ps_trunc object or psw object flagged as truncated.
-#'
-#' @param x An R object.
-#' @return A logical scalar (`TRUE` or `FALSE`).
-#' @export
-is_ps_truncated <- function(x) {
-  UseMethod("is_ps_truncated")
-}
-
-#' @export
-is_ps_truncated.default <- function(x) {
-  FALSE
-}
-
-#' @export
-is_ps_truncated.ps_trunc <- function(x) {
-  TRUE
-}
-
 # vctrs machinery for ps_trunc
 
 #' @export
