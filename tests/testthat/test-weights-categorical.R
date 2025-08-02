@@ -4,6 +4,7 @@ test_that("categorical exposure detection works correctly", {
   set.seed(123)
   ps_matrix <- matrix(runif(18), ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix) # Normalize
+  colnames(ps_matrix) <- levels(exposure_3)
 
   expect_message(
     wt_ate(ps_matrix, exposure_3),
@@ -36,6 +37,7 @@ test_that("categorical exposure detection works correctly", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- unique(sort(exposure_char))
 
   expect_message(
     wt_ate(ps_matrix, exposure_char),
@@ -170,6 +172,7 @@ test_that("ATE weights work for categorical exposures", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- levels(exposure)
 
   weights <- wt_ate(ps_matrix, exposure, exposure_type = "categorical")
 
@@ -221,6 +224,7 @@ test_that("ATE stabilization works for categorical exposures", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- levels(exposure)
 
   weights_stab <- wt_ate(
     ps_matrix,
@@ -270,6 +274,7 @@ test_that("ATT weights work for categorical exposures", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- levels(exposure)
 
   # ATT with focal = "A"
   weights_att_a <- wt_att(
@@ -327,6 +332,7 @@ test_that("ATU weights work for categorical exposures", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- levels(exposure)
 
   # ATU with focal = "A" (weights for non-A)
   weights_atu_a <- wt_atu(
@@ -378,6 +384,7 @@ test_that("ATM weights work for categorical exposures", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- levels(exposure)
 
   weights_atm <- wt_atm(ps_matrix, exposure, exposure_type = "categorical")
 
@@ -422,6 +429,7 @@ test_that("ATO weights work for categorical exposures", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- levels(exposure)
 
   weights_ato <- wt_ato(ps_matrix, exposure, exposure_type = "categorical")
 
@@ -474,6 +482,7 @@ test_that("Entropy weights work for categorical exposures", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- levels(exposure)
 
   weights_entropy <- wt_entropy(
     ps_matrix,
@@ -542,6 +551,7 @@ test_that("stabilization works for ATE categorical exposures", {
   set.seed(123)
   ps_matrix <- matrix(runif(18), ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix) # Normalize
+  colnames(ps_matrix) <- levels(exposure)
 
   # Test that stabilization works for ATE
   expect_no_error(
@@ -640,9 +650,34 @@ test_that("categorical weights warn on unnamed columns", {
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
 
+  # Test warning for all weight functions
   expect_warning(
     wt_ate(ps_matrix, trt, exposure_type = "categorical"),
     class = "propensity_matrix_no_names_warning"
   )
-})
 
+  expect_warning(
+    wt_att(ps_matrix, trt, exposure_type = "categorical", focal = "A"),
+    class = "propensity_matrix_no_names_warning"
+  )
+
+  expect_warning(
+    wt_atu(ps_matrix, trt, exposure_type = "categorical", focal = "A"),
+    class = "propensity_matrix_no_names_warning"
+  )
+
+  expect_warning(
+    wt_atm(ps_matrix, trt, exposure_type = "categorical"),
+    class = "propensity_matrix_no_names_warning"
+  )
+
+  expect_warning(
+    wt_ato(ps_matrix, trt, exposure_type = "categorical"),
+    class = "propensity_matrix_no_names_warning"
+  )
+
+  expect_warning(
+    wt_entropy(ps_matrix, trt, exposure_type = "categorical"),
+    class = "propensity_matrix_no_names_warning"
+  )
+})
