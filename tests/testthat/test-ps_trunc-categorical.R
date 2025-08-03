@@ -388,3 +388,73 @@ test_that("categorical truncation preserves relative proportions", {
     expect_equal(new_ratio, original_ratio, tolerance = 1e-10)
   }
 })
+
+test_that("print.ps_trunc_matrix produces expected output", {
+  set.seed(456)
+  n <- 30
+  exposure <- factor(sample(c("Low", "Med", "High"), n, replace = TRUE))
+
+  ps_matrix <- matrix(runif(n * 3, 0.05, 0.95), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  # Test ps method
+  truncated <- ps_trunc(
+    ps_matrix,
+    .exposure = exposure,
+    method = "ps",
+    lower = 0.1
+  )
+  output <- capture.output(print(truncated, n = 3))
+
+  expect_match(
+    output[1],
+    "<ps_trunc_matrix\\[30 x 3\\]; truncated \\d+ of 30; method=ps\\[0\\.1000,Inf\\]>"
+  )
+  expect_match(output[2], "High\\s+Low\\s+Med")
+  expect_match(output[3], "\\[1,\\]")
+
+  # Test pctl method
+  truncated_pctl <- ps_trunc(
+    ps_matrix,
+    .exposure = exposure,
+    method = "pctl",
+    lower = 0.05,
+    upper = 0.95
+  )
+  output_pctl <- capture.output(print(truncated_pctl))
+
+  expect_match(
+    output_pctl[1],
+    "<ps_trunc_matrix\\[30 x 3\\]; truncated \\d+ of 30; method=pctl\\[0\\.05,0\\.95\\]>"
+  )
+
+  # Test without column names
+  ps_matrix_no_names <- ps_matrix
+  colnames(ps_matrix_no_names) <- NULL
+  suppressWarnings({
+    truncated_no_names <- ps_trunc(
+      ps_matrix_no_names,
+      .exposure = exposure,
+      method = "ps",
+      lower = 0.1
+    )
+  })
+  output_no_names <- capture.output(print(truncated_no_names))
+
+  # Should not have column header
+  expect_false(any(grepl("High\\s+Low\\s+Med", output_no_names)))
+})
+
+test_that("print methods return ps_trunc_matrix invisibly", {
+  n <- 15
+  exposure <- factor(rep(c("A", "B", "C"), each = 5))
+  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  truncated <- ps_trunc(ps_matrix, .exposure = exposure, method = "ps")
+
+  expect_invisible(returned_trunc <- print(truncated))
+  expect_identical(returned_trunc, truncated)
+})

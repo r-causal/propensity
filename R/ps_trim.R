@@ -486,6 +486,49 @@ is_unit_trimmed.ps_trim_matrix <- function(x) {
 }
 
 
+# Print methods for ps_trim_matrix
+
+#' @export
+print.ps_trim_matrix <- function(x, ..., n = NULL) {
+  meta <- ps_trim_meta(x)
+  n_rows <- nrow(x)
+  k <- ncol(x)
+  n_trimmed <- length(meta$trimmed_idx)
+
+  # Create header
+  cat(sprintf(
+    "<ps_trim_matrix[%d x %d]; trimmed %d of %d; method=%s>\n",
+    n_rows,
+    k,
+    n_trimmed,
+    n_rows,
+    meta$method
+  ))
+
+  # Determine how many rows to show
+  if (is.null(n)) {
+    n_print <- getOption("propensity.print_max", default = 10)
+  } else {
+    n_print <- n
+  }
+
+  # Show all rows if n is Inf or very large
+  if (is.infinite(n_print) || n_print >= n_rows) {
+    print(unclass(x))
+  } else {
+    # Show first n_print rows
+    n_show <- min(n_print, n_rows)
+    x_sub <- x[seq_len(n_show), , drop = FALSE]
+    print(unclass(x_sub))
+
+    if (n_rows > n_show) {
+      cat("# ... with", n_rows - n_show, "more rows\n")
+    }
+  }
+
+  invisible(x)
+}
+
 # vctrs machinery for ps_trim
 
 #' @export

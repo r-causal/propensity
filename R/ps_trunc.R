@@ -401,6 +401,64 @@ is_unit_truncated.ps_trunc_matrix <- function(x) {
 }
 
 
+# Print methods for ps_trunc_matrix
+
+#' @export
+print.ps_trunc_matrix <- function(x, ..., n = NULL) {
+  meta <- ps_trunc_meta(x)
+  n_rows <- nrow(x)
+  k <- ncol(x)
+  n_truncated <- length(meta$truncated_idx)
+
+  # Create header
+  if (meta$method == "pctl") {
+    cat(sprintf(
+      "<ps_trunc_matrix[%d x %d]; truncated %d of %d; method=%s[%.2f,%.2f]>\n",
+      n_rows,
+      k,
+      n_truncated,
+      n_rows,
+      meta$method,
+      meta$lower_pctl,
+      meta$upper_pctl
+    ))
+  } else {
+    cat(sprintf(
+      "<ps_trunc_matrix[%d x %d]; truncated %d of %d; method=%s[%.4f,%.4f]>\n",
+      n_rows,
+      k,
+      n_truncated,
+      n_rows,
+      meta$method,
+      meta$lower_bound,
+      ifelse(is.na(meta$upper_bound), Inf, meta$upper_bound)
+    ))
+  }
+
+  # Determine how many rows to show
+  if (is.null(n)) {
+    n_print <- getOption("propensity.print_max", default = 10)
+  } else {
+    n_print <- n
+  }
+
+  # Show all rows if n is Inf or very large
+  if (is.infinite(n_print) || n_print >= n_rows) {
+    print(unclass(x))
+  } else {
+    # Show first n_print rows
+    n_show <- min(n_print, n_rows)
+    x_sub <- x[seq_len(n_show), , drop = FALSE]
+    print(unclass(x_sub))
+
+    if (n_rows > n_show) {
+      cat("# ... with", n_rows - n_show, "more rows\n")
+    }
+  }
+
+  invisible(x)
+}
+
 # vctrs machinery for ps_trunc
 
 #' @export

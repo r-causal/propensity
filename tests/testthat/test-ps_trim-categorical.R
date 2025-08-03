@@ -747,3 +747,112 @@ test_that("wt_ate warns when using trimmed but not refitted categorical PS", {
     class = "propensity_no_refit_warning"
   )
 })
+
+test_that("print.ps_trim_matrix produces expected output", {
+  set.seed(123)
+  n <- 20
+  exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+
+  ps_matrix <- matrix(runif(n * 3, 0.05, 0.95), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  # Test basic print
+  trimmed <- ps_trim(
+    ps_matrix,
+    .exposure = exposure,
+    method = "ps",
+    lower = 0.2
+  )
+  # Use smaller n to ensure consistent output
+  output <- capture.output(print(trimmed, n = 3))
+
+  expect_match(
+    output[1],
+    "<ps_trim_matrix\\[20 x 3\\]; trimmed \\d+ of 20; method=ps>"
+  )
+  expect_match(output[2], "A\\s+B\\s+C")
+  expect_match(output[3], "\\[1,\\]")
+  expect_true(any(grepl("# \\.\\.\\. with \\d+ more rows", output)))
+
+  # Test without column names
+  ps_matrix_no_names <- ps_matrix
+  colnames(ps_matrix_no_names) <- NULL
+  suppressWarnings({
+    trimmed_no_names <- ps_trim(
+      ps_matrix_no_names,
+      .exposure = exposure,
+      method = "ps",
+      lower = 0.2
+    )
+  })
+  output_no_names <- capture.output(print(trimmed_no_names))
+
+  # Should not have column header
+  expect_false(any(grepl("A\\s+B\\s+C", output_no_names)))
+})
+
+test_that("print methods handle large matrices correctly", {
+  set.seed(789)
+  n <- 100
+  exposure <- factor(sample(LETTERS[1:5], n, replace = TRUE))
+
+  ps_matrix <- matrix(runif(n * 5, 0.05, 0.95), nrow = n, ncol = 5)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  trimmed <- ps_trim(ps_matrix, .exposure = exposure, method = "optimal")
+  output <- capture.output(print(trimmed, n = 6))
+
+  # Should only show 6 rows plus "..."
+  expect_equal(sum(grepl("^\\[\\s*\\d+,\\]", output)), 6)
+  expect_true(any(grepl("# \\.\\.\\. with 94 more rows", output)))
+})
+
+test_that("print methods return object invisibly", {
+  n <- 15
+  exposure <- factor(rep(c("A", "B", "C"), each = 5))
+  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  trimmed <- ps_trim(ps_matrix, .exposure = exposure, method = "ps")
+
+  expect_invisible(returned_trim <- print(trimmed))
+  expect_identical(returned_trim, trimmed)
+})
+
+test_that("print methods respect n parameter", {
+  set.seed(999)
+  n <- 25
+  exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  trimmed <- ps_trim(
+    ps_matrix,
+    .exposure = exposure,
+    method = "ps",
+    lower = 0.15
+  )
+
+  # Test different n values
+  output_3 <- capture.output(print(trimmed, n = 3))
+  output_10 <- capture.output(print(trimmed, n = 10))
+  output_inf <- capture.output(print(trimmed, n = Inf))
+
+  # Count rows shown (looking for [digit,] pattern)
+  n_rows_3 <- sum(grepl("^\\s*\\[\\d+,\\]", output_3))
+  n_rows_10 <- sum(grepl("^\\s*\\[\\d+,\\]", output_10))
+  n_rows_inf <- sum(grepl("^\\s*\\[\\d+,\\]", output_inf))
+
+  expect_equal(n_rows_3, 3)
+  expect_equal(n_rows_10, 10)
+  expect_equal(n_rows_inf, 25)
+
+  # Check "more rows" message
+  expect_true(any(grepl("# \\.\\.\\. with 22 more rows", output_3)))
+  expect_true(any(grepl("# \\.\\.\\. with 15 more rows", output_10)))
+  expect_false(any(grepl("# \\.\\.\\. with", output_inf)))
+})
