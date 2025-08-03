@@ -12,7 +12,8 @@
 #' @param method One of `"ps"`, `"pctl"`, or `"cr"`.
 #'   * `"ps"`: directly cut on `[lower, upper]` of `ps`. For categorical, uses
 #'     symmetric truncation with `lower` as the threshold.
-#'   * `"pctl"`: use quantiles of `ps` as bounding values (binary only)
+#'   * `"pctl"`: use quantiles of `ps` as bounding values. For categorical,
+#'     calculates quantiles across all propensity score values.
 #'   * `"cr"`: the common range of `ps` given `.exposure`, bounding
 #'     `[min(ps[treated]), max(ps[untreated])]` (binary only)
 #' @param lower,upper Numeric or quantile bounds. If `NULL`, defaults vary by method.
@@ -135,9 +136,9 @@ ps_trunc.matrix <- function(
   .untreated = NULL,
   ...
 ) {
-  # Only ps is valid for categorical
-  method <- rlang::arg_match(method, values = "ps")
-  
+  # Only ps and pctl are valid for categorical
+  method <- rlang::arg_match(method, values = c("ps", "pctl"))
+
   # Validate exposure for categorical
   if (is.null(.exposure)) {
     abort(
@@ -145,49 +146,91 @@ ps_trunc.matrix <- function(
       error_class = "propensity_missing_arg_error"
     )
   }
-  
+
   # Transform to factor and validate
   .exposure <- transform_exposure_categorical(.exposure)
-  
+
   # Validate matrix
   ps <- check_ps_matrix(ps, .exposure)
-  
+
   n <- nrow(ps)
   k <- ncol(ps)
-  
-  # Symmetric truncation
-  if (is.null(lower)) lower <- 0.01  # Default threshold
-  delta <- lower  # Use lower as delta for consistency
-  
-  # Validate delta
-  if (delta >= 1/k) {
-    abort(
-      "Invalid truncation threshold (delta >= 1/k).",
-      error_class = "propensity_range_error"
-    )
+
+  if (method == "ps") {
+    # Symmetric truncation
+    if (is.null(lower)) lower <- 0.01 # Default threshold
+    delta <- lower # Use lower as delta for consistency
+
+    # Validate delta
+    if (delta >= 1 / k) {
+      abort(
+        "Invalid truncation threshold (delta >= 1/k).",
+        error_class = "propensity_range_error"
+      )
+    }
+
+    # Track which values were truncated
+    truncated_idx <- which(apply(ps, 1, function(x) any(x < delta)))
+
+    # Apply truncation and renormalize
+    ps_trunc <- ps
+    for (i in 1:n) {
+      row_vals <- ps_trunc[i, ]
+      # Clamp values below delta
+      row_vals[row_vals < delta] <- delta
+      # Renormalize to sum to 1
+      ps_trunc[i, ] <- row_vals / sum(row_vals)
+    }
+
+    lower_bound <- delta
+    upper_bound <- NA_real_
+  } else {
+    # pctl
+    # Percentile-based truncation
+    if (is.null(lower)) lower <- 0.01 # Default percentile
+    if (is.null(upper)) upper <- 0.99 # Default percentile
+
+    # Calculate thresholds based on the distribution of all propensity scores
+    all_ps_vals <- as.vector(ps)
+    lower_threshold <- quantile(all_ps_vals, probs = lower)
+    upper_threshold <- quantile(all_ps_vals, probs = upper)
+
+    # Track which rows had values truncated
+    truncated_idx <- which(apply(
+      ps,
+      1,
+      function(x) any(x < lower_threshold | x > upper_threshold)
+    ))
+
+    # Apply truncation and renormalize
+    ps_trunc <- ps
+    for (i in 1:n) {
+      row_vals <- ps_trunc[i, ]
+      # Clamp values outside thresholds
+      row_vals[row_vals < lower_threshold] <- lower_threshold
+      row_vals[row_vals > upper_threshold] <- upper_threshold
+      # Renormalize to sum to 1
+      ps_trunc[i, ] <- row_vals / sum(row_vals)
+    }
+
+    lower_bound <- lower_threshold
+    upper_bound <- upper_threshold
   }
-  
-  # Track which values were truncated
-  truncated_idx <- which(apply(ps, 1, function(x) any(x < delta)))
-  
-  # Apply truncation and renormalize
-  ps_trunc <- ps
-  for (i in 1:n) {
-    row_vals <- ps_trunc[i, ]
-    # Clamp values below delta
-    row_vals[row_vals < delta] <- delta
-    # Renormalize to sum to 1
-    ps_trunc[i, ] <- row_vals / sum(row_vals)
-  }
-  
+
   meta <- list(
     method = method,
-    lower_bound = delta,
-    upper_bound = NA_real_,  # Not applicable for categorical
+    lower_bound = lower_bound,
+    upper_bound = upper_bound,
     truncated_idx = truncated_idx,
     is_matrix = TRUE
   )
-  
+
+  # Add percentile info if using pctl method
+  if (method == "pctl") {
+    meta$lower_pctl <- lower
+    meta$upper_pctl <- upper
+  }
+
   new_ps_trunc(ps_trunc, meta)
 }
 
@@ -217,7 +260,7 @@ ps_trunc.data.frame <- function(
       ))
     }
   }
-  
+
   # For binary exposures, extract appropriate column and call default method
   if (ncol(ps) == 2) {
     # Use second column by default for binary
@@ -226,7 +269,7 @@ ps_trunc.data.frame <- function(
     # Use first column
     ps_vec <- ps[[1]]
   }
-  
+
   ps_trunc.default(
     ps = ps_vec,
     method = method,

@@ -287,7 +287,7 @@ check_ps_matrix <- function(
   row_sums <- rowSums(ps_matrix, na.rm = FALSE)
   ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
   non_na_rows <- !is.na(row_sums)
-  
+
   if (any(non_na_rows)) {
     # Check only the rows that don't have NA values
     if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
@@ -389,7 +389,7 @@ calculate_weight_from_modified_ps <- function(
   } else {
     # Convert to numeric for vector propensity scores
     numeric_ps <- as.numeric(.propensity)
-    
+
     # Call the weight function with the numeric propensity scores
     base_wt <- weight_fn(
       numeric_ps,

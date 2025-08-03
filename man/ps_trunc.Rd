@@ -24,7 +24,8 @@ propensity scores for each level of a categorical exposure.}
 \itemize{
 \item \code{"ps"}: directly cut on \verb{[lower, upper]} of \code{ps}. For categorical, uses
 symmetric truncation with \code{lower} as the threshold.
-\item \code{"pctl"}: use quantiles of \code{ps} as bounding values (binary only)
+\item \code{"pctl"}: use quantiles of \code{ps} as bounding values. For categorical,
+calculates quantiles across all propensity score values.
 \item \code{"cr"}: the common range of \code{ps} given \code{.exposure}, bounding
 \verb{[min(ps[treated]), max(ps[untreated])]} (binary only)
 }}

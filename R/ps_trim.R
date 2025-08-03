@@ -202,7 +202,7 @@ ps_trim.matrix <- function(
 ) {
   # Only ps and optimal are valid for categorical
   method <- rlang::arg_match(method, values = c("ps", "optimal"))
-  
+
   # Validate exposure for categorical
   if (is.null(.exposure)) {
     abort(
@@ -210,26 +210,26 @@ ps_trim.matrix <- function(
       error_class = "propensity_missing_arg_error"
     )
   }
-  
+
   # Transform to factor and validate
   .exposure <- transform_exposure_categorical(.exposure)
-  
+
   # Validate matrix
   ps <- check_ps_matrix(ps, .exposure)
-  
+
   n <- nrow(ps)
   k <- ncol(ps)
-  
+
   # Initialize metadata
   meta_list <- list(method = method, is_matrix = TRUE)
-  
+
   if (method == "ps") {
     # Symmetric trimming
     if (is.null(lower)) lower <- 0.1
-    delta <- lower  # Use lower as delta for consistency
-    
+    delta <- lower # Use lower as delta for consistency
+
     # Validate delta
-    if (delta >= 1/k) {
+    if (delta >= 1 / k) {
       warn(
         "Invalid trimming threshold (delta >= 1/k); returning original data",
         warning_class = "propensity_range_warning"
@@ -238,7 +238,7 @@ ps_trim.matrix <- function(
     } else {
       # Apply symmetric trimming rule: keep if min(propensity scores) > delta
       keep_idx <- which(apply(ps, 1, function(x) min(x) > delta))
-      
+
       # Check if all treatment groups are preserved
       if (length(unique(.exposure[keep_idx])) < k) {
         warn(
@@ -248,44 +248,49 @@ ps_trim.matrix <- function(
         keep_idx <- seq_len(n)
       }
     }
-    
+
     meta_list$delta <- delta
-    
-  } else {  # optimal
+  } else {
+    # optimal
     # Multi-category optimal trimming (Yang et al., 2016)
     # Calculate sum of inverse propensity scores
-    sum_inv_ps <- rowSums(1/ps)
-    
+    sum_inv_ps <- rowSums(1 / ps)
+
     # Define trimming function
     trim_fun <- function(x) {
       sum_trim <- sum_inv_ps[sum_inv_ps <= x]
       if (length(sum_trim) == 0) return(x)
       x - 2 * mean(sum_trim) / mean(sum_inv_ps <= x)
     }
-    
+
     # Check if trimming is needed
     if (trim_fun(max(sum_inv_ps)) < 0) {
       # No valid solution, use maximum + 1
       lambda <- max(sum_inv_ps) + 1
-      keep_idx <- seq_len(n)  # Keep all
+      keep_idx <- seq_len(n) # Keep all
     } else {
       # Find optimal lambda
-      result <- tryCatch({
-        uniroot(trim_fun, 
-                lower = min(sum_inv_ps), 
-                upper = max(sum_inv_ps))$root
-      }, error = function(e) {
-        warn(
-          "Could not find optimal trimming threshold; using no trimming",
-          warning_class = "propensity_convergence_warning"
-        )
-        NULL
-      })
-      
+      result <- tryCatch(
+        {
+          uniroot(
+            trim_fun,
+            lower = min(sum_inv_ps),
+            upper = max(sum_inv_ps)
+          )$root
+        },
+        error = function(e) {
+          warn(
+            "Could not find optimal trimming threshold; using no trimming",
+            warning_class = "propensity_convergence_warning"
+          )
+          NULL
+        }
+      )
+
       if (!is.null(result)) {
         lambda <- result
         keep_idx <- which(sum_inv_ps <= lambda)
-        
+
         # Check if all treatment groups are preserved
         if (length(unique(.exposure[keep_idx])) < k) {
           warn(
@@ -300,16 +305,16 @@ ps_trim.matrix <- function(
         lambda <- NULL
       }
     }
-    
+
     meta_list$lambda <- lambda
   }
-  
+
   trimmed_idx <- setdiff(seq_len(n), keep_idx)
-  
+
   # Replace trimmed entries with NA
   ps_na <- ps
   ps_na[trimmed_idx, ] <- NA_real_
-  
+
   new_trimmed_ps(
     x = ps_na,
     ps_trim_meta = c(
@@ -348,7 +353,7 @@ ps_trim.data.frame <- function(
       ))
     }
   }
-  
+
   # For binary exposures, extract appropriate column and call default method
   # This is a simplified version - in practice you might want to handle
   # .propensity_col parameter like in weight functions
@@ -359,7 +364,7 @@ ps_trim.data.frame <- function(
     # Use first column
     ps_vec <- ps[[1]]
   }
-  
+
   ps_trim.default(
     ps = ps_vec,
     method = method,
@@ -656,7 +661,7 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
 
   # Get the number of observations
   n_obs <- if (is.matrix(trimmed_ps)) nrow(trimmed_ps) else length(trimmed_ps)
-  
+
   if (nrow(.df) != n_obs) {
     abort(
       c(
@@ -677,11 +682,15 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
     # For matrix propensity scores (categorical exposures)
     new_ps <- matrix(NA_real_, nrow = n_obs, ncol = ncol(trimmed_ps))
     colnames(new_ps) <- colnames(trimmed_ps)
-    
+
     # Predict probabilities for retained observations
     if (inherits(refit_model, "multinom")) {
       # For multinomial models from nnet
-      pred_probs <- stats::predict(refit_model, newdata = data_sub, type = "probs")
+      pred_probs <- stats::predict(
+        refit_model,
+        newdata = data_sub,
+        type = "probs"
+      )
       # Ensure it's a matrix
       if (!is.matrix(pred_probs)) {
         pred_probs <- matrix(pred_probs, nrow = 1)
