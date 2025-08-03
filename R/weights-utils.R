@@ -291,7 +291,7 @@ check_ps_matrix <- function(
   if (any(non_na_rows)) {
     # Check only the rows that don't have NA values
     if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
-      bad_rows <- which(non_na_rows & abs(row_sums - 1) > ROW_SUM_TOLERANCE)
+      bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE & non_na_rows)
       abort(
         c(
           "Propensity score matrix rows must sum to 1.",
