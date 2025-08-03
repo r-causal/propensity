@@ -4,22 +4,35 @@
 #' (a form of *winsorizing*). This is an alternative to [ps_trim()], which removes
 #' (sets `NA`) instead of bounding and is then refit with [ps_refit()]
 #'
-#' @param ps The propensity score, a numeric vector between 0 and 1.
-#' @param .exposure For method "cr", a binary exposure vector.
+#' @param ps The propensity score, either a numeric vector between 0 and 1 for
+#'   binary exposures, or a matrix/data.frame where each column represents
+#'   propensity scores for each level of a categorical exposure.
+#' @param .exposure For method "cr", a binary exposure vector. For categorical
+#'   exposures, must be a factor or character vector.
 #' @param method One of `"ps"`, `"pctl"`, or `"cr"`.
-#'   * `"ps"`: directly cut on `[lower, upper]` of `ps`.
-#'   * `"pctl"`: use quantiles of `ps` as bounding values
-#'   * `"cr"`: the common range of `ps` given `.exposure`, bounding `[min(ps[treated]), max(ps[untreated])]`
+#'   * `"ps"`: directly cut on `[lower, upper]` of `ps`. For categorical, uses
+#'     symmetric truncation with `lower` as the threshold.
+#'   * `"pctl"`: use quantiles of `ps` as bounding values (binary only)
+#'   * `"cr"`: the common range of `ps` given `.exposure`, bounding
+#'     `[min(ps[treated]), max(ps[untreated])]` (binary only)
 #' @param lower,upper Numeric or quantile bounds. If `NULL`, defaults vary by method.
+#'   For categorical exposures with method `"ps"`, `lower` represents the
+#'   truncation threshold (delta).
 #' @inheritParams wt_ate
+#' @param ... Additional arguments passed to methods
 #'
 #' @details
-#' For each \eqn{ps[i]}:
+#' For binary exposures with each \eqn{ps[i]}:
 #'  - If \eqn{ps[i] < lower\_bound}, we set \eqn{ps[i] = lower\_bound}.
 #'  - If \eqn{ps[i] > upper\_bound}, we set \eqn{ps[i] = upper\_bound}.
+#'
+#' For categorical exposures:
+#'  - Each value below the threshold is set to the threshold
+#'  - Rows are renormalized to sum to 1
+#'
 #' This approach is often called *winsorizing*.
 #'
-#' @return A **`ps_trunc`** object (numeric vector). It has an attribute
+#' @return A **`ps_trunc`** object (numeric vector or matrix). It has an attribute
 #'   `ps_trunc_meta` storing fields like `method`, `lower_bound`, and
 #'   `upper_bound`.
 #' @seealso [ps_trim()] and [ps_refit()] for removing extreme values vs. bounding
@@ -43,7 +56,22 @@ ps_trunc <- function(
   upper = NULL,
   .exposure = NULL,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ...
+) {
+  UseMethod("ps_trunc")
+}
+
+#' @export
+ps_trunc.default <- function(
+  ps,
+  method = c("ps", "pctl", "cr"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  ...
 ) {
   method <- rlang::arg_match(method)
   meta_list <- list(method = method)
@@ -96,14 +124,156 @@ ps_trunc <- function(
   new_ps_trunc(ps, meta)
 }
 
-new_ps_trunc <- function(x, meta) {
-  vec_assert(x, double())
-  new_vctr(
-    x,
-    ps_trunc_meta = meta,
-    class = "ps_trunc",
-    inherit_base_type = TRUE
+#' @export
+ps_trunc.matrix <- function(
+  ps,
+  method = c("ps", "pctl", "cr"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # Only ps is valid for categorical
+  method <- rlang::arg_match(method, values = "ps")
+  
+  # Validate exposure for categorical
+  if (is.null(.exposure)) {
+    abort(
+      "`.exposure` must be provided for categorical propensity score truncation.",
+      error_class = "propensity_missing_arg_error"
+    )
+  }
+  
+  # Transform to factor and validate
+  .exposure <- transform_exposure_categorical(.exposure)
+  
+  # Validate matrix
+  ps <- check_ps_matrix(ps, .exposure)
+  
+  n <- nrow(ps)
+  k <- ncol(ps)
+  
+  # Symmetric truncation
+  if (is.null(lower)) lower <- 0.01  # Default threshold
+  delta <- lower  # Use lower as delta for consistency
+  
+  # Validate delta
+  if (delta >= 1/k) {
+    abort(
+      "Invalid truncation threshold (delta >= 1/k).",
+      error_class = "propensity_range_error"
+    )
+  }
+  
+  # Track which values were truncated
+  truncated_idx <- which(apply(ps, 1, function(x) any(x < delta)))
+  
+  # Apply truncation and renormalize
+  ps_trunc <- ps
+  for (i in 1:n) {
+    row_vals <- ps_trunc[i, ]
+    # Clamp values below delta
+    row_vals[row_vals < delta] <- delta
+    # Renormalize to sum to 1
+    ps_trunc[i, ] <- row_vals / sum(row_vals)
+  }
+  
+  meta <- list(
+    method = method,
+    lower_bound = delta,
+    upper_bound = NA_real_,  # Not applicable for categorical
+    truncated_idx = truncated_idx,
+    is_matrix = TRUE
   )
+  
+  new_ps_trunc(ps_trunc, meta)
+}
+
+#' @export
+ps_trunc.data.frame <- function(
+  ps,
+  method = c("ps", "pctl", "cr"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # For categorical exposures, convert to matrix and call matrix method
+  if (!is.null(.exposure)) {
+    exposure_type <- detect_exposure_type(.exposure)
+    if (exposure_type == "categorical") {
+      ps_matrix <- as.matrix(ps)
+      return(ps_trunc.matrix(
+        ps = ps_matrix,
+        method = method,
+        lower = lower,
+        upper = upper,
+        .exposure = .exposure,
+        ...
+      ))
+    }
+  }
+  
+  # For binary exposures, extract appropriate column and call default method
+  if (ncol(ps) == 2) {
+    # Use second column by default for binary
+    ps_vec <- ps[[2]]
+  } else {
+    # Use first column
+    ps_vec <- ps[[1]]
+  }
+  
+  ps_trunc.default(
+    ps = ps_vec,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = .exposure,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+ps_trunc.ps_trunc <- function(
+  ps,
+  method = c("ps", "pctl", "cr"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  warn(
+    "Propensity scores have already been truncated. Returning original object.",
+    warning_class = "propensity_already_modified_warning"
+  )
+  ps
+}
+
+new_ps_trunc <- function(x, meta) {
+  if (is.matrix(x)) {
+    # For matrices, we don't use vctrs
+    structure(
+      x,
+      ps_trunc_meta = meta,
+      class = c("ps_trunc_matrix", "ps_trunc", "matrix")
+    )
+  } else {
+    vec_assert(x, ptype = double())
+    new_vctr(
+      x,
+      ps_trunc_meta = meta,
+      class = "ps_trunc",
+      inherit_base_type = TRUE
+    )
+  }
 }
 
 #' @title Extract `ps_trunc` metadata
@@ -141,6 +311,11 @@ is_ps_truncated.ps_trunc <- function(x) {
   TRUE
 }
 
+#' @export
+is_ps_truncated.ps_trunc_matrix <- function(x) {
+  TRUE
+}
+
 #' Check if units have been truncated
 #'
 #' @description `is_ps_truncated()` is an S3 generic that returns a vector of
@@ -168,6 +343,15 @@ is_unit_truncated.default <- function(x) {
 is_unit_truncated.ps_trunc <- function(x) {
   meta <- ps_trunc_meta(x)
   out <- vector("logical", length = length(x))
+  out[meta$truncated_idx] <- TRUE
+
+  out
+}
+
+#' @export
+is_unit_truncated.ps_trunc_matrix <- function(x) {
+  meta <- ps_trunc_meta(x)
+  out <- vector("logical", length = nrow(x))
   out[meta$truncated_idx] <- TRUE
 
   out

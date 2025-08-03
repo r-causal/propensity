@@ -117,17 +117,33 @@ check_refit <- function(.propensity) {
 }
 
 check_ps_range <- function(ps, call = rlang::caller_env()) {
-  ps <- as.numeric(ps)
-  if (any(ps <= 0 | ps >= 1, na.rm = TRUE)) {
-    abort(
-      c(
-        "The propensity score must be between 0 and 1.",
-        i = "The range of {.arg ps} is \\
-      {format(range(ps), nsmall = 1, digits = 1)}"
-      ),
-      call = call,
-      error_class = "propensity_range_error"
-    )
+  if (is.matrix(ps) || is.data.frame(ps)) {
+    # For matrices/data frames, check all values
+    ps_vals <- as.numeric(as.matrix(ps))
+    if (any(ps_vals <= 0 | ps_vals >= 1, na.rm = TRUE)) {
+      abort(
+        c(
+          "All propensity scores must be between 0 and 1.",
+          i = "The range of values in {.arg ps} is \\
+        {format(range(ps_vals, na.rm = TRUE), nsmall = 1, digits = 1)}"
+        ),
+        call = call,
+        error_class = "propensity_range_error"
+      )
+    }
+  } else {
+    ps <- as.numeric(ps)
+    if (any(ps <= 0 | ps >= 1, na.rm = TRUE)) {
+      abort(
+        c(
+          "The propensity score must be between 0 and 1.",
+          i = "The range of {.arg ps} is \\
+        {format(range(ps, na.rm = TRUE), nsmall = 1, digits = 1)}"
+        ),
+        call = call,
+        error_class = "propensity_range_error"
+      )
+    }
   }
 
   invisible(TRUE)
@@ -267,18 +283,24 @@ check_ps_matrix <- function(
   }
 
   # Check that rows sum to 1 (within tolerance)
-  row_sums <- rowSums(ps_matrix)
+  # Only check non-NA rows
+  row_sums <- rowSums(ps_matrix, na.rm = FALSE)
   ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
-  if (any(abs(row_sums - 1) > ROW_SUM_TOLERANCE)) {
-    bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE)
-    abort(
-      c(
-        "Propensity score matrix rows must sum to 1.",
-        i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
-      ),
-      call = call,
-      error_class = "propensity_matrix_sum_error"
-    )
+  non_na_rows <- !is.na(row_sums)
+  
+  if (any(non_na_rows)) {
+    # Check only the rows that don't have NA values
+    if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
+      bad_rows <- which(non_na_rows & abs(row_sums - 1) > ROW_SUM_TOLERANCE)
+      abort(
+        c(
+          "Propensity score matrix rows must sum to 1.",
+          i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
+        ),
+        call = call,
+        error_class = "propensity_matrix_sum_error"
+      )
+    }
   }
 
   # Check for valid probabilities
@@ -355,15 +377,26 @@ calculate_weight_from_modified_ps <- function(
     check_refit(.propensity)
   }
 
-  # Convert to numeric
-  numeric_ps <- as.numeric(.propensity)
-
-  # Call the weight function with the numeric propensity scores
-  base_wt <- weight_fn(
-    numeric_ps,
-    .exposure = .exposure,
-    ...
-  )
+  # Handle matrix or vector propensity scores
+  if (inherits(.propensity, c("ps_trim_matrix", "ps_trunc_matrix"))) {
+    # For matrix propensity scores, pass them directly
+    # The weight function should handle the matrix appropriately
+    base_wt <- weight_fn(
+      .propensity,
+      .exposure = .exposure,
+      ...
+    )
+  } else {
+    # Convert to numeric for vector propensity scores
+    numeric_ps <- as.numeric(.propensity)
+    
+    # Call the weight function with the numeric propensity scores
+    base_wt <- weight_fn(
+      numeric_ps,
+      .exposure = .exposure,
+      ...
+    )
+  }
 
   # Update estimand
   if (modification_type == "trim") {

@@ -11,31 +11,41 @@ ps_trunc(
   upper = NULL,
   .exposure = NULL,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ...
 )
 }
 \arguments{
-\item{ps}{The propensity score, a numeric vector between 0 and 1.}
+\item{ps}{The propensity score, either a numeric vector between 0 and 1 for
+binary exposures, or a matrix/data.frame where each column represents
+propensity scores for each level of a categorical exposure.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}.
 \itemize{
-\item \code{"ps"}: directly cut on \verb{[lower, upper]} of \code{ps}.
-\item \code{"pctl"}: use quantiles of \code{ps} as bounding values
-\item \code{"cr"}: the common range of \code{ps} given \code{.exposure}, bounding \verb{[min(ps[treated]), max(ps[untreated])]}
+\item \code{"ps"}: directly cut on \verb{[lower, upper]} of \code{ps}. For categorical, uses
+symmetric truncation with \code{lower} as the threshold.
+\item \code{"pctl"}: use quantiles of \code{ps} as bounding values (binary only)
+\item \code{"cr"}: the common range of \code{ps} given \code{.exposure}, bounding
+\verb{[min(ps[treated]), max(ps[untreated])]} (binary only)
 }}
 
-\item{lower, upper}{Numeric or quantile bounds. If \code{NULL}, defaults vary by method.}
+\item{lower, upper}{Numeric or quantile bounds. If \code{NULL}, defaults vary by method.
+For categorical exposures with method \code{"ps"}, \code{lower} represents the
+truncation threshold (delta).}
 
-\item{.exposure}{For method "cr", a binary exposure vector.}
+\item{.exposure}{For method "cr", a binary exposure vector. For categorical
+exposures, must be a factor or character vector.}
 
 \item{.treated}{The value representing the treatment group. If not provided,
 it is automatically detected.}
 
 \item{.untreated}{The value representing the control group. If not provided,
 it is automatically detected.}
+
+\item{...}{Additional arguments passed to methods}
 }
 \value{
-A \strong{\code{ps_trunc}} object (numeric vector). It has an attribute
+A \strong{\code{ps_trunc}} object (numeric vector or matrix). It has an attribute
 \code{ps_trunc_meta} storing fields like \code{method}, \code{lower_bound}, and
 \code{upper_bound}.
 }
@@ -45,12 +55,19 @@ A \strong{\code{ps_trunc}} object (numeric vector). It has an attribute
 (sets \code{NA}) instead of bounding and is then refit with \code{\link[=ps_refit]{ps_refit()}}
 }
 \details{
-For each \eqn{ps[i]}:
+For binary exposures with each \eqn{ps[i]}:
 \itemize{
 \item If \eqn{ps[i] < lower\_bound}, we set \eqn{ps[i] = lower\_bound}.
 \item If \eqn{ps[i] > upper\_bound}, we set \eqn{ps[i] = upper\_bound}.
-This approach is often called \emph{winsorizing}.
 }
+
+For categorical exposures:
+\itemize{
+\item Each value below the threshold is set to the threshold
+\item Rows are renormalized to sum to 1
+}
+
+This approach is often called \emph{winsorizing}.
 }
 \examples{
 set.seed(2)

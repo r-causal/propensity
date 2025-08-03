@@ -1,29 +1,41 @@
 #' Trim Propensity Scores
 #'
-#' `ps_trim()` applies trimming methods to a propensity-score vector, returning
-#' a new vector of the *same length*, with trimmed entries replaced by `NA.` You
-#' can inspect further metadata in `ps_trim_meta(x)`. After running `ps_trim()`,
-#' you should refit the model with `ps_refit()`.
+#' `ps_trim()` applies trimming methods to a propensity-score vector or matrix,
+#' returning a new vector/matrix of the *same length/dimensions*, with trimmed
+#' entries replaced by `NA.` You can inspect further metadata in `ps_trim_meta(x)`.
+#' After running `ps_trim()`, you should refit the model with `ps_refit()`.
 #'
-#' @param ps The propensity score, a numeric vector between 0 and 1.
+#' @param ps The propensity score, either a numeric vector between 0 and 1 for
+#'   binary exposures, or a matrix/data.frame where each column represents
+#'   propensity scores for each level of a categorical exposure.
 #' @param .exposure For methods like `"pref"` or `"cr"`, a vector for a binary
-#'   exposure.
-#' @param method One of `c("ps", "adaptive", "pctl", "pref", "cr")`.
+#'   exposure. For categorical exposures with method `"optimal"`, must be a
+#'   factor or character vector.
+#' @param method One of `c("ps", "adaptive", "pctl", "pref", "cr", "optimal")`.
+#'   For categorical exposures, only `"ps"` and `"optimal"` are supported.
 #' @param lower,upper Numeric cutoffs or quantiles. If `NULL`, defaults vary by
-#'   method.
+#'   method. For categorical exposures with method `"ps"`, `lower` represents the
+#'   symmetric trimming threshold (delta).
 #' @inheritParams wt_ate
+#' @param ... Additional arguments passed to methods
 #'
-#' @details The returned object is a **`ps_trim`** vector of the same length as
-#' `ps`, but with trimmed entries replaced by `NA`. An attribute `ps_trim_meta`
-#' contains:
+#' @details The returned object is a **`ps_trim`** vector/matrix of the same
+#' length/dimensions as `ps`, but with trimmed entries replaced by `NA`. An
+#' attribute `ps_trim_meta` contains:
 #'
 #' - `method`: Which trimming method was used
 #' - `keep_idx`: Indices retained
 #' - `trimmed_idx`: Indices replaced by `NA`
 #' - Possibly other fields such as final cutoffs, etc.
 #'
-#' @return A `ps_trim` object (numeric vector). The attribute `ps_trim_meta`
-#' stores metadata.
+#' For categorical exposures:
+#' - **Symmetric trimming** (`method = "ps"`): Removes observations where any
+#'   propensity score falls below the threshold delta (specified via `lower`).
+#' - **Optimal trimming** (`method = "optimal"`): Uses the Yang et al. (2016)
+#'   approach for multi-category treatments.
+#'
+#' @return A `ps_trim` object (numeric vector or matrix). The attribute
+#' `ps_trim_meta` stores metadata.
 #'
 #' @seealso [ps_trunc()] for bounding/winsorizing instead of discarding,
 #'   [is_refit()], [is_ps_trimmed()]
@@ -41,12 +53,27 @@
 #' @export
 ps_trim <- function(
   ps,
-  method = c("ps", "adaptive", "pctl", "pref", "cr"),
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ...
+) {
+  UseMethod("ps_trim")
+}
+
+#' @export
+ps_trim.default <- function(
+  ps,
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  ...
 ) {
   method <- rlang::arg_match(method)
   check_ps_range(ps)
@@ -162,14 +189,224 @@ ps_trim <- function(
   )
 }
 
-new_trimmed_ps <- function(x, ps_trim_meta = list()) {
-  vec_assert(x, ptype = double())
-  new_vctr(
-    x,
-    ps_trim_meta = ps_trim_meta,
-    class = "ps_trim",
-    inherit_base_type = TRUE
+#' @export
+ps_trim.matrix <- function(
+  ps,
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # Only ps and optimal are valid for categorical
+  method <- rlang::arg_match(method, values = c("ps", "optimal"))
+  
+  # Validate exposure for categorical
+  if (is.null(.exposure)) {
+    abort(
+      "`.exposure` must be provided for categorical propensity score trimming.",
+      error_class = "propensity_missing_arg_error"
+    )
+  }
+  
+  # Transform to factor and validate
+  .exposure <- transform_exposure_categorical(.exposure)
+  
+  # Validate matrix
+  ps <- check_ps_matrix(ps, .exposure)
+  
+  n <- nrow(ps)
+  k <- ncol(ps)
+  
+  # Initialize metadata
+  meta_list <- list(method = method, is_matrix = TRUE)
+  
+  if (method == "ps") {
+    # Symmetric trimming
+    if (is.null(lower)) lower <- 0.1
+    delta <- lower  # Use lower as delta for consistency
+    
+    # Validate delta
+    if (delta >= 1/k) {
+      warn(
+        "Invalid trimming threshold (delta >= 1/k); returning original data",
+        warning_class = "propensity_range_warning"
+      )
+      keep_idx <- seq_len(n)
+    } else {
+      # Apply symmetric trimming rule: keep if min(propensity scores) > delta
+      keep_idx <- which(apply(ps, 1, function(x) min(x) > delta))
+      
+      # Check if all treatment groups are preserved
+      if (length(unique(.exposure[keep_idx])) < k) {
+        warn(
+          "One or more groups removed after trimming; returning original data",
+          warning_class = "propensity_no_data_warning"
+        )
+        keep_idx <- seq_len(n)
+      }
+    }
+    
+    meta_list$delta <- delta
+    
+  } else {  # optimal
+    # Multi-category optimal trimming (Yang et al., 2016)
+    # Calculate sum of inverse propensity scores
+    sum_inv_ps <- rowSums(1/ps)
+    
+    # Define trimming function
+    trim_fun <- function(x) {
+      sum_trim <- sum_inv_ps[sum_inv_ps <= x]
+      if (length(sum_trim) == 0) return(x)
+      x - 2 * mean(sum_trim) / mean(sum_inv_ps <= x)
+    }
+    
+    # Check if trimming is needed
+    if (trim_fun(max(sum_inv_ps)) < 0) {
+      # No valid solution, use maximum + 1
+      lambda <- max(sum_inv_ps) + 1
+      keep_idx <- seq_len(n)  # Keep all
+    } else {
+      # Find optimal lambda
+      result <- tryCatch({
+        uniroot(trim_fun, 
+                lower = min(sum_inv_ps), 
+                upper = max(sum_inv_ps))$root
+      }, error = function(e) {
+        warn(
+          "Could not find optimal trimming threshold; using no trimming",
+          warning_class = "propensity_convergence_warning"
+        )
+        NULL
+      })
+      
+      if (!is.null(result)) {
+        lambda <- result
+        keep_idx <- which(sum_inv_ps <= lambda)
+        
+        # Check if all treatment groups are preserved
+        if (length(unique(.exposure[keep_idx])) < k) {
+          warn(
+            "One or more groups removed after trimming; returning original data",
+            warning_class = "propensity_no_data_warning"
+          )
+          keep_idx <- seq_len(n)
+          lambda <- NULL
+        }
+      } else {
+        keep_idx <- seq_len(n)
+        lambda <- NULL
+      }
+    }
+    
+    meta_list$lambda <- lambda
+  }
+  
+  trimmed_idx <- setdiff(seq_len(n), keep_idx)
+  
+  # Replace trimmed entries with NA
+  ps_na <- ps
+  ps_na[trimmed_idx, ] <- NA_real_
+  
+  new_trimmed_ps(
+    x = ps_na,
+    ps_trim_meta = c(
+      meta_list,
+      list(
+        keep_idx = keep_idx,
+        trimmed_idx = trimmed_idx
+      )
+    )
   )
+}
+
+#' @export
+ps_trim.data.frame <- function(
+  ps,
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  # For categorical exposures, convert to matrix and call matrix method
+  if (!is.null(.exposure)) {
+    exposure_type <- detect_exposure_type(.exposure)
+    if (exposure_type == "categorical") {
+      ps_matrix <- as.matrix(ps)
+      return(ps_trim.matrix(
+        ps = ps_matrix,
+        method = method,
+        lower = lower,
+        upper = upper,
+        .exposure = .exposure,
+        ...
+      ))
+    }
+  }
+  
+  # For binary exposures, extract appropriate column and call default method
+  # This is a simplified version - in practice you might want to handle
+  # .propensity_col parameter like in weight functions
+  if (ncol(ps) == 2) {
+    # Use second column by default for binary
+    ps_vec <- ps[[2]]
+  } else {
+    # Use first column
+    ps_vec <- ps[[1]]
+  }
+  
+  ps_trim.default(
+    ps = ps_vec,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = .exposure,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+ps_trim.ps_trim <- function(
+  ps,
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  ...
+) {
+  warn(
+    "Propensity scores have already been trimmed. Returning original object.",
+    warning_class = "propensity_already_modified_warning"
+  )
+  ps
+}
+
+new_trimmed_ps <- function(x, ps_trim_meta = list()) {
+  if (is.matrix(x)) {
+    # For matrices, we don't use vctrs
+    structure(
+      x,
+      ps_trim_meta = ps_trim_meta,
+      class = c("ps_trim_matrix", "ps_trim", "matrix")
+    )
+  } else {
+    vec_assert(x, ptype = double())
+    new_vctr(
+      x,
+      ps_trim_meta = ps_trim_meta,
+      class = "ps_trim",
+      inherit_base_type = TRUE
+    )
+  }
 }
 
 #' Check if object is trimmed
@@ -194,6 +431,11 @@ is_ps_trimmed.default <- function(x) {
 
 #' @export
 is_ps_trimmed.ps_trim <- function(x) {
+  TRUE
+}
+
+#' @export
+is_ps_trimmed.ps_trim_matrix <- function(x) {
   TRUE
 }
 
@@ -224,6 +466,15 @@ is_unit_trimmed.default <- function(x) {
 is_unit_trimmed.ps_trim <- function(x) {
   meta <- ps_trim_meta(x)
   out <- vector("logical", length = length(x))
+  out[meta$trimmed_idx] <- TRUE
+
+  out
+}
+
+#' @export
+is_unit_trimmed.ps_trim_matrix <- function(x) {
+  meta <- ps_trim_meta(x)
+  out <- vector("logical", length = nrow(x))
   out[meta$trimmed_idx] <- TRUE
 
   out
@@ -403,13 +654,15 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
     .df <- model.frame(model)
   }
 
-  if (nrow(.df) != length(trimmed_ps)) {
+  # Get the number of observations
+  n_obs <- if (is.matrix(trimmed_ps)) nrow(trimmed_ps) else length(trimmed_ps)
+  
+  if (nrow(.df) != n_obs) {
     abort(
       c(
-        "{.arg .df} must have the same number of rows as \\
-        {.code length(trimmed_ps)}.",
+        "{.arg .df} must have the same number of rows as observations in {.arg trimmed_ps}.",
         x = "{.arg .df} has {nrow(.df)} row{?s}.",
-        x = "{.arg trimmed_ps} has length {length(trimmed_ps)}."
+        x = "{.arg trimmed_ps} has {n_obs} observation{?s}."
       ),
       error_class = "propensity_length_error"
     )
@@ -420,12 +673,37 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
   refit_model <- stats::update(model, data = data_sub, ...)
 
   # predict new PS for all rows
-  new_ps <- rep(NA_real_, length(trimmed_ps))
-  new_ps[meta$keep_idx] <- stats::predict(
-    refit_model,
-    newdata = data_sub,
-    type = "response"
-  )
+  if (is.matrix(trimmed_ps)) {
+    # For matrix propensity scores (categorical exposures)
+    new_ps <- matrix(NA_real_, nrow = n_obs, ncol = ncol(trimmed_ps))
+    colnames(new_ps) <- colnames(trimmed_ps)
+    
+    # Predict probabilities for retained observations
+    if (inherits(refit_model, "multinom")) {
+      # For multinomial models from nnet
+      pred_probs <- stats::predict(refit_model, newdata = data_sub, type = "probs")
+      # Ensure it's a matrix
+      if (!is.matrix(pred_probs)) {
+        pred_probs <- matrix(pred_probs, nrow = 1)
+      }
+      new_ps[meta$keep_idx, ] <- pred_probs
+    } else {
+      # Generic prediction
+      new_ps[meta$keep_idx, ] <- stats::predict(
+        refit_model,
+        newdata = data_sub,
+        type = "response"
+      )
+    }
+  } else {
+    # For vector propensity scores (binary exposures)
+    new_ps <- rep(NA_real_, n_obs)
+    new_ps[meta$keep_idx] <- stats::predict(
+      refit_model,
+      newdata = data_sub,
+      type = "response"
+    )
+  }
 
   meta$refit <- TRUE
 
