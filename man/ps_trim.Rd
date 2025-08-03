@@ -6,50 +6,66 @@
 \usage{
 ps_trim(
   ps,
-  method = c("ps", "adaptive", "pctl", "pref", "cr"),
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ...
 )
 }
 \arguments{
-\item{ps}{The propensity score, a numeric vector between 0 and 1.}
+\item{ps}{The propensity score, either a numeric vector between 0 and 1 for
+binary exposures, or a matrix/data.frame where each column represents
+propensity scores for each level of a categorical exposure.}
 
-\item{method}{One of \code{c("ps", "adaptive", "pctl", "pref", "cr")}.}
+\item{method}{One of \code{c("ps", "adaptive", "pctl", "pref", "cr", "optimal")}.
+For categorical exposures, only \code{"ps"} and \code{"optimal"} are supported.}
 
 \item{lower, upper}{Numeric cutoffs or quantiles. If \code{NULL}, defaults vary by
-method.}
+method. For categorical exposures with method \code{"ps"}, \code{lower} represents the
+symmetric trimming threshold (delta).}
 
 \item{.exposure}{For methods like \code{"pref"} or \code{"cr"}, a vector for a binary
-exposure.}
+exposure. For categorical exposures with method \code{"optimal"}, must be a
+factor or character vector.}
 
 \item{.treated}{The value representing the treatment group. If not provided,
 it is automatically detected.}
 
 \item{.untreated}{The value representing the control group. If not provided,
 it is automatically detected.}
+
+\item{...}{Additional arguments passed to methods}
 }
 \value{
-A \code{ps_trim} object (numeric vector). The attribute \code{ps_trim_meta}
-stores metadata.
+A \code{ps_trim} object (numeric vector or matrix). The attribute
+\code{ps_trim_meta} stores metadata.
 }
 \description{
-\code{ps_trim()} applies trimming methods to a propensity-score vector, returning
-a new vector of the \emph{same length}, with trimmed entries replaced by \code{NA.} You
-can inspect further metadata in \code{ps_trim_meta(x)}. After running \code{ps_trim()},
-you should refit the model with \code{ps_refit()}.
+\code{ps_trim()} applies trimming methods to a propensity-score vector or matrix,
+returning a new vector/matrix of the \emph{same length/dimensions}, with trimmed
+entries replaced by \code{NA.} You can inspect further metadata in \code{ps_trim_meta(x)}.
+After running \code{ps_trim()}, you should refit the model with \code{ps_refit()}.
 }
 \details{
-The returned object is a \strong{\code{ps_trim}} vector of the same length as
-\code{ps}, but with trimmed entries replaced by \code{NA}. An attribute \code{ps_trim_meta}
-contains:
+The returned object is a \strong{\code{ps_trim}} vector/matrix of the same
+length/dimensions as \code{ps}, but with trimmed entries replaced by \code{NA}. An
+attribute \code{ps_trim_meta} contains:
 \itemize{
 \item \code{method}: Which trimming method was used
 \item \code{keep_idx}: Indices retained
 \item \code{trimmed_idx}: Indices replaced by \code{NA}
 \item Possibly other fields such as final cutoffs, etc.
+}
+
+For categorical exposures:
+\itemize{
+\item \strong{Symmetric trimming} (\code{method = "ps"}): Removes observations where any
+propensity score falls below the threshold delta (specified via \code{lower}).
+\item \strong{Optimal trimming} (\code{method = "optimal"}): Uses the Yang et al. (2016)
+approach for multi-category treatments.
 }
 }
 \examples{

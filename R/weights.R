@@ -1422,7 +1422,7 @@ wt_ato.ps_trunc <- function(
 wt_entropy.ps_trim <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
@@ -1443,7 +1443,7 @@ wt_entropy.ps_trim <- function(
 wt_entropy.ps_trunc <- function(
   .propensity,
   .exposure,
-  exposure_type = c("auto", "binary"),
+  exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
