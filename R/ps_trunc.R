@@ -402,7 +402,7 @@ is_unit_truncated.ps_trunc_matrix <- function(x) {
 
 
 #' @export
-`[.ps_trunc_matrix` <- function(x, i, j, ..., drop = FALSE) {
+`[.ps_trunc_matrix` <- function(x, i, j, ..., drop = TRUE) {
   # Get metadata
   meta <- ps_trunc_meta(x)
 

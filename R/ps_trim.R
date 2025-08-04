@@ -487,7 +487,7 @@ is_unit_trimmed.ps_trim_matrix <- function(x) {
 
 
 #' @export
-`[.ps_trim_matrix` <- function(x, i, j, ..., drop = FALSE) {
+`[.ps_trim_matrix` <- function(x, i, j, ..., drop = TRUE) {
   # Get metadata
   meta <- ps_trim_meta(x)
 
