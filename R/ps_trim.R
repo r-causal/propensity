@@ -514,7 +514,7 @@ is_unit_trimmed.ps_trim_matrix <- function(x) {
   if (!is.matrix(result)) {
     return(result)
   }
-  
+
   # If result is a single element, return as numeric (no metadata)
   if (length(result) == 1) {
     return(as.numeric(result))
@@ -807,31 +807,31 @@ vec_restore.ps_trim <- function(x, to, ...) {
   if (missing(i)) {
     return(NextMethod())
   }
-  
+
   # Get original metadata
   meta <- ps_trim_meta(x)
-  
+
   # Convert i to positive integer indices if needed
   i <- vec_as_location(i, n = length(x))
-  
+
   # Get the subset of data using NextMethod to handle vctrs subsetting
   result <- NextMethod()
-  
+
   # Update indices: map old positions to new positions
   new_trimmed_idx <- match(meta$trimmed_idx, i)
   new_trimmed_idx <- new_trimmed_idx[!is.na(new_trimmed_idx)]
-  
+
   new_keep_idx <- match(meta$keep_idx, i)
   new_keep_idx <- new_keep_idx[!is.na(new_keep_idx)]
-  
+
   # Update metadata
   new_meta <- meta
   new_meta$trimmed_idx <- new_trimmed_idx
   new_meta$keep_idx <- new_keep_idx
-  
+
   # Update the attributes on the result
   attr(result, "ps_trim_meta") <- new_meta
-  
+
   result
 }
 

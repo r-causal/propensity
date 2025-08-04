@@ -429,7 +429,7 @@ is_unit_truncated.ps_trunc_matrix <- function(x) {
   if (!is.matrix(result)) {
     return(result)
   }
-  
+
   # If result is a single element, return as numeric (no metadata)
   if (length(result) == 1) {
     return(as.numeric(result))
@@ -700,27 +700,27 @@ vec_restore.ps_trunc <- function(x, to, ...) {
   if (missing(i)) {
     return(NextMethod())
   }
-  
+
   # Get original metadata
   meta <- ps_trunc_meta(x)
-  
+
   # Convert i to positive integer indices if needed
   i <- vec_as_location(i, n = length(x))
-  
+
   # Get the subset of data using NextMethod to handle vctrs subsetting
   result <- NextMethod()
-  
+
   # Update indices: map old positions to new positions
   new_truncated_idx <- match(meta$truncated_idx, i)
   new_truncated_idx <- new_truncated_idx[!is.na(new_truncated_idx)]
-  
+
   # Update metadata
   new_meta <- meta
   new_meta$truncated_idx <- new_truncated_idx
-  
+
   # Update the attributes on the result
   attr(result, "ps_trunc_meta") <- new_meta
-  
+
   result
 }
 

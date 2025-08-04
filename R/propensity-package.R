@@ -2,6 +2,7 @@
 "_PACKAGE"
 
 ## usethis namespace: start
+#' @importFrom stats median
 #' @importFrom stats plogis
 #' @importFrom stats qlogis
 #' @importFrom stats quantile
