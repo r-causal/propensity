@@ -401,6 +401,71 @@ is_unit_truncated.ps_trunc_matrix <- function(x) {
 }
 
 
+#' @export
+`[.ps_trunc_matrix` <- function(x, i, j, ..., drop = FALSE) {
+  # Get metadata
+  meta <- ps_trunc_meta(x)
+
+  # Handle single index (matrix as vector) - bypass ps_trunc method
+  if (nargs() == 2) {
+    return(unclass(x)[i])
+  }
+
+  # Handle missing i (all rows) - bypass ps_trunc method
+  if (missing(i)) {
+    return(unclass(x)[, j, ..., drop = drop])
+  }
+
+  # For single element extraction, call base method directly to avoid ps_trunc method
+  # Check if this will result in a single element
+  if (!missing(j) && length(i) == 1 && length(j) == 1) {
+    return(as.numeric(unclass(x)[i, j, drop = TRUE]))
+  }
+
+  # Perform subsetting with base matrix method to avoid calling [.ps_trunc
+  result <- unclass(x)[i, j, ..., drop = drop]
+
+  # If not a matrix anymore or dropped dimensions, return as-is (no metadata)
+  if (!is.matrix(result)) {
+    return(result)
+  }
+  
+  # If result is a single element, return as numeric (no metadata)
+  if (length(result) == 1) {
+    return(as.numeric(result))
+  }
+
+  # Handle different index types for rows
+  n <- nrow(x)
+
+  if (is.logical(i)) {
+    # Convert logical to positions
+    i <- which(i)
+  } else if (any(i < 0)) {
+    # Handle negative indexing
+    i <- setdiff(seq_len(n), -i)
+  }
+
+  # Map indices to new positions
+  new_truncated_idx <- integer(0)
+
+  for (idx in seq_along(i)) {
+    old_pos <- i[idx]
+    if (old_pos %in% meta$truncated_idx) {
+      new_truncated_idx <- c(new_truncated_idx, idx)
+    }
+  }
+
+  # Update metadata
+  new_meta <- meta
+  new_meta$truncated_idx <- new_truncated_idx
+
+  attr(result, "ps_trunc_meta") <- new_meta
+  class(result) <- c("ps_trunc_matrix", "ps_trunc", "matrix")
+  result
+}
+
+
 # Print methods for ps_trunc_matrix
 
 #' @export
@@ -627,6 +692,36 @@ quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
 #' @export
 vec_restore.ps_trunc <- function(x, to, ...) {
   new_ps_trunc(x, meta = ps_trunc_meta(to))
+}
+
+#' @export
+`[.ps_trunc` <- function(x, i, ...) {
+  # If i is missing, just call NextMethod
+  if (missing(i)) {
+    return(NextMethod())
+  }
+  
+  # Get original metadata
+  meta <- ps_trunc_meta(x)
+  
+  # Convert i to positive integer indices if needed
+  i <- vec_as_location(i, n = length(x))
+  
+  # Get the subset of data using NextMethod to handle vctrs subsetting
+  result <- NextMethod()
+  
+  # Update indices: map old positions to new positions
+  new_truncated_idx <- match(meta$truncated_idx, i)
+  new_truncated_idx <- new_truncated_idx[!is.na(new_truncated_idx)]
+  
+  # Update metadata
+  new_meta <- meta
+  new_meta$truncated_idx <- new_truncated_idx
+  
+  # Update the attributes on the result
+  attr(result, "ps_trunc_meta") <- new_meta
+  
+  result
 }
 
 #' @export

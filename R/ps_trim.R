@@ -486,6 +486,76 @@ is_unit_trimmed.ps_trim_matrix <- function(x) {
 }
 
 
+#' @export
+`[.ps_trim_matrix` <- function(x, i, j, ..., drop = FALSE) {
+  # Get metadata
+  meta <- ps_trim_meta(x)
+
+  # Handle single index (matrix as vector) - bypass ps_trim method
+  if (nargs() == 2) {
+    return(unclass(x)[i])
+  }
+
+  # Handle missing i (all rows) - bypass ps_trim method
+  if (missing(i)) {
+    return(unclass(x)[, j, ..., drop = drop])
+  }
+
+  # For single element extraction, call base method directly to avoid ps_trim method
+  # Check if this will result in a single element
+  if (!missing(j) && length(i) == 1 && length(j) == 1) {
+    return(as.numeric(unclass(x)[i, j, drop = TRUE]))
+  }
+
+  # Perform subsetting with base matrix method to avoid calling [.ps_trim
+  result <- unclass(x)[i, j, ..., drop = drop]
+
+  # If not a matrix anymore or dropped dimensions, return as-is (no metadata)
+  if (!is.matrix(result)) {
+    return(result)
+  }
+  
+  # If result is a single element, return as numeric (no metadata)
+  if (length(result) == 1) {
+    return(as.numeric(result))
+  }
+
+  # Handle different index types for rows
+  n <- nrow(x)
+
+  if (is.logical(i)) {
+    # Convert logical to positions
+    i <- which(i)
+  } else if (any(i < 0)) {
+    # Handle negative indexing
+    i <- setdiff(seq_len(n), -i)
+  }
+
+  # Map indices to new positions
+  new_keep_idx <- integer(0)
+  new_trimmed_idx <- integer(0)
+
+  for (idx in seq_along(i)) {
+    old_pos <- i[idx]
+    if (old_pos %in% meta$keep_idx) {
+      new_keep_idx <- c(new_keep_idx, idx)
+    }
+    if (old_pos %in% meta$trimmed_idx) {
+      new_trimmed_idx <- c(new_trimmed_idx, idx)
+    }
+  }
+
+  # Update metadata
+  new_meta <- meta
+  new_meta$keep_idx <- new_keep_idx
+  new_meta$trimmed_idx <- new_trimmed_idx
+
+  attr(result, "ps_trim_meta") <- new_meta
+  class(result) <- c("ps_trim_matrix", "ps_trim", "matrix")
+  result
+}
+
+
 # Print methods for ps_trim_matrix
 
 #' @export
@@ -729,6 +799,40 @@ median.ps_trim <- function(x, na.rm = FALSE, ...) {
 #' @export
 vec_restore.ps_trim <- function(x, to, ...) {
   new_trimmed_ps(x, ps_trim_meta = ps_trim_meta(to))
+}
+
+#' @export
+`[.ps_trim` <- function(x, i, ...) {
+  # If i is missing, just call NextMethod
+  if (missing(i)) {
+    return(NextMethod())
+  }
+  
+  # Get original metadata
+  meta <- ps_trim_meta(x)
+  
+  # Convert i to positive integer indices if needed
+  i <- vec_as_location(i, n = length(x))
+  
+  # Get the subset of data using NextMethod to handle vctrs subsetting
+  result <- NextMethod()
+  
+  # Update indices: map old positions to new positions
+  new_trimmed_idx <- match(meta$trimmed_idx, i)
+  new_trimmed_idx <- new_trimmed_idx[!is.na(new_trimmed_idx)]
+  
+  new_keep_idx <- match(meta$keep_idx, i)
+  new_keep_idx <- new_keep_idx[!is.na(new_keep_idx)]
+  
+  # Update metadata
+  new_meta <- meta
+  new_meta$trimmed_idx <- new_trimmed_idx
+  new_meta$keep_idx <- new_keep_idx
+  
+  # Update the attributes on the result
+  attr(result, "ps_trim_meta") <- new_meta
+  
+  result
 }
 
 #' @export
