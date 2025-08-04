@@ -387,19 +387,25 @@ test_that("vec_ptype_abbr.ps_trim() and vec_ptype_full.ps_trim() coverage", {
   expect_true(grepl("ps_trim;", full))
 })
 
-test_that("Arithmetic with ps_trim fails (vec_arith.*)", {
+test_that("Arithmetic with ps_trim returns numeric", {
   # Create two ps_trim objects or combine with numeric
   x <- new_trimmed_ps(c(0.2, 0.3), ps_trim_meta = list())
   y <- new_trimmed_ps(c(0.4, 0.9), ps_trim_meta = list())
 
-  # Attempt numeric ops => should fail
-  expect_error(x + 1, class = "vctrs_error_incompatible_op")
-  expect_error(x + 1L, class = "vctrs_error_incompatible_op")
-  expect_error(1 + x, class = "vctrs_error_incompatible_op")
-  expect_error(1L + x, class = "vctrs_error_incompatible_op")
-  expect_error(x + list(1), class = "vctrs_error_incompatible_op")
-  # Combining two ps_trim
-  expect_error(x + y, class = "vctrs_error_incompatible_op")
+  # Arithmetic operations should return numeric
+  expect_type(x + 1, "double")
+  expect_type(x + 1L, "double")
+  expect_type(1 + x, "double")
+  expect_type(1L + x, "double")
+  expect_type(x + y, "double")
+
+  # Verify values are correct
+  expect_equal(x + 1, c(1.2, 1.3))
+  expect_equal(1 / x, c(5, 10 / 3))
+  expect_equal(x * 2, c(0.4, 0.6))
+
+  # List operations still fail
+  expect_error(x + list(1))
 })
 
 test_that("Combining two ps_trim => error in vec_ptype2.ps_trim.ps_trim", {

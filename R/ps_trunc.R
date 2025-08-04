@@ -490,31 +490,42 @@ vec_arith.ps_trunc <- function(op, x, y, ...) {
 #' @export
 #' @method vec_arith.ps_trunc default
 vec_arith.ps_trunc.default <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trunc ps_trunc
 vec_arith.ps_trunc.ps_trunc <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
+}
+
+#' @export
+#' @method vec_arith.ps_trunc MISSING
+vec_arith.ps_trunc.MISSING <- function(op, x, y, ...) {
+  switch(
+    op,
+    `-` = -1 * vec_data(x), # Returns numeric
+    `+` = vec_data(x), # Returns numeric
+    stop_incompatible_op(op, x, y)
+  )
 }
 
 #' @export
 #' @method vec_arith.ps_trunc numeric
 vec_arith.ps_trunc.numeric <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.numeric ps_trunc
 vec_arith.numeric.ps_trunc <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trunc integer
 vec_arith.ps_trunc.integer <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 # Combining / Casting
@@ -543,10 +554,10 @@ vec_cast.ps_trunc.double <- function(x, to, ...) {
 }
 
 #' @export
-vec_ptype2.psw.ps_trunc <- function(x, y, ...) character()
+vec_ptype2.psw.ps_trunc <- function(x, y, ...) double()
 
 #' @export
-vec_ptype2.ps_trunc.psw <- function(x, y, ...) character()
+vec_ptype2.ps_trunc.psw <- function(x, y, ...) double()
 
 #' @export
 vec_cast.character.ps_trunc <- function(x, to, ...) as.character(vec_data(x))
@@ -572,4 +583,58 @@ vec_cast.ps_trunc.integer <- function(x, to, ...) {
 #' @export
 vec_math.ps_trunc <- function(.fn, .x, ...) {
   vec_math_base(.fn, vec_data(.x), ...)
+}
+
+#' @export
+Summary.ps_trunc <- function(..., na.rm = FALSE) {
+  .fn <- .Generic
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call(.fn, c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+min.ps_trunc <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("min", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+max.ps_trunc <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("max", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+range.ps_trunc <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("range", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+median.ps_trunc <- function(x, na.rm = FALSE, ...) {
+  median(vec_data(x), na.rm = na.rm, ...)
+}
+
+#' @export
+quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
+  quantile(vec_data(x), probs = probs, na.rm = na.rm, ...)
+}
+
+#' @export
+vec_restore.ps_trunc <- function(x, to, ...) {
+  new_ps_trunc(x, meta = ps_trunc_meta(to))
+}
+
+#' @export
+anyDuplicated.ps_trunc <- function(x, incomparables = FALSE, ...) {
+  anyDuplicated(vec_data(x), incomparables = incomparables, ...)
+}
+
+#' @export
+diff.ps_trunc <- function(x, lag = 1L, differences = 1L, ...) {
+  diff(vec_data(x), lag = lag, differences = differences, ...)
 }

@@ -134,32 +134,29 @@ test_that("is_ps_truncated.default() -> FALSE, is_ps_truncated.ps_trunc() -> TRU
   expect_true(is_ps_truncated(my_trunc))
 })
 
-test_that("Arithmetic on ps_trunc => vctrs_error_incompatible_op", {
+test_that("Arithmetic on ps_trunc returns numeric", {
   obj <- new_ps_trunc(
     x = c(0.2, 0.7, 0.9),
     meta = list(method = "ps", lower_bound = 0.2, upper_bound = 0.8)
   )
 
-  # obj + 1 => error
-  expect_error(
-    obj + 1,
-    class = "vctrs_error_incompatible_op"
-  )
-  # 1 + obj => error
-  expect_error(
-    1 + obj,
-    class = "vctrs_error_incompatible_op"
-  )
+  # Arithmetic operations should return numeric
+  expect_type(obj + 1, "double")
+  expect_type(1 + obj, "double")
+  expect_type(obj * 2, "double")
+  expect_type(1 / obj, "double")
 
-  # obj * another ps_trunc => error
+  # Verify values are correct
+  expect_equal(obj + 1, c(1.2, 1.7, 1.9))
+  expect_equal(1 / obj, c(5, 10 / 7, 10 / 9))
+
+  # Combining two ps_trunc also returns numeric
   obj2 <- new_ps_trunc(
     x = c(0.1, 0.1, 0.3),
     meta = list(method = "ps", lower_bound = 0.1, upper_bound = 0.5)
   )
-  expect_error(
-    obj * obj2,
-    class = "vctrs_error_incompatible_op"
-  )
+  expect_type(obj * obj2, "double")
+  expect_equal(obj * obj2, c(0.02, 0.07, 0.27))
 })
 
 test_that("Combining & casting ps_trunc => correct ptype2, cast behavior", {

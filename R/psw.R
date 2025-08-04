@@ -215,31 +215,93 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
 }
 
 #' @export
+#' @method vec_arith.psw MISSING
+vec_arith.psw.MISSING <- function(op, x, y, ...) {
+  switch(
+    op,
+    `-` = vec_restore(-1 * vec_data(x), x), # Returns psw (preserves class)
+    `+` = x, # Returns psw unchanged
+    stop_incompatible_op(op, x, y)
+  )
+}
+
+#' @export
 #' @method vec_arith.psw numeric
 vec_arith.psw.numeric <- function(op, x, y, ...) {
-  vec_arith_base(op, x, y) |>
-    psw(estimand = estimand(x))
+  result <- vec_arith_base(op, x, y)
+  vec_restore(result, x)
 }
 
 #' @export
 #' @method vec_arith.numeric psw
 vec_arith.numeric.psw <- function(op, x, y, ...) {
-  vec_arith_base(op, x, y) |>
-    psw(estimand = estimand(y))
+  result <- vec_arith_base(op, x, y)
+  vec_restore(result, y)
 }
 
 #' @export
 #' @method vec_arith.psw integer
 vec_arith.psw.integer <- function(op, x, y, ...) {
-  estimand <- estimand(x)
-
-  vec_arith_base(op, x, y) |>
-    new_psw(estimand = estimand)
+  result <- vec_arith_base(op, x, y)
+  vec_restore(result, x)
 }
 
 #' @export
 vec_math.psw <- function(.fn, .x, ...) {
+  # Some functions like cumsum/cumprod should preserve psw class
+  if (.fn %in% c("cumsum", "cumprod", "cummin", "cummax")) {
+    result <- vec_math_base(.fn, vec_data(.x), ...)
+    return(vec_restore(result, .x))
+  }
+  # Other functions like log, sqrt return numeric
   vec_math_base(.fn, vec_data(.x), ...)
+}
+
+#' @export
+Summary.psw <- function(..., na.rm = FALSE) {
+  .fn <- .Generic
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call(.fn, c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+min.psw <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("min", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+max.psw <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("max", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+range.psw <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("range", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+median.psw <- function(x, na.rm = FALSE, ...) {
+  median(vec_data(x), na.rm = na.rm, ...)
+}
+
+#' @export
+vec_restore.psw <- function(x, to, ...) {
+  # If x is just numeric, we preserve psw attributes
+  new_psw(
+    x,
+    estimand = estimand(to),
+    stabilized = is_stabilized(to),
+    trimmed = is_ps_trimmed(to),
+    truncated = is_ps_truncated(to),
+    calibrated = isTRUE(attr(to, "calibrated"))
+  )
 }
 
 #' @export
@@ -294,6 +356,41 @@ vec_cast.integer.psw <- function(x, to, ...) {
 }
 
 #' @export
+vec_cast.psw.ps_trim <- function(x, to, ...) {
+  psw(vec_data(x), estimand = estimand(to))
+}
+
+#' @export
+vec_cast.ps_trim.psw <- function(x, to, ...) {
+  ps_trim(vec_data(x), method = "ps", lower = 0, upper = 1)
+}
+
+#' @export
+vec_cast.psw.ps_trunc <- function(x, to, ...) {
+  psw(vec_data(x), estimand = estimand(to))
+}
+
+#' @export
+vec_cast.ps_trunc.psw <- function(x, to, ...) {
+  ps_trunc(vec_data(x), method = "ps", lower = 0, upper = 1)
+}
+
+#' @export
 summary.psw <- function(object, ...) {
   summary(as.numeric(object), ...)
+}
+
+#' @export
+quantile.psw <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
+  quantile(vec_data(x), probs = probs, na.rm = na.rm, ...)
+}
+
+#' @export
+anyDuplicated.psw <- function(x, incomparables = FALSE, ...) {
+  anyDuplicated(vec_data(x), incomparables = incomparables, ...)
+}
+
+#' @export
+diff.psw <- function(x, lag = 1L, differences = 1L, ...) {
+  diff(vec_data(x), lag = lag, differences = differences, ...)
 }

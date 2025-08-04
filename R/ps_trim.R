@@ -553,30 +553,47 @@ vec_arith.ps_trim <- function(op, x, y, ...) {
 #' @export
 #' @method vec_arith.ps_trim default
 vec_arith.ps_trim.default <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trim ps_trim
 vec_arith.ps_trim.ps_trim <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
+}
+
+#' @export
+#' @method vec_arith.ps_trim MISSING
+vec_arith.ps_trim.MISSING <- function(op, x, y, ...) {
+  switch(
+    op,
+    `-` = -1 * vec_data(x), # Returns numeric
+    `+` = vec_data(x), # Returns numeric
+    stop_incompatible_op(op, x, y)
+  )
 }
 
 #' @export
 #' @method vec_arith.ps_trim numeric
 vec_arith.ps_trim.numeric <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.numeric ps_trim
 vec_arith.numeric.ps_trim <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trim integer
 vec_arith.ps_trim.integer <- function(op, x, y, ...) {
+  vec_arith_base(op, x, y)
+}
+
+#' @export
+#' @method vec_arith.ps_trim list
+vec_arith.ps_trim.list <- function(op, x, y, ...) {
   stop_incompatible_op(op, x, y)
 }
 
@@ -615,10 +632,10 @@ vec_cast.ps_trim.double <- function(x, to, ...) {
 }
 
 #' @export
-vec_ptype2.psw.ps_trim <- function(x, y, ...) character()
+vec_ptype2.psw.ps_trim <- function(x, y, ...) double()
 
 #' @export
-vec_ptype2.ps_trim.psw <- function(x, y, ...) character()
+vec_ptype2.ps_trim.psw <- function(x, y, ...) double()
 
 #' @export
 vec_cast.character.ps_trim <- function(x, to, ...) as.character(vec_data(x))
@@ -627,6 +644,11 @@ vec_cast.character.ps_trim <- function(x, to, ...) as.character(vec_data(x))
 vec_ptype2.ps_trim.integer <- function(x, y, ...) integer()
 #' @export
 vec_ptype2.integer.ps_trim <- function(x, y, ...) integer()
+
+#' @export
+vec_ptype2.ps_trim.ps_trunc <- function(x, y, ...) double()
+#' @export
+vec_ptype2.ps_trunc.ps_trim <- function(x, y, ...) double()
 
 #' @export
 vec_cast.integer.ps_trim <- function(x, to, ...) {
@@ -647,8 +669,81 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
 }
 
 #' @export
+vec_cast.ps_trim.ps_trunc <- function(x, to, ...) {
+  # Convert ps_trunc to ps_trim (no trimming, just convert)
+  new_trimmed_ps(
+    vec_data(x),
+    ps_trim_meta = list(
+      method = "from_trunc",
+      keep_idx = seq_along(x),
+      trimmed_idx = integer(0)
+    )
+  )
+}
+
+#' @export
+vec_cast.ps_trunc.ps_trim <- function(x, to, ...) {
+  # Convert ps_trim to ps_trunc (ignore NAs)
+  ps_trunc(vec_data(x), method = "ps", lower = 0, upper = 1)
+}
+
+#' @export
 vec_math.ps_trim <- function(.fn, .x, ...) {
   vec_math_base(.fn, vec_data(.x), ...)
+}
+
+#' @export
+Summary.ps_trim <- function(..., na.rm = FALSE) {
+  .fn <- .Generic
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call(.fn, c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+min.ps_trim <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("min", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+max.ps_trim <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("max", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+range.ps_trim <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("range", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+median.ps_trim <- function(x, na.rm = FALSE, ...) {
+  median(vec_data(x), na.rm = na.rm, ...)
+}
+
+#' @export
+vec_restore.ps_trim <- function(x, to, ...) {
+  new_trimmed_ps(x, ps_trim_meta = ps_trim_meta(to))
+}
+
+#' @export
+quantile.ps_trim <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
+  quantile(vec_data(x), probs = probs, na.rm = na.rm, ...)
+}
+
+#' @export
+anyDuplicated.ps_trim <- function(x, incomparables = FALSE, ...) {
+  anyDuplicated(vec_data(x), incomparables = incomparables, ...)
+}
+
+#' @export
+diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
+  diff(vec_data(x), lag = lag, differences = differences, ...)
 }
 
 #' Refit the Propensity Score Model on Retained Observations
