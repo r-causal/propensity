@@ -17,6 +17,7 @@ new_psw(
   stabilized = FALSE,
   trimmed = FALSE,
   truncated = FALSE,
+  calibrated = FALSE,
   ...
 )
 
@@ -53,9 +54,9 @@ estimand(wt) <- value
 
 \item{truncated}{Logical, whether these weights came from a truncated PS.}
 
-\item{...}{Additional attributes to track in the weights.}
-
 \item{calibrated}{Logical, whether these weights came from a calibrated PS.}
+
+\item{...}{Additional attributes to track in the weights.}
 
 \item{wt}{An object to check or convert.}
 

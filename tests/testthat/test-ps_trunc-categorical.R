@@ -376,7 +376,7 @@ test_that("categorical truncation preserves relative proportions", {
     byrow = TRUE
   )
   ps_matrix <- ps_matrix[rep(1:3, length.out = n), ]
-  
+
   exposure <- factor(rep(c("A", "B", "C"), length.out = n))
   colnames(ps_matrix) <- levels(exposure)
 

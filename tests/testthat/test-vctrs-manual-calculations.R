@@ -178,7 +178,11 @@ test_that("Manual weight calculations work with ps_trunc", {
 
   # ATM weights
   atm_weights <- pmin(as.numeric(ps_truncated), 1 - as.numeric(ps_truncated)) /
-    ifelse(exposure == 1, as.numeric(ps_truncated), 1 - as.numeric(ps_truncated))
+    ifelse(
+      exposure == 1,
+      as.numeric(ps_truncated),
+      1 - as.numeric(ps_truncated)
+    )
   expect_type(atm_weights, "double")
 
   # All weights should be finite

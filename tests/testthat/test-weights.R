@@ -722,8 +722,14 @@ test_that("entropy weighted estimates are reasonable", {
   weights <- wt_entropy(ps, .exposure = treatment, exposure_type = "binary")
 
   # Weighted means
-  mu1 <- weighted.mean(outcome[treatment == 1], as.numeric(weights[treatment == 1]))
-  mu0 <- weighted.mean(outcome[treatment == 0], as.numeric(weights[treatment == 0]))
+  mu1 <- weighted.mean(
+    outcome[treatment == 1],
+    as.numeric(weights[treatment == 1])
+  )
+  mu0 <- weighted.mean(
+    outcome[treatment == 0],
+    as.numeric(weights[treatment == 0])
+  )
   ate_est <- mu1 - mu0
 
   # Should be close to true value of 2

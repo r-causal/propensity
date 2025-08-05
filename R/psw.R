@@ -86,6 +86,7 @@ new_psw <- function(
   stabilized = FALSE,
   trimmed = FALSE,
   truncated = FALSE,
+  calibrated = FALSE,
   ...
 ) {
   vec_assert(x, ptype = double())
@@ -97,6 +98,7 @@ new_psw <- function(
     stabilized = stabilized,
     trimmed = trimmed,
     truncated = truncated,
+    calibrated = calibrated,
     ...,
     class = c("psw", "causal_wts"),
     inherit_base_type = TRUE
@@ -398,7 +400,8 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
     estimand = estimand(x),
     stabilized = is_stabilized(x),
     trimmed = is_ps_trimmed(x),
-    truncated = is_ps_truncated(x)
+    truncated = is_ps_truncated(x),
+    calibrated = is_ps_calibrated(x)
   )
 }
 
