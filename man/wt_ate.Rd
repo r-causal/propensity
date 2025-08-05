@@ -13,6 +13,9 @@
 \alias{wt_ato.data.frame}
 \alias{wt_entropy}
 \alias{wt_entropy.data.frame}
+\alias{wt_atc}
+\alias{wt_cens}
+\alias{wt_cens.data.frame}
 \title{Calculate Propensity Score Weights for Causal Inference}
 \usage{
 wt_ate(
@@ -138,6 +141,41 @@ wt_entropy(
   ...,
   .propensity_col = NULL
 )
+
+wt_atc(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical"),
+  .treated = NULL,
+  .untreated = NULL,
+  ...,
+  focal = NULL
+)
+
+wt_cens(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+)
+
+\method{wt_cens}{data.frame}(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...,
+  .propensity_col = NULL
+)
 }
 \arguments{
 \item{.propensity}{Either a numeric vector of predicted probabilities, a
@@ -201,10 +239,14 @@ various causal estimands:
 \item \strong{ATE} (Average Treatment Effect)
 \item \strong{ATT} (Average Treatment Effect on the Treated)
 \item \strong{ATU} (Average Treatment Effect on the Untreated, sometimes called
-the \strong{ATC}, where the "C" stands for "control")
+the \strong{ATC}, where the "C" stands for "control"). \code{wt_atc()} is provided
+as an alias for \code{wt_atu()}
 \item \strong{ATM} (Average Treatment Effect for the Evenly Matchable)
 \item \strong{ATO} (Average Treatment Effect for the Overlap population)
 \item \strong{Entropy} (Average Treatment Effect for the Entropy-weighted population)
+\item \strong{Censoring weights} can be calculated using \code{wt_cens()}, which uses
+the same formula as ATE weights but with estimand "uncensored". These
+are useful for handling censoring in survival analysis
 
 The propensity score can be provided as a numeric vector of predicted
 probabilities, as a \code{data.frame} where each column represents the

@@ -6,10 +6,14 @@
 #' - **ATE** (Average Treatment Effect)
 #' - **ATT** (Average Treatment Effect on the Treated)
 #' - **ATU** (Average Treatment Effect on the Untreated, sometimes called
-#'   the **ATC**, where the "C" stands for "control")
+#'   the **ATC**, where the "C" stands for "control"). `wt_atc()` is provided
+#'   as an alias for `wt_atu()`
 #' - **ATM** (Average Treatment Effect for the Evenly Matchable)
 #' - **ATO** (Average Treatment Effect for the Overlap population)
 #' - **Entropy** (Average Treatment Effect for the Entropy-weighted population)
+#' - **Censoring weights** can be calculated using `wt_cens()`, which uses
+#'   the same formula as ATE weights but with estimand "uncensored". These
+#'   are useful for handling censoring in survival analysis
 #'
 #'   The propensity score can be provided as a numeric vector of predicted
 #'   probabilities, as a `data.frame` where each column represents the
@@ -1193,6 +1197,147 @@ entropy_binary <- function(
 }
 
 # --------------------------------------------------------------------
+#  wt_atc() - alias for wt_atu()
+# --------------------------------------------------------------------
+
+#' @export
+#' @rdname wt_ate
+wt_atc <- wt_atu
+
+# --------------------------------------------------------------------
+#  wt_cens() - censoring weights
+# --------------------------------------------------------------------
+
+#' @export
+#' @rdname wt_ate
+wt_cens <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+) {
+  UseMethod("wt_cens")
+}
+
+#' @export
+wt_cens.default <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+) {
+  abort_no_method(.propensity)
+}
+
+#' @export
+wt_cens.numeric <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+) {
+  # Get weights using ATE formula
+  wts <- wt_ate.numeric(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    .sigma = .sigma,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    ...
+  )
+
+  # Update estimand to "uncensored"
+  estimand(wts) <- "uncensored"
+  wts
+}
+
+#' @export
+#' @rdname wt_ate
+wt_cens.data.frame <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...,
+  .propensity_col = NULL
+) {
+  col_quo <- rlang::enquo(.propensity_col)
+  handle_data_frame_weight_calculation(
+    weight_fn_numeric = wt_cens.numeric,
+    .propensity = .propensity,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    .propensity_col_quo = col_quo,
+    .sigma = .sigma,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    ...
+  )
+}
+
+#' @export
+wt_cens.glm <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+) {
+  # Extract fitted values (propensity scores) from GLM
+  ps_vec <- extract_propensity_from_glm(.propensity)
+
+  # For continuous exposures, extract sigma if not provided
+  if (
+    is.null(.sigma) &&
+      match_exposure_type(exposure_type, .exposure) == "continuous"
+  ) {
+    .sigma <- stats::influence(.propensity)$sigma
+  }
+
+  # Call the numeric method
+  wt_cens.numeric(
+    .propensity = ps_vec,
+    .exposure = .exposure,
+    .sigma = .sigma,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    ...
+  )
+}
+
+# --------------------------------------------------------------------
 #  methods for `ps_trim()`
 # --------------------------------------------------------------------
 
@@ -1456,6 +1601,66 @@ wt_entropy.ps_trunc <- function(
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+wt_atc.ps_trim <- wt_atu.ps_trim
+
+#' @export
+wt_atc.ps_trunc <- wt_atu.ps_trunc
+
+#' @export
+wt_cens.ps_trim <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_cens.numeric,
+    modification_type = "trim",
+    .sigma = .sigma,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    ...
+  )
+}
+
+#' @export
+wt_cens.ps_trunc <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .treated = NULL,
+  .untreated = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_cens.numeric,
+    modification_type = "trunc",
+    .sigma = .sigma,
+    exposure_type = exposure_type,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
     ...
   )
 }
