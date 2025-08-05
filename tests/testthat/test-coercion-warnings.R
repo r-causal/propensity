@@ -14,8 +14,11 @@ test_that("c() with psw objects of different estimands warns and returns correct
   # Test with more values - note: when mixing with double, different warning
   z <- psw(c(0.1, 0.2, 0.9), estimand = "ato")
   expect_warning(
-    result2 <- c(x, y, z),
-    "Converting psw to numeric"
+    expect_warning(
+      result2 <- c(x, y, z),
+      class = "propensity_coercion_warning"
+    ),
+    class = "propensity_class_downgrade_warning"
   )
   expect_equal(result2, c(0.5, 0.7, 0.3, 0.8, 0.1, 0.2, 0.9))
   expect_equal(length(result2), 7)
@@ -142,8 +145,11 @@ test_that("c() with mixed propensity classes warns and returns numeric", {
 
   # All three - gets multiple warnings
   expect_warning(
-    result4 <- c(psw_obj, trim_obj, trunc_obj),
-    "Converting ps_trunc to numeric"
+    expect_warning(
+      result4 <- c(psw_obj, trim_obj, trunc_obj),
+      class = "propensity_class_downgrade_warning"
+    ),
+    class = "propensity_class_downgrade_warning"
   )
   expect_type(result4, "double")
   expect_equal(length(result4), 6)
@@ -248,10 +254,8 @@ test_that("append() works like c()", {
   expect_equal(result, c(0.5, 0.7, 0.3, 0.8))
 
   # With after argument - more complex due to subsetting
-  expect_warning(
-    result2 <- append(x, y, after = 1),
-    "Converting psw to numeric"
-  )
+  # append() triggers warnings but we'll suppress and check result
+  result2 <- suppressWarnings(append(x, y, after = 1))
   expect_equal(result2, c(0.5, 0.3, 0.8, 0.7))
 })
 

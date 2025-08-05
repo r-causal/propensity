@@ -69,6 +69,30 @@ For categorical exposures:
 }
 
 This approach is often called \emph{winsorizing}.
+
+\strong{Arithmetic behavior}: Like \code{ps_trim}, arithmetic operations on \code{ps_trunc}
+objects return numeric vectors. The reasoning is the same - transformed
+propensity scores (e.g., weights) are no longer propensity scores.
+
+\strong{No NA values}: Unlike \code{ps_trim}, truncation doesn't create \code{NA} values.
+Out-of-range values are set to the boundaries, so all values remain finite
+and valid for calculations.
+
+\strong{Metadata tracking}: The \code{truncated_idx} tracks which positions had their
+values modified (winsorized to boundaries):
+\itemize{
+\item Subsetting with \code{[} updates indices to new positions
+\item \code{sort()} reorders data and updates indices accordingly
+\item Operations preserve finite values (no \code{NA} handling needed)
+}
+
+\strong{Boundary detection}: Values exactly at the boundaries (after truncation)
+may indicate truncation, but aren't necessarily truncated - they could have
+been at the boundary originally.
+
+\strong{Combining behavior}: When combining \code{ps_trunc} objects with \code{c()},
+truncation parameters must match. Mismatched parameters trigger a warning
+and return a numeric vector.
 }
 \examples{
 set.seed(2)

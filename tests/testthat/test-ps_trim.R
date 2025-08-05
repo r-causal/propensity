@@ -435,7 +435,10 @@ test_that("Combining ps_trim with double => double", {
   x <- new_trimmed_ps(c(0.2, 0.5), ps_trim_meta = list())
 
   # vctrs logic => ptype2 => double
-  combined <- vec_c(x, 0.7)
+  expect_warning(
+    combined <- vec_c(x, 0.7),
+    class = "propensity_class_downgrade_warning"
+  )
   expect_type(combined, "double")
   expect_false(inherits(combined, "ps_trim"))
 })

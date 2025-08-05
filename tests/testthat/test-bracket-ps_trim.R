@@ -33,7 +33,7 @@ test_that("[.ps_trim handles logical indices", {
   meta <- ps_trim_meta(ps_trimmed)
 
   # Logical subsetting
-  keep_mask <- ps_trimmed > 0.5 | is.na(ps_trimmed)
+  keep_mask <- as.numeric(ps_trimmed) > 0.5 | is.na(ps_trimmed)
   subset <- ps_trimmed[keep_mask]
   meta_subset <- ps_trim_meta(subset)
 
@@ -87,6 +87,8 @@ test_that("[.ps_trim_matrix updates indices correctly", {
   # Create matrix
   ps_mat <- matrix(runif(n * k), ncol = k)
   ps_mat <- ps_mat / rowSums(ps_mat)
+  # Add column names to avoid warnings
+  colnames(ps_mat) <- LETTERS[1:k]
 
   # Create exposure
   exposure <- factor(sample(LETTERS[1:k], n, replace = TRUE))

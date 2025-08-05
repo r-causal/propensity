@@ -67,6 +67,28 @@ propensity score falls below the threshold delta (specified via \code{lower}).
 \item \strong{Optimal trimming} (\code{method = "optimal"}): Uses the Yang et al. (2016)
 approach for multi-category treatments.
 }
+
+\strong{Arithmetic behavior}: Arithmetic operations on \code{ps_trim} objects return
+numeric vectors, not \code{ps_trim} objects. This is intentional - once you
+transform propensity scores (e.g., \code{1/ps} for weights), the result is no
+longer a propensity score.
+
+\strong{NA handling}: Trimmed values are set to \code{NA}. Operations that don't handle
+\code{NA} values will propagate them (e.g., \code{sum()} returns \code{NA} unless
+\code{na.rm = TRUE}).
+
+\strong{Metadata tracking}: The \code{trimmed_idx} and \code{keep_idx} are updated when
+subsetting or reordering:
+\itemize{
+\item Subsetting with \code{[} updates indices to new positions
+\item \code{sort()} reorders data and updates indices accordingly
+\item \code{unique()} may change lengths but preserves the class
+\item \code{na.omit()} removes trimmed values and updates indices
+}
+
+\strong{Combining behavior}: When combining \code{ps_trim} objects with \code{c()}, metadata
+must match (same trimming parameters). Mismatched metadata triggers a warning
+and returns a numeric vector.
 }
 \examples{
 

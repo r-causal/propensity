@@ -32,7 +32,7 @@ test_that("returns a psw object of correct length and range", {
 
   expect_s3_class(out, "psw")
   expect_length(out, 100)
-  expect_true(all(out >= 0 & out <= 1))
+  expect_true(all(as.numeric(out) >= 0 & as.numeric(out) <= 1))
 })
 
 test_that("constant ps yields calibrated = observed prevalence", {
@@ -79,7 +79,9 @@ test_that("calibration changes the distribution", {
   expect_false(identical(as.numeric(obs_ps), as.numeric(calibrated_ps)))
 
   # Check that all values are valid probabilities
-  expect_true(all(calibrated_ps >= 0 & calibrated_ps <= 1))
+  expect_true(all(
+    as.numeric(calibrated_ps) >= 0 & as.numeric(calibrated_ps) <= 1
+  ))
 
   # In this specific case with systematic bias, check if calibration helps
   # Calculate mean calibration error
@@ -112,7 +114,7 @@ test_that("handles edge cases with extreme propensity scores", {
   treat <- c(0, 0, 0, 1, 1, 1, 1)
 
   expect_no_error(suppressWarnings(calibrated <- ps_calibrate(ps, treat)))
-  expect_true(all(calibrated >= 0 & calibrated <= 1))
+  expect_true(all(as.numeric(calibrated) >= 0 & as.numeric(calibrated) <= 1))
 })
 
 test_that("works with different treatment codings", {
@@ -210,9 +212,9 @@ test_that("automatic treatment detection works with binary vectors", {
   calib_neg <- ps_calibrate(ps, treat_neg, .treated = 1, .untreated = -1)
 
   # All should produce valid results
-  expect_true(all(calib_01 >= 0 & calib_01 <= 1))
-  expect_true(all(calib_12 >= 0 & calib_12 <= 1))
-  expect_true(all(calib_neg >= 0 & calib_neg <= 1))
+  expect_true(all(as.numeric(calib_01) >= 0 & as.numeric(calib_01) <= 1))
+  expect_true(all(as.numeric(calib_12) >= 0 & as.numeric(calib_12) <= 1))
+  expect_true(all(as.numeric(calib_neg) >= 0 & as.numeric(calib_neg) <= 1))
 })
 
 test_that("error handling for ambiguous treatment coding", {
@@ -287,7 +289,9 @@ test_that("isotonic regression calibration works", {
 
   expect_s3_class(calibrated_iso, "psw")
   expect_length(calibrated_iso, 100)
-  expect_true(all(calibrated_iso >= 0 & calibrated_iso <= 1))
+  expect_true(all(
+    as.numeric(calibrated_iso) >= 0 & as.numeric(calibrated_iso) <= 1
+  ))
   expect_true(is_ps_calibrated(calibrated_iso))
 })
 
@@ -396,7 +400,7 @@ test_that("isotonic regression handles various cases like WeightIt", {
   expect_no_error(
     our_extreme <- ps_calibrate(ps_extreme, treat_extreme, method = "isoreg")
   )
-  expect_true(all(our_extreme >= 0 & our_extreme <= 1))
+  expect_true(all(as.numeric(our_extreme) >= 0 & as.numeric(our_extreme) <= 1))
   expect_true(all(diff(as.numeric(our_extreme)) >= -1e-10)) # Monotonic
 })
 
@@ -416,8 +420,12 @@ test_that("smooth parameter works correctly for logistic calibration", {
   expect_s3_class(calib_simple, "psw")
 
   # Both should be in valid range
-  expect_true(all(calib_smooth >= 0 & calib_smooth <= 1))
-  expect_true(all(calib_simple >= 0 & calib_simple <= 1))
+  expect_true(all(
+    as.numeric(calib_smooth) >= 0 & as.numeric(calib_smooth) <= 1
+  ))
+  expect_true(all(
+    as.numeric(calib_simple) >= 0 & as.numeric(calib_simple) <= 1
+  ))
 
   # They should generally produce different results
   expect_false(identical(as.numeric(calib_smooth), as.numeric(calib_simple)))
@@ -554,7 +562,7 @@ test_that("ps_calibrate produces similar results to probably package", {
   prob_calib <- df_cal$.pred_1
 
   # Both should be in valid range
-  expect_true(all(our_calib >= 0 & our_calib <= 1))
+  expect_true(all(as.numeric(our_calib) >= 0 & as.numeric(our_calib) <= 1))
   expect_true(all(prob_calib >= 0 & prob_calib <= 1))
 
   # Helper function to calculate calibration error using binned approach

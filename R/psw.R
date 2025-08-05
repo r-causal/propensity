@@ -25,6 +25,27 @@
 #' - `as_psw()`: A `psw` object.
 #' - `estimand()`: The `estimand` attribute of a `psw` object.
 #' - `is_stabilized()`: The `stabilized` attribute of a `psw` object.
+#'
+#' @details
+#' The `psw` class is a vctrs-based S3 class that represents propensity score
+#' weights. It extends numeric vectors with additional metadata tracking the
+#' estimand type, stabilization status, and source transformations.
+#'
+#' **Arithmetic behavior**: Unlike `ps_trim` and `ps_trunc` objects, arithmetic
+#' operations on `psw` objects preserve the class and attributes. This allows
+#' weight manipulations like normalization (`weights / sum(weights)`) while
+#' maintaining metadata.
+#'
+#' **Combining behavior**: When combining `psw` objects with `c()`, the class
+#' is preserved only if all metadata matches. Mismatched metadata triggers a
+#' warning and returns a numeric vector.
+#'
+#' **Base R compatibility**: Most base R operations work seamlessly:
+#' - Subsetting with `[` preserves class and attributes
+#' - Summary functions (`sum()`, `mean()`, etc.) return numeric values
+#' - Comparison operators return logical vectors
+#' - Works in data frames and with tidyverse functions
+#'
 #' @examples
 #' psw_weights <- new_psw(c(0.1, 0.2, 0.3), estimand = "ate")
 #' is_psw(psw_weights)

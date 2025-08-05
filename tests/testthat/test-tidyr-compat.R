@@ -39,13 +39,16 @@ test_that("tidyr::pivot_longer works with mixed propensity classes", {
   )
 
   expect_warning(
-    result <- tidyr::pivot_longer(
-      df,
-      cols = c(psw_col, trim_col, trunc_col),
-      names_to = "type",
-      values_to = "value"
+    expect_warning(
+      result <- tidyr::pivot_longer(
+        df,
+        cols = c(psw_col, trim_col, trunc_col),
+        names_to = "type",
+        values_to = "value"
+      ),
+      class = "propensity_class_downgrade_warning"
     ),
-    "Converting ps_trunc to numeric"
+    class = "propensity_class_downgrade_warning"
   )
 
   expect_equal(nrow(result), 12)

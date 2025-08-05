@@ -33,6 +33,28 @@
 #'
 #' This approach is often called *winsorizing*.
 #'
+#' **Arithmetic behavior**: Like `ps_trim`, arithmetic operations on `ps_trunc`
+#' objects return numeric vectors. The reasoning is the same - transformed
+#' propensity scores (e.g., weights) are no longer propensity scores.
+#'
+#' **No NA values**: Unlike `ps_trim`, truncation doesn't create `NA` values.
+#' Out-of-range values are set to the boundaries, so all values remain finite
+#' and valid for calculations.
+#'
+#' **Metadata tracking**: The `truncated_idx` tracks which positions had their
+#' values modified (winsorized to boundaries):
+#' - Subsetting with `[` updates indices to new positions
+#' - `sort()` reorders data and updates indices accordingly
+#' - Operations preserve finite values (no `NA` handling needed)
+#'
+#' **Boundary detection**: Values exactly at the boundaries (after truncation)
+#' may indicate truncation, but aren't necessarily truncated - they could have
+#' been at the boundary originally.
+#'
+#' **Combining behavior**: When combining `ps_trunc` objects with `c()`,
+#' truncation parameters must match. Mismatched parameters trigger a warning
+#' and return a numeric vector.
+#'
 #' @return A **`ps_trunc`** object (numeric vector or matrix). It has an attribute
 #'   `ps_trunc_meta` storing fields like `method`, `lower_bound`, and
 #'   `upper_bound`.
@@ -763,15 +785,6 @@ quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
   quantile(vec_data(x), probs = probs, na.rm = na.rm, ...)
 }
 
-#' @export
-vec_restore.ps_trunc <- function(x, to, ...) {
-  # Extract numeric data if needed
-  if (inherits(x, "ps_trunc")) {
-    x <- vec_data(x)
-  }
-
-  new_ps_trunc(x, meta = ps_trunc_meta(to))
-}
 
 # Note: We cannot implement custom vec_c for ps_trunc
 # vctrs handles combination internally through vec_ptype2 and vec_cast
@@ -788,6 +801,13 @@ vec_restore.ps_trunc <- function(x, to, ...) {
   meta <- ps_trunc_meta(x)
 
   # Convert i to positive integer indices if needed
+  # For logical indices, only allow length 1 or length n
+  if (is.logical(i) && length(i) != 1 && length(i) != length(x)) {
+    abort(
+      "Logical subscript `i` must be size 1 or {length(x)}, not {length(i)}.",
+      error_class = "propensity_length_error"
+    )
+  }
   i <- vec_as_location(i, n = length(x))
 
   # Get the subset of data using NextMethod to handle vctrs subsetting
@@ -805,6 +825,42 @@ vec_restore.ps_trunc <- function(x, to, ...) {
   attr(result, "ps_trunc_meta") <- new_meta
 
   result
+}
+
+#' @export
+summary.ps_trunc <- function(object, ...) {
+  summary(vec_data(object), ...)
+}
+
+#' @export
+sort.ps_trunc <- function(x, decreasing = FALSE, na.last = NA, ...) {
+  # Get original metadata
+  meta <- ps_trunc_meta(x)
+
+  # Get numeric data
+  x_data <- vec_data(x)
+
+  # Create a tracking vector to know which values were truncated
+  # TRUE = truncated, FALSE = not truncated
+  was_truncated <- logical(length(x))
+  was_truncated[meta$truncated_idx] <- TRUE
+
+  # Get the order
+  ord <- order(x_data, na.last = na.last, decreasing = decreasing, ...)
+
+  # Apply the ordering to both data and tracking vector
+  sorted_data <- x_data[ord]
+  sorted_was_truncated <- was_truncated[ord]
+
+  # Find new positions of truncated values
+  new_truncated_idx <- which(sorted_was_truncated)
+
+  # Create new metadata with updated indices
+  new_meta <- meta
+  new_meta$truncated_idx <- new_truncated_idx
+
+  # Create the sorted ps_trunc object
+  new_ps_trunc(sorted_data, new_meta)
 }
 
 #' @export

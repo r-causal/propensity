@@ -44,9 +44,9 @@ test_that("All arithmetic operations work with ps_trim", {
   expect_type(tan(ps_trimmed), "double")
 
   # Logical operations
-  expect_type(ps_trimmed > 0.5, "logical")
-  expect_type(ps_trimmed <= 0.3, "logical")
-  expect_type(ps_trimmed == 0.5, "logical")
+  expect_type(as.numeric(ps_trimmed) > 0.5, "logical")
+  expect_type(as.numeric(ps_trimmed) <= 0.3, "logical")
+  expect_type(as.numeric(ps_trimmed) == 0.5, "logical")
 })
 
 test_that("Manual weight calculations work with ps_trim", {
@@ -73,8 +73,8 @@ test_that("Manual weight calculations work with ps_trim", {
   expect_type(ato_weights, "double")
 
   # ATM weights
-  atm_weights <- pmin(ps_trimmed, 1 - ps_trimmed) /
-    ifelse(exposure == 1, ps_trimmed, 1 - ps_trimmed)
+  atm_weights <- pmin(as.numeric(ps_trimmed), 1 - as.numeric(ps_trimmed)) /
+    ifelse(exposure == 1, as.numeric(ps_trimmed), 1 - as.numeric(ps_trimmed))
   expect_type(atm_weights, "double")
 
   # Entropy weights
@@ -177,8 +177,8 @@ test_that("Manual weight calculations work with ps_trunc", {
   expect_true(all(ato_weights <= 0.25))
 
   # ATM weights
-  atm_weights <- pmin(ps_truncated, 1 - ps_truncated) /
-    ifelse(exposure == 1, ps_truncated, 1 - ps_truncated)
+  atm_weights <- pmin(as.numeric(ps_truncated), 1 - as.numeric(ps_truncated)) /
+    ifelse(exposure == 1, as.numeric(ps_truncated), 1 - as.numeric(ps_truncated))
   expect_type(atm_weights, "double")
 
   # All weights should be finite
@@ -264,7 +264,7 @@ test_that("psw weight manipulations work correctly", {
 
   # Trimming weights by value
   trimmed_weights <- weights_obj
-  trimmed_weights[weights_obj > 10] <- 10 # Cap at 10
+  trimmed_weights[as.numeric(weights_obj) > 10] <- 10 # Cap at 10
   expect_s3_class(trimmed_weights, "psw")
 
   # Normalizing weights
@@ -408,7 +408,7 @@ test_that("Subsetting preserves class and attributes for all classes", {
   ps_trim_obj <- ps_trim(runif(50, 0.1, 0.9), method = "adaptive")
   subset1 <- ps_trim_obj[1:25]
   subset2 <- ps_trim_obj[seq(1, 50, by = 2)] # Every other element
-  subset3 <- ps_trim_obj[ps_trim_obj > 0.5]
+  subset3 <- ps_trim_obj[as.numeric(ps_trim_obj) > 0.5]
 
   expect_s3_class(subset1, "ps_trim")
   expect_s3_class(subset2, "ps_trim")
@@ -424,7 +424,7 @@ test_that("Subsetting preserves class and attributes for all classes", {
   )
   subset1 <- ps_trunc_obj[1:25]
   subset2 <- ps_trunc_obj[seq(1, 50, by = 2)]
-  subset3 <- ps_trunc_obj[ps_trunc_obj > 0.5]
+  subset3 <- ps_trunc_obj[as.numeric(ps_trunc_obj) > 0.5]
 
   expect_s3_class(subset1, "ps_trunc")
   expect_s3_class(subset2, "ps_trunc")
@@ -440,7 +440,7 @@ test_that("Subsetting preserves class and attributes for all classes", {
   )
   subset1 <- psw_obj[1:25]
   subset2 <- psw_obj[seq(1, 50, by = 2)]
-  subset3 <- psw_obj[psw_obj > 1]
+  subset3 <- psw_obj[as.numeric(psw_obj) > 1]
 
   expect_s3_class(subset1, "psw")
   expect_s3_class(subset2, "psw")

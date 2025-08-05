@@ -72,7 +72,10 @@ ps_calibrate <- function(
     )
   }
 
-  if (any(ps < 0 | ps > 1, na.rm = TRUE)) {
+  # Extract numeric values for comparison if ps is a psw object
+  ps_numeric <- if (is_psw(ps)) as.numeric(ps) else ps
+
+  if (any(ps_numeric < 0 | ps_numeric > 1, na.rm = TRUE)) {
     abort(
       "`ps` values must be between 0 and 1.",
       error_class = "propensity_range_error"

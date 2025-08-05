@@ -34,6 +34,26 @@
 #' - **Optimal trimming** (`method = "optimal"`): Uses the Yang et al. (2016)
 #'   approach for multi-category treatments.
 #'
+#' **Arithmetic behavior**: Arithmetic operations on `ps_trim` objects return
+#' numeric vectors, not `ps_trim` objects. This is intentional - once you
+#' transform propensity scores (e.g., `1/ps` for weights), the result is no
+#' longer a propensity score.
+#'
+#' **NA handling**: Trimmed values are set to `NA`. Operations that don't handle
+#' `NA` values will propagate them (e.g., `sum()` returns `NA` unless
+#' `na.rm = TRUE`).
+#'
+#' **Metadata tracking**: The `trimmed_idx` and `keep_idx` are updated when
+#' subsetting or reordering:
+#' - Subsetting with `[` updates indices to new positions
+#' - `sort()` reorders data and updates indices accordingly
+#' - `unique()` may change lengths but preserves the class
+#' - `na.omit()` removes trimmed values and updates indices
+#'
+#' **Combining behavior**: When combining `ps_trim` objects with `c()`, metadata
+#' must match (same trimming parameters). Mismatched metadata triggers a warning
+#' and returns a numeric vector.
+#'
 #' @return A `ps_trim` object (numeric vector or matrix). The attribute
 #' `ps_trim_meta` stores metadata.
 #'
@@ -889,18 +909,6 @@ median.ps_trim <- function(x, na.rm = FALSE, ...) {
   median(vec_data(x), na.rm = na.rm, ...)
 }
 
-#' @export
-vec_restore.ps_trim <- function(x, to, ...) {
-  # Extract numeric data if needed
-  if (inherits(x, "ps_trim")) {
-    x <- vec_data(x)
-  }
-
-  new_trimmed_ps(x, ps_trim_meta = ps_trim_meta(to))
-}
-
-# Note: indices are not preserved when combining ps_trim objects
-# This is a limitation of how vctrs handles attribute preservation
 
 #' @export
 `[.ps_trim` <- function(x, i, ...) {
@@ -913,6 +921,13 @@ vec_restore.ps_trim <- function(x, to, ...) {
   meta <- ps_trim_meta(x)
 
   # Convert i to positive integer indices if needed
+  # For logical indices, only allow length 1 or length n
+  if (is.logical(i) && length(i) != 1 && length(i) != length(x)) {
+    abort(
+      "Logical subscript `i` must be size 1 or {length(x)}, not {length(i)}.",
+      error_class = "propensity_length_error"
+    )
+  }
   i <- vec_as_location(i, n = length(x))
 
   # Get the subset of data using NextMethod to handle vctrs subsetting
@@ -932,6 +947,79 @@ vec_restore.ps_trim <- function(x, to, ...) {
 
   # Update the attributes on the result
   attr(result, "ps_trim_meta") <- new_meta
+
+  result
+}
+
+#' @export
+sort.ps_trim <- function(x, decreasing = FALSE, na.last = NA, ...) {
+  # Get original metadata
+  meta <- ps_trim_meta(x)
+
+  # Get numeric data
+  x_data <- vec_data(x)
+
+  # Create a tracking vector to know which NAs are from trimming
+  # TRUE = trimmed, FALSE = not trimmed (includes original NAs)
+  is_trimmed <- logical(length(x))
+  is_trimmed[meta$trimmed_idx] <- TRUE
+
+  # Get the order
+  ord <- order(x_data, na.last = na.last, decreasing = decreasing, ...)
+
+  # Apply the ordering to both data and tracking vector
+  sorted_data <- x_data[ord]
+  sorted_is_trimmed <- is_trimmed[ord]
+
+  # Find new positions of trimmed values
+  new_trimmed_idx <- which(sorted_is_trimmed)
+  new_keep_idx <- which(!sorted_is_trimmed & !is.na(sorted_data))
+
+  # Create new metadata with updated indices
+  new_meta <- meta
+  new_meta$trimmed_idx <- new_trimmed_idx
+  new_meta$keep_idx <- new_keep_idx
+
+  # Create the sorted ps_trim object
+  new_trimmed_ps(sorted_data, ps_trim_meta = new_meta)
+}
+
+#' @export
+summary.ps_trim <- function(object, ...) {
+  summary(vec_data(object), ...)
+}
+
+#' @importFrom stats na.omit
+#' @export
+na.omit.ps_trim <- function(object, ...) {
+  # Get metadata
+  meta <- ps_trim_meta(object)
+
+  # Get non-NA values and their positions
+  not_na <- !is.na(object)
+  kept_positions <- which(not_na)
+
+  # Get the clean data
+  clean_data <- vec_data(object)[not_na]
+
+  # Update metadata - only keep indices that are in kept_positions
+  new_trimmed_idx <- match(meta$trimmed_idx, kept_positions)
+  new_trimmed_idx <- new_trimmed_idx[!is.na(new_trimmed_idx)]
+
+  new_keep_idx <- match(meta$keep_idx, kept_positions)
+  new_keep_idx <- new_keep_idx[!is.na(new_keep_idx)]
+
+  # Create new metadata
+  new_meta <- meta
+  new_meta$trimmed_idx <- new_trimmed_idx
+  new_meta$keep_idx <- new_keep_idx
+
+  # Create the result with na.action attribute
+  result <- new_trimmed_ps(clean_data, ps_trim_meta = new_meta)
+
+  # Add na.action attribute as base na.omit does
+  attr(result, "na.action") <- which(!not_na)
+  class(attr(result, "na.action")) <- "omit"
 
   result
 }

@@ -91,6 +91,7 @@ test_that("ps_trunc validates delta < 1/k", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   # delta >= 1/3 should error
   expect_error(
@@ -104,6 +105,7 @@ test_that("ps_trunc errors for unsupported methods with categorical", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   # Only cr should error - pctl is now supported
   expect_error(
@@ -116,6 +118,7 @@ test_that("ps_trunc requires exposure for categorical", {
   n <- 20
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- c("A", "B", "C")
 
   expect_error(
     ps_trunc(ps_matrix, method = "ps"),
@@ -128,6 +131,7 @@ test_that("is_ps_truncated works for matrix objects", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3, 0.01, 0.9), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   expect_false(is_ps_truncated(ps_matrix))
 
@@ -145,6 +149,7 @@ test_that("is_unit_truncated works for matrix objects", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3, 0.01, 0.9), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   truncated <- ps_trunc(
     ps_matrix,
@@ -234,6 +239,7 @@ test_that("ps_trunc.ps_trunc warns about already truncated scores", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3, 0.01, 0.9), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   truncated_once <- ps_trunc(
     ps_matrix,
@@ -287,6 +293,7 @@ test_that("ps_trunc matches PSweight truncation behavior for entropy weights", {
   )
   # Normalize to ensure rows sum to 1
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- c("A", "B", "C")
 
   exposure <- factor(c(rep("A", 30), rep("B", 30), rep("C", 40)))
 
@@ -369,8 +376,9 @@ test_that("categorical truncation preserves relative proportions", {
     byrow = TRUE
   )
   ps_matrix <- ps_matrix[rep(1:3, length.out = n), ]
-
+  
   exposure <- factor(rep(c("A", "B", "C"), length.out = n))
+  colnames(ps_matrix) <- levels(exposure)
 
   truncated <- ps_trunc(
     ps_matrix,
@@ -385,7 +393,7 @@ test_that("categorical truncation preserves relative proportions", {
   if (length(row1_idx) > 0) {
     original_ratio <- ps_matrix[row1_idx[1], 2] / ps_matrix[row1_idx[1], 3]
     new_ratio <- truncated[row1_idx[1], 2] / truncated[row1_idx[1], 3]
-    expect_equal(new_ratio, original_ratio, tolerance = 1e-10)
+    expect_equal(unname(new_ratio), unname(original_ratio), tolerance = 1e-10)
   }
 })
 

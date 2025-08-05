@@ -32,7 +32,7 @@ test_that("[.ps_trunc handles logical indices", {
   meta <- ps_trunc_meta(ps_truncated)
 
   # Logical subsetting
-  keep_mask <- ps_truncated > 0.5
+  keep_mask <- as.numeric(ps_truncated) > 0.5
   subset <- ps_truncated[keep_mask]
   meta_subset <- ps_trunc_meta(subset)
 
@@ -85,6 +85,8 @@ test_that("[.ps_trunc_matrix updates indices correctly", {
   # Create matrix with some extreme values
   ps_mat <- matrix(runif(n * k, 0.001, 0.999), ncol = k)
   ps_mat <- ps_mat / rowSums(ps_mat)
+  # Add column names to avoid warnings
+  colnames(ps_mat) <- LETTERS[1:k]
 
   # Create exposure
   exposure <- factor(sample(LETTERS[1:k], n, replace = TRUE))
@@ -154,13 +156,13 @@ test_that("subsetting maintains bounds after subsetting", {
   ps_truncated <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
 
   # Check that all values are within bounds
-  expect_true(all(ps_truncated >= 0.2))
-  expect_true(all(ps_truncated <= 0.8))
+  expect_true(all(as.numeric(ps_truncated) >= 0.2))
+  expect_true(all(as.numeric(ps_truncated) <= 0.8))
 
   # Subset and verify bounds are still respected
   subset <- ps_truncated[5:15]
-  expect_true(all(subset >= 0.2))
-  expect_true(all(subset <= 0.8))
+  expect_true(all(as.numeric(subset) >= 0.2))
+  expect_true(all(as.numeric(subset) <= 0.8))
 
   # Metadata should preserve bound information
   meta_sub <- ps_trunc_meta(subset)

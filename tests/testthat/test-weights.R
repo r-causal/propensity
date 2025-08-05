@@ -518,13 +518,15 @@ test_that("entropy weights have expected properties", {
   weights <- wt_entropy(ps, .exposure = treatment, exposure_type = "binary")
 
   # Entropy weights should be positive and finite
-  expect_true(all(weights > 0))
-  expect_true(all(is.finite(weights)))
+  expect_true(all(as.numeric(weights) > 0))
+  expect_true(all(is.finite(as.numeric(weights))))
 
   # Weights at e=0.5 should be around log(2)/0.5 ≈ 1.386
   ps_near_half <- abs(ps - 0.5) < 0.01
   if (any(ps_near_half)) {
-    expect_true(all(abs(weights[ps_near_half] - log(2) / 0.5) < 0.1))
+    expect_true(all(
+      abs(as.numeric(weights[ps_near_half]) - log(2) / 0.5) < 0.1
+    ))
   }
 })
 
@@ -541,8 +543,8 @@ test_that("entropy weights handle extreme propensity scores", {
     )
   )
 
-  expect_true(all(is.finite(weights_extreme)))
-  expect_true(all(weights_extreme > 0))
+  expect_true(all(is.finite(as.numeric(weights_extreme))))
+  expect_true(all(as.numeric(weights_extreme) > 0))
 
   # Extreme weights can be large but should be finite
   # Theoretical upper bound for entropy weights based on extreme propensity scores
@@ -691,11 +693,11 @@ test_that("entropy weights give same treatment effect estimates as PSweight", {
   # Calculate weighted means
   mu1 <- weighted.mean(
     PSweight::psdata_cl$Y[PSweight::psdata_cl$trt == 1],
-    our_weights[PSweight::psdata_cl$trt == 1]
+    as.numeric(our_weights[PSweight::psdata_cl$trt == 1])
   )
   mu0 <- weighted.mean(
     PSweight::psdata_cl$Y[PSweight::psdata_cl$trt == 0],
-    our_weights[PSweight::psdata_cl$trt == 0]
+    as.numeric(our_weights[PSweight::psdata_cl$trt == 0])
   )
   our_ate <- mu1 - mu0
 
@@ -720,8 +722,8 @@ test_that("entropy weighted estimates are reasonable", {
   weights <- wt_entropy(ps, .exposure = treatment, exposure_type = "binary")
 
   # Weighted means
-  mu1 <- weighted.mean(outcome[treatment == 1], weights[treatment == 1])
-  mu0 <- weighted.mean(outcome[treatment == 0], weights[treatment == 0])
+  mu1 <- weighted.mean(outcome[treatment == 1], as.numeric(weights[treatment == 1]))
+  mu0 <- weighted.mean(outcome[treatment == 0], as.numeric(weights[treatment == 0]))
   ate_est <- mu1 - mu0
 
   # Should be close to true value of 2
@@ -995,8 +997,8 @@ test_that("GLM methods handle continuous exposures", {
   expect_true(is_stabilized(weights_ate))
 
   # Check that weights are reasonable
-  expect_true(all(is.finite(weights_ate)))
-  expect_true(all(weights_ate > 0))
+  expect_true(all(is.finite(as.numeric(weights_ate))))
+  expect_true(all(as.numeric(weights_ate) > 0))
 })
 
 test_that("GLM methods error on non-GLM objects", {
@@ -1023,8 +1025,8 @@ test_that("wt_* functions handle edge case propensity scores", {
   for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
     weights <- fn(ps_boundary, exposure_boundary, exposure_type = "binary")
     expect_s3_class(weights, "psw")
-    expect_true(all(is.finite(weights)))
-    expect_true(all(weights > 0))
+    expect_true(all(is.finite(as.numeric(weights))))
+    expect_true(all(as.numeric(weights) > 0))
   }
 
   # Edge case: all propensity scores identical
@@ -1094,8 +1096,8 @@ test_that("wt_* functions handle extreme weight scenarios", {
   # ATO and ATM should be bounded
   weights_ato <- wt_ato(ps_extreme, exposure_extreme, exposure_type = "binary")
   weights_atm <- wt_atm(ps_extreme, exposure_extreme, exposure_type = "binary")
-  expect_true(all(weights_ato <= 1)) # ATO weights bounded by 1
-  expect_true(all(weights_atm <= 2)) # ATM weights bounded
+  expect_true(all(as.numeric(weights_ato) <= 1)) # ATO weights bounded by 1
+  expect_true(all(as.numeric(weights_atm) <= 2)) # ATM weights bounded
 })
 
 # Additional error handling tests ----
@@ -1605,16 +1607,16 @@ test_that("weight functions satisfy mathematical properties", {
 
   # ATT weights: treated units should have weight 1
   weights_att <- wt_att(ps, treatment, exposure_type = "binary")
-  expect_true(all(weights_att[treatment == 1] == 1))
+  expect_true(all(as.numeric(weights_att[treatment == 1]) == 1))
 
   # ATU weights: control units should have weight 1
   weights_atu <- wt_atu(ps, treatment, exposure_type = "binary")
-  expect_true(all(weights_atu[treatment == 0] == 1))
+  expect_true(all(as.numeric(weights_atu[treatment == 0]) == 1))
 
   # ATO weights: A * (1-e) + (1-A) * e
   weights_ato <- wt_ato(ps, treatment, exposure_type = "binary")
   # ATO weights are bounded by 1
-  expect_true(all(weights_ato <= 1 + 1e-10))
+  expect_true(all(as.numeric(weights_ato) <= 1 + 1e-10))
 
   # ATM weights: symmetric for e and 1-e
   # Create symmetric propensity scores
@@ -1648,8 +1650,8 @@ test_that("continuous exposure weights have correct properties", {
   )
 
   expect_s3_class(weights_cont, "psw")
-  expect_true(all(is.finite(weights_cont)))
-  expect_true(all(weights_cont > 0))
+  expect_true(all(is.finite(as.numeric(weights_cont))))
+  expect_true(all(as.numeric(weights_cont) > 0))
 
   # Stabilized continuous weights should have mean approximately 1
   expect_equal(mean(weights_cont), 1, tolerance = 0.2)

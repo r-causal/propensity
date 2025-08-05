@@ -108,12 +108,24 @@ test_that("vec_ptype2 combines psw and other types correctly", {
   expect_identical(result, double())
 
   # Combining with double
-  expect_equal(vec_ptype2(x, double()), double())
-  expect_equal(vec_ptype2(double(), x), double())
+  expect_warning(
+    expect_equal(vec_ptype2(x, double()), double()),
+    class = "propensity_class_downgrade_warning"
+  )
+  expect_warning(
+    expect_equal(vec_ptype2(double(), x), double()),
+    class = "propensity_class_downgrade_warning"
+  )
 
   # Combining with integer
-  expect_equal(vec_ptype2(x, integer()), integer())
-  expect_equal(vec_ptype2(integer(), x), integer())
+  expect_warning(
+    expect_equal(vec_ptype2(x, integer()), integer()),
+    class = "propensity_class_downgrade_warning"
+  )
+  expect_warning(
+    expect_equal(vec_ptype2(integer(), x), integer()),
+    class = "propensity_class_downgrade_warning"
+  )
 })
 
 test_that("vec_arith performs arithmetic on psw objects", {
