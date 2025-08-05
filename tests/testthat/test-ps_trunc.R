@@ -357,3 +357,165 @@ test_that("ps_trunc works with summarize(mean = mean(ps))", {
   expect_named(out, c("truncated", "mean"))
   expect_type(out$mean, "double")
 })
+
+test_that("ps_trunc vec_ptype_full output matches expected format", {
+  set.seed(123)
+  ps <- runif(20, 0.05, 0.95)
+
+  # Create ps_trunc with some values truncated
+  ps_trunc_obj <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
+
+  # Test the vec_ptype_full output - should show bounds and method
+  expect_equal(
+    vctrs::vec_ptype_full(ps_trunc_obj),
+    "ps_trunc{[0.2,0.8], method=ps}"
+  )
+
+  # Test with different bounds
+  ps_trunc_narrow <- ps_trunc(ps, method = "ps", lower = 0.4, upper = 0.6)
+  expect_equal(
+    vctrs::vec_ptype_full(ps_trunc_narrow),
+    "ps_trunc{[0.4,0.6], method=ps}"
+  )
+
+  # Test with very wide bounds (no actual truncation)
+  ps_trunc_wide <- ps_trunc(ps, method = "ps", lower = 0.01, upper = 0.99)
+  expect_equal(
+    vctrs::vec_ptype_full(ps_trunc_wide),
+    "ps_trunc{[0.01,0.99], method=ps}"
+  )
+})
+
+test_that("ps_trunc index tracking works when combining objects", {
+  set.seed(456)
+  ps1 <- runif(10, 0.05, 0.95)
+  ps2 <- runif(10, 0.05, 0.95)
+
+  # Create ps_trunc objects with same parameters
+  ps_trunc1 <- ps_trunc(ps1, method = "ps", lower = 0.2, upper = 0.8)
+  ps_trunc2 <- ps_trunc(ps2, method = "ps", lower = 0.2, upper = 0.8)
+
+  # Get original truncated indices
+  meta1 <- ps_trunc_meta(ps_trunc1)
+  meta2 <- ps_trunc_meta(ps_trunc2)
+  n_truncated1 <- length(meta1$truncated_idx)
+  n_truncated2 <- length(meta2$truncated_idx)
+
+  # Combine the objects
+  combined <- c(ps_trunc1, ps_trunc2)
+
+  # Should be a ps_trunc object
+  expect_s3_class(combined, "ps_trunc")
+
+  # Check that indices are properly tracked
+  combined_meta <- ps_trunc_meta(combined)
+  expect_equal(length(combined), 20)
+
+  # The total number of truncated should be the sum
+  expect_equal(
+    length(combined_meta$truncated_idx),
+    n_truncated1 + n_truncated2
+  )
+
+  # Check that values at bounds are at the correct positions
+  combined_data <- vec_data(combined)
+  lower_bound <- combined_meta$lower_bound
+  upper_bound <- combined_meta$upper_bound
+
+  # All truncated indices should have values at the bounds
+  truncated_values <- combined_data[combined_meta$truncated_idx]
+  expect_true(all(
+    truncated_values == lower_bound | truncated_values == upper_bound
+  ))
+})
+
+test_that("ps_trunc warns when combining objects with different parameters", {
+  ps1 <- runif(10, 0.05, 0.95)
+  ps2 <- runif(10, 0.05, 0.95)
+
+  # Create ps_trunc objects with different parameters
+  ps_trunc1 <- ps_trunc(ps1, method = "ps", lower = 0.2, upper = 0.8)
+  ps_trunc2 <- ps_trunc(ps2, method = "ps", lower = 0.3, upper = 0.7)
+
+  # Should warn and return numeric
+  expect_warning(
+    combined <- c(ps_trunc1, ps_trunc2),
+    "different truncation parameters"
+  )
+
+  expect_type(combined, "double")
+  expect_false(inherits(combined, "ps_trunc"))
+})
+
+test_that("ps_trunc index tracking works with subsetting and combining", {
+  set.seed(789)
+  ps <- runif(20, 0.05, 0.95)
+
+  # Create ps_trunc object
+  ps_trunc_obj <- ps_trunc(ps, method = "ps", lower = 0.3, upper = 0.7)
+  meta <- ps_trunc_meta(ps_trunc_obj)
+
+  # Subset the object
+  subset1 <- ps_trunc_obj[1:10]
+  subset2 <- ps_trunc_obj[11:20]
+
+  # Recombine
+  recombined <- c(subset1, subset2)
+
+  # Should maintain ps_trunc class
+  expect_s3_class(recombined, "ps_trunc")
+
+  # Check indices are properly tracked
+  recombined_meta <- ps_trunc_meta(recombined)
+  expect_equal(
+    length(recombined_meta$truncated_idx),
+    length(meta$truncated_idx)
+  )
+
+  # Check that truncated values are preserved at correct positions
+  recombined_data <- vec_data(recombined)
+  original_data <- vec_data(ps_trunc_obj)
+
+  # Find which values were at the bounds
+  lower_bound <- meta$lower_bound
+  upper_bound <- meta$upper_bound
+  original_at_bounds <- which(
+    original_data == lower_bound | original_data == upper_bound
+  )
+  recombined_at_bounds <- which(
+    recombined_data == lower_bound | recombined_data == upper_bound
+  )
+
+  expect_equal(recombined_at_bounds, original_at_bounds)
+})
+
+test_that("ps_trunc handles multiple combines correctly", {
+  set.seed(321)
+
+  # Create three ps_trunc objects
+  ps1 <- runif(5, 0.05, 0.95)
+  ps2 <- runif(5, 0.05, 0.95)
+  ps3 <- runif(5, 0.05, 0.95)
+
+  ps_trunc1 <- ps_trunc(ps1, method = "ps", lower = 0.25, upper = 0.75)
+  ps_trunc2 <- ps_trunc(ps2, method = "ps", lower = 0.25, upper = 0.75)
+  ps_trunc3 <- ps_trunc(ps3, method = "ps", lower = 0.25, upper = 0.75)
+
+  # Combine all three
+  combined <- c(ps_trunc1, ps_trunc2, ps_trunc3)
+
+  # Should maintain ps_trunc class
+  expect_s3_class(combined, "ps_trunc")
+  expect_equal(length(combined), 15)
+
+  # Check indices
+  combined_meta <- ps_trunc_meta(combined)
+  combined_data <- vec_data(combined)
+
+  # All truncated indices should have values at bounds
+  truncated_values <- combined_data[combined_meta$truncated_idx]
+  expect_true(all(
+    truncated_values == combined_meta$lower_bound |
+      truncated_values == combined_meta$upper_bound
+  ))
+})

@@ -408,19 +408,27 @@ test_that("Arithmetic with ps_trim returns numeric", {
   expect_error(x + list(1))
 })
 
-test_that("Combining two ps_trim => error in vec_ptype2.ps_trim.ps_trim", {
-  x <- new_trimmed_ps(
-    c(0.2, 0.4),
-    ps_trim_meta = list(trimmed_idx = integer(0))
+test_that("Combining two ps_trim with different parameters triggers warning", {
+  x <- ps_trim(
+    c(0.2, 0.4, 0.8),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
   )
-  y <- new_trimmed_ps(
-    c(0.3, 0.5),
-    ps_trim_meta = list(trimmed_idx = integer(0))
+  y <- ps_trim(
+    c(0.3, 0.5, 0.7),
+    method = "ps",
+    lower = 0.2, # Different lower bound
+    upper = 0.8 # Different upper bound
   )
 
-  # Attempt to combine, e.g. c(x,y) => triggers vctrs' combining rules
-  # or vctrs::vec_c
-  expect_error(vec_c(x, y), "Can't combine two ps_trim objects")
+  # Attempt to combine with different parameters
+  # This will warn about different trimming parameters and return numeric
+  expect_warning(
+    result <- vec_c(x, y),
+    "different trimming parameters"
+  )
+  expect_type(result, "double")
 })
 
 test_that("Combining ps_trim with double => double", {
@@ -532,4 +540,146 @@ test_that("ps_trim errors when exposure is missing for methods that require it",
 
   # Should work fine with ps method (no exposure needed)
   expect_no_error(ps_trim(ps, method = "ps"))
+})
+
+test_that("ps_trim vec_ptype_full output matches expected format", {
+  set.seed(123)
+  ps <- runif(20, 0.05, 0.95)
+
+  # Create ps_trim with some values trimmed
+  ps_trim_obj <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
+  n_trimmed <- length(ps_trim_meta(ps_trim_obj)$trimmed_idx)
+
+  # Test the vec_ptype_full output
+  expect_equal(
+    vctrs::vec_ptype_full(ps_trim_obj),
+    paste("ps_trim;", "trimmed", n_trimmed, "of ")
+  )
+
+  # Test with no values trimmed
+  ps_no_trim <- ps_trim(ps, method = "ps", lower = 0, upper = 1)
+  expect_equal(
+    vctrs::vec_ptype_full(ps_no_trim),
+    "ps_trim; trimmed 0 of "
+  )
+
+  # Test with all values trimmed
+  ps_all_trim <- ps_trim(ps, method = "ps", lower = 0.99, upper = 1)
+  expect_equal(
+    vctrs::vec_ptype_full(ps_all_trim),
+    paste("ps_trim;", "trimmed", 20, "of ")
+  )
+})
+
+test_that("ps_trim index tracking works when combining objects", {
+  set.seed(456)
+  ps1 <- runif(10, 0.05, 0.95)
+  ps2 <- runif(10, 0.05, 0.95)
+
+  # Create ps_trim objects with same parameters
+  ps_trim1 <- ps_trim(ps1, method = "ps", lower = 0.2, upper = 0.8)
+  ps_trim2 <- ps_trim(ps2, method = "ps", lower = 0.2, upper = 0.8)
+
+  # Get original trimmed indices
+  meta1 <- ps_trim_meta(ps_trim1)
+  meta2 <- ps_trim_meta(ps_trim2)
+  n_trimmed1 <- length(meta1$trimmed_idx)
+  n_trimmed2 <- length(meta2$trimmed_idx)
+
+  # Combine the objects
+  combined <- c(ps_trim1, ps_trim2)
+
+  # Should be a ps_trim object
+  expect_s3_class(combined, "ps_trim")
+
+  # Check that indices are properly tracked
+  combined_meta <- ps_trim_meta(combined)
+  expect_equal(length(combined), 20)
+
+  # The total number of trimmed should be the sum
+  expect_equal(
+    length(combined_meta$trimmed_idx),
+    n_trimmed1 + n_trimmed2
+  )
+
+  # Check that NA values are at the correct positions
+  combined_data <- vec_data(combined)
+  expect_true(all(is.na(combined_data[combined_meta$trimmed_idx])))
+  expect_true(all(!is.na(combined_data[combined_meta$keep_idx])))
+})
+
+test_that("ps_trim warns when combining objects with different parameters", {
+  ps1 <- runif(10, 0.05, 0.95)
+  ps2 <- runif(10, 0.05, 0.95)
+
+  # Create ps_trim objects with different parameters
+  ps_trim1 <- ps_trim(ps1, method = "ps", lower = 0.2, upper = 0.8)
+  ps_trim2 <- ps_trim(ps2, method = "ps", lower = 0.3, upper = 0.7)
+
+  # Should warn and return numeric
+  expect_warning(
+    combined <- c(ps_trim1, ps_trim2),
+    "different trimming parameters"
+  )
+
+  expect_type(combined, "double")
+  expect_false(inherits(combined, "ps_trim"))
+})
+
+test_that("ps_trim index tracking works with subsetting and combining", {
+  set.seed(789)
+  ps <- runif(20, 0.05, 0.95)
+
+  # Create ps_trim object
+  ps_trim_obj <- ps_trim(ps, method = "ps", lower = 0.3, upper = 0.7)
+  meta <- ps_trim_meta(ps_trim_obj)
+
+  # Subset the object
+  subset1 <- ps_trim_obj[1:10]
+  subset2 <- ps_trim_obj[11:20]
+
+  # Recombine
+  recombined <- c(subset1, subset2)
+
+  # Should maintain ps_trim class
+  expect_s3_class(recombined, "ps_trim")
+
+  # Check indices are properly tracked
+  recombined_meta <- ps_trim_meta(recombined)
+  expect_equal(length(recombined_meta$trimmed_idx), length(meta$trimmed_idx))
+
+  # Check that NA values are preserved at correct positions
+  recombined_data <- vec_data(recombined)
+  original_data <- vec_data(ps_trim_obj)
+  expect_equal(which(is.na(recombined_data)), which(is.na(original_data)))
+})
+
+test_that("ps_trim handles multiple combines correctly", {
+  set.seed(321)
+
+  # Create three ps_trim objects
+  ps1 <- runif(5, 0.05, 0.95)
+  ps2 <- runif(5, 0.05, 0.95)
+  ps3 <- runif(5, 0.05, 0.95)
+
+  ps_trim1 <- ps_trim(ps1, method = "ps", lower = 0.25, upper = 0.75)
+  ps_trim2 <- ps_trim(ps2, method = "ps", lower = 0.25, upper = 0.75)
+  ps_trim3 <- ps_trim(ps3, method = "ps", lower = 0.25, upper = 0.75)
+
+  # Combine all three
+  combined <- c(ps_trim1, ps_trim2, ps_trim3)
+
+  # Should maintain ps_trim class
+  expect_s3_class(combined, "ps_trim")
+  expect_equal(length(combined), 15)
+
+  # Check indices
+  combined_meta <- ps_trim_meta(combined)
+  combined_data <- vec_data(combined)
+
+  # All trimmed indices should have NA values
+  expect_true(all(is.na(combined_data[combined_meta$trimmed_idx])))
+
+  # All kept indices should have non-NA values
+  expect_true(all(!is.na(combined_data[combined_meta$keep_idx])))
 })

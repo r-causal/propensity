@@ -84,4 +84,25 @@ estimand(psw_weights)
 
 psw_helper <- psw(c(0.5, 0.7), estimand = "att")
 as_psw(c(0.1, 0.2), estimand = "ato")
+
+# Coercion behavior - compatible objects combine silently
+x <- psw(c(0.5, 0.7), estimand = "ate")
+y <- psw(c(0.3, 0.8), estimand = "ate")
+c(x, y)  # Returns psw object
+
+# Incompatible metadata triggers warning and returns numeric
+x <- psw(c(0.5, 0.7), estimand = "ate")
+y <- psw(c(0.3, 0.8), estimand = "att")
+c(x, y)  # Warning: returns numeric
+
+# Works with tidyr::pivot_longer for plotting
+if (requireNamespace("tidyr", quietly = TRUE)) {
+  df <- data.frame(
+    id = 1:4,
+    ate_wts = psw(c(0.5, 0.7, 0.3, 0.8), estimand = "ate"),
+    att_wts = psw(c(0.4, 0.6, 0.2, 0.9), estimand = "att")
+  )
+  # This will warn but succeed, returning numeric in the pivoted column
+  tidyr::pivot_longer(df, cols = c(ate_wts, att_wts))
+}
 }

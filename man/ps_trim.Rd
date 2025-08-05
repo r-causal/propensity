@@ -79,6 +79,21 @@ ps <- predict(fit, type = "response")
 
 ps_trim(ps, method = "adaptive")
 
+# Coercion behavior with ps_trim objects
+ps_trim1 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+ps_trim2 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+
+# Compatible objects combine silently
+c(ps_trim1[1:50], ps_trim2[51:100])  # Returns ps_trim object
+
+# Different trim parameters trigger warning
+ps_trim3 <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
+c(ps_trim1[1:50], ps_trim3[51:100])  # Warning: returns numeric
+
+# Cross-class combinations warn and return numeric
+psw_obj <- psw(ps[1:50], estimand = "ate")
+c(ps_trim1[1:50], psw_obj)  # Warning: returns numeric
+
 }
 \seealso{
 \code{\link[=ps_trunc]{ps_trunc()}} for bounding/winsorizing instead of discarding,

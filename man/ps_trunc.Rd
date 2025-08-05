@@ -81,6 +81,21 @@ ps <- predict(fit, type = "response")
 # truncate just the 99th percentile
 ps_trunc(ps, method = "pctl", lower = 0, upper = .99)
 
+# Coercion behavior with ps_trunc objects
+ps_trunc1 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+ps_trunc2 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+
+# Compatible objects combine silently
+c(ps_trunc1[1:15], ps_trunc2[16:30])  # Returns ps_trunc object
+
+# Different truncation parameters trigger warning
+ps_trunc3 <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
+c(ps_trunc1[1:15], ps_trunc3[16:30])  # Warning: returns numeric
+
+# Mixing with other propensity classes warns
+ps_trim_obj <- ps_trim(ps[1:15], method = "ps", lower = 0.1)
+c(ps_trunc1[1:15], ps_trim_obj)  # Warning: returns numeric
+
 }
 \seealso{
 \code{\link[=ps_trim]{ps_trim()}} and \code{\link[=ps_refit]{ps_refit()}} for removing extreme values vs. bounding

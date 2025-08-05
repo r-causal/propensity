@@ -50,6 +50,21 @@
 #'
 #' ps_trim(ps, method = "adaptive")
 #'
+#' # Coercion behavior with ps_trim objects
+#' ps_trim1 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#' ps_trim2 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#'
+#' # Compatible objects combine silently
+#' c(ps_trim1[1:50], ps_trim2[51:100])  # Returns ps_trim object
+#'
+#' # Different trim parameters trigger warning
+#' ps_trim3 <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
+#' c(ps_trim1[1:50], ps_trim3[51:100])  # Warning: returns numeric
+#'
+#' # Cross-class combinations warn and return numeric
+#' psw_obj <- psw(ps[1:50], estimand = "ate")
+#' c(ps_trim1[1:50], psw_obj)  # Warning: returns numeric
+#'
 #' @export
 ps_trim <- function(
   ps,
@@ -669,18 +684,78 @@ vec_arith.ps_trim.list <- function(op, x, y, ...) {
 
 #' @export
 vec_ptype2.ps_trim.ps_trim <- function(x, y, ...) {
-  stop_incompatible_type(
-    x,
-    y,
-    x_arg = "x",
-    y_arg = "y",
-    message = "Can't combine two ps_trim objects"
-  )
+  x_meta <- ps_trim_meta(x)
+  y_meta <- ps_trim_meta(y)
+
+  # Check if trim parameters match
+  if (
+    !identical(x_meta$lower, y_meta$lower) ||
+      !identical(x_meta$upper, y_meta$upper) ||
+      !identical(x_meta$method, y_meta$method)
+  ) {
+    warn_incompatible_metadata(
+      x,
+      y,
+      "different trimming parameters"
+    )
+    return(double())
+  }
+
+  # Check if refit status matches
+  if (!identical(x_meta$refit, y_meta$refit)) {
+    warn_incompatible_metadata(
+      x,
+      y,
+      "different refit status"
+    )
+    return(double())
+  }
+
+  # If parameters match, return ps_trim prototype
+  # The actual index combining will happen in vec_c
+  # Handle missing metadata gracefully
+  if (
+    is.null(x_meta$method) || is.null(x_meta$lower) || is.null(x_meta$upper)
+  ) {
+    # Return basic ps_trim if metadata is incomplete
+    new_trimmed_ps(double(), ps_trim_meta = x_meta)
+  } else {
+    ps_trim(
+      double(),
+      method = x_meta$method,
+      lower = x_meta$lower,
+      upper = x_meta$upper
+    )
+  }
 }
 #' @export
-vec_ptype2.ps_trim.double <- function(x, y, ...) double()
+vec_ptype2.ps_trim.double <- function(x, y, ...) {
+  warn_class_downgrade("ps_trim")
+  double()
+}
 #' @export
-vec_ptype2.double.ps_trim <- function(x, y, ...) double()
+vec_ptype2.double.ps_trim <- function(x, y, ...) {
+  warn_class_downgrade("ps_trim")
+  double()
+}
+
+#' @export
+vec_cast.ps_trim.ps_trim <- function(x, to, ...) {
+  # Check if metadata matches (excluding indices)
+  x_meta <- ps_trim_meta(x)
+  to_meta <- ps_trim_meta(to)
+
+  if (
+    !identical(x_meta$lower, to_meta$lower) ||
+      !identical(x_meta$upper, to_meta$upper) ||
+      !identical(x_meta$method, to_meta$method)
+  ) {
+    vctrs::stop_incompatible_cast(x, to, x_arg = "", to_arg = "")
+  }
+
+  # Return x as-is if metadata matches
+  x
+}
 
 #' @export
 vec_cast.double.ps_trim <- function(x, to, ...) {
@@ -702,23 +777,41 @@ vec_cast.ps_trim.double <- function(x, to, ...) {
 }
 
 #' @export
-vec_ptype2.psw.ps_trim <- function(x, y, ...) double()
+vec_ptype2.psw.ps_trim <- function(x, y, ...) {
+  warn_class_downgrade(c("psw", "ps_trim"))
+  double()
+}
 
 #' @export
-vec_ptype2.ps_trim.psw <- function(x, y, ...) double()
+vec_ptype2.ps_trim.psw <- function(x, y, ...) {
+  warn_class_downgrade(c("ps_trim", "psw"))
+  double()
+}
 
 #' @export
 vec_cast.character.ps_trim <- function(x, to, ...) as.character(vec_data(x))
 
 #' @export
-vec_ptype2.ps_trim.integer <- function(x, y, ...) integer()
+vec_ptype2.ps_trim.integer <- function(x, y, ...) {
+  warn_class_downgrade("ps_trim", "integer")
+  integer()
+}
 #' @export
-vec_ptype2.integer.ps_trim <- function(x, y, ...) integer()
+vec_ptype2.integer.ps_trim <- function(x, y, ...) {
+  warn_class_downgrade("ps_trim", "integer")
+  integer()
+}
 
 #' @export
-vec_ptype2.ps_trim.ps_trunc <- function(x, y, ...) double()
+vec_ptype2.ps_trim.ps_trunc <- function(x, y, ...) {
+  warn_class_downgrade(c("ps_trim", "ps_trunc"))
+  double()
+}
 #' @export
-vec_ptype2.ps_trunc.ps_trim <- function(x, y, ...) double()
+vec_ptype2.ps_trunc.ps_trim <- function(x, y, ...) {
+  warn_class_downgrade(c("ps_trunc", "ps_trim"))
+  double()
+}
 
 #' @export
 vec_cast.integer.ps_trim <- function(x, to, ...) {
@@ -798,8 +891,16 @@ median.ps_trim <- function(x, na.rm = FALSE, ...) {
 
 #' @export
 vec_restore.ps_trim <- function(x, to, ...) {
+  # Extract numeric data if needed
+  if (inherits(x, "ps_trim")) {
+    x <- vec_data(x)
+  }
+
   new_trimmed_ps(x, ps_trim_meta = ps_trim_meta(to))
 }
+
+# Note: indices are not preserved when combining ps_trim objects
+# This is a limitation of how vctrs handles attribute preservation
 
 #' @export
 `[.ps_trim` <- function(x, i, ...) {
@@ -833,6 +934,32 @@ vec_restore.ps_trim <- function(x, to, ...) {
   attr(result, "ps_trim_meta") <- new_meta
 
   result
+}
+
+#' @export
+vec_restore.ps_trim <- function(x, to, ...) {
+  # Get the prototype's metadata
+  to_meta <- ps_trim_meta(to)
+
+  # For combining multiple ps_trim objects, we need to reconstruct indices
+  # based on which values are NA (these were trimmed)
+  if (length(to_meta$trimmed_idx) == 0 && length(x) > 0) {
+    # Identify which positions have NA values (these were trimmed)
+    na_positions <- which(is.na(x))
+
+    # Update metadata with the NA positions as trimmed indices
+    new_meta <- to_meta
+    new_meta$trimmed_idx <- na_positions
+    new_meta$keep_idx <- setdiff(seq_along(x), na_positions)
+
+    # Use the constructor to create a proper ps_trim object
+    # vec_data in case x is already a vctr
+    return(new_trimmed_ps(vec_data(x), ps_trim_meta = new_meta))
+  }
+
+  # Use the constructor with the prototype's metadata
+  # vec_data in case x is already a vctr
+  new_trimmed_ps(vec_data(x), ps_trim_meta = to_meta)
 }
 
 #' @export

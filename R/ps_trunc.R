@@ -49,6 +49,21 @@
 #' # truncate just the 99th percentile
 #' ps_trunc(ps, method = "pctl", lower = 0, upper = .99)
 #'
+#' # Coercion behavior with ps_trunc objects
+#' ps_trunc1 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+#' ps_trunc2 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+#'
+#' # Compatible objects combine silently
+#' c(ps_trunc1[1:15], ps_trunc2[16:30])  # Returns ps_trunc object
+#'
+#' # Different truncation parameters trigger warning
+#' ps_trunc3 <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
+#' c(ps_trunc1[1:15], ps_trunc3[16:30])  # Warning: returns numeric
+#'
+#' # Mixing with other propensity classes warns
+#' ps_trim_obj <- ps_trim(ps[1:15], method = "ps", lower = 0.1)
+#' c(ps_trunc1[1:15], ps_trim_obj)  # Warning: returns numeric
+#'
 #' @export
 ps_trunc <- function(
   ps,
@@ -596,14 +611,61 @@ vec_arith.ps_trunc.integer <- function(op, x, y, ...) {
 # Combining / Casting
 #' @export
 vec_ptype2.ps_trunc.ps_trunc <- function(x, y, ...) {
-  stop_incompatible_type(x, y, message = "Can't combine ps_trunc objects.")
+  x_meta <- ps_trunc_meta(x)
+  y_meta <- ps_trunc_meta(y)
+
+  # Check if truncation parameters match
+  if (
+    !identical(x_meta$lower_bound, y_meta$lower_bound) ||
+      !identical(x_meta$upper_bound, y_meta$upper_bound) ||
+      !identical(x_meta$method, y_meta$method)
+  ) {
+    warn_incompatible_metadata(
+      x,
+      y,
+      "different truncation parameters"
+    )
+    return(double())
+  }
+
+  # If parameters match, return ps_trunc prototype
+  ps_trunc(
+    double(),
+    method = x_meta$method,
+    lower = x_meta$lower_bound,
+    upper = x_meta$upper_bound
+  )
 }
 
 #' @export
-vec_ptype2.ps_trunc.double <- function(x, y, ...) double()
+vec_ptype2.ps_trunc.double <- function(x, y, ...) {
+  warn_class_downgrade("ps_trunc")
+  double()
+}
 
 #' @export
-vec_ptype2.double.ps_trunc <- function(x, y, ...) double()
+vec_ptype2.double.ps_trunc <- function(x, y, ...) {
+  warn_class_downgrade("ps_trunc")
+  double()
+}
+
+#' @export
+vec_cast.ps_trunc.ps_trunc <- function(x, to, ...) {
+  # Check if metadata matches (excluding indices)
+  x_meta <- ps_trunc_meta(x)
+  to_meta <- ps_trunc_meta(to)
+
+  if (
+    !identical(x_meta$lower_bound, to_meta$lower_bound) ||
+      !identical(x_meta$upper_bound, to_meta$upper_bound) ||
+      !identical(x_meta$method, to_meta$method)
+  ) {
+    vctrs::stop_incompatible_cast(x, to, x_arg = "", to_arg = "")
+  }
+
+  # Return x as-is if metadata matches
+  x
+}
 
 #' @export
 vec_cast.double.ps_trunc <- function(x, to, ...) {
@@ -619,19 +681,31 @@ vec_cast.ps_trunc.double <- function(x, to, ...) {
 }
 
 #' @export
-vec_ptype2.psw.ps_trunc <- function(x, y, ...) double()
+vec_ptype2.psw.ps_trunc <- function(x, y, ...) {
+  warn_class_downgrade(c("psw", "ps_trunc"))
+  double()
+}
 
 #' @export
-vec_ptype2.ps_trunc.psw <- function(x, y, ...) double()
+vec_ptype2.ps_trunc.psw <- function(x, y, ...) {
+  warn_class_downgrade(c("ps_trunc", "psw"))
+  double()
+}
 
 #' @export
 vec_cast.character.ps_trunc <- function(x, to, ...) as.character(vec_data(x))
 
 #' @export
-vec_ptype2.ps_trunc.integer <- function(x, y, ...) integer()
+vec_ptype2.ps_trunc.integer <- function(x, y, ...) {
+  warn_class_downgrade("ps_trunc", "integer")
+  integer()
+}
 
 #' @export
-vec_ptype2.integer.ps_trunc <- function(x, y, ...) integer()
+vec_ptype2.integer.ps_trunc <- function(x, y, ...) {
+  warn_class_downgrade("ps_trunc", "integer")
+  integer()
+}
 
 #' @export
 vec_cast.integer.ps_trunc <- function(x, to, ...) as.integer(vec_data(x))
@@ -691,8 +765,17 @@ quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
 
 #' @export
 vec_restore.ps_trunc <- function(x, to, ...) {
+  # Extract numeric data if needed
+  if (inherits(x, "ps_trunc")) {
+    x <- vec_data(x)
+  }
+
   new_ps_trunc(x, meta = ps_trunc_meta(to))
 }
+
+# Note: We cannot implement custom vec_c for ps_trunc
+# vctrs handles combination internally through vec_ptype2 and vec_cast
+# When combining ps_trunc objects with same parameters, indices won't be preserved
 
 #' @export
 `[.ps_trunc` <- function(x, i, ...) {
@@ -722,6 +805,39 @@ vec_restore.ps_trunc <- function(x, to, ...) {
   attr(result, "ps_trunc_meta") <- new_meta
 
   result
+}
+
+#' @export
+vec_restore.ps_trunc <- function(x, to, ...) {
+  # Get the prototype's metadata
+  to_meta <- ps_trunc_meta(to)
+
+  # Extract numeric data for comparisons
+  x_data <- vec_data(x)
+
+  # For combining multiple ps_trunc objects, we need to reconstruct indices
+  # For ps_trunc, values at boundaries are modified, not NA
+  if (
+    length(to_meta$truncated_idx) == 0 &&
+      length(x_data) > 0 &&
+      !is.null(to_meta$lower_bound) &&
+      !is.null(to_meta$upper_bound)
+  ) {
+    # Identify which positions were truncated (at the bounds)
+    truncated_positions <- which(
+      x_data == to_meta$lower_bound | x_data == to_meta$upper_bound
+    )
+
+    # Update metadata with the truncated positions
+    new_meta <- to_meta
+    new_meta$truncated_idx <- truncated_positions
+
+    # Use the constructor to create a proper ps_trunc object
+    return(new_ps_trunc(x_data, new_meta))
+  }
+
+  # Use the constructor with the prototype's metadata
+  new_ps_trunc(x_data, to_meta)
 }
 
 #' @export

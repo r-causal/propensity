@@ -32,6 +32,27 @@
 #'
 #' psw_helper <- psw(c(0.5, 0.7), estimand = "att")
 #' as_psw(c(0.1, 0.2), estimand = "ato")
+#'
+#' # Coercion behavior - compatible objects combine silently
+#' x <- psw(c(0.5, 0.7), estimand = "ate")
+#' y <- psw(c(0.3, 0.8), estimand = "ate")
+#' c(x, y)  # Returns psw object
+#'
+#' # Incompatible metadata triggers warning and returns numeric
+#' x <- psw(c(0.5, 0.7), estimand = "ate")
+#' y <- psw(c(0.3, 0.8), estimand = "att")
+#' c(x, y)  # Warning: returns numeric
+#'
+#' # Works with tidyr::pivot_longer for plotting
+#' if (requireNamespace("tidyr", quietly = TRUE)) {
+#'   df <- data.frame(
+#'     id = 1:4,
+#'     ate_wts = psw(c(0.5, 0.7, 0.3, 0.8), estimand = "ate"),
+#'     att_wts = psw(c(0.4, 0.6, 0.2, 0.9), estimand = "att")
+#'   )
+#'   # This will warn but succeed, returning numeric in the pivoted column
+#'   tidyr::pivot_longer(df, cols = c(ate_wts, att_wts))
+#' }
 #' @import vctrs
 #' @name psw
 NULL
@@ -293,7 +314,12 @@ median.psw <- function(x, na.rm = FALSE, ...) {
 
 #' @export
 vec_restore.psw <- function(x, to, ...) {
-  # If x is just numeric, we preserve psw attributes
+  # Extract numeric data if needed
+  if (inherits(x, "psw")) {
+    x <- vec_data(x)
+  }
+
+  # Preserve psw attributes
   new_psw(
     x,
     estimand = estimand(to),
@@ -306,23 +332,69 @@ vec_restore.psw <- function(x, to, ...) {
 
 #' @export
 vec_ptype2.psw.psw <- function(x, y, ...) {
+  # Check estimand compatibility
   if (!identical(estimand(x), estimand(y))) {
-    stop_incompatible_type(
+    warn_incompatible_metadata(
       x,
       y,
-      x_arg = "x",
-      y_arg = "y",
-      message = "Can't combine weights with different estimands"
+      paste0(
+        "incompatible estimands '",
+        estimand(x),
+        "' and '",
+        estimand(y),
+        "'"
+      )
     )
+    return(double())
   }
-  new_psw(estimand = estimand(x))
+
+  # Check stabilization status
+  if (!identical(attr(x, "stabilized"), attr(y, "stabilized"))) {
+    warn_incompatible_metadata(x, y, "different stabilization status")
+    return(double())
+  }
+
+  # Check trimmed status
+  if (!identical(is_ps_trimmed(x), is_ps_trimmed(y))) {
+    warn_incompatible_metadata(x, y, "different trimming status")
+    return(double())
+  }
+
+  # Check truncated status
+  if (!identical(is_ps_truncated(x), is_ps_truncated(y))) {
+    warn_incompatible_metadata(x, y, "different truncation status")
+    return(double())
+  }
+
+  # Check calibrated status
+  if (!identical(is_ps_calibrated(x), is_ps_calibrated(y))) {
+    warn_incompatible_metadata(x, y, "different calibration status")
+    return(double())
+  }
+
+  # If all metadata matches, return psw with all attributes preserved
+  new_psw(
+    estimand = estimand(x),
+    stabilized = is_stabilized(x),
+    trimmed = is_ps_trimmed(x),
+    truncated = is_ps_truncated(x)
+  )
 }
 
 #' @export
-vec_ptype2.psw.double <- function(x, y, ...) double()
+vec_ptype2.psw.double <- function(x, y, ...) {
+  warn_class_downgrade("psw")
+  double()
+}
 
 #' @export
-vec_ptype2.double.psw <- function(x, y, ...) double()
+vec_ptype2.double.psw <- function(x, y, ...) {
+  warn_class_downgrade("psw")
+  double()
+}
+
+#' @export
+vec_cast.psw.psw <- function(x, to, ...) x
 
 #' @export
 vec_cast.psw.double <- function(x, to, ...) psw(x, estimand = estimand(to))
@@ -331,20 +403,32 @@ vec_cast.psw.double <- function(x, to, ...) psw(x, estimand = estimand(to))
 vec_cast.double.psw <- function(x, to, ...) vec_data(x)
 
 #' @export
-vec_ptype2.psw.character <- function(x, y, ...) character()
+vec_ptype2.psw.character <- function(x, y, ...) {
+  warn_class_downgrade("psw", "character")
+  character()
+}
 
 #' @export
-vec_ptype2.character.psw <- function(x, y, ...) character()
+vec_ptype2.character.psw <- function(x, y, ...) {
+  warn_class_downgrade("psw", "character")
+  character()
+}
 
 #' @export
 vec_cast.character.psw <- function(x, to, ...) as.character(vec_data(x))
 
 
 #' @export
-vec_ptype2.psw.integer <- function(x, y, ...) integer()
+vec_ptype2.psw.integer <- function(x, y, ...) {
+  warn_class_downgrade("psw", "integer")
+  integer()
+}
 
 #' @export
-vec_ptype2.integer.psw <- function(x, y, ...) integer()
+vec_ptype2.integer.psw <- function(x, y, ...) {
+  warn_class_downgrade("psw", "integer")
+  integer()
+}
 
 #' @export
 vec_cast.psw.integer <- function(x, to, estimand = NULL, ...)
