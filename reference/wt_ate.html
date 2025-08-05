@@ -4,10 +4,14 @@ various causal estimands:
 ATE (Average Treatment Effect)
 ATT (Average Treatment Effect on the Treated)
 ATU (Average Treatment Effect on the Untreated, sometimes called
-the ATC, where the "C" stands for "control")
+the ATC, where the "C" stands for "control"). wt_atc() is provided
+as an alias for wt_atu()
 ATM (Average Treatment Effect for the Evenly Matchable)
 ATO (Average Treatment Effect for the Overlap population)
 Entropy (Average Treatment Effect for the Entropy-weighted population)
+Censoring weights can be calculated using wt_cens(), which uses
+the same formula as ATE weights but with estimand "uncensored". These
+are useful for handling censoring in survival analysis
 The propensity score can be provided as a numeric vector of predicted
 probabilities, as a data.frame where each column represents the
 predicted probability for a level of the exposure, or as a fitted
@@ -22,10 +26,14 @@ various causal estimands:
 ATE (Average Treatment Effect)
 ATT (Average Treatment Effect on the Treated)
 ATU (Average Treatment Effect on the Untreated, sometimes called
-the ATC, where the "C" stands for "control")
+the ATC, where the "C" stands for "control"). wt_atc() is provided
+as an alias for wt_atu()
 ATM (Average Treatment Effect for the Evenly Matchable)
 ATO (Average Treatment Effect for the Overlap population)
 Entropy (Average Treatment Effect for the Entropy-weighted population)
+Censoring weights can be calculated using wt_cens(), which uses
+the same formula as ATE weights but with estimand "uncensored". These
+are useful for handling censoring in survival analysis
 The propensity score can be provided as a numeric vector of predicted
 probabilities, as a data.frame where each column represents the
 predicted probability for a level of the exposure, or as a fitted
@@ -72,10 +80,14 @@ weights have been stabilized, trimmed, or truncated.
 various causal estimands:</p><ul><li><p><strong>ATE</strong> (Average Treatment Effect)</p></li>
 <li><p><strong>ATT</strong> (Average Treatment Effect on the Treated)</p></li>
 <li><p><strong>ATU</strong> (Average Treatment Effect on the Untreated, sometimes called
-the <strong>ATC</strong>, where the "C" stands for "control")</p></li>
+the <strong>ATC</strong>, where the "C" stands for "control"). <code>wt_atc()</code> is provided
+as an alias for <code>wt_atu()</code></p></li>
 <li><p><strong>ATM</strong> (Average Treatment Effect for the Evenly Matchable)</p></li>
 <li><p><strong>ATO</strong> (Average Treatment Effect for the Overlap population)</p></li>
-<li><p><strong>Entropy</strong> (Average Treatment Effect for the Entropy-weighted population)</p>
+<li><p><strong>Entropy</strong> (Average Treatment Effect for the Entropy-weighted population)</p></li>
+<li><p><strong>Censoring weights</strong> can be calculated using <code>wt_cens()</code>, which uses
+the same formula as ATE weights but with estimand "uncensored". These
+are useful for handling censoring in survival analysis</p>
 <p>The propensity score can be provided as a numeric vector of predicted
 probabilities, as a <code>data.frame</code> where each column represents the
 predicted probability for a level of the exposure, or as a fitted
@@ -214,6 +226,42 @@ weights have been stabilized, trimmed, or truncated.</p></li>
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">wt_atc</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  focal <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">wt_cens</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  .sigma <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'data.frame'</span></span>
+<span><span class="fu">wt_cens</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">.exposure</span>,</span>
+<span>  .sigma <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
 <span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
