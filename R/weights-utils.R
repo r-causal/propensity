@@ -120,7 +120,12 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
   if (is.matrix(ps) || is.data.frame(ps)) {
     # For matrices/data frames, check all values
     ps_vals <- as.numeric(as.matrix(ps))
-    if (any(ps_vals <= 0 | ps_vals >= 1, na.rm = TRUE)) {
+    # Check only non-NA values
+    non_na_vals <- ps_vals[!is.na(ps_vals)]
+    if (
+      length(non_na_vals) > 0 &&
+        any(non_na_vals <= 0 | non_na_vals >= 1 | !is.finite(non_na_vals))
+    ) {
       abort(
         c(
           "All propensity scores must be between 0 and 1.",
@@ -133,7 +138,12 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
     }
   } else {
     ps <- as.numeric(ps)
-    if (any(ps <= 0 | ps >= 1, na.rm = TRUE)) {
+    # Check only non-NA values
+    non_na_vals <- ps[!is.na(ps)]
+    if (
+      length(non_na_vals) > 0 &&
+        any(non_na_vals <= 0 | non_na_vals >= 1 | !is.finite(non_na_vals))
+    ) {
       abort(
         c(
           "The propensity score must be between 0 and 1.",

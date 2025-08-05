@@ -99,20 +99,33 @@ test_that("vec_ptype2 combines psw and other types correctly", {
   y <- psw(c(0.3, 0.4), estimand = "ate")
   expect_equal(vec_ptype2(x, y), new_psw(estimand = "ate"))
 
-  # Different estimands should fail
+  # Different estimands should warn and return numeric
   z <- psw(c(0.5, 0.6), estimand = "att")
-  expect_error(
-    vec_ptype2(x, z),
-    "Can't combine weights with different estimands"
+  expect_warning(
+    result <- vec_ptype2(x, z),
+    "incompatible estimands"
   )
+  expect_identical(result, double())
 
   # Combining with double
-  expect_equal(vec_ptype2(x, double()), double())
-  expect_equal(vec_ptype2(double(), x), double())
+  expect_warning(
+    expect_equal(vec_ptype2(x, double()), double()),
+    class = "propensity_class_downgrade_warning"
+  )
+  expect_warning(
+    expect_equal(vec_ptype2(double(), x), double()),
+    class = "propensity_class_downgrade_warning"
+  )
 
   # Combining with integer
-  expect_equal(vec_ptype2(x, integer()), integer())
-  expect_equal(vec_ptype2(integer(), x), integer())
+  expect_warning(
+    expect_equal(vec_ptype2(x, integer()), integer()),
+    class = "propensity_class_downgrade_warning"
+  )
+  expect_warning(
+    expect_equal(vec_ptype2(integer(), x), integer()),
+    class = "propensity_class_downgrade_warning"
+  )
 })
 
 test_that("vec_arith performs arithmetic on psw objects", {

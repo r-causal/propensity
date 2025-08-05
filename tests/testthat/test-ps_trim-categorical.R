@@ -116,6 +116,7 @@ test_that("ps_trim validates delta < 1/k", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   # delta >= 1/3 should trigger warning
   expect_warning(
@@ -138,6 +139,7 @@ test_that("ps_trim errors for unsupported methods with categorical", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   # These methods should error with rlang argument matching error
   expect_error(
@@ -155,6 +157,7 @@ test_that("ps_trim requires exposure for categorical", {
   n <- 20
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- c("A", "B", "C")
 
   expect_error(
     ps_trim(ps_matrix, method = "ps"),
@@ -167,6 +170,7 @@ test_that("is_ps_trimmed works for matrix objects", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   expect_false(is_ps_trimmed(ps_matrix))
 
@@ -184,12 +188,17 @@ test_that("is_unit_trimmed works for matrix objects", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
-  trimmed <- ps_trim(
-    ps_matrix,
-    .exposure = exposure,
-    method = "ps",
-    lower = 0.25
+  expect_warning(
+    trimmed <- ps_trim(
+      ps_matrix,
+      .exposure = exposure,
+      method = "ps",
+      lower = 0.25
+    ),
+    "One or more groups removed after trimming",
+    class = "propensity_no_data_warning"
   )
   unit_trimmed <- is_unit_trimmed(trimmed)
 
@@ -244,6 +253,7 @@ test_that("ps_trim.ps_trim warns about already trimmed scores", {
   exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
 
   trimmed_once <- ps_trim(
     ps_matrix,
@@ -286,11 +296,14 @@ test_that("ps_trim symmetric trimming matches PSweight for categorical exposures
   ps_formula <- trt_3cat ~ cov1 + cov2 + cov3 + cov4
 
   # PSweight approach
-  psw_result <- PSweight::PStrim(
-    data = psdata,
-    ps.formula = ps_formula,
-    zname = "trt_3cat",
-    delta = 0.1
+  expect_warning(
+    psw_result <- PSweight::PStrim(
+      data = psdata,
+      ps.formula = ps_formula,
+      zname = "trt_3cat",
+      delta = 0.1
+    ),
+    "One or more groups removed after trimming"
   )
 
   # Extract propensity scores from PSweight
@@ -419,6 +432,7 @@ test_that("ps_trim handles edge cases consistently with PSweight", {
     ncol = 3,
     byrow = TRUE
   )
+  colnames(ps_matrix) <- c("A", "B", "C")
 
   trt <- factor(c(rep("A", 20), rep("B", 15), rep("C", 15)))
 
@@ -562,11 +576,15 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
   )
   colnames(ps_matrix_extreme) <- c("A", "B", "C")
 
-  trimmed_extreme <- ps_trim(
-    ps = ps_matrix_extreme,
-    .exposure = exposure,
-    method = "ps",
-    lower = 0.02
+  expect_warning(
+    trimmed_extreme <- ps_trim(
+      ps = ps_matrix_extreme,
+      .exposure = exposure,
+      method = "ps",
+      lower = 0.02
+    ),
+    "One or more groups removed after trimming",
+    class = "propensity_no_data_warning"
   )
 
   # Manually set all to NA to simulate complete trimming
@@ -706,11 +724,15 @@ test_that("ps_refit handles minimal data for categorical exposures", {
   }
 
   # Apply aggressive trimming to leave minimal data
-  trimmed_ps <- ps_trim(
-    ps = ps_matrix,
-    .exposure = test_data$trt,
-    method = "ps",
-    lower = 0.25 # This should trim many observations
+  expect_warning(
+    trimmed_ps <- ps_trim(
+      ps = ps_matrix,
+      .exposure = test_data$trt,
+      method = "ps",
+      lower = 0.25 # This should trim many observations
+    ),
+    "One or more groups removed after trimming",
+    class = "propensity_no_data_warning"
   )
 
   meta <- ps_trim_meta(trimmed_ps)

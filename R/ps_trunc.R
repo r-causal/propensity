@@ -33,6 +33,28 @@
 #'
 #' This approach is often called *winsorizing*.
 #'
+#' **Arithmetic behavior**: Like `ps_trim`, arithmetic operations on `ps_trunc`
+#' objects return numeric vectors. The reasoning is the same - transformed
+#' propensity scores (e.g., weights) are no longer propensity scores.
+#'
+#' **No NA values**: Unlike `ps_trim`, truncation doesn't create `NA` values.
+#' Out-of-range values are set to the boundaries, so all values remain finite
+#' and valid for calculations.
+#'
+#' **Metadata tracking**: The `truncated_idx` tracks which positions had their
+#' values modified (winsorized to boundaries):
+#' - Subsetting with `[` updates indices to new positions
+#' - `sort()` reorders data and updates indices accordingly
+#' - Operations preserve finite values (no `NA` handling needed)
+#'
+#' **Boundary detection**: Values exactly at the boundaries (after truncation)
+#' may indicate truncation, but aren't necessarily truncated - they could have
+#' been at the boundary originally.
+#'
+#' **Combining behavior**: When combining `ps_trunc` objects with `c()`,
+#' truncation parameters must match. Mismatched parameters trigger a warning
+#' and return a numeric vector.
+#'
 #' @return A **`ps_trunc`** object (numeric vector or matrix). It has an attribute
 #'   `ps_trunc_meta` storing fields like `method`, `lower_bound`, and
 #'   `upper_bound`.
@@ -48,6 +70,21 @@
 #'
 #' # truncate just the 99th percentile
 #' ps_trunc(ps, method = "pctl", lower = 0, upper = .99)
+#'
+#' # Coercion behavior with ps_trunc objects
+#' ps_trunc1 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+#' ps_trunc2 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+#'
+#' # Compatible objects combine silently
+#' c(ps_trunc1[1:15], ps_trunc2[16:30])  # Returns ps_trunc object
+#'
+#' # Different truncation parameters trigger warning
+#' ps_trunc3 <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
+#' c(ps_trunc1[1:15], ps_trunc3[16:30])  # Warning: returns numeric
+#'
+#' # Mixing with other propensity classes warns
+#' ps_trim_obj <- ps_trim(ps[1:15], method = "ps", lower = 0.1)
+#' c(ps_trunc1[1:15], ps_trim_obj)  # Warning: returns numeric
 #'
 #' @export
 ps_trunc <- function(
@@ -401,6 +438,71 @@ is_unit_truncated.ps_trunc_matrix <- function(x) {
 }
 
 
+#' @export
+`[.ps_trunc_matrix` <- function(x, i, j, ..., drop = TRUE) {
+  # Get metadata
+  meta <- ps_trunc_meta(x)
+
+  # Handle single index (matrix as vector) - bypass ps_trunc method
+  if (nargs() == 2) {
+    return(unclass(x)[i])
+  }
+
+  # Handle missing i (all rows) - bypass ps_trunc method
+  if (missing(i)) {
+    return(unclass(x)[, j, ..., drop = drop])
+  }
+
+  # For single element extraction, call base method directly to avoid ps_trunc method
+  # Check if this will result in a single element
+  if (!missing(j) && length(i) == 1 && length(j) == 1) {
+    return(as.numeric(unclass(x)[i, j, drop = TRUE]))
+  }
+
+  # Perform subsetting with base matrix method to avoid calling [.ps_trunc
+  result <- unclass(x)[i, j, ..., drop = drop]
+
+  # If not a matrix anymore or dropped dimensions, return as-is (no metadata)
+  if (!is.matrix(result)) {
+    return(result)
+  }
+
+  # If result is a single element, return as numeric (no metadata)
+  if (length(result) == 1) {
+    return(as.numeric(result))
+  }
+
+  # Handle different index types for rows
+  n <- nrow(x)
+
+  if (is.logical(i)) {
+    # Convert logical to positions
+    i <- which(i)
+  } else if (any(i < 0)) {
+    # Handle negative indexing
+    i <- setdiff(seq_len(n), -i)
+  }
+
+  # Map indices to new positions
+  new_truncated_idx <- integer(0)
+
+  for (idx in seq_along(i)) {
+    old_pos <- i[idx]
+    if (old_pos %in% meta$truncated_idx) {
+      new_truncated_idx <- c(new_truncated_idx, idx)
+    }
+  }
+
+  # Update metadata
+  new_meta <- meta
+  new_meta$truncated_idx <- new_truncated_idx
+
+  attr(result, "ps_trunc_meta") <- new_meta
+  class(result) <- c("ps_trunc_matrix", "ps_trunc", "matrix")
+  result
+}
+
+
 # Print methods for ps_trunc_matrix
 
 #' @export
@@ -490,44 +592,102 @@ vec_arith.ps_trunc <- function(op, x, y, ...) {
 #' @export
 #' @method vec_arith.ps_trunc default
 vec_arith.ps_trunc.default <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trunc ps_trunc
 vec_arith.ps_trunc.ps_trunc <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
+}
+
+#' @export
+#' @method vec_arith.ps_trunc MISSING
+vec_arith.ps_trunc.MISSING <- function(op, x, y, ...) {
+  switch(
+    op,
+    `-` = -1 * vec_data(x), # Returns numeric
+    `+` = vec_data(x), # Returns numeric
+    stop_incompatible_op(op, x, y)
+  )
 }
 
 #' @export
 #' @method vec_arith.ps_trunc numeric
 vec_arith.ps_trunc.numeric <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.numeric ps_trunc
 vec_arith.numeric.ps_trunc <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trunc integer
 vec_arith.ps_trunc.integer <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 # Combining / Casting
 #' @export
 vec_ptype2.ps_trunc.ps_trunc <- function(x, y, ...) {
-  stop_incompatible_type(x, y, message = "Can't combine ps_trunc objects.")
+  x_meta <- ps_trunc_meta(x)
+  y_meta <- ps_trunc_meta(y)
+
+  # Check if truncation parameters match
+  if (
+    !identical(x_meta$lower_bound, y_meta$lower_bound) ||
+      !identical(x_meta$upper_bound, y_meta$upper_bound) ||
+      !identical(x_meta$method, y_meta$method)
+  ) {
+    warn_incompatible_metadata(
+      x,
+      y,
+      "different truncation parameters"
+    )
+    return(double())
+  }
+
+  # If parameters match, return ps_trunc prototype
+  ps_trunc(
+    double(),
+    method = x_meta$method,
+    lower = x_meta$lower_bound,
+    upper = x_meta$upper_bound
+  )
 }
 
 #' @export
-vec_ptype2.ps_trunc.double <- function(x, y, ...) double()
+vec_ptype2.ps_trunc.double <- function(x, y, ...) {
+  warn_class_downgrade("ps_trunc")
+  double()
+}
 
 #' @export
-vec_ptype2.double.ps_trunc <- function(x, y, ...) double()
+vec_ptype2.double.ps_trunc <- function(x, y, ...) {
+  warn_class_downgrade("ps_trunc")
+  double()
+}
+
+#' @export
+vec_cast.ps_trunc.ps_trunc <- function(x, to, ...) {
+  # Check if metadata matches (excluding indices)
+  x_meta <- ps_trunc_meta(x)
+  to_meta <- ps_trunc_meta(to)
+
+  if (
+    !identical(x_meta$lower_bound, to_meta$lower_bound) ||
+      !identical(x_meta$upper_bound, to_meta$upper_bound) ||
+      !identical(x_meta$method, to_meta$method)
+  ) {
+    vctrs::stop_incompatible_cast(x, to, x_arg = "", to_arg = "")
+  }
+
+  # Return x as-is if metadata matches
+  x
+}
 
 #' @export
 vec_cast.double.ps_trunc <- function(x, to, ...) {
@@ -543,19 +703,31 @@ vec_cast.ps_trunc.double <- function(x, to, ...) {
 }
 
 #' @export
-vec_ptype2.psw.ps_trunc <- function(x, y, ...) character()
+vec_ptype2.psw.ps_trunc <- function(x, y, ...) {
+  warn_class_downgrade(c("psw", "ps_trunc"))
+  double()
+}
 
 #' @export
-vec_ptype2.ps_trunc.psw <- function(x, y, ...) character()
+vec_ptype2.ps_trunc.psw <- function(x, y, ...) {
+  warn_class_downgrade(c("ps_trunc", "psw"))
+  double()
+}
 
 #' @export
 vec_cast.character.ps_trunc <- function(x, to, ...) as.character(vec_data(x))
 
 #' @export
-vec_ptype2.ps_trunc.integer <- function(x, y, ...) integer()
+vec_ptype2.ps_trunc.integer <- function(x, y, ...) {
+  warn_class_downgrade("ps_trunc", "integer")
+  integer()
+}
 
 #' @export
-vec_ptype2.integer.ps_trunc <- function(x, y, ...) integer()
+vec_ptype2.integer.ps_trunc <- function(x, y, ...) {
+  warn_class_downgrade("ps_trunc", "integer")
+  integer()
+}
 
 #' @export
 vec_cast.integer.ps_trunc <- function(x, to, ...) as.integer(vec_data(x))
@@ -572,4 +744,164 @@ vec_cast.ps_trunc.integer <- function(x, to, ...) {
 #' @export
 vec_math.ps_trunc <- function(.fn, .x, ...) {
   vec_math_base(.fn, vec_data(.x), ...)
+}
+
+#' @export
+Summary.ps_trunc <- function(..., na.rm = FALSE) {
+  .fn <- .Generic
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call(.fn, c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+min.ps_trunc <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("min", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+max.ps_trunc <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("max", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+range.ps_trunc <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("range", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+median.ps_trunc <- function(x, na.rm = FALSE, ...) {
+  median(vec_data(x), na.rm = na.rm, ...)
+}
+
+#' @export
+quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
+  quantile(vec_data(x), probs = probs, na.rm = na.rm, ...)
+}
+
+
+# Note: We cannot implement custom vec_c for ps_trunc
+# vctrs handles combination internally through vec_ptype2 and vec_cast
+# When combining ps_trunc objects with same parameters, indices won't be preserved
+
+#' @export
+`[.ps_trunc` <- function(x, i, ...) {
+  # If i is missing, just call NextMethod
+  if (missing(i)) {
+    return(NextMethod())
+  }
+
+  # Get original metadata
+  meta <- ps_trunc_meta(x)
+
+  # Convert i to positive integer indices if needed
+  # For logical indices, only allow length 1 or length n
+  if (is.logical(i) && length(i) != 1 && length(i) != length(x)) {
+    abort(
+      "Logical subscript `i` must be size 1 or {length(x)}, not {length(i)}.",
+      error_class = "propensity_length_error"
+    )
+  }
+  i <- vec_as_location(i, n = length(x))
+
+  # Get the subset of data using NextMethod to handle vctrs subsetting
+  result <- NextMethod()
+
+  # Update indices: map old positions to new positions
+  new_truncated_idx <- match(meta$truncated_idx, i)
+  new_truncated_idx <- new_truncated_idx[!is.na(new_truncated_idx)]
+
+  # Update metadata
+  new_meta <- meta
+  new_meta$truncated_idx <- new_truncated_idx
+
+  # Update the attributes on the result
+  attr(result, "ps_trunc_meta") <- new_meta
+
+  result
+}
+
+#' @export
+summary.ps_trunc <- function(object, ...) {
+  summary(vec_data(object), ...)
+}
+
+#' @export
+sort.ps_trunc <- function(x, decreasing = FALSE, na.last = NA, ...) {
+  # Get original metadata
+  meta <- ps_trunc_meta(x)
+
+  # Get numeric data
+  x_data <- vec_data(x)
+
+  # Create a tracking vector to know which values were truncated
+  # TRUE = truncated, FALSE = not truncated
+  was_truncated <- logical(length(x))
+  was_truncated[meta$truncated_idx] <- TRUE
+
+  # Get the order
+  ord <- order(x_data, na.last = na.last, decreasing = decreasing, ...)
+
+  # Apply the ordering to both data and tracking vector
+  sorted_data <- x_data[ord]
+  sorted_was_truncated <- was_truncated[ord]
+
+  # Find new positions of truncated values
+  new_truncated_idx <- which(sorted_was_truncated)
+
+  # Create new metadata with updated indices
+  new_meta <- meta
+  new_meta$truncated_idx <- new_truncated_idx
+
+  # Create the sorted ps_trunc object
+  new_ps_trunc(sorted_data, new_meta)
+}
+
+#' @export
+vec_restore.ps_trunc <- function(x, to, ...) {
+  # Get the prototype's metadata
+  to_meta <- ps_trunc_meta(to)
+
+  # Extract numeric data for comparisons
+  x_data <- vec_data(x)
+
+  # For combining multiple ps_trunc objects, we need to reconstruct indices
+  # For ps_trunc, values at boundaries are modified, not NA
+  if (
+    length(to_meta$truncated_idx) == 0 &&
+      length(x_data) > 0 &&
+      !is.null(to_meta$lower_bound) &&
+      !is.null(to_meta$upper_bound)
+  ) {
+    # Identify which positions were truncated (at the bounds)
+    truncated_positions <- which(
+      x_data == to_meta$lower_bound | x_data == to_meta$upper_bound
+    )
+
+    # Update metadata with the truncated positions
+    new_meta <- to_meta
+    new_meta$truncated_idx <- truncated_positions
+
+    # Use the constructor to create a proper ps_trunc object
+    return(new_ps_trunc(x_data, new_meta))
+  }
+
+  # Use the constructor with the prototype's metadata
+  new_ps_trunc(x_data, to_meta)
+}
+
+#' @export
+anyDuplicated.ps_trunc <- function(x, incomparables = FALSE, ...) {
+  anyDuplicated(vec_data(x), incomparables = incomparables, ...)
+}
+
+#' @export
+diff.ps_trunc <- function(x, lag = 1L, differences = 1L, ...) {
+  diff(vec_data(x), lag = lag, differences = differences, ...)
 }

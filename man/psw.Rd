@@ -17,6 +17,7 @@ new_psw(
   stabilized = FALSE,
   trimmed = FALSE,
   truncated = FALSE,
+  calibrated = FALSE,
   ...
 )
 
@@ -53,9 +54,9 @@ estimand(wt) <- value
 
 \item{truncated}{Logical, whether these weights came from a truncated PS.}
 
-\item{...}{Additional attributes to track in the weights.}
-
 \item{calibrated}{Logical, whether these weights came from a calibrated PS.}
+
+\item{...}{Additional attributes to track in the weights.}
 
 \item{wt}{An object to check or convert.}
 
@@ -77,6 +78,28 @@ vectors for propensity score weights with optional \code{estimand} attributes.
 Most users should use \code{\link[=wt_ate]{wt_ate()}} and friends, but these functions can help
 extend the functionality of \code{psw} objects.
 }
+\details{
+The \code{psw} class is a vctrs-based S3 class that represents propensity score
+weights. It extends numeric vectors with additional metadata tracking the
+estimand type, stabilization status, and source transformations.
+
+\strong{Arithmetic behavior}: Unlike \code{ps_trim} and \code{ps_trunc} objects, arithmetic
+operations on \code{psw} objects preserve the class and attributes. This allows
+weight manipulations like normalization (\code{weights / sum(weights)}) while
+maintaining metadata.
+
+\strong{Combining behavior}: When combining \code{psw} objects with \code{c()}, the class
+is preserved only if all metadata matches. Mismatched metadata triggers a
+warning and returns a numeric vector.
+
+\strong{Base R compatibility}: Most base R operations work seamlessly:
+\itemize{
+\item Subsetting with \code{[} preserves class and attributes
+\item Summary functions (\code{sum()}, \code{mean()}, etc.) return numeric values
+\item Comparison operators return logical vectors
+\item Works in data frames and with tidyverse functions
+}
+}
 \examples{
 psw_weights <- new_psw(c(0.1, 0.2, 0.3), estimand = "ate")
 is_psw(psw_weights)
@@ -84,4 +107,25 @@ estimand(psw_weights)
 
 psw_helper <- psw(c(0.5, 0.7), estimand = "att")
 as_psw(c(0.1, 0.2), estimand = "ato")
+
+# Coercion behavior - compatible objects combine silently
+x <- psw(c(0.5, 0.7), estimand = "ate")
+y <- psw(c(0.3, 0.8), estimand = "ate")
+c(x, y)  # Returns psw object
+
+# Incompatible metadata triggers warning and returns numeric
+x <- psw(c(0.5, 0.7), estimand = "ate")
+y <- psw(c(0.3, 0.8), estimand = "att")
+c(x, y)  # Warning: returns numeric
+
+# Works with tidyr::pivot_longer for plotting
+if (requireNamespace("tidyr", quietly = TRUE)) {
+  df <- data.frame(
+    id = 1:4,
+    ate_wts = psw(c(0.5, 0.7, 0.3, 0.8), estimand = "ate"),
+    att_wts = psw(c(0.4, 0.6, 0.2, 0.9), estimand = "att")
+  )
+  # This will warn but succeed, returning numeric in the pivoted column
+  tidyr::pivot_longer(df, cols = c(ate_wts, att_wts))
+}
 }

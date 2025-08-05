@@ -34,6 +34,26 @@
 #' - **Optimal trimming** (`method = "optimal"`): Uses the Yang et al. (2016)
 #'   approach for multi-category treatments.
 #'
+#' **Arithmetic behavior**: Arithmetic operations on `ps_trim` objects return
+#' numeric vectors, not `ps_trim` objects. This is intentional - once you
+#' transform propensity scores (e.g., `1/ps` for weights), the result is no
+#' longer a propensity score.
+#'
+#' **NA handling**: Trimmed values are set to `NA`. Operations that don't handle
+#' `NA` values will propagate them (e.g., `sum()` returns `NA` unless
+#' `na.rm = TRUE`).
+#'
+#' **Metadata tracking**: The `trimmed_idx` and `keep_idx` are updated when
+#' subsetting or reordering:
+#' - Subsetting with `[` updates indices to new positions
+#' - `sort()` reorders data and updates indices accordingly
+#' - `unique()` may change lengths but preserves the class
+#' - `na.omit()` removes trimmed values and updates indices
+#'
+#' **Combining behavior**: When combining `ps_trim` objects with `c()`, metadata
+#' must match (same trimming parameters). Mismatched metadata triggers a warning
+#' and returns a numeric vector.
+#'
 #' @return A `ps_trim` object (numeric vector or matrix). The attribute
 #' `ps_trim_meta` stores metadata.
 #'
@@ -49,6 +69,21 @@
 #' ps <- predict(fit, type = "response")
 #'
 #' ps_trim(ps, method = "adaptive")
+#'
+#' # Coercion behavior with ps_trim objects
+#' ps_trim1 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#' ps_trim2 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#'
+#' # Compatible objects combine silently
+#' c(ps_trim1[1:50], ps_trim2[51:100])  # Returns ps_trim object
+#'
+#' # Different trim parameters trigger warning
+#' ps_trim3 <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
+#' c(ps_trim1[1:50], ps_trim3[51:100])  # Warning: returns numeric
+#'
+#' # Cross-class combinations warn and return numeric
+#' psw_obj <- psw(ps[1:50], estimand = "ate")
+#' c(ps_trim1[1:50], psw_obj)  # Warning: returns numeric
 #'
 #' @export
 ps_trim <- function(
@@ -486,6 +521,76 @@ is_unit_trimmed.ps_trim_matrix <- function(x) {
 }
 
 
+#' @export
+`[.ps_trim_matrix` <- function(x, i, j, ..., drop = TRUE) {
+  # Get metadata
+  meta <- ps_trim_meta(x)
+
+  # Handle single index (matrix as vector) - bypass ps_trim method
+  if (nargs() == 2) {
+    return(unclass(x)[i])
+  }
+
+  # Handle missing i (all rows) - bypass ps_trim method
+  if (missing(i)) {
+    return(unclass(x)[, j, ..., drop = drop])
+  }
+
+  # For single element extraction, call base method directly to avoid ps_trim method
+  # Check if this will result in a single element
+  if (!missing(j) && length(i) == 1 && length(j) == 1) {
+    return(as.numeric(unclass(x)[i, j, drop = TRUE]))
+  }
+
+  # Perform subsetting with base matrix method to avoid calling [.ps_trim
+  result <- unclass(x)[i, j, ..., drop = drop]
+
+  # If not a matrix anymore or dropped dimensions, return as-is (no metadata)
+  if (!is.matrix(result)) {
+    return(result)
+  }
+
+  # If result is a single element, return as numeric (no metadata)
+  if (length(result) == 1) {
+    return(as.numeric(result))
+  }
+
+  # Handle different index types for rows
+  n <- nrow(x)
+
+  if (is.logical(i)) {
+    # Convert logical to positions
+    i <- which(i)
+  } else if (any(i < 0)) {
+    # Handle negative indexing
+    i <- setdiff(seq_len(n), -i)
+  }
+
+  # Map indices to new positions
+  new_keep_idx <- integer(0)
+  new_trimmed_idx <- integer(0)
+
+  for (idx in seq_along(i)) {
+    old_pos <- i[idx]
+    if (old_pos %in% meta$keep_idx) {
+      new_keep_idx <- c(new_keep_idx, idx)
+    }
+    if (old_pos %in% meta$trimmed_idx) {
+      new_trimmed_idx <- c(new_trimmed_idx, idx)
+    }
+  }
+
+  # Update metadata
+  new_meta <- meta
+  new_meta$keep_idx <- new_keep_idx
+  new_meta$trimmed_idx <- new_trimmed_idx
+
+  attr(result, "ps_trim_meta") <- new_meta
+  class(result) <- c("ps_trim_matrix", "ps_trim", "matrix")
+  result
+}
+
+
 # Print methods for ps_trim_matrix
 
 #' @export
@@ -553,47 +658,124 @@ vec_arith.ps_trim <- function(op, x, y, ...) {
 #' @export
 #' @method vec_arith.ps_trim default
 vec_arith.ps_trim.default <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trim ps_trim
 vec_arith.ps_trim.ps_trim <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
+}
+
+#' @export
+#' @method vec_arith.ps_trim MISSING
+vec_arith.ps_trim.MISSING <- function(op, x, y, ...) {
+  switch(
+    op,
+    `-` = -1 * vec_data(x), # Returns numeric
+    `+` = vec_data(x), # Returns numeric
+    stop_incompatible_op(op, x, y)
+  )
 }
 
 #' @export
 #' @method vec_arith.ps_trim numeric
 vec_arith.ps_trim.numeric <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.numeric ps_trim
 vec_arith.numeric.ps_trim <- function(op, x, y, ...) {
-  stop_incompatible_op(op, x, y)
+  vec_arith_base(op, x, y)
 }
 
 #' @export
 #' @method vec_arith.ps_trim integer
 vec_arith.ps_trim.integer <- function(op, x, y, ...) {
+  vec_arith_base(op, x, y)
+}
+
+#' @export
+#' @method vec_arith.ps_trim list
+vec_arith.ps_trim.list <- function(op, x, y, ...) {
   stop_incompatible_op(op, x, y)
 }
 
 #' @export
 vec_ptype2.ps_trim.ps_trim <- function(x, y, ...) {
-  stop_incompatible_type(
-    x,
-    y,
-    x_arg = "x",
-    y_arg = "y",
-    message = "Can't combine two ps_trim objects"
-  )
+  x_meta <- ps_trim_meta(x)
+  y_meta <- ps_trim_meta(y)
+
+  # Check if trim parameters match
+  if (
+    !identical(x_meta$lower, y_meta$lower) ||
+      !identical(x_meta$upper, y_meta$upper) ||
+      !identical(x_meta$method, y_meta$method)
+  ) {
+    warn_incompatible_metadata(
+      x,
+      y,
+      "different trimming parameters"
+    )
+    return(double())
+  }
+
+  # Check if refit status matches
+  if (!identical(x_meta$refit, y_meta$refit)) {
+    warn_incompatible_metadata(
+      x,
+      y,
+      "different refit status"
+    )
+    return(double())
+  }
+
+  # If parameters match, return ps_trim prototype
+  # The actual index combining will happen in vec_c
+  # Handle missing metadata gracefully
+  if (
+    is.null(x_meta$method) || is.null(x_meta$lower) || is.null(x_meta$upper)
+  ) {
+    # Return basic ps_trim if metadata is incomplete
+    new_trimmed_ps(double(), ps_trim_meta = x_meta)
+  } else {
+    ps_trim(
+      double(),
+      method = x_meta$method,
+      lower = x_meta$lower,
+      upper = x_meta$upper
+    )
+  }
 }
 #' @export
-vec_ptype2.ps_trim.double <- function(x, y, ...) double()
+vec_ptype2.ps_trim.double <- function(x, y, ...) {
+  warn_class_downgrade("ps_trim")
+  double()
+}
 #' @export
-vec_ptype2.double.ps_trim <- function(x, y, ...) double()
+vec_ptype2.double.ps_trim <- function(x, y, ...) {
+  warn_class_downgrade("ps_trim")
+  double()
+}
+
+#' @export
+vec_cast.ps_trim.ps_trim <- function(x, to, ...) {
+  # Check if metadata matches (excluding indices)
+  x_meta <- ps_trim_meta(x)
+  to_meta <- ps_trim_meta(to)
+
+  if (
+    !identical(x_meta$lower, to_meta$lower) ||
+      !identical(x_meta$upper, to_meta$upper) ||
+      !identical(x_meta$method, to_meta$method)
+  ) {
+    vctrs::stop_incompatible_cast(x, to, x_arg = "", to_arg = "")
+  }
+
+  # Return x as-is if metadata matches
+  x
+}
 
 #' @export
 vec_cast.double.ps_trim <- function(x, to, ...) {
@@ -615,18 +797,41 @@ vec_cast.ps_trim.double <- function(x, to, ...) {
 }
 
 #' @export
-vec_ptype2.psw.ps_trim <- function(x, y, ...) character()
+vec_ptype2.psw.ps_trim <- function(x, y, ...) {
+  warn_class_downgrade(c("psw", "ps_trim"))
+  double()
+}
 
 #' @export
-vec_ptype2.ps_trim.psw <- function(x, y, ...) character()
+vec_ptype2.ps_trim.psw <- function(x, y, ...) {
+  warn_class_downgrade(c("ps_trim", "psw"))
+  double()
+}
 
 #' @export
 vec_cast.character.ps_trim <- function(x, to, ...) as.character(vec_data(x))
 
 #' @export
-vec_ptype2.ps_trim.integer <- function(x, y, ...) integer()
+vec_ptype2.ps_trim.integer <- function(x, y, ...) {
+  warn_class_downgrade("ps_trim", "integer")
+  integer()
+}
 #' @export
-vec_ptype2.integer.ps_trim <- function(x, y, ...) integer()
+vec_ptype2.integer.ps_trim <- function(x, y, ...) {
+  warn_class_downgrade("ps_trim", "integer")
+  integer()
+}
+
+#' @export
+vec_ptype2.ps_trim.ps_trunc <- function(x, y, ...) {
+  warn_class_downgrade(c("ps_trim", "ps_trunc"))
+  double()
+}
+#' @export
+vec_ptype2.ps_trunc.ps_trim <- function(x, y, ...) {
+  warn_class_downgrade(c("ps_trunc", "ps_trim"))
+  double()
+}
 
 #' @export
 vec_cast.integer.ps_trim <- function(x, to, ...) {
@@ -647,8 +852,217 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
 }
 
 #' @export
+vec_cast.ps_trim.ps_trunc <- function(x, to, ...) {
+  # Convert ps_trunc to ps_trim (no trimming, just convert)
+  new_trimmed_ps(
+    vec_data(x),
+    ps_trim_meta = list(
+      method = "from_trunc",
+      keep_idx = seq_along(x),
+      trimmed_idx = integer(0)
+    )
+  )
+}
+
+#' @export
+vec_cast.ps_trunc.ps_trim <- function(x, to, ...) {
+  # Convert ps_trim to ps_trunc (ignore NAs)
+  ps_trunc(vec_data(x), method = "ps", lower = 0, upper = 1)
+}
+
+#' @export
 vec_math.ps_trim <- function(.fn, .x, ...) {
   vec_math_base(.fn, vec_data(.x), ...)
+}
+
+#' @export
+Summary.ps_trim <- function(..., na.rm = FALSE) {
+  .fn <- .Generic
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call(.fn, c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+min.ps_trim <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("min", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+max.ps_trim <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("max", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+range.ps_trim <- function(..., na.rm = FALSE) {
+  args <- list(...)
+  numeric_args <- lapply(args, vec_data)
+  do.call("range", c(numeric_args, list(na.rm = na.rm)))
+}
+
+#' @export
+median.ps_trim <- function(x, na.rm = FALSE, ...) {
+  median(vec_data(x), na.rm = na.rm, ...)
+}
+
+
+#' @export
+`[.ps_trim` <- function(x, i, ...) {
+  # If i is missing, just call NextMethod
+  if (missing(i)) {
+    return(NextMethod())
+  }
+
+  # Get original metadata
+  meta <- ps_trim_meta(x)
+
+  # Convert i to positive integer indices if needed
+  # For logical indices, only allow length 1 or length n
+  if (is.logical(i) && length(i) != 1 && length(i) != length(x)) {
+    abort(
+      "Logical subscript `i` must be size 1 or {length(x)}, not {length(i)}.",
+      error_class = "propensity_length_error"
+    )
+  }
+  i <- vec_as_location(i, n = length(x))
+
+  # Get the subset of data using NextMethod to handle vctrs subsetting
+  result <- NextMethod()
+
+  # Update indices: map old positions to new positions
+  new_trimmed_idx <- match(meta$trimmed_idx, i)
+  new_trimmed_idx <- new_trimmed_idx[!is.na(new_trimmed_idx)]
+
+  new_keep_idx <- match(meta$keep_idx, i)
+  new_keep_idx <- new_keep_idx[!is.na(new_keep_idx)]
+
+  # Update metadata
+  new_meta <- meta
+  new_meta$trimmed_idx <- new_trimmed_idx
+  new_meta$keep_idx <- new_keep_idx
+
+  # Update the attributes on the result
+  attr(result, "ps_trim_meta") <- new_meta
+
+  result
+}
+
+#' @export
+sort.ps_trim <- function(x, decreasing = FALSE, na.last = NA, ...) {
+  # Get original metadata
+  meta <- ps_trim_meta(x)
+
+  # Get numeric data
+  x_data <- vec_data(x)
+
+  # Create a tracking vector to know which NAs are from trimming
+  # TRUE = trimmed, FALSE = not trimmed (includes original NAs)
+  is_trimmed <- logical(length(x))
+  is_trimmed[meta$trimmed_idx] <- TRUE
+
+  # Get the order
+  ord <- order(x_data, na.last = na.last, decreasing = decreasing, ...)
+
+  # Apply the ordering to both data and tracking vector
+  sorted_data <- x_data[ord]
+  sorted_is_trimmed <- is_trimmed[ord]
+
+  # Find new positions of trimmed values
+  new_trimmed_idx <- which(sorted_is_trimmed)
+  new_keep_idx <- which(!sorted_is_trimmed & !is.na(sorted_data))
+
+  # Create new metadata with updated indices
+  new_meta <- meta
+  new_meta$trimmed_idx <- new_trimmed_idx
+  new_meta$keep_idx <- new_keep_idx
+
+  # Create the sorted ps_trim object
+  new_trimmed_ps(sorted_data, ps_trim_meta = new_meta)
+}
+
+#' @export
+summary.ps_trim <- function(object, ...) {
+  summary(vec_data(object), ...)
+}
+
+#' @importFrom stats na.omit
+#' @export
+na.omit.ps_trim <- function(object, ...) {
+  # Get metadata
+  meta <- ps_trim_meta(object)
+
+  # Get non-NA values and their positions
+  not_na <- !is.na(object)
+  kept_positions <- which(not_na)
+
+  # Get the clean data
+  clean_data <- vec_data(object)[not_na]
+
+  # Update metadata - only keep indices that are in kept_positions
+  new_trimmed_idx <- match(meta$trimmed_idx, kept_positions)
+  new_trimmed_idx <- new_trimmed_idx[!is.na(new_trimmed_idx)]
+
+  new_keep_idx <- match(meta$keep_idx, kept_positions)
+  new_keep_idx <- new_keep_idx[!is.na(new_keep_idx)]
+
+  # Create new metadata
+  new_meta <- meta
+  new_meta$trimmed_idx <- new_trimmed_idx
+  new_meta$keep_idx <- new_keep_idx
+
+  # Create the result with na.action attribute
+  result <- new_trimmed_ps(clean_data, ps_trim_meta = new_meta)
+
+  # Add na.action attribute as base na.omit does
+  attr(result, "na.action") <- which(!not_na)
+  class(attr(result, "na.action")) <- "omit"
+
+  result
+}
+
+#' @export
+vec_restore.ps_trim <- function(x, to, ...) {
+  # Get the prototype's metadata
+  to_meta <- ps_trim_meta(to)
+
+  # For combining multiple ps_trim objects, we need to reconstruct indices
+  # based on which values are NA (these were trimmed)
+  if (length(to_meta$trimmed_idx) == 0 && length(x) > 0) {
+    # Identify which positions have NA values (these were trimmed)
+    na_positions <- which(is.na(x))
+
+    # Update metadata with the NA positions as trimmed indices
+    new_meta <- to_meta
+    new_meta$trimmed_idx <- na_positions
+    new_meta$keep_idx <- setdiff(seq_along(x), na_positions)
+
+    # Use the constructor to create a proper ps_trim object
+    # vec_data in case x is already a vctr
+    return(new_trimmed_ps(vec_data(x), ps_trim_meta = new_meta))
+  }
+
+  # Use the constructor with the prototype's metadata
+  # vec_data in case x is already a vctr
+  new_trimmed_ps(vec_data(x), ps_trim_meta = to_meta)
+}
+
+#' @export
+quantile.ps_trim <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
+  quantile(vec_data(x), probs = probs, na.rm = na.rm, ...)
+}
+
+#' @export
+anyDuplicated.ps_trim <- function(x, incomparables = FALSE, ...) {
+  anyDuplicated(vec_data(x), incomparables = incomparables, ...)
+}
+
+#' @export
+diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
+  diff(vec_data(x), lag = lag, differences = differences, ...)
 }
 
 #' Refit the Propensity Score Model on Retained Observations

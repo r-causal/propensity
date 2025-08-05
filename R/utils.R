@@ -100,3 +100,49 @@ assert_columns_exist <- function(
 
   invisible(TRUE)
 }
+
+# Coercion warning helpers
+warn_incompatible_metadata <- function(
+  x,
+  y,
+  reason,
+  ...,
+  call = rlang::caller_env()
+) {
+  x_class <- class(x)[1]
+  y_class <- class(y)[1]
+
+  warn(
+    c(
+      paste0("Converting ", x_class, " to numeric: ", reason),
+      i = "Metadata cannot be preserved when combining incompatible objects",
+      i = "Use identical objects or explicitly cast to numeric to avoid this warning"
+    ),
+    warning_class = "propensity_coercion_warning",
+    call = call
+  )
+}
+
+warn_class_downgrade <- function(
+  from_classes,
+  to_class = "numeric",
+  ...,
+  call = rlang::caller_env()
+) {
+  # Handle both single class and multiple classes
+  if (length(from_classes) == 1) {
+    from_text <- from_classes
+  } else {
+    from_text <- paste(from_classes, collapse = " and ")
+  }
+
+  warn(
+    c(
+      paste0("Converting ", from_text, " to ", to_class),
+      i = "Class-specific attributes and metadata have been dropped",
+      i = "Use explicit casting to numeric to avoid this warning"
+    ),
+    warning_class = "propensity_class_downgrade_warning",
+    call = call
+  )
+}
