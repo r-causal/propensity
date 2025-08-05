@@ -52,6 +52,7 @@ extend the functionality of <code>psw</code> objects.</p>
 <span>  stabilized <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  trimmed <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  truncated <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  calibrated <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -102,12 +103,12 @@ extend the functionality of <code>psw</code> objects.</p>
 <dd><p>Logical, whether these weights came from a truncated PS.</p></dd>
 
 
-<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Additional attributes to track in the weights.</p></dd>
-
-
 <dt id="arg-calibrated">calibrated<a class="anchor" aria-label="anchor" href="#arg-calibrated"></a></dt>
 <dd><p>Logical, whether these weights came from a calibrated PS.</p></dd>
+
+
+<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
+<dd><p>Additional attributes to track in the weights.</p></dd>
 
 
 <dt id="arg-wt">wt<a class="anchor" aria-label="anchor" href="#arg-wt"></a></dt>
@@ -128,6 +129,23 @@ extend the functionality of <code>psw</code> objects.</p>
 <li><p><code>estimand()</code>: The <code>estimand</code> attribute of a <code>psw</code> object.</p></li>
 <li><p><code>is_stabilized()</code>: The <code>stabilized</code> attribute of a <code>psw</code> object.</p></li>
 </ul></div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>The <code>psw</code> class is a vctrs-based S3 class that represents propensity score
+weights. It extends numeric vectors with additional metadata tracking the
+estimand type, stabilization status, and source transformations.</p>
+<p><strong>Arithmetic behavior</strong>: Unlike <code>ps_trim</code> and <code>ps_trunc</code> objects, arithmetic
+operations on <code>psw</code> objects preserve the class and attributes. This allows
+weight manipulations like normalization (<code>weights / sum(weights)</code>) while
+maintaining metadata.</p>
+<p><strong>Combining behavior</strong>: When combining <code>psw</code> objects with <code><a href="https://rdrr.io/r/base/c.html" class="external-link">c()</a></code>, the class
+is preserved only if all metadata matches. Mismatched metadata triggers a
+warning and returns a numeric vector.</p>
+<p><strong>Base R compatibility</strong>: Most base R operations work seamlessly:</p><ul><li><p>Subsetting with <code>[</code> preserves class and attributes</p></li>
+<li><p>Summary functions (<code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code>, <code><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean()</a></code>, etc.) return numeric values</p></li>
+<li><p>Comparison operators return logical vectors</p></li>
+<li><p>Works in data frames and with tidyverse functions</p></li>
+</ul></div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
@@ -141,6 +159,47 @@ extend the functionality of <code>psw</code> objects.</p>
 <span class="r-in"><span><span class="fu">as_psw</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.1</span>, <span class="fl">0.2</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="st">"ato"</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ato}[2]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.1 0.2</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Coercion behavior - compatible objects combine silently</span></span></span>
+<span class="r-in"><span><span class="va">x</span> <span class="op">&lt;-</span> <span class="fu">psw</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.5</span>, <span class="fl">0.7</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="st">"ate"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">y</span> <span class="op">&lt;-</span> <span class="fu">psw</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.3</span>, <span class="fl">0.8</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="st">"ate"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">x</span>, <span class="va">y</span><span class="op">)</span>  <span class="co"># Returns psw object</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[4]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.5 0.7 0.3 0.8</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Incompatible metadata triggers warning and returns numeric</span></span></span>
+<span class="r-in"><span><span class="va">x</span> <span class="op">&lt;-</span> <span class="fu">psw</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.5</span>, <span class="fl">0.7</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="st">"ate"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">y</span> <span class="op">&lt;-</span> <span class="fu">psw</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.3</span>, <span class="fl">0.8</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="st">"att"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">x</span>, <span class="va">y</span><span class="op">)</span>  <span class="co"># Warning: returns numeric</span></span></span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>Converting psw to numeric: incompatible estimands 'ate' and 'att'</span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Metadata cannot be preserved when combining incompatible objects</span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Use identical objects or explicitly cast to numeric to avoid this warning</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.5 0.7 0.3 0.8</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Works with tidyr::pivot_longer for plotting</span></span></span>
+<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace</a></span><span class="op">(</span><span class="st">"tidyr"</span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
+<span class="r-in"><span>  <span class="va">df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>    id <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">4</span>,</span></span>
+<span class="r-in"><span>    ate_wts <span class="op">=</span> <span class="fu">psw</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.5</span>, <span class="fl">0.7</span>, <span class="fl">0.3</span>, <span class="fl">0.8</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="st">"ate"</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>    att_wts <span class="op">=</span> <span class="fu">psw</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.4</span>, <span class="fl">0.6</span>, <span class="fl">0.2</span>, <span class="fl">0.9</span><span class="op">)</span>, estimand <span class="op">=</span> <span class="st">"att"</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="co"># This will warn but succeed, returning numeric in the pivoted column</span></span></span>
+<span class="r-in"><span>  <span class="fu">tidyr</span><span class="fu">::</span><span class="fu"><a href="https://tidyr.tidyverse.org/reference/pivot_longer.html" class="external-link">pivot_longer</a></span><span class="op">(</span><span class="va">df</span>, cols <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">ate_wts</span>, <span class="va">att_wts</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">}</span></span></span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>Converting psw to numeric: incompatible estimands 'ate' and 'att'</span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Metadata cannot be preserved when combining incompatible objects</span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Use identical objects or explicitly cast to numeric to avoid this warning</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 8 × 3</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>      id name    value</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span>     1 ate_wts   0.5</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span>     1 att_wts   0.4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span>     2 ate_wts   0.7</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">4</span>     2 att_wts   0.6</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">5</span>     3 ate_wts   0.3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">6</span>     3 att_wts   0.2</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">7</span>     4 ate_wts   0.8</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">8</span>     4 att_wts   0.9</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

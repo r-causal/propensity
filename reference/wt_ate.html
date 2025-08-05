@@ -513,7 +513,6 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-in"><span><span class="co"># Very large!</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">wt_extreme</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[1]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># ATO weights are bounded</span></span></span>
@@ -521,7 +520,6 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-in"><span><span class="co"># Much more reasonable</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">wt_extreme_ato</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ato}[1]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.5</span>
 <span class="r-in"><span><span class="co"># but they target a different population</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="psw.html">estimand</a></span><span class="op">(</span><span class="va">wt_extreme_ato</span><span class="op">)</span> <span class="co"># "ato"</span></span></span>
