@@ -48,6 +48,55 @@ test_that("wt_atc is an alias for wt_atu", {
   expect_identical(wts_atu_trunc, wts_atc_trunc)
 })
 
+test_that("wt_atc works with all object types", {
+  # Test with single column data.frame
+  df <- data.frame(ps = c(0.1, 0.3, 0.4, 0.3))
+  trt <- c(0, 0, 1, 0)
+
+  wts_df <- wt_atc(df, trt)
+  expect_s3_class(wts_df, "psw")
+  expect_equal(estimand(wts_df), "atu")
+
+  # Test with GLM without covariates
+  glm_mod <- glm(trt ~ 1, family = binomial, data = data.frame(trt = trt))
+  wts_glm <- wt_atc(glm_mod, trt)
+  expect_s3_class(wts_glm, "psw")
+  expect_equal(estimand(wts_glm), "atu")
+
+  # Test with named data.frame columns
+  ps_named <- data.frame(
+    prob_control = c(0.9, 0.7, 0.3, 0.1),
+    prob_treated = c(0.1, 0.3, 0.7, 0.9)
+  )
+  exposure_named <- c("control", "control", "treated", "treated")
+
+  wts_named <- wt_atc(
+    ps_named,
+    exposure_named,
+    .propensity_col = "prob_treated"
+  )
+  expect_s3_class(wts_named, "psw")
+  expect_equal(estimand(wts_named), "atu")
+
+  # Test categorical exposure
+  ps_cat <- matrix(
+    c(0.5, 0.3, 0.2, 0.2, 0.5, 0.3, 0.1, 0.3, 0.6, 0.6, 0.2, 0.2),
+    nrow = 4,
+    byrow = TRUE,
+    dimnames = list(NULL, c("A", "B", "C"))
+  )
+  exposure_cat <- factor(c("A", "B", "C", "A"))
+
+  wts_cat <- wt_atc(
+    ps_cat,
+    exposure_cat,
+    focal = "A",
+    exposure_type = "categorical"
+  )
+  expect_s3_class(wts_cat, "psw")
+  expect_equal(estimand(wts_cat), "atu")
+})
+
 test_that("psw objects can be multiplied together", {
   ps <- c(.1, .3, .4, .3)
   exposure <- c(0, 0, 1, 0)
