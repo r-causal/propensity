@@ -1,3 +1,178 @@
+test_that("wt_atc is an alias for wt_atu", {
+  ps <- c(.1, .3, .4, .3)
+  exposure <- c(0, 0, 1, 0)
+
+  # Compare results from wt_atu and wt_atc
+  wts_atu <- wt_atu(ps, exposure, exposure_type = "binary")
+  wts_atc <- wt_atc(ps, exposure, exposure_type = "binary")
+
+  expect_identical(wts_atu, wts_atc)
+
+  # Test with data.frame
+  ps_df <- data.frame(
+    control = c(0.9, 0.7, 0.3, 0.1),
+    treated = c(0.1, 0.3, 0.7, 0.9)
+  )
+  exposure_df <- c(0, 0, 1, 1)
+
+  wts_atu_df <- wt_atu(ps_df, exposure_df)
+  wts_atc_df <- wt_atc(ps_df, exposure_df)
+
+  expect_identical(wts_atu_df, wts_atc_df)
+
+  # Test with GLM
+  set.seed(123)
+  n <- 100
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  treatment <- rbinom(n, 1, plogis(0.5 * x1 + 0.3 * x2))
+  ps_model <- glm(treatment ~ x1 + x2, family = binomial)
+
+  wts_atu_glm <- wt_atu(ps_model, treatment)
+  wts_atc_glm <- wt_atc(ps_model, treatment)
+
+  expect_identical(wts_atu_glm, wts_atc_glm)
+
+  # Test with ps_trim
+  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  wts_atu_trim <- wt_atu(ps_trimmed, exposure)
+  wts_atc_trim <- wt_atc(ps_trimmed, exposure)
+
+  expect_identical(wts_atu_trim, wts_atc_trim)
+
+  # Test with ps_trunc
+  ps_truncated <- ps_trunc(ps, .exposure = exposure, trunc_at = 0.2)
+  wts_atu_trunc <- wt_atu(ps_truncated, exposure)
+  wts_atc_trunc <- wt_atc(ps_truncated, exposure)
+
+  expect_identical(wts_atu_trunc, wts_atc_trunc)
+})
+
+test_that("psw objects can be multiplied together", {
+  ps <- c(.1, .3, .4, .3)
+  exposure <- c(0, 0, 1, 0)
+
+  # Create ATE and censoring weights
+  wts_ate <- wt_ate(ps, exposure, exposure_type = "binary")
+  wts_cens <- wt_cens(ps, exposure, exposure_type = "binary")
+
+  # Multiply them together
+  combined_weights <- wts_ate * wts_cens
+
+  # Check that multiplication works
+  expect_equal(
+    as.numeric(combined_weights),
+    as.numeric(wts_ate) * as.numeric(wts_cens)
+  )
+
+  # Check that the estimand is combined
+  expect_equal(estimand(combined_weights), "ate, uncensored")
+
+  # Check that it's still a psw object
+  expect_true(is_psw(combined_weights))
+
+  # Test with stabilized weights
+  wts_ate_stab <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE
+  )
+  wts_cens_stab <- wt_cens(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE
+  )
+
+  combined_stab <- wts_ate_stab * wts_cens_stab
+  expect_equal(estimand(combined_stab), "ate, uncensored")
+  expect_true(is_stabilized(combined_stab))
+
+  # Test mixed stabilization (only one stabilized)
+  combined_mixed <- wts_ate * wts_cens_stab
+  expect_equal(estimand(combined_mixed), "ate, uncensored")
+  expect_false(is_stabilized(combined_mixed)) # Should be FALSE since only one is stabilized
+
+  # Test with trimmed weights
+  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  wts_ate_trim <- wt_ate(ps_trimmed, exposure)
+  combined_trim <- wts_ate_trim * wts_cens
+  expect_true(is_ps_trimmed(combined_trim))
+})
+
+test_that("wt_cens uses ATE formula with uncensored estimand", {
+  ps <- c(.1, .3, .4, .3)
+  exposure <- c(0, 0, 1, 0)
+
+  # Get weights from wt_ate and wt_cens
+  wts_ate <- wt_ate(ps, exposure, exposure_type = "binary")
+  wts_cens <- wt_cens(ps, exposure, exposure_type = "binary")
+
+  # The numeric values should be identical
+  expect_equal(as.numeric(wts_ate), as.numeric(wts_cens))
+
+  # But the estimand should be different
+  expect_equal(estimand(wts_ate), "ate")
+  expect_equal(estimand(wts_cens), "uncensored")
+
+  # Test stabilized weights
+  wts_ate_stab <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE
+  )
+  wts_cens_stab <- wt_cens(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE
+  )
+
+  expect_equal(as.numeric(wts_ate_stab), as.numeric(wts_cens_stab))
+  expect_true(is_stabilized(wts_cens_stab))
+  expect_equal(estimand(wts_cens_stab), "uncensored")
+
+  # Test with continuous exposure
+  set.seed(123)
+  n <- 32
+  denom_model <- lm(mpg ~ gear + am + carb, data = mtcars)
+
+  wts_ate_cont <- wt_ate(
+    predict(denom_model),
+    .exposure = mtcars$mpg,
+    .sigma = influence(denom_model)$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+
+  wts_cens_cont <- wt_cens(
+    predict(denom_model),
+    .exposure = mtcars$mpg,
+    .sigma = influence(denom_model)$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+
+  expect_equal(as.numeric(wts_ate_cont), as.numeric(wts_cens_cont))
+  expect_equal(estimand(wts_cens_cont), "uncensored")
+
+  # Test with ps_trim
+  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  wts_cens_trim <- wt_cens(ps_trimmed, exposure)
+
+  expect_equal(estimand(wts_cens_trim), "uncensored; trimmed")
+  expect_true(is_ps_trimmed(wts_cens_trim))
+
+  # Test with ps_trunc
+  ps_truncated <- ps_trunc(ps, .exposure = exposure, trunc_at = 0.2)
+  wts_cens_trunc <- wt_cens(ps_truncated, exposure)
+
+  expect_equal(estimand(wts_cens_trunc), "uncensored; truncated")
+  expect_true(is_ps_truncated(wts_cens_trunc))
+})
+
 test_that("ATE works for binary cases", {
   expect_message(
     weights <- wt_ate(c(.1, .3, .4, .3), .exposure = c(0, 0, 1, 0)),

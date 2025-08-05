@@ -254,8 +254,23 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
     estimand <- estimand_x
   }
 
+  # Determine stabilized status: both must be stabilized for result to be stabilized
+  stabilized <- is_stabilized(x) && is_stabilized(y)
+
+  # For trimmed/truncated/calibrated: if either has the property, result has it
+  trimmed <- is_ps_trimmed(x) || is_ps_trimmed(y)
+  truncated <- is_ps_truncated(x) || is_ps_truncated(y)
+  calibrated <- is_ps_calibrated(x) || is_ps_calibrated(y)
+
   rslts <- vec_arith_base(op, x, y)
-  psw(rslts, estimand = estimand)
+  psw(
+    rslts,
+    estimand = estimand,
+    stabilized = stabilized,
+    trimmed = trimmed,
+    truncated = truncated,
+    calibrated = calibrated
+  )
 }
 
 #' @export
