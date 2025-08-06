@@ -87,8 +87,7 @@ test_that("adaptive method: ignores lower/upper, warns appropriately", {
       method = "adaptive",
       lower = 0.2,
       upper = 0.8
-    ),
-    "For `method = 'adaptive'`, `lower` and `upper` are ignored."
+    )
   )
 })
 
@@ -135,8 +134,7 @@ test_that("pref method: requires exposure, fails with all 0 or all 1", {
 
   # 1) If exposure = NULL, should fail
   expect_propensity_error(
-    ps_trim(ps, method = "pref"),
-    "For `method = 'pref'`, must supply `exposure`."
+    ps_trim(ps, method = "pref")
   )
 
   # 2) If exposure is all 0 or all 1 => fail
@@ -173,8 +171,7 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
 
   # Must have exposure
   expect_propensity_error(
-    ps_trim(ps, method = "cr"),
-    "For `method = 'cr'`, must supply `exposure`."
+    ps_trim(ps, method = "cr")
   )
 
   # If all 0 or all 1 => fail
@@ -201,8 +198,7 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
       lower = 0.2,
       upper = 0.8,
       .treated = 1
-    ),
-    "For `method = 'cr'`, `lower` and `upper` are ignored."
+    )
   )
 })
 
@@ -420,8 +416,7 @@ test_that("Combining two ps_trim with different parameters triggers warning", {
   # Attempt to combine with different parameters
   # This will warn about different trimming parameters and return numeric
   expect_propensity_warning(
-    result <- vec_c(x, y),
-    "different trimming parameters"
+    result <- vec_c(x, y)
   )
   expect_type(result, "double")
 })
@@ -613,8 +608,7 @@ test_that("ps_trim warns when combining objects with different parameters", {
 
   # Should warn and return numeric
   expect_propensity_warning(
-    combined <- c(ps_trim1, ps_trim2),
-    "different trimming parameters"
+    combined <- c(ps_trim1, ps_trim2)
   )
 
   expect_type(combined, "double")

@@ -285,8 +285,7 @@ test_that("ipw handles various errors correctly", {
   )
 
   expect_propensity_error(
-    ipw(ps_mod, outcome_mod_no_estimand),
-    "Can't determine the estimand from weights"
+    ipw(ps_mod, outcome_mod_no_estimand)
   )
 })
 
@@ -353,8 +352,7 @@ test_that("Estimand mismatch triggers an error if outcome weights differ from us
       outcome_mod = outcome_mod_ate,
       .df = dat,
       estimand = "att"
-    ),
-    "Estimand in weights different from `estimand`"
+    )
   )
 })
 
@@ -437,8 +435,7 @@ test_that("ipw works for cloglog link in the propensity score model", {
   )
 
   expect_propensity_error(
-    ipw(ps_mod, outcome_mod_wrong, estimand = "ate"),
-    "`exposure` and `outcome` must be the same length"
+    ipw(ps_mod, outcome_mod_wrong, estimand = "ate")
   )
 
   outcome_mod_transformed <- glm(

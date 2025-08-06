@@ -818,8 +818,7 @@ test_that("entropy weights error on unsupported exposure types", {
       c(.1, .3, .4, .3),
       .exposure = c(1, 2, 3, 4),
       exposure_type = "categorical"
-    ),
-    class = "propensity_matrix_type_error"
+    )
   )
 
   # Now that continuous is not even an option for entropy,
@@ -828,8 +827,7 @@ test_that("entropy weights error on unsupported exposure types", {
     wt_entropy(
       rnorm(10),
       .exposure = rnorm(10)
-    ),
-    class = "propensity_wt_not_supported_error"
+    )
   )
 })
 

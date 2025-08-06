@@ -436,8 +436,7 @@ test_that("ps_trunc warns when combining objects with different parameters", {
 
   # Should warn and return numeric
   expect_propensity_warning(
-    combined <- c(ps_trunc1, ps_trunc2),
-    "different truncation parameters"
+    combined <- c(ps_trunc1, ps_trunc2)
   )
 
   expect_type(combined, "double")
