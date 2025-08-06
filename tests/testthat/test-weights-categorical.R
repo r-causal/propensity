@@ -50,18 +50,16 @@ test_that("categorical exposure validation works", {
   exposure_2 <- factor(c("A", "B", "A", "B"))
   ps_matrix_2 <- matrix(c(0.7, 0.3, 0.4, 0.6, 0.8, 0.2, 0.5, 0.5), ncol = 2)
 
-  expect_error(
-    wt_ate(ps_matrix_2, exposure_2, exposure_type = "categorical"),
-    class = "propensity_categorical_levels_error"
+  expect_propensity_error(
+    wt_ate(ps_matrix_2, exposure_2, exposure_type = "categorical")
   )
 
   # Invalid focal category should error
   exposure_3 <- factor(c("A", "B", "C", "A"))
   ps_matrix_3 <- matrix(runif(12), ncol = 3)
 
-  expect_error(
-    wt_att(ps_matrix_3, exposure_3, focal = "D"),
-    class = "propensity_focal_category_error"
+  expect_propensity_error(
+    wt_att(ps_matrix_3, exposure_3, focal = "D")
   )
 })
 
@@ -69,23 +67,20 @@ test_that("propensity score matrix validation works", {
   exposure <- factor(c("A", "B", "C", "A", "B"))
 
   # Not a matrix or data.frame
-  expect_error(
-    wt_ate(c(0.3, 0.4, 0.3), exposure, exposure_type = "categorical"),
-    class = "propensity_matrix_type_error"
+  expect_propensity_error(
+    wt_ate(c(0.3, 0.4, 0.3), exposure, exposure_type = "categorical")
   )
 
   # Wrong number of rows
   ps_wrong_rows <- matrix(runif(9), ncol = 3)
-  expect_error(
-    wt_ate(ps_wrong_rows, exposure, exposure_type = "categorical"),
-    class = "propensity_matrix_dims_error"
+  expect_propensity_error(
+    wt_ate(ps_wrong_rows, exposure, exposure_type = "categorical")
   )
 
   # Wrong number of columns
   ps_wrong_cols <- matrix(runif(10), ncol = 2)
-  expect_error(
-    wt_ate(ps_wrong_cols, exposure, exposure_type = "categorical"),
-    class = "propensity_matrix_dims_error"
+  expect_propensity_error(
+    wt_ate(ps_wrong_cols, exposure, exposure_type = "categorical")
   )
 
   # Rows don't sum to 1
@@ -111,9 +106,8 @@ test_that("propensity score matrix validation works", {
     byrow = TRUE
   )
 
-  expect_error(
-    wt_ate(ps_bad_sum, exposure, exposure_type = "categorical"),
-    class = "propensity_matrix_sum_error"
+  expect_propensity_error(
+    wt_ate(ps_bad_sum, exposure, exposure_type = "categorical")
   )
 
   # Invalid probabilities
@@ -139,9 +133,8 @@ test_that("propensity score matrix validation works", {
     byrow = TRUE
   )
 
-  expect_error(
-    wt_ate(ps_invalid, exposure, exposure_type = "categorical"),
-    class = "propensity_range_error"
+  expect_propensity_error(
+    wt_ate(ps_invalid, exposure, exposure_type = "categorical")
   )
 })
 
@@ -300,9 +293,8 @@ test_that("ATT weights work for categorical exposures", {
   expect_equal(as.numeric(weights_att_a), expected_weights_a, tolerance = 0.01)
 
   # ATT requires focal for categorical
-  expect_error(
-    wt_att(ps_matrix, exposure, exposure_type = "categorical"),
-    class = "propensity_focal_required_error"
+  expect_propensity_error(
+    wt_att(ps_matrix, exposure, exposure_type = "categorical")
   )
 })
 
@@ -636,9 +628,8 @@ test_that("categorical weights error on mismatched column names", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   colnames(ps_matrix) <- c("X", "Y", "Z")
 
-  expect_error(
-    wt_ate(ps_matrix, trt, exposure_type = "categorical"),
-    class = "propensity_matrix_names_error"
+  expect_propensity_error(
+    wt_ate(ps_matrix, trt, exposure_type = "categorical")
   )
 })
 
@@ -651,33 +642,27 @@ test_that("categorical weights warn on unnamed columns", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
 
   # Test warning for all weight functions
-  expect_warning(
-    wt_ate(ps_matrix, trt, exposure_type = "categorical"),
-    class = "propensity_matrix_no_names_warning"
+  expect_propensity_warning(
+    wt_ate(ps_matrix, trt, exposure_type = "categorical")
   )
 
-  expect_warning(
-    wt_att(ps_matrix, trt, exposure_type = "categorical", focal = "A"),
-    class = "propensity_matrix_no_names_warning"
+  expect_propensity_warning(
+    wt_att(ps_matrix, trt, exposure_type = "categorical", focal = "A")
   )
 
-  expect_warning(
-    wt_atu(ps_matrix, trt, exposure_type = "categorical", focal = "A"),
-    class = "propensity_matrix_no_names_warning"
+  expect_propensity_warning(
+    wt_atu(ps_matrix, trt, exposure_type = "categorical", focal = "A")
   )
 
-  expect_warning(
-    wt_atm(ps_matrix, trt, exposure_type = "categorical"),
-    class = "propensity_matrix_no_names_warning"
+  expect_propensity_warning(
+    wt_atm(ps_matrix, trt, exposure_type = "categorical")
   )
 
-  expect_warning(
-    wt_ato(ps_matrix, trt, exposure_type = "categorical"),
-    class = "propensity_matrix_no_names_warning"
+  expect_propensity_warning(
+    wt_ato(ps_matrix, trt, exposure_type = "categorical")
   )
 
-  expect_warning(
-    wt_entropy(ps_matrix, trt, exposure_type = "categorical"),
-    class = "propensity_matrix_no_names_warning"
+  expect_propensity_warning(
+    wt_entropy(ps_matrix, trt, exposure_type = "categorical")
   )
 })

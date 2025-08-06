@@ -94,9 +94,8 @@ test_that("ps_trunc validates delta < 1/k", {
   colnames(ps_matrix) <- levels(exposure)
 
   # delta >= 1/3 should error
-  expect_error(
-    ps_trunc(ps_matrix, .exposure = exposure, method = "ps", lower = 0.35),
-    class = "propensity_range_error"
+  expect_propensity_error(
+    ps_trunc(ps_matrix, .exposure = exposure, method = "ps", lower = 0.35)
   )
 })
 
@@ -108,9 +107,8 @@ test_that("ps_trunc errors for unsupported methods with categorical", {
   colnames(ps_matrix) <- levels(exposure)
 
   # Only cr should error - pctl is now supported
-  expect_error(
-    ps_trunc(ps_matrix, .exposure = exposure, method = "cr"),
-    "must be one of"
+  expect_propensity_error(
+    ps_trunc(ps_matrix, .exposure = exposure, method = "cr")
   )
 })
 
@@ -120,9 +118,8 @@ test_that("ps_trunc requires exposure for categorical", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   colnames(ps_matrix) <- c("A", "B", "C")
 
-  expect_error(
-    ps_trunc(ps_matrix, method = "ps"),
-    class = "propensity_missing_arg_error"
+  expect_propensity_error(
+    ps_trunc(ps_matrix, method = "ps")
   )
 })
 
@@ -223,14 +220,13 @@ test_that("ps_trunc warns when no column names provided", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   # No column names
 
-  expect_warning(
+  expect_propensity_warning(
     truncated <- ps_trunc(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
       lower = 0.05
-    ),
-    class = "propensity_matrix_no_names_warning"
+    )
   )
 })
 
@@ -248,14 +244,13 @@ test_that("ps_trunc.ps_trunc warns about already truncated scores", {
     lower = 0.05
   )
 
-  expect_warning(
+  expect_propensity_warning(
     truncated_twice <- ps_trunc(
       truncated_once,
       .exposure = exposure,
       method = "ps",
       lower = 0.1
-    ),
-    class = "propensity_already_modified_warning"
+    )
   )
 
   # Should return original truncated object

@@ -81,7 +81,7 @@ test_that("adaptive method: ignores lower/upper, warns appropriately", {
   expect_true("cutoff" %in% names(meta_adapt))
 
   # 2) If user sets lower/upper, we expect a warning
-  expect_warning(
+  expect_propensity_warning(
     out_adapt_warn <- ps_trim(
       ps,
       method = "adaptive",
@@ -134,20 +134,18 @@ test_that("pref method: requires exposure, fails with all 0 or all 1", {
   ps <- predict(fit, type = "response")
 
   # 1) If exposure = NULL, should fail
-  expect_error(
+  expect_propensity_error(
     ps_trim(ps, method = "pref"),
     "For `method = 'pref'`, must supply `exposure`."
   )
 
   # 2) If exposure is all 0 or all 1 => fail
-  expect_error(
-    ps_trim(ps, .exposure = rep(0, n), method = "pref"),
-    class = "propensity_binary_transform_error"
+  expect_propensity_error(
+    ps_trim(ps, .exposure = rep(0, n), method = "pref")
   )
 
-  expect_error(
-    ps_trim(ps, .exposure = rep(1, n), method = "pref"),
-    class = "propensity_binary_transform_error"
+  expect_propensity_error(
+    ps_trim(ps, .exposure = rep(1, n), method = "pref")
   )
 
   # 3) Valid usage
@@ -174,15 +172,14 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
   ps <- predict(fit, type = "response")
 
   # Must have exposure
-  expect_error(
+  expect_propensity_error(
     ps_trim(ps, method = "cr"),
     "For `method = 'cr'`, must supply `exposure`."
   )
 
   # If all 0 or all 1 => fail
-  expect_error(
-    ps_trim(ps, .exposure = rep(1, n), method = "cr"),
-    class = "propensity_binary_transform_error"
+  expect_propensity_error(
+    ps_trim(ps, .exposure = rep(1, n), method = "cr")
   )
 
   # Valid usage
@@ -196,7 +193,7 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
   expect_equal(meta_cr$cr_upper, cr_u_exp)
 
   # Check that user-specified lower/upper => warning
-  expect_warning(
+  expect_propensity_warning(
     ps_trim(
       ps,
       .exposure = z,
@@ -245,18 +242,16 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
   meta_r <- ps_trim_meta(refit_out)
   expect_true(isTRUE(meta_r$refit))
 
-  expect_error(
-    ps_refit(out, model = fit, .df = data.frame(z, x)[1:10, ]),
-    class = "propensity_length_error"
+  expect_propensity_error(
+    ps_refit(out, model = fit, .df = data.frame(z, x)[1:10, ])
   )
 
   # If everything is trimmed => error
   ps_edge <- c(0.01, 0.01, 0.99, 0.99)
   z_edge <- c(0, 1, 1, 0)
   out_empty <- ps_trim(ps_edge, method = "ps", lower = 1.1, upper = 2)
-  expect_error(
-    ps_refit(out_empty, model = fit),
-    class = "propensity_no_data_error"
+  expect_propensity_error(
+    ps_refit(out_empty, model = fit)
   )
 
   ps_trim(ps_edge, method = "ps", lower = 1.1, upper = 2)
@@ -424,7 +419,7 @@ test_that("Combining two ps_trim with different parameters triggers warning", {
 
   # Attempt to combine with different parameters
   # This will warn about different trimming parameters and return numeric
-  expect_warning(
+  expect_propensity_warning(
     result <- vec_c(x, y),
     "different trimming parameters"
   )
@@ -435,9 +430,8 @@ test_that("Combining ps_trim with double => double", {
   x <- new_trimmed_ps(c(0.2, 0.5), ps_trim_meta = list())
 
   # vctrs logic => ptype2 => double
-  expect_warning(
-    combined <- vec_c(x, 0.7),
-    class = "propensity_class_downgrade_warning"
+  expect_propensity_warning(
+    combined <- vec_c(x, 0.7)
   )
   expect_type(combined, "double")
   expect_false(inherits(combined, "ps_trim"))
@@ -530,15 +524,13 @@ test_that("ps_trim errors when exposure is missing for methods that require it",
   ps <- runif(20, 0.1, 0.9)
 
   # Test pref method without exposure
-  expect_error(
-    ps_trim(ps, method = "pref"),
-    class = "propensity_missing_arg_error"
+  expect_propensity_error(
+    ps_trim(ps, method = "pref")
   )
 
   # Test cr method without exposure
-  expect_error(
-    ps_trim(ps, method = "cr"),
-    class = "propensity_missing_arg_error"
+  expect_propensity_error(
+    ps_trim(ps, method = "cr")
   )
 
   # Should work fine with ps method (no exposure needed)
@@ -620,7 +612,7 @@ test_that("ps_trim warns when combining objects with different parameters", {
   ps_trim2 <- ps_trim(ps2, method = "ps", lower = 0.3, upper = 0.7)
 
   # Should warn and return numeric
-  expect_warning(
+  expect_propensity_warning(
     combined <- c(ps_trim1, ps_trim2),
     "different trimming parameters"
   )

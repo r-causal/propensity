@@ -341,7 +341,8 @@ wt_ate.numeric <- function(
       estimand = "ate",
       focal = NULL,
       stabilize = stabilize,
-      stabilization_score = stabilization_score
+      stabilization_score = stabilization_score,
+      call = rlang::caller_env()
     )
   } else {
     abort_unsupported(exposure_type, "ATE")
@@ -557,7 +558,8 @@ wt_att.numeric <- function(
       estimand = "att",
       focal = focal,
       stabilize = FALSE,
-      stabilization_score = NULL
+      stabilization_score = NULL,
+      call = rlang::caller_env()
     )
   } else {
     abort_unsupported(exposure_type, "ATT")
@@ -699,7 +701,8 @@ wt_atu.numeric <- function(
       estimand = "atu",
       focal = focal,
       stabilize = FALSE,
-      stabilization_score = NULL
+      stabilization_score = NULL,
+      call = rlang::caller_env()
     )
   } else {
     abort_unsupported(exposure_type, "ATU")
@@ -840,7 +843,8 @@ wt_atm.numeric <- function(
       estimand = "atm",
       focal = NULL,
       stabilize = FALSE,
-      stabilization_score = NULL
+      stabilization_score = NULL,
+      call = rlang::caller_env()
     )
   } else {
     abort_unsupported(exposure_type, "ATM")
@@ -976,7 +980,8 @@ wt_ato.numeric <- function(
       estimand = "ato",
       focal = NULL,
       stabilize = FALSE,
-      stabilization_score = NULL
+      stabilization_score = NULL,
+      call = rlang::caller_env()
     )
   } else {
     abort_unsupported(exposure_type, "ATO")
@@ -1110,7 +1115,8 @@ wt_entropy.numeric <- function(
       estimand = "entropy",
       focal = NULL,
       stabilize = FALSE,
-      stabilization_score = NULL
+      stabilization_score = NULL,
+      call = rlang::caller_env()
     )
   } else {
     abort_unsupported(exposure_type, "entropy")
@@ -1675,13 +1681,14 @@ calculate_categorical_weights <- function(
   estimand,
   focal = NULL,
   stabilize = FALSE,
-  stabilization_score = NULL
+  stabilization_score = NULL,
+  call = rlang::caller_env()
 ) {
   # Ensure exposure is a factor
-  .exposure <- transform_exposure_categorical(.exposure, focal)
+  .exposure <- transform_exposure_categorical(.exposure, focal, call = call)
 
   # Validate propensity score matrix
-  ps_matrix <- check_ps_matrix(ps_matrix, .exposure)
+  ps_matrix <- check_ps_matrix(ps_matrix, .exposure, call = call)
 
   # Get dimensions
   n <- length(.exposure)

@@ -56,7 +56,7 @@ ps_calibrate <- function(
   .untreated = NULL,
   estimand = NULL
 ) {
-  method <- match.arg(method)
+  method <- rlang::arg_match(method)
   # Check that ps is numeric and in valid range
   if (!is.numeric(ps)) {
     abort(

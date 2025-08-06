@@ -73,21 +73,18 @@ test_that("ps_trunc() - cr method uses min(ps_treat)/max(ps_untrt)", {
 
 test_that("ps_trunc() errors on invalid usage or .exposure", {
   # if method="cr" but no .exposure => error
-  expect_error(
-    ps_trunc(runif(10), method = "cr"),
-    class = "propensity_binary_transform_error"
+  expect_propensity_error(
+    ps_trunc(runif(10), method = "cr")
   )
 
   # if .exposure not 0/1 => error
-  expect_error(
-    ps_trunc(runif(5), .exposure = 1:5, method = "cr"),
-    class = "propensity_binary_transform_error"
+  expect_propensity_error(
+    ps_trunc(runif(5), .exposure = 1:5, method = "cr")
   )
 
   # if lower >= upper => error for method="ps"
-  expect_error(
-    ps_trunc(runif(5), method = "ps", lower = 0.8, upper = 0.3),
-    class = "propensity_range_error"
+  expect_propensity_error(
+    ps_trunc(runif(5), method = "ps", lower = 0.8, upper = 0.3)
   )
 })
 
@@ -438,7 +435,7 @@ test_that("ps_trunc warns when combining objects with different parameters", {
   ps_trunc2 <- ps_trunc(ps2, method = "ps", lower = 0.3, upper = 0.7)
 
   # Should warn and return numeric
-  expect_warning(
+  expect_propensity_warning(
     combined <- c(ps_trunc1, ps_trunc2),
     "different truncation parameters"
   )

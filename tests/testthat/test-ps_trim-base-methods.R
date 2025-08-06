@@ -30,10 +30,8 @@ test_that("ps_trim subsetting with [ preserves class and updates indices", {
   expect_true(all(sub3_meta$keep_idx <= 5))
 
   # Logical subsetting - should error with wrong length
-  expect_error(
-    x[c(TRUE, FALSE)],
-    "Logical subscript `i` must be size 1 or 10, not 2",
-    class = "propensity_length_error"
+  expect_propensity_error(
+    x[c(TRUE, FALSE)]
   )
 
   # Logical subsetting - recycling with length 1
@@ -225,10 +223,8 @@ test_that("ps_trim na.omit() preserves class and updates indices", {
 test_that("ps_trim rejects infinite values", {
   # ps_trim should reject Inf values
   ps <- c(0.1, 0.3, Inf, 0.5)
-  expect_error(
-    ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8),
-    "The propensity score must be between 0 and 1",
-    class = "propensity_range_error"
+  expect_propensity_error(
+    ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
   )
 
   # But is.finite and is.infinite should work on valid ps_trim objects

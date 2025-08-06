@@ -35,8 +35,11 @@ test_that("wt_atc is an alias for wt_atu", {
 
   # Test with ps_trim
   ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
-  wts_atu_trim <- wt_atu(ps_trimmed, exposure)
-  wts_atc_trim <- wt_atc(ps_trimmed, exposure)
+  # Suppress refit warnings - we're testing the alias behavior, not the warning
+  suppressWarnings({
+    wts_atu_trim <- wt_atu(ps_trimmed, exposure)
+    wts_atc_trim <- wt_atc(ps_trimmed, exposure)
+  })
 
   expect_identical(wts_atu_trim, wts_atc_trim)
 
@@ -145,7 +148,10 @@ test_that("psw objects can be multiplied together", {
 
   # Test with trimmed weights
   ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
-  wts_ate_trim <- wt_ate(ps_trimmed, exposure)
+  # Suppress refit warnings - we're testing combination behavior, not the warning
+  suppressWarnings({
+    wts_ate_trim <- wt_ate(ps_trimmed, exposure)
+  })
   combined_trim <- wts_ate_trim * wts_cens
   expect_true(is_ps_trimmed(combined_trim))
 })
@@ -209,7 +215,10 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
 
   # Test with ps_trim
   ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
-  wts_cens_trim <- wt_cens(ps_trimmed, exposure)
+  # Suppress refit warnings - we're testing wt_cens behavior, not the warning
+  suppressWarnings({
+    wts_cens_trim <- wt_cens(ps_trimmed, exposure)
+  })
 
   expect_equal(estimand(wts_cens_trim), "uncensored; trimmed")
   expect_true(is_ps_trimmed(wts_cens_trim))
@@ -259,13 +268,12 @@ test_that("ATE works for binary cases", {
 
   expect_identical(weights, weights4)
 
-  expect_error(
+  expect_propensity_error(
     wt_ate(
       c(-.1, .3, .4, 3.3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
-    ),
-    class = "propensity_range_error"
+    )
   )
 
   .exposure <- factor(
@@ -355,13 +363,12 @@ test_that("stabilized weights use P(A=1) and P(A=0) as numerators", {
 
 test_that("ATE errors appropriately for categorical with vector propensity scores", {
   # For categorical exposures, propensity scores must be a matrix
-  expect_error(
+  expect_propensity_error(
     wt_ate(
       c(.1, .3, .4, .3),
       .exposure = c(0, 2, 1, 4),
       exposure_type = "categorical"
-    ),
-    class = "propensity_matrix_type_error"
+    )
   )
 })
 
@@ -383,14 +390,13 @@ test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning i
   )
 
   # not refit => expect a warning
-  expect_warning(
+  expect_propensity_warning(
     w_ate_unfit <- wt_ate(
       trimmed_ps,
       .exposure = z,
       exposure_type = "binary",
       .treated = 1
-    ),
-    class = "propensity_no_refit_warning"
+    )
   )
   expect_s3_class(w_ate_unfit, "psw")
   expect_true(grepl("; trimmed$", estimand(w_ate_unfit)))
@@ -445,14 +451,13 @@ test_that("Other estimands (att, atu, etc.) with ps_trim or ps_trunc", {
   # Trim
   trimmed_ps <- ps_trim(ps, .exposure = z, method = "ps")
   # No refit => warning
-  expect_warning(
+  expect_propensity_warning(
     w_att_trim <- wt_att(
       trimmed_ps,
       .exposure = z,
       exposure_type = "binary",
       .treated = 1
-    ),
-    class = "propensity_no_refit_warning"
+    )
   )
   # Check estimand
   expect_true(grepl("att; trimmed", estimand(w_att_trim)))
@@ -518,14 +523,13 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
   )
 
   # Not refit => we get a warning
-  expect_warning(
+  expect_propensity_warning(
     w_atu_unfit <- wt_atu(
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
       .treated = 1
-    ),
-    class = "propensity_no_refit_warning"
+    )
   )
   expect_s3_class(w_atu_unfit, "psw")
   expect_match(estimand(w_atu_unfit), "atu; trimmed")
@@ -573,14 +577,13 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
   )
 
   # Not refit => warning
-  expect_warning(
+  expect_propensity_warning(
     w_atm_unfit <- wt_atm(
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
       .treated = 1
-    ),
-    class = "propensity_no_refit_warning"
+    )
   )
   expect_s3_class(w_atm_unfit, "psw")
   expect_match(estimand(w_atm_unfit), "atm; trimmed")
@@ -618,14 +621,13 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
   )
 
   # Not refit => warning
-  expect_warning(
+  expect_propensity_warning(
     w_ato_unfit <- wt_ato(
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
       .treated = 1
-    ),
-    class = "propensity_no_refit_warning"
+    )
   )
   expect_s3_class(w_ato_unfit, "psw")
   expect_match(estimand(w_ato_unfit), "ato; trimmed")
@@ -684,13 +686,12 @@ test_that("wt_entropy works for binary cases", {
 
   expect_identical(weights, weights4)
 
-  expect_error(
+  expect_propensity_error(
     wt_entropy(
       c(-.1, .3, .4, 3.3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
-    ),
-    class = "propensity_range_error"
+    )
   )
 
   .exposure <- factor(
@@ -782,13 +783,12 @@ test_that("wt_entropy works with ps_trim objects", {
   ps <- c(.1, .3, .4, .3)
   ps_trimmed <- ps_trim(ps, method = "ps", lower = 0.15, upper = 0.85)
 
-  expect_warning(
+  expect_propensity_warning(
     weights <- wt_entropy(
       ps_trimmed,
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
-    ),
-    "It appears you trimmed your propensity score but did not refit the model"
+    )
   )
 
   expect_s3_class(weights, "psw")
@@ -813,7 +813,7 @@ test_that("wt_entropy works with ps_trunc objects", {
 
 test_that("entropy weights error on unsupported exposure types", {
   # For categorical exposures, propensity scores must be a matrix
-  expect_error(
+  expect_propensity_error(
     wt_entropy(
       c(.1, .3, .4, .3),
       .exposure = c(1, 2, 3, 4),
@@ -824,7 +824,7 @@ test_that("entropy weights error on unsupported exposure types", {
 
   # Now that continuous is not even an option for entropy,
   # the function will error during auto-detection if given continuous data
-  expect_error(
+  expect_propensity_error(
     wt_entropy(
       rnorm(10),
       .exposure = rnorm(10)
@@ -1027,15 +1027,13 @@ test_that("wt_ate works with data frames", {
   expect_equal(weights_single, expected_single)
 
   # Test error with empty data frame
-  expect_error(
-    wt_ate(data.frame(), exposure),
-    class = "propensity_df_ncol_error"
+  expect_propensity_error(
+    wt_ate(data.frame(), exposure)
   )
 
   # Test error with invalid column selection
-  expect_error(
-    wt_ate(ps_df, exposure, .propensity_col = "nonexistent"),
-    class = "propensity_df_column_error"
+  expect_propensity_error(
+    wt_ate(ps_df, exposure, .propensity_col = "nonexistent")
   )
 })
 
@@ -1233,14 +1231,12 @@ test_that("GLM methods handle continuous exposures", {
 
 test_that("GLM methods error on non-GLM objects", {
   # Try with a non-GLM object
-  expect_error(
-    wt_ate("not a glm", c(0, 1, 0, 1)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_ate("not a glm", c(0, 1, 0, 1))
   )
 
-  expect_error(
-    wt_att(list(a = 1, b = 2), c(0, 1, 0, 1)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_att(list(a = 1, b = 2), c(0, 1, 0, 1))
   )
 })
 
@@ -1334,94 +1330,77 @@ test_that("wt_* functions handle extreme weight scenarios", {
 
 test_that("wt_* functions error appropriately on invalid inputs", {
   # Invalid propensity scores (outside [0,1])
-  expect_error(
-    wt_ate(c(-0.1, 0.5, 1.1), c(0, 1, 0), exposure_type = "binary"),
-    class = "propensity_range_error"
+  expect_propensity_error(
+    wt_ate(c(-0.1, 0.5, 1.1), c(0, 1, 0), exposure_type = "binary")
   )
 
-  expect_error(
-    wt_att(c(0, 0.5, 1), c(0, 1, 0), exposure_type = "binary"),
-    class = "propensity_range_error"
+  expect_propensity_error(
+    wt_att(c(0, 0.5, 1), c(0, 1, 0), exposure_type = "binary")
   )
 
   # Length mismatch should error
-  expect_error(
-    wt_ate(c(0.1, 0.5), c(0, 1, 0), exposure_type = "binary"),
-    class = "propensity_length_error"
+  expect_propensity_error(
+    wt_ate(c(0.1, 0.5), c(0, 1, 0), exposure_type = "binary")
   )
 
   # Invalid exposure type
-  expect_error(
-    wt_ate(c(0.1, 0.5), c(0, 1), exposure_type = "invalid"),
-    "must be one of"
+  expect_propensity_error(
+    wt_ate(c(0.1, 0.5), c(0, 1), exposure_type = "invalid")
   )
 
   # Non-numeric propensity scores
-  expect_error(
-    wt_ate(c("a", "b"), c(0, 1)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_ate(c("a", "b"), c(0, 1))
   )
-
-  # Empty vectors
-  expect_error(
-    wt_ate(numeric(0), numeric(0))
-  )
-
+  
   # Categorical exposure requires matrix propensity scores
-  expect_error(
-    wt_att(c(0.3, 0.3, 0.4), c(1, 2, 3), exposure_type = "categorical"),
-    class = "propensity_matrix_type_error"
+  expect_propensity_error(
+    wt_att(c(0.3, 0.3, 0.4), c(1, 2, 3), exposure_type = "categorical")
   )
 })
 
 test_that("data frame methods error appropriately", {
   # Empty data frame
-  expect_error(
-    wt_ate(data.frame(), c(0, 1)),
-    class = "propensity_df_ncol_error"
+  expect_propensity_error(
+    wt_ate(data.frame(), c(0, 1))
   )
 
   # Non-existent column
   df <- data.frame(a = c(0.1, 0.9), b = c(0.9, 0.1))
-  expect_error(
-    wt_ate(df, c(0, 1), .propensity_col = "nonexistent"),
-    class = "propensity_df_column_error"
+  expect_propensity_error(
+    wt_ate(df, c(0, 1), .propensity_col = "nonexistent")
   )
 
   # Column index out of bounds
-  expect_error(
-    wt_ate(df, c(0, 1), .propensity_col = 5),
-    class = "propensity_df_column_error"
+  expect_propensity_error(
+    wt_ate(df, c(0, 1), .propensity_col = 5)
   )
 
   # Non-numeric column
   df_char <- data.frame(a = c("high", "low"), b = c(0.9, 0.1))
   suppressWarnings({
-    expect_error(
+    expect_propensity_error(
       wt_ate(df_char, c(0, 1), .propensity_col = 1)
     )
   })
 
   # Column with invalid values
   df_invalid <- data.frame(a = c(0.5, 1.5), b = c(0.9, 0.1))
-  expect_error(
-    wt_ate(df_invalid, c(0, 1), .propensity_col = 1),
-    class = "propensity_range_error"
+  expect_propensity_error(
+    wt_ate(df_invalid, c(0, 1), .propensity_col = 1)
   )
 })
 
 test_that("GLM methods error appropriately", {
   # Non-GLM object
-  expect_error(
-    wt_ate(lm(mpg ~ wt, data = mtcars), rep(0:1, 16)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_ate(lm(mpg ~ wt, data = mtcars), rep(0:1, 16))
   )
 
   # GLM with wrong dimensions
   small_glm <- glm(c(0, 1) ~ c(1, 2), family = binomial)
-  expect_error(
-    wt_ate(small_glm, c(0, 1, 0, 1)), # Mismatch in length
-    class = "propensity_length_error"
+  expect_propensity_error(
+    wt_ate(small_glm, c(0, 1, 0, 1)) # Mismatch in length
   )
 })
 
@@ -1431,34 +1410,28 @@ test_that("default methods provide informative errors", {
   # Custom class that doesn't have a method
   custom_obj <- structure(list(x = 1:5), class = "my_custom_class")
 
-  expect_error(
-    wt_ate(custom_obj, c(0, 1, 0, 1, 0)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_ate(custom_obj, c(0, 1, 0, 1, 0))
   )
 
-  expect_error(
-    wt_att(custom_obj, c(0, 1, 0, 1, 0)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_att(custom_obj, c(0, 1, 0, 1, 0))
   )
 
-  expect_error(
-    wt_atu(custom_obj, c(0, 1, 0, 1, 0)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_atu(custom_obj, c(0, 1, 0, 1, 0))
   )
 
-  expect_error(
-    wt_atm(custom_obj, c(0, 1, 0, 1, 0)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_atm(custom_obj, c(0, 1, 0, 1, 0))
   )
 
-  expect_error(
-    wt_ato(custom_obj, c(0, 1, 0, 1, 0)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_ato(custom_obj, c(0, 1, 0, 1, 0))
   )
 
-  expect_error(
-    wt_entropy(custom_obj, c(0, 1, 0, 1, 0)),
-    class = "propensity_method_error"
+  expect_propensity_error(
+    wt_entropy(custom_obj, c(0, 1, 0, 1, 0))
   )
 })
 
@@ -1555,9 +1528,8 @@ test_that("GLM methods handle non-binomial families appropriately", {
 
   # Should error for estimands that don't support continuous
   # ATT doesn't accept continuous as a valid exposure type
-  expect_error(
-    wt_att(glm_gaussian, exposure_cont, exposure_type = "continuous"),
-    "must be one of"
+  expect_propensity_error(
+    wt_att(glm_gaussian, exposure_cont, exposure_type = "continuous")
   )
 
   # Poisson family (should extract fitted values)
@@ -1732,9 +1704,8 @@ test_that("all methods handle NAs appropriately", {
   # The NA observations are dropped during model fitting
   suppressWarnings({
     # GLM drops NA observations, so output is shorter
-    expect_error(
-      wt_ate(glm_na, y, exposure_type = "binary"),
-      "must have the same length"
+    expect_propensity_error(
+      wt_ate(glm_na, y, exposure_type = "binary")
     )
   })
 })

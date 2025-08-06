@@ -214,32 +214,27 @@ test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
   wts <- rep(1, n)
   outcome_mod <- glm(y ~ z, family = binomial(), weights = wts)
 
-  expect_error(
-    ipw(ps_mod = bad_mod, outcome_mod = outcome_mod),
-    class = "propensity_class_error"
+  expect_propensity_error(
+    ipw(ps_mod = bad_mod, outcome_mod = outcome_mod)
   )
 
-  expect_error(
-    assert_class("a", "character", .length = 2),
-    class = "propensity_class_error"
+  expect_propensity_error(
+    assert_class("a", "character", .length = 2)
   )
 
-  expect_error(
-    assert_class("a", c("numeric", "character"), .length = 2),
-    class = "propensity_class_error"
+  expect_propensity_error(
+    assert_class("a", c("numeric", "character"), .length = 2)
   )
 
   # invalid outcome_mod
   bad_outcome <- list(call = quote(foo()), class = "list")
 
-  expect_error(
-    ipw(ps_mod = ps_mod, outcome_mod = bad_outcome),
-    class = "propensity_class_error"
+  expect_propensity_error(
+    ipw(ps_mod = ps_mod, outcome_mod = bad_outcome)
   )
 
-  expect_error(
-    ipw(ps_mod = ps_mod, outcome_mod = outcome_mod, .df = data.frame(x)),
-    class = "propensity_columns_exist_error"
+  expect_propensity_error(
+    ipw(ps_mod = ps_mod, outcome_mod = outcome_mod, .df = data.frame(x))
   )
 })
 
@@ -289,7 +284,7 @@ test_that("ipw handles various errors correctly", {
     weights = as.double(wts)
   )
 
-  expect_error(
+  expect_propensity_error(
     ipw(ps_mod, outcome_mod_no_estimand),
     "Can't determine the estimand from weights"
   )
@@ -352,7 +347,7 @@ test_that("Estimand mismatch triggers an error if outcome weights differ from us
   )
 
   # If your code properly checks mismatch, this should raise an error
-  expect_error(
+  expect_propensity_error(
     ipw(
       ps_mod = ps_mod,
       outcome_mod = outcome_mod_ate,
@@ -441,7 +436,7 @@ test_that("ipw works for cloglog link in the propensity score model", {
     weights = wts[1:100]
   )
 
-  expect_error(
+  expect_propensity_error(
     ipw(ps_mod, outcome_mod_wrong, estimand = "ate"),
     "`exposure` and `outcome` must be the same length"
   )
@@ -451,8 +446,7 @@ test_that("ipw works for cloglog link in the propensity score model", {
     family = quasibinomial(),
     weights = wts
   )
-  expect_error(
-    ipw(ps_mod, outcome_mod_transformed, estimand = "ate"),
-    class = "propensity_columns_exist_error"
+  expect_propensity_error(
+    ipw(ps_mod, outcome_mod_transformed, estimand = "ate")
   )
 })

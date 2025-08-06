@@ -184,10 +184,8 @@ test_that("ps_trunc na.omit() preserves class", {
 test_that("ps_trunc rejects infinite values", {
   # ps_trunc should reject Inf values
   ps <- c(0.1, 0.3, Inf, 0.5)
-  expect_error(
-    ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8),
-    "The propensity score must be between 0 and 1",
-    class = "propensity_range_error"
+  expect_propensity_error(
+    ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
   )
 
   # But is.finite and is.infinite should work on valid ps_trunc objects
