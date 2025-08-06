@@ -1,25 +1,21 @@
 test_that("errors for non-numeric ps", {
-  expect_error(
-    ps_calibrate("not numeric", c(0, 1)),
-    class = "propensity_type_error"
+  expect_propensity_error(
+    ps_calibrate("not numeric", c(0, 1))
   )
 })
 
 test_that("errors for out-of-range ps", {
-  expect_error(
-    ps_calibrate(c(-0.1, 0.2), c(0, 1)),
-    class = "propensity_range_error"
+  expect_propensity_error(
+    ps_calibrate(c(-0.1, 0.2), c(0, 1))
   )
-  expect_error(
-    ps_calibrate(c(0.5, 1.1), c(0, 1)),
-    class = "propensity_range_error"
+  expect_propensity_error(
+    ps_calibrate(c(0.5, 1.1), c(0, 1))
   )
 })
 
 test_that("errors when ps and treat have different lengths", {
-  expect_error(
-    ps_calibrate(runif(5), rep(0:1, length.out = 6)),
-    class = "propensity_length_error"
+  expect_propensity_error(
+    ps_calibrate(runif(5), rep(0:1, length.out = 6))
   )
 })
 
@@ -223,9 +219,8 @@ test_that("error handling for ambiguous treatment coding", {
 
   # Three-level factor should require explicit specification
   treat_three <- factor(sample(c("A", "B", "C"), 20, replace = TRUE))
-  expect_error(
-    ps_calibrate(ps, treat_three),
-    "Specify.*treated.*untreated"
+  expect_propensity_error(
+    ps_calibrate(ps, treat_three)
   )
 
   # Should work with explicit specification
@@ -257,9 +252,8 @@ test_that("errors when trying to calibrate already calibrated ps", {
 
   calibrated <- ps_calibrate(ps, treat)
 
-  expect_error(
-    ps_calibrate(calibrated, treat),
-    class = "propensity_already_calibrated_error"
+  expect_propensity_error(
+    ps_calibrate(calibrated, treat)
   )
 })
 
@@ -315,9 +309,8 @@ test_that("method parameter validation works", {
   treat <- rbinom(20, 1, ps)
 
   # Invalid method should error
-  expect_error(
-    ps_calibrate(ps, treat, method = "invalid"),
-    "'arg' should be one of"
+  expect_propensity_error(
+    ps_calibrate(ps, treat, method = "invalid")
   )
 })
 

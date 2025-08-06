@@ -10,14 +10,13 @@ test_that("tidyr::pivot_longer works with propensity classes", {
   )
 
   # Pivot longer should work but with warning
-  expect_warning(
+  expect_propensity_warning(
     result <- tidyr::pivot_longer(
       df,
       cols = c(ate_wts, att_wts),
       names_to = "weight_type",
       values_to = "weight"
-    ),
-    "incompatible estimands"
+    )
   )
 
   expect_equal(nrow(result), 8)
@@ -38,17 +37,15 @@ test_that("tidyr::pivot_longer works with mixed propensity classes", {
     trunc_col = ps_trunc(c(0.3, 0.5, 0.4, 0.7), lower = 0.1, upper = 0.9)
   )
 
-  expect_warning(
-    expect_warning(
+  expect_propensity_warning(
+    expect_propensity_warning(
       result <- tidyr::pivot_longer(
         df,
         cols = c(psw_col, trim_col, trunc_col),
         names_to = "type",
         values_to = "value"
-      ),
-      class = "propensity_class_downgrade_warning"
-    ),
-    class = "propensity_class_downgrade_warning"
+      )
+    )
   )
 
   expect_equal(nrow(result), 12)
@@ -101,17 +98,15 @@ test_that("c() works as expected with warnings", {
   z <- 0.6
 
   # Different estimands
-  expect_warning(
-    result <- c(x, y),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result <- c(x, y)
   )
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.3, 0.8))
 
   # Mixed with numeric
-  expect_warning(
-    result <- c(x, z),
-    "Converting psw to numeric"
+  expect_propensity_warning(
+    result <- c(x, z)
   )
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.6))
@@ -136,9 +131,8 @@ test_that("rbind and data frame operations work", {
   expect_equal(as.numeric(result$wt), c(0.5, 0.7, 0.3, 0.8))
 
   # But vec_rbind does trigger the warning
-  expect_warning(
-    result2 <- vctrs::vec_rbind(df1, df2),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result2 <- vctrs::vec_rbind(df1, df2)
   )
   expect_equal(nrow(result2), 4)
   expect_type(result2$wt, "double")
@@ -293,14 +287,13 @@ test_that("tidyr works with stabilized weights", {
   )
 
   # Pivot should warn about different stabilization
-  expect_warning(
+  expect_propensity_warning(
     long <- tidyr::pivot_longer(
       df,
       cols = c(wt_stab, wt_unstab),
       names_to = "stab_type",
       values_to = "weight"
-    ),
-    "different stabilization status"
+    )
   )
 
   expect_type(long$weight, "double")

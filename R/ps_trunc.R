@@ -188,7 +188,7 @@ ps_trunc.matrix <- function(
   .exposure <- transform_exposure_categorical(.exposure)
 
   # Validate matrix
-  ps <- check_ps_matrix(ps, .exposure)
+  ps <- check_ps_matrix(ps, .exposure, call = rlang::caller_env())
 
   n <- nrow(ps)
   k <- ncol(ps)

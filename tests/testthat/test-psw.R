@@ -88,9 +88,8 @@ test_that("vec_cast works for psw and integer with precision checks", {
 
   # Fail when precision is lost
   x_with_decimals <- psw(c(1.1, 2.2, 3.3), estimand = "ate")
-  expect_error(
-    vec_cast(x_with_decimals, integer()),
-    class = "vctrs_error_cast_lossy"
+  expect_propensity_error(
+    vec_cast(x_with_decimals, integer())
   )
 })
 
@@ -101,30 +100,25 @@ test_that("vec_ptype2 combines psw and other types correctly", {
 
   # Different estimands should warn and return numeric
   z <- psw(c(0.5, 0.6), estimand = "att")
-  expect_warning(
-    result <- vec_ptype2(x, z),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result <- vec_ptype2(x, z)
   )
   expect_identical(result, double())
 
   # Combining with double
-  expect_warning(
-    expect_equal(vec_ptype2(x, double()), double()),
-    class = "propensity_class_downgrade_warning"
+  expect_propensity_warning(
+    expect_equal(vec_ptype2(x, double()), double())
   )
-  expect_warning(
-    expect_equal(vec_ptype2(double(), x), double()),
-    class = "propensity_class_downgrade_warning"
+  expect_propensity_warning(
+    expect_equal(vec_ptype2(double(), x), double())
   )
 
   # Combining with integer
-  expect_warning(
-    expect_equal(vec_ptype2(x, integer()), integer()),
-    class = "propensity_class_downgrade_warning"
+  expect_propensity_warning(
+    expect_equal(vec_ptype2(x, integer()), integer())
   )
-  expect_warning(
-    expect_equal(vec_ptype2(integer(), x), integer()),
-    class = "propensity_class_downgrade_warning"
+  expect_propensity_warning(
+    expect_equal(vec_ptype2(integer(), x), integer())
   )
 })
 
@@ -176,8 +170,8 @@ test_that("vec_arith performs arithmetic on psw objects", {
 
   # doesn't work with unsupported types
   thing <- new_vctr(runif(10), class = "thing")
-  expect_error(x * thing, class = "vctrs_error_incompatible_op")
-  expect_error(x * list(runif(10)), class = "vctrs_error_incompatible_op")
+  expect_propensity_error(x * thing)
+  expect_propensity_error(x * list(runif(10)))
 })
 
 test_that("vec_math applies math functions to psw objects", {

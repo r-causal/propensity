@@ -97,21 +97,29 @@ is_binary <- function(.exposure) {
 is_categorical <- function(.exposure) {
   # assumption: a variable where the proportion of unique values
   # to total number of observations is less than 20% is categorical
-  length(unique(.exposure)) / sum(!is.na(.exposure)) < 0.2
+  n_non_na <- sum(!is.na(.exposure))
+  if (n_non_na == 0) return(FALSE)
+
+  ratio <- length(unique(.exposure)) / n_non_na
+  # Handle NaN case explicitly
+  if (is.nan(ratio)) return(FALSE)
+
+  ratio < 0.2
 }
 
 has_two_levels <- function(.x) {
   length(unique(.x)) == 2
 }
 
-check_refit <- function(.propensity) {
+check_refit <- function(.propensity, call = rlang::caller_env()) {
   if (!is_refit(.propensity)) {
     warn(
       c(
         "It appears you trimmed your propensity score but did not refit the model.",
         i = "Use {.code ps_refit()} for more accurate re-estimation."
       ),
-      warning_class = "propensity_no_refit_warning"
+      warning_class = "propensity_no_refit_warning",
+      call = call
     )
   }
 }
@@ -365,7 +373,8 @@ check_ps_matrix <- function(
         i = "Assuming columns are in factor level order: {.val {exp_levels}}",
         i = "This may lead to incorrect results if columns are misaligned."
       ),
-      warning_class = "propensity_matrix_no_names_warning"
+      warning_class = "propensity_matrix_no_names_warning",
+      call = call
     )
   }
 
@@ -380,11 +389,11 @@ calculate_weight_from_modified_ps <- function(
   modification_type = c("trim", "trunc"),
   ...
 ) {
-  modification_type <- match.arg(modification_type)
+  modification_type <- rlang::arg_match(modification_type)
 
   # Only check refit for trim
   if (modification_type == "trim") {
-    check_refit(.propensity)
+    check_refit(.propensity, call = rlang::caller_env())
   }
 
   # Handle matrix or vector propensity scores

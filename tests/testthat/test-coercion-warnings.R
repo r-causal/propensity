@@ -3,9 +3,8 @@ test_that("c() with psw objects of different estimands warns and returns correct
   y <- psw(c(0.3, 0.8), estimand = "att")
 
   # Test c() function specifically
-  expect_warning(
-    result <- c(x, y),
-    "incompatible estimands 'ate' and 'att'"
+  expect_propensity_warning(
+    result <- c(x, y)
   )
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.3, 0.8))
@@ -13,12 +12,10 @@ test_that("c() with psw objects of different estimands warns and returns correct
 
   # Test with more values - note: when mixing with double, different warning
   z <- psw(c(0.1, 0.2, 0.9), estimand = "ato")
-  expect_warning(
-    expect_warning(
-      result2 <- c(x, y, z),
-      class = "propensity_coercion_warning"
-    ),
-    class = "propensity_class_downgrade_warning"
+  expect_propensity_warning(
+    expect_propensity_warning(
+      result2 <- c(x, y, z)
+    )
   )
   expect_equal(result2, c(0.5, 0.7, 0.3, 0.8, 0.1, 0.2, 0.9))
   expect_equal(length(result2), 7)
@@ -40,9 +37,8 @@ test_that("c() with psw and numeric values warns and returns numeric", {
   x <- psw(c(0.5, 0.7), estimand = "ate")
 
   # psw with single numeric
-  expect_warning(
-    result <- c(x, 0.9),
-    "Converting psw to numeric"
+  expect_propensity_warning(
+    result <- c(x, 0.9)
   )
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.9))
@@ -53,9 +49,8 @@ test_that("c() with psw and numeric values warns and returns numeric", {
   expect_equal(result2, c(0.1, 0.5, 0.7))
 
   # psw with multiple numerics
-  expect_warning(
-    result3 <- c(x, c(0.2, 0.3)),
-    "Converting psw to numeric"
+  expect_propensity_warning(
+    result3 <- c(x, c(0.2, 0.3))
   )
   expect_equal(result3, c(0.5, 0.7, 0.2, 0.3))
 
@@ -69,9 +64,8 @@ test_that("c() with ps_trim objects of different parameters warns and returns nu
   x <- ps_trim(c(0.1, 0.5, 0.9), lower = 0.1, upper = 0.9)
   y <- ps_trim(c(0.2, 0.6, 0.8), lower = 0.2, upper = 0.8)
 
-  expect_warning(
-    result <- c(x, y),
-    "different trimming parameters"
+  expect_propensity_warning(
+    result <- c(x, y)
   )
   expect_type(result, "double")
   # ps_trim might have NAs for trimmed values
@@ -98,9 +92,8 @@ test_that("c() with ps_trunc objects behaves correctly", {
   x <- ps_trunc(c(0.1, 0.5, 0.9), lower = 0.2, upper = 0.8)
   y <- ps_trunc(c(0.15, 0.6, 0.85), lower = 0.3, upper = 0.7)
 
-  expect_warning(
-    result <- c(x, y),
-    "different truncation parameters"
+  expect_propensity_warning(
+    result <- c(x, y)
   )
   expect_type(result, "double")
   expect_equal(result, c(0.2, 0.5, 0.8, 0.3, 0.6, 0.7)) # truncated values
@@ -120,36 +113,31 @@ test_that("c() with mixed propensity classes warns and returns numeric", {
   trunc_obj <- ps_trunc(c(0.4, 0.6), lower = 0.1, upper = 0.9)
 
   # psw + ps_trim
-  expect_warning(
-    result1 <- c(psw_obj, trim_obj),
-    "Converting psw and ps_trim to numeric"
+  expect_propensity_warning(
+    result1 <- c(psw_obj, trim_obj)
   )
   expect_type(result1, "double")
   expect_equal(length(result1), 4)
 
   # psw + ps_trunc
-  expect_warning(
-    result2 <- c(psw_obj, trunc_obj),
-    "Converting psw and ps_trunc to numeric"
+  expect_propensity_warning(
+    result2 <- c(psw_obj, trunc_obj)
   )
   expect_type(result2, "double")
   expect_equal(result2, c(0.5, 0.7, 0.4, 0.6))
 
   # ps_trim + ps_trunc
-  expect_warning(
-    result3 <- c(trim_obj, trunc_obj),
-    "Converting ps_trim and ps_trunc to numeric"
+  expect_propensity_warning(
+    result3 <- c(trim_obj, trunc_obj)
   )
   expect_type(result3, "double")
   expect_equal(length(result3), 4)
 
   # All three - gets multiple warnings
-  expect_warning(
-    expect_warning(
-      result4 <- c(psw_obj, trim_obj, trunc_obj),
-      class = "propensity_class_downgrade_warning"
-    ),
-    class = "propensity_class_downgrade_warning"
+  expect_propensity_warning(
+    expect_propensity_warning(
+      result4 <- c(psw_obj, trim_obj, trunc_obj)
+    )
   )
   expect_type(result4, "double")
   expect_equal(length(result4), 6)
@@ -166,17 +154,15 @@ test_that("c() with empty vectors works correctly", {
   expect_equal(as.numeric(result1), c(0.5, 0.7))
 
   # psw with empty numeric - warns in current implementation
-  expect_warning(
-    result2 <- c(x, empty_numeric),
-    "Converting psw to numeric"
+  expect_propensity_warning(
+    result2 <- c(x, empty_numeric)
   )
   expect_type(result2, "double")
   expect_equal(result2, c(0.5, 0.7))
 
   # empty psw with numeric
-  expect_warning(
-    result3 <- c(empty_psw, 0.5),
-    "Converting psw to numeric"
+  expect_propensity_warning(
+    result3 <- c(empty_psw, 0.5)
   )
   expect_equal(result3, 0.5)
 })
@@ -185,17 +171,15 @@ test_that("c() with single values works correctly", {
   x <- psw(0.5, estimand = "ate")
   y <- psw(0.7, estimand = "att")
 
-  expect_warning(
-    result <- c(x, y),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result <- c(x, y)
   )
   expect_equal(result, c(0.5, 0.7))
 
   # Single with vector
   z <- psw(c(0.1, 0.2), estimand = "ato")
-  expect_warning(
-    result2 <- c(x, z),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result2 <- c(x, z)
   )
   expect_equal(result2, c(0.5, 0.1, 0.2))
 })
@@ -215,9 +199,8 @@ test_that("c() with different stabilization status warns", {
   x <- new_psw(c(0.5, 0.7), estimand = "ate", stabilized = TRUE)
   y <- new_psw(c(0.3, 0.8), estimand = "ate", stabilized = FALSE)
 
-  expect_warning(
-    result <- c(x, y),
-    "different stabilization status"
+  expect_propensity_warning(
+    result <- c(x, y)
   )
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.3, 0.8))
@@ -228,16 +211,14 @@ test_that("subsetting operations work correctly", {
   y <- psw(c(0.2, 0.6), estimand = "att")
 
   # Subset then combine
-  expect_warning(
-    result <- c(x[1:2], y),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result <- c(x[1:2], y)
   )
   expect_equal(result, c(0.1, 0.5, 0.2, 0.6))
 
   # Combine subsets
-  expect_warning(
-    result2 <- c(x[c(1, 3)], y[2]),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result2 <- c(x[c(1, 3)], y[2])
   )
   expect_equal(result2, c(0.1, 0.7, 0.6))
 })
@@ -246,9 +227,8 @@ test_that("append() works like c()", {
   x <- psw(c(0.5, 0.7), estimand = "ate")
   y <- psw(c(0.3, 0.8), estimand = "att")
 
-  expect_warning(
-    result <- append(x, y),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result <- append(x, y)
   )
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.3, 0.8))
@@ -292,9 +272,8 @@ test_that("data.frame operations work as expected", {
   expect_equal(as.numeric(result1$wt), c(0.5, 0.7, 0.3, 0.8, 0.2, 0.6))
 
   # But vec_rbind does trigger the warning
-  expect_warning(
-    result2 <- vctrs::vec_rbind(df1, df2),
-    "incompatible estimands"
+  expect_propensity_warning(
+    result2 <- vctrs::vec_rbind(df1, df2)
   )
   expect_equal(nrow(result2), 6)
   expect_type(result2$wt, "double")
@@ -306,9 +285,8 @@ test_that("vctrs vec_ptype2 returns appropriate prototypes", {
   y <- psw(c(0.3, 0.8), estimand = "att")
 
   # This is what vctrs uses internally - verify it returns empty double
-  expect_warning(
-    proto <- vec_ptype2(x, y),
-    class = "propensity_coercion_warning"
+  expect_propensity_warning(
+    proto <- vec_ptype2(x, y)
   )
   expect_identical(proto, double())
   expect_equal(length(proto), 0)
@@ -338,15 +316,13 @@ test_that("arithmetic operations with different metadata work correctly", {
 test_that("comparison operations warn about class downgrade", {
   x <- psw(c(0.5, 0.7), estimand = "ate")
 
-  expect_warning(
-    result <- x > 0.6,
-    "Converting psw to numeric"
+  expect_propensity_warning(
+    result <- x > 0.6
   )
   expect_equal(result, c(FALSE, TRUE))
 
-  expect_warning(
-    result2 <- x == 0.5,
-    "Converting psw to numeric"
+  expect_propensity_warning(
+    result2 <- x == 0.5
   )
   expect_equal(result2, c(TRUE, FALSE))
 })
@@ -370,9 +346,8 @@ test_that("c() ordering matters for warnings", {
   num <- c(0.3, 0.4)
 
   # psw first triggers warning
-  expect_warning(
-    result1 <- c(x, num),
-    "Converting psw to numeric"
+  expect_propensity_warning(
+    result1 <- c(x, num)
   )
   expect_equal(result1, c(0.5, 0.7, 0.3, 0.4))
 
