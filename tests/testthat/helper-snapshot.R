@@ -1,4 +1,4 @@
-expect_propensity_error <- function(expr, class = NULL) {
+expect_propensity_error <- function(expr) {
   testthat::expect_snapshot(
     error = TRUE,
     cnd_class = TRUE,
