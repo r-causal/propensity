@@ -6,7 +6,7 @@ expect_propensity_error <- function(expr) {
   )
 }
 
-expect_propensity_warning <- function(expr, class = NULL) {
+expect_propensity_warning <- function(expr) {
   testthat::expect_snapshot(
     cnd_class = TRUE,
     expr
