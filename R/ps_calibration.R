@@ -98,12 +98,16 @@ ps_calibrate <- function(
 
   # Extract attributes from causal weight objects if applicable
   if (is_causal_wt(ps)) {
-    if (is.null(estimand)) estimand <- estimand(ps)
+    if (is.null(estimand)) {
+      estimand <- estimand(ps)
+    }
     stabilized <- is_stabilized(ps)
     trimmed <- is_ps_trimmed(ps)
     truncated <- is_ps_truncated(ps)
   } else {
-    if (is.null(estimand)) estimand <- "unknown"
+    if (is.null(estimand)) {
+      estimand <- "unknown"
+    }
     stabilized <- FALSE
     trimmed <- FALSE
     truncated <- FALSE

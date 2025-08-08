@@ -117,15 +117,23 @@ ps_trunc.default <- function(
   check_ps_range(ps)
 
   if (method == "ps") {
-    if (is.null(lower)) lower <- 0.1
-    if (is.null(upper)) upper <- 0.9
+    if (is.null(lower)) {
+      lower <- 0.1
+    }
+    if (is.null(upper)) {
+      upper <- 0.9
+    }
     check_lower_upper(lower, upper)
 
     lb <- lower
     ub <- upper
   } else if (method == "pctl") {
-    if (is.null(lower)) lower <- 0.05
-    if (is.null(upper)) upper <- 0.95
+    if (is.null(lower)) {
+      lower <- 0.05
+    }
+    if (is.null(upper)) {
+      upper <- 0.95
+    }
     lb <- quantile(ps, probs = lower)
     ub <- quantile(ps, probs = upper)
     meta_list$lower_pctl <- lower
@@ -195,7 +203,9 @@ ps_trunc.matrix <- function(
 
   if (method == "ps") {
     # Symmetric truncation
-    if (is.null(lower)) lower <- 0.01 # Default threshold
+    if (is.null(lower)) {
+      lower <- 0.01
+    } # Default threshold
     delta <- lower # Use lower as delta for consistency
 
     # Validate delta
@@ -224,8 +234,12 @@ ps_trunc.matrix <- function(
   } else {
     # pctl
     # Percentile-based truncation
-    if (is.null(lower)) lower <- 0.01 # Default percentile
-    if (is.null(upper)) upper <- 0.99 # Default percentile
+    if (is.null(lower)) {
+      lower <- 0.01
+    } # Default percentile
+    if (is.null(upper)) {
+      upper <- 0.99
+    } # Default percentile
 
     # Calculate thresholds based on the distribution of all propensity scores
     all_ps_vals <- as.vector(ps)

@@ -403,7 +403,6 @@ wt_ate.glm <- function(
   stabilization_score = NULL,
   ...
 ) {
-
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
   exposure_type <- match_exposure_type(exposure_type, .exposure)
@@ -1340,7 +1339,6 @@ wt_cens.glm <- function(
   stabilization_score = NULL,
   ...
 ) {
-
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
   exposure_type <- match_exposure_type(exposure_type, .exposure)
