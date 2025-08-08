@@ -114,8 +114,12 @@ ps_trim.default <- function(
   check_ps_range(ps)
 
   if (method == "ps") {
-    if (is.null(lower)) lower <- 0.1
-    if (is.null(upper)) upper <- 0.9
+    if (is.null(lower)) {
+      lower <- 0.1
+    }
+    if (is.null(upper)) {
+      upper <- 0.9
+    }
     check_lower_upper(lower, upper)
   } else if (method == "adaptive") {
     if (!is.null(lower) || !is.null(upper)) {
@@ -124,10 +128,14 @@ ps_trim.default <- function(
       )
     }
   } else if (method == "pctl") {
-    if (is.null(lower)) lower <- 0.05
+    if (is.null(lower)) {
+      lower <- 0.05
+    }
     if (is.null(upper)) upper <- 0.95
   } else if (method == "pref") {
-    if (is.null(lower)) lower <- 0.3
+    if (is.null(lower)) {
+      lower <- 0.3
+    }
     if (is.null(upper)) upper <- 0.7
   } else {
     if (!is.null(lower) || !is.null(upper)) {
@@ -260,7 +268,9 @@ ps_trim.matrix <- function(
 
   if (method == "ps") {
     # Symmetric trimming
-    if (is.null(lower)) lower <- 0.1
+    if (is.null(lower)) {
+      lower <- 0.1
+    }
     delta <- lower # Use lower as delta for consistency
 
     # Validate delta
@@ -294,7 +304,9 @@ ps_trim.matrix <- function(
     # Define trimming function
     trim_fun <- function(x) {
       sum_trim <- sum_inv_ps[sum_inv_ps <= x]
-      if (length(sum_trim) == 0) return(x)
+      if (length(sum_trim) == 0) {
+        return(x)
+      }
       x - 2 * mean(sum_trim) / mean(sum_inv_ps <= x)
     }
 

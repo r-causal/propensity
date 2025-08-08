@@ -10,3 +10,5 @@
 ^CLAUDE\.md$
 ^\.claude$
 ^scratch$
+^[.]?air[.]toml$
+^\.vscode$

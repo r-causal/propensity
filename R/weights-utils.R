@@ -74,8 +74,11 @@ transform_exposure_binary <- function(
   }
 
   if (is.null(.treated) && is.null(.untreated) && has_two_levels(.exposure)) {
-    levels <- if (is.factor(.exposure)) levels(.exposure) else
+    levels <- if (is.factor(.exposure)) {
+      levels(.exposure)
+    } else {
       sort(unique(.exposure))
+    }
     alert_info("Setting treatment to {.var {levels[[2]]}}")
     return(ifelse(.exposure == levels[[2]], 1, 0))
   } else {
@@ -98,11 +101,15 @@ is_categorical <- function(.exposure) {
   # assumption: a variable where the proportion of unique values
   # to total number of observations is less than 20% is categorical
   n_non_na <- sum(!is.na(.exposure))
-  if (n_non_na == 0) return(FALSE)
+  if (n_non_na == 0) {
+    return(FALSE)
+  }
 
   ratio <- length(unique(.exposure)) / n_non_na
   # Handle NaN case explicitly
-  if (is.nan(ratio)) return(FALSE)
+  if (is.nan(ratio)) {
+    return(FALSE)
+  }
 
   ratio < 0.2
 }

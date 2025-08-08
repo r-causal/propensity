@@ -470,8 +470,9 @@ vec_ptype2.integer.psw <- function(x, y, ...) {
 }
 
 #' @export
-vec_cast.psw.integer <- function(x, to, estimand = NULL, ...)
+vec_cast.psw.integer <- function(x, to, estimand = NULL, ...) {
   psw(x, estimand = estimand(to))
+}
 
 #' @export
 vec_cast.integer.psw <- function(x, to, ...) {
