@@ -575,3 +575,31 @@ handle_data_frame_weight_calculation <- function(
     ...
   )
 }
+
+# Helper functions for extracting information from GLM formulas
+# (moved from ipw.R to be shared across the package)
+fmla_extract_left_vctr <- function(mod) {
+  .data <- mod |>
+    model.frame()
+
+  .data[[1]]
+}
+
+fmla_extract_left_chr <- function(mod) {
+  as.character(formula(mod)[[2]])
+}
+
+# Helper function to handle optional exposure in GLM methods
+extract_exposure_from_glm <- function(
+  glm_obj,
+  .exposure = NULL,
+  call = rlang::caller_env()
+) {
+  if (is.null(.exposure)) {
+    # Extract exposure from GLM
+    .exposure <- fmla_extract_left_vctr(glm_obj)
+    exposure_name <- fmla_extract_left_chr(glm_obj)
+    alert_info("Using exposure variable {.val {exposure_name}} from GLM model")
+  }
+  .exposure
+}

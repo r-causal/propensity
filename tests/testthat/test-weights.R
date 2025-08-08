@@ -1200,6 +1200,70 @@ test_that("wt_* functions work with GLM objects", {
   expect_equal(estimand(weights_entropy_glm), "entropy")
 })
 
+test_that("GLM methods with optional exposure argument", {
+  # Simulate data
+  set.seed(789)
+  n <- 100
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  ps_true <- plogis(0.5 * x1 + 0.3 * x2)
+  treatment <- rbinom(n, 1, ps_true)
+
+  # Fit GLM model
+  ps_model <- glm(treatment ~ x1 + x2, family = binomial)
+  ps_fitted <- fitted(ps_model)
+
+  # Test that all weight functions work without explicit exposure
+  # and produce the same results as with explicit exposure
+
+  # Test ATE
+  weights_ate_auto <- wt_ate(ps_model, exposure_type = "binary")
+  weights_ate_explicit <- wt_ate(ps_model, treatment, exposure_type = "binary")
+  expect_equal(weights_ate_auto, weights_ate_explicit)
+  expect_s3_class(weights_ate_auto, "psw")
+
+  # Test ATT
+  weights_att_auto <- wt_att(ps_model, exposure_type = "binary")
+  weights_att_explicit <- wt_att(ps_model, treatment, exposure_type = "binary")
+  expect_equal(weights_att_auto, weights_att_explicit)
+
+  # Test ATU
+  weights_atu_auto <- wt_atu(ps_model, exposure_type = "binary")
+  weights_atu_explicit <- wt_atu(ps_model, treatment, exposure_type = "binary")
+  expect_equal(weights_atu_auto, weights_atu_explicit)
+
+  # Test ATM
+  weights_atm_auto <- wt_atm(ps_model, exposure_type = "binary")
+  weights_atm_explicit <- wt_atm(ps_model, treatment, exposure_type = "binary")
+  expect_equal(weights_atm_auto, weights_atm_explicit)
+
+  # Test ATO
+  weights_ato_auto <- wt_ato(ps_model, exposure_type = "binary")
+  weights_ato_explicit <- wt_ato(ps_model, treatment, exposure_type = "binary")
+  expect_equal(weights_ato_auto, weights_ato_explicit)
+
+  # Test Entropy
+  weights_entropy_auto <- wt_entropy(ps_model, exposure_type = "binary")
+  weights_entropy_explicit <- wt_entropy(
+    ps_model,
+    treatment,
+    exposure_type = "binary"
+  )
+  expect_equal(weights_entropy_auto, weights_entropy_explicit)
+
+  # Test with continuous exposure using wt_cens which supports continuous
+  exposure_cont <- 2 + 0.5 * x1 + 0.3 * x2 + rnorm(n)
+  ps_model_cont <- glm(exposure_cont ~ x1 + x2, family = gaussian)
+
+  weights_cens_auto <- wt_cens(ps_model_cont, exposure_type = "continuous")
+  weights_cens_explicit <- wt_cens(
+    ps_model_cont,
+    exposure_cont,
+    exposure_type = "continuous"
+  )
+  expect_equal(weights_cens_auto, weights_cens_explicit)
+})
+
 test_that("GLM methods handle continuous exposures", {
   # Simulate continuous exposure data
   set.seed(456)
@@ -1225,6 +1289,14 @@ test_that("GLM methods handle continuous exposures", {
   # Check that weights are reasonable
   expect_true(all(is.finite(as.numeric(weights_ate))))
   expect_true(all(as.numeric(weights_ate) > 0))
+
+  # Test optional exposure with continuous
+  weights_ate_auto <- wt_ate(
+    exposure_model,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(weights_ate_auto, weights_ate)
 })
 
 test_that("GLM methods error on non-GLM objects", {
@@ -1350,7 +1422,7 @@ test_that("wt_* functions error appropriately on invalid inputs", {
   expect_propensity_error(
     wt_ate(c("a", "b"), c(0, 1))
   )
-  
+
   # Categorical exposure requires matrix propensity scores
   expect_propensity_error(
     wt_att(c(0.3, 0.3, 0.4), c(1, 2, 3), exposure_type = "categorical")

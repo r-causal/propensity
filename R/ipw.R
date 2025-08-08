@@ -612,17 +612,6 @@ derive_link <- function(ps_link = c("logit", "probit", "cloglog")) {
   )
 }
 
-fmla_extract_left_vctr <- function(mod) {
-  .data <- mod |>
-    model.frame()
-
-  .data[[1]]
-}
-
-fmla_extract_left_chr <- function(mod) {
-  as.character(formula(mod)[[2]])
-}
-
 extract_weights <- function(.mod) {
   .mod |>
     model.frame() |>
