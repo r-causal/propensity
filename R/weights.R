@@ -1340,10 +1340,10 @@ wt_cens.glm <- function(
   stabilization_score = NULL,
   ...
 ) {
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
 
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
 
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
