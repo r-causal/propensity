@@ -115,7 +115,9 @@
 #'   `.propensity_col`. For GLM objects, fitted values are extracted
 #'   automatically.
 #' @param .exposure The exposure variable. For binary exposures, a vector of 0s
-#'   and 1s; for continuous exposures, a numeric vector.
+#'   and 1s; for continuous exposures, a numeric vector. When `.propensity` is
+#'   a GLM object, this argument is optional and will be extracted from the
+#'   model if not provided.
 #' @param exposure_type Character string specifying the type of exposure.
 #'   Options are `"auto"`, `"binary"`, `"categorical"`, and `"continuous"`.
 #'   Defaults to `"auto"`, which detects the type automatically.
@@ -224,6 +226,9 @@
 #'
 #' # Use GLM directly for weight calculation
 #' weights_from_glm <- wt_ate(ps_model, treatment)
+#'
+#' # Or omit the exposure argument (it will be extracted from the GLM)
+#' weights_from_glm_auto <- wt_ate(ps_model)
 #'
 #' @references
 #'
@@ -389,7 +394,7 @@ wt_ate.data.frame <- function(
 #' @export
 wt_ate.glm <- function(
   .propensity,
-  .exposure,
+  .exposure = NULL,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .treated = NULL,
@@ -398,6 +403,9 @@ wt_ate.glm <- function(
   stabilization_score = NULL,
   ...
 ) {
+  # Handle optional exposure argument
+  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 
@@ -602,13 +610,16 @@ wt_att.data.frame <- function(
 #' @export
 wt_att.glm <- function(
   .propensity,
-  .exposure,
+  .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
   focal = NULL
 ) {
+  # Handle optional exposure argument
+  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 
@@ -745,13 +756,16 @@ wt_atu.data.frame <- function(
 #' @export
 wt_atu.glm <- function(
   .propensity,
-  .exposure,
+  .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...,
   focal = NULL
 ) {
+  # Handle optional exposure argument
+  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 
@@ -885,12 +899,15 @@ wt_atm.data.frame <- function(
 #' @export
 wt_atm.glm <- function(
   .propensity,
-  .exposure,
+  .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
 ) {
+  # Handle optional exposure argument
+  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 
@@ -1022,12 +1039,15 @@ wt_ato.data.frame <- function(
 #' @export
 wt_ato.glm <- function(
   .propensity,
-  .exposure,
+  .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
 ) {
+  # Handle optional exposure argument
+  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 
@@ -1157,12 +1177,15 @@ wt_entropy.data.frame <- function(
 #' @export
 wt_entropy.glm <- function(
   .propensity,
-  .exposure,
+  .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
   .treated = NULL,
   .untreated = NULL,
   ...
 ) {
+  # Handle optional exposure argument
+  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 
@@ -1309,7 +1332,7 @@ wt_cens.data.frame <- function(
 #' @export
 wt_cens.glm <- function(
   .propensity,
-  .exposure,
+  .exposure = NULL,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .treated = NULL,
@@ -1318,6 +1341,9 @@ wt_cens.glm <- function(
   stabilization_score = NULL,
   ...
 ) {
+  # Handle optional exposure argument
+  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 

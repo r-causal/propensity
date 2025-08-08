@@ -186,7 +186,9 @@ default for binary exposures unless specified otherwise with
 automatically.}
 
 \item{.exposure}{The exposure variable. For binary exposures, a vector of 0s
-and 1s; for continuous exposures, a numeric vector.}
+and 1s; for continuous exposures, a numeric vector. When \code{.propensity} is
+a GLM object, this argument is optional and will be extracted from the
+model if not provided.}
 
 \item{.sigma}{For continuous exposures, a numeric vector of standard errors
 used with \code{dnorm()}. For example, this can be derived from the influence
@@ -431,6 +433,9 @@ ps_model <- glm(treatment ~ x1 + x2, family = binomial)
 
 # Use GLM directly for weight calculation
 weights_from_glm <- wt_ate(ps_model, treatment)
+
+# Or omit the exposure argument (it will be extracted from the GLM)
+weights_from_glm_auto <- wt_ate(ps_model)
 
 }
 \references{
