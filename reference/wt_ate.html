@@ -282,7 +282,9 @@ automatically.</p></dd>
 
 <dt id="arg--exposure">.exposure<a class="anchor" aria-label="anchor" href="#arg--exposure"></a></dt>
 <dd><p>The exposure variable. For binary exposures, a vector of 0s
-and 1s; for continuous exposures, a numeric vector.</p></dd>
+and 1s; for continuous exposures, a numeric vector. When <code>.propensity</code> is
+a GLM object, this argument is optional and will be extracted from the
+model if not provided.</p></dd>
 
 
 <dt id="arg--sigma">.sigma<a class="anchor" aria-label="anchor" href="#arg--sigma"></a></dt>
@@ -616,6 +618,13 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Use GLM directly for weight calculation</span></span></span>
 <span class="r-in"><span><span class="va">weights_from_glm</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_model</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Or omit the exposure argument (it will be extracted from the GLM)</span></span></span>
+<span class="r-in"><span><span class="va">weights_from_glm_auto</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_model</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"treatment"</span> from GLM model</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
