@@ -403,17 +403,16 @@ wt_ate.glm <- function(
   stabilization_score = NULL,
   ...
 ) {
+
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
 
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 
   # For continuous exposures, extract sigma if not provided
-  if (
-    is.null(.sigma) &&
-      match_exposure_type(exposure_type, .exposure) == "continuous"
-  ) {
+  if (is.null(.sigma) && exposure_type == "continuous") {
     .sigma <- stats::influence(.propensity)$sigma
   }
 
@@ -1341,17 +1340,16 @@ wt_cens.glm <- function(
   stabilization_score = NULL,
   ...
 ) {
+
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
+  exposure_type <- match_exposure_type(exposure_type, .exposure)
 
   # Extract fitted values (propensity scores) from GLM
   ps_vec <- extract_propensity_from_glm(.propensity)
 
   # For continuous exposures, extract sigma if not provided
-  if (
-    is.null(.sigma) &&
-      match_exposure_type(exposure_type, .exposure) == "continuous"
-  ) {
+  if (is.null(.sigma) && exposure_type == "continuous") {
     .sigma <- stats::influence(.propensity)$sigma
   }
 

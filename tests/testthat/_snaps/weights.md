@@ -254,7 +254,6 @@
       expr
     Message <cliMessage>
       i Treating `.exposure` as binary
-      i Treating `.exposure` as binary
     Condition <propensity_length_error>
       Error in `wt_ate.numeric()`:
       ! `.propensity` and `.exposure` must have the same length.
