@@ -619,13 +619,11 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-in"><span><span class="co"># Use GLM directly for weight calculation</span></span></span>
 <span class="r-in"><span><span class="va">weights_from_glm</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_model</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Or omit the exposure argument (it will be extracted from the GLM)</span></span></span>
 <span class="r-in"><span><span class="va">weights_from_glm_auto</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_model</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"treatment"</span> from GLM model</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting treatment to `1`</span>
 <span class="r-in"><span></span></span>
