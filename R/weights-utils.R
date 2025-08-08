@@ -592,8 +592,7 @@ fmla_extract_left_chr <- function(mod) {
 # Helper function to handle optional exposure in GLM methods
 extract_exposure_from_glm <- function(
   glm_obj,
-  .exposure = NULL,
-  call = rlang::caller_env()
+  .exposure = NULL
 ) {
   if (is.null(.exposure)) {
     # Extract exposure from GLM
