@@ -112,6 +112,4 @@
       Warning in `wt_ate()`:
       It appears you trimmed your propensity score but did not refit the model.
       i Use `ps_refit()` for more accurate re-estimation.
-    Message <cliMessage>
-      i Treating `.exposure` as categorical
 

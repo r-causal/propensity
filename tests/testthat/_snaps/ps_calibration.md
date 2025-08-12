@@ -26,8 +26,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Setting focal level to `1`
     Condition <propensity_length_error>
       Error in `ps_calibrate()`:
       ! Propensity score vector `ps` must be the same length as `.exposure`.

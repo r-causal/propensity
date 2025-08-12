@@ -90,8 +90,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as continuous
     Condition <propensity_wt_not_supported_error>
       Error in `wt_entropy()`:
       ! Exposure type "continuous" not currently supported for entropy
@@ -100,8 +98,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as binary
     Condition <propensity_df_ncol_error>
       Error:
       ! `.propensity` data frame must have at least one column.
@@ -110,8 +106,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as binary
     Condition <propensity_df_column_error>
       Error:
       ! Column selection failed:
@@ -188,8 +182,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as binary
     Condition <propensity_df_ncol_error>
       Error:
       ! `.propensity` data frame must have at least one column.
@@ -198,8 +190,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as binary
     Condition <propensity_df_column_error>
       Error:
       ! Column selection failed:
@@ -208,8 +198,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as binary
     Condition <propensity_df_column_error>
       Error:
       ! Column selection failed:
@@ -218,9 +206,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as binary
-      i Treating `.exposure` as binary
     Condition <simpleWarning>
       Warning in `check_ps_range()`:
       NAs introduced by coercion
@@ -232,9 +217,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as binary
-      i Treating `.exposure` as binary
     Condition <propensity_range_error>
       Error in `weight_fn_numeric()`:
       ! The propensity score must be between 0 and 1.
@@ -252,8 +234,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as binary
     Condition <propensity_length_error>
       Error in `wt_ate.numeric()`:
       ! `.propensity` and `.exposure` must have the same length.

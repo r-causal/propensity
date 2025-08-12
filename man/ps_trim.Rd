@@ -10,9 +10,11 @@ ps_trim(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 )
 }
 \arguments{
@@ -31,13 +33,19 @@ symmetric trimming threshold (delta).}
 exposure. For categorical exposures with method \code{"optimal"}, must be a
 factor or character vector.}
 
-\item{.treated}{The value representing the treatment group. If not provided,
-it is automatically detected.}
+\item{.focal_level}{For binary exposures, the value representing the focal group
+(typically the treatment group). For categorical exposures with ATT or ATU estimands,
+specifies the focal category. Must be one of the levels of the exposure variable.
+Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 
-\item{.untreated}{The value representing the control group. If not provided,
-it is automatically detected.}
+\item{.reference_level}{For binary exposures, the value representing the reference group
+(typically the control group). If not provided, it is automatically detected.}
 
 \item{...}{Additional arguments passed to methods}
+
+\item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
+
+\item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 }
 \value{
 A \code{ps_trim} object (numeric vector or matrix). The attribute

@@ -124,13 +124,14 @@
 #' @param .sigma For continuous exposures, a numeric vector of standard errors
 #'   used with `dnorm()`. For example, this can be derived from the influence
 #'   measures of a model (e.g., `influence(model)$sigma`).
-#' @param .treated The value representing the treatment group. If not provided,
-#'   it is automatically detected.
-#' @param .untreated The value representing the control group. If not provided,
-#'   it is automatically detected.
-#' @param .focal_level For categorical exposures with ATT or ATU estimands, specifies
-#'   the focal category. Must be one of the levels of the exposure variable.
+#' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
+#' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
+#' @param .focal_level For binary exposures, the value representing the focal group 
+#'   (typically the treatment group). For categorical exposures with ATT or ATU estimands, 
+#'   specifies the focal category. Must be one of the levels of the exposure variable.
 #'   Required for `wt_att()` and `wt_atu()` with categorical exposures.
+#' @param .reference_level For binary exposures, the value representing the reference group
+#'   (typically the control group). If not provided, it is automatically detected.
 #' @param ... Reserved for future expansion. Not currently used.
 #' @param stabilize Logical indicating whether to stabilize the weights. For ATE
 #'   weights, stabilization multiplies the weight by either the mean of
@@ -164,6 +165,10 @@
 #' weights_ate <- wt_ate(propensity_scores, treatment)
 #' weights_att <- wt_att(propensity_scores, treatment)
 #' weights_atu <- wt_atu(propensity_scores, treatment)
+#' 
+#' # With explicit focal and reference levels
+#' weights_att_explicit <- wt_att(propensity_scores, treatment, 
+#'                                .focal_level = 1, .reference_level = 0)
 #' weights_atm <- wt_atm(propensity_scores, treatment)
 #' weights_ato <- wt_ato(propensity_scores, treatment)
 #' weights_entropy <- wt_entropy(propensity_scores, treatment)
@@ -627,8 +632,8 @@ wt_att.data.frame <- function(
   exposure_type = c("auto", "binary", "categorical"),
   .focal_level = NULL,
   .reference_level = NULL,
-  .propensity_col = NULL,
   ...,
+  .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -790,10 +795,10 @@ wt_atu.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .propensity_col = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -957,10 +962,10 @@ wt_atm.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .propensity_col = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -1123,10 +1128,10 @@ wt_ato.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .propensity_col = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -1287,10 +1292,10 @@ wt_entropy.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .propensity_col = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -1453,12 +1458,12 @@ wt_cens.data.frame <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .propensity_col = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
 ) {

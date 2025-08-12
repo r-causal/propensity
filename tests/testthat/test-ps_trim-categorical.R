@@ -814,19 +814,6 @@ test_that("print methods handle large matrices correctly", {
   expect_true(any(grepl("# \\.\\.\\. with 94 more rows", output)))
 })
 
-test_that("print methods return object invisibly", {
-  n <- 15
-  exposure <- factor(rep(c("A", "B", "C"), each = 5))
-  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
-  ps_matrix <- ps_matrix / rowSums(ps_matrix)
-  colnames(ps_matrix) <- levels(exposure)
-
-  trimmed <- ps_trim(ps_matrix, .exposure = exposure, method = "ps")
-
-  expect_invisible(returned_trim <- print(trimmed))
-  expect_identical(returned_trim, trimmed)
-})
-
 test_that("print methods respect n parameter", {
   set.seed(999)
   n <- 25

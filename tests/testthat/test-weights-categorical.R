@@ -6,6 +6,7 @@ test_that("categorical exposure detection works correctly", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix) # Normalize
   colnames(ps_matrix) <- levels(exposure_3)
 
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     wt_ate(ps_matrix, exposure_3),
     "Treating `.exposure` as categorical"
@@ -39,6 +40,7 @@ test_that("categorical exposure detection works correctly", {
   )
   colnames(ps_matrix) <- unique(sort(exposure_char))
 
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     wt_ate(ps_matrix, exposure_char),
     "Treating `.exposure` as categorical"

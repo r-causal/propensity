@@ -9,9 +9,11 @@ ps_calibrate(
   .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  estimand = NULL,
   .treated = NULL,
-  .untreated = NULL,
-  estimand = NULL
+  .untreated = NULL
 )
 }
 \arguments{
@@ -39,13 +41,17 @@ regression (\code{smooth = FALSE}). When \code{TRUE}, uses \code{mgcv::gam()} wi
 spline smoothing. When \code{FALSE}, uses \code{stats::glm()}. Ignored for
 \code{method = "isoreg"}.}
 
-\item{.treated}{The value representing the treatment group. If not provided,
-\code{ps_calibrate()} will attempt to automatically determine the treatment coding.}
+\item{.focal_level}{The value representing the focal group (typically treatment).
+If not provided, \code{ps_calibrate()} will attempt to automatically determine the coding.}
 
-\item{.untreated}{The value representing the control group. If not provided,
-\code{ps_calibrate()} will attempt to automatically determine the control coding.}
+\item{.reference_level}{The value representing the reference group (typically control).
+If not provided, \code{ps_calibrate()} will attempt to automatically determine the coding.}
 
 \item{estimand}{Character indicating the estimand type.}
+
+\item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
+
+\item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 }
 \value{
 A calibrated propensity score object (\code{psw})

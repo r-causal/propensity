@@ -28,8 +28,8 @@
 #'   If not provided, `ps_calibrate()` will attempt to automatically determine the coding.
 #' @param .reference_level The value representing the reference group (typically control).
 #'   If not provided, `ps_calibrate()` will attempt to automatically determine the coding.
-#' @param .treated **Deprecated**. Use `.focal_level` instead.
-#' @param .untreated **Deprecated**. Use `.reference_level` instead.
+#' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
+#' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
 #' @param estimand Character indicating the estimand type.
 #'
 #' @return A calibrated propensity score object (`psw`)

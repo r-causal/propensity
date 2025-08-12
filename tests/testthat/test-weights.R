@@ -232,6 +232,7 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
 })
 
 test_that("ATE works for binary cases", {
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights <- wt_ate(c(.1, .3, .4, .3), .exposure = c(0, 0, 1, 0)),
     "Treating `.exposure` as binary"
@@ -247,6 +248,7 @@ test_that("ATE works for binary cases", {
 
   expect_identical(weights, weights2)
 
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights3 <- wt_ate(
       c(.1, .3, .4, .3),
@@ -281,6 +283,7 @@ test_that("ATE works for binary cases", {
     levels = c("untreated", "treated")
   )
 
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights5 <- wt_ate(
       c(.1, .3, .4, .3),
@@ -317,6 +320,7 @@ test_that("ATE works for continuous cases", {
   wts <- 1 / f_den
   stb_wts <- f_num / f_den
 
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights <- wt_ate(
       predict(denom_model),
@@ -328,6 +332,7 @@ test_that("ATE works for continuous cases", {
   )
 
   expect_equal(weights, psw(wts, "ate"), tolerance = 0.01)
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     stabilized_weights <- wt_ate(
       predict(denom_model),
@@ -650,6 +655,7 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
 
 # Entropy weight tests
 test_that("wt_entropy works for binary cases", {
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights <- wt_entropy(c(.1, .3, .4, .3), .exposure = c(0, 0, 1, 0)),
     "Treating `.exposure` as binary"
@@ -665,6 +671,7 @@ test_that("wt_entropy works for binary cases", {
 
   expect_identical(weights, weights2)
 
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights3 <- wt_entropy(
       c(.1, .3, .4, .3),
@@ -699,6 +706,7 @@ test_that("wt_entropy works for binary cases", {
     levels = c("untreated", "treated")
   )
 
+  withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights5 <- wt_entropy(
       c(.1, .3, .4, .3),
