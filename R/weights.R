@@ -278,11 +278,13 @@ wt_ate <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   UseMethod("wt_ate")
 }
@@ -293,11 +295,13 @@ wt_ate.default <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -308,13 +312,27 @@ wt_ate.numeric <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   rlang::check_dots_empty()
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "wt_ate"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
+
   exposure_type <- match_exposure_type(exposure_type, .exposure)
 
   if (exposure_type == "binary") {
@@ -323,8 +341,8 @@ wt_ate.numeric <- function(
     wts <- ate_binary(
       .propensity = .propensity,
       .exposure = .exposure,
-      .treated = .treated,
-      .untreated = .untreated,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level,
       stabilize = stabilize,
       stabilization_score = stabilization_score
     )
@@ -367,12 +385,14 @@ wt_ate.data.frame <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -383,10 +403,12 @@ wt_ate.data.frame <- function(
     valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
     .propensity_col_quo = col_quo,
     .sigma = .sigma,
-    .treated = .treated,
-    .untreated = .untreated,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .treated = .treated,
+    .untreated = .untreated,
     ...
   )
 }
@@ -397,11 +419,13 @@ wt_ate.glm <- function(
   .exposure = NULL,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -421,10 +445,12 @@ wt_ate.glm <- function(
     .exposure = .exposure,
     .sigma = .sigma,
     exposure_type = exposure_type,
-    .treated = .treated,
-    .untreated = .untreated,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .treated = .treated,
+    .untreated = .untreated,
     ...
   )
 }
@@ -433,15 +459,15 @@ wt_ate.glm <- function(
 ate_binary <- function(
   .propensity,
   .exposure,
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
-    .treated = .treated,
-    .untreated = .untreated
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
   )
 
   if (isTRUE(stabilize) && is.null(stabilization_score)) {
@@ -509,10 +535,11 @@ wt_att <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .focal_level = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   UseMethod("wt_att")
 }
@@ -522,10 +549,11 @@ wt_att.default <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .focal_level = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -535,12 +563,25 @@ wt_att.numeric <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .focal_level = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   rlang::check_dots_empty()
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "wt_att"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
+
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -553,8 +594,8 @@ wt_att.numeric <- function(
     wts <- att_binary(
       .propensity = .propensity,
       .exposure = .exposure,
-      .treated = .treated,
-      .untreated = .untreated
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -584,11 +625,12 @@ wt_att.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
-  ...,
+  .focal_level = NULL,
+  .reference_level = NULL,
   .propensity_col = NULL,
-  .focal_level = NULL
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -598,9 +640,10 @@ wt_att.data.frame <- function(
     exposure_type = exposure_type,
     valid_exposure_types = c("auto", "binary", "categorical"),
     .propensity_col_quo = col_quo,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    .focal_level = .focal_level,
     ...
   )
 }
@@ -610,10 +653,11 @@ wt_att.glm <- function(
   .propensity,
   .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .focal_level = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -626,9 +670,10 @@ wt_att.glm <- function(
     .propensity = ps_vec,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    .focal_level = .focal_level,
     ...
   )
 }
@@ -636,13 +681,13 @@ wt_att.glm <- function(
 att_binary <- function(
   .propensity,
   .exposure,
-  .treated = NULL,
-  .untreated = NULL
+  .focal_level = NULL,
+  .reference_level = NULL
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
-    .treated = .treated,
-    .untreated = .untreated
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
   )
 
   ((.propensity * .exposure) / .propensity) +
@@ -655,10 +700,11 @@ wt_atu <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .focal_level = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   UseMethod("wt_atu")
 }
@@ -668,10 +714,11 @@ wt_atu.default <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .focal_level = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -681,12 +728,25 @@ wt_atu.numeric <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .focal_level = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   rlang::check_dots_empty()
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "wt_atu"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
+
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -699,8 +759,8 @@ wt_atu.numeric <- function(
     wts <- atu_binary(
       .propensity = .propensity,
       .exposure = .exposure,
-      .treated = .treated,
-      .untreated = .untreated
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -730,11 +790,12 @@ wt_atu.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
-  ...,
   .propensity_col = NULL,
-  .focal_level = NULL
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -744,9 +805,10 @@ wt_atu.data.frame <- function(
     exposure_type = exposure_type,
     valid_exposure_types = c("auto", "binary", "categorical"),
     .propensity_col_quo = col_quo,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    .focal_level = .focal_level,
     ...
   )
 }
@@ -756,10 +818,11 @@ wt_atu.glm <- function(
   .propensity,
   .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .focal_level = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -772,9 +835,10 @@ wt_atu.glm <- function(
     .propensity = ps_vec,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    .focal_level = .focal_level,
     ...
   )
 }
@@ -782,13 +846,13 @@ wt_atu.glm <- function(
 atu_binary <- function(
   .propensity,
   .exposure,
-  .treated = NULL,
-  .untreated = NULL
+  .focal_level = NULL,
+  .reference_level = NULL
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
-    .treated = .treated,
-    .untreated = .untreated
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
   )
 
   wt <- (((1 - .propensity) * .exposure) / .propensity) +
@@ -803,9 +867,11 @@ wt_atm <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   UseMethod("wt_atm")
 }
@@ -815,9 +881,11 @@ wt_atm.default <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -827,11 +895,25 @@ wt_atm.numeric <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   rlang::check_dots_empty()
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "wt_atm"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
+
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -844,8 +926,8 @@ wt_atm.numeric <- function(
     wts <- atm_binary(
       .propensity = .propensity,
       .exposure = .exposure,
-      .treated = .treated,
-      .untreated = .untreated
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -875,10 +957,12 @@ wt_atm.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .propensity_col = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .propensity_col = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -888,6 +972,8 @@ wt_atm.data.frame <- function(
     exposure_type = exposure_type,
     valid_exposure_types = c("auto", "binary", "categorical"),
     .propensity_col_quo = col_quo,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -899,9 +985,11 @@ wt_atm.glm <- function(
   .propensity,
   .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -914,6 +1002,8 @@ wt_atm.glm <- function(
     .propensity = ps_vec,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -923,13 +1013,13 @@ wt_atm.glm <- function(
 atm_binary <- function(
   .propensity,
   .exposure,
-  .treated = NULL,
-  .untreated = NULL
+  .focal_level = NULL,
+  .reference_level = NULL
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
-    .treated = .treated,
-    .untreated = .untreated
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
   )
 
   pmin(.propensity, 1 - .propensity) /
@@ -943,9 +1033,11 @@ wt_ato <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   UseMethod("wt_ato")
 }
@@ -955,9 +1047,11 @@ wt_ato.default <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -967,11 +1061,25 @@ wt_ato.numeric <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   rlang::check_dots_empty()
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "wt_ato"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
+
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -984,8 +1092,8 @@ wt_ato.numeric <- function(
     wts <- ato_binary(
       .propensity = .propensity,
       .exposure = .exposure,
-      .treated = .treated,
-      .untreated = .untreated
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -1015,10 +1123,12 @@ wt_ato.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .propensity_col = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .propensity_col = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -1028,6 +1138,8 @@ wt_ato.data.frame <- function(
     exposure_type = exposure_type,
     valid_exposure_types = c("auto", "binary", "categorical"),
     .propensity_col_quo = col_quo,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1039,9 +1151,11 @@ wt_ato.glm <- function(
   .propensity,
   .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -1054,6 +1168,8 @@ wt_ato.glm <- function(
     .propensity = ps_vec,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1063,13 +1179,13 @@ wt_ato.glm <- function(
 ato_binary <- function(
   .propensity,
   .exposure,
-  .treated = NULL,
-  .untreated = NULL
+  .focal_level = NULL,
+  .reference_level = NULL
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
-    .treated = .treated,
-    .untreated = .untreated
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
   )
 
   (1 - .propensity) * .exposure + .propensity * (1 - .exposure)
@@ -1081,9 +1197,11 @@ wt_entropy <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   UseMethod("wt_entropy")
 }
@@ -1093,9 +1211,11 @@ wt_entropy.default <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -1105,11 +1225,25 @@ wt_entropy.numeric <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   rlang::check_dots_empty()
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "wt_entropy"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
+
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
@@ -1122,8 +1256,8 @@ wt_entropy.numeric <- function(
     wts <- entropy_binary(
       .propensity = .propensity,
       .exposure = .exposure,
-      .treated = .treated,
-      .untreated = .untreated
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -1153,10 +1287,12 @@ wt_entropy.data.frame <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .propensity_col = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .propensity_col = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -1166,6 +1302,8 @@ wt_entropy.data.frame <- function(
     exposure_type = exposure_type,
     valid_exposure_types = c("auto", "binary", "categorical"),
     .propensity_col_quo = col_quo,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1177,9 +1315,11 @@ wt_entropy.glm <- function(
   .propensity,
   .exposure = NULL,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -1192,6 +1332,8 @@ wt_entropy.glm <- function(
     .propensity = ps_vec,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1201,13 +1343,13 @@ wt_entropy.glm <- function(
 entropy_binary <- function(
   .propensity,
   .exposure,
-  .treated = NULL,
-  .untreated = NULL
+  .focal_level = NULL,
+  .reference_level = NULL
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
-    .treated = .treated,
-    .untreated = .untreated
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
   )
 
   # Entropy tilting function: h(e) = -[e*log(e) + (1-e)*log(1-e)]
@@ -1242,11 +1384,13 @@ wt_cens <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   UseMethod("wt_cens")
 }
@@ -1257,11 +1401,13 @@ wt_cens.default <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -1272,11 +1418,13 @@ wt_cens.numeric <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   # Get weights using ATE formula
   wts <- wt_ate.numeric(
@@ -1284,6 +1432,8 @@ wt_cens.numeric <- function(
     .exposure = .exposure,
     .sigma = .sigma,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,
@@ -1303,12 +1453,14 @@ wt_cens.data.frame <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .propensity_col = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
-  .propensity_col = NULL
+  .treated = NULL,
+  .untreated = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -1319,6 +1471,8 @@ wt_cens.data.frame <- function(
     valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
     .propensity_col_quo = col_quo,
     .sigma = .sigma,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,
@@ -1333,11 +1487,13 @@ wt_cens.glm <- function(
   .exposure = NULL,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -1357,6 +1513,8 @@ wt_cens.glm <- function(
     .exposure = .exposure,
     .sigma = .sigma,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,
@@ -1375,11 +1533,13 @@ wt_ate.ps_trim <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1388,6 +1548,8 @@ wt_ate.ps_trim <- function(
     modification_type = "trim",
     .sigma = .sigma,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,
@@ -1401,9 +1563,11 @@ wt_att.ps_trim <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1411,6 +1575,8 @@ wt_att.ps_trim <- function(
     weight_fn = wt_att.numeric,
     modification_type = "trim",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1422,9 +1588,11 @@ wt_atu.ps_trim <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1432,6 +1600,8 @@ wt_atu.ps_trim <- function(
     weight_fn = wt_atu.numeric,
     modification_type = "trim",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1443,9 +1613,11 @@ wt_atm.ps_trim <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1453,6 +1625,8 @@ wt_atm.ps_trim <- function(
     weight_fn = wt_atm.numeric,
     modification_type = "trim",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1464,9 +1638,11 @@ wt_ato.ps_trim <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1474,6 +1650,8 @@ wt_ato.ps_trim <- function(
     weight_fn = wt_ato.numeric,
     modification_type = "trim",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1486,11 +1664,13 @@ wt_ate.ps_trunc <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1499,6 +1679,8 @@ wt_ate.ps_trunc <- function(
     modification_type = "trunc",
     .sigma = .sigma,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,
@@ -1512,9 +1694,11 @@ wt_att.ps_trunc <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1522,6 +1706,8 @@ wt_att.ps_trunc <- function(
     weight_fn = wt_att.numeric,
     modification_type = "trunc",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1533,9 +1719,11 @@ wt_atu.ps_trunc <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1543,6 +1731,8 @@ wt_atu.ps_trunc <- function(
     weight_fn = wt_atu.numeric,
     modification_type = "trunc",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1554,9 +1744,11 @@ wt_atm.ps_trunc <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1564,6 +1756,8 @@ wt_atm.ps_trunc <- function(
     weight_fn = wt_atm.numeric,
     modification_type = "trunc",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1575,9 +1769,11 @@ wt_ato.ps_trunc <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1585,6 +1781,8 @@ wt_ato.ps_trunc <- function(
     weight_fn = wt_ato.numeric,
     modification_type = "trunc",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1596,9 +1794,11 @@ wt_entropy.ps_trim <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1606,6 +1806,8 @@ wt_entropy.ps_trim <- function(
     weight_fn = wt_entropy.numeric,
     modification_type = "trim",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1617,9 +1819,11 @@ wt_entropy.ps_trunc <- function(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1627,6 +1831,8 @@ wt_entropy.ps_trunc <- function(
     weight_fn = wt_entropy.numeric,
     modification_type = "trunc",
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -1645,11 +1851,13 @@ wt_cens.ps_trim <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1658,6 +1866,8 @@ wt_cens.ps_trim <- function(
     modification_type = "trim",
     .sigma = .sigma,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,
@@ -1672,11 +1882,13 @@ wt_cens.ps_trunc <- function(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 ) {
   calculate_weight_from_modified_ps(
     .propensity = .propensity,
@@ -1685,6 +1897,8 @@ wt_cens.ps_trunc <- function(
     modification_type = "trunc",
     .sigma = .sigma,
     exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
     stabilize = stabilize,

@@ -24,25 +24,25 @@ test_that("variance works", {
 
   outcome_mod_ate <- glm(
     Y ~ Z,
-    weights = wt_ate(ps, .df$Z, exposure_type = "binary", .treated = 1),
+    weights = wt_ate(ps, .df$Z, exposure_type = "binary", .focal_level = 1),
     data = .df,
     family = quasibinomial()
   )
   outcome_mod_att <- glm(
     Y ~ Z,
-    weights = wt_att(ps, .df$Z, exposure_type = "binary", .treated = 1),
+    weights = wt_att(ps, .df$Z, exposure_type = "binary", .focal_level = 1),
     data = .df,
     family = quasibinomial()
   )
   outcome_mod_ato <- glm(
     Y ~ Z,
-    weights = wt_ato(ps, .df$Z, exposure_type = "binary", .treated = 1),
+    weights = wt_ato(ps, .df$Z, exposure_type = "binary", .focal_level = 1),
     data = .df,
     family = quasibinomial()
   )
   outcome_mod_atm <- glm(
     Y ~ Z,
-    weights = wt_atm(ps, .df$Z, exposure_type = "binary", .treated = 1),
+    weights = wt_atm(ps, .df$Z, exposure_type = "binary", .focal_level = 1),
     data = .df,
     family = quasibinomial()
   )
@@ -97,7 +97,7 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
 
   # 2) Calculate ATE weights
   ps <- predict(ps_mod, type = "response")
-  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   # 3) Weighted outcome model
   outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
@@ -162,7 +162,7 @@ test_that("ipw works for continuous outcome with a confounder, using logistic ps
 
   # ATE weights
   ps <- predict(ps_mod, type = "response")
-  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   # Weighted outcome model (linear)
   outcome_mod1 <- lm(y ~ z, data = dat, weights = wts)
@@ -249,7 +249,7 @@ test_that("ipw handles .data = NULL properly", {
 
   ps_mod <- glm(z ~ x, data = data_no_df, family = binomial())
   ps <- predict(ps_mod, type = "response")
-  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   outcome_mod <- glm(
     y ~ z,
@@ -275,7 +275,7 @@ test_that("ipw handles various errors correctly", {
 
   ps_mod <- glm(z ~ x, data = df, family = binomial())
   ps <- predict(ps_mod, type = "response")
-  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   outcome_mod_no_estimand <- glm(
     y ~ z,
@@ -300,7 +300,7 @@ test_that("exponentiate=TRUE in as.data.frame.ipw transforms log(rr), log(or)", 
 
   ps_mod <- glm(z ~ x, data = dat, family = binomial())
   ps <- predict(ps_mod, type = "response")
-  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
@@ -335,7 +335,7 @@ test_that("Estimand mismatch triggers an error if outcome weights differ from us
 
   ps_mod <- glm(z ~ x, data = dat, family = binomial())
   ps <- predict(ps_mod, type = "response")
-  wts_ate <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts_ate <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   # Weighted outcome model with ATE
   outcome_mod_ate <- glm(
@@ -368,7 +368,7 @@ test_that("ipw works for probit link in the propensity score model", {
   # Propensity score model with probit link
   ps_mod <- glm(z ~ x2, data = dat, family = binomial("probit"))
   ps <- predict(ps_mod, type = "response")
-  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
@@ -398,7 +398,7 @@ test_that("ipw works for cloglog link in the propensity score model", {
   # Fit the propensity score model with cloglog link
   ps_mod <- glm(z ~ x3, data = dat, family = binomial("cloglog"))
   ps <- predict(ps_mod, type = "response")
-  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
@@ -425,7 +425,7 @@ test_that("ipw works for cloglog link in the propensity score model", {
 
   ps_mod <- glm(z ~ x3, data = dat, family = binomial())
   ps <- predict(ps_mod, type = "response")
-  wts <- wt_ate(ps, z, exposure_type = "binary", .treated = 1)
+  wts <- wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
 
   outcome_mod_wrong <- glm(
     y ~ z,

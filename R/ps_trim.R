@@ -92,9 +92,11 @@ ps_trim <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   UseMethod("ps_trim")
 }
@@ -106,12 +108,25 @@ ps_trim.default <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   method <- rlang::arg_match(method)
   check_ps_range(ps)
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "ps_trim"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
 
   if (method == "ps") {
     if (is.null(lower)) {
@@ -185,8 +200,8 @@ ps_trim.default <- function(
     }
     .exposure <- transform_exposure_binary(
       .exposure,
-      .treated = .treated,
-      .untreated = .untreated
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
     )
     prop_exposure <- mean(.exposure)
     pref_score <- plogis(qlogis(ps) - qlogis(prop_exposure))
@@ -201,8 +216,8 @@ ps_trim.default <- function(
     }
     .exposure <- transform_exposure_binary(
       .exposure,
-      .treated = .treated,
-      .untreated = .untreated
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
     )
     ps_treat <- ps[.exposure == 1]
     ps_untrt <- ps[.exposure == 0]
@@ -239,9 +254,11 @@ ps_trim.matrix <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   # Only ps and optimal are valid for categorical
   method <- rlang::arg_match(method, values = c("ps", "optimal"))
@@ -381,9 +398,11 @@ ps_trim.data.frame <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   # For categorical exposures, convert to matrix and call matrix method
   if (!is.null(.exposure)) {
@@ -418,9 +437,11 @@ ps_trim.data.frame <- function(
     lower = lower,
     upper = upper,
     .exposure = .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
     .treated = .treated,
-    .untreated = .untreated,
-    ...
+    .untreated = .untreated
   )
 }
 
@@ -431,9 +452,11 @@ ps_trim.ps_trim <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   warn(
     "Propensity scores have already been trimmed. Returning original object.",

@@ -24,10 +24,12 @@
 #'   regression (`smooth = FALSE`). When `TRUE`, uses `mgcv::gam()` with
 #'   spline smoothing. When `FALSE`, uses `stats::glm()`. Ignored for
 #'   `method = "isoreg"`.
-#' @param .treated The value representing the treatment group. If not provided,
-#'   `ps_calibrate()` will attempt to automatically determine the treatment coding.
-#' @param .untreated The value representing the control group. If not provided,
-#'   `ps_calibrate()` will attempt to automatically determine the control coding.
+#' @param .focal_level The value representing the focal group (typically treatment).
+#'   If not provided, `ps_calibrate()` will attempt to automatically determine the coding.
+#' @param .reference_level The value representing the reference group (typically control).
+#'   If not provided, `ps_calibrate()` will attempt to automatically determine the coding.
+#' @param .treated **Deprecated**. Use `.focal_level` instead.
+#' @param .untreated **Deprecated**. Use `.reference_level` instead.
 #' @param estimand Character indicating the estimand type.
 #'
 #' @return A calibrated propensity score object (`psw`)
@@ -52,11 +54,24 @@ ps_calibrate <- function(
   .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  estimand = NULL,
   .treated = NULL,
-  .untreated = NULL,
-  estimand = NULL
+  .untreated = NULL
 ) {
   method <- rlang::arg_match(method)
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "ps_calibrate"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
   # Check that ps is numeric and in valid range
   if (!is.numeric(ps)) {
     abort(
@@ -85,8 +100,8 @@ ps_calibrate <- function(
   # Transform treatment to binary if needed
   .exposure <- transform_exposure_binary(
     .exposure,
-    .treated = .treated,
-    .untreated = .untreated
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
   )
 
   if (length(ps) != length(.exposure)) {

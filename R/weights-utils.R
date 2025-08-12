@@ -51,10 +51,43 @@ detect_exposure_type <- function(.exposure) {
   exposure_type
 }
 
+handle_focal_deprecation <- function(
+  .focal_level,
+  .reference_level,
+  .treated,
+  .untreated,
+  fn_name
+) {
+  # Handle deprecation warnings and parameter mapping
+  if (!is.null(.treated)) {
+    lifecycle::deprecate_warn(
+      "0.1.0",
+      paste0(fn_name, "(.treated)"),
+      paste0(fn_name, "(.focal_level)")
+    )
+    if (is.null(.focal_level)) {
+      .focal_level <- .treated
+    }
+  }
+
+  if (!is.null(.untreated)) {
+    lifecycle::deprecate_warn(
+      "0.1.0",
+      paste0(fn_name, "(.untreated)"),
+      paste0(fn_name, "(.reference_level)")
+    )
+    if (is.null(.reference_level)) {
+      .reference_level <- .untreated
+    }
+  }
+
+  list(.focal_level = .focal_level, .reference_level = .reference_level)
+}
+
 transform_exposure_binary <- function(
   .exposure,
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   call = rlang::caller_env()
 ) {
   if (is_binary(.exposure)) {
@@ -65,27 +98,31 @@ transform_exposure_binary <- function(
     return(as.numeric(.exposure))
   }
 
-  if (!is.null(.treated)) {
-    return(ifelse(.exposure == .treated, 1, 0))
+  if (!is.null(.focal_level)) {
+    return(ifelse(.exposure == .focal_level, 1, 0))
   }
 
-  if (!is.null(.untreated)) {
-    return(ifelse(.exposure != .untreated, 1, 0))
+  if (!is.null(.reference_level)) {
+    return(ifelse(.exposure != .reference_level, 1, 0))
   }
 
-  if (is.null(.treated) && is.null(.untreated) && has_two_levels(.exposure)) {
+  if (
+    is.null(.focal_level) &&
+      is.null(.reference_level) &&
+      has_two_levels(.exposure)
+  ) {
     levels <- if (is.factor(.exposure)) {
       levels(.exposure)
     } else {
       sort(unique(.exposure))
     }
-    alert_info("Setting treatment to {.var {levels[[2]]}}")
+    alert_info("Setting focal level to {.var {levels[[2]]}}")
     return(ifelse(.exposure == levels[[2]], 1, 0))
   } else {
     abort(
       c(
         "Don't know how to transform `.exposure` to 0/1 binary variable.",
-        i = "Specify `.treated` and `.untreated.`"
+        i = "Specify `.focal_level` and `.reference_level`."
       ),
       call = call,
       error_class = "propensity_binary_transform_error"

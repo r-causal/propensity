@@ -93,9 +93,11 @@ ps_trunc <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   UseMethod("ps_trunc")
 }
@@ -107,12 +109,25 @@ ps_trunc.default <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   method <- rlang::arg_match(method)
   meta_list <- list(method = method)
+
+  # Handle deprecation
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "ps_trunc"
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
 
   check_ps_range(ps)
 
@@ -141,8 +156,8 @@ ps_trunc.default <- function(
   } else {
     .exposure <- transform_exposure_binary(
       .exposure,
-      .treated = .treated,
-      .untreated = .untreated
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
     )
     ps_treat <- ps[.exposure == 1]
     ps_untrt <- ps[.exposure == 0]
@@ -177,9 +192,11 @@ ps_trunc.matrix <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   # Only ps and pctl are valid for categorical
   method <- rlang::arg_match(method, values = c("ps", "pctl"))
@@ -292,9 +309,11 @@ ps_trunc.data.frame <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   # For categorical exposures, convert to matrix and call matrix method
   if (!is.null(.exposure)) {
@@ -327,9 +346,11 @@ ps_trunc.data.frame <- function(
     lower = lower,
     upper = upper,
     .exposure = .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
     .treated = .treated,
-    .untreated = .untreated,
-    ...
+    .untreated = .untreated
   )
 }
 
@@ -340,9 +361,11 @@ ps_trunc.ps_trunc <- function(
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 ) {
   warn(
     "Propensity scores have already been truncated. Returning original object.",

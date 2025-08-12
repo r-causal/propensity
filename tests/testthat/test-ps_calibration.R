@@ -127,14 +127,14 @@ test_that("works with different treatment codings", {
   calib2 <- ps_calibrate(
     ps,
     treat_char,
-    .treated = "treated",
-    .untreated = "control"
+    .focal_level = "treated",
+    .reference_level = "control"
   )
   calib3 <- ps_calibrate(
     ps,
     treat_factor,
-    .treated = "treated",
-    .untreated = "control"
+    .focal_level = "treated",
+    .reference_level = "control"
   )
   calib4 <- ps_calibrate(ps, treat_logical)
 
@@ -144,7 +144,7 @@ test_that("works with different treatment codings", {
   expect_equal(as.numeric(calib1), as.numeric(calib4))
 })
 
-test_that(".treated and .untreated parameters work consistently with package patterns", {
+test_that(".focal_level and .reference_level parameters work consistently with package patterns", {
   set.seed(123)
   ps <- runif(30, 0.3, 0.7)
 
@@ -154,7 +154,12 @@ test_that(".treated and .untreated parameters work consistently with package pat
   expect_s3_class(calib_auto, "psw")
 
   # Test explicit specification with 0/1 coding
-  calib_explicit <- ps_calibrate(ps, treat_01, .treated = 1, .untreated = 0)
+  calib_explicit <- ps_calibrate(
+    ps,
+    treat_01,
+    .focal_level = 1,
+    .reference_level = 0
+  )
   expect_equal(as.numeric(calib_auto), as.numeric(calib_explicit))
 
   # Test with character coding
@@ -162,8 +167,8 @@ test_that(".treated and .untreated parameters work consistently with package pat
   calib_char_explicit <- ps_calibrate(
     ps,
     treat_char,
-    .treated = "treat",
-    .untreated = "control"
+    .focal_level = "treat",
+    .reference_level = "control"
   )
   expect_equal(as.numeric(calib_auto), as.numeric(calib_char_explicit))
 
@@ -178,16 +183,19 @@ test_that(".treated and .untreated parameters work consistently with package pat
   expect_equal(as.numeric(calib_auto), as.numeric(calib_logical))
 })
 
-test_that(".treated/.untreated defaults are NULL like other package functions", {
+test_that(".focal_level/.reference_level defaults are NULL like other package functions", {
   # Check that the defaults match the package pattern
   ps_calibrate_formals <- formals(ps_calibrate)
-  expect_null(ps_calibrate_formals$.treated)
-  expect_null(ps_calibrate_formals$.untreated)
+  expect_null(ps_calibrate_formals$.focal_level)
+  expect_null(ps_calibrate_formals$.reference_level)
 
   # Compare with other weight functions to ensure consistency
   wt_ate_formals <- formals(wt_ate)
-  expect_equal(ps_calibrate_formals$.treated, wt_ate_formals$.treated)
-  expect_equal(ps_calibrate_formals$.untreated, wt_ate_formals$.untreated)
+  expect_equal(ps_calibrate_formals$.focal_level, wt_ate_formals$.focal_level)
+  expect_equal(
+    ps_calibrate_formals$.reference_level,
+    wt_ate_formals$.reference_level
+  )
 })
 
 test_that("automatic treatment detection works with binary vectors", {
@@ -204,8 +212,13 @@ test_that("automatic treatment detection works with binary vectors", {
   expect_s3_class(calib_01, "psw")
 
   # These require explicit specification
-  calib_12 <- ps_calibrate(ps, treat_12, .treated = 2, .untreated = 1)
-  calib_neg <- ps_calibrate(ps, treat_neg, .treated = 1, .untreated = -1)
+  calib_12 <- ps_calibrate(ps, treat_12, .focal_level = 2, .reference_level = 1)
+  calib_neg <- ps_calibrate(
+    ps,
+    treat_neg,
+    .focal_level = 1,
+    .reference_level = -1
+  )
 
   # All should produce valid results
   expect_true(all(as.numeric(calib_01) >= 0 & as.numeric(calib_01) <= 1))
@@ -477,8 +490,8 @@ test_that("ps_calibrate handles different treatment encodings like WeightIt", {
   our_calib <- ps_calibrate(
     ps,
     treat_char,
-    .treated = "T",
-    .untreated = "C",
+    .focal_level = "T",
+    .reference_level = "C",
     smooth = FALSE
   )
 

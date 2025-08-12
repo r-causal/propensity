@@ -54,7 +54,7 @@ test_that("ps_trunc() - cr method uses min(ps_treat)/max(ps_untrt)", {
   fit <- glm(z ~ x, family = binomial)
   ps <- predict(fit, type = "response")
 
-  out_cr <- ps_trunc(ps, .exposure = z, method = "cr", .treated = 1)
+  out_cr <- ps_trunc(ps, .exposure = z, method = "cr", .focal_level = 1)
   expect_s3_class(out_cr, "ps_trunc")
 
   meta_cr <- ps_trunc_meta(out_cr)
@@ -107,7 +107,7 @@ test_that("Truncation workflow yields truncated psw with no refit logic", {
     truncated_ps,
     .exposure = z,
     exposure_type = "binary",
-    .treated = 1
+    .focal_level = 1
   )
   expect_s3_class(w_ate, "psw")
 
@@ -196,7 +196,7 @@ test_that("wt_atm.numeric calls atm_binary() for binary .exposure, returns psw",
     .propensity = ps,
     .exposure = z,
     exposure_type = "binary",
-    .treated = 1
+    .focal_level = 1
   )
   # Check it's a psw object with estimand "atm"
   expect_s3_class(out_atm, "psw")
@@ -211,7 +211,7 @@ test_that("atm_binary() logic with transform_.exposure_binary() is triggered", {
   w <- atm_binary(
     .propensity = ps_vec,
     .exposure = z_vec,
-    .treated = 1
+    .focal_level = 1
   )
   # Just check dimension, no error
   expect_length(w, 3)
@@ -221,8 +221,8 @@ test_that("atm_binary() logic with transform_.exposure_binary() is triggered", {
   w2 <- atm_binary(
     .propensity = ps_vec,
     .exposure = factor(c("C", "T", "T")),
-    .treated = "T",
-    .untreated = "C"
+    .focal_level = "T",
+    .reference_level = "C"
   )
   expect_length(w2, 3)
 })
@@ -239,7 +239,7 @@ test_that("wt_ato.numeric calls ato_binary() for binary .exposure, returns psw",
     .propensity = ps,
     .exposure = z,
     exposure_type = "binary",
-    .treated = 1
+    .focal_level = 1
   )
   expect_s3_class(out_ato, "psw")
   expect_equal(estimand(out_ato), "ato")
@@ -253,7 +253,7 @@ test_that("ato_binary() logic is triggered for p=0.3", {
   w <- ato_binary(
     .propensity = ps_vec,
     .exposure = z_vec,
-    .treated = 1
+    .focal_level = 1
   )
   expect_length(w, 3)
   # Just check no error, correct length
@@ -274,7 +274,7 @@ test_that("wt_atm.ps_trunc synergy with truncated object yields truncated psw", 
     trunc_obj,
     .exposure = z,
     exposure_type = "binary",
-    .treated = 1
+    .focal_level = 1
   )
   expect_s3_class(w_atm, "psw")
   # Estimand => "atm; truncated"
@@ -296,7 +296,7 @@ test_that("wt_ato.ps_trunc synergy with truncated object yields truncated psw", 
     trunc_obj,
     .exposure = z,
     exposure_type = "binary",
-    .treated = 1
+    .focal_level = 1
   )
 
   expect_s3_class(w_ato, "psw")

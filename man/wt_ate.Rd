@@ -23,11 +23,13 @@ wt_ate(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 )
 
 \method{wt_ate}{data.frame}(
@@ -198,11 +200,9 @@ measures of a model (e.g., \code{influence(model)$sigma}).}
 Options are \code{"auto"}, \code{"binary"}, \code{"categorical"}, and \code{"continuous"}.
 Defaults to \code{"auto"}, which detects the type automatically.}
 
-\item{.treated}{The value representing the treatment group. If not provided,
-it is automatically detected.}
-
-\item{.untreated}{The value representing the control group. If not provided,
-it is automatically detected.}
+\item{.focal_level}{For categorical exposures with ATT or ATU estimands, specifies
+the focal category. Must be one of the levels of the exposure variable.
+Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 
 \item{stabilize}{Logical indicating whether to stabilize the weights. For ATE
 weights, stabilization multiplies the weight by either the mean of
@@ -215,15 +215,17 @@ used when \code{stabilize} is \code{TRUE}.}
 
 \item{...}{Reserved for future expansion. Not currently used.}
 
+\item{.treated}{The value representing the treatment group. If not provided,
+it is automatically detected.}
+
+\item{.untreated}{The value representing the control group. If not provided,
+it is automatically detected.}
+
 \item{.propensity_col}{With a binary exposure, when \code{.propensity} is a data frame, specifies which
 column to use for propensity scores. Can be a column name (quoted or
 unquoted) or a numeric index. Defaults to the second column if available,
 otherwise the first. For categorical exposures, the entire data frame is
 used as a matrix of propensity scores.}
-
-\item{.focal_level}{For categorical exposures with ATT or ATU estimands, specifies
-the focal category. Must be one of the levels of the exposure variable.
-Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 }
 \value{
 A \code{psw} object (a numeric vector) with additional attributes:

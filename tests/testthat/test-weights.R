@@ -262,7 +262,7 @@ test_that("ATE works for binary cases", {
       c(.1, .3, .4, .3),
       .exposure = c(2, 2, 1, 2),
       exposure_type = "binary",
-      .untreated = 2
+      .reference_level = 2
     )
   )
 
@@ -287,7 +287,7 @@ test_that("ATE works for binary cases", {
       exposure_type = "binary",
       .exposure = .exposure
     ),
-    "Setting treatment to `treated`"
+    "Setting focal level to `treated`"
   )
 
   expect_identical(weights, weights5)
@@ -395,7 +395,7 @@ test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning i
       trimmed_ps,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_ate_unfit, "psw")
@@ -408,7 +408,7 @@ test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning i
       trimmed_refit,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_ate_fit, "psw")
@@ -432,7 +432,7 @@ test_that("wt_ate() with ps_trunc adds '; truncated' without refit warning", {
       truncated_ps,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_ate_trunc, "psw")
@@ -456,7 +456,7 @@ test_that("Other estimands (att, atu, etc.) with ps_trim or ps_trunc", {
       trimmed_ps,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   # Check estimand
@@ -470,7 +470,7 @@ test_that("Other estimands (att, atu, etc.) with ps_trim or ps_trunc", {
       truncated_ps,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_silent(
@@ -478,7 +478,7 @@ test_that("Other estimands (att, atu, etc.) with ps_trim or ps_trunc", {
       truncated_ps,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_true(grepl("atu; truncated", estimand(w_atu_trunc)))
@@ -497,7 +497,7 @@ test_that("wt_ate() with ps_trunc sets truncated=TRUE in final psw", {
     trunc_obj,
     .exposure = z,
     exposure_type = "binary",
-    .treated = 1
+    .focal_level = 1
   )
 
   expect_true(is_ps_truncated(w_ate))
@@ -528,7 +528,7 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_atu_unfit, "psw")
@@ -547,7 +547,7 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
       refit_obj,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_atu_fit, "psw")
@@ -582,7 +582,7 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_atm_unfit, "psw")
@@ -596,7 +596,7 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
       refit_obj,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_atm_fit, "psw")
@@ -626,7 +626,7 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_ato_unfit, "psw")
@@ -640,7 +640,7 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
       refit_obj,
       .exposure = z,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
   )
   expect_s3_class(w_ato_fit, "psw")
@@ -680,7 +680,7 @@ test_that("wt_entropy works for binary cases", {
       c(.1, .3, .4, .3),
       .exposure = c(2, 2, 1, 2),
       exposure_type = "binary",
-      .untreated = 2
+      .reference_level = 2
     )
   )
 
@@ -705,7 +705,7 @@ test_that("wt_entropy works for binary cases", {
       exposure_type = "binary",
       .exposure = .exposure
     ),
-    "Setting treatment to `treated`"
+    "Setting focal level to `treated`"
   )
 
   expect_identical(weights, weights5)
@@ -1341,13 +1341,13 @@ test_that("wt_* functions handle edge case propensity scores", {
   ps_single <- 0.3
   exposure_single <- 1
 
-  # Single observation needs explicit .treated/.untreated
+  # Single observation needs explicit .focal_level/.reference_level
   for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
     weights <- fn(
       ps_single,
       exposure_single,
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
     expect_s3_class(weights, "psw")
     expect_length(weights, 1)
@@ -1358,22 +1358,22 @@ test_that("wt_* functions handle edge case propensity scores", {
   ps_various <- c(0.2, 0.4, 0.6, 0.8)
 
   for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
-    # All treated - need to specify .treated since there's only one level
+    # All treated - need to specify .focal_level since there's only one level
     weights_all_1 <- fn(
       ps_various,
       rep(1, 4),
       exposure_type = "binary",
-      .treated = 1
+      .focal_level = 1
     )
     expect_s3_class(weights_all_1, "psw")
     expect_true(all(is.finite(weights_all_1)))
 
-    # All control - need to specify .untreated since there's only one level
+    # All control - need to specify .reference_level since there's only one level
     weights_all_0 <- fn(
       ps_various,
       rep(0, 4),
       exposure_type = "binary",
-      .untreated = 0
+      .reference_level = 0
     )
     expect_s3_class(weights_all_0, "psw")
     expect_true(all(is.finite(weights_all_0)))
