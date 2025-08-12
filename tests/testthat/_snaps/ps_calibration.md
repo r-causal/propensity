@@ -22,7 +22,7 @@
       Error in `ps_calibrate()`:
       ! `ps` values must be between 0 and 1.
 
-# errors when ps and treat have different lengths
+# errors when ps and .exposure have different lengths
 
     Code
       expr
@@ -30,7 +30,7 @@
       i Setting treatment to `1`
     Condition <propensity_length_error>
       Error in `ps_calibrate()`:
-      ! Propensity score vector `ps` must be the same length as `treat`.
+      ! Propensity score vector `ps` must be the same length as `.exposure`.
 
 # error handling for ambiguous treatment coding
 

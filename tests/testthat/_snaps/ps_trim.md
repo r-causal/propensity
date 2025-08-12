@@ -79,8 +79,8 @@
       expr
     Condition <propensity_length_error>
       Error in `ps_refit()`:
-      ! `.df` must have the same number of rows as observations in `trimmed_ps`.
-      x `.df` has 10 rows.
+      ! `.data` must have the same number of rows as observations in `trimmed_ps`.
+      x `.data` has 10 rows.
       x `trimmed_ps` has 20 observations.
 
 ---

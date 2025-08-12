@@ -239,7 +239,7 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
   expect_true(isTRUE(meta_r$refit))
 
   expect_propensity_error(
-    ps_refit(out, model = fit, .df = data.frame(z, x)[1:10, ])
+    ps_refit(out, model = fit, .data = data.frame(z, x)[1:10, ])
   )
 
   # If everything is trimmed => error

@@ -128,7 +128,7 @@
 #'   it is automatically detected.
 #' @param .untreated The value representing the control group. If not provided,
 #'   it is automatically detected.
-#' @param focal For categorical exposures with ATT or ATU estimands, specifies
+#' @param .focal_level For categorical exposures with ATT or ATU estimands, specifies
 #'   the focal category. Must be one of the levels of the exposure variable.
 #'   Required for `wt_att()` and `wt_atu()` with categorical exposures.
 #' @param ... Reserved for future expansion. Not currently used.
@@ -344,7 +344,7 @@ wt_ate.numeric <- function(
       ps_matrix = .propensity,
       .exposure = .exposure,
       estimand = "ate",
-      focal = NULL,
+      .focal_level = NULL,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
       call = rlang::caller_env()
@@ -512,7 +512,7 @@ wt_att <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 ) {
   UseMethod("wt_att")
 }
@@ -525,7 +525,7 @@ wt_att.default <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -538,7 +538,7 @@ wt_att.numeric <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 ) {
   rlang::check_dots_empty()
   exposure_type <- match_exposure_type(
@@ -562,7 +562,7 @@ wt_att.numeric <- function(
       ps_matrix = .propensity,
       .exposure = .exposure,
       estimand = "att",
-      focal = focal,
+      .focal_level = .focal_level,
       stabilize = FALSE,
       stabilization_score = NULL,
       call = rlang::caller_env()
@@ -588,7 +588,7 @@ wt_att.data.frame <- function(
   .untreated = NULL,
   ...,
   .propensity_col = NULL,
-  focal = NULL
+  .focal_level = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -600,7 +600,7 @@ wt_att.data.frame <- function(
     .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
-    focal = focal,
+    .focal_level = .focal_level,
     ...
   )
 }
@@ -613,7 +613,7 @@ wt_att.glm <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -628,7 +628,7 @@ wt_att.glm <- function(
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
-    focal = focal,
+    .focal_level = .focal_level,
     ...
   )
 }
@@ -658,7 +658,7 @@ wt_atu <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 ) {
   UseMethod("wt_atu")
 }
@@ -671,7 +671,7 @@ wt_atu.default <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 ) {
   abort_no_method(.propensity)
 }
@@ -684,7 +684,7 @@ wt_atu.numeric <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 ) {
   rlang::check_dots_empty()
   exposure_type <- match_exposure_type(
@@ -708,7 +708,7 @@ wt_atu.numeric <- function(
       ps_matrix = .propensity,
       .exposure = .exposure,
       estimand = "atu",
-      focal = focal,
+      .focal_level = .focal_level,
       stabilize = FALSE,
       stabilization_score = NULL,
       call = rlang::caller_env()
@@ -734,7 +734,7 @@ wt_atu.data.frame <- function(
   .untreated = NULL,
   ...,
   .propensity_col = NULL,
-  focal = NULL
+  .focal_level = NULL
 ) {
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
@@ -746,7 +746,7 @@ wt_atu.data.frame <- function(
     .propensity_col_quo = col_quo,
     .treated = .treated,
     .untreated = .untreated,
-    focal = focal,
+    .focal_level = .focal_level,
     ...
   )
 }
@@ -759,7 +759,7 @@ wt_atu.glm <- function(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 ) {
   # Handle optional exposure argument
   .exposure <- extract_exposure_from_glm(.propensity, .exposure)
@@ -774,7 +774,7 @@ wt_atu.glm <- function(
     exposure_type = exposure_type,
     .treated = .treated,
     .untreated = .untreated,
-    focal = focal,
+    .focal_level = .focal_level,
     ...
   )
 }
@@ -853,7 +853,7 @@ wt_atm.numeric <- function(
       ps_matrix = .propensity,
       .exposure = .exposure,
       estimand = "atm",
-      focal = NULL,
+      .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
       call = rlang::caller_env()
@@ -993,7 +993,7 @@ wt_ato.numeric <- function(
       ps_matrix = .propensity,
       .exposure = .exposure,
       estimand = "ato",
-      focal = NULL,
+      .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
       call = rlang::caller_env()
@@ -1131,7 +1131,7 @@ wt_entropy.numeric <- function(
       ps_matrix = .propensity,
       .exposure = .exposure,
       estimand = "entropy",
-      focal = NULL,
+      .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
       call = rlang::caller_env()
@@ -1701,13 +1701,17 @@ calculate_categorical_weights <- function(
   ps_matrix,
   .exposure,
   estimand,
-  focal = NULL,
+  .focal_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
   call = rlang::caller_env()
 ) {
   # Ensure exposure is a factor
-  .exposure <- transform_exposure_categorical(.exposure, focal, call = call)
+  .exposure <- transform_exposure_categorical(
+    .exposure,
+    .focal_level,
+    call = call
+  )
 
   # Validate propensity score matrix
   ps_matrix <- check_ps_matrix(ps_matrix, .exposure, call = call)
@@ -1733,18 +1737,18 @@ calculate_categorical_weights <- function(
     estimand,
     "ate" = rep(1, n), # h(e) = 1 for ATE
     "att" = {
-      if (is.null(focal)) {
+      if (is.null(.focal_level)) {
         abort(
           "Focal category must be specified for ATT with categorical exposures.",
           error_class = "propensity_focal_required_error"
         )
       }
       # h(e) = e_focal
-      focal_idx <- which(levels_exp == focal)
+      focal_idx <- which(levels_exp == .focal_level)
       ps_matrix[, focal_idx]
     },
     "atu" = {
-      if (is.null(focal)) {
+      if (is.null(.focal_level)) {
         abort(
           "Focal category must be specified for ATU with categorical exposures.",
           error_class = "propensity_focal_required_error"
@@ -1752,7 +1756,7 @@ calculate_categorical_weights <- function(
       }
       # For ATU, we want weights for all non-focal categories
       # h(e) = 1 - e_focal
-      focal_idx <- which(levels_exp == focal)
+      focal_idx <- which(levels_exp == .focal_level)
       1 - ps_matrix[, focal_idx]
     },
     "ato" = {
@@ -1807,8 +1811,8 @@ calculate_categorical_weights <- function(
   # Add attributes for categorical weights
   attr(weights, "n_categories") <- k
   attr(weights, "category_names") <- levels_exp
-  if (!is.null(focal)) {
-    attr(weights, "focal_category") <- focal
+  if (!is.null(.focal_level)) {
+    attr(weights, "focal_category") <- .focal_level
   }
 
   weights

@@ -5,7 +5,7 @@
 #' preserves the attributes of causal weight objects when applicable.
 #'
 #' @param ps Numeric vector of propensity scores between 0 and 1
-#' @param treat A binary vector of treatment assignments
+#' @param .exposure A binary vector of treatment assignments
 #' @param method Calibration method:
 #'   \describe{
 #'     \item{`"logistic"`}{(Default) Logistic calibration (also known as Platt scaling).
@@ -35,21 +35,21 @@
 #' @examples
 #' # Generate example data
 #' ps <- runif(100)
-#' treat <- rbinom(100, 1, ps)
+#' exposure <- rbinom(100, 1, ps)
 #'
 #' # Logistic calibration with smoothing (default)
-#' calibrated_smooth <- ps_calibrate(ps, treat)
+#' calibrated_smooth <- ps_calibrate(ps, exposure)
 #'
 #' # Logistic calibration without smoothing (simple logistic regression)
-#' calibrated_simple <- ps_calibrate(ps, treat, smooth = FALSE)
+#' calibrated_simple <- ps_calibrate(ps, exposure, smooth = FALSE)
 #'
 #' # Isotonic regression
-#' calibrated_iso <- ps_calibrate(ps, treat, method = "isoreg")
+#' calibrated_iso <- ps_calibrate(ps, exposure, method = "isoreg")
 #' @importFrom stats glm fitted isoreg binomial
 #' @export
 ps_calibrate <- function(
   ps,
-  treat,
+  .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
   .treated = NULL,
@@ -83,15 +83,15 @@ ps_calibrate <- function(
   }
 
   # Transform treatment to binary if needed
-  treat <- transform_exposure_binary(
-    treat,
+  .exposure <- transform_exposure_binary(
+    .exposure,
     .treated = .treated,
     .untreated = .untreated
   )
 
-  if (length(ps) != length(treat)) {
+  if (length(ps) != length(.exposure)) {
     abort(
-      "Propensity score vector `ps` must be the same length as `treat`.",
+      "Propensity score vector `ps` must be the same length as `.exposure`.",
       error_class = "propensity_length_error"
     )
   }
@@ -114,7 +114,7 @@ ps_calibrate <- function(
   }
 
   # Handle NA values
-  na_idx <- is.na(ps) | is.na(treat)
+  na_idx <- is.na(ps) | is.na(.exposure)
 
   # Perform calibration based on method
   calib_model <- NULL
@@ -128,7 +128,7 @@ ps_calibrate <- function(
 
       # Create data frame for GAM fitting (only non-NA values)
       calib_data <- data.frame(
-        treat = treat[!na_idx],
+        treat = .exposure[!na_idx],
         ps = ps[!na_idx]
       )
 
@@ -156,7 +156,7 @@ ps_calibrate <- function(
       # For simple logistic regression, fit on original data (not data frame)
       # This handles the case where smooth was originally FALSE or was set to FALSE due to fallback
       if (is.null(calib_model)) {
-        calib_model <- stats::glm(treat ~ ps, family = stats::binomial())
+        calib_model <- stats::glm(.exposure ~ ps, family = stats::binomial())
       }
     }
 
@@ -191,7 +191,7 @@ ps_calibrate <- function(
     if (any(na_idx)) {
       # Work with non-NA values only
       ps_valid <- ps[!na_idx]
-      treat_valid <- treat[!na_idx]
+      treat_valid <- .exposure[!na_idx]
 
       # Order by propensity scores for isotonic regression
       ord <- order(ps_valid)
@@ -214,7 +214,7 @@ ps_calibrate <- function(
       # No NAs, proceed normally
       ord <- order(ps)
       ps_ordered <- ps[ord]
-      treat_ordered <- treat[ord]
+      treat_ordered <- .exposure[ord]
 
       # Fit isotonic regression
       iso_fit <- stats::isoreg(ps_ordered, treat_ordered)

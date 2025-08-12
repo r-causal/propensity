@@ -82,7 +82,7 @@
       expr
     Condition <propensity_columns_exist_error>
       Error in `ipw()`:
-      ! The data frame `.df` is missing the "z" and "y" columns.
+      ! The data frame `.data` is missing the "z" and "y" columns.
 
 # ipw handles various errors correctly
 
@@ -119,5 +119,5 @@
       Error in `ipw()`:
       ! "z" not found in `model.frame(outcome_mod)`.
       i The outcome model may have transformations in the formula.
-      i Please specify `.df`
+      i Please specify `.data`
 

@@ -59,7 +59,7 @@ test_that("categorical exposure validation works", {
   ps_matrix_3 <- matrix(runif(12), ncol = 3)
 
   expect_propensity_error(
-    wt_att(ps_matrix_3, exposure_3, focal = "D")
+    wt_att(ps_matrix_3, exposure_3, .focal_level = "D")
   )
 })
 
@@ -269,11 +269,11 @@ test_that("ATT weights work for categorical exposures", {
   )
   colnames(ps_matrix) <- levels(exposure)
 
-  # ATT with focal = "A"
+  # ATT with .focal_level = "A"
   weights_att_a <- wt_att(
     ps_matrix,
     exposure,
-    focal = "A",
+    .focal_level = "A",
     exposure_type = "categorical"
   )
 
@@ -326,11 +326,11 @@ test_that("ATU weights work for categorical exposures", {
   )
   colnames(ps_matrix) <- levels(exposure)
 
-  # ATU with focal = "A" (weights for non-A)
+  # ATU with .focal_level = "A" (weights for non-A)
   weights_atu_a <- wt_atu(
     ps_matrix,
     exposure,
-    focal = "A",
+    .focal_level = "A",
     exposure_type = "categorical"
   )
 
@@ -578,13 +578,13 @@ test_that("categorical weights handle different column orders correctly", {
     ps_correct,
     trt,
     exposure_type = "categorical",
-    focal = "medium"
+    .focal_level = "medium"
   )
   w_att_wrong <- wt_att(
     ps_wrong,
     trt,
     exposure_type = "categorical",
-    focal = "medium"
+    .focal_level = "medium"
   )
 
   expect_equal(as.numeric(w_att_correct), as.numeric(w_att_wrong))
@@ -612,7 +612,12 @@ test_that("categorical weights work with parsnip-style column names", {
 
   # Test focal matching works correctly
   expect_no_error(
-    w_att <- wt_att(ps_matrix, trt, exposure_type = "categorical", focal = "B")
+    w_att <- wt_att(
+      ps_matrix,
+      trt,
+      exposure_type = "categorical",
+      .focal_level = "B"
+    )
   )
 
   # Focal group should have weight 1
@@ -647,11 +652,11 @@ test_that("categorical weights warn on unnamed columns", {
   )
 
   expect_propensity_warning(
-    wt_att(ps_matrix, trt, exposure_type = "categorical", focal = "A")
+    wt_att(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A")
   )
 
   expect_propensity_warning(
-    wt_atu(ps_matrix, trt, exposure_type = "categorical", focal = "A")
+    wt_atu(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A")
   )
 
   expect_propensity_warning(

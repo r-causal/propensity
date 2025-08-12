@@ -4,14 +4,14 @@
 \alias{ps_refit}
 \title{Refit the Propensity Score Model on Retained Observations}
 \usage{
-ps_refit(trimmed_ps, model, .df = NULL, ...)
+ps_refit(trimmed_ps, model, .data = NULL, ...)
 }
 \arguments{
 \item{trimmed_ps}{A \code{ps_trim} object (same length as data, NAs for trimmed).}
 
 \item{model}{The fitted model used to get the original PS (e.g. a glm).}
 
-\item{.df}{Optional. A data frame. If \code{NULL}, we try to retrieve from \code{model}.}
+\item{.data}{Optional. A data frame. If \code{NULL}, we try to retrieve from \code{model}.}
 
 \item{...}{Additional arguments passed to \code{update()}.}
 }

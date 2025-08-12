@@ -106,7 +106,7 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
   res <- ipw(
     ps_mod = ps_mod,
     outcome_mod = outcome_mod,
-    .df = dat,
+    .data = dat,
     estimand = "ate"
   )
 
@@ -169,7 +169,7 @@ test_that("ipw works for continuous outcome with a confounder, using logistic ps
   outcome_mod2 <- glm(y ~ z, data = dat, weights = wts)
 
   # ipw call
-  res <- ipw(ps_mod, outcome_mod1, .df = dat, estimand = "ate")
+  res <- ipw(ps_mod, outcome_mod1, .data = dat, estimand = "ate")
 
   expect_snapshot(res)
 
@@ -194,7 +194,7 @@ test_that("ipw works for continuous outcome with a confounder, using logistic ps
     )
   )
 
-  expect_no_error(ipw(ps_mod, outcome_mod2, .df = dat, estimand = "ate"))
+  expect_no_error(ipw(ps_mod, outcome_mod2, .data = dat, estimand = "ate"))
 })
 
 test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
@@ -234,11 +234,11 @@ test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
   )
 
   expect_propensity_error(
-    ipw(ps_mod = ps_mod, outcome_mod = outcome_mod, .df = data.frame(x))
+    ipw(ps_mod = ps_mod, outcome_mod = outcome_mod, .data = data.frame(x))
   )
 })
 
-test_that("ipw handles .df = NULL properly", {
+test_that("ipw handles .data = NULL properly", {
   set.seed(104)
   n <- 200
   x <- rnorm(n)
@@ -258,8 +258,8 @@ test_that("ipw handles .df = NULL properly", {
     weights = wts
   )
 
-  # .df = NULL => ipw should extract from model frames
-  res <- ipw(ps_mod, outcome_mod, .df = NULL)
+  # .data = NULL => ipw should extract from model frames
+  res <- ipw(ps_mod, outcome_mod, .data = NULL)
   expect_s3_class(res, "ipw")
 })
 
@@ -304,7 +304,7 @@ test_that("exponentiate=TRUE in as.data.frame.ipw transforms log(rr), log(or)", 
 
   outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
-  ipw_res <- ipw(ps_mod, outcome_mod, .df = dat)
+  ipw_res <- ipw(ps_mod, outcome_mod, .data = dat)
 
   df_log <- as.data.frame(ipw_res, exponentiate = FALSE)
   df_exp <- as.data.frame(ipw_res, exponentiate = TRUE)
@@ -350,7 +350,7 @@ test_that("Estimand mismatch triggers an error if outcome weights differ from us
     ipw(
       ps_mod = ps_mod,
       outcome_mod = outcome_mod_ate,
-      .df = dat,
+      .data = dat,
       estimand = "att"
     )
   )
@@ -373,7 +373,7 @@ test_that("ipw works for probit link in the propensity score model", {
   outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
   # ipw call
-  res <- ipw(ps_mod, outcome_mod, .df = dat, estimand = "ate")
+  res <- ipw(ps_mod, outcome_mod, .data = dat, estimand = "ate")
 
   expect_s3_class(res, "ipw")
   expect_equal(res$estimand, "ate")
@@ -403,7 +403,7 @@ test_that("ipw works for cloglog link in the propensity score model", {
   outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
   # ipw
-  res <- ipw(ps_mod, outcome_mod, .df = dat, estimand = "ate")
+  res <- ipw(ps_mod, outcome_mod, .data = dat, estimand = "ate")
 
   # `ipw` checks
   expect_s3_class(res, "ipw")

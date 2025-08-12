@@ -50,7 +50,7 @@ wt_att(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 )
 
 \method{wt_att}{data.frame}(
@@ -61,7 +61,7 @@ wt_att(
   .untreated = NULL,
   ...,
   .propensity_col = NULL,
-  focal = NULL
+  .focal_level = NULL
 )
 
 wt_atu(
@@ -71,7 +71,7 @@ wt_atu(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 )
 
 \method{wt_atu}{data.frame}(
@@ -82,7 +82,7 @@ wt_atu(
   .untreated = NULL,
   ...,
   .propensity_col = NULL,
-  focal = NULL
+  .focal_level = NULL
 )
 
 wt_atm(
@@ -149,7 +149,7 @@ wt_atc(
   .treated = NULL,
   .untreated = NULL,
   ...,
-  focal = NULL
+  .focal_level = NULL
 )
 
 wt_cens(
@@ -221,7 +221,7 @@ unquoted) or a numeric index. Defaults to the second column if available,
 otherwise the first. For categorical exposures, the entire data frame is
 used as a matrix of propensity scores.}
 
-\item{focal}{For categorical exposures with ATT or ATU estimands, specifies
+\item{.focal_level}{For categorical exposures with ATT or ATU estimands, specifies
 the focal category. Must be one of the levels of the exposure variable.
 Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 }

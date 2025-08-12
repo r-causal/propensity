@@ -220,7 +220,7 @@ check_lengths_match <- function(
 
 transform_exposure_categorical <- function(
   .exposure,
-  focal = NULL,
+  .focal_level = NULL,
   call = rlang::caller_env()
 ) {
   # Convert to factor if not already
@@ -243,12 +243,12 @@ transform_exposure_categorical <- function(
   }
 
   # Validate focal category if provided
-  if (!is.null(focal)) {
-    if (!focal %in% levels(.exposure)) {
+  if (!is.null(.focal_level)) {
+    if (!.focal_level %in% levels(.exposure)) {
       abort(
         c(
           "Focal category must be one of the exposure levels.",
-          i = "Focal category: {.val {focal}}",
+          i = "Focal category: {.val {(.focal_level)}}",
           i = "Available levels: {.val {levels(.exposure)}}"
         ),
         call = call,

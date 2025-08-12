@@ -1089,7 +1089,7 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #'
 #' @param trimmed_ps A `ps_trim` object (same length as data, NAs for trimmed).
 #' @param model The fitted model used to get the original PS (e.g. a glm).
-#' @param .df Optional. A data frame. If `NULL`, we try to retrieve from `model`.
+#' @param .data Optional. A data frame. If `NULL`, we try to retrieve from `model`.
 #' @param ... Additional arguments passed to `update()`.
 #'
 #' @return
@@ -1113,7 +1113,7 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #' is_refit(refit)
 #'
 #' @export
-ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
+ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   assert_class(trimmed_ps, "ps_trim")
   meta <- ps_trim_meta(trimmed_ps)
 
@@ -1124,18 +1124,18 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
     )
   }
 
-  if (is.null(.df)) {
-    .df <- model.frame(model)
+  if (is.null(.data)) {
+    .data <- model.frame(model)
   }
 
   # Get the number of observations
   n_obs <- if (is.matrix(trimmed_ps)) nrow(trimmed_ps) else length(trimmed_ps)
 
-  if (nrow(.df) != n_obs) {
+  if (nrow(.data) != n_obs) {
     abort(
       c(
-        "{.arg .df} must have the same number of rows as observations in {.arg trimmed_ps}.",
-        x = "{.arg .df} has {nrow(.df)} row{?s}.",
+        "{.arg .data} must have the same number of rows as observations in {.arg trimmed_ps}.",
+        x = "{.arg .data} has {nrow(.data)} row{?s}.",
         x = "{.arg trimmed_ps} has {n_obs} observation{?s}."
       ),
       error_class = "propensity_length_error"
@@ -1143,7 +1143,7 @@ ps_refit <- function(trimmed_ps, model, .df = NULL, ...) {
   }
 
   # refit on untrimmed rows
-  data_sub <- .df[meta$keep_idx, , drop = FALSE]
+  data_sub <- .data[meta$keep_idx, , drop = FALSE]
   refit_model <- stats::update(model, data = data_sub, ...)
 
   # predict new PS for all rows

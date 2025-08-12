@@ -505,7 +505,7 @@ test_that("ps_refit works with categorical propensity score trimming", {
     lower = 0.15
   )
 
-  refitted_ps <- ps_refit(trimmed_ps, model, .df = test_data)
+  refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
   # Check properties
   expect_s3_class(refitted_ps, c("ps_trim_matrix", "ps_trim", "matrix"))
@@ -586,7 +586,7 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
 
   # Should error
   expect_propensity_error(
-    ps_refit(trimmed_all_na, model, .df = test_data)
+    ps_refit(trimmed_all_na, model, .data = test_data)
   )
 })
 
@@ -626,7 +626,7 @@ test_that("ps_refit handles optimal trimming for categorical exposures", {
     method = "optimal"
   )
 
-  refitted_ps <- ps_refit(trimmed_ps, model, .df = test_data)
+  refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
   # Check that it worked
   expect_true(is_refit(refitted_ps))
@@ -675,7 +675,7 @@ test_that("ps_refit preserves column names and order for categorical", {
   )
 
   # Refit
-  refitted_ps <- ps_refit(trimmed_ps, model, .df = test_data)
+  refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
   # Check column names are preserved
   expect_equal(colnames(refitted_ps), colnames(ps_matrix))
@@ -723,7 +723,7 @@ test_that("ps_refit handles minimal data for categorical exposures", {
 
   # Only proceed if we have at least 3 observations kept (one per category)
   if (length(meta$keep_idx) >= 3) {
-    refitted_ps <- ps_refit(trimmed_ps, model, .df = test_data)
+    refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
     expect_true(is_refit(refitted_ps))
   }

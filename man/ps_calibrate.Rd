@@ -6,7 +6,7 @@
 \usage{
 ps_calibrate(
   ps,
-  treat,
+  .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
   .treated = NULL,
@@ -17,7 +17,7 @@ ps_calibrate(
 \arguments{
 \item{ps}{Numeric vector of propensity scores between 0 and 1}
 
-\item{treat}{A binary vector of treatment assignments}
+\item{.exposure}{A binary vector of treatment assignments}
 
 \item{method}{Calibration method:
 \describe{
@@ -58,14 +58,14 @@ preserves the attributes of causal weight objects when applicable.
 \examples{
 # Generate example data
 ps <- runif(100)
-treat <- rbinom(100, 1, ps)
+exposure <- rbinom(100, 1, ps)
 
 # Logistic calibration with smoothing (default)
-calibrated_smooth <- ps_calibrate(ps, treat)
+calibrated_smooth <- ps_calibrate(ps, exposure)
 
 # Logistic calibration without smoothing (simple logistic regression)
-calibrated_simple <- ps_calibrate(ps, treat, smooth = FALSE)
+calibrated_simple <- ps_calibrate(ps, exposure, smooth = FALSE)
 
 # Isotonic regression
-calibrated_iso <- ps_calibrate(ps, treat, method = "isoreg")
+calibrated_iso <- ps_calibrate(ps, exposure, method = "isoreg")
 }

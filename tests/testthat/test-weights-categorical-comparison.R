@@ -62,7 +62,7 @@ test_that("categorical weights match WeightIt for all estimands", {
     w_att_propensity <- wt_att(
       ps_matrix,
       trt,
-      focal = focal,
+      .focal_level = focal,
       exposure_type = "categorical"
     )
     w_att_weightit <- WeightIt::weightit(
@@ -374,7 +374,12 @@ test_that("categorical weights work with parsnip models", {
     w_ate <- wt_ate(ps_probs, trt, exposure_type = "categorical")
   )
   expect_no_error(
-    w_att <- wt_att(ps_probs, trt, focal = "A", exposure_type = "categorical")
+    w_att <- wt_att(
+      ps_probs,
+      trt,
+      .focal_level = "A",
+      exposure_type = "categorical"
+    )
   )
   expect_no_error(
     w_ato <- wt_ato(ps_probs, trt, exposure_type = "categorical")

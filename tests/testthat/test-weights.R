@@ -93,7 +93,7 @@ test_that("wt_atc works with all object types", {
   wts_cat <- wt_atc(
     ps_cat,
     exposure_cat,
-    focal = "A",
+    .focal_level = "A",
     exposure_type = "categorical"
   )
   expect_s3_class(wts_cat, "psw")
