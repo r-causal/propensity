@@ -126,8 +126,8 @@
 #'   measures of a model (e.g., `influence(model)$sigma`).
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
-#' @param .focal_level For binary exposures, the value representing the focal group 
-#'   (typically the treatment group). For categorical exposures with ATT or ATU estimands, 
+#' @param .focal_level For binary exposures, the value representing the focal group
+#'   (typically the treatment group). For categorical exposures with ATT or ATU estimands,
 #'   specifies the focal category. Must be one of the levels of the exposure variable.
 #'   Required for `wt_att()` and `wt_atu()` with categorical exposures.
 #' @param .reference_level For binary exposures, the value representing the reference group
@@ -165,9 +165,9 @@
 #' weights_ate <- wt_ate(propensity_scores, treatment)
 #' weights_att <- wt_att(propensity_scores, treatment)
 #' weights_atu <- wt_atu(propensity_scores, treatment)
-#' 
+#'
 #' # With explicit focal and reference levels
-#' weights_att_explicit <- wt_att(propensity_scores, treatment, 
+#' weights_att_explicit <- wt_att(propensity_scores, treatment,
 #'                                .focal_level = 1, .reference_level = 0)
 #' weights_atm <- wt_atm(propensity_scores, treatment)
 #' weights_ato <- wt_ato(propensity_scores, treatment)
