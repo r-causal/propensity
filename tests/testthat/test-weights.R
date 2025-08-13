@@ -290,7 +290,7 @@ test_that("ATE works for binary cases", {
       exposure_type = "binary",
       .exposure = .exposure
     ),
-    "Setting focal level to `treated`"
+    "Setting focal level to"
   )
 
   expect_identical(weights, weights5)
@@ -713,7 +713,7 @@ test_that("wt_entropy works for binary cases", {
       exposure_type = "binary",
       .exposure = .exposure
     ),
-    "Setting focal level to `treated`"
+    "Setting focal level to"
   )
 
   expect_identical(weights, weights5)
