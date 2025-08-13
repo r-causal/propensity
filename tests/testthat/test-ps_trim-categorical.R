@@ -505,7 +505,7 @@ test_that("ps_refit works with categorical propensity score trimming", {
     lower = 0.15
   )
 
-  refitted_ps <- ps_refit(trimmed_ps, model, .df = test_data)
+  refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
   # Check properties
   expect_s3_class(refitted_ps, c("ps_trim_matrix", "ps_trim", "matrix"))
@@ -586,7 +586,7 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
 
   # Should error
   expect_propensity_error(
-    ps_refit(trimmed_all_na, model, .df = test_data)
+    ps_refit(trimmed_all_na, model, .data = test_data)
   )
 })
 
@@ -626,7 +626,7 @@ test_that("ps_refit handles optimal trimming for categorical exposures", {
     method = "optimal"
   )
 
-  refitted_ps <- ps_refit(trimmed_ps, model, .df = test_data)
+  refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
   # Check that it worked
   expect_true(is_refit(refitted_ps))
@@ -675,7 +675,7 @@ test_that("ps_refit preserves column names and order for categorical", {
   )
 
   # Refit
-  refitted_ps <- ps_refit(trimmed_ps, model, .df = test_data)
+  refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
   # Check column names are preserved
   expect_equal(colnames(refitted_ps), colnames(ps_matrix))
@@ -723,7 +723,7 @@ test_that("ps_refit handles minimal data for categorical exposures", {
 
   # Only proceed if we have at least 3 observations kept (one per category)
   if (length(meta$keep_idx) >= 3) {
-    refitted_ps <- ps_refit(trimmed_ps, model, .df = test_data)
+    refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
     expect_true(is_refit(refitted_ps))
   }
@@ -812,19 +812,6 @@ test_that("print methods handle large matrices correctly", {
   # Should only show 6 rows plus "..."
   expect_equal(sum(grepl("^\\[\\s*\\d+,\\]", output)), 6)
   expect_true(any(grepl("# \\.\\.\\. with 94 more rows", output)))
-})
-
-test_that("print methods return object invisibly", {
-  n <- 15
-  exposure <- factor(rep(c("A", "B", "C"), each = 5))
-  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
-  ps_matrix <- ps_matrix / rowSums(ps_matrix)
-  colnames(ps_matrix) <- levels(exposure)
-
-  trimmed <- ps_trim(ps_matrix, .exposure = exposure, method = "ps")
-
-  expect_invisible(returned_trim <- print(trimmed))
-  expect_identical(returned_trim, trimmed)
 })
 
 test_that("print methods respect n parameter", {

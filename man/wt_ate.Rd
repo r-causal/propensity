@@ -23,11 +23,13 @@ wt_ate(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 )
 
 \method{wt_ate}{data.frame}(
@@ -35,121 +37,140 @@ wt_ate(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  .treated = NULL,
+  .untreated = NULL
 )
 
 wt_att(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  focal = NULL
+  .treated = NULL,
+  .untreated = NULL
 )
 
 \method{wt_att}{data.frame}(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
   .propensity_col = NULL,
-  focal = NULL
+  .treated = NULL,
+  .untreated = NULL
 )
 
 wt_atu(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  focal = NULL
+  .treated = NULL,
+  .untreated = NULL
 )
 
 \method{wt_atu}{data.frame}(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
   .propensity_col = NULL,
-  focal = NULL
+  .treated = NULL,
+  .untreated = NULL
 )
 
 wt_atm(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 )
 
 \method{wt_atm}{data.frame}(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  .treated = NULL,
+  .untreated = NULL
 )
 
 wt_ato(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 )
 
 \method{wt_ato}{data.frame}(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  .treated = NULL,
+  .untreated = NULL
 )
 
 wt_entropy(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
   .treated = NULL,
-  .untreated = NULL,
-  ...
+  .untreated = NULL
 )
 
 \method{wt_entropy}{data.frame}(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  .treated = NULL,
+  .untreated = NULL
 )
 
 wt_atc(
   .propensity,
   .exposure,
   exposure_type = c("auto", "binary", "categorical"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   ...,
-  focal = NULL
+  .treated = NULL,
+  .untreated = NULL
 )
 
 wt_cens(
@@ -157,11 +178,13 @@ wt_cens(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
-  ...
+  ...,
+  .treated = NULL,
+  .untreated = NULL
 )
 
 \method{wt_cens}{data.frame}(
@@ -169,12 +192,14 @@ wt_cens(
   .exposure,
   .sigma = NULL,
   exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .treated = NULL,
-  .untreated = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
-  .propensity_col = NULL
+  .propensity_col = NULL,
+  .treated = NULL,
+  .untreated = NULL
 )
 }
 \arguments{
@@ -198,11 +223,13 @@ measures of a model (e.g., \code{influence(model)$sigma}).}
 Options are \code{"auto"}, \code{"binary"}, \code{"categorical"}, and \code{"continuous"}.
 Defaults to \code{"auto"}, which detects the type automatically.}
 
-\item{.treated}{The value representing the treatment group. If not provided,
-it is automatically detected.}
+\item{.focal_level}{For binary exposures, the value representing the focal group
+(typically the treatment group). For categorical exposures with ATT or ATU estimands,
+specifies the focal category. Must be one of the levels of the exposure variable.
+Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 
-\item{.untreated}{The value representing the control group. If not provided,
-it is automatically detected.}
+\item{.reference_level}{For binary exposures, the value representing the reference group
+(typically the control group). If not provided, it is automatically detected.}
 
 \item{stabilize}{Logical indicating whether to stabilize the weights. For ATE
 weights, stabilization multiplies the weight by either the mean of
@@ -215,15 +242,15 @@ used when \code{stabilize} is \code{TRUE}.}
 
 \item{...}{Reserved for future expansion. Not currently used.}
 
+\item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
+
+\item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
+
 \item{.propensity_col}{With a binary exposure, when \code{.propensity} is a data frame, specifies which
 column to use for propensity scores. Can be a column name (quoted or
 unquoted) or a numeric index. Defaults to the second column if available,
 otherwise the first. For categorical exposures, the entire data frame is
 used as a matrix of propensity scores.}
-
-\item{focal}{For categorical exposures with ATT or ATU estimands, specifies
-the focal category. Must be one of the levels of the exposure variable.
-Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 }
 \value{
 A \code{psw} object (a numeric vector) with additional attributes:
@@ -371,6 +398,10 @@ treatment <- rbinom(n, 1, propensity_scores)
 weights_ate <- wt_ate(propensity_scores, treatment)
 weights_att <- wt_att(propensity_scores, treatment)
 weights_atu <- wt_atu(propensity_scores, treatment)
+
+# With explicit focal and reference levels
+weights_att_explicit <- wt_att(propensity_scores, treatment, 
+                               .focal_level = 1, .reference_level = 0)
 weights_atm <- wt_atm(propensity_scores, treatment)
 weights_ato <- wt_ato(propensity_scores, treatment)
 weights_entropy <- wt_entropy(propensity_scores, treatment)

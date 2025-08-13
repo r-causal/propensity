@@ -6,18 +6,20 @@
 \usage{
 ps_calibrate(
   ps,
-  treat,
+  .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  estimand = NULL,
   .treated = NULL,
-  .untreated = NULL,
-  estimand = NULL
+  .untreated = NULL
 )
 }
 \arguments{
 \item{ps}{Numeric vector of propensity scores between 0 and 1}
 
-\item{treat}{A binary vector of treatment assignments}
+\item{.exposure}{A binary vector of treatment assignments}
 
 \item{method}{Calibration method:
 \describe{
@@ -39,13 +41,17 @@ regression (\code{smooth = FALSE}). When \code{TRUE}, uses \code{mgcv::gam()} wi
 spline smoothing. When \code{FALSE}, uses \code{stats::glm()}. Ignored for
 \code{method = "isoreg"}.}
 
-\item{.treated}{The value representing the treatment group. If not provided,
-\code{ps_calibrate()} will attempt to automatically determine the treatment coding.}
+\item{.focal_level}{The value representing the focal group (typically treatment).
+If not provided, \code{ps_calibrate()} will attempt to automatically determine the coding.}
 
-\item{.untreated}{The value representing the control group. If not provided,
-\code{ps_calibrate()} will attempt to automatically determine the control coding.}
+\item{.reference_level}{The value representing the reference group (typically control).
+If not provided, \code{ps_calibrate()} will attempt to automatically determine the coding.}
 
 \item{estimand}{Character indicating the estimand type.}
+
+\item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
+
+\item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 }
 \value{
 A calibrated propensity score object (\code{psw})
@@ -58,14 +64,14 @@ preserves the attributes of causal weight objects when applicable.
 \examples{
 # Generate example data
 ps <- runif(100)
-treat <- rbinom(100, 1, ps)
+exposure <- rbinom(100, 1, ps)
 
 # Logistic calibration with smoothing (default)
-calibrated_smooth <- ps_calibrate(ps, treat)
+calibrated_smooth <- ps_calibrate(ps, exposure)
 
 # Logistic calibration without smoothing (simple logistic regression)
-calibrated_simple <- ps_calibrate(ps, treat, smooth = FALSE)
+calibrated_simple <- ps_calibrate(ps, exposure, smooth = FALSE)
 
 # Isotonic regression
-calibrated_iso <- ps_calibrate(ps, treat, method = "isoreg")
+calibrated_iso <- ps_calibrate(ps, exposure, method = "isoreg")
 }

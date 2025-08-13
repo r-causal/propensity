@@ -147,7 +147,7 @@ test_that("pref method: requires exposure, fails with all 0 or all 1", {
   )
 
   # 3) Valid usage
-  out_pref <- ps_trim(ps, .exposure = z, method = "pref", .treated = 1)
+  out_pref <- ps_trim(ps, .exposure = z, method = "pref", .focal_level = 1)
   meta_pref <- ps_trim_meta(out_pref)
   expect_equal(meta_pref$lower, 0.3)
   expect_equal(meta_pref$upper, 0.7)
@@ -180,7 +180,7 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
   )
 
   # Valid usage
-  out_cr <- ps_trim(ps, .exposure = z, method = "cr", .treated = 1)
+  out_cr <- ps_trim(ps, .exposure = z, method = "cr", .focal_level = 1)
   meta_cr <- ps_trim_meta(out_cr)
   ps_treat <- ps[z == 1]
   ps_untrt <- ps[z == 0]
@@ -197,7 +197,7 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
       method = "cr",
       lower = 0.2,
       upper = 0.8,
-      .treated = 1
+      .focal_level = 1
     )
   )
 })
@@ -239,7 +239,7 @@ test_that("ps_refit() refits on keep_idx, warns if everything trimmed, etc.", {
   expect_true(isTRUE(meta_r$refit))
 
   expect_propensity_error(
-    ps_refit(out, model = fit, .df = data.frame(z, x)[1:10, ])
+    ps_refit(out, model = fit, .data = data.frame(z, x)[1:10, ])
   )
 
   # If everything is trimmed => error
@@ -276,7 +276,7 @@ test_that("Full workflow: trim -> refit -> weighting yields refit, trimmed psw",
     trimmed_refit,
     .exposure = z,
     exposure_type = "binary",
-    .treated = 1
+    .focal_level = 1
   )
 
   # 5) Check final psw object
@@ -312,7 +312,12 @@ test_that("adaptive method: triggers uniroot path (k < 0) coverage", {
 
   # Now call ps_trim with method="adaptive"
   # This should produce k < 0 => code path with uniroot
-  out_adapt <- ps_trim(p_vec, .exposure = z, method = "adaptive", .treated = 1)
+  out_adapt <- ps_trim(
+    p_vec,
+    .exposure = z,
+    method = "adaptive",
+    .focal_level = 1
+  )
 
   # Check that the 'cutoff' field in the meta is present
   meta <- ps_trim_meta(out_adapt)

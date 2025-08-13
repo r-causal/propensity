@@ -118,7 +118,7 @@ test_that("ATT weights work with categorical trimmed propensity scores", {
     wt_att_trimmed <- wt_att(
       trimmed_ps,
       .exposure = exposure,
-      focal = "Treat1"
+      .focal_level = "Treat1"
     )
   )
 
@@ -201,7 +201,7 @@ test_that("weight functions work with refitted trimmed categorical propensity sc
   )
 
   # Refit the model
-  refitted_ps <- ps_refit(trimmed_ps, fit, .df = df)
+  refitted_ps <- ps_refit(trimmed_ps, fit, .data = df)
 
   # Calculate ATE weights - should NOT warn about refitting
   wt_ate_refitted <- wt_ate(refitted_ps, .exposure = exposure)

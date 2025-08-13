@@ -12,8 +12,6 @@
 
     Code
       expr
-    Message <cliMessage>
-      i Treating `.exposure` as categorical
     Condition <propensity_focal_category_error>
       Error:
       ! Focal category must be one of the exposure levels.

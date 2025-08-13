@@ -22,15 +22,13 @@
       Error in `ps_calibrate()`:
       ! `ps` values must be between 0 and 1.
 
-# errors when ps and treat have different lengths
+# errors when ps and .exposure have different lengths
 
     Code
       expr
-    Message <cliMessage>
-      i Setting treatment to `1`
     Condition <propensity_length_error>
       Error in `ps_calibrate()`:
-      ! Propensity score vector `ps` must be the same length as `treat`.
+      ! Propensity score vector `ps` must be the same length as `.exposure`.
 
 # error handling for ambiguous treatment coding
 
@@ -39,7 +37,7 @@
     Condition <propensity_binary_transform_error>
       Error in `ps_calibrate()`:
       ! Don't know how to transform `.exposure` to 0/1 binary variable.
-      i Specify `.treated` and `.untreated.`
+      i Specify `.focal_level` and `.reference_level`.
 
 # errors when trying to calibrate already calibrated ps
 

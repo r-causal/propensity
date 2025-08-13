@@ -15,7 +15,7 @@
 #'   variable.
 #' @param outcome_mod A fitted, weighted outcome model of class [stats::glm()]
 #'   or [stats::lm()], with the outcome as the dependent variable.
-#' @param .df A data frame containing the exposure, outcome, and covariates. If
+#' @param .data A data frame containing the exposure, outcome, and covariates. If
 #'   `NULL`, `ipw()` will try to extract the data from `ps_mod` and
 #'   `outcome_mod`.
 #' @param estimand A character string specifying the causal estimand: `ate`,
@@ -95,7 +95,7 @@
 ipw <- function(
   ps_mod,
   outcome_mod,
-  .df = NULL,
+  .data = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95
@@ -107,19 +107,19 @@ ipw <- function(
   exposure_name <- fmla_extract_left_chr(ps_mod)
   outcome_name <- fmla_extract_left_chr(outcome_mod)
 
-  if (is.null(.df)) {
+  if (is.null(.data)) {
     exposure <- fmla_extract_left_vctr(ps_mod)
     outcome <- fmla_extract_left_vctr(outcome_mod)
   } else {
     assert_class(exposure_name, "character", .length = 1)
     assert_class(outcome_name, "character", .length = 1)
-    assert_columns_exist(.df, c(exposure_name, outcome_name))
+    assert_columns_exist(.data, c(exposure_name, outcome_name))
 
-    exposure <- .df[[exposure_name]]
-    outcome <- .df[[outcome_name]]
+    exposure <- .data[[exposure_name]]
+    outcome <- .data[[outcome_name]]
   }
 
-  ps <- predict(ps_mod, type = "response", newdata = .df)
+  ps <- predict(ps_mod, type = "response", newdata = .data)
 
   if (is.null(ps_link)) {
     ps_link <- ps_mod$family$link
@@ -143,7 +143,7 @@ ipw <- function(
     wts = wts,
     exposure = exposure,
     exposure_name = exposure_name,
-    .df = .df
+    .data = .data
   )
 
   uncorrected_lin_vars <- linearize_variables_for_wts(
@@ -503,13 +503,13 @@ estimate_marginal_means <- function(
   wts,
   exposure,
   exposure_name,
-  .df = NULL,
+  .data = NULL,
   call = rlang::caller_env()
 ) {
   # todo: this could be generalized with split() and lapply()
-  if (is.null(.df)) {
-    .df <- model.frame(outcome_mod)
-    check_exposure(.df, exposure_name, call = call)
+  if (is.null(.data)) {
+    .data <- model.frame(outcome_mod)
+    check_exposure(.data, exposure_name, call = call)
   }
   # todo: make this more flexible for different values and model specs
   # maybe can optionally accept a function for g-comp
@@ -523,16 +523,16 @@ estimate_marginal_means <- function(
     ))
   }
 
-  .df_1 <- .df
-  .df_0 <- .df
-  .df_1[[exposure_name]] <- exposure_values[[2]]
-  .df_0[[exposure_name]] <- exposure_values[[1]]
+  .data_1 <- .data
+  .data_0 <- .data
+  .data_1[[exposure_name]] <- exposure_values[[2]]
+  .data_0[[exposure_name]] <- exposure_values[[1]]
 
   n1 <- sum(wts[exposure == exposure_values[[2]]])
-  mu1 <- mean(predict(outcome_mod, newdata = .df_1, type = "response"))
+  mu1 <- mean(predict(outcome_mod, newdata = .data_1, type = "response"))
 
   n0 <- sum(wts[exposure == exposure_values[[1]]])
-  mu0 <- mean(predict(outcome_mod, newdata = .df_0, type = "response"))
+  mu0 <- mean(predict(outcome_mod, newdata = .data_0, type = "response"))
 
   list(
     # exposure = 1
@@ -656,14 +656,14 @@ check_estimand <- function(wts, estimand, call = rlang::caller_env()) {
   }
 }
 
-check_exposure <- function(.df, .exposure_name, call = rlang::caller_env()) {
+check_exposure <- function(.data, .exposure_name, call = rlang::caller_env()) {
   assert_class(.exposure_name, "character", .length = 1, call = call)
-  if (!(.exposure_name %in% names(.df))) {
+  if (!(.exposure_name %in% names(.data))) {
     abort(
       c(
         "{.val { .exposure_name}} not found in {.code model.frame(outcome_mod)}.",
         i = "The outcome model may have transformations in the formula.",
-        i = "Please specify {.arg .df}"
+        i = "Please specify {.arg .data}"
       ),
       call = call,
       error_class = "propensity_columns_exist_error"

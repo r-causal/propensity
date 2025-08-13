@@ -21,7 +21,7 @@
     Condition <propensity_binary_transform_error>
       Error in `ps_trim()`:
       ! Don't know how to transform `.exposure` to 0/1 binary variable.
-      i Specify `.treated` and `.untreated.`
+      i Specify `.focal_level` and `.reference_level`.
 
 ---
 
@@ -30,7 +30,7 @@
     Condition <propensity_binary_transform_error>
       Error in `ps_trim()`:
       ! Don't know how to transform `.exposure` to 0/1 binary variable.
-      i Specify `.treated` and `.untreated.`
+      i Specify `.focal_level` and `.reference_level`.
 
 # cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
 
@@ -47,7 +47,7 @@
     Condition <propensity_binary_transform_error>
       Error in `ps_trim()`:
       ! Don't know how to transform `.exposure` to 0/1 binary variable.
-      i Specify `.treated` and `.untreated.`
+      i Specify `.focal_level` and `.reference_level`.
 
 ---
 
@@ -79,8 +79,8 @@
       expr
     Condition <propensity_length_error>
       Error in `ps_refit()`:
-      ! `.df` must have the same number of rows as observations in `trimmed_ps`.
-      x `.df` has 10 rows.
+      ! `.data` must have the same number of rows as observations in `trimmed_ps`.
+      x `.data` has 10 rows.
       x `trimmed_ps` has 20 observations.
 
 ---

@@ -8,7 +8,7 @@
 ipw(
   ps_mod,
   outcome_mod,
-  .df = NULL,
+  .data = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95
@@ -24,7 +24,7 @@ variable.}
 \item{outcome_mod}{A fitted, weighted outcome model of class \code{\link[stats:glm]{stats::glm()}}
 or \code{\link[stats:lm]{stats::lm()}}, with the outcome as the dependent variable.}
 
-\item{.df}{A data frame containing the exposure, outcome, and covariates. If
+\item{.data}{A data frame containing the exposure, outcome, and covariates. If
 \code{NULL}, \code{ipw()} will try to extract the data from \code{ps_mod} and
 \code{outcome_mod}.}
 
