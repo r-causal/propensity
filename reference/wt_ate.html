@@ -549,27 +549,27 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-in"><span><span class="co"># Calculate different weight types</span></span></span>
 <span class="r-in"><span><span class="va">weights_ate</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span><span class="va">weights_att</span> <span class="op">&lt;-</span> <span class="fu">wt_att</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span><span class="va">weights_atu</span> <span class="op">&lt;-</span> <span class="fu">wt_atu</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># With explicit focal and reference levels</span></span></span>
-<span class="r-in"><span><span class="va">weights_att_explicit</span> <span class="op">&lt;-</span> <span class="fu">wt_att</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span>, </span></span>
+<span class="r-in"><span><span class="va">weights_att_explicit</span> <span class="op">&lt;-</span> <span class="fu">wt_att</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span>,</span></span>
 <span class="r-in"><span>                               .focal_level <span class="op">=</span> <span class="fl">1</span>, .reference_level <span class="op">=</span> <span class="fl">0</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-in"><span><span class="va">weights_atm</span> <span class="op">&lt;-</span> <span class="fu">wt_atm</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span><span class="va">weights_ato</span> <span class="op">&lt;-</span> <span class="fu">wt_ato</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span><span class="va">weights_entropy</span> <span class="op">&lt;-</span> <span class="fu">wt_entropy</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Compare weight distributions</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">weights_ate</span><span class="op">)</span></span></span>
@@ -584,7 +584,7 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-in"><span><span class="co"># Stabilization reduces variance</span></span></span>
 <span class="r-in"><span><span class="va">weights_ate_stab</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">propensity_scores</span>, <span class="va">treatment</span>, stabilize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## Handling Extreme Propensity Scores</span></span></span>
 <span class="r-in"><span></span></span>
@@ -653,13 +653,13 @@ score to estimate causal treatment effects in observational studies.
 <span class="r-in"><span><span class="co"># Use GLM directly for weight calculation</span></span></span>
 <span class="r-in"><span><span class="va">weights_from_glm</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_model</span>, <span class="va">treatment</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Or omit the exposure argument (it will be extracted from the GLM)</span></span></span>
 <span class="r-in"><span><span class="va">weights_from_glm_auto</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_model</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"treatment"</span> from GLM model</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to `1`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
