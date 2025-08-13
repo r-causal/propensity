@@ -46,7 +46,7 @@ detect_exposure_type <- function(.exposure) {
     "continuous"
   }
 
-  alert_info("Treating `.exposure` as {exposure_type}")
+  alert_info("Treating {.arg .exposure} as {exposure_type}")
 
   exposure_type
 }
@@ -116,7 +116,7 @@ transform_exposure_binary <- function(
     } else {
       sort(unique(.exposure))
     }
-    alert_info("Setting focal level to {.var {levels[[2]]}}")
+    alert_info("Setting focal level to {.val {levels[[2]]}}")
     return(ifelse(.exposure == levels[[2]], 1, 0))
   } else {
     abort(
