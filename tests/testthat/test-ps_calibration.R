@@ -49,21 +49,18 @@ test_that("calibration metadata is properly stored", {
   meta_smooth <- ps_calib_meta(out_smooth)
   expect_equal(meta_smooth$method, "logistic")
   expect_true(meta_smooth$smooth)
-  expect_s3_class(meta_smooth$calib_model, c("gam", "glm"))
 
   # Test logistic calibration with smooth = FALSE
   out_simple <- ps_calibrate(ps, treat, method = "logistic", smooth = FALSE)
   meta_simple <- ps_calib_meta(out_simple)
   expect_equal(meta_simple$method, "logistic")
   expect_false(meta_simple$smooth)
-  expect_s3_class(meta_simple$calib_model, "glm")
 
   # Test isotonic regression
   out_iso <- ps_calibrate(ps, treat, method = "isoreg")
   meta_iso <- ps_calib_meta(out_iso)
   expect_equal(meta_iso$method, "isoreg")
   expect_false(meta_iso$smooth)
-  expect_null(meta_iso$calib_model)
 })
 
 test_that("calibration changes the distribution", {

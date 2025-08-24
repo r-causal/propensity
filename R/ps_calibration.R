@@ -241,8 +241,7 @@ ps_calibrate <- function(
     x = calib_ps,
     ps_calib_meta = list(
       method = method,
-      smooth = smooth,
-      calib_model = calib_model
+      smooth = smooth
     )
   )
 }
