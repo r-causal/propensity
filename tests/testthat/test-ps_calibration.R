@@ -19,14 +19,14 @@ test_that("errors when ps and .exposure have different lengths", {
   )
 })
 
-test_that("returns a psw object of correct length and range", {
+test_that("returns a ps_calib object of correct length and range", {
   set.seed(42)
   ps <- rep(0.5, 100)
   treat <- rbinom(100, 1, 0.3)
 
   out <- ps_calibrate(ps, treat)
 
-  expect_s3_class(out, "psw")
+  expect_s3_class(out, "ps_calib")
   expect_length(out, 100)
   expect_true(all(as.numeric(out) >= 0 & as.numeric(out) <= 1))
 })
@@ -40,23 +40,27 @@ test_that("constant ps yields calibrated = observed prevalence", {
   expect_equal(unique(as.numeric(out)), 0.5)
 })
 
-test_that("preserves psw attributes from an existing causal-weights object", {
-  # Create a dummy psw object
-  ps_orig <- psw(
-    x = runif(10),
-    estimand = "ATT",
-    stabilized = TRUE,
-    trimmed = TRUE,
-    truncated = FALSE
-  )
-  treat <- rbinom(10, 1, ps_orig)
+test_that("calibration metadata is properly stored", {
+  ps <- runif(10)
+  treat <- rbinom(10, 1, ps)
 
-  out <- ps_calibrate(ps_orig, treat)
+  # Test logistic calibration with smooth = TRUE
+  out_smooth <- ps_calibrate(ps, treat, method = "logistic", smooth = TRUE)
+  meta_smooth <- ps_calib_meta(out_smooth)
+  expect_equal(meta_smooth$method, "logistic")
+  expect_true(meta_smooth$smooth)
 
-  expect_equal(attr(out, "estimand"), "ATT")
-  expect_true(attr(out, "stabilized"))
-  expect_true(attr(out, "trimmed"))
-  expect_false(attr(out, "truncated"))
+  # Test logistic calibration with smooth = FALSE
+  out_simple <- ps_calibrate(ps, treat, method = "logistic", smooth = FALSE)
+  meta_simple <- ps_calib_meta(out_simple)
+  expect_equal(meta_simple$method, "logistic")
+  expect_false(meta_simple$smooth)
+
+  # Test isotonic regression
+  out_iso <- ps_calibrate(ps, treat, method = "isoreg")
+  meta_iso <- ps_calib_meta(out_iso)
+  expect_equal(meta_iso$method, "isoreg")
+  expect_false(meta_iso$smooth)
 })
 
 test_that("calibration changes the distribution", {
@@ -151,7 +155,7 @@ test_that(".focal_level and .reference_level parameters work consistently with p
   # Test automatic detection with 0/1 coding
   treat_01 <- rbinom(30, 1, ps)
   calib_auto <- ps_calibrate(ps, treat_01)
-  expect_s3_class(calib_auto, "psw")
+  expect_s3_class(calib_auto, "ps_calib")
 
   # Test explicit specification with 0/1 coding
   calib_explicit <- ps_calibrate(
@@ -209,7 +213,7 @@ test_that("automatic treatment detection works with binary vectors", {
 
   # All should work with automatic detection
   calib_01 <- ps_calibrate(ps, treat_01)
-  expect_s3_class(calib_01, "psw")
+  expect_s3_class(calib_01, "ps_calib")
 
   # These require explicit specification
   calib_12 <- ps_calibrate(ps, treat_12, .focal_level = 2, .reference_level = 1)
@@ -278,7 +282,7 @@ test_that("handles NA values appropriately", {
   suppressWarnings(calibrated <- ps_calibrate(ps, treat))
   expect_length(calibrated, 5)
   expect_true(is.na(calibrated[3]))
-  expect_s3_class(calibrated, "psw")
+  expect_s3_class(calibrated, "ps_calib")
 
   # Test with isotonic regression too
   calibrated_iso <- ps_calibrate(ps, treat, method = "isoreg")
@@ -294,7 +298,7 @@ test_that("isotonic regression calibration works", {
   # Should not error
   calibrated_iso <- ps_calibrate(ps, treat, method = "isoreg")
 
-  expect_s3_class(calibrated_iso, "psw")
+  expect_s3_class(calibrated_iso, "ps_calib")
   expect_length(calibrated_iso, 100)
   expect_true(all(
     as.numeric(calibrated_iso) >= 0 & as.numeric(calibrated_iso) <= 1
@@ -422,8 +426,8 @@ test_that("smooth parameter works correctly for logistic calibration", {
   calib_simple <- ps_calibrate(ps, treat, smooth = FALSE)
 
   # Both should be psw objects
-  expect_s3_class(calib_smooth, "psw")
-  expect_s3_class(calib_simple, "psw")
+  expect_s3_class(calib_smooth, "ps_calib")
+  expect_s3_class(calib_simple, "ps_calib")
 
   # Both should be in valid range
   expect_true(all(

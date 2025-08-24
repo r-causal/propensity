@@ -2036,3 +2036,195 @@ calculate_categorical_weights <- function(
 
   weights
 }
+
+# ps_calib methods ----
+
+#' @export
+wt_ate.ps_calib <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_ate.numeric,
+    modification_type = "calib",
+    .sigma = .sigma,
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    ...
+  )
+}
+
+#' @export
+wt_att.ps_calib <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_att.numeric,
+    modification_type = "calib",
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+wt_atu.ps_calib <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_atu.numeric,
+    modification_type = "calib",
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+wt_atm.ps_calib <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_atm.numeric,
+    modification_type = "calib",
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+wt_ato.ps_calib <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_ato.numeric,
+    modification_type = "calib",
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+wt_entropy.ps_calib <- function(
+  .propensity,
+  .exposure,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_entropy.numeric,
+    modification_type = "calib",
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    ...
+  )
+}
+
+#' @export
+wt_atc.ps_calib <- wt_atu.ps_calib
+
+#' @export
+wt_cens.ps_calib <- function(
+  .propensity,
+  .exposure,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL
+) {
+  calculate_weight_from_modified_ps(
+    .propensity = .propensity,
+    .exposure = .exposure,
+    weight_fn = wt_cens.numeric,
+    modification_type = "calib",
+    .sigma = .sigma,
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    ...
+  )
+}
