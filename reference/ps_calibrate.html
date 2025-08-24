@@ -50,7 +50,6 @@ preserves the attributes of causal weight objects when applicable.</p>
 <span>  smooth <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .reference_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  estimand <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -105,10 +104,6 @@ If not provided, <code>ps_calibrate()</code> will attempt to automatically deter
 If not provided, <code>ps_calibrate()</code> will attempt to automatically determine the coding.</p></dd>
 
 
-<dt id="arg-estimand">estimand<a class="anchor" aria-label="anchor" href="#arg-estimand"></a></dt>
-<dd><p>Character indicating the estimand type.</p></dd>
-
-
 <dt id="arg--treated">.treated<a class="anchor" aria-label="anchor" href="#arg--treated"></a></dt>
 <dd><p><a href="https://lifecycle.r-lib.org/articles/stages.html#deprecated" class="external-link"><img src="figures/lifecycle-deprecated.svg" alt="[Deprecated]"></a> Use <code>.focal_level</code> instead.</p></dd>
 
@@ -119,7 +114,7 @@ If not provided, <code>ps_calibrate()</code> will attempt to automatically deter
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A calibrated propensity score object (<code>psw</code>)</p>
+    <p>A calibrated propensity score object (<code>ps_calib</code>)</p>
     </div>
 
     <div class="section level2">
