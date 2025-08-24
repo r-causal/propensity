@@ -11,7 +11,6 @@ ps_calibrate(
   smooth = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
-  estimand = NULL,
   .treated = NULL,
   .untreated = NULL
 )
@@ -47,14 +46,12 @@ If not provided, \code{ps_calibrate()} will attempt to automatically determine t
 \item{.reference_level}{The value representing the reference group (typically control).
 If not provided, \code{ps_calibrate()} will attempt to automatically determine the coding.}
 
-\item{estimand}{Character indicating the estimand type.}
-
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 }
 \value{
-A calibrated propensity score object (\code{psw})
+A calibrated propensity score object (\code{ps_calib})
 }
 \description{
 This function calibrates propensity scores to improve their accuracy using

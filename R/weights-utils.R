@@ -430,7 +430,7 @@ calculate_weight_from_modified_ps <- function(
   .propensity,
   .exposure,
   weight_fn,
-  modification_type = c("trim", "trunc"),
+  modification_type = c("trim", "trunc", "calib"),
   ...
 ) {
   modification_type <- rlang::arg_match(modification_type)
@@ -441,7 +441,12 @@ calculate_weight_from_modified_ps <- function(
   }
 
   # Handle matrix or vector propensity scores
-  if (inherits(.propensity, c("ps_trim_matrix", "ps_trunc_matrix"))) {
+  if (
+    inherits(
+      .propensity,
+      c("ps_trim_matrix", "ps_trunc_matrix", "ps_calib_matrix")
+    )
+  ) {
     # For matrix propensity scores, pass them directly
     # The weight function should handle the matrix appropriately
     base_wt <- weight_fn(
@@ -467,10 +472,15 @@ calculate_weight_from_modified_ps <- function(
     estimand(base_wt) <- paste0(old_est, "; trimmed")
     attr(base_wt, "trimmed") <- TRUE
     attr(base_wt, "ps_trim_meta") <- attr(.propensity, "ps_trim_meta")
-  } else {
+  } else if (modification_type == "trunc") {
     estimand(base_wt) <- paste0(estimand(base_wt), "; truncated")
     attr(base_wt, "truncated") <- TRUE
     attr(base_wt, "ps_trunc_meta") <- ps_trunc_meta(.propensity)
+  } else {
+    # calib
+    estimand(base_wt) <- paste0(estimand(base_wt), "; calibrated")
+    attr(base_wt, "calibrated") <- TRUE
+    attr(base_wt, "ps_calib_meta") <- ps_calib_meta(.propensity)
   }
 
   base_wt
