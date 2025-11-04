@@ -6,11 +6,12 @@ output: github_document
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  collapse = TRUE, 
+  collapse = TRUE,
   comment = "#>",
   fig.path = "man/figures/README-",
   out.width = "100%"
 )
+set.seed(1234)
 ```
 
 # propensity <img src="man/figures/logo.png" align="right" height="138" />
@@ -20,11 +21,15 @@ knitr::opts_chunk$set(
 [![Codecov test coverage](https://codecov.io/gh/malcolmbarrett/propensity/graph/badge.svg)](https://app.codecov.io/gh/malcolmbarrett/propensity)
 <!-- badges: end -->
 
-The goal of propensity is to calculate propensity scores and weights for a wide variety of research questions.
-
-propensity is under very early development.
+propensity provides a comprehensive toolkit for propensity score analysis in causal inference. The package supports multiple estimands, handles extreme weights, and provides statistically valid inference through inverse probability weighting.
 
 ## Installation
+
+You can install propensity from [CRAN](https://cran.r-project.org/) with:
+
+``` r
+install.packages("propensity")
+```
 
 You can install the development version of propensity from [GitHub](https://github.com/) with:
 
@@ -33,39 +38,167 @@ You can install the development version of propensity from [GitHub](https://gith
 devtools::install_github("r-causal/propensity")
 ```
 
-## Example
+## Quick Start
 
-propensity is under very early development. Currently, it supports calculating propensity score weights for binary exposures:
+Here's a complete workflow for causal effect estimation:
 
-```{r}
+```{r quick-start}
 library(propensity)
-propensity_scores <- c(.1, .3, .4, .3)
-x <- c(0, 0, 1, 0)
 
-# ATE weights
-wt_ate(propensity_scores, .exposure = x)
+# Simulate data with confounding
+n <- 200
+x1 <- rnorm(n)
+x2 <- rnorm(n)
+treatment <- rbinom(n, 1, plogis(0.5 * x1 - 0.3 * x2))
+outcome <- rbinom(n, 1, plogis(1 + 0.8 * treatment + 0.5 * x1 - 0.3 * x2))
 
-# Stabilized ATE weights
-wt_ate(propensity_scores, .exposure = x, stabilize = TRUE)
+# Fit propensity score model
+ps_model <- glm(treatment ~ x1 + x2, family = binomial())
 
-# ATO weights
-wt_ato(propensity_scores, .exposure = x)
+# Calculate ATE weights
+wts <- wt_ate(ps_model)
+
+# Fit weighted outcome model
+outcome_model <- glm(outcome ~ treatment, family = binomial(), weights = wts)
+
+# Get causal effect estimates with correct standard errors
+ipw(ps_model, outcome_model)
 ```
 
+The `ipw()` function accounts for uncertainty in propensity score estimation, providing valid confidence intervals and p-values.
 
-```{r example, include = FALSE, eval = FALSE}
-library(propensity)
+## Multiple Estimands
 
-ps <- propensity(
-  model, 
-  exposure, 
-  stabilizer = model2, 
-  exposure_type = "categorical"
+propensity supports six different causal estimands:
+
+```{r estimands}
+ps <- predict(ps_model, type = "response")
+
+wt_ate(ps, treatment) # Average Treatment Effect
+wt_att(ps, treatment) # Average Treatment Effect on the Treated
+wt_atu(ps, treatment) # Average Treatment Effect on the Untreated
+wt_ato(ps, treatment) # Average Treatment Effect in Overlap population
+wt_atm(ps, treatment) # Average Treatment Effect in Matched population
+wt_entropy(ps, treatment) # Entropy-weighted ATE
+```
+
+Choose your estimand based on your research question:
+- **ATE**: Effect in the entire population
+- **ATT**: Effect among those who received treatment
+- **ATU/ATC**: Effect among those who didn't receive treatment
+- **ATO**: Effect in the population with most overlap (more stable weights)
+- **ATM**: Effect in a matched population
+- **Entropy**: Balances efficiency and overlap
+
+## Flexible Input Formats
+
+propensity accepts propensity scores in multiple formats:
+
+```{r inputs, eval = FALSE}
+# Numeric vector
+wt_ate(ps, treatment)
+
+# Data frame (uses second column by default for treatment probability)
+ps_df <- data.frame(control = 1 - ps, treated = ps)
+wt_ate(ps_df, treatment)
+
+# GLM object directly (extracts fitted values automatically)
+wt_ate(ps_model)
+```
+
+## Handling Extreme Weights
+
+Extreme propensity scores (near 0 or 1) can lead to unstable weights. propensity offers several solutions:
+
+```{r extreme-weights}
+# Check for extreme weights
+summary(wt_ate(ps, treatment))
+
+# Solution 1: Use overlap-weighted estimand (bounded weights)
+summary(wt_ato(ps, treatment))
+
+# Solution 2: Trim extreme propensity scores
+ps_trimmed <- ps_trim(ps, method = "adaptive")
+summary(wt_ate(ps_trimmed, treatment))
+
+# Solution 3: Truncate propensity scores
+ps_truncated <- ps_trunc(ps, lower = 0.05, upper = 0.95)
+summary(wt_ate(ps_truncated, treatment))
+
+# Solution 4: Calibrate propensity scores
+ps_calibrated <- ps_calibrate(ps, treatment)
+summary(wt_ate(ps_calibrated, treatment))
+```
+
+After trimming, you can refit the propensity score model on the retained subset:
+
+```{r refit, eval = FALSE}
+ps_refitted <- ps_refit(ps_trimmed, ps_model)
+wts_refitted <- wt_ate(ps_refitted, treatment)
+```
+
+## Advanced Features
+
+### Weight Stabilization
+
+Stabilized weights can reduce variance for ATE estimation:
+
+```{r stabilization}
+wt_ate(ps, treatment, stabilize = TRUE)
+```
+
+### Continuous Exposures
+
+For continuous treatments, propensity scores represent conditional densities:
+
+```{r continuous, eval = FALSE}
+# Fit linear model for continuous treatment
+continuous_treatment <- rnorm(n, mean = 0.5 * x1 - 0.3 * x2)
+ps_continuous <- lm(continuous_treatment ~ x1 + x2)
+
+# Density-based weights
+wts_continuous <- wt_ate(
+  ps_continuous,
+  continuous_treatment,
+  exposure_type = "continuous",
+  # stabilization is highly recommended for continuous exposures
+  stabilize = TRUE
+)
+```
+
+### Categorical Exposures
+
+For multi-level treatments, provide a data frame or matrix of propensity scores:
+
+```{r categorical, eval = FALSE}
+# Multinomial propensity scores (3 treatment levels)
+ps_matrix <- matrix(c(0.3, 0.5, 0.2), ncol = 3, nrow = n, byrow = TRUE)
+categorical_treatment <- factor(sample(1:3, n, replace = TRUE))
+
+wt_ate(ps_matrix, categorical_treatment, exposure_type = "categorical")
+
+# For ATT, specify focal level
+wt_att(ps_matrix, categorical_treatment, .focal_level = "2")
+```
+
+### Censoring Weights
+
+Combine treatment and censoring weights for survival or longitudinal analyses:
+
+```{r censoring, eval = FALSE}
+# Propensity of being uncensored
+censoring_ps <- predict(
+  glm(uncensored ~ x1 + x2, family = binomial()),
+  type = "response"
 )
 
-match(ps, data)
+# Censoring weights
+wts_cens <- wt_cens(censoring_ps, uncensored)
 
-data |> 
-  mutate(wts = wts(ps, estimand = "att"))
+# Combine with treatment weights
+wts_combined <- wt_ate(ps, treatment) * wts_cens
 ```
 
+## Learn More
+
+- [Causal Inference in R](https://www.r-causal.org/) - Comprehensive guide to causal inference methods in R
