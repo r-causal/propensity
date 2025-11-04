@@ -6,9 +6,8 @@ Authors@R:
            comment = c(ORCID = "0000-0003-0299-5825"))
 Description: What the package does (one paragraph).
 License: MIT + file LICENSE
-URL: https://github.com/malcolmbarrett/propensity,
-    https://r-causal.github.io/propensity/
-BugReports: https://github.com/malcolmbarrett/propensity/issues
+URL: https://github.com/malcolmbarrett/propensity, https://r-causal.github.io/propensity/, https://github.com/r-causal/propensity
+BugReports: https://github.com/r-causal/propensity/issues
 Depends: 
     R (>= 4.2.0)
 Imports: 
