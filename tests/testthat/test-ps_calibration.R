@@ -691,3 +691,62 @@ test_that("extreme values handled consistently with WeightIt", {
     tolerance = 1e-10
   )
 })
+
+# Standalone pava_weighted() tests ------------------------------------------
+
+test_that("pava_weighted returns input unchanged when already non-decreasing", {
+  y <- c(0.1, 0.3, 0.5, 0.8, 1.0)
+  x <- seq_along(y)
+  result <- pava_weighted(x, y)
+  expect_equal(result, y)
+})
+
+test_that("pava_weighted merges violating pairs", {
+  # y = c(0, 1, 0, 1): middle pair violates, should merge to 0.5
+  result <- pava_weighted(1:4, c(0, 1, 0, 1))
+  expect_equal(result, c(0, 0.5, 0.5, 1))
+})
+
+test_that("pava_weighted handles all-constant y", {
+  result <- pava_weighted(1:5, rep(0.5, 5))
+  expect_equal(result, rep(0.5, 5))
+})
+
+test_that("pava_weighted handles single observation", {
+  result <- pava_weighted(1, 0.7)
+  expect_equal(result, 0.7)
+})
+
+test_that("pava_weighted handles completely decreasing y", {
+  result <- pava_weighted(1:4, c(1, 0.75, 0.5, 0.25))
+  # All should merge to the grand mean
+  expect_equal(result, rep(mean(c(1, 0.75, 0.5, 0.25)), 4))
+})
+
+test_that("pava_weighted respects observation weights", {
+  # Two observations: y = c(1, 0) with equal weights -> mean = 0.5
+  result_equal <- pava_weighted(1:2, c(1, 0), w = c(1, 1))
+  expect_equal(result_equal, c(0.5, 0.5))
+
+  # Same but with weight 3 on first obs: weighted mean = (1*3 + 0*1)/4 = 0.75
+  result_weighted <- pava_weighted(1:2, c(1, 0), w = c(3, 1))
+  expect_equal(result_weighted, c(0.75, 0.75))
+})
+
+test_that("pava_weighted handles tied x values", {
+  # Tied x-values should NOT be grouped (unlike stats::isoreg)
+  x <- c(1, 1, 2, 2)
+  y <- c(0, 1, 0, 1)
+  result <- pava_weighted(x, y)
+  # Each observation is its own block initially; result must be monotonic
+  expect_true(all(diff(result) >= -1e-10))
+})
+
+test_that("pava_weighted preserves original order", {
+  x <- c(3, 1, 2)
+  y <- c(0.9, 0.1, 0.5)
+  result <- pava_weighted(x, y)
+  # After ordering by x: (1, 0.1), (2, 0.5), (3, 0.9) - already non-decreasing
+  # So result should be the same as input
+  expect_equal(result, y)
+})
