@@ -11,7 +11,9 @@
 #' @noRd
 pava_weighted <- function(x, y, w = rep(1, length(x))) {
   n <- length(x)
-  if (n <= 1L) return(y)
+  if (n <= 1L) {
+    return(y)
+  }
 
   # Order by x
 
@@ -33,7 +35,10 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
     if (block_val[i] > block_val[i + 1L]) {
       # Merge blocks i and i+1
       new_wt <- block_wt[i] + block_wt[i + 1L]
-      new_val <- (block_val[i] * block_wt[i] + block_val[i + 1L] * block_wt[i + 1L]) / new_wt
+      new_val <- (block_val[i] *
+        block_wt[i] +
+        block_val[i + 1L] * block_wt[i + 1L]) /
+        new_wt
       block_val[i] <- new_val
       block_wt[i] <- new_wt
       block_end[i] <- block_end[i + 1L]
@@ -281,8 +286,12 @@ ps_calibrate <- function(
     # Squish to prevent extrapolation beyond observed range
     is_ctrl <- treat_valid == 0
     is_trt <- treat_valid == 1
-    if (any(is_ctrl)) p0 <- pmax(p0, min(p0[is_ctrl]))
-    if (any(is_trt)) p1 <- pmax(p1, min(p1[is_trt]))
+    if (any(is_ctrl)) {
+      p0 <- pmax(p0, min(p0[is_ctrl]))
+    }
+    if (any(is_trt)) {
+      p1 <- pmax(p1, min(p1[is_trt]))
+    }
 
     # Combine: controls use p0, treated use p1
     calib_ps_valid <- p0
@@ -291,7 +300,9 @@ ps_calibrate <- function(
     # Map back to full vector with NAs
     calib_ps <- numeric(length(ps))
     calib_ps[!na_idx] <- calib_ps_valid
-    if (any(na_idx)) calib_ps[na_idx] <- NA
+    if (any(na_idx)) {
+      calib_ps[na_idx] <- NA
+    }
 
     # Ensure calibrated values are in [0, 1]
     calib_ps[!na_idx] <- pmax(0, pmin(1, calib_ps[!na_idx]))
