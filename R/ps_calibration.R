@@ -16,7 +16,6 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
   }
 
   # Order by x
-
   ord <- order(x)
   y_ord <- y[ord]
   w_ord <- w[ord]
