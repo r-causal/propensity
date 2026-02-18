@@ -1,23 +1,30 @@
 Package: propensity
 Title: A Toolkit for Calculating and Working with Propensity Scores
 Version: 0.0.0.9000
-Authors@R: 
-    person("Malcolm", "Barrett", , "malcolmbarrett@gmail.com", role = c("aut", "cre"),
+Authors@R:
+    person("Malcolm", "Barrett", , "malcolmbarrett@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0003-0299-5825"))
-Description: What the package does (one paragraph).
+Description: A comprehensive toolkit for propensity score analysis in
+    causal inference. Supports calculating propensity score weights for
+    multiple causal estimands across binary, continuous, and categorical
+    exposures. Provides methods for handling extreme propensity scores
+    through trimming, truncation, and calibration.  Includes inverse
+    probability weighted estimators that correctly accounts for propensity
+    score estimation uncertainty.
 License: MIT + file LICENSE
-URL: https://github.com/malcolmbarrett/propensity, https://r-causal.github.io/propensity/, https://github.com/r-causal/propensity
+URL: https://r-causal.github.io/propensity/,
+    https://github.com/r-causal/propensity
 BugReports: https://github.com/r-causal/propensity/issues
-Depends: 
+Depends:
     R (>= 4.2.0)
-Imports: 
+Imports:
     cli,
     lifecycle,
     rlang,
     stats,
     tidyselect,
     vctrs (>= 0.6.5)
-Suggests: 
+Suggests:
     dplyr,
     ggplot2,
     mgcv,
@@ -35,4 +42,4 @@ Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3

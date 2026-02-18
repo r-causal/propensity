@@ -8,19 +8,19 @@
 \description{
 \if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
 
-What the package does (one paragraph).
+A comprehensive toolkit for propensity score analysis in causal inference. Supports calculating propensity score weights for multiple causal estimands across binary, continuous, and categorical exposures. Provides methods for handling extreme propensity scores through trimming, truncation, and calibration. Includes inverse probability weighted estimators that correctly accounts for propensity score estimation uncertainty.
 }
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/malcolmbarrett/propensity}
   \item \url{https://r-causal.github.io/propensity/}
-  \item Report bugs at \url{https://github.com/malcolmbarrett/propensity/issues}
+  \item \url{https://github.com/r-causal/propensity}
+  \item Report bugs at \url{https://github.com/r-causal/propensity/issues}
 }
 
 }
 \author{
-\strong{Maintainer}: Malcolm Barrett \email{malcolmbarrett@gmail.com} (\href{https://orcid.org/0000-0003-0299-5825}{ORCID})
+\strong{Maintainer}: Malcolm Barrett \email{malcolmbarrett@gmail.com} (\href{https://orcid.org/0000-0003-0299-5825}{ORCID}) [copyright holder]
 
 }
 \keyword{internal}

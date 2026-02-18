@@ -5,9 +5,9 @@
 
 <!-- badges: start -->
 
-[![R-CMD-check](https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/malcolmbarrett/propensity/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/r-causal/propensity/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/r-causal/propensity/actions/workflows/R-CMD-check.yaml)
 [![Codecov test
-coverage](https://codecov.io/gh/malcolmbarrett/propensity/graph/badge.svg)](https://app.codecov.io/gh/malcolmbarrett/propensity)
+coverage](https://codecov.io/gh/r-causal/propensity/graph/badge.svg)](https://app.codecov.io/gh/r-causal/propensity)
 <!-- badges: end -->
 
 propensity provides a comprehensive toolkit for propensity score
