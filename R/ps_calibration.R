@@ -1,3 +1,75 @@
+#' Weighted pool-adjacent-violators algorithm (PAVA)
+#'
+#' Implements isotonic regression with optional observation weights. Unlike
+#' [stats::isoreg()], this does not group tied x-values before fitting, so
+#' tied inputs can receive different fitted values.
+#'
+#' @param x Numeric vector of predictor values.
+#' @param y Numeric vector of response values.
+#' @param w Numeric vector of weights (default: equal weights).
+#' @return Numeric vector of fitted values in the original order of `x`.
+#' @noRd
+pava_weighted <- function(x, y, w = rep(1, length(x))) {
+  n <- length(x)
+  if (n <= 1L) return(y)
+
+  # Order by x
+
+  ord <- order(x)
+  y_ord <- y[ord]
+  w_ord <- w[ord]
+
+  # Initialize each observation as its own block
+  # Store value (weighted mean) and weight (sum of weights) per block
+  block_val <- y_ord
+  block_wt <- w_ord
+  # block_end[i] gives the last original index belonging to block i
+
+  block_end <- seq_len(n)
+  n_blocks <- n
+
+  i <- 1L
+  while (i < n_blocks) {
+    if (block_val[i] > block_val[i + 1L]) {
+      # Merge blocks i and i+1
+      new_wt <- block_wt[i] + block_wt[i + 1L]
+      new_val <- (block_val[i] * block_wt[i] + block_val[i + 1L] * block_wt[i + 1L]) / new_wt
+      block_val[i] <- new_val
+      block_wt[i] <- new_wt
+      block_end[i] <- block_end[i + 1L]
+
+      # Remove block i+1
+      if (i + 1L < n_blocks) {
+        idx_keep <- seq_len(n_blocks)[-c(i + 1L)]
+        block_val <- block_val[idx_keep]
+        block_wt <- block_wt[idx_keep]
+        block_end <- block_end[idx_keep]
+      } else {
+        block_val <- block_val[seq_len(n_blocks - 1L)]
+        block_wt <- block_wt[seq_len(n_blocks - 1L)]
+        block_end <- block_end[seq_len(n_blocks - 1L)]
+      }
+      n_blocks <- n_blocks - 1L
+
+      # Step back to recheck
+      if (i > 1L) i <- i - 1L
+    } else {
+      i <- i + 1L
+    }
+  }
+
+  # Reconstruct fitted values from blocks
+  fitted <- numeric(n)
+  start <- 1L
+  for (j in seq_len(n_blocks)) {
+    fitted[start:block_end[j]] <- block_val[j]
+    start <- block_end[j] + 1L
+  }
+
+  # Return in original order
+  fitted[order(ord)]
+}
+
 #' Calibrate propensity scores
 #'
 #' This function calibrates propensity scores to improve their accuracy using
@@ -46,7 +118,7 @@
 #'
 #' # Isotonic regression
 #' calibrated_iso <- ps_calibrate(ps, exposure, method = "isoreg")
-#' @importFrom stats glm fitted isoreg binomial
+#' @importFrom stats glm fitted binomial
 #' @export
 ps_calibrate <- function(
   ps,
@@ -194,43 +266,32 @@ ps_calibrate <- function(
   } else if (method == "isoreg") {
     # Smoothing is not applicable to isotonic regression
     smooth <- FALSE
-    # Isotonic regression calibration
-    if (any(na_idx)) {
-      # Work with non-NA values only
-      ps_valid <- ps[!na_idx]
-      treat_valid <- .exposure[!na_idx]
 
-      # Order by propensity scores for isotonic regression
-      ord <- order(ps_valid)
-      ps_ordered <- ps_valid[ord]
-      treat_ordered <- treat_valid[ord]
+    # Two-step isotonic regression calibration following van der Laan et al.
+    # (2024, arXiv:2411.06342): fit separately for treated and control groups,
+    # then combine. This matches WeightIt::calibrate(method = "isoreg").
+    ps_valid <- ps[!na_idx]
+    treat_valid <- .exposure[!na_idx]
 
-      # Fit isotonic regression
-      iso_fit <- stats::isoreg(ps_ordered, treat_ordered)
+    # Calibrate for controls: P(treat=0|ps) via isotonic regression on 1-ps
+    p0 <- 1 - pava_weighted(1 - ps_valid, 1 - treat_valid)
+    # Calibrate for treated: P(treat=1|ps) via isotonic regression on ps
+    p1 <- pava_weighted(ps_valid, treat_valid)
 
-      # Get calibrated values and map back to original order
-      calib_ps_ordered <- iso_fit$yf
-      calib_ps_valid <- numeric(length(ps_valid))
-      calib_ps_valid[ord] <- calib_ps_ordered
+    # Squish to prevent extrapolation beyond observed range
+    is_ctrl <- treat_valid == 0
+    is_trt <- treat_valid == 1
+    if (any(is_ctrl)) p0 <- pmax(p0, min(p0[is_ctrl]))
+    if (any(is_trt)) p1 <- pmax(p1, min(p1[is_trt]))
 
-      # Map back to full vector with NAs
-      calib_ps <- numeric(length(ps))
-      calib_ps[!na_idx] <- calib_ps_valid
-      calib_ps[na_idx] <- NA
-    } else {
-      # No NAs, proceed normally
-      ord <- order(ps)
-      ps_ordered <- ps[ord]
-      treat_ordered <- .exposure[ord]
+    # Combine: controls use p0, treated use p1
+    calib_ps_valid <- p0
+    calib_ps_valid[is_trt] <- p1[is_trt]
 
-      # Fit isotonic regression
-      iso_fit <- stats::isoreg(ps_ordered, treat_ordered)
-
-      # Get calibrated values and map back to original order
-      calib_ps_ordered <- iso_fit$yf
-      calib_ps <- numeric(length(ps))
-      calib_ps[ord] <- calib_ps_ordered
-    }
+    # Map back to full vector with NAs
+    calib_ps <- numeric(length(ps))
+    calib_ps[!na_idx] <- calib_ps_valid
+    if (any(na_idx)) calib_ps[na_idx] <- NA
 
     # Ensure calibrated values are in [0, 1]
     calib_ps[!na_idx] <- pmax(0, pmin(1, calib_ps[!na_idx]))
