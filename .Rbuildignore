@@ -13,5 +13,6 @@
 ^[.]?air[.]toml$
 ^\.vscode$
 ^cran-comments\.md$
+^\.beads$
 ^doc$
 ^Meta$
