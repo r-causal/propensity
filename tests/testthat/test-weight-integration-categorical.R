@@ -29,7 +29,7 @@ test_that("weight functions work with trimmed categorical propensity scores", {
   # Check that weights are NA for trimmed units
   meta <- ps_trim_meta(trimmed_ps)
   expect_true(all(is.na(wt_ate_trimmed[meta$trimmed_idx])))
-  expect_true(all(!is.na(wt_ate_trimmed[meta$keep_idx])))
+  expect_true(!anyNA(wt_ate_trimmed[meta$keep_idx]))
 })
 
 test_that("weight functions work with truncated categorical propensity scores", {
@@ -59,7 +59,7 @@ test_that("weight functions work with truncated categorical propensity scores", 
   expect_equal(estimand(wt_ate_truncated), "ate; truncated")
 
   # No weights should be NA for truncation
-  expect_true(all(!is.na(wt_ate_truncated)))
+  expect_true(!anyNA(wt_ate_truncated))
 })
 
 test_that("weight functions work with data.frame propensity scores for categorical", {
@@ -215,7 +215,7 @@ test_that("weight functions work with refitted trimmed categorical propensity sc
   # Check that weights are NA for trimmed units
   meta <- ps_trim_meta(refitted_ps)
   expect_true(all(is.na(wt_ate_refitted[meta$trimmed_idx])))
-  expect_true(all(!is.na(wt_ate_refitted[meta$keep_idx])))
+  expect_true(!anyNA(wt_ate_refitted[meta$keep_idx]))
 })
 
 test_that("truncated categorical propensity scores don't trigger refit warning", {
@@ -245,5 +245,5 @@ test_that("truncated categorical propensity scores don't trigger refit warning",
   expect_equal(estimand(wt_ate_truncated), "ate; truncated")
 
   # No weights should be NA for truncation
-  expect_true(all(!is.na(wt_ate_truncated)))
+  expect_true(!anyNA(wt_ate_truncated))
 })

@@ -1,5 +1,5 @@
 test_that("wt_atc is an alias for wt_atu", {
-  ps <- c(.1, .3, .4, .3)
+  ps <- c(0.1, 0.3, 0.4, 0.3)
   exposure <- c(0, 0, 1, 0)
 
   # Compare results from wt_atu and wt_atc
@@ -101,7 +101,7 @@ test_that("wt_atc works with all object types", {
 })
 
 test_that("psw objects can be multiplied together", {
-  ps <- c(.1, .3, .4, .3)
+  ps <- c(0.1, 0.3, 0.4, 0.3)
   exposure <- c(0, 0, 1, 0)
 
   # Create ATE and censoring weights
@@ -157,7 +157,7 @@ test_that("psw objects can be multiplied together", {
 })
 
 test_that("wt_cens uses ATE formula with uncensored estimand", {
-  ps <- c(.1, .3, .4, .3)
+  ps <- c(0.1, 0.3, 0.4, 0.3)
   exposure <- c(0, 0, 1, 0)
 
   # Get weights from wt_ate and wt_cens
@@ -234,13 +234,13 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
 test_that("ATE works for binary cases", {
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
-    weights <- wt_ate(c(.1, .3, .4, .3), .exposure = c(0, 0, 1, 0)),
+    weights <- wt_ate(c(0.1, 0.3, 0.4, 0.3), .exposure = c(0, 0, 1, 0)),
     "Treating `.exposure` as binary"
   )
 
   expect_silent(
     weights2 <- wt_ate(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
     )
@@ -251,7 +251,7 @@ test_that("ATE works for binary cases", {
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights3 <- wt_ate(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       .exposure = as.logical(c(0, 0, 1, 0))
     ),
     "Treating `.exposure` as binary"
@@ -261,7 +261,7 @@ test_that("ATE works for binary cases", {
 
   expect_silent(
     weights4 <- wt_ate(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(2, 2, 1, 2),
       exposure_type = "binary",
       .reference_level = 2
@@ -272,7 +272,7 @@ test_that("ATE works for binary cases", {
 
   expect_propensity_error(
     wt_ate(
-      c(-.1, .3, .4, 3.3),
+      c(-0.1, 0.3, 0.4, 3.3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
     )
@@ -286,7 +286,7 @@ test_that("ATE works for binary cases", {
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights5 <- wt_ate(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       exposure_type = "binary",
       .exposure = .exposure
     ),
@@ -298,7 +298,7 @@ test_that("ATE works for binary cases", {
   expect_equal(
     weights,
     psw(c(1.11, 1.43, 2.50, 1.43), "ate"),
-    tolerance = .01
+    tolerance = 0.01
   )
 })
 
@@ -370,7 +370,7 @@ test_that("ATE errors appropriately for categorical with vector propensity score
   # For categorical exposures, propensity scores must be a matrix
   expect_propensity_error(
     wt_ate(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(0, 2, 1, 4),
       exposure_type = "categorical"
     )
@@ -657,13 +657,13 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
 test_that("wt_entropy works for binary cases", {
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
-    weights <- wt_entropy(c(.1, .3, .4, .3), .exposure = c(0, 0, 1, 0)),
+    weights <- wt_entropy(c(0.1, 0.3, 0.4, 0.3), .exposure = c(0, 0, 1, 0)),
     "Treating `.exposure` as binary"
   )
 
   expect_silent(
     weights2 <- wt_entropy(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
     )
@@ -674,7 +674,7 @@ test_that("wt_entropy works for binary cases", {
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights3 <- wt_entropy(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       .exposure = as.logical(c(0, 0, 1, 0))
     ),
     "Treating `.exposure` as binary"
@@ -684,7 +684,7 @@ test_that("wt_entropy works for binary cases", {
 
   expect_silent(
     weights4 <- wt_entropy(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(2, 2, 1, 2),
       exposure_type = "binary",
       .reference_level = 2
@@ -695,7 +695,7 @@ test_that("wt_entropy works for binary cases", {
 
   expect_propensity_error(
     wt_entropy(
-      c(-.1, .3, .4, 3.3),
+      c(-0.1, 0.3, 0.4, 3.3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
     )
@@ -709,7 +709,7 @@ test_that("wt_entropy works for binary cases", {
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
     weights5 <- wt_entropy(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       exposure_type = "binary",
       .exposure = .exposure
     ),
@@ -788,7 +788,7 @@ test_that("entropy weights handle extreme propensity scores", {
 })
 
 test_that("wt_entropy works with ps_trim objects", {
-  ps <- c(.1, .3, .4, .3)
+  ps <- c(0.1, 0.3, 0.4, 0.3)
   ps_trimmed <- ps_trim(ps, method = "ps", lower = 0.15, upper = 0.85)
 
   expect_propensity_warning(
@@ -805,7 +805,7 @@ test_that("wt_entropy works with ps_trim objects", {
 })
 
 test_that("wt_entropy works with ps_trunc objects", {
-  ps <- c(.1, .3, .4, .3)
+  ps <- c(0.1, 0.3, 0.4, 0.3)
   ps_truncated <- ps_trunc(ps, lower = 0.15, upper = 0.85)
 
   weights <- wt_entropy(
@@ -823,7 +823,7 @@ test_that("entropy weights error on unsupported exposure types", {
   # For categorical exposures, propensity scores must be a matrix
   expect_propensity_error(
     wt_entropy(
-      c(.1, .3, .4, .3),
+      c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(1, 2, 3, 4),
       exposure_type = "categorical"
     )
@@ -1745,7 +1745,7 @@ test_that("all methods handle NAs appropriately", {
   for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
     weights <- fn(ps_na, exposure_na, exposure_type = "binary")
     expect_s3_class(weights, "psw")
-    expect_true(any(is.na(weights)))
+    expect_true(anyNA(weights))
   }
 
   # Exposure with NAs
@@ -1755,7 +1755,7 @@ test_that("all methods handle NAs appropriately", {
   for (fn in list(wt_ate, wt_att, wt_atu, wt_atm, wt_ato, wt_entropy)) {
     weights <- fn(ps_good, exposure_with_na, exposure_type = "binary")
     expect_s3_class(weights, "psw")
-    expect_true(any(is.na(weights)))
+    expect_true(anyNA(weights))
   }
 
   # Data frame with NAs
@@ -1767,7 +1767,7 @@ test_that("all methods handle NAs appropriately", {
   # Data frame with NAs produces NA weights
   weights_df_na <- wt_ate(df_na, c(0, 1, 0), exposure_type = "binary")
   expect_s3_class(weights_df_na, "psw")
-  expect_true(any(is.na(weights_df_na)))
+  expect_true(anyNA(weights_df_na))
 
   # GLM predictions with NAs
   set.seed(789)
