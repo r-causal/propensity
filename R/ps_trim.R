@@ -1,66 +1,128 @@
 #' Trim Propensity Scores
 #'
-#' `ps_trim()` applies trimming methods to a propensity-score vector or matrix,
-#' returning a new vector/matrix of the *same length/dimensions*, with trimmed
-#' entries replaced by `NA.` You can inspect further metadata in `ps_trim_meta(x)`.
-#' After running `ps_trim()`, you should refit the model with `ps_refit()`.
+#' @description
+#' Trim observations with extreme propensity scores by replacing them with `NA`,
+#' effectively removing those units from downstream analyses. The returned object
+#' has the same length (or dimensions) as the input, with trimmed entries set to
+#' `NA`. After trimming, refit the propensity score model on the retained
+#' observations with [ps_refit()].
 #'
-#' @param ps The propensity score, either a numeric vector between 0 and 1 for
-#'   binary exposures, or a matrix/data.frame where each column represents
-#'   propensity scores for each level of a categorical exposure.
-#' @param .exposure For methods like `"pref"` or `"cr"`, a vector for a binary
-#'   exposure. For categorical exposures with method `"optimal"`, must be a
-#'   factor or character vector.
-#' @param method One of `c("ps", "adaptive", "pctl", "pref", "cr", "optimal")`.
+#' @param ps A numeric vector of propensity scores in (0, 1) for binary
+#'   exposures, or a matrix / data frame where each column gives the propensity
+#'   score for one level of a categorical exposure.
+#' @param method Trimming method. One of:
+#'
+#'   * **`"ps"`** (default): Fixed threshold. Observations with propensity
+#'     scores outside `[lower, upper]` are trimmed. For categorical exposures,
+#'     observations where *any* column falls below `lower` (the symmetric
+#'     threshold delta) are trimmed.
+#'   * **`"adaptive"`**: Data-driven threshold that minimizes the asymptotic
+#'     variance of the IPW estimator (Crump et al., 2009). The `lower` and
+#'     `upper` arguments are ignored.
+#'   * **`"pctl"`**: Quantile-based. Observations outside the `[lower, upper]`
+#'     quantiles of the propensity score distribution are trimmed. Defaults:
+#'     `lower = 0.05`, `upper = 0.95`.
+#'   * **`"pref"`**: Preference score trimming. Transforms propensity scores
+#'     to the preference scale (Walker et al., 2013) and trims outside
+#'     `[lower, upper]`. Requires `.exposure`. Binary exposures only. Defaults:
+#'     `lower = 0.3`, `upper = 0.7`.
+#'   * **`"cr"`**: Common range (clinical equipoise). Trims to the overlap
+#'     region of the propensity score distributions across exposure groups.
+#'     Requires `.exposure`. Binary exposures only. The `lower` and `upper`
+#'     arguments are ignored.
+#'   * **`"optimal"`**: Multi-category optimal trimming (Yang et al., 2016).
+#'     Categorical exposures only. Requires `.exposure`.
+#'
 #'   For categorical exposures, only `"ps"` and `"optimal"` are supported.
-#' @param lower,upper Numeric cutoffs or quantiles. If `NULL`, defaults vary by
-#'   method. For categorical exposures with method `"ps"`, `lower` represents the
-#'   symmetric trimming threshold (delta).
+#' @param lower,upper Numeric thresholds whose interpretation depends on
+#'   `method`:
+#'
+#'   * `"ps"`: absolute propensity score bounds (defaults: 0.1, 0.9). For
+#'     categorical exposures, only `lower` is used as the symmetric threshold.
+#'   * `"pctl"`: quantile probabilities (defaults: 0.05, 0.95).
+#'   * `"pref"`: preference score bounds (defaults: 0.3, 0.7).
+#'   * `"adaptive"`, `"cr"`, `"optimal"`: ignored (thresholds are data-driven).
+#' @param .exposure An exposure variable. Required for `"pref"`, `"cr"` (binary
+#'   vector), and `"optimal"` (factor or character). Not required for other
+#'   methods.
 #' @inheritParams wt_ate
-#' @param ... Additional arguments passed to methods
+#' @param ... Additional arguments passed to methods.
 #'
-#' @details The returned object is a **`ps_trim`** vector/matrix of the same
-#' length/dimensions as `ps`, but with trimmed entries replaced by `NA`. An
-#' attribute `ps_trim_meta` contains:
+#' @details
+#' ## How trimming works
 #'
-#' - `method`: Which trimming method was used
-#' - `keep_idx`: Indices retained
-#' - `trimmed_idx`: Indices replaced by `NA`
-#' - Possibly other fields such as final cutoffs, etc.
+#' Trimming identifies observations with extreme (near 0 or 1) propensity
+#' scores and sets them to `NA`. These observations are excluded from
+#' subsequent weight calculations and effect estimation. The goal is to
+#' remove units that lack sufficient overlap between exposure groups, which
+#' would otherwise receive extreme weights and destabilize estimates.
 #'
-#' For categorical exposures:
-#' - **Symmetric trimming** (`method = "ps"`): Removes observations where any
-#'   propensity score falls below the threshold delta (specified via `lower`).
-#' - **Optimal trimming** (`method = "optimal"`): Uses the Yang et al. (2016)
-#'   approach for multi-category treatments.
+#' ## Choosing a method
 #'
-#' **Arithmetic behavior**: Arithmetic operations on `ps_trim` objects return
-#' numeric vectors, not `ps_trim` objects. This is intentional - once you
-#' transform propensity scores (e.g., `1/ps` for weights), the result is no
-#' longer a propensity score.
+#' * Use `"ps"` when you have a specific threshold in mind or want a simple
+#'   default.
+#' * Use `"adaptive"` for a principled, data-driven cutoff that targets
+#'   variance reduction.
+#' * Use `"pctl"` to trim a fixed percentage of extreme values from each tail.
+#' * Use `"pref"` when you want to restrict to the region of clinical
+#'   equipoise based on the preference score.
+#' * Use `"cr"` to restrict to the common support region where both exposure
+#'   groups have observed propensity scores.
+#' * Use `"optimal"` for multi-category (3+) exposures; this is the only
+#'   data-driven method available for categorical treatments.
 #'
-#' **NA handling**: Trimmed values are set to `NA`. Operations that don't handle
-#' `NA` values will propagate them (e.g., `sum()` returns `NA` unless
-#' `na.rm = TRUE`).
+#' ## Typical workflow
 #'
-#' **Metadata tracking**: The `trimmed_idx` and `keep_idx` are updated when
-#' subsetting or reordering:
-#' - Subsetting with `[` updates indices to new positions
-#' - `sort()` reorders data and updates indices accordingly
-#' - `unique()` may change lengths but preserves the class
-#' - `na.omit()` removes trimmed values and updates indices
+#' 1. Fit a propensity score model
+#' 2. Apply `ps_trim()` to flag extreme values
+#' 3. Call [ps_refit()] to re-estimate propensity scores on the retained sample
+#' 4. Compute weights with [wt_ate()] or another weight function
 #'
-#' **Combining behavior**: When combining `ps_trim` objects with `c()`, metadata
-#' must match (same trimming parameters). Mismatched metadata triggers a warning
-#' and returns a numeric vector.
+#' ## Object behavior
 #'
-#' @return A `ps_trim` object (numeric vector or matrix). The attribute
-#' `ps_trim_meta` stores metadata.
+#' Arithmetic operations on `ps_trim` objects return plain numeric vectors,
+#' since transformed propensity scores (e.g., `1/ps`) are no longer propensity
+#' scores. Trimmed values propagate as `NA` in calculations; use `na.rm = TRUE`
+#' where appropriate.
 #'
-#' @seealso [ps_trunc()] for bounding/winsorizing instead of discarding,
-#'   [is_refit()], [is_ps_trimmed()]
+#' When combining `ps_trim` objects with [c()], trimming parameters must match.
+#' Mismatched parameters trigger a warning and return a numeric vector.
+#'
+#' Use [ps_trim_meta()] to inspect the trimming metadata, including the method,
+#' cutoffs, and which observations were retained or trimmed.
+#'
+#' @return A **`ps_trim`** object (a numeric vector with class `"ps_trim"`, or a
+#'   matrix with class `"ps_trim_matrix"`). Trimmed observations are `NA`.
+#'   Metadata is stored in the `"ps_trim_meta"` attribute and can be accessed
+#'   with [ps_trim_meta()]. Key fields include:
+#'
+#'   * `method`: the trimming method used
+#'   * `keep_idx`: integer indices of retained observations
+#'   * `trimmed_idx`: integer indices of trimmed (NA) observations
+#'   * Method-specific fields such as `cutoff` (adaptive), `q_lower`/`q_upper`
+#'     (pctl), `cr_lower`/`cr_upper` (cr), `delta` (categorical ps),
+#'     or `lambda` (optimal)
+#'
+#' @references
+#' Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
+#' with limited overlap in estimation of average treatment effects.
+#' *Biometrika*, 96(1), 187--199.
+#'
+#' Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
+#' assessing the feasibility of comparative effectiveness research.
+#' *Comparative Effectiveness Research*, 3, 11--20.
+#'
+#' Yang, S., Imbens, G. W., Cui, Z., Faries, D. E., & Kadziola, Z. (2016).
+#' Propensity score matching and subclassification in observational studies
+#' with multi-level treatments. *Biometrics*, 72(4), 1055--1065.
+#'
+#' @seealso [ps_trunc()] for bounding (winsorizing) instead of discarding,
+#'   [ps_refit()] to re-estimate propensity scores after trimming,
+#'   [ps_calibrate()] for calibration-based adjustment,
+#'   [ps_trim_meta()] to inspect trimming metadata,
+#'   [is_ps_trimmed()] and [is_unit_trimmed()] for logical queries.
+#'
 #' @examples
-#'
 #' set.seed(2)
 #' n <- 300
 #' x <- rnorm(n)
@@ -68,22 +130,23 @@
 #' fit <- glm(z ~ x, family = binomial)
 #' ps <- predict(fit, type = "response")
 #'
+#' # Fixed threshold trimming (default)
+#' trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#' trimmed
+#'
+#' # How many observations were trimmed?
+#' sum(is_unit_trimmed(trimmed))
+#'
+#' # Data-driven adaptive trimming
 #' ps_trim(ps, method = "adaptive")
 #'
-#' # Coercion behavior with ps_trim objects
-#' ps_trim1 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
-#' ps_trim2 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#' # Quantile-based trimming at 5th and 95th percentiles
+#' ps_trim(ps, method = "pctl")
 #'
-#' # Compatible objects combine silently
-#' c(ps_trim1[1:50], ps_trim2[51:100])  # Returns ps_trim object
-#'
-#' # Different trim parameters trigger warning
-#' ps_trim3 <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
-#' c(ps_trim1[1:50], ps_trim3[51:100])  # Warning: returns numeric
-#'
-#' # Cross-class combinations warn and return numeric
-#' psw_obj <- psw(ps[1:50], estimand = "ate")
-#' c(ps_trim1[1:50], psw_obj)  # Warning: returns numeric
+#' # Refit after trimming, then compute weights
+#' trimmed <- ps_trim(ps, method = "adaptive")
+#' refitted <- ps_refit(trimmed, fit)
+#' wt_ate(refitted, .exposure = z)
 #'
 #' @export
 ps_trim <- function(
@@ -484,16 +547,27 @@ new_trimmed_ps <- function(x, ps_trim_meta = list()) {
   }
 }
 
-#' Check if object is trimmed
+#' Test whether propensity scores have been trimmed
 #'
-#' @description `is_ps_trimmed()` is an S3 generic that returns `TRUE` if its
-#'   argument represents a `ps_trim` object or `psw` object created from trimmed
-#'   propensity scores. `is_ps_trimmed()` is a question about whether or not the
-#'   propensity scores *have* been trimmed, as opposed to [is_unit_trimmed()],
-#'   which is a question about which *units* have been trimmed.
+#' @description `is_ps_trimmed()` returns `TRUE` if `x` is a `ps_trim` object
+#'   or a `psw` object created from trimmed propensity scores, and `FALSE`
+#'   otherwise. This tests whether the *object* carries trimming information, not
+#'   which individual units were trimmed; see [is_unit_trimmed()] for that.
 #'
-#' @param x An object.
+#' @param x An object to test.
 #' @return A logical scalar (`TRUE` or `FALSE`).
+#'
+#' @seealso [ps_trim()] for trimming propensity scores, [is_unit_trimmed()] to
+#'   identify which units were trimmed, [ps_trim_meta()] to retrieve full
+#'   trimming metadata.
+#'
+#' @examples
+#' ps <- c(0.05, 0.3, 0.6, 0.95)
+#' trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#'
+#' is_ps_trimmed(trimmed)
+#' is_ps_trimmed(ps)
+#'
 #' @export
 is_ps_trimmed <- function(x) {
   UseMethod("is_ps_trimmed")
@@ -514,16 +588,31 @@ is_ps_trimmed.ps_trim_matrix <- function(x) {
   TRUE
 }
 
-#' Check if units have been trimmed
+#' Identify which units were trimmed
 #'
-#' @description `is_unit_trimmed()` is an that vector of `TRUE` or `FALSE`
-#'   values, representing if the unit was trimmed. `is_unit_trimmed()` is a
-#'   question about which *units* have been trimmed, as opposed to
-#'   [is_ps_trimmed()], which is a question about whether or not the propensity
-#'   scores *have* been trimmed.
+#' @description `is_unit_trimmed()` returns a logical vector indicating which
+#'   observations were removed by trimming. This is a per-unit query, as opposed
+#'   to [is_ps_trimmed()], which tests whether the object has been trimmed at
+#'   all.
 #'
-#' @param x An object.
-#' @return A logical scalar (`TRUE` or `FALSE`).
+#' @param x A `ps_trim` object created by [ps_trim()].
+#' @return A logical vector the same length as `x`, where `TRUE` marks a
+#'   trimmed unit.
+#'
+#' @seealso [ps_trim()] for trimming propensity scores, [is_ps_trimmed()] to
+#'   test whether an object has been trimmed, [ps_trim_meta()] to retrieve full
+#'   trimming metadata.
+#'
+#' @examples
+#' ps <- c(0.05, 0.3, 0.6, 0.95)
+#' trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#'
+#' is_unit_trimmed(trimmed)
+#'
+#' # Use to subset data to retained observations
+#' kept <- !is_unit_trimmed(trimmed)
+#' ps[kept]
+#'
 #' @export
 is_unit_trimmed <- function(x) {
   UseMethod("is_unit_trimmed")
@@ -1100,38 +1189,51 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
   diff(vec_data(x), lag = lag, differences = differences, ...)
 }
 
-#' Refit the Propensity Score Model on Retained Observations
+#' Refit a Propensity Score Model on Retained Observations
 #'
-#' Takes a `ps_trim` object and the original model
-#' used to calculate the propensity score, then:
-#' 1. Retrieves data from the model (or from `.df` argument if provided)
-#' 2. Subsets rows to the non‐trimmed indices
-#' 3. Refits the model
-#' 4. Predicts new propensity scores for all rows (trimmed rows -> `NA`)
-#' 5. Returns a new `ps_trim` object with `refit = TRUE`.
+#' @description
+#' Re-estimates a propensity score model using only the observations retained
+#' after trimming. This is the recommended intermediate step between
+#' [ps_trim()] and weight calculation (e.g. [wt_ate()]):
 #'
-#' @param trimmed_ps A `ps_trim` object (same length as data, NAs for trimmed).
-#' @param model The fitted model used to get the original PS (e.g. a glm).
-#' @param .data Optional. A data frame. If `NULL`, we try to retrieve from `model`.
-#' @param ... Additional arguments passed to `update()`.
+#' **`ps_trim()` -> `ps_refit()` -> `wt_*()`**
 #'
-#' @return
-#' A new `ps_trim` object with updated propensity scores and
-#' `ps_trim_meta(x)$refit` set to `TRUE`.
+#' Trimming changes the target population by removing observations with extreme
+#' propensity scores. Refitting the model on the retained subset produces
+#' propensity scores that better reflect this population, improving both model
+#' fit and downstream weight estimation. Weight functions warn if a trimmed
+#' propensity score has not been refit.
 #'
-#' @seealso [ps_trim()], [is_refit()], [is_ps_trimmed()]
+#' @param trimmed_ps A `ps_trim` object returned by [ps_trim()].
+#' @param model The original fitted model used to estimate the propensity
+#'   scores (e.g. a [glm][stats::glm] or [multinom][nnet::multinom] object).
+#'   The model is refit via [update()][stats::update] on the retained subset.
+#' @param .data A data frame. If `NULL` (the default), the data are extracted
+#'   from `model` via [model.frame()][stats::model.frame].
+#' @param ... Additional arguments passed to [update()][stats::update].
+#'
+#' @return A `ps_trim` object with re-estimated propensity scores for retained
+#'   observations and `NA` for trimmed observations. Use [is_refit()] to
+#'   confirm refitting was applied.
+#'
+#' @seealso [ps_trim()] for the trimming step, [is_refit()] to check refit
+#'   status, [wt_ate()] and other weight functions for the next step in the
+#'   pipeline.
 #'
 #' @examples
 #' set.seed(2)
-#' n <- 30
+#' n <- 200
 #' x <- rnorm(n)
 #' z <- rbinom(n, 1, plogis(0.4 * x))
-#' fit <- glm(z ~ x, family = binomial)
-#' ps <- predict(fit, type = "response")
 #'
-#' # trim and refit
-#' refit <- ps_trim(ps, lower = .2, upper = .8) |>
-#'   ps_refit(fit)
+#' # fit a propensity score model
+#' ps_model <- glm(z ~ x, family = binomial)
+#' ps <- predict(ps_model, type = "response")
+#'
+#' # trim -> refit -> weight pipeline
+#' trimmed <- ps_trim(ps, lower = 0.1, upper = 0.9)
+#' refit <- ps_refit(trimmed, ps_model)
+#' wts <- wt_ate(refit, .exposure = z)
 #'
 #' is_refit(refit)
 #'
@@ -1214,15 +1316,32 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   )
 }
 
-#' Check if an object has been refit
+#' Check if propensity scores have been refit
 #'
-#' @description
-#' **`is_refit()`** is an S3 generic that returns `TRUE` if its argument
-#' represents a [ps_trim] object (or a weighting object) that has had the
-#' propensity model refit on the retained subset.
+#' `is_refit()` tests whether `x` is a `ps_trim` object whose propensity
+#' model has been refit on the retained (non-trimmed) observations via
+#' [ps_refit()].
 #'
-#' @param x An R object (e.g. a [ps_trim] or [psw]).
-#' @return A logical scalar (`TRUE` or `FALSE`).
+#' @param x An object to test (typically a [ps_trim] vector).
+#' @return A single `TRUE` or `FALSE`.
+#'
+#' @seealso [ps_refit()] to refit a propensity model after trimming,
+#'   [ps_trim()] to trim propensity scores.
+#'
+#' @examples
+#' set.seed(2)
+#' n <- 30
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.4 * x))
+#' fit <- glm(z ~ x, family = binomial)
+#' ps <- predict(fit, type = "response")
+#'
+#' trimmed <- ps_trim(ps, lower = 0.2, upper = 0.8)
+#' is_refit(trimmed)
+#'
+#' refit <- ps_refit(trimmed, fit)
+#' is_refit(refit)
+#'
 #' @export
 is_refit <- function(x) {
   UseMethod("is_refit")
@@ -1239,10 +1358,32 @@ is_refit.ps_trim <- function(x) {
   isTRUE(meta$refit)
 }
 
-#' @title Extract `ps_trim` metadata
-#' @description Returns the internal metadata list for a `ps_trim` object.
-#' @param x A **`ps_trim`** object.
-#' @return A named list of metadata.
+#' Extract trimming metadata from a `ps_trim` object
+#'
+#' @description `ps_trim_meta()` returns the metadata list attached to a
+#'   `ps_trim` object by [ps_trim()].
+#'
+#' @param x A `ps_trim` object.
+#' @return A named list with elements:
+#' \describe{
+#'   \item{`method`}{Character string indicating the trimming method used.}
+#'   \item{`keep_idx`}{Integer vector of retained observation indices.}
+#'   \item{`trimmed_idx`}{Integer vector of trimmed observation indices.}
+#'   \item{`lower`, `upper`}{Numeric cutoffs, when applicable.}
+#'   \item{`refit`}{Logical, `TRUE` if the model was refit via [ps_refit()].}
+#' }
+#' Additional method-specific elements (e.g. `cutoff`, `delta`, `lambda`) may
+#' also be present.
+#'
+#' @seealso [ps_trim()] for trimming propensity scores, [is_ps_trimmed()] and
+#'   [is_unit_trimmed()] for predicate queries.
+#'
+#' @examples
+#' ps <- c(0.05, 0.3, 0.6, 0.95)
+#' trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+#'
+#' ps_trim_meta(trimmed)
+#'
 #' @export
 ps_trim_meta <- function(x) {
   attr(x, "ps_trim_meta")

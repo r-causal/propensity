@@ -2,20 +2,28 @@
 % Please edit documentation in R/ps_trunc.R
 \name{is_unit_truncated}
 \alias{is_unit_truncated}
-\title{Check if units have been truncated}
+\title{Identify which units were truncated}
 \usage{
 is_unit_truncated(x)
 }
 \arguments{
-\item{x}{An object.}
+\item{x}{A \code{ps_trunc} object created by \code{\link[=ps_trunc]{ps_trunc()}}.}
 }
 \value{
-A logical vector.
+A logical vector the same length as \code{x} (or number of rows for
+matrix input). \code{TRUE} marks observations whose values were winsorized.
 }
 \description{
-\code{is_ps_truncated()} is an S3 generic that returns a vector of
-\code{TRUE} or \code{FALSE}, representing if the element has been truncated.
-\code{\link[=is_unit_truncated]{is_unit_truncated()}} is a question about which \emph{units} have been
-truncated, as opposed to \code{is_ps_truncated()}, which is a question about
-whether the propensity scores \emph{have} been truncated.
+\code{is_unit_truncated()} returns a logical vector indicating which
+observations had their propensity scores modified by truncation. Use
+\code{\link[=is_ps_truncated]{is_ps_truncated()}} to test whether an object has been truncated at all.
+}
+\examples{
+ps <- c(0.02, 0.3, 0.5, 0.7, 0.98)
+ps_t <- ps_trunc(ps, method = "ps", lower = 0.05, upper = 0.95)
+is_unit_truncated(ps_t)
+
+}
+\seealso{
+\code{\link[=ps_trunc]{ps_trunc()}}, \code{\link[=is_ps_truncated]{is_ps_truncated()}}, \code{\link[=ps_trunc_meta]{ps_trunc_meta()}}
 }

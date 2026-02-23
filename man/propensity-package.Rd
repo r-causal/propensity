@@ -6,21 +6,65 @@
 \alias{propensity-package}
 \title{propensity: A Toolkit for Calculating and Working with Propensity Scores}
 \description{
-\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
-
-A comprehensive toolkit for propensity score analysis in causal inference. Supports calculating propensity score weights for multiple causal estimands across binary, continuous, and categorical exposures. Provides methods for handling extreme propensity scores through trimming, truncation, and calibration. Includes inverse probability weighted estimators that correctly accounts for propensity score estimation uncertainty.
+propensity provides tools for propensity score analysis in causal inference.
+Calculate propensity score weights for a variety of causal estimands, handle
+extreme propensity scores through trimming, truncation, and calibration, and
+estimate causal effects with inverse probability weighting. The package
+supports binary, categorical, and continuous exposures.
 }
-\seealso{
-Useful links:
+\section{Weight functions}{
+
+Calculate propensity score weights for different causal estimands:
 \itemize{
-  \item \url{https://r-causal.github.io/propensity/}
-  \item \url{https://github.com/r-causal/propensity}
-  \item Report bugs at \url{https://github.com/r-causal/propensity/issues}
+\item \code{\link[=wt_ate]{wt_ate()}}: Average treatment effect (ATE) weights
+\item \code{\link[=wt_att]{wt_att()}}: Average treatment effect on the treated (ATT) weights
+\item \code{\link[=wt_atu]{wt_atu()}}: Average treatment effect on the untreated (ATU) weights
+(\code{wt_atc()} is an alias)
+\item \code{\link[=wt_atm]{wt_atm()}}: Average treatment effect for the evenly matchable (ATM) weights
+\item \code{\link[=wt_ato]{wt_ato()}}: Average treatment effect for the overlap population (ATO) weights
+\item \code{\link[=wt_entropy]{wt_entropy()}}: Entropy balancing weights
+\item \code{\link[=wt_cens]{wt_cens()}}: Censoring weights
+}
 }
 
+\section{Propensity score modifications}{
+
+Handle extreme propensity scores before calculating weights:
+\itemize{
+\item \code{\link[=ps_trim]{ps_trim()}}: Trim observations with extreme propensity scores
+\item \code{\link[=ps_trunc]{ps_trunc()}}: Truncate (winsorize) extreme propensity scores
+\item \code{\link[=ps_calibrate]{ps_calibrate()}}: Calibrate propensity scores to improve balance
+\item \code{\link[=ps_refit]{ps_refit()}}: Re-estimate the propensity score model after trimming
+}
+}
+
+\section{Estimation}{
+
+\itemize{
+\item \code{\link[=ipw]{ipw()}}: Inverse probability weighted estimator with variance estimation
+that accounts for propensity score estimation uncertainty
+}
+}
+
+\section{PSW class}{
+
+The \code{\link[=psw]{psw()}} class represents propensity score weights with metadata about
+the estimand and modifications applied:
+\itemize{
+\item \code{\link[=psw]{psw()}}, \code{\link[=as_psw]{as_psw()}}, \code{\link[=is_psw]{is_psw()}}: Create and test propensity score weights
+\item \code{\link[=estimand]{estimand()}}: Query the causal estimand
+\item \code{\link[=is_stabilized]{is_stabilized()}}: Check if weights are stabilized
+}
+}
+
+\seealso{
+\itemize{
+\item \code{vignette("propensity")} for a getting started guide
+\item The \href{https://r-causal.github.io/propensity/}{package website} for
+full documentation
+}
 }
 \author{
 \strong{Maintainer}: Malcolm Barrett \email{malcolmbarrett@gmail.com} (\href{https://orcid.org/0000-0003-0299-5825}{ORCID}) [copyright holder]
 
 }
-\keyword{internal}

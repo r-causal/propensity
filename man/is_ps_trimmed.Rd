@@ -2,20 +2,32 @@
 % Please edit documentation in R/ps_trim.R
 \name{is_ps_trimmed}
 \alias{is_ps_trimmed}
-\title{Check if object is trimmed}
+\title{Test whether propensity scores have been trimmed}
 \usage{
 is_ps_trimmed(x)
 }
 \arguments{
-\item{x}{An object.}
+\item{x}{An object to test.}
 }
 \value{
 A logical scalar (\code{TRUE} or \code{FALSE}).
 }
 \description{
-\code{is_ps_trimmed()} is an S3 generic that returns \code{TRUE} if its
-argument represents a \code{ps_trim} object or \code{psw} object created from trimmed
-propensity scores. \code{is_ps_trimmed()} is a question about whether or not the
-propensity scores \emph{have} been trimmed, as opposed to \code{\link[=is_unit_trimmed]{is_unit_trimmed()}},
-which is a question about which \emph{units} have been trimmed.
+\code{is_ps_trimmed()} returns \code{TRUE} if \code{x} is a \code{ps_trim} object
+or a \code{psw} object created from trimmed propensity scores, and \code{FALSE}
+otherwise. This tests whether the \emph{object} carries trimming information, not
+which individual units were trimmed; see \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} for that.
+}
+\examples{
+ps <- c(0.05, 0.3, 0.6, 0.95)
+trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+
+is_ps_trimmed(trimmed)
+is_ps_trimmed(ps)
+
+}
+\seealso{
+\code{\link[=ps_trim]{ps_trim()}} for trimming propensity scores, \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} to
+identify which units were trimmed, \code{\link[=ps_trim_meta]{ps_trim_meta()}} to retrieve full
+trimming metadata.
 }

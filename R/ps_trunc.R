@@ -1,90 +1,88 @@
 #' Truncate (Winsorize) Propensity Scores
 #'
-#' **`ps_trunc()`** sets out‐of‐range propensity scores to fixed bounding values
-#' (a form of *winsorizing*). This is an alternative to [ps_trim()], which removes
-#' (sets `NA`) instead of bounding and is then refit with [ps_refit()]
+#' `ps_trunc()` bounds extreme propensity scores to fixed limits, replacing
+#' out-of-range values with the boundary value (a form of *winsorizing*). The
+#' result is a vector or matrix of the same length and dimensions as `ps`, with
+#' no observations removed. This contrasts with [ps_trim()], which sets extreme
+#' values to `NA` (effectively removing those observations from analysis).
 #'
-#' @param ps The propensity score, either a numeric vector between 0 and 1 for
-#'   binary exposures, or a matrix/data.frame where each column represents
-#'   propensity scores for each level of a categorical exposure.
-#' @param .exposure For method "cr", a binary exposure vector. For categorical
-#'   exposures, must be a factor or character vector.
-#' @param method One of `"ps"`, `"pctl"`, or `"cr"`.
-#'   * `"ps"`: directly cut on `[lower, upper]` of `ps`. For categorical, uses
-#'     symmetric truncation with `lower` as the threshold.
-#'   * `"pctl"`: use quantiles of `ps` as bounding values. For categorical,
-#'     calculates quantiles across all propensity score values.
-#'   * `"cr"`: the common range of `ps` given `.exposure`, bounding
-#'     `[min(ps[treated]), max(ps[untreated])]` (binary only)
-#' @param lower,upper Numeric or quantile bounds. If `NULL`, defaults vary by method.
-#'   For categorical exposures with method `"ps"`, `lower` represents the
-#'   truncation threshold (delta).
+#' @param ps A numeric vector of propensity scores between 0 and 1 (binary
+#'   exposures), or a matrix/data.frame where each column contains propensity
+#'   scores for one level of a categorical exposure.
+#' @param .exposure An exposure vector. Required for method `"cr"` (binary
+#'   exposure vector) and for categorical exposures (factor or character vector)
+#'   with any method.
+#' @param method One of `"ps"`, `"pctl"`, or `"cr"`:
+#'   * `"ps"` (default): Truncate directly on propensity score values. Values
+#'     outside `[lower, upper]` are set to the nearest bound. For categorical
+#'     exposures, applies symmetric truncation using `lower` as the threshold
+#'     (delta) and renormalizes rows to sum to 1.
+#'   * `"pctl"`: Truncate at quantiles of the propensity score distribution.
+#'     The `lower` and `upper` arguments specify quantile probabilities. For
+#'     categorical exposures, quantiles are computed across all columns.
+#'   * `"cr"`: Truncate to the common range of propensity scores across
+#'     exposure groups (binary exposures only). Bounds are
+#'     `[min(ps[focal]), max(ps[reference])]`. Requires `.exposure`.
+#' @param lower,upper Bounds for truncation. Interpretation depends on `method`:
+#'   * `method = "ps"`: Propensity score values (defaults: 0.1 and 0.9). For
+#'     categorical exposures, `lower` is the truncation threshold delta
+#'     (default: 0.01); `upper` is ignored.
+#'   * `method = "pctl"`: Quantile probabilities (defaults: 0.05 and 0.95;
+#'     categorical defaults: 0.01 and 0.99).
+#'   * `method = "cr"`: Ignored; bounds are determined by the data.
 #' @inheritParams wt_ate
-#' @param ... Additional arguments passed to methods
+#' @param ... Additional arguments passed to methods.
 #'
 #' @details
-#' For binary exposures with each \eqn{ps[i]}:
-#'  - If \eqn{ps[i] < lower\_bound}, we set \eqn{ps[i] = lower\_bound}.
-#'  - If \eqn{ps[i] > upper\_bound}, we set \eqn{ps[i] = upper\_bound}.
+#' Unlike [ps_trim()], truncation preserves all observations. No `NA` values
+#' are introduced; out-of-range scores are replaced with the boundary value.
 #'
-#' For categorical exposures:
-#'  - Each value below the threshold is set to the threshold
-#'  - Rows are renormalized to sum to 1
+#' For **binary exposures**, each propensity score \eqn{e_i} is bounded:
 #'
-#' This approach is often called *winsorizing*.
+#'  - If \eqn{e_i < l}, set \eqn{e_i = l} (the lower bound).
 #'
-#' **Arithmetic behavior**: Like `ps_trim`, arithmetic operations on `ps_trunc`
-#' objects return numeric vectors. The reasoning is the same - transformed
-#' propensity scores (e.g., weights) are no longer propensity scores.
+#'  - If \eqn{e_i > u}, set \eqn{e_i = u} (the upper bound).
 #'
-#' **No NA values**: Unlike `ps_trim`, truncation doesn't create `NA` values.
-#' Out-of-range values are set to the boundaries, so all values remain finite
-#' and valid for calculations.
+#' For **categorical exposures**, values below the threshold are set to the
+#' threshold and each row is renormalized to sum to 1.
 #'
-#' **Metadata tracking**: The `truncated_idx` tracks which positions had their
-#' values modified (winsorized to boundaries):
-#' - Subsetting with `[` updates indices to new positions
-#' - `sort()` reorders data and updates indices accordingly
-#' - Operations preserve finite values (no `NA` handling needed)
+#' **Arithmetic behavior**: Arithmetic operations on `ps_trunc` objects return
+#' plain numeric vectors. Once propensity scores are transformed (e.g., into
+#' weights), the result is no longer a propensity score.
 #'
-#' **Boundary detection**: Values exactly at the boundaries (after truncation)
-#' may indicate truncation, but aren't necessarily truncated - they could have
-#' been at the boundary originally.
+#' **Combining behavior**: Combining `ps_trunc` objects with `c()` requires
+#' matching truncation parameters. Mismatched parameters produce a warning and
+#' return a plain numeric vector.
 #'
-#' **Combining behavior**: When combining `ps_trunc` objects with `c()`,
-#' truncation parameters must match. Mismatched parameters trigger a warning
-#' and return a numeric vector.
+#' @return A `ps_trunc` object (a numeric vector for binary exposures, or a
+#'   matrix for categorical exposures). Use [ps_trunc_meta()] to inspect
+#'   metadata including `method`, `lower_bound`, `upper_bound`, and
+#'   `truncated_idx` (positions of modified values).
 #'
-#' @return A **`ps_trunc`** object (numeric vector or matrix). It has an attribute
-#'   `ps_trunc_meta` storing fields like `method`, `lower_bound`, and
-#'   `upper_bound`.
-#' @seealso [ps_trim()] and [ps_refit()] for removing extreme values vs. bounding
+#' @seealso [ps_trim()] for removing (rather than bounding) extreme values,
+#'   [ps_refit()] for refitting the propensity model after trimming,
+#'   [is_ps_truncated()], [is_unit_truncated()], [ps_trunc_meta()]
 #'
 #' @examples
 #' set.seed(2)
-#' n <- 30
+#' n <- 200
 #' x <- rnorm(n)
-#' z <- rbinom(n, 1, plogis(0.4 * x))
+#' z <- rbinom(n, 1, plogis(1.2 * x))
 #' fit <- glm(z ~ x, family = binomial)
 #' ps <- predict(fit, type = "response")
 #'
-#' # truncate just the 99th percentile
-#' ps_trunc(ps, method = "pctl", lower = 0, upper = .99)
+#' # Truncate to [0.1, 0.9]
+#' ps_t <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+#' ps_t
 #'
-#' # Coercion behavior with ps_trunc objects
-#' ps_trunc1 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
-#' ps_trunc2 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+#' # Truncate at the 1st and 99th percentiles
+#' ps_trunc(ps, method = "pctl", lower = 0.01, upper = 0.99)
 #'
-#' # Compatible objects combine silently
-#' c(ps_trunc1[1:15], ps_trunc2[16:30])  # Returns ps_trunc object
+#' # Use truncated scores to calculate weights
+#' wt_ate(ps_t, .exposure = z)
 #'
-#' # Different truncation parameters trigger warning
-#' ps_trunc3 <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
-#' c(ps_trunc1[1:15], ps_trunc3[16:30])  # Warning: returns numeric
-#'
-#' # Mixing with other propensity classes warns
-#' ps_trim_obj <- ps_trim(ps[1:15], method = "ps", lower = 0.1)
-#' c(ps_trunc1[1:15], ps_trim_obj)  # Warning: returns numeric
+#' # Inspect which observations were truncated
+#' is_unit_truncated(ps_t)
 #'
 #' @export
 ps_trunc <- function(
@@ -393,26 +391,48 @@ new_ps_trunc <- function(x, meta) {
   }
 }
 
-#' @title Extract `ps_trunc` metadata
-#' @description Returns the internal metadata list for a `ps_trunc` object.
-#' @param x A **`ps_trunc`** object.
-#' @return A named list of metadata.
+#' Extract truncation metadata from a `ps_trunc` object
+#'
+#' @description Returns the metadata list attached to a [`ps_trunc`][ps_trunc()]
+#'   object. The list includes fields such as `method`, `lower_bound`,
+#'   `upper_bound`, and `truncated_idx`.
+#'
+#' @param x A `ps_trunc` object created by [ps_trunc()].
+#' @return A named list with truncation metadata, including:
+#'   * `method` -- the truncation method used (`"ps"`, `"pctl"`, or `"cr"`)
+#'   * `lower_bound`, `upper_bound` -- the applied bounds
+#'   * `truncated_idx` -- integer positions of values that were winsorized
+#'
+#' @seealso [ps_trunc()], [is_ps_truncated()], [is_unit_truncated()]
+#'
+#' @examples
+#' ps <- c(0.02, 0.3, 0.5, 0.7, 0.98)
+#' ps_t <- ps_trunc(ps, method = "ps", lower = 0.05, upper = 0.95)
+#' ps_trunc_meta(ps_t)
+#'
 #' @export
 ps_trunc_meta <- function(x) {
   attr(x, "ps_trunc_meta")
 }
 
-#' Check if object is truncated
+#' Test whether propensity scores have been truncated
 #'
-#' @description `is_ps_truncated()` is an S3 generic that returns `TRUE` if its
-#' argument represents a `ps_trunc` object or `psw` object created from
-#' truncated propensity scores. `is_ps_truncated()` is a question about whether
-#' the propensity scores *have* been truncated, as opposed to
-#' [is_unit_truncated()], which is a question about which *units* have been
-#' truncated.
+#' @description `is_ps_truncated()` returns `TRUE` if `x` is a `ps_trunc`
+#'   object or a `psw` object derived from truncated propensity scores.
+#'   Use [is_unit_truncated()] to find out *which* observations were modified.
 #'
 #' @param x An object.
-#' @return A logical scalar (`TRUE` or `FALSE`).
+#' @return A single `TRUE` or `FALSE`.
+#'
+#' @seealso [ps_trunc()], [is_unit_truncated()], [ps_trunc_meta()]
+#'
+#' @examples
+#' ps <- c(0.02, 0.3, 0.5, 0.7, 0.98)
+#' is_ps_truncated(ps)
+#'
+#' ps_t <- ps_trunc(ps, method = "ps", lower = 0.05, upper = 0.95)
+#' is_ps_truncated(ps_t)
+#'
 #' @export
 is_ps_truncated <- function(x) {
   UseMethod("is_ps_truncated")
@@ -433,16 +453,23 @@ is_ps_truncated.ps_trunc_matrix <- function(x) {
   TRUE
 }
 
-#' Check if units have been truncated
+#' Identify which units were truncated
 #'
-#' @description `is_ps_truncated()` is an S3 generic that returns a vector of
-#'   `TRUE` or `FALSE`, representing if the element has been truncated.
-#'   [is_unit_truncated()] is a question about which *units* have been
-#'   truncated, as opposed to `is_ps_truncated()`, which is a question about
-#'   whether the propensity scores *have* been truncated.
+#' @description `is_unit_truncated()` returns a logical vector indicating which
+#'   observations had their propensity scores modified by truncation. Use
+#'   [is_ps_truncated()] to test whether an object has been truncated at all.
 #'
-#' @param x An object.
-#' @return A logical vector.
+#' @param x A `ps_trunc` object created by [ps_trunc()].
+#' @return A logical vector the same length as `x` (or number of rows for
+#'   matrix input). `TRUE` marks observations whose values were winsorized.
+#'
+#' @seealso [ps_trunc()], [is_ps_truncated()], [ps_trunc_meta()]
+#'
+#' @examples
+#' ps <- c(0.02, 0.3, 0.5, 0.7, 0.98)
+#' ps_t <- ps_trunc(ps, method = "ps", lower = 0.05, upper = 0.95)
+#' is_unit_truncated(ps_t)
+#'
 #' @export
 is_unit_truncated <- function(x) {
   UseMethod("is_unit_truncated")

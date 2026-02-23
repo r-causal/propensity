@@ -2,16 +2,32 @@
 % Please edit documentation in R/ps_trunc.R
 \name{ps_trunc_meta}
 \alias{ps_trunc_meta}
-\title{Extract \code{ps_trunc} metadata}
+\title{Extract truncation metadata from a \code{ps_trunc} object}
 \usage{
 ps_trunc_meta(x)
 }
 \arguments{
-\item{x}{A \strong{\code{ps_trunc}} object.}
+\item{x}{A \code{ps_trunc} object created by \code{\link[=ps_trunc]{ps_trunc()}}.}
 }
 \value{
-A named list of metadata.
+A named list with truncation metadata, including:
+\itemize{
+\item \code{method} -- the truncation method used (\code{"ps"}, \code{"pctl"}, or \code{"cr"})
+\item \code{lower_bound}, \code{upper_bound} -- the applied bounds
+\item \code{truncated_idx} -- integer positions of values that were winsorized
+}
 }
 \description{
-Returns the internal metadata list for a \code{ps_trunc} object.
+Returns the metadata list attached to a \code{\link[=ps_trunc]{ps_trunc}}
+object. The list includes fields such as \code{method}, \code{lower_bound},
+\code{upper_bound}, and \code{truncated_idx}.
+}
+\examples{
+ps <- c(0.02, 0.3, 0.5, 0.7, 0.98)
+ps_t <- ps_trunc(ps, method = "ps", lower = 0.05, upper = 0.95)
+ps_trunc_meta(ps_t)
+
+}
+\seealso{
+\code{\link[=ps_trunc]{ps_trunc()}}, \code{\link[=is_ps_truncated]{is_ps_truncated()}}, \code{\link[=is_unit_truncated]{is_unit_truncated()}}
 }

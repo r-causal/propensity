@@ -2,17 +2,30 @@
 % Please edit documentation in R/ps_calibration.R
 \name{is_ps_calibrated}
 \alias{is_ps_calibrated}
-\title{Check if object is calibrated}
+\title{Check if propensity scores are calibrated}
 \usage{
 is_ps_calibrated(x)
 }
 \arguments{
-\item{x}{An R object.}
+\item{x}{An object to test.}
 }
 \value{
-A logical scalar (\code{TRUE} or \code{FALSE}).
+A single \code{TRUE} or \code{FALSE}.
 }
 \description{
-\code{is_ps_calibrated()} is an S3 generic that returns \code{TRUE} if its argument represents
-calibrated propensity scores.
+\code{is_ps_calibrated()} tests whether \code{x} is a calibrated propensity score
+object (class \code{ps_calib}) or a \code{psw} object derived from calibrated scores.
+}
+\examples{
+ps <- runif(100)
+exposure <- rbinom(100, 1, ps)
+
+is_ps_calibrated(ps)
+
+calibrated <- ps_calibrate(ps, exposure)
+is_ps_calibrated(calibrated)
+
+}
+\seealso{
+\code{\link[=ps_calibrate]{ps_calibrate()}} to calibrate propensity scores.
 }

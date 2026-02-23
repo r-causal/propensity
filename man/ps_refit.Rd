@@ -2,49 +2,60 @@
 % Please edit documentation in R/ps_trim.R
 \name{ps_refit}
 \alias{ps_refit}
-\title{Refit the Propensity Score Model on Retained Observations}
+\title{Refit a Propensity Score Model on Retained Observations}
 \usage{
 ps_refit(trimmed_ps, model, .data = NULL, ...)
 }
 \arguments{
-\item{trimmed_ps}{A \code{ps_trim} object (same length as data, NAs for trimmed).}
+\item{trimmed_ps}{A \code{ps_trim} object returned by \code{\link[=ps_trim]{ps_trim()}}.}
 
-\item{model}{The fitted model used to get the original PS (e.g. a glm).}
+\item{model}{The original fitted model used to estimate the propensity
+scores (e.g. a \link[stats:glm]{glm} or \link[nnet:multinom]{multinom} object).
+The model is refit via \link[stats:update]{update()} on the retained subset.}
 
-\item{.data}{Optional. A data frame. If \code{NULL}, we try to retrieve from \code{model}.}
+\item{.data}{A data frame. If \code{NULL} (the default), the data are extracted
+from \code{model} via \link[stats:model.frame]{model.frame()}.}
 
-\item{...}{Additional arguments passed to \code{update()}.}
+\item{...}{Additional arguments passed to \link[stats:update]{update()}.}
 }
 \value{
-A new \code{ps_trim} object with updated propensity scores and
-\code{ps_trim_meta(x)$refit} set to \code{TRUE}.
+A \code{ps_trim} object with re-estimated propensity scores for retained
+observations and \code{NA} for trimmed observations. Use \code{\link[=is_refit]{is_refit()}} to
+confirm refitting was applied.
 }
 \description{
-Takes a \code{ps_trim} object and the original model
-used to calculate the propensity score, then:
-\enumerate{
-\item Retrieves data from the model (or from \code{.df} argument if provided)
-\item Subsets rows to the non‐trimmed indices
-\item Refits the model
-\item Predicts new propensity scores for all rows (trimmed rows -> \code{NA})
-\item Returns a new \code{ps_trim} object with \code{refit = TRUE}.
-}
+Re-estimates a propensity score model using only the observations retained
+after trimming. This is the recommended intermediate step between
+\code{\link[=ps_trim]{ps_trim()}} and weight calculation (e.g. \code{\link[=wt_ate]{wt_ate()}}):
+
+\strong{\code{ps_trim()} -> \code{ps_refit()} -> \verb{wt_*()}}
+
+Trimming changes the target population by removing observations with extreme
+propensity scores. Refitting the model on the retained subset produces
+propensity scores that better reflect this population, improving both model
+fit and downstream weight estimation. Weight functions warn if a trimmed
+propensity score has not been refit.
 }
 \examples{
 set.seed(2)
-n <- 30
+n <- 200
 x <- rnorm(n)
 z <- rbinom(n, 1, plogis(0.4 * x))
-fit <- glm(z ~ x, family = binomial)
-ps <- predict(fit, type = "response")
 
-# trim and refit
-refit <- ps_trim(ps, lower = .2, upper = .8) |>
-  ps_refit(fit)
+# fit a propensity score model
+ps_model <- glm(z ~ x, family = binomial)
+ps <- predict(ps_model, type = "response")
+
+# trim -> refit -> weight pipeline
+trimmed <- ps_trim(ps, lower = 0.1, upper = 0.9)
+refit <- ps_refit(trimmed, ps_model)
+wts <- wt_ate(refit, .exposure = z)
 
 is_refit(refit)
 
 }
 \seealso{
-\code{\link[=ps_trim]{ps_trim()}}, \code{\link[=is_refit]{is_refit()}}, \code{\link[=is_ps_trimmed]{is_ps_trimmed()}}
+\code{\link[=ps_trim]{ps_trim()}} for the trimming step, \code{\link[=is_refit]{is_refit()}} to check refit
+status, \code{\link[=wt_ate]{wt_ate()}} and other weight functions for the next step in the
+pipeline.
 }

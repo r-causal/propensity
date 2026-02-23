@@ -9,7 +9,7 @@
 \alias{as_psw}
 \alias{estimand}
 \alias{estimand<-}
-\title{Create and Manipulate \code{psw} Objects}
+\title{Propensity Score Weight Vectors}
 \usage{
 new_psw(
   x = double(),
@@ -43,89 +43,111 @@ estimand(wt)
 estimand(wt) <- value
 }
 \arguments{
-\item{x}{A numeric vector (default: \code{double()}).}
+\item{x}{For \code{psw()} and \code{new_psw()}: a numeric vector of weights
+(default: \code{double()}). For \code{is_psw()}, \code{is_causal_wt()}, and \code{as_psw()}:
+an object to test or coerce.}
 
-\item{estimand}{A character string representing the estimand (e.g., "ate",
-"att", "ato"). Default is \code{NULL}.}
+\item{estimand}{A character string identifying the target estimand (e.g.,
+\code{"ate"}, \code{"att"}, \code{"ato"}). Defaults to \code{NULL}.}
 
-\item{stabilized}{A logical \code{TRUE}}
+\item{stabilized}{Logical. Were the weights stabilized? Defaults to \code{FALSE}.}
 
-\item{trimmed}{Logical, whether these weights came from a trimmed PS.}
+\item{trimmed}{Logical. Were the weights derived from trimmed propensity
+scores? Defaults to \code{FALSE}.}
 
-\item{truncated}{Logical, whether these weights came from a truncated PS.}
+\item{truncated}{Logical. Were the weights derived from truncated propensity
+scores? Defaults to \code{FALSE}.}
 
-\item{calibrated}{Logical, whether these weights came from a calibrated PS.}
+\item{calibrated}{Logical. Were the weights derived from calibrated
+propensity scores? Defaults to \code{FALSE}.}
 
-\item{...}{Additional attributes to track in the weights.}
+\item{...}{Additional attributes stored on the object (developer use only).}
 
-\item{wt}{An object to check or convert.}
+\item{wt}{A \code{psw} or \code{causal_wts} object.}
 
-\item{value}{The value to add to the attribute.}
+\item{value}{A character string: the new estimand to assign.}
 }
 \value{
 \itemize{
-\item \code{new_psw()}: A \code{psw} object.
-\item \code{psw()}: A \code{psw} object.
-\item \code{is_psw()}: \code{TRUE} if the object is a \code{psw}, otherwise \code{FALSE}.
-\item \code{as_psw()}: A \code{psw} object.
-\item \code{estimand()}: The \code{estimand} attribute of a \code{psw} object.
-\item \code{is_stabilized()}: The \code{stabilized} attribute of a \code{psw} object.
+\item \code{new_psw()}, \code{psw()}, \code{as_psw()}: A \code{psw} vector.
+\item \code{is_psw()}, \code{is_causal_wt()}, \code{is_stabilized()}: A single logical value.
+\item \code{estimand()}: A character string, or \code{NULL} if no estimand is set.
+\item \verb{estimand<-}: The modified \code{psw} object (called for its side effect).
 }
 }
 \description{
-Functions to create and manipulate \code{psw} objects, which are specialized
-vectors for propensity score weights with optional \code{estimand} attributes.
-Most users should use \code{\link[=wt_ate]{wt_ate()}} and friends, but these functions can help
-extend the functionality of \code{psw} objects.
+\code{psw} objects are numeric vectors that carry metadata about propensity score
+weights, including the target estimand and whether the underlying propensity
+scores were trimmed, truncated, or calibrated.
+
+Most users will encounter \code{psw} objects as return values from \code{\link[=wt_ate]{wt_ate()}} and
+related weight functions. These constructor and helper functions are useful
+for inspecting weight objects or for package developers extending propensity.
 }
 \details{
-The \code{psw} class is a vctrs-based S3 class that represents propensity score
-weights. It extends numeric vectors with additional metadata tracking the
-estimand type, stabilization status, and source transformations.
-
-\strong{Arithmetic behavior}: Unlike \code{ps_trim} and \code{ps_trunc} objects, arithmetic
-operations on \code{psw} objects preserve the class and attributes. This allows
-weight manipulations like normalization (\code{weights / sum(weights)}) while
-maintaining metadata.
-
-\strong{Combining behavior}: When combining \code{psw} objects with \code{c()}, the class
-is preserved only if all metadata matches. Mismatched metadata triggers a
-warning and returns a numeric vector.
-
-\strong{Base R compatibility}: Most base R operations work seamlessly:
+\subsection{Constructors}{
 \itemize{
-\item Subsetting with \code{[} preserves class and attributes
-\item Summary functions (\code{sum()}, \code{mean()}, etc.) return numeric values
-\item Comparison operators return logical vectors
-\item Works in data frames and with tidyverse functions
+\item \code{psw()} is the \strong{user-facing} constructor. It coerces \code{x} to double and
+validates inputs before creating the object.
+\item \code{new_psw()} is the \strong{low-level} constructor intended for developers. It
+assumes \code{x} is already a double vector and performs minimal validation.
+\item \code{as_psw()} coerces an existing numeric vector to a \code{psw} object.
+}
+}
+
+\subsection{Queries}{
+\itemize{
+\item \code{is_psw()} tests whether an object is a \code{psw} vector.
+\item \code{is_causal_wt()} tests whether an object inherits from the broader
+\code{causal_wts} class (which includes \code{psw} objects).
+\item \code{estimand()} and \verb{estimand<-} get and set the estimand attribute.
+\item \code{is_stabilized()} returns \code{TRUE} if the weights are stabilized.
+}
+}
+
+\subsection{Arithmetic and combining}{
+
+Arithmetic operations on \code{psw} objects preserve the class and attributes,
+so operations like normalization (\code{weights / sum(weights)}) retain metadata.
+Combining \code{psw} objects with \code{\link[=c]{c()}} preserves the class only when all
+metadata matches; mismatched metadata produces a warning and falls back to a
+plain numeric vector.
+
+Subsetting with \code{[} preserves class and attributes. Summary functions
+(\code{\link[=sum]{sum()}}, \code{\link[=mean]{mean()}}, etc.) return plain numeric values.
 }
 }
 \examples{
-psw_weights <- new_psw(c(0.1, 0.2, 0.3), estimand = "ate")
-is_psw(psw_weights)
-estimand(psw_weights)
+# Create psw objects directly
+w <- psw(c(1.2, 0.8, 1.5), estimand = "ate")
+w
 
-psw_helper <- psw(c(0.5, 0.7), estimand = "att")
-as_psw(c(0.1, 0.2), estimand = "ato")
+# Query metadata
+is_psw(w)
+estimand(w)
+is_stabilized(w)
 
-# Coercion behavior - compatible objects combine silently
-x <- psw(c(0.5, 0.7), estimand = "ate")
-y <- psw(c(0.3, 0.8), estimand = "ate")
-c(x, y)  # Returns psw object
+# Coerce a plain numeric vector
+as_psw(c(1.0, 2.0), estimand = "att")
 
-# Incompatible metadata triggers warning and returns numeric
-x <- psw(c(0.5, 0.7), estimand = "ate")
-y <- psw(c(0.3, 0.8), estimand = "att")
-c(x, y)  # Warning: returns numeric
+# Arithmetic preserves the psw class
+w / sum(w)
 
-# Works with tidyr::pivot_longer for plotting
-if (requireNamespace("tidyr", quietly = TRUE)) {
-  df <- data.frame(
-    id = 1:4,
-    ate_wts = psw(c(0.5, 0.7, 0.3, 0.8), estimand = "ate"),
-    att_wts = psw(c(0.4, 0.6, 0.2, 0.9), estimand = "att")
-  )
-  # This will warn but succeed, returning numeric in the pivoted column
-  tidyr::pivot_longer(df, cols = c(ate_wts, att_wts))
+# Combining: compatible metadata is preserved
+x <- psw(c(1.2, 0.8), estimand = "ate")
+y <- psw(c(1.1, 0.9), estimand = "ate")
+c(x, y)
+
+# Combining: incompatible metadata warns and returns numeric
+x <- psw(c(1.2, 0.8), estimand = "ate")
+y <- psw(c(1.1, 0.9), estimand = "att")
+c(x, y)
+
 }
+\seealso{
+\code{\link[=wt_ate]{wt_ate()}}, \code{\link[=wt_att]{wt_att()}}, \code{\link[=wt_atu]{wt_atu()}}, \code{\link[=wt_atm]{wt_atm()}}, \code{\link[=wt_ato]{wt_ato()}} for
+calculating propensity score weights (which return \code{psw} objects).
+
+\code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}}, and \code{\link[=ps_calibrate]{ps_calibrate()}} for modifying propensity
+scores before weight calculation.
 }

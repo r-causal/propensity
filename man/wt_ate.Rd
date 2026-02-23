@@ -16,7 +16,7 @@
 \alias{wt_atc}
 \alias{wt_cens}
 \alias{wt_cens.data.frame}
-\title{Calculate Propensity Score Weights for Causal Inference}
+\title{Calculate propensity score weights}
 \usage{
 wt_ate(
   .propensity,
@@ -203,315 +203,269 @@ wt_cens(
 )
 }
 \arguments{
-\item{.propensity}{Either a numeric vector of predicted probabilities, a
-\code{data.frame} where each column corresponds to a level of the exposure,
-or a fitted GLM object. For data frames, the second column is used by
-default for binary exposures unless specified otherwise with
-\code{.propensity_col}. For GLM objects, fitted values are extracted
-automatically.}
+\item{.propensity}{Propensity scores in one of several forms:
+\itemize{
+\item A \strong{numeric vector} of predicted probabilities (binary/continuous).
+\item A \strong{data frame} or matrix with one column per exposure level
+(categorical), or two columns for binary (see \code{.propensity_col}).
+\item A fitted \strong{\code{glm}} object -- fitted values are extracted automatically.
+\item A modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
+\code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
+}}
 
-\item{.exposure}{The exposure variable. For binary exposures, a vector of 0s
-and 1s; for continuous exposures, a numeric vector. When \code{.propensity} is
-a GLM object, this argument is optional and will be extracted from the
-model if not provided.}
+\item{.exposure}{The exposure (treatment) variable. For binary exposures, a
+numeric 0/1 vector, logical, or two-level factor. For categorical
+exposures, a factor or character vector. For continuous exposures, a
+numeric vector. Optional when \code{.propensity} is a \code{glm} object (extracted
+from the model).}
 
-\item{.sigma}{For continuous exposures, a numeric vector of standard errors
-used with \code{dnorm()}. For example, this can be derived from the influence
-measures of a model (e.g., \code{influence(model)$sigma}).}
+\item{.sigma}{Numeric vector of observation-level standard deviations for
+continuous exposures (e.g., \code{influence(model)$sigma}). Extracted
+automatically when \code{.propensity} is a \code{glm} object.}
 
-\item{exposure_type}{Character string specifying the type of exposure.
-Options are \code{"auto"}, \code{"binary"}, \code{"categorical"}, and \code{"continuous"}.
-Defaults to \code{"auto"}, which detects the type automatically.}
+\item{exposure_type}{Type of exposure: \code{"auto"} (default), \code{"binary"},
+\code{"categorical"}, or \code{"continuous"}. \code{"auto"} detects the type from
+\code{.exposure}.}
 
-\item{.focal_level}{For binary exposures, the value representing the focal group
-(typically the treatment group). For categorical exposures with ATT or ATU estimands,
-specifies the focal category. Must be one of the levels of the exposure variable.
+\item{.focal_level}{The value of \code{.exposure} representing the focal
+(treated) group. For binary exposures, defaults to the higher value.
 Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 
-\item{.reference_level}{For binary exposures, the value representing the reference group
-(typically the control group). If not provided, it is automatically detected.}
+\item{.reference_level}{The value of \code{.exposure} representing the reference
+(control) group. Automatically detected if not supplied.}
 
-\item{stabilize}{Logical indicating whether to stabilize the weights. For ATE
-weights, stabilization multiplies the weight by either the mean of
-\code{.exposure} or the supplied \code{stabilization_score}. Note: stabilization is only
-supported for ATE and continuous exposures.}
+\item{stabilize}{If \code{TRUE}, multiply weights by an estimate of the marginal
+treatment probability (binary) or density (continuous). Only supported by
+\code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in Details.}
 
-\item{stabilization_score}{Optional numeric value for stabilizing the weights
-(e.g., a predicted value from a regression model without predictors). Only
-used when \code{stabilize} is \code{TRUE}.}
+\item{stabilization_score}{Optional numeric value to use as the
+stabilization multiplier instead of the default (the marginal mean of
+\code{.exposure}). Ignored when \code{stabilize = FALSE}.}
 
-\item{...}{Reserved for future expansion. Not currently used.}
+\item{...}{These dots are for future extensions and must be empty.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 
-\item{.propensity_col}{With a binary exposure, when \code{.propensity} is a data frame, specifies which
-column to use for propensity scores. Can be a column name (quoted or
-unquoted) or a numeric index. Defaults to the second column if available,
-otherwise the first. For categorical exposures, the entire data frame is
-used as a matrix of propensity scores.}
+\item{.propensity_col}{Column to use when \code{.propensity} is a data frame
+with a binary exposure. Accepts a column name (quoted or unquoted) or
+numeric index. Defaults to the second column. Ignored for categorical
+exposures, where all columns are used.}
 }
 \value{
-A \code{psw} object (a numeric vector) with additional attributes:
+A \code{\link{psw}} vector (a double vector with class \code{psw}) carrying
+these attributes:
 \itemize{
-\item \strong{estimand}: A description of the estimand (e.g., "ate", "att").
-\item \strong{stabilized}: A logical flag indicating if stabilization was applied.
-\item \strong{trimmed}: A logical flag indicating if the weights are based on trimmed propensity scores.
-\item \strong{truncated}: A logical flag indicating if the weights are based on truncated propensity scores.
+\item \code{estimand}: character, e.g. \code{"ate"}, \code{"att"}, \code{"uncensored"}.
+\item \code{stabilized}: logical, whether stabilization was applied.
+\item \code{trimmed}: logical, whether the propensity scores were trimmed.
+\item \code{truncated}: logical, whether the propensity scores were truncated.
+\item \code{calibrated}: logical, whether the propensity scores were calibrated.
 }
 }
 \description{
-This family of functions computes propensity score weights for
-various causal estimands:
+Compute inverse probability weights for causal inference under different
+estimands. Each function targets a different population:
 \itemize{
-\item \strong{ATE} (Average Treatment Effect)
-\item \strong{ATT} (Average Treatment Effect on the Treated)
-\item \strong{ATU} (Average Treatment Effect on the Untreated, sometimes called
-the \strong{ATC}, where the "C" stands for "control"). \code{wt_atc()} is provided
-as an alias for \code{wt_atu()}
-\item \strong{ATM} (Average Treatment Effect for the Evenly Matchable)
-\item \strong{ATO} (Average Treatment Effect for the Overlap population)
-\item \strong{Entropy} (Average Treatment Effect for the Entropy-weighted population)
-\item \strong{Censoring weights} can be calculated using \code{wt_cens()}, which uses
-the same formula as ATE weights but with estimand "uncensored". These
-are useful for handling censoring in survival analysis
-
-The propensity score can be provided as a numeric vector of predicted
-probabilities, as a \code{data.frame} where each column represents the
-predicted probability for a level of the exposure, or as a fitted
-GLM object. They can also be propensity score objects created by
-\code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_trunc]{ps_trunc()}}
-
-The returned weights are encapsulated in a \code{psw} object, which is a numeric
-vector with additional attributes that record the estimand, and whether the
-weights have been stabilized, trimmed, or truncated.
+\item \code{wt_ate()}: \strong{Average Treatment Effect} -- the full population.
+\item \code{wt_att()}: \strong{Average Treatment Effect on the Treated} -- the treated
+(focal) group.
+\item \code{wt_atu()}: \strong{Average Treatment Effect on the Untreated} -- the
+untreated (reference) group. \code{wt_atc()} is an alias.
+\item \code{wt_atm()}: \strong{Average Treatment Effect for the Evenly Matchable} --
+units with the most overlap.
+\item \code{wt_ato()}: \strong{Average Treatment Effect for the Overlap Population} --
+weights proportional to overlap.
+\item \code{wt_entropy()}: \strong{Entropy-weighted Average Treatment Effect} --
+an entropy-balanced population.
+\item \code{wt_cens()}: \strong{Inverse probability of censoring weights} -- uses the
+same formula as \code{wt_ate()} but labels the estimand \code{"uncensored"}. Use
+these to adjust for censoring in survival analysis, not for treatment
+weighting.
 }
+
+\code{.propensity} accepts a numeric vector of predicted probabilities, a
+\code{data.frame} of per-level probabilities, a fitted \code{glm} object, or a
+modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
+\code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
+
+All functions return a \code{\link{psw}} object -- a numeric vector that tracks the
+estimand, stabilization status, and any trimming or truncation applied.
 }
 \details{
-\subsection{Theoretical Background}{
+\subsection{Exposure types}{
 
-Propensity score weighting is a method for estimating causal effects by
-creating a pseudo-population where the exposure is independent of measured
-confounders. The propensity score, \eqn{e(X)}, is the probability of receiving
-treatment given observed covariates \eqn{X}. By weighting observations inversely
-proportional to their propensity scores, we can balance the distribution of
-covariates between treatment groups. Other weights allow for different target populations.
+All weight functions support binary exposures. \code{wt_ate()} and \code{wt_cens()}
+also support continuous exposures. All except \code{wt_cens()} support
+categorical exposures.
+\itemize{
+\item \strong{Binary}: \code{.exposure} is a two-level vector (e.g., 0/1, logical, or a
+two-level factor). \code{.propensity} is a numeric vector of P(treatment | X).
+\item \strong{Categorical}: \code{.exposure} is a factor or character vector with 3+
+levels. \code{.propensity} must be a matrix or data frame with one column per
+level, where rows sum to 1.
+\item \strong{Continuous}: \code{.exposure} is a numeric vector. \code{.propensity} is a
+vector of conditional means (fitted values). Weights use a normal density
+ratio; stabilization is strongly recommended.
+\item \strong{Auto} (default): Detects the exposure type from \code{.exposure}.
+}
 }
 
-\subsection{Mathematical Formulas}{
-\subsection{Binary Exposures}{
+\subsection{Stabilization}{
 
-For binary treatments (\eqn{A = 0} or \eqn{1}), the weights are:
+Setting \code{stabilize = TRUE} multiplies the base weight by an estimate of
+P(A) (binary) or f_A(A) (continuous), reducing variance. When no
+\code{stabilization_score} is supplied, the marginal mean of \code{.exposure} is
+used. Stabilization is supported for ATE and censoring weights
+(\code{wt_ate()} and \code{wt_cens()}) and is strongly recommended for continuous
+exposures.
+}
+
+\subsection{Handling extreme weights}{
+
+Extreme weights signal positivity violations, poor model fit, or limited
+overlap. You can address them by:
+\itemize{
+\item Choosing an overlap-focused estimand (\code{wt_ato()}, \code{wt_atm()},
+\code{wt_entropy()}), which down-weight units in regions of poor overlap.
+\item Trimming (\code{\link[=ps_trim]{ps_trim()}}) or truncating (\code{\link[=ps_trunc]{ps_trunc()}}) propensity scores
+before computing weights.
+\item Calibrating weights with \code{\link[=ps_calibrate]{ps_calibrate()}}.
+\item Stabilizing ATE weights (\code{stabilize = TRUE}).
+}
+
+See the \href{https://CRAN.R-project.org/package=halfmoon}{halfmoon} package
+for weight diagnostics and visualization.
+}
+
+\subsection{Weight formulas}{
+\subsection{Binary exposures}{
+
+For binary treatments (\eqn{A \in \{0, 1\}}), with propensity score
+\eqn{e(X) = P(A=1 \mid X)}:
 \itemize{
 \item \strong{ATE}: \eqn{w = \frac{A}{e(X)} + \frac{1-A}{1-e(X)}}
 \item \strong{ATT}: \eqn{w = A + \frac{(1-A) \cdot e(X)}{1-e(X)}}
 \item \strong{ATU}: \eqn{w = \frac{A \cdot (1-e(X))}{e(X)} + (1-A)}
 \item \strong{ATM}: \eqn{w = \frac{\min(e(X), 1-e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}
 \item \strong{ATO}: \eqn{w = A \cdot (1-e(X)) + (1-A) \cdot e(X)}
-\item \strong{Entropy}: \eqn{w = \frac{h(e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}, where \eqn{h(e) = -[e \cdot \log(e) + (1-e) \cdot \log(1-e)]}
+\item \strong{Entropy}: \eqn{w = \frac{h(e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}, where \eqn{h(e) = -[e \log(e) + (1-e) \log(1-e)]}
 }
 }
 
-\subsection{Continuous Exposures}{
+\subsection{Continuous exposures}{
 
-For continuous treatments, weights use the density ratio:
-\eqn{w = \frac{f_A(A)}{f_{A|X}(A|X)}}, where \eqn{f_A} is the marginal density of \eqn{A}
-and \eqn{f_{A|X}} is the conditional density given \eqn{X}.
+Weights use the density ratio
+\eqn{w = f_A(A) / f_{A|X}(A \mid X)}, where \eqn{f_A} is the marginal
+density and \eqn{f_{A|X}} is the conditional density (both assumed
+normal). Only \code{wt_ate()} and \code{wt_cens()} support continuous exposures.
 }
 
-\subsection{Categorical Exposures}{
+\subsection{Categorical exposures}{
 
-For categorical treatments with \eqn{K} levels, weights use a tilting function approach:
-\eqn{w_i = \frac{h(e_i)}{e_{i,Z_i}}}, where \eqn{e_{i,Z_i}} is the propensity score for unit \eqn{i}'s
-observed treatment level, and \eqn{h(e_i)} is a tilting function that depends on the estimand:
+For \eqn{K}-level treatments, weights take the tilting-function form
+\eqn{w_i = h(\mathbf{e}_i) / e_{i,Z_i}}, where \eqn{e_{i,Z_i}} is the
+propensity for unit \eqn{i}'s observed level and \eqn{h(\cdot)} depends
+on the estimand:
 \itemize{
-\item \strong{ATE}: \eqn{h(e) = 1}
-\item \strong{ATT}: \eqn{h(e) = e_{focal}} (propensity score for the focal category)
-\item \strong{ATU}: \eqn{h(e) = 1 - e_{focal}} (complement of focal category propensity)
-\item \strong{ATM}: \eqn{h(e) = \min(e_1, ..., e_K)}
-\item \strong{ATO}: \eqn{h(e) = 1 / \sum_k(1/e_k)} (reciprocal of harmonic mean denominator)
-\item \strong{Entropy}: \eqn{h(e) = -\sum_k[e_k \cdot \log(e_k)]} (entropy of propensity scores)
+\item \strong{ATE}: \eqn{h(\mathbf{e}) = 1}
+\item \strong{ATT}: \eqn{h(\mathbf{e}) = e_{\text{focal}}}
+\item \strong{ATU}: \eqn{h(\mathbf{e}) = 1 - e_{\text{focal}}}
+\item \strong{ATM}: \eqn{h(\mathbf{e}) = \min(e_1, \ldots, e_K)}
+\item \strong{ATO}: \eqn{h(\mathbf{e}) = \bigl(\sum_k 1/e_k\bigr)^{-1}}
+\item \strong{Entropy}: \eqn{h(\mathbf{e}) = -\sum_k e_k \log(e_k)}
 }
 }
 
-}
-
-\subsection{Exposure Types}{
-
-The functions support different types of exposures:
-\itemize{
-\item \strong{\code{binary}}: For dichotomous treatments (e.g. 0/1).
-\item \strong{\code{continuous}}: For numeric exposures. Here, weights are calculated via the normal density using
-\code{dnorm()}.
-\item \strong{\code{categorical}}: For exposures with more than 2 categories. Requires \code{.propensity} to be a
-matrix or data frame with columns representing propensity scores for each category.
-\item \strong{\code{auto}}: Automatically detects the exposure type based on \code{.exposure}.
-}
-}
-
-\subsection{Stabilization}{
-
-For ATE weights, stabilization can improve the performance of the estimator
-by reducing variance. When \code{stabilize} is \code{TRUE} and no
-\code{stabilization_score} is provided, the weights are multiplied by the mean
-of \code{.exposure}. Alternatively, if a \code{stabilization_score} is provided, it
-is used as the multiplier. Stabilized weights have the form:
-\eqn{w_s = f_A(A) \times w}, where \eqn{f_A(A)} is the marginal probability or density.
-}
-
-\subsection{Weight Properties and Diagnostics}{
-
-Extreme weights can indicate:
-\itemize{
-\item Positivity violations (near 0 or 1 propensity scores)
-\item Poor model specification
-\item Lack of overlap between treatment groups
-}
-
-See the halfmoon package for tools to diagnose and visualize weights.
-
-You can address extreme weights in several ways. The first is to modify the target population:
-use trimming, truncation, or alternative estimands (ATM, ATO, entropy).
-Another technique that can help is stabilization, which reduces variance of the weights.
-}
-
-\subsection{Trimmed and Truncated Weights}{
-
-In addition to the standard weight functions, versions exist for trimmed
-and truncated propensity score weights created by \code{\link[=ps_trim]{ps_trim()}},
-\code{\link[=ps_trunc]{ps_trunc()}}, and \code{\link[=ps_refit]{ps_refit()}}. These variants calculate the weights using
-modified propensity scores (trimmed or truncated) and update the estimand
-attribute accordingly.
 }
 }
 \examples{
-## Basic Usage with Binary Exposures
-
-# Simulate a simple dataset
+# -- Binary exposure, numeric propensity scores ----------------------
 set.seed(123)
-n <- 100
-propensity_scores <- runif(n, 0.1, 0.9)
-treatment <- rbinom(n, 1, propensity_scores)
+ps <- runif(100, 0.1, 0.9)
+trt <- rbinom(100, 1, ps)
 
-# Calculate different weight types
-weights_ate <- wt_ate(propensity_scores, treatment)
-weights_att <- wt_att(propensity_scores, treatment)
-weights_atu <- wt_atu(propensity_scores, treatment)
+wt_ate(ps, trt)
+wt_att(ps, trt)
+wt_atu(ps, trt)
+wt_atm(ps, trt)
+wt_ato(ps, trt)
+wt_entropy(ps, trt)
 
-# With explicit focal and reference levels
-weights_att_explicit <- wt_att(propensity_scores, treatment,
-                               .focal_level = 1, .reference_level = 0)
-weights_atm <- wt_atm(propensity_scores, treatment)
-weights_ato <- wt_ato(propensity_scores, treatment)
-weights_entropy <- wt_entropy(propensity_scores, treatment)
+# Stabilized ATE weights (reduces variance)
+wt_ate(ps, trt, stabilize = TRUE)
 
-# Compare weight distributions
-summary(weights_ate)
-summary(weights_ato)  # Often more stable than ATE
+# Inspect the result
+w <- wt_ate(ps, trt)
+estimand(w)
+summary(w)
 
-## Stabilized Weights
-
-# Stabilization reduces variance
-weights_ate_stab <- wt_ate(propensity_scores, treatment, stabilize = TRUE)
-
-## Handling Extreme Propensity Scores
-
-# Create data with positivity violations
+# -- Overlap-focused estimands handle extreme PS better --------------
 ps_extreme <- c(0.01, 0.02, 0.98, 0.99, rep(0.5, 4))
 trt_extreme <- c(0, 0, 1, 1, 0, 1, 0, 1)
 
-# Standard ATE weights can be extreme
-wt_extreme <- wt_ate(ps_extreme, trt_extreme)
-# Very large!
-max(wt_extreme)
+max(wt_ate(ps_extreme, trt_extreme))
+max(wt_ato(ps_extreme, trt_extreme))
 
-# ATO weights are bounded
-wt_extreme_ato <- wt_ato(ps_extreme, trt_extreme)
-# Much more reasonable
-max(wt_extreme_ato)
-# but they target a different population
-estimand(wt_extreme_ato) # "ato"
+# -- From a fitted GLM -----------------------------------------------
+x1 <- rnorm(100)
+x2 <- rnorm(100)
+trt2 <- rbinom(100, 1, plogis(0.5 * x1 + 0.3 * x2))
+ps_model <- glm(trt2 ~ x1 + x2, family = binomial)
 
-## Working with Data Frames
+# Exposure is extracted from the model automatically
+wt_ate(ps_model)
 
-# Example with custom data frame
+# -- Data frame input ------------------------------------------------
 ps_df <- data.frame(
   control = c(0.9, 0.7, 0.3, 0.1),
   treated = c(0.1, 0.3, 0.7, 0.9)
 )
 exposure <- c(0, 0, 1, 1)
-
-# Uses second column by default (treated probabilities)
 wt_ate(ps_df, exposure)
-
-# Explicitly specify column by name
 wt_ate(ps_df, exposure, .propensity_col = "treated")
 
-# Or by position
-wt_ate(ps_df, exposure, .propensity_col = 2)
-
-## Working with GLM Objects
-
-# Fit a propensity score model
-set.seed(123)
-n <- 100
-x1 <- rnorm(n)
-x2 <- rnorm(n)
-treatment <- rbinom(n, 1, plogis(0.5 * x1 + 0.3 * x2))
-
-ps_model <- glm(treatment ~ x1 + x2, family = binomial)
-
-# Use GLM directly for weight calculation
-weights_from_glm <- wt_ate(ps_model, treatment)
-
-# Or omit the exposure argument (it will be extracted from the GLM)
-weights_from_glm_auto <- wt_ate(ps_model)
+# -- Censoring weights -----------------------------------------------
+cens_ps <- runif(50, 0.6, 0.95)
+cens_ind <- rbinom(50, 1, cens_ps)
+wt_cens(cens_ps, cens_ind)
+estimand(wt_cens(cens_ps, cens_ind))  # "uncensored"
 
 }
 \references{
-For detailed guidance on causal inference in R, see \href{https://www.r-causal.org/}{\emph{Causal Inference in R}}
-by Malcolm Barrett, Lucy D'Agostino McGowan, and Travis Gerke.
-\subsection{Foundational Papers}{
+Barrett, M., D'Agostino McGowan, L., & Gerke, T. \emph{Causal Inference in R}.
+\url{https://www.r-causal.org/}
 
 Rosenbaum, P. R., & Rubin, D. B. (1983). The central role of the propensity
-score in observational studies for causal effects. \emph{Biometrika}, 70(1), 41-55.
-}
-
-\subsection{Estimand-Specific Methods}{
+score in observational studies for causal effects. \emph{Biometrika}, 70(1),
+41--55.
 
 Li, L., & Greene, T. (2013). A weighting analogue to pair matching in
-propensity score analysis. \emph{The International Journal of Biostatistics}, 9(2),
-215-234. (ATM weights)
+propensity score analysis. \emph{The International Journal of Biostatistics},
+9(2), 215--234. (ATM weights)
 
 Li, F., Morgan, K. L., & Zaslavsky, A. M. (2018). Balancing covariates via
-propensity score weighting. \emph{Journal of the American Statistical Association},
-113(521), 390-400. (ATO weights)
+propensity score weighting. \emph{Journal of the American Statistical
+Association}, 113(521), 390--400. (ATO weights)
 
 Zhou, Y., Matsouaka, R. A., & Thomas, L. (2020). Propensity score weighting
 under limited overlap and model misspecification. \emph{Statistical Methods in
-Medical Research}, 29(12), 3721-3756. (Entropy weights)
-}
-
-\subsection{Continuous Exposures}{
+Medical Research}, 29(12), 3721--3756. (Entropy weights)
 
 Hirano, K., & Imbens, G. W. (2004). The propensity score with continuous
-treatments. \emph{Applied Bayesian Modeling and Causal Inference from
-Incomplete-Data Perspectives}, 226164, 73-84.
-}
-
-\subsection{Practical Guidance}{
+treatments. In \emph{Applied Bayesian Modeling and Causal Inference from
+Incomplete-Data Perspectives} (pp. 73--84).
 
 Austin, P. C., & Stuart, E. A. (2015). Moving towards best practice when
-using inverse probability of treatment weighting (IPTW) using the propensity
-score to estimate causal treatment effects in observational studies.
-\emph{Statistics in Medicine}, 34(28), 3661-3679.
-}
+using inverse probability of treatment weighting (IPTW). \emph{Statistics in
+Medicine}, 34(28), 3661--3679.
 }
 \seealso{
 \itemize{
-\item \code{\link[=psw]{psw()}} for details on the structure of the returned weight objects.
-\item \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}}, and \code{\link[=ps_refit]{ps_refit()}} for handling extreme weights.
-\item \code{\link[=ps_calibrate]{ps_calibrate()}} for calibrating weights.
+\item \code{\link[=psw]{psw()}} for the returned weight vector class.
+\item \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}}, \code{\link[=ps_refit]{ps_refit()}}, and \code{\link[=ps_calibrate]{ps_calibrate()}} for
+modifying propensity scores before weighting.
+\item \code{\link[=ipw]{ipw()}} for inverse-probability-weighted estimation of causal effects.
 }
 }

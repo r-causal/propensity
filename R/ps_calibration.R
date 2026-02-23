@@ -1,51 +1,86 @@
 #' Calibrate propensity scores
 #'
-#' This function calibrates propensity scores to improve their accuracy using
-#' either Platt scaling (logistic regression) or isotonic regression. It
-#' preserves the attributes of causal weight objects when applicable.
+#' @description
+#' `ps_calibrate()` adjusts estimated propensity scores so they better reflect
+#' true treatment probabilities. This can improve the accuracy of inverse
+#' probability weights derived from a misspecified propensity score model.
 #'
-#' @param ps Numeric vector of propensity scores between 0 and 1
-#' @param .exposure A binary vector of treatment assignments
-#' @param method Calibration method:
+#' @param ps A numeric vector of propensity scores between 0 and 1. Must not
+#'   already be calibrated.
+#' @param .exposure A binary vector of observed treatment assignments, the same
+#'   length as `ps`.
+#' @param method Calibration method. One of:
 #'   \describe{
-#'     \item{`"logistic"`}{(Default) Logistic calibration (also known as Platt scaling).
-#'       Assumes a sigmoid relationship between observed and true probabilities.
-#'       Best when: propensity scores follow a logistic pattern but are
-#'       systematically biased. Provides smooth, parametric calibration.
-#'       Faster and more stable with small samples.}
-#'     \item{`"isoreg"`}{Isotonic regression calibration. Uses a non-parametric
-#'       monotonic transformation. Best when: the relationship between observed
-#'       and true probabilities is non-linear or when you want to preserve
-#'       the rank order without assuming a specific functional form.
-#'       More flexible but requires larger samples for stable estimates.}
+#'     \item{`"logistic"`}{(Default) Logistic calibration, also called Platt
+#'       scaling. Fits a logistic regression of `.exposure` on `ps`, yielding
+#'       a smooth, parametric correction. Works well with small samples and
+#'       when the bias in `ps` is approximately monotone.}
+#'     \item{`"isoreg"`}{Isotonic regression. Fits a non-parametric,
+#'       monotone step function. More flexible than logistic calibration
+#'       because it makes no distributional assumption, but needs larger
+#'       samples for stable estimates.}
 #'   }
-#' @param smooth Logical. For `method = "logistic"`, whether to use a smoothed
-#'   logistic spline model (`smooth = TRUE`, default) or simple logistic
-#'   regression (`smooth = FALSE`). When `TRUE`, uses `mgcv::gam()` with
-#'   spline smoothing. When `FALSE`, uses `stats::glm()`. Ignored for
-#'   `method = "isoreg"`.
-#' @param .focal_level The value representing the focal group (typically treatment).
-#'   If not provided, `ps_calibrate()` will attempt to automatically determine the coding.
-#' @param .reference_level The value representing the reference group (typically control).
-#'   If not provided, `ps_calibrate()` will attempt to automatically determine the coding.
+#' @param smooth Logical. When `method = "logistic"`, controls the form of the
+#'   calibration model. If `TRUE` (default), fits a GAM with a spline on
+#'   `ps` via [mgcv::gam()]; if `FALSE`, fits a simple logistic regression
+#'   via [stats::glm()]. Ignored when `method = "isoreg"`.
+#' @param .focal_level The value of `.exposure` representing the focal group
+#'   (typically the treated group). If `NULL` (default), coding is determined
+#'   automatically.
+#' @param .reference_level The value of `.exposure` representing the reference
+#'   group (typically the control group). If `NULL` (default), coding is
+#'   determined automatically.
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
 #'
-#' @return A calibrated propensity score object (`ps_calib`)
+#' @details
+#' Calibration is useful when the propensity score model is correctly
+#' specified in terms of variable selection but produces probabilities that
+#' are systematically too high or too low. Unlike [ps_trim()] and
+#' [ps_trunc()], which handle extreme scores by removing or bounding them,
+#' calibration reshapes the entire distribution of scores.
+#'
+#' **Choosing a method:**
+#' - Use `"logistic"` (the default) as a first choice. It is stable and
+#'   fast, and the `smooth = TRUE` option adds flexibility via a spline.
+#' - Use `"isoreg"` when you suspect a non-smooth or irregular relationship
+#'   between estimated and true probabilities and have a sufficiently large
+#'   sample.
+#'
+#' The calibrated scores are returned as a `ps_calib` object, which can be
+#' passed directly to weight functions such as [wt_ate()].
+#'
+#' @return A `ps_calib` vector the same length as `ps`. The attribute
+#'   `ps_calib_meta` stores calibration metadata (method and whether
+#'   smoothing was applied). Use [is_ps_calibrated()] to test whether an
+#'   object has been calibrated.
+#'
+#' @seealso [is_ps_calibrated()] to test for calibrated scores;
+#'   [ps_trim()] and [ps_trunc()] for alternative approaches to extreme
+#'   propensity scores; [wt_ate()] and other weight functions that accept
+#'   `ps_calib` objects.
 #'
 #' @examples
-#' # Generate example data
-#' ps <- runif(100)
-#' exposure <- rbinom(100, 1, ps)
+#' # Simulate data
+#' set.seed(42)
+#' ps <- runif(200)
+#' exposure <- rbinom(200, 1, ps)
 #'
-#' # Logistic calibration with smoothing (default)
-#' calibrated_smooth <- ps_calibrate(ps, exposure)
+#' # Logistic calibration without smoothing (simple Platt scaling)
+#' cal <- ps_calibrate(ps, exposure, smooth = FALSE)
+#' cal
 #'
-#' # Logistic calibration without smoothing (simple logistic regression)
-#' calibrated_simple <- ps_calibrate(ps, exposure, smooth = FALSE)
+#' # Use calibrated scores to calculate weights
+#' wt_ate(cal, exposure)
 #'
-#' # Isotonic regression
-#' calibrated_iso <- ps_calibrate(ps, exposure, method = "isoreg")
+#' # Isotonic regression calibration
+#' cal_iso <- ps_calibrate(ps, exposure, method = "isoreg")
+#'
+#' if (rlang::is_installed("mgcv")) {
+#'   # Logistic calibration with spline smoothing (default)
+#'   cal_smooth <- ps_calibrate(ps, exposure)
+#' }
+#'
 #' @importFrom stats glm fitted isoreg binomial
 #' @export
 ps_calibrate <- function(
@@ -273,14 +308,25 @@ ps_calib_meta <- function(x) {
   attr(x, "ps_calib_meta")
 }
 
-#' Check if object is calibrated
+#' Check if propensity scores are calibrated
 #'
-#' @description
-#' `is_ps_calibrated()` is an S3 generic that returns `TRUE` if its argument represents
-#' calibrated propensity scores.
+#' `is_ps_calibrated()` tests whether `x` is a calibrated propensity score
+#' object (class `ps_calib`) or a `psw` object derived from calibrated scores.
 #'
-#' @param x An R object.
-#' @return A logical scalar (`TRUE` or `FALSE`).
+#' @param x An object to test.
+#' @return A single `TRUE` or `FALSE`.
+#'
+#' @seealso [ps_calibrate()] to calibrate propensity scores.
+#'
+#' @examples
+#' ps <- runif(100)
+#' exposure <- rbinom(100, 1, ps)
+#'
+#' is_ps_calibrated(ps)
+#'
+#' calibrated <- ps_calibrate(ps, exposure)
+#' is_ps_calibrated(calibrated)
+#'
 #' @export
 is_ps_calibrated <- function(x) {
   UseMethod("is_ps_calibrated")

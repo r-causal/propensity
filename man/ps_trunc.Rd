@@ -18,117 +18,109 @@ ps_trunc(
 )
 }
 \arguments{
-\item{ps}{The propensity score, either a numeric vector between 0 and 1 for
-binary exposures, or a matrix/data.frame where each column represents
-propensity scores for each level of a categorical exposure.}
+\item{ps}{A numeric vector of propensity scores between 0 and 1 (binary
+exposures), or a matrix/data.frame where each column contains propensity
+scores for one level of a categorical exposure.}
 
-\item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}.
+\item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{
-\item \code{"ps"}: directly cut on \verb{[lower, upper]} of \code{ps}. For categorical, uses
-symmetric truncation with \code{lower} as the threshold.
-\item \code{"pctl"}: use quantiles of \code{ps} as bounding values. For categorical,
-calculates quantiles across all propensity score values.
-\item \code{"cr"}: the common range of \code{ps} given \code{.exposure}, bounding
-\verb{[min(ps[treated]), max(ps[untreated])]} (binary only)
+\item \code{"ps"} (default): Truncate directly on propensity score values. Values
+outside \verb{[lower, upper]} are set to the nearest bound. For categorical
+exposures, applies symmetric truncation using \code{lower} as the threshold
+(delta) and renormalizes rows to sum to 1.
+\item \code{"pctl"}: Truncate at quantiles of the propensity score distribution.
+The \code{lower} and \code{upper} arguments specify quantile probabilities. For
+categorical exposures, quantiles are computed across all columns.
+\item \code{"cr"}: Truncate to the common range of propensity scores across
+exposure groups (binary exposures only). Bounds are
+\verb{[min(ps[focal]), max(ps[reference])]}. Requires \code{.exposure}.
 }}
 
-\item{lower, upper}{Numeric or quantile bounds. If \code{NULL}, defaults vary by method.
-For categorical exposures with method \code{"ps"}, \code{lower} represents the
-truncation threshold (delta).}
+\item{lower, upper}{Bounds for truncation. Interpretation depends on \code{method}:
+\itemize{
+\item \code{method = "ps"}: Propensity score values (defaults: 0.1 and 0.9). For
+categorical exposures, \code{lower} is the truncation threshold delta
+(default: 0.01); \code{upper} is ignored.
+\item \code{method = "pctl"}: Quantile probabilities (defaults: 0.05 and 0.95;
+categorical defaults: 0.01 and 0.99).
+\item \code{method = "cr"}: Ignored; bounds are determined by the data.
+}}
 
-\item{.exposure}{For method "cr", a binary exposure vector. For categorical
-exposures, must be a factor or character vector.}
+\item{.exposure}{An exposure vector. Required for method \code{"cr"} (binary
+exposure vector) and for categorical exposures (factor or character vector)
+with any method.}
 
-\item{.focal_level}{For binary exposures, the value representing the focal group
-(typically the treatment group). For categorical exposures with ATT or ATU estimands,
-specifies the focal category. Must be one of the levels of the exposure variable.
+\item{.focal_level}{The value of \code{.exposure} representing the focal
+(treated) group. For binary exposures, defaults to the higher value.
 Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 
-\item{.reference_level}{For binary exposures, the value representing the reference group
-(typically the control group). If not provided, it is automatically detected.}
+\item{.reference_level}{The value of \code{.exposure} representing the reference
+(control) group. Automatically detected if not supplied.}
 
-\item{...}{Additional arguments passed to methods}
+\item{...}{Additional arguments passed to methods.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 }
 \value{
-A \strong{\code{ps_trunc}} object (numeric vector or matrix). It has an attribute
-\code{ps_trunc_meta} storing fields like \code{method}, \code{lower_bound}, and
-\code{upper_bound}.
+A \code{ps_trunc} object (a numeric vector for binary exposures, or a
+matrix for categorical exposures). Use \code{\link[=ps_trunc_meta]{ps_trunc_meta()}} to inspect
+metadata including \code{method}, \code{lower_bound}, \code{upper_bound}, and
+\code{truncated_idx} (positions of modified values).
 }
 \description{
-\strong{\code{ps_trunc()}} sets out‐of‐range propensity scores to fixed bounding values
-(a form of \emph{winsorizing}). This is an alternative to \code{\link[=ps_trim]{ps_trim()}}, which removes
-(sets \code{NA}) instead of bounding and is then refit with \code{\link[=ps_refit]{ps_refit()}}
+\code{ps_trunc()} bounds extreme propensity scores to fixed limits, replacing
+out-of-range values with the boundary value (a form of \emph{winsorizing}). The
+result is a vector or matrix of the same length and dimensions as \code{ps}, with
+no observations removed. This contrasts with \code{\link[=ps_trim]{ps_trim()}}, which sets extreme
+values to \code{NA} (effectively removing those observations from analysis).
 }
 \details{
-For binary exposures with each \eqn{ps[i]}:
+Unlike \code{\link[=ps_trim]{ps_trim()}}, truncation preserves all observations. No \code{NA} values
+are introduced; out-of-range scores are replaced with the boundary value.
+
+For \strong{binary exposures}, each propensity score \eqn{e_i} is bounded:
 \itemize{
-\item If \eqn{ps[i] < lower\_bound}, we set \eqn{ps[i] = lower\_bound}.
-\item If \eqn{ps[i] > upper\_bound}, we set \eqn{ps[i] = upper\_bound}.
+\item If \eqn{e_i < l}, set \eqn{e_i = l} (the lower bound).
+\item If \eqn{e_i > u}, set \eqn{e_i = u} (the upper bound).
 }
 
-For categorical exposures:
-\itemize{
-\item Each value below the threshold is set to the threshold
-\item Rows are renormalized to sum to 1
-}
+For \strong{categorical exposures}, values below the threshold are set to the
+threshold and each row is renormalized to sum to 1.
 
-This approach is often called \emph{winsorizing}.
+\strong{Arithmetic behavior}: Arithmetic operations on \code{ps_trunc} objects return
+plain numeric vectors. Once propensity scores are transformed (e.g., into
+weights), the result is no longer a propensity score.
 
-\strong{Arithmetic behavior}: Like \code{ps_trim}, arithmetic operations on \code{ps_trunc}
-objects return numeric vectors. The reasoning is the same - transformed
-propensity scores (e.g., weights) are no longer propensity scores.
-
-\strong{No NA values}: Unlike \code{ps_trim}, truncation doesn't create \code{NA} values.
-Out-of-range values are set to the boundaries, so all values remain finite
-and valid for calculations.
-
-\strong{Metadata tracking}: The \code{truncated_idx} tracks which positions had their
-values modified (winsorized to boundaries):
-\itemize{
-\item Subsetting with \code{[} updates indices to new positions
-\item \code{sort()} reorders data and updates indices accordingly
-\item Operations preserve finite values (no \code{NA} handling needed)
-}
-
-\strong{Boundary detection}: Values exactly at the boundaries (after truncation)
-may indicate truncation, but aren't necessarily truncated - they could have
-been at the boundary originally.
-
-\strong{Combining behavior}: When combining \code{ps_trunc} objects with \code{c()},
-truncation parameters must match. Mismatched parameters trigger a warning
-and return a numeric vector.
+\strong{Combining behavior}: Combining \code{ps_trunc} objects with \code{c()} requires
+matching truncation parameters. Mismatched parameters produce a warning and
+return a plain numeric vector.
 }
 \examples{
 set.seed(2)
-n <- 30
+n <- 200
 x <- rnorm(n)
-z <- rbinom(n, 1, plogis(0.4 * x))
+z <- rbinom(n, 1, plogis(1.2 * x))
 fit <- glm(z ~ x, family = binomial)
 ps <- predict(fit, type = "response")
 
-# truncate just the 99th percentile
-ps_trunc(ps, method = "pctl", lower = 0, upper = .99)
+# Truncate to [0.1, 0.9]
+ps_t <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+ps_t
 
-# Coercion behavior with ps_trunc objects
-ps_trunc1 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
-ps_trunc2 <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+# Truncate at the 1st and 99th percentiles
+ps_trunc(ps, method = "pctl", lower = 0.01, upper = 0.99)
 
-# Compatible objects combine silently
-c(ps_trunc1[1:15], ps_trunc2[16:30])  # Returns ps_trunc object
+# Use truncated scores to calculate weights
+wt_ate(ps_t, .exposure = z)
 
-# Different truncation parameters trigger warning
-ps_trunc3 <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
-c(ps_trunc1[1:15], ps_trunc3[16:30])  # Warning: returns numeric
-
-# Mixing with other propensity classes warns
-ps_trim_obj <- ps_trim(ps[1:15], method = "ps", lower = 0.1)
-c(ps_trunc1[1:15], ps_trim_obj)  # Warning: returns numeric
+# Inspect which observations were truncated
+is_unit_truncated(ps_t)
 
 }
 \seealso{
-\code{\link[=ps_trim]{ps_trim()}} and \code{\link[=ps_refit]{ps_refit()}} for removing extreme values vs. bounding
+\code{\link[=ps_trim]{ps_trim()}} for removing (rather than bounding) extreme values,
+\code{\link[=ps_refit]{ps_refit()}} for refitting the propensity model after trimming,
+\code{\link[=is_ps_truncated]{is_ps_truncated()}}, \code{\link[=is_unit_truncated]{is_unit_truncated()}}, \code{\link[=ps_trunc_meta]{ps_trunc_meta()}}
 }

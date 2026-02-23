@@ -16,59 +16,96 @@ ps_calibrate(
 )
 }
 \arguments{
-\item{ps}{Numeric vector of propensity scores between 0 and 1}
+\item{ps}{A numeric vector of propensity scores between 0 and 1. Must not
+already be calibrated.}
 
-\item{.exposure}{A binary vector of treatment assignments}
+\item{.exposure}{A binary vector of observed treatment assignments, the same
+length as \code{ps}.}
 
-\item{method}{Calibration method:
+\item{method}{Calibration method. One of:
 \describe{
-\item{\code{"logistic"}}{(Default) Logistic calibration (also known as Platt scaling).
-Assumes a sigmoid relationship between observed and true probabilities.
-Best when: propensity scores follow a logistic pattern but are
-systematically biased. Provides smooth, parametric calibration.
-Faster and more stable with small samples.}
-\item{\code{"isoreg"}}{Isotonic regression calibration. Uses a non-parametric
-monotonic transformation. Best when: the relationship between observed
-and true probabilities is non-linear or when you want to preserve
-the rank order without assuming a specific functional form.
-More flexible but requires larger samples for stable estimates.}
+\item{\code{"logistic"}}{(Default) Logistic calibration, also called Platt
+scaling. Fits a logistic regression of \code{.exposure} on \code{ps}, yielding
+a smooth, parametric correction. Works well with small samples and
+when the bias in \code{ps} is approximately monotone.}
+\item{\code{"isoreg"}}{Isotonic regression. Fits a non-parametric,
+monotone step function. More flexible than logistic calibration
+because it makes no distributional assumption, but needs larger
+samples for stable estimates.}
 }}
 
-\item{smooth}{Logical. For \code{method = "logistic"}, whether to use a smoothed
-logistic spline model (\code{smooth = TRUE}, default) or simple logistic
-regression (\code{smooth = FALSE}). When \code{TRUE}, uses \code{mgcv::gam()} with
-spline smoothing. When \code{FALSE}, uses \code{stats::glm()}. Ignored for
-\code{method = "isoreg"}.}
+\item{smooth}{Logical. When \code{method = "logistic"}, controls the form of the
+calibration model. If \code{TRUE} (default), fits a GAM with a spline on
+\code{ps} via \code{\link[mgcv:gam]{mgcv::gam()}}; if \code{FALSE}, fits a simple logistic regression
+via \code{\link[stats:glm]{stats::glm()}}. Ignored when \code{method = "isoreg"}.}
 
-\item{.focal_level}{The value representing the focal group (typically treatment).
-If not provided, \code{ps_calibrate()} will attempt to automatically determine the coding.}
+\item{.focal_level}{The value of \code{.exposure} representing the focal group
+(typically the treated group). If \code{NULL} (default), coding is determined
+automatically.}
 
-\item{.reference_level}{The value representing the reference group (typically control).
-If not provided, \code{ps_calibrate()} will attempt to automatically determine the coding.}
+\item{.reference_level}{The value of \code{.exposure} representing the reference
+group (typically the control group). If \code{NULL} (default), coding is
+determined automatically.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 }
 \value{
-A calibrated propensity score object (\code{ps_calib})
+A \code{ps_calib} vector the same length as \code{ps}. The attribute
+\code{ps_calib_meta} stores calibration metadata (method and whether
+smoothing was applied). Use \code{\link[=is_ps_calibrated]{is_ps_calibrated()}} to test whether an
+object has been calibrated.
 }
 \description{
-This function calibrates propensity scores to improve their accuracy using
-either Platt scaling (logistic regression) or isotonic regression. It
-preserves the attributes of causal weight objects when applicable.
+\code{ps_calibrate()} adjusts estimated propensity scores so they better reflect
+true treatment probabilities. This can improve the accuracy of inverse
+probability weights derived from a misspecified propensity score model.
+}
+\details{
+Calibration is useful when the propensity score model is correctly
+specified in terms of variable selection but produces probabilities that
+are systematically too high or too low. Unlike \code{\link[=ps_trim]{ps_trim()}} and
+\code{\link[=ps_trunc]{ps_trunc()}}, which handle extreme scores by removing or bounding them,
+calibration reshapes the entire distribution of scores.
+
+\strong{Choosing a method:}
+\itemize{
+\item Use \code{"logistic"} (the default) as a first choice. It is stable and
+fast, and the \code{smooth = TRUE} option adds flexibility via a spline.
+\item Use \code{"isoreg"} when you suspect a non-smooth or irregular relationship
+between estimated and true probabilities and have a sufficiently large
+sample.
+}
+
+The calibrated scores are returned as a \code{ps_calib} object, which can be
+passed directly to weight functions such as \code{\link[=wt_ate]{wt_ate()}}.
 }
 \examples{
-# Generate example data
-ps <- runif(100)
-exposure <- rbinom(100, 1, ps)
+# Simulate data
+set.seed(42)
+ps <- runif(200)
+exposure <- rbinom(200, 1, ps)
 
-# Logistic calibration with smoothing (default)
-calibrated_smooth <- ps_calibrate(ps, exposure)
+# Logistic calibration without smoothing (simple Platt scaling)
+cal <- ps_calibrate(ps, exposure, smooth = FALSE)
+cal
 
-# Logistic calibration without smoothing (simple logistic regression)
-calibrated_simple <- ps_calibrate(ps, exposure, smooth = FALSE)
+# Use calibrated scores to calculate weights
+wt_ate(cal, exposure)
 
-# Isotonic regression
-calibrated_iso <- ps_calibrate(ps, exposure, method = "isoreg")
+# Isotonic regression calibration
+cal_iso <- ps_calibrate(ps, exposure, method = "isoreg")
+
+if (rlang::is_installed("mgcv")) {
+  # Logistic calibration with spline smoothing (default)
+  cal_smooth <- ps_calibrate(ps, exposure)
+}
+
+}
+\seealso{
+\code{\link[=is_ps_calibrated]{is_ps_calibrated()}} to test for calibrated scores;
+\code{\link[=ps_trim]{ps_trim()}} and \code{\link[=ps_trunc]{ps_trunc()}} for alternative approaches to extreme
+propensity scores; \code{\link[=wt_ate]{wt_ate()}} and other weight functions that accept
+\code{ps_calib} objects.
 }

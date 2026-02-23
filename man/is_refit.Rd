@@ -2,18 +2,37 @@
 % Please edit documentation in R/ps_trim.R
 \name{is_refit}
 \alias{is_refit}
-\title{Check if an object has been refit}
+\title{Check if propensity scores have been refit}
 \usage{
 is_refit(x)
 }
 \arguments{
-\item{x}{An R object (e.g. a \link{ps_trim} or \link{psw}).}
+\item{x}{An object to test (typically a \link{ps_trim} vector).}
 }
 \value{
-A logical scalar (\code{TRUE} or \code{FALSE}).
+A single \code{TRUE} or \code{FALSE}.
 }
 \description{
-\strong{\code{is_refit()}} is an S3 generic that returns \code{TRUE} if its argument
-represents a \link{ps_trim} object (or a weighting object) that has had the
-propensity model refit on the retained subset.
+\code{is_refit()} tests whether \code{x} is a \code{ps_trim} object whose propensity
+model has been refit on the retained (non-trimmed) observations via
+\code{\link[=ps_refit]{ps_refit()}}.
+}
+\examples{
+set.seed(2)
+n <- 30
+x <- rnorm(n)
+z <- rbinom(n, 1, plogis(0.4 * x))
+fit <- glm(z ~ x, family = binomial)
+ps <- predict(fit, type = "response")
+
+trimmed <- ps_trim(ps, lower = 0.2, upper = 0.8)
+is_refit(trimmed)
+
+refit <- ps_refit(trimmed, fit)
+is_refit(refit)
+
+}
+\seealso{
+\code{\link[=ps_refit]{ps_refit()}} to refit a propensity model after trimming,
+\code{\link[=ps_trim]{ps_trim()}} to trim propensity scores.
 }

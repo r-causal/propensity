@@ -3,7 +3,7 @@
 \name{ipw}
 \alias{ipw}
 \alias{as.data.frame.ipw}
-\title{Inverse Probability Weights for Causal Inference}
+\title{Inverse Probability Weighted Estimation}
 \usage{
 ipw(
   ps_mod,
@@ -18,112 +18,149 @@ ipw(
 }
 \arguments{
 \item{ps_mod}{A fitted propensity score model of class \code{\link[stats:glm]{stats::glm()}},
-typically a logistic regression with the exposure as the dependent
-variable.}
+typically a logistic regression with the exposure as the left-hand side of
+the formula.}
 
-\item{outcome_mod}{A fitted, weighted outcome model of class \code{\link[stats:glm]{stats::glm()}}
-or \code{\link[stats:lm]{stats::lm()}}, with the outcome as the dependent variable.}
+\item{outcome_mod}{A fitted weighted outcome model of class \code{\link[stats:glm]{stats::glm()}}
+or \code{\link[stats:lm]{stats::lm()}}, with the outcome as the dependent variable and
+propensity score weights supplied via the \code{weights} argument. The weights
+should be created with a propensity weight function such as \code{\link[=wt_ate]{wt_ate()}}.}
 
-\item{.data}{A data frame containing the exposure, outcome, and covariates. If
-\code{NULL}, \code{ipw()} will try to extract the data from \code{ps_mod} and
-\code{outcome_mod}.}
+\item{.data}{A data frame containing the exposure, outcome, and covariates.
+If \code{NULL} (the default), \code{ipw()} extracts data from the model objects.
+Supply \code{.data} explicitly if the outcome model formula contains
+transformations that prevent extraction of the exposure variable from
+\code{\link[stats:model.frame]{stats::model.frame()}}.}
 
-\item{estimand}{A character string specifying the causal estimand: \code{ate},
-\code{att}, \code{ato}, or \code{atm}. If \code{NULL}, the function attempts to infer it from
-existing weights in \code{outcome_mod}, assuming they were calculated with
+\item{estimand}{A character string specifying the causal estimand: \code{"ate"},
+\code{"att"}, \code{"ato"}, or \code{"atm"}. If \code{NULL}, the estimand is inferred from the
+weights in \code{outcome_mod}. Auto-detection requires weights created with
 \code{\link[=wt_ate]{wt_ate()}}, \code{\link[=wt_att]{wt_att()}}, \code{\link[=wt_atm]{wt_atm()}}, or \code{\link[=wt_ato]{wt_ato()}}.}
 
-\item{ps_link}{A character string specifying the link function for the
-propensity score model: \code{logit}, \code{probit}, or \code{cloglog}. Defaults to
-whatever link was used by \code{ps_mod}.}
+\item{ps_link}{A character string specifying the link function used in the
+propensity score model: \code{"logit"}, \code{"probit"}, or \code{"cloglog"}. Defaults to
+the link used by \code{ps_mod}.}
 
-\item{conf_level}{Numeric. Confidence level for intervals (default \code{0.95}).}
+\item{conf_level}{Confidence level for intervals. Default is \code{0.95}.}
 
-\item{x}{an \code{ipw} object}
+\item{x}{An \code{ipw} object.}
 
-\item{row.names, optional, ...}{Passed to \code{as.data.frame()}.}
+\item{row.names, optional, ...}{Passed to \code{\link[base:as.data.frame]{base::as.data.frame()}}.}
 
-\item{exponentiate}{Logical. Should the log-RR and log-OR be exponentiated?}
+\item{exponentiate}{If \code{TRUE}, exponentiate the log risk ratio and log odds
+ratio to produce risk ratios and odds ratios on their natural scale. The
+confidence interval bounds are also exponentiated. Standard errors, z
+statistics, and p-values remain on the log scale. Default is \code{FALSE}.}
 }
 \value{
-An S3 object of class \code{ipw} containing:
-\itemize{
-\item \code{estimand}: One of \code{"ate"}, \code{"att"}, \code{"ato"}, or \code{"atm"}.
-\item \code{ps_mod}: The fitted propensity score model.
-\item \code{outcome_mod}: The fitted outcome model.
-\item \code{estimates}: A data frame of point estimates, standard errors, z-statistics,
-confidence intervals, and p-values.
+An S3 object of class \code{ipw} with the following components:
+\describe{
+\item{\code{estimand}}{The causal estimand: one of \code{"ate"}, \code{"att"}, \code{"ato"},
+or \code{"atm"}.}
+\item{\code{ps_mod}}{The fitted propensity score model.}
+\item{\code{outcome_mod}}{The fitted outcome model.}
+\item{\code{estimates}}{A data frame with one row per effect measure and the
+following columns: \code{effect} (the measure name), \code{estimate} (point
+estimate), \code{std.err} (standard error), \code{z} (z-statistic),
+\code{ci.lower} and \code{ci.upper} (confidence interval bounds),
+\code{conf.level}, and \code{p.value}.}
 }
+
+\code{as.data.frame()} returns the \code{estimates} component as a data
+frame. When \code{exponentiate = TRUE}, the \code{log(rr)} and \code{log(or)} rows are
+transformed: point estimates and confidence limits are exponentiated and
+the effect labels become \code{"rr"} and \code{"or"}.
 }
 \description{
 \code{ipw()} is a bring-your-own-model (BYOM) inverse probability weighted
-estimator. \code{ipw()} accepts a propensity score model and a weighted outcome
-model that you have already fit. The purpose of \code{ipw()} is to capture the
-uncertainty inherent to this two-step process and calculate the correct
-standard errors for each estimate. Currently, \code{ipw()} supports binary
-exposures and either binary or continuous outcomes. For binary outcomes,
-\code{ipw()} calculates the marginal risk difference, log risk ratio, and log odds
-ratio. For continuous outcomes, \code{ipw()} only calculates the marginal
-difference in means.
+estimator for causal inference. You supply a fitted propensity score model
+and a fitted weighted outcome model; \code{ipw()} computes causal effect estimates
+with standard errors that correctly account for the two-step estimation
+process.
+
+\code{ipw()} currently supports binary exposures with binary or continuous
+outcomes. For binary outcomes, it returns the risk difference, log risk
+ratio, and log odds ratio. For continuous outcomes, it returns the difference
+in means.
 }
-\details{
-The function constructs inverse probability weights based on the
-chosen \code{estimand}, then uses these weights (or extracts them from
-\code{outcome_mod}) to compute effect measures:
+\section{Workflow}{
+\code{ipw()} is designed around a three-step workflow:
+\enumerate{
+\item Fit a propensity score model (e.g., logistic regression of exposure on
+confounders).
+\item Calculate propensity score weights for your estimand (e.g., \code{\link[=wt_ate]{wt_ate()}})
+and fit a weighted outcome model.
+\item Pass both models to \code{ipw()} to obtain causal effect estimates with
+correct standard errors.
+}
+
+You are responsible for specifying and fitting both models. \code{ipw()} handles
+the variance estimation.
+}
+
+\section{Effect measures}{
+For binary outcomes (\code{\link[stats:glm]{stats::glm()}} with \code{family = binomial()}), \code{ipw()}
+returns three effect measures:
 \itemize{
-\item \code{rd}: Risk difference
+\item \code{rd}: Risk difference (marginal risk in exposed minus unexposed)
 \item \code{log(rr)}: Log risk ratio
 \item \code{log(or)}: Log odds ratio
+}
 
-For a linear outcome model (using \code{\link[stats:lm]{stats::lm()}} or \code{\link[stats:glm]{stats::glm()}} with
+For continuous outcomes (\code{\link[stats:lm]{stats::lm()}} or \code{\link[stats:glm]{stats::glm()}} with
 \code{family = gaussian()}), only the difference in means (\code{diff}) is returned.
+
+Use \code{\link[=as.data.frame]{as.data.frame()}} with \code{exponentiate = TRUE} to obtain risk ratios and
+odds ratios on their natural scale.
 }
 
-\strong{Variance Estimation}
+\section{Variance estimation}{
+Standard errors are computed via linearization, which correctly accounts for
+the uncertainty introduced by estimating propensity scores. This avoids the
+known problem of underestimated standard errors that arises from treating
+estimated weights as fixed. See Kostouraki et al. (2024) for details.
+}
 
-The variance is estimated via linearization, which provide variance
-estimates for IPW that correctly account for the uncertainty in estimation
-of the propensity scores. For more details on various types of propensity
-score weights and their corresponding variance estimators, see:
-\itemize{
-\item \emph{Kostouraki A, Hajage D, Rachet B, et al. On variance estimation of the inverse
-probability-of-treatment weighting estimator: A tutorial for different
-types of propensity score weights. Statistics in Medicine. 2024; 43(13):
-2672-2694. doi: \href{https://doi.org/10.1002/sim.10078}{10.1002/sim.10078}}
-}
-}
 \examples{
+# Simulate data with a confounder, binary exposure, and binary outcome
 set.seed(123)
-n <- 100
-# confounder
+n <- 200
 x1 <- rnorm(n)
-# exposure
-z  <- rbinom(n, 1, plogis(0.2 * x1))
-# binary outcome
-y  <- rbinom(n, 1, plogis(1 + 2*z + 0.5*x1))
-
+z <- rbinom(n, 1, plogis(0.5 * x1))
+y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.3 * x1))
 dat <- data.frame(x1, z, y)
 
-# fit a propensity score model (exposure ~ x1)
+# Step 1: Fit a propensity score model
 ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 
-# calculate weights for ATE
-ps <- predict(ps_mod, type = "response")
-wts <- wt_ate(ps, z)
-
-# fit an outcome model (binary y ~ z) using IPW
+# Step 2: Calculate ATE weights and fit a weighted outcome model
+wts <- wt_ate(ps_mod)
 outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
 
-# run IPW
-ipw_res <- ipw(ps_mod, outcome_mod)
+# Step 3: Estimate causal effects with correct standard errors
+result <- ipw(ps_mod, outcome_mod)
+result
 
-ipw_res
+# Exponentiate log-RR and log-OR to get RR and OR
+as.data.frame(result, exponentiate = TRUE)
 
-# Convert to a data frame with exponentiated RR/OR
-ipw_res_df <- as.data.frame(ipw_res, exponentiate = TRUE)
-ipw_res_df
+# Continuous outcome example
+y_cont <- 2 + 0.8 * z + 0.3 * x1 + rnorm(n)
+dat$y_cont <- y_cont
+outcome_cont <- lm(y_cont ~ z, data = dat, weights = wts)
+ipw(ps_mod, outcome_cont)
 
 }
+\references{
+Kostouraki A, Hajage D, Rachet B, et al. On variance estimation of the
+inverse probability-of-treatment weighting estimator: A tutorial for
+different types of propensity score weights. \emph{Statistics in Medicine}.
+2024;43(13):2672--2694. \doi{10.1002/sim.10078}
+}
 \seealso{
-\code{\link[stats:glm]{stats::glm()}}, \code{\link[stats:lm]{stats::lm()}}
+\code{\link[=wt_ate]{wt_ate()}}, \code{\link[=wt_att]{wt_att()}}, \code{\link[=wt_atm]{wt_atm()}}, \code{\link[=wt_ato]{wt_ato()}} for calculating propensity
+score weights.
+
+\code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}} for handling extreme propensity scores before
+weighting.
 }

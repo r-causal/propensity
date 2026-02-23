@@ -13,3 +13,5 @@
 ^[.]?air[.]toml$
 ^\.vscode$
 ^cran-comments\.md$
+^doc$
+^Meta$
