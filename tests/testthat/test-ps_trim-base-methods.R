@@ -399,7 +399,7 @@ test_that("ps_trim handles values exactly at boundaries", {
   # Values exactly at boundaries should be kept
   boundary_vals <- c(0.2, 0.5, 0.8)
   trimmed <- ps_trim(boundary_vals, method = "ps", lower = 0.2, upper = 0.8)
-  expect_false(any(is.na(trimmed)))
+  expect_false(anyNA(trimmed))
   expect_equal(as.numeric(trimmed), boundary_vals)
   expect_equal(ps_trim_meta(trimmed)$keep_idx, 1:3)
 

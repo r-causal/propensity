@@ -2,7 +2,7 @@
 % Please edit documentation in R/ps_trunc.R
 \name{is_ps_truncated}
 \alias{is_ps_truncated}
-\title{Check if object is truncated}
+\title{Test whether propensity scores have been truncated}
 \usage{
 is_ps_truncated(x)
 }
@@ -10,13 +10,21 @@ is_ps_truncated(x)
 \item{x}{An object.}
 }
 \value{
-A logical scalar (\code{TRUE} or \code{FALSE}).
+A single \code{TRUE} or \code{FALSE}.
 }
 \description{
-\code{is_ps_truncated()} is an S3 generic that returns \code{TRUE} if its
-argument represents a \code{ps_trunc} object or \code{psw} object created from
-truncated propensity scores. \code{is_ps_truncated()} is a question about whether
-the propensity scores \emph{have} been truncated, as opposed to
-\code{\link[=is_unit_truncated]{is_unit_truncated()}}, which is a question about which \emph{units} have been
-truncated.
+\code{is_ps_truncated()} returns \code{TRUE} if \code{x} is a \code{ps_trunc}
+object or a \code{psw} object derived from truncated propensity scores.
+Use \code{\link[=is_unit_truncated]{is_unit_truncated()}} to find out \emph{which} observations were modified.
+}
+\examples{
+ps <- c(0.02, 0.3, 0.5, 0.7, 0.98)
+is_ps_truncated(ps)
+
+ps_t <- ps_trunc(ps, method = "ps", lower = 0.05, upper = 0.95)
+is_ps_truncated(ps_t)
+
+}
+\seealso{
+\code{\link[=ps_trunc]{ps_trunc()}}, \code{\link[=is_unit_truncated]{is_unit_truncated()}}, \code{\link[=ps_trunc_meta]{ps_trunc_meta()}}
 }

@@ -1,0 +1,331 @@
+---
+title: "Getting Started with propensity"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with propensity}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+This vignette walks through the core propensity score weighting workflow:
+fitting a propensity score model, calculating weights, and estimating causal
+effects with `ipw()`. We'll also cover what to do when propensity scores are
+extreme.
+
+## Setup
+
+```{r setup}
+library(propensity)
+```
+
+We'll work with a simulated dataset throughout. There are two confounders
+(`x1` and `x2`), a binary exposure (`z`), and a binary outcome (`y`):
+
+```{r simulate-data}
+set.seed(42)
+n <- 100
+x1 <- rnorm(n)
+x2 <- rnorm(n)
+z <- rbinom(n, 1, plogis(0.5 * x1 + 0.3 * x2))
+y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.3 * x1 + 0.2 * x2))
+dat <- data.frame(x1, z, y, x2)
+```
+
+Both `x1` and `x2` affect treatment and outcome, so we need to adjust for
+them.
+
+## Basic workflow
+
+### Step 1: Fit a propensity score model
+
+Start with a model for treatment assignment. Here we use logistic regression:
+
+```{r step1}
+ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+```
+
+### Step 2: Calculate weights and fit a weighted outcome model
+
+Pass the fitted model directly to `wt_ate()` to get ATE weights. It pulls
+out the fitted values and exposure for you:
+
+```{r step2}
+wts <- wt_ate(ps_mod)
+outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
+```
+
+`wt_ate()` returns a `psw` object, which is just a numeric vector with some
+extra metadata attached:
+
+```{r psw-inspect}
+estimand(wts)
+is_stabilized(wts)
+```
+
+You can also pass propensity scores as a plain numeric vector. In that case
+you need to supply the exposure too:
+
+```{r data-frame-input}
+ps <- fitted(ps_mod)
+wt_ate(ps, dat$z)
+```
+
+### Step 3: Estimate causal effects
+
+`ipw()` takes the propensity score model and the weighted outcome model and
+returns causal effect estimates. The standard errors use linearization to
+account for the fact that the propensity scores are estimated:
+
+```{r step3}
+result <- ipw(ps_mod, outcome_mod)
+result
+```
+
+## Choosing an estimand
+
+Each estimand targets a different population:
+
+| Estimand | Target population | Function |
+|----------|-------------------|----------|
+| ATE | Entire study population | `wt_ate()` |
+| ATT | Treated (focal) group | `wt_att()` |
+| ATU | Untreated (reference) group | `wt_atu()` |
+| ATO | Overlap population | `wt_ato()` |
+| ATM | Matched population | `wt_atm()` |
+| Entropy | Entropy-balanced population | `wt_entropy()` |
+
+`wt_atc()` is an alias for `wt_atu()`.
+
+ATE is the most common choice. ATT and ATU narrow the question to the treated
+or untreated, respectively. ATO, ATM, and entropy weights target overlap
+populations -- they produce bounded weights by construction, which makes them
+a good option when propensity scores are extreme (more on that below).
+
+To switch estimands, just swap the weight function:
+
+```{r switching-estimands}
+wts_ate <- wt_ate(ps_mod)
+wts_att <- wt_att(ps_mod)
+wts_ato <- wt_ato(ps_mod)
+```
+
+## Handling extreme weights
+
+Propensity scores near 0 or 1 produce large weights that can blow up
+your variance. The `summary()` method gives a quick look at the weight
+distribution:
+
+```{r diagnose-weights}
+summary(wts_ate)
+```
+
+If you see a very large maximum or high variance, you have a few options.
+
+### Overlap estimands
+
+The easiest fix is to use an estimand with bounded weights. `wt_ato()` and
+`wt_atm()` down-weight observations where overlap is poor:
+
+```{r overlap-estimands}
+summary(wt_ato(ps_mod))
+summary(wt_atm(ps_mod))
+```
+
+The trade-off is that you're now targeting a different population.
+
+### Trimming
+
+`ps_trim()` drops observations with extreme propensity scores by setting
+them to `NA`. The `"ps"` method uses fixed thresholds (by default, 0.1
+and 0.9):
+
+```{r trim-ps}
+ps_trimmed <- ps_trim(ps, method = "ps")
+```
+
+The `"adaptive"` method (Crump et al., 2009) finds a data-driven threshold:
+
+```{r trim-adaptive}
+ps_trimmed_adapt <- ps_trim(ps, method = "adaptive")
+```
+
+You can inspect the result with a few helpers:
+
+```{r trim-diagnostics}
+# Confirm the object has been trimmed
+is_ps_trimmed(ps_trimmed)
+
+# Which observations were removed?
+sum(is_unit_trimmed(ps_trimmed))
+
+# View trimming metadata (method, cutoffs, etc.)
+ps_trim_meta(ps_trimmed)
+```
+
+Use `!is_unit_trimmed()` to subset your data down to the retained
+observations:
+
+```{r trim-subset}
+retained <- !is_unit_trimmed(ps_trimmed)
+dat_trimmed <- dat[retained, ]
+```
+
+After trimming, you should refit the propensity score model on the retained
+sample so the scores reflect the trimmed population:
+
+```{r refit}
+ps_refitted <- ps_refit(ps_trimmed, ps_mod)
+is_refit(ps_refitted)
+```
+
+Then pass the refitted scores to the weight function as usual:
+
+```{r weights-from-refit}
+wts_trimmed <- wt_ate(ps_refitted, dat$z)
+summary(wts_trimmed)
+```
+
+See `?ps_trim` for other trimming methods, including percentile-based
+(`"pctl"`), preference score (`"pref"`), and common range (`"cr"`).
+
+### Truncation
+
+Truncation is similar to trimming but keeps all observations -- it just
+clips extreme scores to specified bounds:
+
+```{r truncate}
+ps_truncated <- ps_trunc(ps, lower = 0.05, upper = 0.95)
+```
+
+`is_unit_truncated()` tells you which observations were clipped:
+
+```{r trunc-diagnostics}
+is_ps_truncated(ps_truncated)
+sum(is_unit_truncated(ps_truncated))
+ps_trunc_meta(ps_truncated)
+```
+
+```{r weights-from-trunc}
+wts_truncated <- wt_ate(ps_truncated, dat$z)
+summary(wts_truncated)
+```
+
+### Which approach?
+
+These aren't mutually exclusive. In general: overlap estimands like
+`wt_ato()` are the easiest path if your research question allows it.
+Trimming (followed by `ps_refit()`) is the standard choice when you need ATE
+but have near-violations of positivity. Truncation is a lighter touch when
+you want to keep the full sample.
+
+## Interpreting results
+
+### Binary outcomes
+
+For binary outcomes, `ipw()` returns three effect measures: the risk
+difference, log risk ratio, and log odds ratio:
+
+```{r interpret-binary}
+result
+```
+
+`as.data.frame()` pulls the estimates into a data frame:
+
+```{r as-data-frame}
+as.data.frame(result)
+```
+
+Use `exponentiate = TRUE` to get risk ratios and odds ratios on their natural
+scale. The standard errors, z-statistics, and p-values stay on the log scale:
+
+```{r exponentiate}
+as.data.frame(result, exponentiate = TRUE)
+```
+
+### Continuous outcomes
+
+For continuous outcomes, `ipw()` returns the mean difference. Use `lm()`
+for the outcome model:
+
+```{r continuous-outcome}
+y_cont <- 2 + 0.8 * z + 0.3 * x1 + 0.2 * x2 + rnorm(n)
+dat$y_cont <- y_cont
+outcome_cont <- lm(y_cont ~ z, data = dat, weights = wts)
+ipw(ps_mod, outcome_cont)
+```
+
+## Next steps
+
+The examples above all use binary exposures. propensity also handles
+continuous and categorical treatments.
+
+### Continuous exposures
+
+For continuous exposures, weights use density ratios. Stabilization is
+usually a good idea here:
+
+```{r continuous-exposure, eval = FALSE}
+# Fit a model for the continuous exposure
+ps_cont <- glm(continuous_exposure ~ x1 + x2, data = dat, family = gaussian())
+
+# Stabilized weights (strongly recommended for continuous exposures)
+wts_cont <- wt_ate(ps_cont, stabilize = TRUE)
+```
+
+### Categorical exposures
+
+For multi-level treatments, pass a matrix or data frame of predicted
+probabilities with one column per level:
+
+```{r categorical-exposure, eval = FALSE}
+# Multinomial propensity scores (one column per treatment level)
+ps_matrix <- predict(multinom_model, type = "probs")
+wt_ate(ps_matrix, exposure, exposure_type = "categorical")
+
+# ATT and ATU require specifying the focal level
+wt_att(ps_matrix, exposure, .focal_level = "treated")
+```
+
+### Calibration
+
+`ps_calibrate()` adjusts propensity scores so they better reflect treatment
+probabilities. Where trimming and truncation deal with the tails, calibration
+reshapes the whole distribution. It supports logistic calibration (the
+default) and isotonic regression:
+
+```{r calibrate, eval = FALSE}
+ps_calibrated <- ps_calibrate(ps, dat$z, method = "logistic", smooth = FALSE)
+is_ps_calibrated(ps_calibrated)
+
+wts_calibrated <- wt_ate(ps_calibrated, dat$z)
+```
+
+### Censoring weights
+
+`wt_cens()` calculates inverse probability of censoring weights for survival
+or longitudinal analyses:
+
+```{r censoring-weights, eval = FALSE}
+# Model the probability of being uncensored
+cens_mod <- glm(uncensored ~ x1 + x2, data = dat, family = binomial())
+wts_cens <- wt_cens(cens_mod)
+
+# Censoring weights use the same formula as ATE weights
+estimand(wts_cens) # "uncensored"
+```
+
+### Learning more
+
+See the function reference for details:
+
+- `?wt_ate` -- Weight calculation for all estimands
+- `?ps_trim`, `?ps_trunc`, `?ps_calibrate` -- Handling extreme propensity
+  scores
+- `?ipw` -- Inverse probability weighted estimation

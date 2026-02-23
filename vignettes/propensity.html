@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Getting Started with propensity</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Getting Started with propensity</h1>
+
+
+
+<p>This vignette walks through the core propensity score weighting
+workflow: fitting a propensity score model, calculating weights, and
+estimating causal effects with <code>ipw()</code>. We’ll also cover what
+to do when propensity scores are extreme.</p>
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">library</span>(propensity)</span></code></pre></div>
+<p>We’ll work with a simulated dataset throughout. There are two
+confounders (<code>x1</code> and <code>x2</code>), a binary exposure
+(<code>z</code>), and a binary outcome (<code>y</code>):</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">100</span></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>x1 <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n)</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>x2 <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n)</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>z <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fu">plogis</span>(<span class="fl">0.5</span> <span class="sc">*</span> x1 <span class="sc">+</span> <span class="fl">0.3</span> <span class="sc">*</span> x2))</span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>y <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fu">plogis</span>(<span class="sc">-</span><span class="fl">0.5</span> <span class="sc">+</span> <span class="fl">0.8</span> <span class="sc">*</span> z <span class="sc">+</span> <span class="fl">0.3</span> <span class="sc">*</span> x1 <span class="sc">+</span> <span class="fl">0.2</span> <span class="sc">*</span> x2))</span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(x1, z, y, x2)</span></code></pre></div>
+<p>Both <code>x1</code> and <code>x2</code> affect treatment and
+outcome, so we need to adjust for them.</p>
+</div>
+<div id="basic-workflow" class="section level2">
+<h2>Basic workflow</h2>
+<div id="step-1-fit-a-propensity-score-model" class="section level3">
+<h3>Step 1: Fit a propensity score model</h3>
+<p>Start with a model for treatment assignment. Here we use logistic
+regression:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>ps_mod <span class="ot">&lt;-</span> <span class="fu">glm</span>(z <span class="sc">~</span> x1 <span class="sc">+</span> x2, <span class="at">data =</span> dat, <span class="at">family =</span> <span class="fu">binomial</span>())</span></code></pre></div>
+</div>
+<div id="step-2-calculate-weights-and-fit-a-weighted-outcome-model" class="section level3">
+<h3>Step 2: Calculate weights and fit a weighted outcome model</h3>
+<p>Pass the fitted model directly to <code>wt_ate()</code> to get ATE
+weights. It pulls out the fitted values and exposure for you:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>wts <span class="ot">&lt;-</span> <span class="fu">wt_ate</span>(ps_mod)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="co">#&gt; ℹ Using exposure variable &quot;z&quot; from GLM model</span></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>outcome_mod <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> z, <span class="at">data =</span> dat, <span class="at">family =</span> <span class="fu">binomial</span>(), <span class="at">weights =</span> wts)</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co">#&gt; Warning in eval(family$initialize): non-integer #successes in a binomial glm!</span></span></code></pre></div>
+<p><code>wt_ate()</code> returns a <code>psw</code> object, which is
+just a numeric vector with some extra metadata attached:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">estimand</span>(wts)</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="co">#&gt; [1] &quot;ate&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="fu">is_stabilized</span>(wts)</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; [1] FALSE</span></span></code></pre></div>
+<p>You can also pass propensity scores as a plain numeric vector. In
+that case you need to supply the exposure too:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>ps <span class="ot">&lt;-</span> <span class="fu">fitted</span>(ps_mod)</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="fu">wt_ate</span>(ps, dat<span class="sc">$</span>z)</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a><span class="co">#&gt; &lt;psw{estimand = ate}[100]&gt;</span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a><span class="co">#&gt;   [1]  1.237569  1.962759  2.211732  1.312977  1.974772  1.918957  3.413991</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="co">#&gt;   [8]  1.844849  1.223426  2.048453  1.409967  1.189795  1.283684  2.580633</span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co">#&gt;  [15]  1.439961  1.771951  1.627989  3.438494  1.092310  1.379591  1.414973</span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co">#&gt;  [22]  1.142879  2.132832  2.539924  1.264028  1.584122  1.614753  1.115628</span></span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a><span class="co">#&gt;  [29]  2.235160  1.641530  1.598952  1.767794  1.494051  2.039262  3.465881</span></span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a><span class="co">#&gt;  [36]  1.174226  1.511863  1.832668  1.135144  2.045876  2.067593  2.960898</span></span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a><span class="co">#&gt;  [43]  1.724205  2.807457  1.296458  1.487979  1.433057  3.287998  2.085343</span></span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="co">#&gt;  [50]  2.000254  1.845028  1.286187  1.207434  2.360698  1.840088  1.704295</span></span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a><span class="co">#&gt;  [57]  1.642486  2.362152 12.582758  2.974447  1.677742  1.704949  2.553764</span></span>
+<span id="cb6-15"><a href="#cb6-15" tabindex="-1"></a><span class="co">#&gt;  [64]  1.438721  1.711034  1.227343  1.812465  1.409825  1.518867  3.314572</span></span>
+<span id="cb6-16"><a href="#cb6-16" tabindex="-1"></a><span class="co">#&gt;  [71]  1.404951  1.799540  2.354036  1.941761  1.909359  1.731474  2.080547</span></span>
+<span id="cb6-17"><a href="#cb6-17" tabindex="-1"></a><span class="co">#&gt;  [78]  2.731912  1.606549  3.350612  1.327948  2.103802  2.178471  2.018730</span></span>
+<span id="cb6-18"><a href="#cb6-18" tabindex="-1"></a><span class="co">#&gt;  [85]  3.813295  1.864473  2.078958  1.959235  1.747083  1.907159  3.853789</span></span>
+<span id="cb6-19"><a href="#cb6-19" tabindex="-1"></a><span class="co">#&gt;  [92]  1.584359  2.693732  1.644175  1.286716  1.788770  3.037240  1.416308</span></span>
+<span id="cb6-20"><a href="#cb6-20" tabindex="-1"></a><span class="co">#&gt;  [99]  1.474800  1.619529</span></span></code></pre></div>
+</div>
+<div id="step-3-estimate-causal-effects" class="section level3">
+<h3>Step 3: Estimate causal effects</h3>
+<p><code>ipw()</code> takes the propensity score model and the weighted
+outcome model and returns causal effect estimates. The standard errors
+use linearization to account for the fact that the propensity scores are
+estimated:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>result <span class="ot">&lt;-</span> <span class="fu">ipw</span>(ps_mod, outcome_mod)</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>result</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a><span class="co">#&gt; Estimand: ATE </span></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a><span class="co">#&gt; Propensity Score Model:</span></span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a><span class="co">#&gt; Outcome Model:</span></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb7-12"><a href="#cb7-12" tabindex="-1"></a><span class="co">#&gt; Estimates:</span></span>
+<span id="cb7-13"><a href="#cb7-13" tabindex="-1"></a><span class="co">#&gt;         estimate  std.err        z ci.lower ci.upper conf.level   p.value    </span></span>
+<span id="cb7-14"><a href="#cb7-14" tabindex="-1"></a><span class="co">#&gt; rd       0.32000  0.10411  3.07376   0.1160  0.52404       0.95  0.002114 ** </span></span>
+<span id="cb7-15"><a href="#cb7-15" tabindex="-1"></a><span class="co">#&gt; log(rr)  0.69137  0.12490  5.53528   0.4466  0.93618       0.95 3.107e-08 ***</span></span>
+<span id="cb7-16"><a href="#cb7-16" tabindex="-1"></a><span class="co">#&gt; log(or)  1.32884  0.12288 10.81398   1.0880  1.56969       0.95 &lt; 2.2e-16 ***</span></span>
+<span id="cb7-17"><a href="#cb7-17" tabindex="-1"></a><span class="co">#&gt; ---</span></span>
+<span id="cb7-18"><a href="#cb7-18" tabindex="-1"></a><span class="co">#&gt; Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</span></span></code></pre></div>
+</div>
+</div>
+<div id="choosing-an-estimand" class="section level2">
+<h2>Choosing an estimand</h2>
+<p>Each estimand targets a different population:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Estimand</th>
+<th>Target population</th>
+<th>Function</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>ATE</td>
+<td>Entire study population</td>
+<td><code>wt_ate()</code></td>
+</tr>
+<tr class="even">
+<td>ATT</td>
+<td>Treated (focal) group</td>
+<td><code>wt_att()</code></td>
+</tr>
+<tr class="odd">
+<td>ATU</td>
+<td>Untreated (reference) group</td>
+<td><code>wt_atu()</code></td>
+</tr>
+<tr class="even">
+<td>ATO</td>
+<td>Overlap population</td>
+<td><code>wt_ato()</code></td>
+</tr>
+<tr class="odd">
+<td>ATM</td>
+<td>Matched population</td>
+<td><code>wt_atm()</code></td>
+</tr>
+<tr class="even">
+<td>Entropy</td>
+<td>Entropy-balanced population</td>
+<td><code>wt_entropy()</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>wt_atc()</code> is an alias for <code>wt_atu()</code>.</p>
+<p>ATE is the most common choice. ATT and ATU narrow the question to the
+treated or untreated, respectively. ATO, ATM, and entropy weights target
+overlap populations – they produce bounded weights by construction,
+which makes them a good option when propensity scores are extreme (more
+on that below).</p>
+<p>To switch estimands, just swap the weight function:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>wts_ate <span class="ot">&lt;-</span> <span class="fu">wt_ate</span>(ps_mod)</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a><span class="co">#&gt; ℹ Using exposure variable &quot;z&quot; from GLM model</span></span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>wts_att <span class="ot">&lt;-</span> <span class="fu">wt_att</span>(ps_mod)</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a><span class="co">#&gt; ℹ Using exposure variable &quot;z&quot; from GLM model</span></span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a>wts_ato <span class="ot">&lt;-</span> <span class="fu">wt_ato</span>(ps_mod)</span>
+<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a><span class="co">#&gt; ℹ Using exposure variable &quot;z&quot; from GLM model</span></span>
+<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb8-12"><a href="#cb8-12" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span></code></pre></div>
+</div>
+<div id="handling-extreme-weights" class="section level2">
+<h2>Handling extreme weights</h2>
+<p>Propensity scores near 0 or 1 produce large weights that can blow up
+your variance. The <code>summary()</code> method gives a quick look at
+the weight distribution:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="fu">summary</span>(wts_ate)</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a><span class="co">#&gt;   1.092   1.440   1.780   2.028   2.111  12.583</span></span></code></pre></div>
+<p>If you see a very large maximum or high variance, you have a few
+options.</p>
+<div id="overlap-estimands" class="section level3">
+<h3>Overlap estimands</h3>
+<p>The easiest fix is to use an estimand with bounded weights.
+<code>wt_ato()</code> and <code>wt_atm()</code> down-weight observations
+where overlap is poor:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">wt_ato</span>(ps_mod))</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="co">#&gt; ℹ Using exposure variable &quot;z&quot; from GLM model</span></span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a><span class="co">#&gt; 0.08451 0.30539 0.43830 0.43370 0.52629 0.92053</span></span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">wt_atm</span>(ps_mod))</span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a><span class="co">#&gt; ℹ Using exposure variable &quot;z&quot; from GLM model</span></span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
+<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a><span class="co">#&gt; 0.09231 0.43965 0.78036 0.70946 1.00000 1.00000</span></span></code></pre></div>
+<p>The trade-off is that you’re now targeting a different
+population.</p>
+</div>
+<div id="trimming" class="section level3">
+<h3>Trimming</h3>
+<p><code>ps_trim()</code> drops observations with extreme propensity
+scores by setting them to <code>NA</code>. The <code>&quot;ps&quot;</code> method
+uses fixed thresholds (by default, 0.1 and 0.9):</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>ps_trimmed <span class="ot">&lt;-</span> <span class="fu">ps_trim</span>(ps, <span class="at">method =</span> <span class="st">&quot;ps&quot;</span>)</span></code></pre></div>
+<p>The <code>&quot;adaptive&quot;</code> method (Crump et al., 2009) finds a
+data-driven threshold:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a>ps_trimmed_adapt <span class="ot">&lt;-</span> <span class="fu">ps_trim</span>(ps, <span class="at">method =</span> <span class="st">&quot;adaptive&quot;</span>)</span></code></pre></div>
+<p>You can inspect the result with a few helpers:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a><span class="co"># Confirm the object has been trimmed</span></span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a><span class="fu">is_ps_trimmed</span>(ps_trimmed)</span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a><span class="co">#&gt; [1] TRUE</span></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a><span class="co"># Which observations were removed?</span></span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is_unit_trimmed</span>(ps_trimmed))</span>
+<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a><span class="co">#&gt; [1] 2</span></span>
+<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a></span>
+<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a><span class="co"># View trimming metadata (method, cutoffs, etc.)</span></span>
+<span id="cb13-10"><a href="#cb13-10" tabindex="-1"></a><span class="fu">ps_trim_meta</span>(ps_trimmed)</span>
+<span id="cb13-11"><a href="#cb13-11" tabindex="-1"></a><span class="co">#&gt; $method</span></span>
+<span id="cb13-12"><a href="#cb13-12" tabindex="-1"></a><span class="co">#&gt; [1] &quot;ps&quot;</span></span>
+<span id="cb13-13"><a href="#cb13-13" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb13-14"><a href="#cb13-14" tabindex="-1"></a><span class="co">#&gt; $lower</span></span>
+<span id="cb13-15"><a href="#cb13-15" tabindex="-1"></a><span class="co">#&gt; [1] 0.1</span></span>
+<span id="cb13-16"><a href="#cb13-16" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb13-17"><a href="#cb13-17" tabindex="-1"></a><span class="co">#&gt; $upper</span></span>
+<span id="cb13-18"><a href="#cb13-18" tabindex="-1"></a><span class="co">#&gt; [1] 0.9</span></span>
+<span id="cb13-19"><a href="#cb13-19" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb13-20"><a href="#cb13-20" tabindex="-1"></a><span class="co">#&gt; $keep_idx</span></span>
+<span id="cb13-21"><a href="#cb13-21" tabindex="-1"></a><span class="co">#&gt;   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21 </span></span>
+<span id="cb13-22"><a href="#cb13-22" tabindex="-1"></a><span class="co">#&gt;   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21 </span></span>
+<span id="cb13-23"><a href="#cb13-23" tabindex="-1"></a><span class="co">#&gt;  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36  37  38  39  40  41 </span></span>
+<span id="cb13-24"><a href="#cb13-24" tabindex="-1"></a><span class="co">#&gt;  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36  37  38  39  40  41 </span></span>
+<span id="cb13-25"><a href="#cb13-25" tabindex="-1"></a><span class="co">#&gt;  42  43  44  45  46  47  48  49  50  51  52  53  54  55  56  57  58  60  61  62 </span></span>
+<span id="cb13-26"><a href="#cb13-26" tabindex="-1"></a><span class="co">#&gt;  42  43  44  45  46  47  48  49  50  51  52  53  54  55  56  57  58  60  61  62 </span></span>
+<span id="cb13-27"><a href="#cb13-27" tabindex="-1"></a><span class="co">#&gt;  63  64  65  66  67  68  69  70  71  72  73  74  75  76  77  78  79  80  81  82 </span></span>
+<span id="cb13-28"><a href="#cb13-28" tabindex="-1"></a><span class="co">#&gt;  63  64  65  66  67  68  69  70  71  72  73  74  75  76  77  78  79  80  81  82 </span></span>
+<span id="cb13-29"><a href="#cb13-29" tabindex="-1"></a><span class="co">#&gt;  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 </span></span>
+<span id="cb13-30"><a href="#cb13-30" tabindex="-1"></a><span class="co">#&gt;  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 </span></span>
+<span id="cb13-31"><a href="#cb13-31" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb13-32"><a href="#cb13-32" tabindex="-1"></a><span class="co">#&gt; $trimmed_idx</span></span>
+<span id="cb13-33"><a href="#cb13-33" tabindex="-1"></a><span class="co">#&gt; [1] 19 59</span></span></code></pre></div>
+<p>Use <code>!is_unit_trimmed()</code> to subset your data down to the
+retained observations:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a>retained <span class="ot">&lt;-</span> <span class="sc">!</span><span class="fu">is_unit_trimmed</span>(ps_trimmed)</span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>dat_trimmed <span class="ot">&lt;-</span> dat[retained, ]</span></code></pre></div>
+<p>After trimming, you should refit the propensity score model on the
+retained sample so the scores reflect the trimmed population:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a>ps_refitted <span class="ot">&lt;-</span> <span class="fu">ps_refit</span>(ps_trimmed, ps_mod)</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a><span class="fu">is_refit</span>(ps_refitted)</span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
+<p>Then pass the refitted scores to the weight function as usual:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>wts_trimmed <span class="ot">&lt;-</span> <span class="fu">wt_ate</span>(ps_refitted, dat<span class="sc">$</span>z)</span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a><span class="fu">summary</span>(wts_trimmed)</span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA&#39;s </span></span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a><span class="co">#&gt;   1.073   1.386   1.726   1.970   2.157   4.724       2</span></span></code></pre></div>
+<p>See <code>?ps_trim</code> for other trimming methods, including
+percentile-based (<code>&quot;pctl&quot;</code>), preference score
+(<code>&quot;pref&quot;</code>), and common range (<code>&quot;cr&quot;</code>).</p>
+</div>
+<div id="truncation" class="section level3">
+<h3>Truncation</h3>
+<p>Truncation is similar to trimming but keeps all observations – it
+just clips extreme scores to specified bounds:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a>ps_truncated <span class="ot">&lt;-</span> <span class="fu">ps_trunc</span>(ps, <span class="at">lower =</span> <span class="fl">0.05</span>, <span class="at">upper =</span> <span class="fl">0.95</span>)</span></code></pre></div>
+<p><code>is_unit_truncated()</code> tells you which observations were
+clipped:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="fu">is_ps_truncated</span>(ps_truncated)</span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a><span class="co">#&gt; [1] TRUE</span></span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is_unit_truncated</span>(ps_truncated))</span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a><span class="co">#&gt; [1] 0</span></span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a><span class="fu">ps_trunc_meta</span>(ps_truncated)</span>
+<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a><span class="co">#&gt; $method</span></span>
+<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a><span class="co">#&gt; [1] &quot;ps&quot;</span></span>
+<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a><span class="co">#&gt; $lower_bound</span></span>
+<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a><span class="co">#&gt; [1] 0.05</span></span>
+<span id="cb18-11"><a href="#cb18-11" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb18-12"><a href="#cb18-12" tabindex="-1"></a><span class="co">#&gt; $upper_bound</span></span>
+<span id="cb18-13"><a href="#cb18-13" tabindex="-1"></a><span class="co">#&gt; [1] 0.95</span></span>
+<span id="cb18-14"><a href="#cb18-14" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb18-15"><a href="#cb18-15" tabindex="-1"></a><span class="co">#&gt; $truncated_idx</span></span>
+<span id="cb18-16"><a href="#cb18-16" tabindex="-1"></a><span class="co">#&gt; integer(0)</span></span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a>wts_truncated <span class="ot">&lt;-</span> <span class="fu">wt_ate</span>(ps_truncated, dat<span class="sc">$</span>z)</span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a><span class="co">#&gt; ℹ Treating `.exposure` as binary</span></span>
+<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a><span class="co">#&gt; ℹ Setting focal level to 1</span></span>
+<span id="cb19-4"><a href="#cb19-4" tabindex="-1"></a><span class="fu">summary</span>(wts_truncated)</span>
+<span id="cb19-5"><a href="#cb19-5" tabindex="-1"></a><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
+<span id="cb19-6"><a href="#cb19-6" tabindex="-1"></a><span class="co">#&gt;   1.092   1.440   1.780   2.028   2.111  12.583</span></span></code></pre></div>
+</div>
+<div id="which-approach" class="section level3">
+<h3>Which approach?</h3>
+<p>These aren’t mutually exclusive. In general: overlap estimands like
+<code>wt_ato()</code> are the easiest path if your research question
+allows it. Trimming (followed by <code>ps_refit()</code>) is the
+standard choice when you need ATE but have near-violations of
+positivity. Truncation is a lighter touch when you want to keep the full
+sample.</p>
+</div>
+</div>
+<div id="interpreting-results" class="section level2">
+<h2>Interpreting results</h2>
+<div id="binary-outcomes" class="section level3">
+<h3>Binary outcomes</h3>
+<p>For binary outcomes, <code>ipw()</code> returns three effect
+measures: the risk difference, log risk ratio, and log odds ratio:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a>result</span>
+<span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
+<span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a><span class="co">#&gt; Estimand: ATE </span></span>
+<span id="cb20-4"><a href="#cb20-4" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb20-5"><a href="#cb20-5" tabindex="-1"></a><span class="co">#&gt; Propensity Score Model:</span></span>
+<span id="cb20-6"><a href="#cb20-6" tabindex="-1"></a><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
+<span id="cb20-7"><a href="#cb20-7" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb20-8"><a href="#cb20-8" tabindex="-1"></a><span class="co">#&gt; Outcome Model:</span></span>
+<span id="cb20-9"><a href="#cb20-9" tabindex="-1"></a><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
+<span id="cb20-10"><a href="#cb20-10" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb20-11"><a href="#cb20-11" tabindex="-1"></a><span class="co">#&gt; Estimates:</span></span>
+<span id="cb20-12"><a href="#cb20-12" tabindex="-1"></a><span class="co">#&gt;         estimate  std.err        z ci.lower ci.upper conf.level   p.value    </span></span>
+<span id="cb20-13"><a href="#cb20-13" tabindex="-1"></a><span class="co">#&gt; rd       0.32000  0.10411  3.07376   0.1160  0.52404       0.95  0.002114 ** </span></span>
+<span id="cb20-14"><a href="#cb20-14" tabindex="-1"></a><span class="co">#&gt; log(rr)  0.69137  0.12490  5.53528   0.4466  0.93618       0.95 3.107e-08 ***</span></span>
+<span id="cb20-15"><a href="#cb20-15" tabindex="-1"></a><span class="co">#&gt; log(or)  1.32884  0.12288 10.81398   1.0880  1.56969       0.95 &lt; 2.2e-16 ***</span></span>
+<span id="cb20-16"><a href="#cb20-16" tabindex="-1"></a><span class="co">#&gt; ---</span></span>
+<span id="cb20-17"><a href="#cb20-17" tabindex="-1"></a><span class="co">#&gt; Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</span></span></code></pre></div>
+<p><code>as.data.frame()</code> pulls the estimates into a data
+frame:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a><span class="fu">as.data.frame</span>(result)</span>
+<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a><span class="co">#&gt;    effect  estimate   std.err         z  ci.lower  ci.upper conf.level</span></span>
+<span id="cb21-3"><a href="#cb21-3" tabindex="-1"></a><span class="co">#&gt; 1      rd 0.3199973 0.1041062  3.073758 0.1159529 0.5240417       0.95</span></span>
+<span id="cb21-4"><a href="#cb21-4" tabindex="-1"></a><span class="co">#&gt; 2 log(rr) 0.6913736 0.1249031  5.535278 0.4465679 0.9361792       0.95</span></span>
+<span id="cb21-5"><a href="#cb21-5" tabindex="-1"></a><span class="co">#&gt; 3 log(or) 1.3288426 0.1228819 10.813984 1.0879986 1.5696867       0.95</span></span>
+<span id="cb21-6"><a href="#cb21-6" tabindex="-1"></a><span class="co">#&gt;        p.value</span></span>
+<span id="cb21-7"><a href="#cb21-7" tabindex="-1"></a><span class="co">#&gt; 1 2.113806e-03</span></span>
+<span id="cb21-8"><a href="#cb21-8" tabindex="-1"></a><span class="co">#&gt; 2 3.107345e-08</span></span>
+<span id="cb21-9"><a href="#cb21-9" tabindex="-1"></a><span class="co">#&gt; 3 0.000000e+00</span></span></code></pre></div>
+<p>Use <code>exponentiate = TRUE</code> to get risk ratios and odds
+ratios on their natural scale. The standard errors, z-statistics, and
+p-values stay on the log scale:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a><span class="fu">as.data.frame</span>(result, <span class="at">exponentiate =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb22-2"><a href="#cb22-2" tabindex="-1"></a><span class="co">#&gt;   effect  estimate   std.err         z  ci.lower  ci.upper conf.level</span></span>
+<span id="cb22-3"><a href="#cb22-3" tabindex="-1"></a><span class="co">#&gt; 1     rd 0.3199973 0.1041062  3.073758 0.1159529 0.5240417       0.95</span></span>
+<span id="cb22-4"><a href="#cb22-4" tabindex="-1"></a><span class="co">#&gt; 2     rr 1.9964559 0.1249031  5.535278 1.5629389 2.5502189       0.95</span></span>
+<span id="cb22-5"><a href="#cb22-5" tabindex="-1"></a><span class="co">#&gt; 3     or 3.7766698 0.1228819 10.813984 2.9683272 4.8051424       0.95</span></span>
+<span id="cb22-6"><a href="#cb22-6" tabindex="-1"></a><span class="co">#&gt;        p.value</span></span>
+<span id="cb22-7"><a href="#cb22-7" tabindex="-1"></a><span class="co">#&gt; 1 2.113806e-03</span></span>
+<span id="cb22-8"><a href="#cb22-8" tabindex="-1"></a><span class="co">#&gt; 2 3.107345e-08</span></span>
+<span id="cb22-9"><a href="#cb22-9" tabindex="-1"></a><span class="co">#&gt; 3 0.000000e+00</span></span></code></pre></div>
+</div>
+<div id="continuous-outcomes" class="section level3">
+<h3>Continuous outcomes</h3>
+<p>For continuous outcomes, <code>ipw()</code> returns the mean
+difference. Use <code>lm()</code> for the outcome model:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a>y_cont <span class="ot">&lt;-</span> <span class="dv">2</span> <span class="sc">+</span> <span class="fl">0.8</span> <span class="sc">*</span> z <span class="sc">+</span> <span class="fl">0.3</span> <span class="sc">*</span> x1 <span class="sc">+</span> <span class="fl">0.2</span> <span class="sc">*</span> x2 <span class="sc">+</span> <span class="fu">rnorm</span>(n)</span>
+<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a>dat<span class="sc">$</span>y_cont <span class="ot">&lt;-</span> y_cont</span>
+<span id="cb23-3"><a href="#cb23-3" tabindex="-1"></a>outcome_cont <span class="ot">&lt;-</span> <span class="fu">lm</span>(y_cont <span class="sc">~</span> z, <span class="at">data =</span> dat, <span class="at">weights =</span> wts)</span>
+<span id="cb23-4"><a href="#cb23-4" tabindex="-1"></a><span class="fu">ipw</span>(ps_mod, outcome_cont)</span>
+<span id="cb23-5"><a href="#cb23-5" tabindex="-1"></a><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
+<span id="cb23-6"><a href="#cb23-6" tabindex="-1"></a><span class="co">#&gt; Estimand: ATE </span></span>
+<span id="cb23-7"><a href="#cb23-7" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb23-8"><a href="#cb23-8" tabindex="-1"></a><span class="co">#&gt; Propensity Score Model:</span></span>
+<span id="cb23-9"><a href="#cb23-9" tabindex="-1"></a><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
+<span id="cb23-10"><a href="#cb23-10" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb23-11"><a href="#cb23-11" tabindex="-1"></a><span class="co">#&gt; Outcome Model:</span></span>
+<span id="cb23-12"><a href="#cb23-12" tabindex="-1"></a><span class="co">#&gt;   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) </span></span>
+<span id="cb23-13"><a href="#cb23-13" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb23-14"><a href="#cb23-14" tabindex="-1"></a><span class="co">#&gt; Estimates:</span></span>
+<span id="cb23-15"><a href="#cb23-15" tabindex="-1"></a><span class="co">#&gt;      estimate std.err       z ci.lower ci.upper conf.level   p.value    </span></span>
+<span id="cb23-16"><a href="#cb23-16" tabindex="-1"></a><span class="co">#&gt; diff  0.92737 0.20498 4.52416   0.5256   1.3291       0.95 6.064e-06 ***</span></span>
+<span id="cb23-17"><a href="#cb23-17" tabindex="-1"></a><span class="co">#&gt; ---</span></span>
+<span id="cb23-18"><a href="#cb23-18" tabindex="-1"></a><span class="co">#&gt; Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</span></span></code></pre></div>
+</div>
+</div>
+<div id="next-steps" class="section level2">
+<h2>Next steps</h2>
+<p>The examples above all use binary exposures. propensity also handles
+continuous and categorical treatments.</p>
+<div id="continuous-exposures" class="section level3">
+<h3>Continuous exposures</h3>
+<p>For continuous exposures, weights use density ratios. Stabilization
+is usually a good idea here:</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a><span class="co"># Fit a model for the continuous exposure</span></span>
+<span id="cb24-2"><a href="#cb24-2" tabindex="-1"></a>ps_cont <span class="ot">&lt;-</span> <span class="fu">glm</span>(continuous_exposure <span class="sc">~</span> x1 <span class="sc">+</span> x2, <span class="at">data =</span> dat, <span class="at">family =</span> <span class="fu">gaussian</span>())</span>
+<span id="cb24-3"><a href="#cb24-3" tabindex="-1"></a></span>
+<span id="cb24-4"><a href="#cb24-4" tabindex="-1"></a><span class="co"># Stabilized weights (strongly recommended for continuous exposures)</span></span>
+<span id="cb24-5"><a href="#cb24-5" tabindex="-1"></a>wts_cont <span class="ot">&lt;-</span> <span class="fu">wt_ate</span>(ps_cont, <span class="at">stabilize =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+</div>
+<div id="categorical-exposures" class="section level3">
+<h3>Categorical exposures</h3>
+<p>For multi-level treatments, pass a matrix or data frame of predicted
+probabilities with one column per level:</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a><span class="co"># Multinomial propensity scores (one column per treatment level)</span></span>
+<span id="cb25-2"><a href="#cb25-2" tabindex="-1"></a>ps_matrix <span class="ot">&lt;-</span> <span class="fu">predict</span>(multinom_model, <span class="at">type =</span> <span class="st">&quot;probs&quot;</span>)</span>
+<span id="cb25-3"><a href="#cb25-3" tabindex="-1"></a><span class="fu">wt_ate</span>(ps_matrix, exposure, <span class="at">exposure_type =</span> <span class="st">&quot;categorical&quot;</span>)</span>
+<span id="cb25-4"><a href="#cb25-4" tabindex="-1"></a></span>
+<span id="cb25-5"><a href="#cb25-5" tabindex="-1"></a><span class="co"># ATT and ATU require specifying the focal level</span></span>
+<span id="cb25-6"><a href="#cb25-6" tabindex="-1"></a><span class="fu">wt_att</span>(ps_matrix, exposure, <span class="at">.focal_level =</span> <span class="st">&quot;treated&quot;</span>)</span></code></pre></div>
+</div>
+<div id="calibration" class="section level3">
+<h3>Calibration</h3>
+<p><code>ps_calibrate()</code> adjusts propensity scores so they better
+reflect treatment probabilities. Where trimming and truncation deal with
+the tails, calibration reshapes the whole distribution. It supports
+logistic calibration (the default) and isotonic regression:</p>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a>ps_calibrated <span class="ot">&lt;-</span> <span class="fu">ps_calibrate</span>(ps, dat<span class="sc">$</span>z, <span class="at">method =</span> <span class="st">&quot;logistic&quot;</span>, <span class="at">smooth =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a><span class="fu">is_ps_calibrated</span>(ps_calibrated)</span>
+<span id="cb26-3"><a href="#cb26-3" tabindex="-1"></a></span>
+<span id="cb26-4"><a href="#cb26-4" tabindex="-1"></a>wts_calibrated <span class="ot">&lt;-</span> <span class="fu">wt_ate</span>(ps_calibrated, dat<span class="sc">$</span>z)</span></code></pre></div>
+</div>
+<div id="censoring-weights" class="section level3">
+<h3>Censoring weights</h3>
+<p><code>wt_cens()</code> calculates inverse probability of censoring
+weights for survival or longitudinal analyses:</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" tabindex="-1"></a><span class="co"># Model the probability of being uncensored</span></span>
+<span id="cb27-2"><a href="#cb27-2" tabindex="-1"></a>cens_mod <span class="ot">&lt;-</span> <span class="fu">glm</span>(uncensored <span class="sc">~</span> x1 <span class="sc">+</span> x2, <span class="at">data =</span> dat, <span class="at">family =</span> <span class="fu">binomial</span>())</span>
+<span id="cb27-3"><a href="#cb27-3" tabindex="-1"></a>wts_cens <span class="ot">&lt;-</span> <span class="fu">wt_cens</span>(cens_mod)</span>
+<span id="cb27-4"><a href="#cb27-4" tabindex="-1"></a></span>
+<span id="cb27-5"><a href="#cb27-5" tabindex="-1"></a><span class="co"># Censoring weights use the same formula as ATE weights</span></span>
+<span id="cb27-6"><a href="#cb27-6" tabindex="-1"></a><span class="fu">estimand</span>(wts_cens) <span class="co"># &quot;uncensored&quot;</span></span></code></pre></div>
+</div>
+<div id="learning-more" class="section level3">
+<h3>Learning more</h3>
+<p>See the function reference for details:</p>
+<ul>
+<li><code>?wt_ate</code> – Weight calculation for all estimands</li>
+<li><code>?ps_trim</code>, <code>?ps_trunc</code>,
+<code>?ps_calibrate</code> – Handling extreme propensity scores</li>
+<li><code>?ipw</code> – Inverse probability weighted estimation</li>
+</ul>
+</div>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

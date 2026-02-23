@@ -249,7 +249,7 @@ test_that("is.finite/is.infinite work for ps_trim", {
 
   inf <- is.infinite(x)
   expect_type(inf, "logical")
-  expect_true(all(!inf[!is.na(x)])) # Non-NA values should not be infinite
+  expect_true(!any(inf[!is.na(x)])) # Non-NA values should not be infinite
 })
 
 test_that("is.finite/is.infinite work for ps_trunc", {
@@ -261,7 +261,7 @@ test_that("is.finite/is.infinite work for ps_trunc", {
 
   inf <- is.infinite(x)
   expect_type(inf, "logical")
-  expect_true(all(!inf)) # No truncated values should be infinite
+  expect_true(!any(inf)) # No truncated values should be infinite
 })
 
 # =============================================================================
@@ -297,7 +297,7 @@ test_that("is.na/anyNA work for ps_trunc", {
 
   na_check <- is.na(x)
   expect_type(na_check, "logical")
-  expect_true(all(!na_check)) # Truncation doesn't create NAs
+  expect_true(!any(na_check)) # Truncation doesn't create NAs
 
   any_na <- anyNA(x)
   expect_type(any_na, "logical")

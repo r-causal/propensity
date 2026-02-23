@@ -1,79 +1,101 @@
-#' Create and Manipulate `psw` Objects
+#' Propensity Score Weight Vectors
 #'
-#' Functions to create and manipulate `psw` objects, which are specialized
-#' vectors for propensity score weights with optional `estimand` attributes.
-#' Most users should use [`wt_ate()`] and friends, but these functions can help
-#' extend the functionality of `psw` objects.
+#' @description
+#' `psw` objects are numeric vectors that carry metadata about propensity score
+#' weights, including the target estimand and whether the underlying propensity
+#' scores were trimmed, truncated, or calibrated.
+#'
+#' Most users will encounter `psw` objects as return values from [wt_ate()] and
+#' related weight functions. These constructor and helper functions are useful
+#' for inspecting weight objects or for package developers extending propensity.
+#'
+#' @details
+#'
+#' ## Constructors
+#'
+#' * `psw()` is the **user-facing** constructor. It coerces `x` to double and
+#'   validates inputs before creating the object.
+#' * `new_psw()` is the **low-level** constructor intended for developers. It
+#'   assumes `x` is already a double vector and performs minimal validation.
+#' * `as_psw()` coerces an existing numeric vector to a `psw` object.
+#'
+#' ## Queries
+#'
+#' * `is_psw()` tests whether an object is a `psw` vector.
+#' * `is_causal_wt()` tests whether an object inherits from the broader
+#'   `causal_wts` class (which includes `psw` objects).
+#' * `estimand()` and `estimand<-` get and set the estimand attribute.
+#' * `is_stabilized()` returns `TRUE` if the weights are stabilized.
+#'
+#' ## Arithmetic and combining
+#'
+#' Arithmetic operations on `psw` objects preserve the class and attributes,
+#' so operations like normalization (`weights / sum(weights)`) retain metadata.
+#' Combining `psw` objects with [c()] preserves the class only when all
+#' metadata matches; mismatched metadata produces a warning and falls back to a
+#' plain numeric vector.
+#'
+#' Subsetting with `[` preserves class and attributes. Summary functions
+#' ([sum()], [mean()], etc.) return plain numeric values.
 #'
 #' @import vctrs
 #' @export
 #'
-#' @param x A numeric vector (default: `double()`).
-#' @param estimand A character string representing the estimand (e.g., "ate",
-#'   "att", "ato"). Default is `NULL`.
-#' @param stabilized A logical `TRUE`
-#' @param trimmed Logical, whether these weights came from a trimmed PS.
-#' @param truncated Logical, whether these weights came from a truncated PS.
-#' @param calibrated Logical, whether these weights came from a calibrated PS.
-#' @param wt An object to check or convert.
-#' @param value The value to add to the attribute.
-#' @param ... Additional attributes to track in the weights.
+#' @param x For `psw()` and `new_psw()`: a numeric vector of weights
+#'   (default: `double()`). For `is_psw()`, `is_causal_wt()`, and `as_psw()`:
+#'   an object to test or coerce.
+#' @param estimand A character string identifying the target estimand (e.g.,
+#'   `"ate"`, `"att"`, `"ato"`). Defaults to `NULL`.
+#' @param stabilized Logical. Were the weights stabilized? Defaults to `FALSE`.
+#' @param trimmed Logical. Were the weights derived from trimmed propensity
+#'   scores? Defaults to `FALSE`.
+#' @param truncated Logical. Were the weights derived from truncated propensity
+#'   scores? Defaults to `FALSE`.
+#' @param calibrated Logical. Were the weights derived from calibrated
+#'   propensity scores? Defaults to `FALSE`.
+#' @param wt A `psw` or `causal_wts` object.
+#' @param value A character string: the new estimand to assign.
+#' @param ... Additional attributes stored on the object (developer use only).
+#'
 #' @return
-#' - `new_psw()`: A `psw` object.
-#' - `psw()`: A `psw` object.
-#' - `is_psw()`: `TRUE` if the object is a `psw`, otherwise `FALSE`.
-#' - `as_psw()`: A `psw` object.
-#' - `estimand()`: The `estimand` attribute of a `psw` object.
-#' - `is_stabilized()`: The `stabilized` attribute of a `psw` object.
+#' * `new_psw()`, `psw()`, `as_psw()`: A `psw` vector.
+#' * `is_psw()`, `is_causal_wt()`, `is_stabilized()`: A single logical value.
+#' * `estimand()`: A character string, or `NULL` if no estimand is set.
+#' * `estimand<-`: The modified `psw` object (called for its side effect).
 #'
-#' @details
-#' The `psw` class is a vctrs-based S3 class that represents propensity score
-#' weights. It extends numeric vectors with additional metadata tracking the
-#' estimand type, stabilization status, and source transformations.
+#' @seealso
+#' [wt_ate()], [wt_att()], [wt_atu()], [wt_atm()], [wt_ato()] for
+#' calculating propensity score weights (which return `psw` objects).
 #'
-#' **Arithmetic behavior**: Unlike `ps_trim` and `ps_trunc` objects, arithmetic
-#' operations on `psw` objects preserve the class and attributes. This allows
-#' weight manipulations like normalization (`weights / sum(weights)`) while
-#' maintaining metadata.
-#'
-#' **Combining behavior**: When combining `psw` objects with `c()`, the class
-#' is preserved only if all metadata matches. Mismatched metadata triggers a
-#' warning and returns a numeric vector.
-#'
-#' **Base R compatibility**: Most base R operations work seamlessly:
-#' - Subsetting with `[` preserves class and attributes
-#' - Summary functions (`sum()`, `mean()`, etc.) return numeric values
-#' - Comparison operators return logical vectors
-#' - Works in data frames and with tidyverse functions
+#' [ps_trim()], [ps_trunc()], and [ps_calibrate()] for modifying propensity
+#' scores before weight calculation.
 #'
 #' @examples
-#' psw_weights <- new_psw(c(0.1, 0.2, 0.3), estimand = "ate")
-#' is_psw(psw_weights)
-#' estimand(psw_weights)
+#' # Create psw objects directly
+#' w <- psw(c(1.2, 0.8, 1.5), estimand = "ate")
+#' w
 #'
-#' psw_helper <- psw(c(0.5, 0.7), estimand = "att")
-#' as_psw(c(0.1, 0.2), estimand = "ato")
+#' # Query metadata
+#' is_psw(w)
+#' estimand(w)
+#' is_stabilized(w)
 #'
-#' # Coercion behavior - compatible objects combine silently
-#' x <- psw(c(0.5, 0.7), estimand = "ate")
-#' y <- psw(c(0.3, 0.8), estimand = "ate")
-#' c(x, y)  # Returns psw object
+#' # Coerce a plain numeric vector
+#' as_psw(c(1.0, 2.0), estimand = "att")
 #'
-#' # Incompatible metadata triggers warning and returns numeric
-#' x <- psw(c(0.5, 0.7), estimand = "ate")
-#' y <- psw(c(0.3, 0.8), estimand = "att")
-#' c(x, y)  # Warning: returns numeric
+#' # Arithmetic preserves the psw class
+#' w / sum(w)
 #'
-#' # Works with tidyr::pivot_longer for plotting
-#' if (requireNamespace("tidyr", quietly = TRUE)) {
-#'   df <- data.frame(
-#'     id = 1:4,
-#'     ate_wts = psw(c(0.5, 0.7, 0.3, 0.8), estimand = "ate"),
-#'     att_wts = psw(c(0.4, 0.6, 0.2, 0.9), estimand = "att")
-#'   )
-#'   # This will warn but succeed, returning numeric in the pivoted column
-#'   tidyr::pivot_longer(df, cols = c(ate_wts, att_wts))
-#' }
+#' # Combining: compatible metadata is preserved
+#' x <- psw(c(1.2, 0.8), estimand = "ate")
+#' y <- psw(c(1.1, 0.9), estimand = "ate")
+#' c(x, y)
+#'
+#' # Combining: incompatible metadata warns and returns numeric
+#' x <- psw(c(1.2, 0.8), estimand = "ate")
+#' y <- psw(c(1.1, 0.9), estimand = "att")
+#' c(x, y)
+#'
 #' @import vctrs
 #' @name psw
 NULL

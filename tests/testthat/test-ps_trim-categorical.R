@@ -32,7 +32,7 @@ test_that("ps_trim works with matrix propensity scores for symmetric trimming", 
 
   # Check that trimmed rows are NA
   expect_true(all(is.na(trimmed[meta$trimmed_idx, ])))
-  expect_false(any(is.na(trimmed[meta$keep_idx, ])))
+  expect_false(anyNA(trimmed[meta$keep_idx, ]))
 })
 
 test_that("ps_trim works with data.frame propensity scores", {
@@ -357,7 +357,7 @@ test_that("ps_trim optimal trimming matches PSweight for multi-category", {
   )
   trt_probs <- trt_probs / rowSums(trt_probs)
 
-  trt <- factor(apply(trt_probs, 1, function(p) sample(1:4, 1, prob = p)))
+  trt <- factor(apply(trt_probs, 1, function(p) sample.int(4, 1, prob = p)))
 
   test_data <- data.frame(
     trt = trt,
@@ -524,7 +524,7 @@ test_that("ps_refit works with categorical propensity score trimming", {
 
   # Kept observations should have valid propensity scores
   kept_ps <- refitted_ps[refit_meta$keep_idx, ]
-  expect_false(any(is.na(kept_ps)))
+  expect_false(anyNA(kept_ps))
   expect_true(all(kept_ps >= 0))
   expect_true(all(kept_ps <= 1))
 

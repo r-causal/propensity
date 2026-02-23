@@ -2,16 +2,37 @@
 % Please edit documentation in R/ps_trim.R
 \name{ps_trim_meta}
 \alias{ps_trim_meta}
-\title{Extract \code{ps_trim} metadata}
+\title{Extract trimming metadata from a \code{ps_trim} object}
 \usage{
 ps_trim_meta(x)
 }
 \arguments{
-\item{x}{A \strong{\code{ps_trim}} object.}
+\item{x}{A \code{ps_trim} object.}
 }
 \value{
-A named list of metadata.
+A named list with elements:
+\describe{
+\item{\code{method}}{Character string indicating the trimming method used.}
+\item{\code{keep_idx}}{Integer vector of retained observation indices.}
+\item{\code{trimmed_idx}}{Integer vector of trimmed observation indices.}
+\item{\code{lower}, \code{upper}}{Numeric cutoffs, when applicable.}
+\item{\code{refit}}{Logical, \code{TRUE} if the model was refit via \code{\link[=ps_refit]{ps_refit()}}.}
+}
+Additional method-specific elements (e.g. \code{cutoff}, \code{delta}, \code{lambda}) may
+also be present.
 }
 \description{
-Returns the internal metadata list for a \code{ps_trim} object.
+\code{ps_trim_meta()} returns the metadata list attached to a
+\code{ps_trim} object by \code{\link[=ps_trim]{ps_trim()}}.
+}
+\examples{
+ps <- c(0.05, 0.3, 0.6, 0.95)
+trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+
+ps_trim_meta(trimmed)
+
+}
+\seealso{
+\code{\link[=ps_trim]{ps_trim()}} for trimming propensity scores, \code{\link[=is_ps_trimmed]{is_ps_trimmed()}} and
+\code{\link[=is_unit_trimmed]{is_unit_trimmed()}} for predicate queries.
 }

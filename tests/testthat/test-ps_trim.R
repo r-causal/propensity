@@ -336,7 +336,7 @@ test_that("adaptive method: triggers uniroot path (k < 0) coverage", {
   out_data <- as.numeric(out_adapt)
   # Just confirm there's at least some NA for the extreme values
   # e.g. near 0.001 or 0.999
-  expect_true(any(is.na(out_data)))
+  expect_true(anyNA(out_data))
 })
 
 test_that("Check defaults for helper functions", {
@@ -600,7 +600,7 @@ test_that("ps_trim index tracking works when combining objects", {
   # Check that NA values are at the correct positions
   combined_data <- vec_data(combined)
   expect_true(all(is.na(combined_data[combined_meta$trimmed_idx])))
-  expect_true(all(!is.na(combined_data[combined_meta$keep_idx])))
+  expect_true(!anyNA(combined_data[combined_meta$keep_idx]))
 })
 
 test_that("ps_trim warns when combining objects with different parameters", {
@@ -675,5 +675,5 @@ test_that("ps_trim handles multiple combines correctly", {
   expect_true(all(is.na(combined_data[combined_meta$trimmed_idx])))
 
   # All kept indices should have non-NA values
-  expect_true(all(!is.na(combined_data[combined_meta$keep_idx])))
+  expect_true(!anyNA(combined_data[combined_meta$keep_idx]))
 })

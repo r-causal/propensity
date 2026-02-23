@@ -2,20 +2,36 @@
 % Please edit documentation in R/ps_trim.R
 \name{is_unit_trimmed}
 \alias{is_unit_trimmed}
-\title{Check if units have been trimmed}
+\title{Identify which units were trimmed}
 \usage{
 is_unit_trimmed(x)
 }
 \arguments{
-\item{x}{An object.}
+\item{x}{A \code{ps_trim} object created by \code{\link[=ps_trim]{ps_trim()}}.}
 }
 \value{
-A logical scalar (\code{TRUE} or \code{FALSE}).
+A logical vector the same length as \code{x}, where \code{TRUE} marks a
+trimmed unit.
 }
 \description{
-\code{is_unit_trimmed()} is an that vector of \code{TRUE} or \code{FALSE}
-values, representing if the unit was trimmed. \code{is_unit_trimmed()} is a
-question about which \emph{units} have been trimmed, as opposed to
-\code{\link[=is_ps_trimmed]{is_ps_trimmed()}}, which is a question about whether or not the propensity
-scores \emph{have} been trimmed.
+\code{is_unit_trimmed()} returns a logical vector indicating which
+observations were removed by trimming. This is a per-unit query, as opposed
+to \code{\link[=is_ps_trimmed]{is_ps_trimmed()}}, which tests whether the object has been trimmed at
+all.
+}
+\examples{
+ps <- c(0.05, 0.3, 0.6, 0.95)
+trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+
+is_unit_trimmed(trimmed)
+
+# Use to subset data to retained observations
+kept <- !is_unit_trimmed(trimmed)
+ps[kept]
+
+}
+\seealso{
+\code{\link[=ps_trim]{ps_trim()}} for trimming propensity scores, \code{\link[=is_ps_trimmed]{is_ps_trimmed()}} to
+test whether an object has been trimmed, \code{\link[=ps_trim_meta]{ps_trim_meta()}} to retrieve full
+trimming metadata.
 }

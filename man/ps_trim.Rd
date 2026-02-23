@@ -18,88 +18,134 @@ ps_trim(
 )
 }
 \arguments{
-\item{ps}{The propensity score, either a numeric vector between 0 and 1 for
-binary exposures, or a matrix/data.frame where each column represents
-propensity scores for each level of a categorical exposure.}
+\item{ps}{A numeric vector of propensity scores in (0, 1) for binary
+exposures, or a matrix / data frame where each column gives the propensity
+score for one level of a categorical exposure.}
 
-\item{method}{One of \code{c("ps", "adaptive", "pctl", "pref", "cr", "optimal")}.
+\item{method}{Trimming method. One of:
+\itemize{
+\item \strong{\code{"ps"}} (default): Fixed threshold. Observations with propensity
+scores outside \verb{[lower, upper]} are trimmed. For categorical exposures,
+observations where \emph{any} column falls below \code{lower} (the symmetric
+threshold delta) are trimmed.
+\item \strong{\code{"adaptive"}}: Data-driven threshold that minimizes the asymptotic
+variance of the IPW estimator (Crump et al., 2009). The \code{lower} and
+\code{upper} arguments are ignored.
+\item \strong{\code{"pctl"}}: Quantile-based. Observations outside the \verb{[lower, upper]}
+quantiles of the propensity score distribution are trimmed. Defaults:
+\code{lower = 0.05}, \code{upper = 0.95}.
+\item \strong{\code{"pref"}}: Preference score trimming. Transforms propensity scores
+to the preference scale (Walker et al., 2013) and trims outside
+\verb{[lower, upper]}. Requires \code{.exposure}. Binary exposures only. Defaults:
+\code{lower = 0.3}, \code{upper = 0.7}.
+\item \strong{\code{"cr"}}: Common range (clinical equipoise). Trims to the overlap
+region of the propensity score distributions across exposure groups.
+Requires \code{.exposure}. Binary exposures only. The \code{lower} and \code{upper}
+arguments are ignored.
+\item \strong{\code{"optimal"}}: Multi-category optimal trimming (Yang et al., 2016).
+Categorical exposures only. Requires \code{.exposure}.
+}
+
 For categorical exposures, only \code{"ps"} and \code{"optimal"} are supported.}
 
-\item{lower, upper}{Numeric cutoffs or quantiles. If \code{NULL}, defaults vary by
-method. For categorical exposures with method \code{"ps"}, \code{lower} represents the
-symmetric trimming threshold (delta).}
+\item{lower, upper}{Numeric thresholds whose interpretation depends on
+\code{method}:
+\itemize{
+\item \code{"ps"}: absolute propensity score bounds (defaults: 0.1, 0.9). For
+categorical exposures, only \code{lower} is used as the symmetric threshold.
+\item \code{"pctl"}: quantile probabilities (defaults: 0.05, 0.95).
+\item \code{"pref"}: preference score bounds (defaults: 0.3, 0.7).
+\item \code{"adaptive"}, \code{"cr"}, \code{"optimal"}: ignored (thresholds are data-driven).
+}}
 
-\item{.exposure}{For methods like \code{"pref"} or \code{"cr"}, a vector for a binary
-exposure. For categorical exposures with method \code{"optimal"}, must be a
-factor or character vector.}
+\item{.exposure}{An exposure variable. Required for \code{"pref"}, \code{"cr"} (binary
+vector), and \code{"optimal"} (factor or character). Not required for other
+methods.}
 
-\item{.focal_level}{For binary exposures, the value representing the focal group
-(typically the treatment group). For categorical exposures with ATT or ATU estimands,
-specifies the focal category. Must be one of the levels of the exposure variable.
+\item{.focal_level}{The value of \code{.exposure} representing the focal
+(treated) group. For binary exposures, defaults to the higher value.
 Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 
-\item{.reference_level}{For binary exposures, the value representing the reference group
-(typically the control group). If not provided, it is automatically detected.}
+\item{.reference_level}{The value of \code{.exposure} representing the reference
+(control) group. Automatically detected if not supplied.}
 
-\item{...}{Additional arguments passed to methods}
+\item{...}{Additional arguments passed to methods.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 }
 \value{
-A \code{ps_trim} object (numeric vector or matrix). The attribute
-\code{ps_trim_meta} stores metadata.
+A \strong{\code{ps_trim}} object (a numeric vector with class \code{"ps_trim"}, or a
+matrix with class \code{"ps_trim_matrix"}). Trimmed observations are \code{NA}.
+Metadata is stored in the \code{"ps_trim_meta"} attribute and can be accessed
+with \code{\link[=ps_trim_meta]{ps_trim_meta()}}. Key fields include:
+\itemize{
+\item \code{method}: the trimming method used
+\item \code{keep_idx}: integer indices of retained observations
+\item \code{trimmed_idx}: integer indices of trimmed (NA) observations
+\item Method-specific fields such as \code{cutoff} (adaptive), \code{q_lower}/\code{q_upper}
+(pctl), \code{cr_lower}/\code{cr_upper} (cr), \code{delta} (categorical ps),
+or \code{lambda} (optimal)
+}
 }
 \description{
-\code{ps_trim()} applies trimming methods to a propensity-score vector or matrix,
-returning a new vector/matrix of the \emph{same length/dimensions}, with trimmed
-entries replaced by \code{NA.} You can inspect further metadata in \code{ps_trim_meta(x)}.
-After running \code{ps_trim()}, you should refit the model with \code{ps_refit()}.
+Trim observations with extreme propensity scores by replacing them with \code{NA},
+effectively removing those units from downstream analyses. The returned object
+has the same length (or dimensions) as the input, with trimmed entries set to
+\code{NA}. After trimming, refit the propensity score model on the retained
+observations with \code{\link[=ps_refit]{ps_refit()}}.
 }
 \details{
-The returned object is a \strong{\code{ps_trim}} vector/matrix of the same
-length/dimensions as \code{ps}, but with trimmed entries replaced by \code{NA}. An
-attribute \code{ps_trim_meta} contains:
-\itemize{
-\item \code{method}: Which trimming method was used
-\item \code{keep_idx}: Indices retained
-\item \code{trimmed_idx}: Indices replaced by \code{NA}
-\item Possibly other fields such as final cutoffs, etc.
+\subsection{How trimming works}{
+
+Trimming identifies observations with extreme (near 0 or 1) propensity
+scores and sets them to \code{NA}. These observations are excluded from
+subsequent weight calculations and effect estimation. The goal is to
+remove units that lack sufficient overlap between exposure groups, which
+would otherwise receive extreme weights and destabilize estimates.
 }
 
-For categorical exposures:
+\subsection{Choosing a method}{
 \itemize{
-\item \strong{Symmetric trimming} (\code{method = "ps"}): Removes observations where any
-propensity score falls below the threshold delta (specified via \code{lower}).
-\item \strong{Optimal trimming} (\code{method = "optimal"}): Uses the Yang et al. (2016)
-approach for multi-category treatments.
+\item Use \code{"ps"} when you have a specific threshold in mind or want a simple
+default.
+\item Use \code{"adaptive"} for a principled, data-driven cutoff that targets
+variance reduction.
+\item Use \code{"pctl"} to trim a fixed percentage of extreme values from each tail.
+\item Use \code{"pref"} when you want to restrict to the region of clinical
+equipoise based on the preference score.
+\item Use \code{"cr"} to restrict to the common support region where both exposure
+groups have observed propensity scores.
+\item Use \code{"optimal"} for multi-category (3+) exposures; this is the only
+data-driven method available for categorical treatments.
+}
 }
 
-\strong{Arithmetic behavior}: Arithmetic operations on \code{ps_trim} objects return
-numeric vectors, not \code{ps_trim} objects. This is intentional - once you
-transform propensity scores (e.g., \code{1/ps} for weights), the result is no
-longer a propensity score.
-
-\strong{NA handling}: Trimmed values are set to \code{NA}. Operations that don't handle
-\code{NA} values will propagate them (e.g., \code{sum()} returns \code{NA} unless
-\code{na.rm = TRUE}).
-
-\strong{Metadata tracking}: The \code{trimmed_idx} and \code{keep_idx} are updated when
-subsetting or reordering:
-\itemize{
-\item Subsetting with \code{[} updates indices to new positions
-\item \code{sort()} reorders data and updates indices accordingly
-\item \code{unique()} may change lengths but preserves the class
-\item \code{na.omit()} removes trimmed values and updates indices
+\subsection{Typical workflow}{
+\enumerate{
+\item Fit a propensity score model
+\item Apply \code{ps_trim()} to flag extreme values
+\item Call \code{\link[=ps_refit]{ps_refit()}} to re-estimate propensity scores on the retained sample
+\item Compute weights with \code{\link[=wt_ate]{wt_ate()}} or another weight function
+}
 }
 
-\strong{Combining behavior}: When combining \code{ps_trim} objects with \code{c()}, metadata
-must match (same trimming parameters). Mismatched metadata triggers a warning
-and returns a numeric vector.
+\subsection{Object behavior}{
+
+Arithmetic operations on \code{ps_trim} objects return plain numeric vectors,
+since transformed propensity scores (e.g., \code{1/ps}) are no longer propensity
+scores. Trimmed values propagate as \code{NA} in calculations; use \code{na.rm = TRUE}
+where appropriate.
+
+When combining \code{ps_trim} objects with \code{\link[=c]{c()}}, trimming parameters must match.
+Mismatched parameters trigger a warning and return a numeric vector.
+
+Use \code{\link[=ps_trim_meta]{ps_trim_meta()}} to inspect the trimming metadata, including the method,
+cutoffs, and which observations were retained or trimmed.
+}
 }
 \examples{
-
 set.seed(2)
 n <- 300
 x <- rnorm(n)
@@ -107,25 +153,42 @@ z <- rbinom(n, 1, plogis(1.3 * x))
 fit <- glm(z ~ x, family = binomial)
 ps <- predict(fit, type = "response")
 
+# Fixed threshold trimming (default)
+trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+trimmed
+
+# How many observations were trimmed?
+sum(is_unit_trimmed(trimmed))
+
+# Data-driven adaptive trimming
 ps_trim(ps, method = "adaptive")
 
-# Coercion behavior with ps_trim objects
-ps_trim1 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
-ps_trim2 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+# Quantile-based trimming at 5th and 95th percentiles
+ps_trim(ps, method = "pctl")
 
-# Compatible objects combine silently
-c(ps_trim1[1:50], ps_trim2[51:100])  # Returns ps_trim object
-
-# Different trim parameters trigger warning
-ps_trim3 <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
-c(ps_trim1[1:50], ps_trim3[51:100])  # Warning: returns numeric
-
-# Cross-class combinations warn and return numeric
-psw_obj <- psw(ps[1:50], estimand = "ate")
-c(ps_trim1[1:50], psw_obj)  # Warning: returns numeric
+# Refit after trimming, then compute weights
+trimmed <- ps_trim(ps, method = "adaptive")
+refitted <- ps_refit(trimmed, fit)
+wt_ate(refitted, .exposure = z)
 
 }
+\references{
+Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
+with limited overlap in estimation of average treatment effects.
+\emph{Biometrika}, 96(1), 187--199.
+
+Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
+assessing the feasibility of comparative effectiveness research.
+\emph{Comparative Effectiveness Research}, 3, 11--20.
+
+Yang, S., Imbens, G. W., Cui, Z., Faries, D. E., & Kadziola, Z. (2016).
+Propensity score matching and subclassification in observational studies
+with multi-level treatments. \emph{Biometrics}, 72(4), 1055--1065.
+}
 \seealso{
-\code{\link[=ps_trunc]{ps_trunc()}} for bounding/winsorizing instead of discarding,
-\code{\link[=is_refit]{is_refit()}}, \code{\link[=is_ps_trimmed]{is_ps_trimmed()}}
+\code{\link[=ps_trunc]{ps_trunc()}} for bounding (winsorizing) instead of discarding,
+\code{\link[=ps_refit]{ps_refit()}} to re-estimate propensity scores after trimming,
+\code{\link[=ps_calibrate]{ps_calibrate()}} for calibration-based adjustment,
+\code{\link[=ps_trim_meta]{ps_trim_meta()}} to inspect trimming metadata,
+\code{\link[=is_ps_trimmed]{is_ps_trimmed()}} and \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} for logical queries.
 }
