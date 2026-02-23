@@ -1,17 +1,20 @@
-# Refit the Propensity Score Model on Retained Observations
+# Refit a Propensity Score Model on Retained Observations
 
-Takes a `ps_trim` object and the original model used to calculate the
-propensity score, then:
+Re-estimates a propensity score model using only the observations
+retained after trimming. This is the recommended intermediate step
+between
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+and weight calculation (e.g.
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)):
 
-1.  Retrieves data from the model (or from `.df` argument if provided)
+**[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+-\> `ps_refit()` -\> `wt_*()`**
 
-2.  Subsets rows to the non‐trimmed indices
-
-3.  Refits the model
-
-4.  Predicts new propensity scores for all rows (trimmed rows -\> `NA`)
-
-5.  Returns a new `ps_trim` object with `refit = TRUE`.
+Trimming changes the target population by removing observations with
+extreme propensity scores. Refitting the model on the retained subset
+produces propensity scores that better reflect this population,
+improving both model fit and downstream weight estimation. Weight
+functions warn if a trimmed propensity score has not been refit.
 
 ## Usage
 
@@ -23,45 +26,61 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
 
 - trimmed_ps:
 
-  A `ps_trim` object (same length as data, NAs for trimmed).
+  A `ps_trim` object returned by
+  [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md).
 
 - model:
 
-  The fitted model used to get the original PS (e.g. a glm).
+  The original fitted model used to estimate the propensity scores (e.g.
+  a [glm](https://rdrr.io/r/stats/glm.html) or
+  [multinom](https://rdrr.io/pkg/nnet/man/multinom.html) object). The
+  model is refit via [update()](https://rdrr.io/r/stats/update.html) on
+  the retained subset.
 
 - .data:
 
-  Optional. A data frame. If `NULL`, we try to retrieve from `model`.
+  A data frame. If `NULL` (the default), the data are extracted from
+  `model` via [model.frame()](https://rdrr.io/r/stats/model.frame.html).
 
 - ...:
 
   Additional arguments passed to
-  [`update()`](https://rdrr.io/r/stats/update.html).
+  [update()](https://rdrr.io/r/stats/update.html).
 
 ## Value
 
-A new `ps_trim` object with updated propensity scores and
-`ps_trim_meta(x)$refit` set to `TRUE`.
+A `ps_trim` object with re-estimated propensity scores for retained
+observations and `NA` for trimmed observations. Use
+[`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md)
+to confirm refitting was applied.
 
 ## See also
 
-[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md),
-[`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md),
-[`is_ps_trimmed()`](https://r-causal.github.io/propensity/reference/is_ps_trimmed.md)
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+for the trimming step,
+[`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md)
+to check refit status,
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+and other weight functions for the next step in the pipeline.
 
 ## Examples
 
 ``` r
 set.seed(2)
-n <- 30
+n <- 200
 x <- rnorm(n)
 z <- rbinom(n, 1, plogis(0.4 * x))
-fit <- glm(z ~ x, family = binomial)
-ps <- predict(fit, type = "response")
 
-# trim and refit
-refit <- ps_trim(ps, lower = .2, upper = .8) |>
-  ps_refit(fit)
+# fit a propensity score model
+ps_model <- glm(z ~ x, family = binomial)
+ps <- predict(ps_model, type = "response")
+
+# trim -> refit -> weight pipeline
+trimmed <- ps_trim(ps, lower = 0.1, upper = 0.9)
+refit <- ps_refit(trimmed, ps_model)
+wts <- wt_ate(refit, .exposure = z)
+#> ℹ Treating `.exposure` as binary
+#> ℹ Setting focal level to 1
 
 is_refit(refit)
 #> [1] TRUE

@@ -1,10 +1,10 @@
 # Trim Propensity Scores
 
-`ps_trim()` applies trimming methods to a propensity-score vector or
-matrix, returning a new vector/matrix of the *same length/dimensions*,
-with trimmed entries replaced by `NA.` You can inspect further metadata
-in `ps_trim_meta(x)`. After running `ps_trim()`, you should refit the
-model with
+Trim observations with extreme propensity scores by replacing them with
+`NA`, effectively removing those units from downstream analyses. The
+returned object has the same length (or dimensions) as the input, with
+trimmed entries set to `NA`. After trimming, refit the propensity score
+model on the retained observations with
 [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md).
 
 ## Usage
@@ -28,33 +28,66 @@ ps_trim(
 
 - ps:
 
-  The propensity score, either a numeric vector between 0 and 1 for
-  binary exposures, or a matrix/data.frame where each column represents
-  propensity scores for each level of a categorical exposure.
+  A numeric vector of propensity scores in (0, 1) for binary exposures,
+  or a matrix / data frame where each column gives the propensity score
+  for one level of a categorical exposure.
 
 - method:
 
-  One of `c("ps", "adaptive", "pctl", "pref", "cr", "optimal")`. For
-  categorical exposures, only `"ps"` and `"optimal"` are supported.
+  Trimming method. One of:
+
+  - **`"ps"`** (default): Fixed threshold. Observations with propensity
+    scores outside `[lower, upper]` are trimmed. For categorical
+    exposures, observations where *any* column falls below `lower` (the
+    symmetric threshold delta) are trimmed.
+
+  - **`"adaptive"`**: Data-driven threshold that minimizes the
+    asymptotic variance of the IPW estimator (Crump et al., 2009). The
+    `lower` and `upper` arguments are ignored.
+
+  - **`"pctl"`**: Quantile-based. Observations outside the
+    `[lower, upper]` quantiles of the propensity score distribution are
+    trimmed. Defaults: `lower = 0.05`, `upper = 0.95`.
+
+  - **`"pref"`**: Preference score trimming. Transforms propensity
+    scores to the preference scale (Walker et al., 2013) and trims
+    outside `[lower, upper]`. Requires `.exposure`. Binary exposures
+    only. Defaults: `lower = 0.3`, `upper = 0.7`.
+
+  - **`"cr"`**: Common range (clinical equipoise). Trims to the overlap
+    region of the propensity score distributions across exposure groups.
+    Requires `.exposure`. Binary exposures only. The `lower` and `upper`
+    arguments are ignored.
+
+  - **`"optimal"`**: Multi-category optimal trimming (Yang et al.,
+    2016). Categorical exposures only. Requires `.exposure`.
+
+  For categorical exposures, only `"ps"` and `"optimal"` are supported.
 
 - lower, upper:
 
-  Numeric cutoffs or quantiles. If `NULL`, defaults vary by method. For
-  categorical exposures with method `"ps"`, `lower` represents the
-  symmetric trimming threshold (delta).
+  Numeric thresholds whose interpretation depends on `method`:
+
+  - `"ps"`: absolute propensity score bounds (defaults: 0.1, 0.9). For
+    categorical exposures, only `lower` is used as the symmetric
+    threshold.
+
+  - `"pctl"`: quantile probabilities (defaults: 0.05, 0.95).
+
+  - `"pref"`: preference score bounds (defaults: 0.3, 0.7).
+
+  - `"adaptive"`, `"cr"`, `"optimal"`: ignored (thresholds are
+    data-driven).
 
 - .exposure:
 
-  For methods like `"pref"` or `"cr"`, a vector for a binary exposure.
-  For categorical exposures with method `"optimal"`, must be a factor or
-  character vector.
+  An exposure variable. Required for `"pref"`, `"cr"` (binary vector),
+  and `"optimal"` (factor or character). Not required for other methods.
 
 - .focal_level:
 
-  For binary exposures, the value representing the focal group
-  (typically the treatment group). For categorical exposures with ATT or
-  ATU estimands, specifies the focal category. Must be one of the levels
-  of the exposure variable. Required for
+  The value of `.exposure` representing the focal (treated) group. For
+  binary exposures, defaults to the higher value. Required for
   [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   and
   [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
@@ -62,13 +95,12 @@ ps_trim(
 
 - .reference_level:
 
-  For binary exposures, the value representing the reference group
-  (typically the control group). If not provided, it is automatically
-  detected.
+  The value of `.exposure` representing the reference (control) group.
+  Automatically detected if not supplied.
 
 - ...:
 
-  Additional arguments passed to methods
+  Additional arguments passed to methods.
 
 - .treated:
 
@@ -80,67 +112,111 @@ ps_trim(
 
 ## Value
 
-A `ps_trim` object (numeric vector or matrix). The attribute
-`ps_trim_meta` stores metadata.
+A **`ps_trim`** object (a numeric vector with class `"ps_trim"`, or a
+matrix with class `"ps_trim_matrix"`). Trimmed observations are `NA`.
+Metadata is stored in the `"ps_trim_meta"` attribute and can be accessed
+with
+[`ps_trim_meta()`](https://r-causal.github.io/propensity/reference/ps_trim_meta.md).
+Key fields include:
+
+- `method`: the trimming method used
+
+- `keep_idx`: integer indices of retained observations
+
+- `trimmed_idx`: integer indices of trimmed (NA) observations
+
+- Method-specific fields such as `cutoff` (adaptive),
+  `q_lower`/`q_upper` (pctl), `cr_lower`/`cr_upper` (cr), `delta`
+  (categorical ps), or `lambda` (optimal)
 
 ## Details
 
-The returned object is a **`ps_trim`** vector/matrix of the same
-length/dimensions as `ps`, but with trimmed entries replaced by `NA`. An
-attribute `ps_trim_meta` contains:
+### How trimming works
 
-- `method`: Which trimming method was used
+Trimming identifies observations with extreme (near 0 or 1) propensity
+scores and sets them to `NA`. These observations are excluded from
+subsequent weight calculations and effect estimation. The goal is to
+remove units that lack sufficient overlap between exposure groups, which
+would otherwise receive extreme weights and destabilize estimates.
 
-- `keep_idx`: Indices retained
+### Choosing a method
 
-- `trimmed_idx`: Indices replaced by `NA`
+- Use `"ps"` when you have a specific threshold in mind or want a simple
+  default.
 
-- Possibly other fields such as final cutoffs, etc.
+- Use `"adaptive"` for a principled, data-driven cutoff that targets
+  variance reduction.
 
-For categorical exposures:
+- Use `"pctl"` to trim a fixed percentage of extreme values from each
+  tail.
 
-- **Symmetric trimming** (`method = "ps"`): Removes observations where
-  any propensity score falls below the threshold delta (specified via
-  `lower`).
+- Use `"pref"` when you want to restrict to the region of clinical
+  equipoise based on the preference score.
 
-- **Optimal trimming** (`method = "optimal"`): Uses the Yang et
-  al. (2016) approach for multi-category treatments.
+- Use `"cr"` to restrict to the common support region where both
+  exposure groups have observed propensity scores.
 
-**Arithmetic behavior**: Arithmetic operations on `ps_trim` objects
-return numeric vectors, not `ps_trim` objects. This is intentional -
-once you transform propensity scores (e.g., `1/ps` for weights), the
-result is no longer a propensity score.
+- Use `"optimal"` for multi-category (3+) exposures; this is the only
+  data-driven method available for categorical treatments.
 
-**NA handling**: Trimmed values are set to `NA`. Operations that don't
-handle `NA` values will propagate them (e.g.,
-[`sum()`](https://rdrr.io/r/base/sum.html) returns `NA` unless
-`na.rm = TRUE`).
+### Typical workflow
 
-**Metadata tracking**: The `trimmed_idx` and `keep_idx` are updated when
-subsetting or reordering:
+1.  Fit a propensity score model
 
-- Subsetting with `[` updates indices to new positions
+2.  Apply `ps_trim()` to flag extreme values
 
-- [`sort()`](https://rdrr.io/r/base/sort.html) reorders data and updates
-  indices accordingly
+3.  Call
+    [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+    to re-estimate propensity scores on the retained sample
 
-- [`unique()`](https://rdrr.io/r/base/unique.html) may change lengths
-  but preserves the class
+4.  Compute weights with
+    [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+    or another weight function
 
-- [`na.omit()`](https://rdrr.io/r/stats/na.fail.html) removes trimmed
-  values and updates indices
+### Object behavior
 
-**Combining behavior**: When combining `ps_trim` objects with
-[`c()`](https://rdrr.io/r/base/c.html), metadata must match (same
-trimming parameters). Mismatched metadata triggers a warning and returns
-a numeric vector.
+Arithmetic operations on `ps_trim` objects return plain numeric vectors,
+since transformed propensity scores (e.g., `1/ps`) are no longer
+propensity scores. Trimmed values propagate as `NA` in calculations; use
+`na.rm = TRUE` where appropriate.
+
+When combining `ps_trim` objects with
+[`c()`](https://rdrr.io/r/base/c.html), trimming parameters must match.
+Mismatched parameters trigger a warning and return a numeric vector.
+
+Use
+[`ps_trim_meta()`](https://r-causal.github.io/propensity/reference/ps_trim_meta.md)
+to inspect the trimming metadata, including the method, cutoffs, and
+which observations were retained or trimmed.
+
+## References
+
+Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009).
+Dealing with limited overlap in estimation of average treatment effects.
+*Biometrika*, 96(1), 187–199.
+
+Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
+assessing the feasibility of comparative effectiveness research.
+*Comparative Effectiveness Research*, 3, 11–20.
+
+Yang, S., Imbens, G. W., Cui, Z., Faries, D. E., & Kadziola, Z. (2016).
+Propensity score matching and subclassification in observational studies
+with multi-level treatments. *Biometrics*, 72(4), 1055–1065.
 
 ## See also
 
 [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
-for bounding/winsorizing instead of discarding,
-[`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md),
+for bounding (winsorizing) instead of discarding,
+[`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+to re-estimate propensity scores after trimming,
+[`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
+for calibration-based adjustment,
+[`ps_trim_meta()`](https://r-causal.github.io/propensity/reference/ps_trim_meta.md)
+to inspect trimming metadata,
 [`is_ps_trimmed()`](https://r-causal.github.io/propensity/reference/is_ps_trimmed.md)
+and
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
+for logical queries.
 
 ## Examples
 
@@ -152,6 +228,92 @@ z <- rbinom(n, 1, plogis(1.3 * x))
 fit <- glm(z ~ x, family = binomial)
 ps <- predict(fit, type = "response")
 
+# Fixed threshold trimming (default)
+trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+trimmed
+#> <ps_trim; trimmed 44 of [300]>
+#>         1         2         3         4         5         6         7         8 
+#> 0.1780112 0.4934483 0.8725819 0.1353577 0.4025855 0.4752489 0.6683913 0.3506150 
+#>         9        10        11        12        13        14        15        16 
+#>        NA 0.3831809 0.5738044 0.7467782 0.3038553 0.1508037 0.8997256        NA 
+#>        17        18        19        20        21        22        23        24 
+#> 0.7187207 0.4419184 0.7548592 0.5787647        NA 0.1244366 0.8728587        NA 
+#>        25        26        27        28        29        30        31        32 
+#> 0.4313639        NA 0.5939254 0.2474276 0.6938170 0.5298266 0.6778670 0.5399668 
+#>        33        34        35        36        37        38        39        40 
+#> 0.7707828 0.3366773 0.2037945 0.2476600        NA 0.1768609 0.2572600 0.3484614 
+#>        41        42        43        44        45        46        47        48 
+#> 0.3065403        NA 0.1895191        NA 0.6415565        NA 0.3300895 0.3990495 
+#>        49        50        51        52        53        54        55        56 
+#> 0.3683877 0.1246121 0.1902500        NA 0.2564150 0.8160957 0.1494022        NA 
+#>        57        58        59        60        61        62        63        64 
+#> 0.3247367 0.7345271 0.7859021 0.8849770        NA        NA 0.2208817 0.4841803 
+#>        65        66        67        68        69        70        71        72 
+#> 0.6036086 0.1941979        NA 0.2790100 0.4585602 0.1783019 0.1731103 0.5439312 
+#>        73        74        75        76        77        78        79        80 
+#> 0.3822372 0.5796397 0.4114856 0.1759469 0.8218240 0.6877562 0.7649259        NA 
+#>        81        82        83        84        85        86        87        88 
+#> 0.7505008        NA 0.2641422 0.1005949        NA        NA 0.2330120 0.3365148 
+#>        89        90        91        92        93        94        95        96 
+#> 0.3055473 0.5632496 0.8745082 0.8863194 0.1269292 0.1023453        NA 0.1166039 
+#>        97        98        99       100       101       102       103       104 
+#>        NA 0.4322875 0.1893249 0.2462384 0.7703638 0.5197606 0.3273939 0.2099624 
+#>       105       106       107       108       109       110       111       112 
+#> 0.1851823        NA 0.7356255        NA 0.2954896 0.3163021 0.1530042 0.3471981 
+#>       113       114       115       116       117       118       119       120 
+#> 0.5921212 0.8328274 0.6227067 0.5867797 0.8065734 0.7877456 0.4663064 0.2023006 
+#>       121       122       123       124       125       126       127       128 
+#> 0.8087856 0.4774812 0.8903829 0.2928150 0.1499937 0.6139848 0.2290136 0.6467536 
+#>       129       130       131       132       133       134       135       136 
+#>        NA        NA 0.6627758 0.5441083 0.7165979        NA 0.8025574 0.7998822 
+#>       137       138       139       140       141       142       143       144 
+#> 0.7597742 0.6921037        NA        NA 0.2509264 0.5711077 0.1970442 0.4590332 
+#>       145       146       147       148       149       150       151       152 
+#> 0.6800801 0.2329425 0.6525433 0.6180388 0.1970997 0.1584870 0.7452343 0.3731672 
+#>       153       154       155       156       157       158       159       160 
+#> 0.6727629 0.1889404 0.8164247 0.1043218 0.6858279 0.5895482 0.5223260 0.6558189 
+#>       161       162       163       164       165       166       167       168 
+#> 0.5672709 0.2368400 0.3418011 0.5540597 0.1083159 0.1806594        NA        NA 
+#>       169       170       171       172       173       174       175       176 
+#> 0.1187105 0.7490531 0.7738375 0.7077039 0.4491471 0.5416643 0.1764396 0.2333126 
+#>       177       178       179       180       181       182       183       184 
+#> 0.3434474 0.1704628 0.7023006        NA 0.1524604 0.1153463 0.5651259 0.1351849 
+#>       185       186       187       188       189       190       191       192 
+#> 0.6161453 0.7945146 0.4382952 0.6065642 0.2328341 0.6027459 0.1139088 0.4037497 
+#>       193       194       195       196       197       198       199       200 
+#> 0.1040353 0.3422376 0.7735701 0.6661116 0.2893391 0.2011360 0.1863223 0.2107038 
+#>       201       202       203       204       205       206       207       208 
+#> 0.5327159 0.1544197        NA 0.5052145 0.1642856 0.5622725 0.3887452 0.3163883 
+#>       209       210       211       212       213       214       215       216 
+#> 0.6341619 0.5095796 0.7582940 0.2665601        NA        NA 0.4774214 0.5852567 
+#>       217       218       219       220       221       222       223       224 
+#> 0.8030404 0.1067663 0.1338595 0.8855459 0.5671613 0.6707177 0.2000938        NA 
+#>       225       226       227       228       229       230       231       232 
+#> 0.4538222 0.5912550 0.3993802 0.7230688 0.3094663        NA 0.8702859        NA 
+#>       233       234       235       236       237       238       239       240 
+#> 0.2415827 0.4195113        NA 0.1483657 0.2541910 0.5957602 0.4626159 0.2496911 
+#>       241       242       243       244       245       246       247       248 
+#> 0.4020747        NA 0.7936546 0.6179515 0.6899355 0.2556513 0.4650462 0.5270157 
+#>       249       250       251       252       253       254       255       256 
+#> 0.2803714 0.2850014 0.6020472 0.3002118 0.3705819 0.3257820 0.7087374 0.5960756 
+#>       257       258       259       260       261       262       263       264 
+#> 0.3306472 0.3363861 0.7464321 0.3725508 0.8297224 0.3965473 0.3250342        NA 
+#>       265       266       267       268       269       270       271       272 
+#> 0.2345937        NA        NA 0.5886632 0.6106387 0.4172303        NA 0.4137080 
+#>       273       274       275       276       277       278       279       280 
+#> 0.4312953 0.1206438 0.5164038 0.8752400 0.4176263 0.7591012 0.3016993 0.4527210 
+#>       281       282       283       284       285       286       287       288 
+#>        NA 0.6501483 0.8168531 0.2393292 0.8311549 0.8851143 0.7936328 0.4317872 
+#>       289       290       291       292       293       294       295       296 
+#> 0.8222307 0.3983355 0.1356224 0.6302455 0.4602807 0.3527491 0.8562989 0.3153233 
+#>       297       298       299       300 
+#> 0.5741435        NA 0.1008201 0.2253829 
+
+# How many observations were trimmed?
+sum(is_unit_trimmed(trimmed))
+#> [1] 44
+
+# Data-driven adaptive trimming
 ps_trim(ps, method = "adaptive")
 #> <ps_trim; trimmed 44 of [300]>
 #>         1         2         3         4         5         6         7         8 
@@ -231,79 +393,9 @@ ps_trim(ps, method = "adaptive")
 #>       297       298       299       300 
 #> 0.5741435        NA 0.1008201 0.2253829 
 
-# Coercion behavior with ps_trim objects
-ps_trim1 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
-ps_trim2 <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
-
-# Compatible objects combine silently
-c(ps_trim1[1:50], ps_trim2[51:100])  # Returns ps_trim object
-#> <ps_trim; trimmed 20 of [100]>
-#>         1         2         3         4         5         6         7         8 
-#> 0.1780112 0.4934483 0.8725819 0.1353577 0.4025855 0.4752489 0.6683913 0.3506150 
-#>         9        10        11        12        13        14        15        16 
-#>        NA 0.3831809 0.5738044 0.7467782 0.3038553 0.1508037 0.8997256        NA 
-#>        17        18        19        20        21        22        23        24 
-#> 0.7187207 0.4419184 0.7548592 0.5787647        NA 0.1244366 0.8728587        NA 
-#>        25        26        27        28        29        30        31        32 
-#> 0.4313639        NA 0.5939254 0.2474276 0.6938170 0.5298266 0.6778670 0.5399668 
-#>        33        34        35        36        37        38        39        40 
-#> 0.7707828 0.3366773 0.2037945 0.2476600        NA 0.1768609 0.2572600 0.3484614 
-#>        41        42        43        44        45        46        47        48 
-#> 0.3065403        NA 0.1895191        NA 0.6415565        NA 0.3300895 0.3990495 
-#>        49        50        51        52        53        54        55        56 
-#> 0.3683877 0.1246121 0.1902500        NA 0.2564150 0.8160957 0.1494022        NA 
-#>        57        58        59        60        61        62        63        64 
-#> 0.3247367 0.7345271 0.7859021 0.8849770        NA        NA 0.2208817 0.4841803 
-#>        65        66        67        68        69        70        71        72 
-#> 0.6036086 0.1941979        NA 0.2790100 0.4585602 0.1783019 0.1731103 0.5439312 
-#>        73        74        75        76        77        78        79        80 
-#> 0.3822372 0.5796397 0.4114856 0.1759469 0.8218240 0.6877562 0.7649259        NA 
-#>        81        82        83        84        85        86        87        88 
-#> 0.7505008        NA 0.2641422 0.1005949        NA        NA 0.2330120 0.3365148 
-#>        89        90        91        92        93        94        95        96 
-#> 0.3055473 0.5632496 0.8745082 0.8863194 0.1269292 0.1023453        NA 0.1166039 
-#>        97        98        99       100 
-#>        NA 0.4322875 0.1893249 0.2462384 
-
-# Different trim parameters trigger warning
-ps_trim3 <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
-c(ps_trim1[1:50], ps_trim3[51:100])  # Warning: returns numeric
-#> Warning: Converting ps_trim to numeric: different trimming parameters
-#> ℹ Metadata cannot be preserved when combining incompatible objects
-#> ℹ Use identical objects or explicitly cast to numeric to avoid this warning
-#>         1         2         3         4         5         6         7         8 
-#> 0.1780112 0.4934483 0.8725819 0.1353577 0.4025855 0.4752489 0.6683913 0.3506150 
-#>         9        10        11        12        13        14        15        16 
-#>        NA 0.3831809 0.5738044 0.7467782 0.3038553 0.1508037 0.8997256        NA 
-#>        17        18        19        20        21        22        23        24 
-#> 0.7187207 0.4419184 0.7548592 0.5787647        NA 0.1244366 0.8728587        NA 
-#>        25        26        27        28        29        30        31        32 
-#> 0.4313639        NA 0.5939254 0.2474276 0.6938170 0.5298266 0.6778670 0.5399668 
-#>        33        34        35        36        37        38        39        40 
-#> 0.7707828 0.3366773 0.2037945 0.2476600        NA 0.1768609 0.2572600 0.3484614 
-#>        41        42        43        44        45        46        47        48 
-#> 0.3065403        NA 0.1895191        NA 0.6415565        NA 0.3300895 0.3990495 
-#>        49        50        51        52        53        54        55        56 
-#> 0.3683877 0.1246121        NA        NA 0.2564150        NA        NA        NA 
-#>        57        58        59        60        61        62        63        64 
-#> 0.3247367 0.7345271 0.7859021        NA        NA        NA 0.2208817 0.4841803 
-#>        65        66        67        68        69        70        71        72 
-#> 0.6036086        NA        NA 0.2790100 0.4585602        NA        NA 0.5439312 
-#>        73        74        75        76        77        78        79        80 
-#> 0.3822372 0.5796397 0.4114856        NA        NA 0.6877562 0.7649259        NA 
-#>        81        82        83        84        85        86        87        88 
-#> 0.7505008        NA 0.2641422        NA        NA        NA 0.2330120 0.3365148 
-#>        89        90        91        92        93        94        95        96 
-#> 0.3055473 0.5632496        NA        NA        NA        NA        NA        NA 
-#>        97        98        99       100 
-#>        NA 0.4322875        NA 0.2462384 
-
-# Cross-class combinations warn and return numeric
-psw_obj <- psw(ps[1:50], estimand = "ate")
-c(ps_trim1[1:50], psw_obj)  # Warning: returns numeric
-#> Warning: Converting ps_trim and psw to numeric
-#> ℹ Class-specific attributes and metadata have been dropped
-#> ℹ Use explicit casting to numeric to avoid this warning
+# Quantile-based trimming at 5th and 95th percentiles
+ps_trim(ps, method = "pctl")
+#> <ps_trim; trimmed 30 of [300]>
 #>          1          2          3          4          5          6          7 
 #> 0.17801124 0.49344831 0.87258189 0.13535765 0.40258554 0.47524889 0.66839132 
 #>          8          9         10         11         12         13         14 
@@ -317,21 +409,123 @@ c(ps_trim1[1:50], psw_obj)  # Warning: returns numeric
 #>         36         37         38         39         40         41         42 
 #> 0.24766004         NA 0.17686094 0.25726004 0.34846140 0.30654026         NA 
 #>         43         44         45         46         47         48         49 
-#> 0.18951912         NA 0.64155648         NA 0.33008953 0.39904946 0.36838768 
-#>         50                                                                   
-#> 0.12461207 0.17801124 0.49344831 0.87258189 0.13535765 0.40258554 0.47524889 
-#>                                                                              
-#> 0.66839132 0.35061504 0.92239228 0.38318089 0.57380442 0.74677823 0.30385529 
-#>                                                                              
-#> 0.15080370 0.89972561 0.02943822 0.71872070 0.44191837 0.75485924 0.57876473 
-#>                                                                              
-#> 0.93233516 0.12443658 0.87285871 0.91937240 0.43136394 0.02433818 0.59392536 
-#>                                                                              
-#> 0.24742762 0.69381700 0.52982663 0.67786695 0.53996676 0.77078278 0.33667732 
-#>                                                                              
-#> 0.20379449 0.24766004 0.06402613 0.17686094 0.25726004 0.34846140 0.30654026 
-#>                                                                              
-#> 0.04714018 0.18951912 0.91394741 0.64155648 0.92303132 0.33008953 0.39904946 
-#>                       
-#> 0.36838768 0.12461207 
+#> 0.18951912 0.91394741 0.64155648         NA 0.33008953 0.39904946 0.36838768 
+#>         50         51         52         53         54         55         56 
+#> 0.12461207 0.19024995         NA 0.25641497 0.81609573 0.14940217         NA 
+#>         57         58         59         60         61         62         63 
+#> 0.32473671 0.73452714 0.78590206 0.88497697         NA         NA 0.22088166 
+#>         64         65         66         67         68         69         70 
+#> 0.48418025 0.60360857 0.19419787         NA 0.27900998 0.45856017 0.17830185 
+#>         71         72         73         74         75         76         77 
+#> 0.17311028 0.54393115 0.38223719 0.57963968 0.41148556 0.17594694 0.82182398 
+#>         78         79         80         81         82         83         84 
+#> 0.68775620 0.76492590 0.09594356 0.75050082 0.06658957 0.26414219 0.10059488 
+#>         85         86         87         88         89         90         91 
+#>         NA 0.90461881 0.23301201 0.33651483 0.30554734 0.56324964 0.87450818 
+#>         92         93         94         95         96         97         98 
+#> 0.88631941 0.12692921 0.10234530 0.08426251 0.11660386         NA 0.43228752 
+#>         99        100        101        102        103        104        105 
+#> 0.18932487 0.24623842 0.77036380 0.51976065 0.32739386 0.20996243 0.18518227 
+#>        106        107        108        109        110        111        112 
+#>         NA 0.73562548         NA 0.29548965 0.31630208 0.15300421 0.34719807 
+#>        113        114        115        116        117        118        119 
+#> 0.59212123 0.83282741 0.62270671 0.58677974 0.80657336 0.78774559 0.46630644 
+#>        120        121        122        123        124        125        126 
+#> 0.20230064 0.80878565 0.47748117 0.89038286 0.29281504 0.14999367 0.61398482 
+#>        127        128        129        130        131        132        133 
+#> 0.22901364 0.64675362 0.06419209         NA 0.66277576 0.54410827 0.71659793 
+#>        134        135        136        137        138        139        140 
+#>         NA 0.80255741 0.79988215 0.75977424 0.69210372         NA 0.09079429 
+#>        141        142        143        144        145        146        147 
+#> 0.25092645 0.57110768 0.19704419 0.45903320 0.68008008 0.23294255 0.65254331 
+#>        148        149        150        151        152        153        154 
+#> 0.61803876 0.19709968 0.15848705 0.74523426 0.37316715 0.67276290 0.18894043 
+#>        155        156        157        158        159        160        161 
+#> 0.81642474 0.10432180 0.68582789 0.58954824 0.52232604 0.65581895 0.56727085 
+#>        162        163        164        165        166        167        168 
+#> 0.23684003 0.34180113 0.55405967 0.10831585 0.18065940         NA         NA 
+#>        169        170        171        172        173        174        175 
+#> 0.11871049 0.74905308 0.77383752 0.70770386 0.44914706 0.54166428 0.17643958 
+#>        176        177        178        179        180        181        182 
+#> 0.23331263 0.34344738 0.17046280 0.70230062 0.07304003 0.15246043 0.11534630 
+#>        183        184        185        186        187        188        189 
+#> 0.56512587 0.13518488 0.61614535 0.79451459 0.43829517 0.60656419 0.23283410 
+#>        190        191        192        193        194        195        196 
+#> 0.60274592 0.11390882 0.40374970 0.10403526 0.34223762 0.77357008 0.66611156 
+#>        197        198        199        200        201        202        203 
+#> 0.28933909 0.20113598 0.18632231 0.21070377 0.53271587 0.15441973         NA 
+#>        204        205        206        207        208        209        210 
+#> 0.50521454 0.16428559 0.56227253 0.38874517 0.31638831 0.63416193 0.50957963 
+#>        211        212        213        214        215        216        217 
+#> 0.75829404 0.26656013 0.90146489 0.09307013 0.47742144 0.58525674 0.80304044 
+#>        218        219        220        221        222        223        224 
+#> 0.10676633 0.13385955 0.88554593 0.56716130 0.67071770 0.20009381 0.91614132 
+#>        225        226        227        228        229        230        231 
+#> 0.45382217 0.59125501 0.39938022 0.72306882 0.30946625         NA 0.87028588 
+#>        232        233        234        235        236        237        238 
+#>         NA 0.24158271 0.41951127 0.06438704 0.14836574 0.25419100 0.59576019 
+#>        239        240        241        242        243        244        245 
+#> 0.46261588 0.24969111 0.40207472         NA 0.79365463 0.61795146 0.68993549 
+#>        246        247        248        249        250        251        252 
+#> 0.25565132 0.46504618 0.52701568 0.28037136 0.28500140 0.60204716 0.30021180 
+#>        253        254        255        256        257        258        259 
+#> 0.37058188 0.32578201 0.70873738 0.59607558 0.33064721 0.33638608 0.74643214 
+#>        260        261        262        263        264        265        266 
+#> 0.37255079 0.82972242 0.39654734 0.32503416         NA 0.23459370 0.09722939 
+#>        267        268        269        270        271        272        273 
+#> 0.91692000 0.58866324 0.61063867 0.41723032         NA 0.41370803 0.43129530 
+#>        274        275        276        277        278        279        280 
+#> 0.12064385 0.51640377 0.87523995 0.41762629 0.75910122 0.30169925 0.45272098 
+#>        281        282        283        284        285        286        287 
+#>         NA 0.65014831 0.81685306 0.23932916 0.83115493 0.88511432 0.79363282 
+#>        288        289        290        291        292        293        294 
+#> 0.43178717 0.82223069 0.39833546 0.13562237 0.63024555 0.46028071 0.35274910 
+#>        295        296        297        298        299        300 
+#> 0.85629892 0.31532329 0.57414353         NA 0.10082012 0.22538288 
+
+# Refit after trimming, then compute weights
+trimmed <- ps_trim(ps, method = "adaptive")
+refitted <- ps_refit(trimmed, fit)
+wt_ate(refitted, .exposure = z)
+#> ℹ Treating `.exposure` as binary
+#> ℹ Setting focal level to 1
+#> <psw{estimand = ate; trimmed}[300]>
+#>   [1] 1.240579 2.058164 1.179439 1.179070 2.479678 2.130709 1.546037 1.552398
+#>   [9]       NA 2.593380 2.268587 1.386216 1.455212 1.200838 1.140328       NA
+#>  [17] 3.272545 1.782675 1.371331 2.292253       NA 1.163991 1.179032       NA
+#>  [25] 2.328539       NA 1.731055 3.842912 1.490847 1.926820 1.525053 1.893076
+#>  [33] 3.917615 2.914998 1.280093 1.352152       NA 1.238860 1.368835 1.547658
+#>  [41] 1.460487       NA 4.876301       NA 2.643752       NA 2.967353 2.499634
+#>  [49] 2.687495 1.164231 1.259096       NA 3.722181 1.266295 6.029169       NA
+#>  [57] 3.011351 1.409295 1.316469 1.161399       NA       NA 1.307391 1.913671
+#>  [65] 1.704729 1.265160       NA 1.407989 1.832054 1.241014 1.233279 1.880192
+#>  [73] 2.599182 1.771319 1.698883 5.210593 4.889604 2.985370 1.353148       NA
+#>  [81] 1.379326       NA 1.381016 1.131873       NA       NA 1.327354 1.521848
+#>  [89] 3.180870 2.219879 1.176614 1.159464 1.167411 1.134197       NA 1.153324
+#>  [97]       NA 1.755289 1.257681 1.349711 3.911330 2.040050 2.989342 1.289839
+#> [105] 1.251377       NA 3.455793       NA 3.277919 1.479963 5.902359 1.544890
+#> [113] 1.736044 1.239690 2.526861 1.750976 1.281806 1.313320 1.855984 1.277750
+#> [121] 4.594831 1.891632 7.509198 1.433882 1.199683 2.476368 1.320718 2.678015
+#> [129]       NA       NA 1.558717 1.879621 1.444250       NA 4.467031 1.292873
+#> [137] 1.362404 1.494456       NA       NA 1.357789 1.796221 4.709750 1.833498
+#> [145] 1.520225 1.327239 2.717307 1.666857 1.269646 1.211872 1.389090 1.603744
+#> [153] 1.536293 4.889627 4.762739 1.136827 1.507810 1.743207 2.049824 2.740082
+#> [161] 1.807638 1.333760 1.533168 2.179201 1.142162 1.244550       NA       NA
+#> [169] 7.402829 1.381999 1.337371 1.462140 2.244100 1.887538 1.238231 1.327856
+#> [177] 2.863148 1.229363 3.113295       NA 1.203205 1.151622 2.228379 1.178829
+#> [185] 2.488677 1.301856 1.772273 1.696843 1.327058 1.707044 1.149680 2.473178
+#> [193] 1.136445 1.534110 3.959981 1.551162 1.427282 1.275928 4.950895 1.291019
+#> [201] 1.917087 1.206013       NA 2.013803 1.220295 2.215480 1.641148 1.480137
+#> [209] 2.596564 1.997821 1.365083 1.385341       NA       NA 2.121784 1.755278
+#> [217] 4.476669 1.140089 1.176986 1.160579 1.807966 1.540838 1.274301       NA
+#> [225] 1.817720 1.738450 1.667666 1.431467 1.466275       NA 1.182816       NA
+#> [233] 3.925953 2.388469       NA 1.197366 3.751310 2.377394 1.844505 1.355652
+#> [241] 2.482541       NA 1.303304 1.667082 3.003822 3.732130 1.852048 1.936381
+#> [249] 3.436024 1.419123 2.410589 1.448110 2.673096 1.499338 3.173717 1.725144
+#> [257] 1.509464 2.917273 1.386860 1.602298 1.244567 1.660522 1.497792       NA
+#> [265] 1.329995       NA       NA 2.341051 1.686081 1.714101       NA 1.704739
+#> [273] 2.328877 7.296804 2.027404 1.175543 1.715160 1.363621 1.451002 1.814421
+#> [281]       NA 1.587922 1.265073 1.337953 1.242313 1.161201 1.303341 1.753889
+#> [289] 1.256446 2.503704 1.179438 2.572282 2.194293 1.557123 1.203649 1.477989
+#> [297] 1.787285       NA 1.132171 1.314740
 ```

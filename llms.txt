@@ -1,9 +1,10 @@
 # propensity
 
-propensity provides a comprehensive toolkit for propensity score
-analysis in causal inference. The package supports multiple estimands,
-handles extreme weights, and provides statistically valid inference
-through inverse probability weighting.
+propensity provides a toolkit for propensity score analysis in causal
+inference. It supports multiple causal estimands across binary,
+categorical, and continuous exposures, handles extreme propensity scores
+through trimming, truncation, and calibration, and estimates causal
+effects with valid standard errors via inverse probability weighting.
 
 ## Installation
 
@@ -15,446 +16,245 @@ install.packages("propensity")
 ```
 
 You can install the development version of propensity from
-[GitHub](https://github.com/) with:
+[GitHub](https://github.com/r-causal/propensity) with:
 
 ``` r
-# install.packages("devtools")
-devtools::install_github("r-causal/propensity")
+# install.packages("pak")
+pak::pak("r-causal/propensity")
 ```
 
 ## Quick Start
 
-Here’s a complete workflow for causal effect estimation:
+Estimate a causal effect in three steps:
 
 ``` r
 library(propensity)
 
-# Simulate data with confounding
+# Simulate data with a confounder, binary exposure, and binary outcome
 n <- 200
 x1 <- rnorm(n)
-x2 <- rnorm(n)
-treatment <- rbinom(n, 1, plogis(0.5 * x1 - 0.3 * x2))
-outcome <- rbinom(n, 1, plogis(1 + 0.8 * treatment + 0.5 * x1 - 0.3 * x2))
+z <- rbinom(n, 1, plogis(0.5 * x1))
+y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.3 * x1))
+dat <- data.frame(x1, z, y)
 
-# Fit propensity score model
-ps_model <- glm(treatment ~ x1 + x2, family = binomial())
+# Step 1: Fit a propensity score model
+ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 
-# Calculate ATE weights
-wts <- wt_ate(ps_model)
-#> ℹ Using exposure variable "treatment" from GLM model
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
+# Step 2: Calculate ATE weights and fit a weighted outcome model
+wts <- wt_ate(ps_mod)
+outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
 
-# Fit weighted outcome model
-outcome_model <- glm(outcome ~ treatment, family = binomial(), weights = wts)
-#> Warning in eval(family$initialize): non-integer #successes in a binomial glm!
-
-# Get causal effect estimates with correct standard errors
-ipw(ps_model, outcome_model)
+# Step 3: Estimate causal effects with correct standard errors
+ipw(ps_mod, outcome_mod)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
 #> 
 #> Propensity Score Model:
-#>   Call: glm(formula = treatment ~ x1 + x2, family = binomial()) 
+#>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) 
 #> 
 #> Outcome Model:
-#>   Call: glm(formula = outcome ~ treatment, family = binomial(), weights = wts) 
+#>   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) 
 #> 
 #> Estimates:
-#>         estimate  std.err        z ci.lower ci.upper conf.level p.value  
-#> rd      0.074863 0.051824 1.444570  -0.0267  0.17643       0.95 0.14858  
-#> log(rr) 0.091501 0.057897 1.580417  -0.0220  0.20498       0.95 0.11401  
-#> log(or) 0.510526 0.220945 2.310648   0.0775  0.94357       0.95 0.02085 *
+#>         estimate std.err       z ci.lower ci.upper conf.level   p.value    
+#> rd       0.14230 0.07038 2.02194   0.0044  0.28025       0.95 0.0431831 *  
+#> log(rr)  0.28031 0.10770 2.60262   0.0692  0.49141       0.95 0.0092513 ** 
+#> log(or)  0.57339 0.16200 3.53950   0.2559  0.89090       0.95 0.0004009 ***
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
 
-The [`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md)
-function accounts for uncertainty in propensity score estimation,
-providing valid confidence intervals and p-values.
+[`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md)
+performs inverse probability weighted estimation. It accounts for
+uncertainty in the estimated propensity scores when computing standard
+errors, producing valid confidence intervals and p-values.
 
 ## Multiple Estimands
 
-propensity supports six different causal estimands:
+propensity supports six causal estimands for binary exposures:
 
 ``` r
-ps <- predict(ps_model, type = "response")
+ps <- fitted(ps_mod)
 
-wt_ate(ps, treatment) # Average Treatment Effect
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#> <psw{estimand = ate}[200]>
-#>   [1] 1.470779 2.068930 1.546098 1.232231 1.820995 2.024578 1.344924 1.495716
-#>   [9] 2.217640 2.193364 1.715910 1.801797 3.732186 3.503668 1.438201 1.868097
-#>  [17] 1.922443 2.079571 1.834538 1.332966 1.788833 1.633368 1.301630 1.821102
-#>  [25] 1.679110 2.399182 1.380026 1.473493 1.646620 1.626722 1.424301 2.003376
-#>  [33] 1.829952 2.225673 1.407329 1.988122 1.605516 1.623829 2.053488 2.510054
-#>  [41] 1.423668 1.524282 1.829257 1.691047 1.471506 2.674584 1.327642 3.093271
-#>  [49] 2.330734 2.314127 1.350606 3.005055 2.984867 1.478913 1.563689 2.809816
-#>  [57] 1.749273 2.337510 3.332681 2.991772 1.998441 1.194681 2.024361 1.547311
-#>  [65] 1.953848 4.967949 1.689181 5.093562 1.527294 2.021179 2.305803 3.698911
-#>  [73] 2.485525 1.989953 2.271353 1.706920 1.366111 1.479168 1.772592 2.223966
-#>  [81] 2.658169 1.821960 1.758813 1.696490 1.384585 2.399317 1.443507 2.021727
-#>  [89] 1.469493 1.561712 2.461594 2.180753 1.155001 1.388714 1.393119 1.573849
-#>  [97] 1.926909 1.468325 2.593163 3.977904 2.848188 1.725918 2.269394 1.532868
-#> [105] 2.392849 1.597024 1.889476 1.570240 2.680789 1.761019 1.503138 1.645602
-#> [113] 1.763572 1.555643 1.694603 2.026177 1.624535 2.699905 3.101536 2.510389
-#> [121] 2.052995 1.734747 1.234539 1.280988 1.342521 1.605403 3.080384 1.793828
-#> [129] 1.469570 1.578528 1.596617 2.192363 1.773740 2.232075 1.489021 1.628306
-#> [137] 2.082229 1.185081 1.492569 1.837623 2.033960 1.496145 2.000751 2.623126
-#> [145] 2.408770 1.798632 1.255588 1.251283 1.542644 1.578020 3.776381 2.103042
-#> [153] 1.256482 2.269634 3.556495 1.559996 3.477468 1.977787 1.748482 1.361639
-#> [161] 1.460139 1.393987 2.104371 1.910747 1.561723 1.791428 1.197745 1.937296
-#> [169] 2.030522 2.190334 4.712759 3.362976 1.844335 3.292583 1.281848 2.475882
-#> [177] 2.414548 1.127966 1.995835 2.294861 2.579686 4.774356 1.401574 2.426269
-#> [185] 2.224822 1.553441 1.763196 2.352843 1.298357 1.918415 1.395278 1.801854
-#> [193] 1.931121 1.862172 1.361941 1.992374 2.257764 1.521538 2.218199 1.578212
-wt_att(ps, treatment) # Average Treatment Effect on the Treated
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#> <psw{estimand = att}[200]>
-#>   [1] 0.4707789 1.0000000 1.0000000 0.2322311 1.0000000 1.0245778 0.3449241
-#>   [8] 0.4957157 1.0000000 1.1933637 0.7159101 0.8017975 1.0000000 2.5036682
-#>  [15] 1.0000000 0.8680975 0.9224426 1.0000000 0.8345383 1.0000000 0.7888328
-#>  [22] 0.6333681 0.3016302 0.8211016 0.6791099 1.0000000 0.3800259 0.4734925
-#>  [29] 1.0000000 0.6267215 1.0000000 1.0000000 1.0000000 1.0000000 0.4073285
-#>  [36] 1.0000000 1.0000000 0.6238288 1.0000000 1.0000000 1.0000000 0.5242825
-#>  [43] 1.0000000 0.6910469 0.4715061 1.0000000 0.3276415 1.0000000 1.0000000
-#>  [50] 1.0000000 0.3506062 1.0000000 1.0000000 0.4789134 1.0000000 1.8098161
-#>  [57] 1.0000000 1.3375095 2.3326810 1.0000000 1.0000000 1.0000000 1.0243608
-#>  [64] 1.0000000 0.9538478 3.9679493 0.6891813 4.0935618 1.0000000 1.0000000
-#>  [71] 1.3058033 1.0000000 1.0000000 1.0000000 1.2713535 1.0000000 0.3661107
-#>  [78] 0.4791676 1.0000000 1.0000000 1.6581689 0.8219595 0.7588134 0.6964897
-#>  [85] 1.0000000 1.3993170 1.0000000 1.0217275 1.0000000 0.5617123 1.0000000
-#>  [92] 1.1807528 1.0000000 1.0000000 0.3931187 0.5738490 1.0000000 1.0000000
-#>  [99] 1.5931634 2.9779037 1.8481879 1.0000000 1.2693943 0.5328683 1.0000000
-#> [106] 1.0000000 0.8894758 0.5702399 1.6807891 0.7610191 0.5031375 0.6456016
-#> [113] 0.7635718 1.0000000 1.0000000 1.0000000 0.6245350 1.0000000 2.1015358
-#> [120] 1.5103891 1.0000000 0.7347466 1.0000000 1.0000000 1.0000000 1.0000000
-#> [127] 1.0000000 0.7938279 0.4695699 1.0000000 1.0000000 1.0000000 0.7737400
-#> [134] 1.2320755 0.4890211 1.0000000 1.0822290 0.1850811 1.0000000 1.0000000
-#> [141] 1.0000000 1.0000000 1.0007510 1.0000000 1.4087699 0.7986321 1.0000000
-#> [148] 1.0000000 1.0000000 1.0000000 2.7763806 1.0000000 1.0000000 1.0000000
-#> [155] 2.5564948 1.0000000 1.0000000 0.9777871 0.7484818 0.3616386 0.4601392
-#> [162] 0.3939866 1.0000000 1.0000000 1.0000000 0.7914278 1.0000000 0.9372959
-#> [169] 1.0000000 1.0000000 3.7127593 2.3629759 0.8443348 1.0000000 1.0000000
-#> [176] 1.0000000 1.0000000 1.0000000 1.0000000 1.2948611 1.0000000 3.7743558
-#> [183] 1.0000000 1.0000000 1.2248219 1.0000000 1.0000000 1.0000000 1.0000000
-#> [190] 0.9184152 0.3952778 1.0000000 1.0000000 0.8621715 1.0000000 1.0000000
-#> [197] 1.2577643 0.5215382 1.2181988 0.5782116
-wt_atu(ps, treatment) # Average Treatment Effect on the Untreated
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#> <psw{estimand = atu}[200]>
-#>   [1] 1.0000000 1.0689304 0.5460976 1.0000000 0.8209947 1.0000000 1.0000000
-#>   [8] 1.0000000 1.2176401 1.0000000 1.0000000 1.0000000 2.7321864 1.0000000
-#>  [15] 0.4382010 1.0000000 1.0000000 1.0795713 1.0000000 0.3329662 1.0000000
-#>  [22] 1.0000000 1.0000000 1.0000000 1.0000000 1.3991825 1.0000000 1.0000000
-#>  [29] 0.6466199 1.0000000 0.4243007 1.0033757 0.8299522 1.2256735 1.0000000
-#>  [36] 0.9881219 0.6055160 1.0000000 1.0534882 1.5100543 0.4236685 1.0000000
-#>  [43] 0.8292569 1.0000000 1.0000000 1.6745844 1.0000000 2.0932708 1.3307338
-#>  [50] 1.3141266 1.0000000 2.0050554 1.9848665 1.0000000 0.5636887 1.0000000
-#>  [57] 0.7492731 1.0000000 1.0000000 1.9917719 0.9984414 0.1946807 1.0000000
-#>  [64] 0.5473114 1.0000000 1.0000000 1.0000000 1.0000000 0.5272941 1.0211792
-#>  [71] 1.0000000 2.6989113 1.4855253 0.9899526 1.0000000 0.7069204 1.0000000
-#>  [78] 1.0000000 0.7725923 1.2239660 1.0000000 1.0000000 1.0000000 1.0000000
-#>  [85] 0.3845848 1.0000000 0.4435067 1.0000000 0.4694926 1.0000000 1.4615940
-#>  [92] 1.0000000 0.1550010 0.3887143 1.0000000 1.0000000 0.9269090 0.4683251
-#>  [99] 1.0000000 1.0000000 1.0000000 0.7259181 1.0000000 1.0000000 1.3928486
-#> [106] 0.5970239 1.0000000 1.0000000 1.0000000 1.0000000 1.0000000 1.0000000
-#> [113] 1.0000000 0.5556430 0.6946028 1.0261769 1.0000000 1.6999054 1.0000000
-#> [120] 1.0000000 1.0529954 1.0000000 0.2345394 0.2809878 0.3425212 0.6054034
-#> [127] 2.0803840 1.0000000 1.0000000 0.5785281 0.5966166 1.1923627 1.0000000
-#> [134] 1.0000000 1.0000000 0.6283059 1.0000000 1.0000000 0.4925693 0.8376227
-#> [141] 1.0339600 0.4961454 1.0000000 1.6231258 1.0000000 1.0000000 0.2555875
-#> [148] 0.2512830 0.5426442 0.5780203 1.0000000 1.1030419 0.2564823 1.2696343
-#> [155] 1.0000000 0.5599957 2.4774683 1.0000000 1.0000000 1.0000000 1.0000000
-#> [162] 1.0000000 1.1043710 0.9107475 0.5617230 1.0000000 0.1977453 1.0000000
-#> [169] 1.0305221 1.1903341 1.0000000 1.0000000 1.0000000 2.2925834 0.2818475
-#> [176] 1.4758820 1.4145480 0.1279665 0.9958348 1.0000000 1.5796862 1.0000000
-#> [183] 0.4015740 1.4262688 1.0000000 0.5534408 0.7631955 1.3528431 0.2983569
-#> [190] 1.0000000 1.0000000 0.8018540 0.9311206 1.0000000 0.3619412 0.9923737
-#> [197] 1.0000000 1.0000000 1.0000000 1.0000000
-wt_ato(ps, treatment) # Average Treatment Effect in Overlap population
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#> <psw{estimand = ato}[200]>
-#>   [1] 0.3200881 0.5166585 0.3532103 0.1884639 0.4508496 0.5060699 0.2564636
-#>   [8] 0.3314237 0.5490702 0.5440793 0.4172189 0.4449987 0.7320605 0.7145848
-#>  [15] 0.3046869 0.4646960 0.4798284 0.5191316 0.4549037 0.2497934 0.4409763
-#>  [22] 0.3877681 0.2317326 0.4508818 0.4044464 0.5831914 0.2753759 0.3213403
-#>  [29] 0.3926953 0.3852666 0.2979010 0.5008425 0.4535376 0.5506978 0.2894339
-#>  [36] 0.4970127 0.3771473 0.3841715 0.5130238 0.6016022 0.2975893 0.3439536
-#>  [43] 0.4533299 0.4086503 0.3204242 0.6261101 0.2467846 0.6767176 0.5709506
-#>  [50] 0.5678715 0.2595917 0.6672274 0.6649766 0.3238279 0.3604865 0.6441048
-#>  [57] 0.4283340 0.5721943 0.6999413 0.6657499 0.4996100 0.1629563 0.5060169
-#>  [64] 0.3537177 0.4881894 0.7987097 0.4079972 0.8036737 0.3452472 0.5052393
-#>  [71] 0.5663117 0.7296502 0.5976706 0.4974755 0.5597339 0.4141496 0.2679949
-#>  [78] 0.3239441 0.4358545 0.5503528 0.6238012 0.4511404 0.4314348 0.4105476
-#>  [85] 0.2777618 0.5832147 0.3072426 0.5053735 0.3194930 0.3596772 0.5937592
-#>  [92] 0.5414427 0.1341999 0.2799095 0.2821861 0.3646150 0.4810341 0.3189519
-#>  [99] 0.6143706 0.7486113 0.6488996 0.4205982 0.5593538 0.3476282 0.5820881
-#> [106] 0.3738353 0.4707527 0.3631546 0.6269755 0.4321470 0.3347249 0.3923195
-#> [113] 0.4329689 0.3571790 0.4098912 0.5064597 0.3844392 0.6296167 0.6775791
-#> [120] 0.6016554 0.5129068 0.4235469 0.1899813 0.2193524 0.2551328 0.3771036
-#> [127] 0.6753652 0.4425329 0.3195288 0.3664984 0.3736756 0.5438711 0.4362195
-#> [134] 0.5519865 0.3284179 0.3858648 0.5197454 0.1561759 0.3300143 0.4558187
-#> [141] 0.5083482 0.3316158 0.5001877 0.6187754 0.5848503 0.4440219 0.2035601
-#> [148] 0.2008203 0.3517624 0.3662946 0.7351962 0.5244983 0.2041273 0.5594004
-#> [155] 0.7188243 0.3589726 0.7124345 0.4943844 0.4280753 0.2655908 0.3151338
-#> [162] 0.2826330 0.5247986 0.4766446 0.3596816 0.4417860 0.1650980 0.4838166
-#> [169] 0.5075158 0.5434487 0.7878101 0.7026443 0.4577991 0.6962871 0.2198760
-#> [176] 0.5961035 0.5858438 0.1134488 0.4989565 0.5642438 0.6123560 0.7905477
-#> [183] 0.2865164 0.5878445 0.5505258 0.3562677 0.4328479 0.5749823 0.2297958
-#> [190] 0.4787364 0.2832969 0.4450161 0.4821660 0.4629925 0.2657539 0.4980861
-#> [197] 0.5570840 0.3427703 0.5491838 0.3663714
-wt_atm(ps, treatment) # Average Treatment Effect in Matched population
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#> <psw{estimand = atm}[200]>
-#>   [1] 0.4707789 1.0000000 0.5460976 0.2322311 0.8209947 1.0000000 0.3449241
-#>   [8] 0.4957157 1.0000000 1.0000000 0.7159101 0.8017975 1.0000000 1.0000000
-#>  [15] 0.4382010 0.8680975 0.9224426 1.0000000 0.8345383 0.3329662 0.7888328
-#>  [22] 0.6333681 0.3016302 0.8211016 0.6791099 1.0000000 0.3800259 0.4734925
-#>  [29] 0.6466199 0.6267215 0.4243007 1.0000000 0.8299522 1.0000000 0.4073285
-#>  [36] 0.9881219 0.6055160 0.6238288 1.0000000 1.0000000 0.4236685 0.5242825
-#>  [43] 0.8292569 0.6910469 0.4715061 1.0000000 0.3276415 1.0000000 1.0000000
-#>  [50] 1.0000000 0.3506062 1.0000000 1.0000000 0.4789134 0.5636887 1.0000000
-#>  [57] 0.7492731 1.0000000 1.0000000 1.0000000 0.9984414 0.1946807 1.0000000
-#>  [64] 0.5473114 0.9538478 1.0000000 0.6891813 1.0000000 0.5272941 1.0000000
-#>  [71] 1.0000000 1.0000000 1.0000000 0.9899526 1.0000000 0.7069204 0.3661107
-#>  [78] 0.4791676 0.7725923 1.0000000 1.0000000 0.8219595 0.7588134 0.6964897
-#>  [85] 0.3845848 1.0000000 0.4435067 1.0000000 0.4694926 0.5617123 1.0000000
-#>  [92] 1.0000000 0.1550010 0.3887143 0.3931187 0.5738490 0.9269090 0.4683251
-#>  [99] 1.0000000 1.0000000 1.0000000 0.7259181 1.0000000 0.5328683 1.0000000
-#> [106] 0.5970239 0.8894758 0.5702399 1.0000000 0.7610191 0.5031375 0.6456016
-#> [113] 0.7635718 0.5556430 0.6946028 1.0000000 0.6245350 1.0000000 1.0000000
-#> [120] 1.0000000 1.0000000 0.7347466 0.2345394 0.2809878 0.3425212 0.6054034
-#> [127] 1.0000000 0.7938279 0.4695699 0.5785281 0.5966166 1.0000000 0.7737400
-#> [134] 1.0000000 0.4890211 0.6283059 1.0000000 0.1850811 0.4925693 0.8376227
-#> [141] 1.0000000 0.4961454 1.0000000 1.0000000 1.0000000 0.7986321 0.2555875
-#> [148] 0.2512830 0.5426442 0.5780203 1.0000000 1.0000000 0.2564823 1.0000000
-#> [155] 1.0000000 0.5599957 1.0000000 0.9777871 0.7484818 0.3616386 0.4601392
-#> [162] 0.3939866 1.0000000 0.9107475 0.5617230 0.7914278 0.1977453 0.9372959
-#> [169] 1.0000000 1.0000000 1.0000000 1.0000000 0.8443348 1.0000000 0.2818475
-#> [176] 1.0000000 1.0000000 0.1279665 0.9958348 1.0000000 1.0000000 1.0000000
-#> [183] 0.4015740 1.0000000 1.0000000 0.5534408 0.7631955 1.0000000 0.2983569
-#> [190] 0.9184152 0.3952778 0.8018540 0.9311206 0.8621715 0.3619412 0.9923737
-#> [197] 1.0000000 0.5215382 1.0000000 0.5782116
-wt_entropy(ps, treatment) # Entropy-weighted ATE
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#> <psw{estimand = entropy}[200]>
-#>   [1] 0.9220840 1.4329248 1.0040533 0.5963850 1.2534049 1.4031812 0.7656995
-#>   [8] 0.9500521 1.5264541 1.5117895 1.1657523 1.2379873 2.1691415 2.0951770
-#>  [15] 0.8841821 1.2902059 1.3309708 1.4399263 1.2641332 0.7492711 1.2274314
-#>  [22] 1.0906640 0.7046524 1.2534901 1.1330186 1.6296231 0.8121906 0.9251700
-#>  [29] 1.1031341 1.0843459 0.8675064 1.3886314 1.2605140 1.5312585 0.8467108
-#>  [36] 1.3780256 1.0638957 1.0815827 1.4226729 1.6876517 0.8667405 0.9810635
-#>  [43] 1.2599641 1.1437625 0.9229121 1.7678830 0.7418530 1.9466539 1.5919964
-#>  [50] 1.5826441 0.7733968 1.9115902 1.9033872 0.9313031 1.0221795 1.8292459
-#>  [57] 1.1944730 1.5957865 2.0359817 1.9062006 1.3852134 0.5310830 1.4030334
-#>  [64] 1.0053157 1.3537590 2.4948344 1.1420915 2.5226740 0.9842719 1.4008637
-#>  [71] 1.5779228 2.1587086 1.6751071 1.3793047 1.5581345 1.1578610 0.7940577
-#>  [78] 0.9315898 1.2140399 1.5302393 1.7601665 1.2541732 1.2025273 1.1486206
-#>  [85] 0.8180500 1.6296956 0.8904655 1.4012379 0.9206176 1.0201609 1.6627110
-#>  [92] 1.5040831 0.4554091 0.8233241 0.8289142 1.0324881 1.3342450 0.9192844
-#>  [99] 1.7289991 2.2429634 1.8459823 1.1744602 1.5569969 0.9901809 1.6262016
-#> [106] 1.0555775 1.3064505 1.0288395 1.7707839 1.2043797 0.9582116 1.1021817
-#> [113] 1.2065190 1.0139335 1.1469392 1.4042697 1.0822580 1.7796680 1.9498761
-#> [120] 1.6878219 1.4223439 1.1820755 0.6002279 0.6739112 0.7624234 1.0637858
-#> [127] 1.9416087 1.2315124 0.9207058 1.0371968 1.0551767 1.5111800 1.2149925
-#> [134] 1.5350702 0.9426286 1.0858559 1.4416671 0.5134648 0.9465707 1.2665596
-#> [141] 1.4095501 0.9505266 1.3868148 1.7434879 1.6347794 1.2354209 0.6344463
-#> [148] 0.6275654 1.0004522 1.0366869 2.1828304 1.4551922 0.6358694 1.5571363
-#> [155] 2.1127724 1.0184038 2.0863331 1.3707728 1.1938019 0.7881489 0.9098812
-#> [162] 0.8300116 1.4560495 1.3223439 1.0201717 1.2295537 0.5366230 1.3418163
-#> [169] 1.4072212 1.5099437 2.4357601 2.0467310 1.2718185 2.0215720 0.6752144
-#> [176] 1.6701309 1.6378739 0.3989231 1.3834029 1.5716810 1.7224115 2.4503434
-#> [183] 0.8395471 1.6441210 1.5307503 1.0116635 1.2062039 1.6043095 0.6998526
-#> [190] 1.3280088 0.8316416 1.2380331 1.3373221 1.2856536 0.7885499 1.3809936
-#> [197] 1.5502166 0.9781299 1.5267890 1.0368790
+wt_ate(ps, z)     # Average Treatment Effect
+wt_att(ps, z)     # Average Treatment Effect on the Treated
+wt_atu(ps, z)     # Average Treatment Effect on the Untreated
+wt_ato(ps, z)     # Average Treatment Effect, Overlap population
+wt_atm(ps, z)     # Average Treatment Effect, Matched population
+wt_entropy(ps, z) # Entropy-weighted ATE
 ```
 
-Choose your estimand based on your research question: - **ATE**: Effect
-in the entire population - **ATT**: Effect among those who received
-treatment - **ATU/ATC**: Effect among those who didn’t receive
-treatment - **ATO**: Effect in the population with most overlap (more
-stable weights) - **ATM**: Effect in a matched population - **Entropy**:
-Balances efficiency and overlap
+Choose your estimand based on your research question:
 
-## Flexible Input Formats
+| Estimand    | Target population                                                 | Function                                                                                                                                                 |
+|-------------|-------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **ATE**     | Entire population                                                 | [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
+| **ATT**     | Treated units                                                     | [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
+| **ATU**     | Untreated units                                                   | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md) (alias: [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)) |
+| **ATO**     | Overlap population – units with the most equipoise between groups | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
+| **ATM**     | Matched population – mimics 1:1 matching                          | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
+| **Entropy** | Entropy-balanced compromise between ATE and overlap               | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                              |
 
-propensity accepts propensity scores in multiple formats:
+ATO and ATM produce naturally bounded weights, making them good
+alternatives when ATE weights are highly variable.
+
+## Flexible Input
+
+Weight functions accept propensity scores in several forms:
 
 ``` r
-# Numeric vector
-wt_ate(ps, treatment)
+# GLM object -- extracts fitted values and exposure automatically (recommended)
+wt_ate(ps_mod)
 
-# Data frame (uses second column by default for treatment probability)
+# Numeric vector of propensity scores
+wt_ate(ps, z)
+
+# Data frame of class probabilities (e.g., from multinomial models)
 ps_df <- data.frame(control = 1 - ps, treated = ps)
-wt_ate(ps_df, treatment)
-
-# GLM object directly (extracts fitted values automatically)
-wt_ate(ps_model)
+wt_ate(ps_df, z)
 ```
 
 ## Handling Extreme Weights
 
-Extreme propensity scores (near 0 or 1) can lead to unstable weights.
-propensity offers several solutions:
+Propensity scores near 0 or 1 produce extreme weights that inflate
+variance. propensity offers four complementary strategies:
+
+1.  **Switch estimand** –
+    [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+    and
+    [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+    produce bounded weights by design.
+2.  **Trim** – remove observations with extreme scores (sets them to
+    `NA`).
+3.  **Truncate** – winsorize extreme scores to a fixed range.
+4.  **Calibrate** – adjust scores so they better reflect true treatment
+    probabilities.
 
 ``` r
-# Check for extreme weights
-summary(wt_ate(ps, treatment))
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>   1.128   1.527   1.811   1.999   2.238   5.094
+ps <- fitted(ps_mod)
 
-# Solution 1: Use overlap-weighted estimand (bounded weights)
-summary(wt_ato(ps, treatment))
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
+# Diagnose: inspect the weight distribution
+summary(wt_ate(ps, z))
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>  0.1134  0.3449  0.4479  0.4519  0.5533  0.8037
+#>   1.380   1.806   1.956   2.000   2.154   2.902
 
-# Solution 2: Trim extreme propensity scores
+# 1. Switch estimand -- overlap weights are bounded by design
+summary(wt_ato(ps, z))
+#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#>  0.2752  0.4463  0.4889  0.4912  0.5358  0.6554
+
+# 2. Trim -- remove observations with extreme propensity scores
 ps_trimmed <- ps_trim(ps, method = "adaptive")
-summary(wt_ate(ps_trimmed, treatment))
-#> Warning in wt_ate(ps_trimmed, treatment): It appears you trimmed your propensity score but did not refit the model.
-#> ℹ Use `ps_refit()` for more accurate re-estimation.
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
-#>   1.155   1.530   1.821   2.003   2.245   5.094       1
+summary(wt_ate(ps_trimmed, z))
+#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#>   1.380   1.806   1.956   2.000   2.154   2.902
 
-# Solution 3: Truncate propensity scores
+# 3. Truncate -- bound extreme propensity scores to a range
 ps_truncated <- ps_trunc(ps, lower = 0.05, upper = 0.95)
-summary(wt_ate(ps_truncated, treatment))
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
+summary(wt_ate(ps_truncated, z))
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>   1.128   1.527   1.811   1.999   2.238   5.094
+#>   1.380   1.806   1.956   2.000   2.154   2.902
 
-# Solution 4: Calibrate propensity scores
-ps_calibrated <- ps_calibrate(ps, treatment)
-#> ℹ Setting focal level to 1
-summary(wt_ate(ps_calibrated, treatment))
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
+# 4. Calibrate -- adjust scores to better reflect true probabilities
+ps_calibrated <- ps_calibrate(ps, z)
+summary(wt_ate(ps_calibrated, z))
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>   1.185   1.510   1.797   1.999   2.268   4.771
+#>   1.401   1.804   1.956   2.000   2.156   2.881
 ```
 
-After trimming, you can refit the propensity score model on the retained
-subset:
+After trimming, refit the propensity score model on the retained subset
+so the scores reflect the trimmed population:
 
 ``` r
-ps_refitted <- ps_refit(ps_trimmed, ps_model)
-wts_refitted <- wt_ate(ps_refitted, treatment)
+ps_refitted <- ps_refit(ps_trimmed, ps_mod)
+wts_refitted <- wt_ate(ps_refitted, z)
 ```
 
 ## Advanced Features
 
 ### Weight Stabilization
 
-Stabilized weights can reduce variance for ATE estimation:
+Stabilized weights can reduce variance. Stabilization is supported for
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+and
+[`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md):
 
 ``` r
-wt_ate(ps, treatment, stabilize = TRUE)
-#> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
-#> <psw{estimand = ate; stabilized}[200]>
-#>   [1] 0.7206816 1.0551545 0.7885098 0.6037932 0.9287073 0.9920431 0.6590128
-#>   [8] 0.7329007 1.1309964 1.0747482 0.8407960 0.8828808 1.9034151 1.7167974
-#>  [15] 0.7334825 0.9153678 0.9419969 1.0605813 0.8989238 0.6798128 0.8765281
-#>  [22] 0.8003504 0.6377988 0.8923398 0.8227638 1.2235831 0.6762127 0.7220113
-#>  [29] 0.8397762 0.7970935 0.7263933 1.0217216 0.9332756 1.1350935 0.6895910
-#>  [36] 1.0139422 0.8188132 0.7956761 1.0472790 1.2801277 0.7260709 0.7468984
-#>  [43] 0.9329210 0.8286130 0.7210380 1.3640381 0.6505443 1.5775681 1.1886742
-#>  [50] 1.1802046 0.6617970 1.5325783 1.5222819 0.7246675 0.7974812 1.3768099
-#>  [57] 0.8921293 1.1453797 1.6330137 1.5258036 1.0192051 0.6092872 0.9919368
-#>  [64] 0.7891288 0.9573854 2.4342952 0.8276989 2.4958453 0.7789200 1.0308014
-#>  [71] 1.1298436 1.8864448 1.2676179 1.0148758 1.1129632 0.8705294 0.6693942
-#>  [78] 0.7247921 0.9040221 1.1342227 1.3025028 0.8927602 0.8618185 0.8312800
-#>  [85] 0.7061382 1.1756653 0.7361884 0.9906465 0.7494412 0.7652391 1.2554129
-#>  [92] 1.0685689 0.5890505 0.7082443 0.6826282 0.7711860 0.9827236 0.7488458
-#>  [99] 1.2706501 1.9491728 1.3956120 0.8802182 1.1120032 0.7511055 1.2203528
-#> [106] 0.8144822 0.9258432 0.7694175 1.3135866 0.8628994 0.7365374 0.8063448
-#> [113] 0.8641502 0.7933779 0.8642474 1.0333502 0.7960221 1.3769518 1.5197525
-#> [120] 1.2300907 1.0470276 0.8500259 0.6296151 0.6533038 0.6846858 0.8187557
-#> [127] 1.5709959 0.8789757 0.7200893 0.8050493 0.8142745 1.1181050 0.8691326
-#> [134] 1.0937170 0.7296204 0.8304360 1.0202922 0.5806898 0.7612103 0.9371876
-#> [141] 1.0373196 0.7630342 0.9803680 1.3377941 1.1802973 0.8813297 0.6403496
-#> [148] 0.6381543 0.7867485 0.8047904 1.8504265 1.0725514 0.6408060 1.1575135
-#> [155] 1.7426825 0.7955978 1.7735088 0.9691157 0.8567561 0.6672029 0.7154682
-#> [162] 0.6830534 1.0732292 0.9744812 0.7964787 0.8777996 0.6108501 0.9492750
-#> [169] 1.0355662 1.1170704 2.3092521 1.6478582 0.9037241 1.6792175 0.6537422
-#> [176] 1.2626998 1.2314195 0.5752629 1.0178758 1.1244819 1.3156400 2.3394343
-#> [183] 0.7148027 1.2373971 1.0901627 0.7922548 0.8992297 1.1999500 0.6621620
-#> [190] 0.9400235 0.6836861 0.9189455 0.9848715 0.9124641 0.6945900 1.0161106
-#> [197] 1.1063045 0.7455537 1.0869174 0.7733237
+summary(wt_ate(ps, z, stabilize = TRUE))
+#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#>  0.7036  0.9017  0.9817  0.9999  1.0732  1.4536
 ```
 
 ### Continuous Exposures
 
-For continuous treatments, propensity scores represent conditional
-densities:
+For continuous treatments, weights use the ratio of the marginal to
+conditional density. Stabilization is strongly recommended:
 
 ``` r
-# Fit linear model for continuous treatment
-continuous_treatment <- rnorm(n, mean = 0.5 * x1 - 0.3 * x2)
-ps_continuous <- lm(continuous_treatment ~ x1 + x2)
+# Fit a model for the continuous exposure
+continuous_exposure <- rnorm(n, mean = 0.5 * x1)
+dat$a <- continuous_exposure
+ps_continuous <- glm(a ~ x1, data = dat, family = gaussian())
 
-# Density-based weights
-wts_continuous <- wt_ate(
-  ps_continuous,
-  continuous_treatment,
-  exposure_type = "continuous",
-  # stabilization is highly recommended for continuous exposures
-  stabilize = TRUE
-)
+# Density-ratio weights (stabilization strongly recommended)
+wts_continuous <- wt_ate(ps_continuous, stabilize = TRUE)
 ```
 
 ### Categorical Exposures
 
-For multi-level treatments, provide a data frame or matrix of propensity
-scores:
+For multi-level treatments, supply a matrix or data frame of class
+probabilities with one column per treatment level:
 
 ``` r
-# Multinomial propensity scores (3 treatment levels)
+# Multinomial propensity scores (one column per treatment level)
 ps_matrix <- matrix(c(0.3, 0.5, 0.2), ncol = 3, nrow = n, byrow = TRUE)
-categorical_treatment <- factor(sample(1:3, n, replace = TRUE))
+categorical_exposure <- factor(sample(1:3, n, replace = TRUE))
 
-wt_ate(ps_matrix, categorical_treatment, exposure_type = "categorical")
+wt_ate(ps_matrix, categorical_exposure, exposure_type = "categorical")
 
-# For ATT, specify focal level
-wt_att(ps_matrix, categorical_treatment, .focal_level = "2")
+# For ATT with categorical exposures, specify the focal level
+wt_att(ps_matrix, categorical_exposure, .focal_level = "2")
 ```
 
 ### Censoring Weights
 
-Combine treatment and censoring weights for survival or longitudinal
-analyses:
+[`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+calculates inverse probability of censoring weights for survival or
+longitudinal analyses. These address informative censoring – not
+treatment assignment:
 
 ``` r
-# Propensity of being uncensored
-censoring_ps <- predict(
-  glm(uncensored ~ x1 + x2, family = binomial()),
-  type = "response"
-)
+# Model the probability of being uncensored
+cens_mod <- glm(uncensored ~ x1 + x2, data = dat, family = binomial())
 
-# Censoring weights
-wts_cens <- wt_cens(censoring_ps, uncensored)
+# Censoring weights (uses the same formula as wt_ate())
+wts_cens <- wt_cens(cens_mod)
 
-# Combine with treatment weights
-wts_combined <- wt_ate(ps, treatment) * wts_cens
+# Combine with treatment weights for a doubly-weighted analysis
+wts_combined <- wt_ate(ps_mod) * wts_cens
+```
+
+### Calibration Methods
+
+[`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
+supports two calibration methods:
+
+``` r
+# Logistic calibration (default) -- fits a logistic regression of exposure on
+# predicted propensity scores
+ps_calibrate(ps, z, method = "logistic")
+
+# Isotonic regression calibration -- fits a monotone step function; useful for
+# non-smooth relationships with large samples
+ps_calibrate(ps, z, method = "isoreg")
 ```
 
 ## Learn More
 
-- [Causal Inference in R](https://www.r-causal.org/) - Comprehensive
+- [propensity package
+  documentation](https://r-causal.github.io/propensity/) – Full
+  reference and articles
+- [Causal Inference in R](https://www.r-causal.org/) – A comprehensive
   guide to causal inference methods in R
 
 # Package index
@@ -463,31 +263,36 @@ wts_combined <- wt_ate(ps, treatment) * wts_cens
 
 - [`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md)
   [`as.data.frame(`*`<ipw>`*`)`](https://r-causal.github.io/propensity/reference/ipw.md)
-  : Inverse Probability Weights for Causal Inference
+  : Inverse Probability Weighted Estimation
 
 - [`is_ps_calibrated()`](https://r-causal.github.io/propensity/reference/is_ps_calibrated.md)
-  : Check if object is calibrated
+  : Check if propensity scores are calibrated
 
 - [`is_ps_trimmed()`](https://r-causal.github.io/propensity/reference/is_ps_trimmed.md)
-  : Check if object is trimmed
+  : Test whether propensity scores have been trimmed
 
 - [`is_ps_truncated()`](https://r-causal.github.io/propensity/reference/is_ps_truncated.md)
-  : Check if object is truncated
+  : Test whether propensity scores have been truncated
 
 - [`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md)
-  : Check if an object has been refit
+  : Check if propensity scores have been refit
 
 - [`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
-  : Check if units have been trimmed
+  : Identify which units were trimmed
 
 - [`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
-  : Check if units have been truncated
+  : Identify which units were truncated
+
+- [`propensity`](https://r-causal.github.io/propensity/reference/propensity-package.md)
+  [`propensity-package`](https://r-causal.github.io/propensity/reference/propensity-package.md)
+  : propensity: A Toolkit for Calculating and Working with Propensity
+  Scores
 
 - [`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
   : Calibrate propensity scores
 
 - [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
-  : Refit the Propensity Score Model on Retained Observations
+  : Refit a Propensity Score Model on Retained Observations
 
 - [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
   : Trim Propensity Scores
@@ -495,7 +300,7 @@ wts_combined <- wt_ate(ps, treatment) * wts_cens
 - [`ps_trim_meta()`](https://r-causal.github.io/propensity/reference/ps_trim_meta.md)
   :
 
-  Extract `ps_trim` metadata
+  Extract trimming metadata from a `ps_trim` object
 
 - [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
   : Truncate (Winsorize) Propensity Scores
@@ -503,7 +308,7 @@ wts_combined <- wt_ate(ps, treatment) * wts_cens
 - [`ps_trunc_meta()`](https://r-causal.github.io/propensity/reference/ps_trunc_meta.md)
   :
 
-  Extract `ps_trunc` metadata
+  Extract truncation metadata from a `ps_trunc` object
 
 - [`new_psw()`](https://r-causal.github.io/propensity/reference/psw.md)
   [`psw()`](https://r-causal.github.io/propensity/reference/psw.md)
@@ -513,9 +318,7 @@ wts_combined <- wt_ate(ps, treatment) * wts_cens
   [`as_psw()`](https://r-causal.github.io/propensity/reference/psw.md)
   [`estimand()`](https://r-causal.github.io/propensity/reference/psw.md)
   [`` `estimand<-`() ``](https://r-causal.github.io/propensity/reference/psw.md)
-  :
-
-  Create and Manipulate `psw` Objects
+  : Propensity Score Weight Vectors
 
 - [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
@@ -525,5 +328,11 @@ wts_combined <- wt_ate(ps, treatment) * wts_cens
   [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   [`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-  : Calculate Propensity Score Weights for Causal Inference
+  : Calculate propensity score weights
 
+# Articles
+
+### All vignettes
+
+- [Getting Started with
+  propensity](https://r-causal.github.io/propensity/articles/propensity.md):

@@ -1,10 +1,8 @@
-# Check if an object has been refit
+# Check if propensity scores have been refit
 
-**`is_refit()`** is an S3 generic that returns `TRUE` if its argument
-represents a
-[ps_trim](https://r-causal.github.io/propensity/reference/ps_trim.md)
-object (or a weighting object) that has had the propensity model refit
-on the retained subset.
+`is_refit()` tests whether `x` is a `ps_trim` object whose propensity
+model has been refit on the retained (non-trimmed) observations via
+[`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md).
 
 ## Usage
 
@@ -16,10 +14,36 @@ is_refit(x)
 
 - x:
 
-  An R object (e.g. a
+  An object to test (typically a
   [ps_trim](https://r-causal.github.io/propensity/reference/ps_trim.md)
-  or [psw](https://r-causal.github.io/propensity/reference/psw.md)).
+  vector).
 
 ## Value
 
-A logical scalar (`TRUE` or `FALSE`).
+A single `TRUE` or `FALSE`.
+
+## See also
+
+[`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+to refit a propensity model after trimming,
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+to trim propensity scores.
+
+## Examples
+
+``` r
+set.seed(2)
+n <- 30
+x <- rnorm(n)
+z <- rbinom(n, 1, plogis(0.4 * x))
+fit <- glm(z ~ x, family = binomial)
+ps <- predict(fit, type = "response")
+
+trimmed <- ps_trim(ps, lower = 0.2, upper = 0.8)
+is_refit(trimmed)
+#> [1] FALSE
+
+refit <- ps_refit(trimmed, fit)
+is_refit(refit)
+#> [1] TRUE
+```

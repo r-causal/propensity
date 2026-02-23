@@ -1,11 +1,14 @@
-# Create and Manipulate `psw` Objects
+# Propensity Score Weight Vectors
 
-Functions to create and manipulate `psw` objects, which are specialized
-vectors for propensity score weights with optional `estimand`
-attributes. Most users should use
+`psw` objects are numeric vectors that carry metadata about propensity
+score weights, including the target estimand and whether the underlying
+propensity scores were trimmed, truncated, or calibrated.
+
+Most users will encounter `psw` objects as return values from
 [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-and friends, but these functions can help extend the functionality of
-`psw` objects.
+and related weight functions. These constructor and helper functions are
+useful for inspecting weight objects or for package developers extending
+propensity.
 
 ## Usage
 
@@ -46,137 +49,150 @@ estimand(wt) <- value
 
 - x:
 
-  A numeric vector (default:
-  [`double()`](https://rdrr.io/r/base/double.html)).
+  For `psw()` and `new_psw()`: a numeric vector of weights (default:
+  [`double()`](https://rdrr.io/r/base/double.html)). For `is_psw()`,
+  `is_causal_wt()`, and `as_psw()`: an object to test or coerce.
 
 - estimand:
 
-  A character string representing the estimand (e.g., "ate", "att",
-  "ato"). Default is `NULL`.
+  A character string identifying the target estimand (e.g., `"ate"`,
+  `"att"`, `"ato"`). Defaults to `NULL`.
 
 - stabilized:
 
-  A logical `TRUE`
+  Logical. Were the weights stabilized? Defaults to `FALSE`.
 
 - trimmed:
 
-  Logical, whether these weights came from a trimmed PS.
+  Logical. Were the weights derived from trimmed propensity scores?
+  Defaults to `FALSE`.
 
 - truncated:
 
-  Logical, whether these weights came from a truncated PS.
+  Logical. Were the weights derived from truncated propensity scores?
+  Defaults to `FALSE`.
 
 - calibrated:
 
-  Logical, whether these weights came from a calibrated PS.
+  Logical. Were the weights derived from calibrated propensity scores?
+  Defaults to `FALSE`.
 
 - ...:
 
-  Additional attributes to track in the weights.
+  Additional attributes stored on the object (developer use only).
 
 - wt:
 
-  An object to check or convert.
+  A `psw` or `causal_wts` object.
 
 - value:
 
-  The value to add to the attribute.
+  A character string: the new estimand to assign.
 
 ## Value
 
-- `new_psw()`: A `psw` object.
+- `new_psw()`, `psw()`, `as_psw()`: A `psw` vector.
 
-- `psw()`: A `psw` object.
+- `is_psw()`, `is_causal_wt()`, `is_stabilized()`: A single logical
+  value.
 
-- `is_psw()`: `TRUE` if the object is a `psw`, otherwise `FALSE`.
+- `estimand()`: A character string, or `NULL` if no estimand is set.
 
-- `as_psw()`: A `psw` object.
-
-- `estimand()`: The `estimand` attribute of a `psw` object.
-
-- `is_stabilized()`: The `stabilized` attribute of a `psw` object.
+- `estimand<-`: The modified `psw` object (called for its side effect).
 
 ## Details
 
-The `psw` class is a vctrs-based S3 class that represents propensity
-score weights. It extends numeric vectors with additional metadata
-tracking the estimand type, stabilization status, and source
-transformations.
+### Constructors
 
-**Arithmetic behavior**: Unlike `ps_trim` and `ps_trunc` objects,
-arithmetic operations on `psw` objects preserve the class and
-attributes. This allows weight manipulations like normalization
-(`weights / sum(weights)`) while maintaining metadata.
+- `psw()` is the **user-facing** constructor. It coerces `x` to double
+  and validates inputs before creating the object.
 
-**Combining behavior**: When combining `psw` objects with
-[`c()`](https://rdrr.io/r/base/c.html), the class is preserved only if
-all metadata matches. Mismatched metadata triggers a warning and returns
-a numeric vector.
+- `new_psw()` is the **low-level** constructor intended for developers.
+  It assumes `x` is already a double vector and performs minimal
+  validation.
 
-**Base R compatibility**: Most base R operations work seamlessly:
+- `as_psw()` coerces an existing numeric vector to a `psw` object.
 
-- Subsetting with `[` preserves class and attributes
+### Queries
 
-- Summary functions ([`sum()`](https://rdrr.io/r/base/sum.html),
-  [`mean()`](https://rdrr.io/r/base/mean.html), etc.) return numeric
-  values
+- `is_psw()` tests whether an object is a `psw` vector.
 
-- Comparison operators return logical vectors
+- `is_causal_wt()` tests whether an object inherits from the broader
+  `causal_wts` class (which includes `psw` objects).
 
-- Works in data frames and with tidyverse functions
+- `estimand()` and `estimand<-` get and set the estimand attribute.
+
+- `is_stabilized()` returns `TRUE` if the weights are stabilized.
+
+### Arithmetic and combining
+
+Arithmetic operations on `psw` objects preserve the class and
+attributes, so operations like normalization (`weights / sum(weights)`)
+retain metadata. Combining `psw` objects with
+[`c()`](https://rdrr.io/r/base/c.html) preserves the class only when all
+metadata matches; mismatched metadata produces a warning and falls back
+to a plain numeric vector.
+
+Subsetting with `[` preserves class and attributes. Summary functions
+([`sum()`](https://rdrr.io/r/base/sum.html),
+[`mean()`](https://rdrr.io/r/base/mean.html), etc.) return plain numeric
+values.
+
+## See also
+
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+[`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+[`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+[`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+[`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+for calculating propensity score weights (which return `psw` objects).
+
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md),
+[`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md),
+and
+[`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
+for modifying propensity scores before weight calculation.
 
 ## Examples
 
 ``` r
-psw_weights <- new_psw(c(0.1, 0.2, 0.3), estimand = "ate")
-is_psw(psw_weights)
+# Create psw objects directly
+w <- psw(c(1.2, 0.8, 1.5), estimand = "ate")
+w
+#> <psw{estimand = ate}[3]>
+#> [1] 1.2 0.8 1.5
+
+# Query metadata
+is_psw(w)
 #> [1] TRUE
-estimand(psw_weights)
+estimand(w)
 #> [1] "ate"
+is_stabilized(w)
+#> [1] FALSE
 
-psw_helper <- psw(c(0.5, 0.7), estimand = "att")
-as_psw(c(0.1, 0.2), estimand = "ato")
-#> <psw{estimand = ato}[2]>
-#> [1] 0.1 0.2
+# Coerce a plain numeric vector
+as_psw(c(1.0, 2.0), estimand = "att")
+#> <psw{estimand = att}[2]>
+#> [1] 1 2
 
-# Coercion behavior - compatible objects combine silently
-x <- psw(c(0.5, 0.7), estimand = "ate")
-y <- psw(c(0.3, 0.8), estimand = "ate")
-c(x, y)  # Returns psw object
+# Arithmetic preserves the psw class
+w / sum(w)
+#> <psw{estimand = ate}[3]>
+#> [1] 0.3428571 0.2285714 0.4285714
+
+# Combining: compatible metadata is preserved
+x <- psw(c(1.2, 0.8), estimand = "ate")
+y <- psw(c(1.1, 0.9), estimand = "ate")
+c(x, y)
 #> <psw{estimand = ate}[4]>
-#> [1] 0.5 0.7 0.3 0.8
+#> [1] 1.2 0.8 1.1 0.9
 
-# Incompatible metadata triggers warning and returns numeric
-x <- psw(c(0.5, 0.7), estimand = "ate")
-y <- psw(c(0.3, 0.8), estimand = "att")
-c(x, y)  # Warning: returns numeric
+# Combining: incompatible metadata warns and returns numeric
+x <- psw(c(1.2, 0.8), estimand = "ate")
+y <- psw(c(1.1, 0.9), estimand = "att")
+c(x, y)
 #> Warning: Converting psw to numeric: incompatible estimands 'ate' and 'att'
 #> ℹ Metadata cannot be preserved when combining incompatible objects
 #> ℹ Use identical objects or explicitly cast to numeric to avoid this warning
-#> [1] 0.5 0.7 0.3 0.8
-
-# Works with tidyr::pivot_longer for plotting
-if (requireNamespace("tidyr", quietly = TRUE)) {
-  df <- data.frame(
-    id = 1:4,
-    ate_wts = psw(c(0.5, 0.7, 0.3, 0.8), estimand = "ate"),
-    att_wts = psw(c(0.4, 0.6, 0.2, 0.9), estimand = "att")
-  )
-  # This will warn but succeed, returning numeric in the pivoted column
-  tidyr::pivot_longer(df, cols = c(ate_wts, att_wts))
-}
-#> Warning: Converting psw to numeric: incompatible estimands 'ate' and 'att'
-#> ℹ Metadata cannot be preserved when combining incompatible objects
-#> ℹ Use identical objects or explicitly cast to numeric to avoid this warning
-#> # A tibble: 8 × 3
-#>      id name    value
-#>   <int> <chr>   <dbl>
-#> 1     1 ate_wts   0.5
-#> 2     1 att_wts   0.4
-#> 3     2 ate_wts   0.7
-#> 4     2 att_wts   0.6
-#> 5     3 ate_wts   0.3
-#> 6     3 att_wts   0.2
-#> 7     4 ate_wts   0.8
-#> 8     4 att_wts   0.9
+#> [1] 1.2 0.8 1.1 0.9
 ```
