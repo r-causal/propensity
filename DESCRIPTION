@@ -5,7 +5,7 @@ Authors@R:
     person("Malcolm", "Barrett", , "malcolmbarrett@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0003-0299-5825"))
 Description: Calculates propensity score weights for multiple causal
-    estimands across binary, continuous, and categorical exposures.
+    'estimands' across binary, continuous, and categorical exposures.
     Provides methods for handling extreme propensity scores through
     trimming, truncation, and calibration. Includes inverse probability
     weighted estimators that correctly account for propensity score
