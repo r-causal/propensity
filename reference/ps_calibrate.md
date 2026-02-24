@@ -111,6 +111,18 @@ The calibrated scores are returned as a `ps_calib` object, which can be
 passed directly to weight functions such as
 [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md).
 
+## References
+
+Platt, J. (1999). Probabilistic outputs for support vector machines and
+comparisons to regularized likelihood methods. *Advances in Large Margin
+Classifiers*, 61–74.
+
+Zadrozny, B., & Elkan, C. (2002). Transforming classifier scores into
+accurate multiclass probability estimates. *Proceedings of the Eighth
+ACM SIGKDD International Conference on Knowledge Discovery and Data
+Mining*, 694–699.
+[doi:10.1145/775047.775151](https://doi.org/10.1145/775047.775151)
+
 ## See also
 
 [`is_ps_calibrated()`](https://r-causal.github.io/propensity/reference/is_ps_calibrated.md)

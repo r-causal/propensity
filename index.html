@@ -11,8 +11,8 @@
 <script src="deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="A Toolkit for Calculating and Working with Propensity Scores">
-<meta name="description" content="A comprehensive toolkit for propensity score analysis in causal inference. Supports calculating propensity score weights for multiple causal estimands across binary, continuous, and categorical exposures. Provides methods for handling extreme propensity scores through trimming, truncation, and calibration. Includes inverse probability weighted estimators that correctly account for propensity score estimation uncertainty.">
-<meta property="og:description" content="A comprehensive toolkit for propensity score analysis in causal inference. Supports calculating propensity score weights for multiple causal estimands across binary, continuous, and categorical exposures. Provides methods for handling extreme propensity scores through trimming, truncation, and calibration. Includes inverse probability weighted estimators that correctly account for propensity score estimation uncertainty.">
+<meta name="description" content="Calculates propensity score weights for multiple causal estimands across binary, continuous, and categorical exposures. Provides methods for handling extreme propensity scores through trimming, truncation, and calibration. Includes inverse probability weighted estimators that correctly account for propensity score estimation uncertainty.">
+<meta property="og:description" content="Calculates propensity score weights for multiple causal estimands across binary, continuous, and categorical exposures. Provides methods for handling extreme propensity scores through trimming, truncation, and calibration. Includes inverse probability weighted estimators that correctly account for propensity score estimation uncertainty.">
 <meta property="og:image" content="https://r-causal.github.io/propensity/logo.png">
 </head>
 <body>
@@ -54,7 +54,18 @@
 </div>
 <!-- badges: start -->
 
-<p>propensity provides a toolkit for propensity score analysis in causal inference. It supports multiple causal estimands across binary, categorical, and continuous exposures, handles extreme propensity scores through trimming, truncation, and calibration, and estimates causal effects with valid standard errors via inverse probability weighting.</p>
+<div class="section level2">
+<h2 id="overview">Overview<a class="anchor" aria-label="anchor" href="#overview"></a>
+</h2>
+<p>propensity makes it easy to calculate propensity score weights and use them to estimate causal effects. It supports:</p>
+<ul>
+<li>Six estimands for binary exposures (ATE, ATT, ATU, ATO, ATM, and entropy weights)</li>
+<li>Binary, categorical, and continuous exposures</li>
+<li>Trimming, truncation, and calibration for extreme propensity scores</li>
+<li>Inverse probability weighted estimation with standard errors that account for propensity score estimation</li>
+</ul>
+<p>You can learn more in <code><a href="articles/propensity.html">vignette("propensity")</a></code>.</p>
+</div>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
@@ -67,9 +78,8 @@
 <span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"r-causal/propensity"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="quick-start">Quick Start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
+<h2 id="usage">Usage<a class="anchor" aria-label="anchor" href="#usage"></a>
 </h2>
-<p>Estimate a causal effect in three steps:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://r-causal.github.io/propensity/">propensity</a></span><span class="op">)</span></span>
 <span></span>
@@ -105,27 +115,17 @@
 <span><span class="co">#&gt; log(or)  0.57339 0.16200 3.53950   0.2559  0.89090       0.95 0.0004009 ***</span></span>
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
-<p><code><a href="reference/ipw.html">ipw()</a></code> performs inverse probability weighted estimation. It accounts for uncertainty in the estimated propensity scores when computing standard errors, producing valid confidence intervals and p-values.</p>
+<p><code><a href="reference/ipw.html">ipw()</a></code> uses linearization to account for uncertainty in the estimated propensity scores when computing standard errors.</p>
 </div>
 <div class="section level2">
-<h2 id="multiple-estimands">Multiple Estimands<a class="anchor" aria-label="anchor" href="#multiple-estimands"></a>
+<h2 id="estimands">Estimands<a class="anchor" aria-label="anchor" href="#estimands"></a>
 </h2>
-<p>propensity supports six causal estimands for binary exposures:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ps</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/fitted.values.html" class="external-link">fitted</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span>     <span class="co"># Average Treatment Effect</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_att</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span>     <span class="co"># Average Treatment Effect on the Treated</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_atu</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span>     <span class="co"># Average Treatment Effect on the Untreated</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_ato</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span>     <span class="co"># Average Treatment Effect, Overlap population</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_atm</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span>     <span class="co"># Average Treatment Effect, Matched population</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_entropy</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span> <span class="co"># Entropy-weighted ATE</span></span></code></pre></div>
-<p>Choose your estimand based on your research question:</p>
+<p>Each weight function targets a different population:</p>
 <table class="table">
 <colgroup>
-<col width="33%">
-<col width="33%">
-<col width="33%">
+<col width="17%">
+<col width="39%">
+<col width="43%">
 </colgroup>
 <thead><tr class="header">
 <th>Estimand</th>
@@ -151,162 +151,33 @@
 </tr>
 <tr class="even">
 <td><strong>ATO</strong></td>
-<td>Overlap population – units with the most equipoise between groups</td>
+<td>Overlap population</td>
 <td><code><a href="reference/wt_ate.html">wt_ato()</a></code></td>
 </tr>
 <tr class="odd">
 <td><strong>ATM</strong></td>
-<td>Matched population – mimics 1:1 matching</td>
+<td>Matched population</td>
 <td><code><a href="reference/wt_ate.html">wt_atm()</a></code></td>
 </tr>
 <tr class="even">
 <td><strong>Entropy</strong></td>
-<td>Entropy-balanced compromise between ATE and overlap</td>
+<td>Entropy-balanced population</td>
 <td><code><a href="reference/wt_ate.html">wt_entropy()</a></code></td>
 </tr>
 </tbody>
 </table>
-<p>ATO and ATM produce naturally bounded weights, making them good alternatives when ATE weights are highly variable.</p>
+<p>ATO and ATM weights are bounded by construction, making them a good alternative when ATE weights are highly variable.</p>
 </div>
 <div class="section level2">
-<h2 id="flexible-input">Flexible Input<a class="anchor" aria-label="anchor" href="#flexible-input"></a>
-</h2>
-<p>Weight functions accept propensity scores in several forms:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># GLM object -- extracts fitted values and exposure automatically (recommended)</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Numeric vector of propensity scores</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Data frame of class probabilities (e.g., from multinomial models)</span></span>
-<span><span class="va">ps_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>control <span class="op">=</span> <span class="fl">1</span> <span class="op">-</span> <span class="va">ps</span>, treated <span class="op">=</span> <span class="va">ps</span><span class="op">)</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_df</span>, <span class="va">z</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="handling-extreme-weights">Handling Extreme Weights<a class="anchor" aria-label="anchor" href="#handling-extreme-weights"></a>
-</h2>
-<p>Propensity scores near 0 or 1 produce extreme weights that inflate variance. propensity offers four complementary strategies:</p>
-<ol style="list-style-type: decimal">
-<li>
-<strong>Switch estimand</strong> – <code><a href="reference/wt_ate.html">wt_ato()</a></code> and <code><a href="reference/wt_ate.html">wt_atm()</a></code> produce bounded weights by design.</li>
-<li>
-<strong>Trim</strong> – remove observations with extreme scores (sets them to <code>NA</code>).</li>
-<li>
-<strong>Truncate</strong> – winsorize extreme scores to a fixed range.</li>
-<li>
-<strong>Calibrate</strong> – adjust scores so they better reflect true treatment probabilities.</li>
-</ol>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ps</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/fitted.values.html" class="external-link">fitted</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Diagnose: inspect the weight distribution</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
-<span><span class="co">#&gt;   1.380   1.806   1.956   2.000   2.154   2.902</span></span>
-<span></span>
-<span><span class="co"># 1. Switch estimand -- overlap weights are bounded by design</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="reference/wt_ate.html">wt_ato</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
-<span><span class="co">#&gt;  0.2752  0.4463  0.4889  0.4912  0.5358  0.6554</span></span>
-<span></span>
-<span><span class="co"># 2. Trim -- remove observations with extreme propensity scores</span></span>
-<span><span class="va">ps_trimmed</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ps_trim.html">ps_trim</a></span><span class="op">(</span><span class="va">ps</span>, method <span class="op">=</span> <span class="st">"adaptive"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_trimmed</span>, <span class="va">z</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
-<span><span class="co">#&gt;   1.380   1.806   1.956   2.000   2.154   2.902</span></span>
-<span></span>
-<span><span class="co"># 3. Truncate -- bound extreme propensity scores to a range</span></span>
-<span><span class="va">ps_truncated</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ps_trunc.html">ps_trunc</a></span><span class="op">(</span><span class="va">ps</span>, lower <span class="op">=</span> <span class="fl">0.05</span>, upper <span class="op">=</span> <span class="fl">0.95</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_truncated</span>, <span class="va">z</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
-<span><span class="co">#&gt;   1.380   1.806   1.956   2.000   2.154   2.902</span></span>
-<span></span>
-<span><span class="co"># 4. Calibrate -- adjust scores to better reflect true probabilities</span></span>
-<span><span class="va">ps_calibrated</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ps_calibrate.html">ps_calibrate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_calibrated</span>, <span class="va">z</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
-<span><span class="co">#&gt;   1.401   1.804   1.956   2.000   2.156   2.881</span></span></code></pre></div>
-<p>After trimming, refit the propensity score model on the retained subset so the scores reflect the trimmed population:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ps_refitted</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ps_refit.html">ps_refit</a></span><span class="op">(</span><span class="va">ps_trimmed</span>, <span class="va">ps_mod</span><span class="op">)</span></span>
-<span><span class="va">wts_refitted</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_refitted</span>, <span class="va">z</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="advanced-features">Advanced Features<a class="anchor" aria-label="anchor" href="#advanced-features"></a>
-</h2>
-<div class="section level3">
-<h3 id="weight-stabilization">Weight Stabilization<a class="anchor" aria-label="anchor" href="#weight-stabilization"></a>
-</h3>
-<p>Stabilized weights can reduce variance. Stabilization is supported for <code><a href="reference/wt_ate.html">wt_ate()</a></code> and <code><a href="reference/wt_ate.html">wt_cens()</a></code>:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span>, stabilize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
-<span><span class="co">#&gt;  0.7036  0.9017  0.9817  0.9999  1.0732  1.4536</span></span></code></pre></div>
-</div>
-<div class="section level3">
-<h3 id="continuous-exposures">Continuous Exposures<a class="anchor" aria-label="anchor" href="#continuous-exposures"></a>
-</h3>
-<p>For continuous treatments, weights use the ratio of the marginal to conditional density. Stabilization is strongly recommended:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Fit a model for the continuous exposure</span></span>
-<span><span class="va">continuous_exposure</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span>, mean <span class="op">=</span> <span class="fl">0.5</span> <span class="op">*</span> <span class="va">x1</span><span class="op">)</span></span>
-<span><span class="va">dat</span><span class="op">$</span><span class="va">a</span> <span class="op">&lt;-</span> <span class="va">continuous_exposure</span></span>
-<span><span class="va">ps_continuous</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">a</span> <span class="op">~</span> <span class="va">x1</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">gaussian</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Density-ratio weights (stabilization strongly recommended)</span></span>
-<span><span class="va">wts_continuous</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_continuous</span>, stabilize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level3">
-<h3 id="categorical-exposures">Categorical Exposures<a class="anchor" aria-label="anchor" href="#categorical-exposures"></a>
-</h3>
-<p>For multi-level treatments, supply a matrix or data frame of class probabilities with one column per treatment level:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Multinomial propensity scores (one column per treatment level)</span></span>
-<span><span class="va">ps_matrix</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.3</span>, <span class="fl">0.5</span>, <span class="fl">0.2</span><span class="op">)</span>, ncol <span class="op">=</span> <span class="fl">3</span>, nrow <span class="op">=</span> <span class="va">n</span>, byrow <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="va">categorical_exposure</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span>, <span class="va">n</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_matrix</span>, <span class="va">categorical_exposure</span>, exposure_type <span class="op">=</span> <span class="st">"categorical"</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># For ATT with categorical exposures, specify the focal level</span></span>
-<span><span class="fu"><a href="reference/wt_ate.html">wt_att</a></span><span class="op">(</span><span class="va">ps_matrix</span>, <span class="va">categorical_exposure</span>, .focal_level <span class="op">=</span> <span class="st">"2"</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level3">
-<h3 id="censoring-weights">Censoring Weights<a class="anchor" aria-label="anchor" href="#censoring-weights"></a>
-</h3>
-<p><code><a href="reference/wt_ate.html">wt_cens()</a></code> calculates inverse probability of censoring weights for survival or longitudinal analyses. These address informative censoring – not treatment assignment:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Model the probability of being uncensored</span></span>
-<span><span class="va">cens_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">uncensored</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Censoring weights (uses the same formula as wt_ate())</span></span>
-<span><span class="va">wts_cens</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/wt_ate.html">wt_cens</a></span><span class="op">(</span><span class="va">cens_mod</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Combine with treatment weights for a doubly-weighted analysis</span></span>
-<span><span class="va">wts_combined</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span> <span class="op">*</span> <span class="va">wts_cens</span></span></code></pre></div>
-</div>
-<div class="section level3">
-<h3 id="calibration-methods">Calibration Methods<a class="anchor" aria-label="anchor" href="#calibration-methods"></a>
-</h3>
-<p><code><a href="reference/ps_calibrate.html">ps_calibrate()</a></code> supports two calibration methods:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Logistic calibration (default) -- fits a logistic regression of exposure on</span></span>
-<span><span class="co"># predicted propensity scores</span></span>
-<span><span class="fu"><a href="reference/ps_calibrate.html">ps_calibrate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span>, method <span class="op">=</span> <span class="st">"logistic"</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Isotonic regression calibration -- fits a monotone step function; useful for</span></span>
-<span><span class="co"># non-smooth relationships with large samples</span></span>
-<span><span class="fu"><a href="reference/ps_calibrate.html">ps_calibrate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">z</span>, method <span class="op">=</span> <span class="st">"isoreg"</span><span class="op">)</span></span></code></pre></div>
-</div>
-</div>
-<div class="section level2">
-<h2 id="learn-more">Learn More<a class="anchor" aria-label="anchor" href="#learn-more"></a>
+<h2 id="learn-more">Learn more<a class="anchor" aria-label="anchor" href="#learn-more"></a>
 </h2>
 <ul>
 <li>
-<a href="https://r-causal.github.io/propensity/">propensity package documentation</a> – Full reference and articles</li>
+<a href="https://www.r-causal.org/" class="external-link">Causal Inference in R</a> – A book on causal inference methods in R</li>
 <li>
-<a href="https://www.r-causal.org/" class="external-link">Causal Inference in R</a> – A comprehensive guide to causal inference methods in R</li>
+<code><a href="articles/propensity.html">vignette("propensity")</a></code> – Getting started with propensity score weighting</li>
+<li>
+<a href="https://r-causal.github.io/propensity/">propensity package documentation</a> – Full reference and articles</li>
 </ul>
 </div>
 </div>

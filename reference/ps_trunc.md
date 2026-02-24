@@ -129,6 +129,16 @@ return plain numeric vectors. Once propensity scores are transformed
 parameters. Mismatched parameters produce a warning and return a plain
 numeric vector.
 
+## References
+
+Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009).
+Dealing with limited overlap in estimation of average treatment effects.
+*Biometrika*, 96(1), 187–199.
+
+Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
+assessing the feasibility of comparative effectiveness research.
+*Comparative Effectiveness Research*, 3, 11–20.
+
 ## See also
 
 [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)

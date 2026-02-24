@@ -1,10 +1,19 @@
 # propensity
 
-propensity provides a toolkit for propensity score analysis in causal
-inference. It supports multiple causal estimands across binary,
-categorical, and continuous exposures, handles extreme propensity scores
-through trimming, truncation, and calibration, and estimates causal
-effects with valid standard errors via inverse probability weighting.
+## Overview
+
+propensity makes it easy to calculate propensity score weights and use
+them to estimate causal effects. It supports:
+
+- Six estimands for binary exposures (ATE, ATT, ATU, ATO, ATM, and
+  entropy weights)
+- Binary, categorical, and continuous exposures
+- Trimming, truncation, and calibration for extreme propensity scores
+- Inverse probability weighted estimation with standard errors that
+  account for propensity score estimation
+
+You can learn more in
+[`vignette("propensity")`](https://r-causal.github.io/propensity/articles/propensity.md).
 
 ## Installation
 
@@ -23,9 +32,7 @@ You can install the development version of propensity from
 pak::pak("r-causal/propensity")
 ```
 
-## Quick Start
-
-Estimate a causal effect in three steps:
+## Usage
 
 ``` r
 library(propensity)
@@ -64,195 +71,32 @@ ipw(ps_mod, outcome_mod)
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
 
-[`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md)
-performs inverse probability weighted estimation. It accounts for
-uncertainty in the estimated propensity scores when computing standard
-errors, producing valid confidence intervals and p-values.
+[`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md) uses
+linearization to account for uncertainty in the estimated propensity
+scores when computing standard errors.
 
-## Multiple Estimands
+## Estimands
 
-propensity supports six causal estimands for binary exposures:
+Each weight function targets a different population:
 
-``` r
-ps <- fitted(ps_mod)
+| Estimand    | Target population           | Function                                                                                                                                                 |
+|-------------|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **ATE**     | Entire population           | [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
+| **ATT**     | Treated units               | [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
+| **ATU**     | Untreated units             | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md) (alias: [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)) |
+| **ATO**     | Overlap population          | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
+| **ATM**     | Matched population          | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
+| **Entropy** | Entropy-balanced population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                              |
 
-wt_ate(ps, z)     # Average Treatment Effect
-wt_att(ps, z)     # Average Treatment Effect on the Treated
-wt_atu(ps, z)     # Average Treatment Effect on the Untreated
-wt_ato(ps, z)     # Average Treatment Effect, Overlap population
-wt_atm(ps, z)     # Average Treatment Effect, Matched population
-wt_entropy(ps, z) # Entropy-weighted ATE
-```
+ATO and ATM weights are bounded by construction, making them a good
+alternative when ATE weights are highly variable.
 
-Choose your estimand based on your research question:
+## Learn more
 
-| Estimand    | Target population                                                 | Function                                                                                                                                                 |
-|-------------|-------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **ATE**     | Entire population                                                 | [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
-| **ATT**     | Treated units                                                     | [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
-| **ATU**     | Untreated units                                                   | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md) (alias: [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)) |
-| **ATO**     | Overlap population – units with the most equipoise between groups | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
-| **ATM**     | Matched population – mimics 1:1 matching                          | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
-| **Entropy** | Entropy-balanced compromise between ATE and overlap               | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                              |
-
-ATO and ATM produce naturally bounded weights, making them good
-alternatives when ATE weights are highly variable.
-
-## Flexible Input
-
-Weight functions accept propensity scores in several forms:
-
-``` r
-# GLM object -- extracts fitted values and exposure automatically (recommended)
-wt_ate(ps_mod)
-
-# Numeric vector of propensity scores
-wt_ate(ps, z)
-
-# Data frame of class probabilities (e.g., from multinomial models)
-ps_df <- data.frame(control = 1 - ps, treated = ps)
-wt_ate(ps_df, z)
-```
-
-## Handling Extreme Weights
-
-Propensity scores near 0 or 1 produce extreme weights that inflate
-variance. propensity offers four complementary strategies:
-
-1.  **Switch estimand** –
-    [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-    and
-    [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-    produce bounded weights by design.
-2.  **Trim** – remove observations with extreme scores (sets them to
-    `NA`).
-3.  **Truncate** – winsorize extreme scores to a fixed range.
-4.  **Calibrate** – adjust scores so they better reflect true treatment
-    probabilities.
-
-``` r
-ps <- fitted(ps_mod)
-
-# Diagnose: inspect the weight distribution
-summary(wt_ate(ps, z))
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>   1.380   1.806   1.956   2.000   2.154   2.902
-
-# 1. Switch estimand -- overlap weights are bounded by design
-summary(wt_ato(ps, z))
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>  0.2752  0.4463  0.4889  0.4912  0.5358  0.6554
-
-# 2. Trim -- remove observations with extreme propensity scores
-ps_trimmed <- ps_trim(ps, method = "adaptive")
-summary(wt_ate(ps_trimmed, z))
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>   1.380   1.806   1.956   2.000   2.154   2.902
-
-# 3. Truncate -- bound extreme propensity scores to a range
-ps_truncated <- ps_trunc(ps, lower = 0.05, upper = 0.95)
-summary(wt_ate(ps_truncated, z))
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>   1.380   1.806   1.956   2.000   2.154   2.902
-
-# 4. Calibrate -- adjust scores to better reflect true probabilities
-ps_calibrated <- ps_calibrate(ps, z)
-summary(wt_ate(ps_calibrated, z))
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>   1.401   1.804   1.956   2.000   2.156   2.881
-```
-
-After trimming, refit the propensity score model on the retained subset
-so the scores reflect the trimmed population:
-
-``` r
-ps_refitted <- ps_refit(ps_trimmed, ps_mod)
-wts_refitted <- wt_ate(ps_refitted, z)
-```
-
-## Advanced Features
-
-### Weight Stabilization
-
-Stabilized weights can reduce variance. Stabilization is supported for
-[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-and
-[`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md):
-
-``` r
-summary(wt_ate(ps, z, stabilize = TRUE))
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>  0.7036  0.9017  0.9817  0.9999  1.0732  1.4536
-```
-
-### Continuous Exposures
-
-For continuous treatments, weights use the ratio of the marginal to
-conditional density. Stabilization is strongly recommended:
-
-``` r
-# Fit a model for the continuous exposure
-continuous_exposure <- rnorm(n, mean = 0.5 * x1)
-dat$a <- continuous_exposure
-ps_continuous <- glm(a ~ x1, data = dat, family = gaussian())
-
-# Density-ratio weights (stabilization strongly recommended)
-wts_continuous <- wt_ate(ps_continuous, stabilize = TRUE)
-```
-
-### Categorical Exposures
-
-For multi-level treatments, supply a matrix or data frame of class
-probabilities with one column per treatment level:
-
-``` r
-# Multinomial propensity scores (one column per treatment level)
-ps_matrix <- matrix(c(0.3, 0.5, 0.2), ncol = 3, nrow = n, byrow = TRUE)
-categorical_exposure <- factor(sample(1:3, n, replace = TRUE))
-
-wt_ate(ps_matrix, categorical_exposure, exposure_type = "categorical")
-
-# For ATT with categorical exposures, specify the focal level
-wt_att(ps_matrix, categorical_exposure, .focal_level = "2")
-```
-
-### Censoring Weights
-
-[`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-calculates inverse probability of censoring weights for survival or
-longitudinal analyses. These address informative censoring – not
-treatment assignment:
-
-``` r
-# Model the probability of being uncensored
-cens_mod <- glm(uncensored ~ x1 + x2, data = dat, family = binomial())
-
-# Censoring weights (uses the same formula as wt_ate())
-wts_cens <- wt_cens(cens_mod)
-
-# Combine with treatment weights for a doubly-weighted analysis
-wts_combined <- wt_ate(ps_mod) * wts_cens
-```
-
-### Calibration Methods
-
-[`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
-supports two calibration methods:
-
-``` r
-# Logistic calibration (default) -- fits a logistic regression of exposure on
-# predicted propensity scores
-ps_calibrate(ps, z, method = "logistic")
-
-# Isotonic regression calibration -- fits a monotone step function; useful for
-# non-smooth relationships with large samples
-ps_calibrate(ps, z, method = "isoreg")
-```
-
-## Learn More
-
+- [Causal Inference in R](https://www.r-causal.org/) – A book on causal
+  inference methods in R
+- [`vignette("propensity")`](https://r-causal.github.io/propensity/articles/propensity.md)
+  – Getting started with propensity score weighting
 - [propensity package
   documentation](https://r-causal.github.io/propensity/) – Full
   reference and articles
-- [Causal Inference in R](https://www.r-causal.org/) – A comprehensive
-  guide to causal inference methods in R

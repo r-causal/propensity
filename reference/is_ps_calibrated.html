@@ -69,7 +69,7 @@ object (class <code>ps_calib</code>) or a <code>psw</code> object derived from c
 <span class="r-in"><span><span class="fu">is_ps_calibrated</span><span class="op">(</span><span class="va">ps</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="va">calibrated</span> <span class="op">&lt;-</span> <span class="fu"><a href="ps_calibrate.html">ps_calibrate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">exposure</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">calibrated</span> <span class="op">&lt;-</span> <span class="fu"><a href="ps_calibrate.html">ps_calibrate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">exposure</span>, smooth <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span>
 <span class="r-in"><span><span class="fu">is_ps_calibrated</span><span class="op">(</span><span class="va">calibrated</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
