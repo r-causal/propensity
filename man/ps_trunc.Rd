@@ -119,6 +119,15 @@ wt_ate(ps_t, .exposure = z)
 is_unit_truncated(ps_t)
 
 }
+\references{
+Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
+with limited overlap in estimation of average treatment effects.
+\emph{Biometrika}, 96(1), 187--199.
+
+Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
+assessing the feasibility of comparative effectiveness research.
+\emph{Comparative Effectiveness Research}, 3, 11--20.
+}
 \seealso{
 \code{\link[=ps_trim]{ps_trim()}} for removing (rather than bounding) extreme values,
 \code{\link[=ps_refit]{ps_refit()}} for refitting the propensity model after trimming,

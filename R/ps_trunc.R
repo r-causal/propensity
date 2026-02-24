@@ -59,6 +59,15 @@
 #'   metadata including `method`, `lower_bound`, `upper_bound`, and
 #'   `truncated_idx` (positions of modified values).
 #'
+#' @references
+#' Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
+#' with limited overlap in estimation of average treatment effects.
+#' *Biometrika*, 96(1), 187--199.
+#'
+#' Walker, A. M., Patrick, A. R., Lauer, M. S., et al. (2013). A tool for
+#' assessing the feasibility of comparative effectiveness research.
+#' *Comparative Effectiveness Research*, 3, 11--20.
+#'
 #' @seealso [ps_trim()] for removing (rather than bounding) extreme values,
 #'   [ps_refit()] for refitting the propensity model after trimming,
 #'   [is_ps_truncated()], [is_unit_truncated()], [ps_trunc_meta()]

@@ -103,6 +103,16 @@ if (rlang::is_installed("mgcv")) {
 }
 
 }
+\references{
+Platt, J. (1999). Probabilistic outputs for support vector machines and
+comparisons to regularized likelihood methods. \emph{Advances in Large Margin
+Classifiers}, 61--74.
+
+Zadrozny, B., & Elkan, C. (2002). Transforming classifier scores into
+accurate multiclass probability estimates. \emph{Proceedings of the Eighth ACM
+SIGKDD International Conference on Knowledge Discovery and Data Mining},
+694--699. \doi{10.1145/775047.775151}
+}
 \seealso{
 \code{\link[=is_ps_calibrated]{is_ps_calibrated()}} to test for calibrated scores;
 \code{\link[=ps_trim]{ps_trim()}} and \code{\link[=ps_trunc]{ps_trunc()}} for alternative approaches to extreme
