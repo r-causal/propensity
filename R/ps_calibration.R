@@ -131,6 +131,16 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   smoothing was applied). Use [is_ps_calibrated()] to test whether an
 #'   object has been calibrated.
 #'
+#' @references
+#' Platt, J. (1999). Probabilistic outputs for support vector machines and
+#' comparisons to regularized likelihood methods. *Advances in Large Margin
+#' Classifiers*, 61--74.
+#'
+#' Zadrozny, B., & Elkan, C. (2002). Transforming classifier scores into
+#' accurate multiclass probability estimates. *Proceedings of the Eighth ACM
+#' SIGKDD International Conference on Knowledge Discovery and Data Mining*,
+#' 694--699. \doi{10.1145/775047.775151}
+#'
 #' @seealso [is_ps_calibrated()] to test for calibrated scores;
 #'   [ps_trim()] and [ps_trunc()] for alternative approaches to extreme
 #'   propensity scores; [wt_ate()] and other weight functions that accept
@@ -395,7 +405,7 @@ ps_calib_meta <- function(x) {
 #'
 #' is_ps_calibrated(ps)
 #'
-#' calibrated <- ps_calibrate(ps, exposure)
+#' calibrated <- ps_calibrate(ps, exposure, smooth = FALSE)
 #' is_ps_calibrated(calibrated)
 #'
 #' @export

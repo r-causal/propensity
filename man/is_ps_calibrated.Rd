@@ -22,7 +22,7 @@ exposure <- rbinom(100, 1, ps)
 
 is_ps_calibrated(ps)
 
-calibrated <- ps_calibrate(ps, exposure)
+calibrated <- ps_calibrate(ps, exposure, smooth = FALSE)
 is_ps_calibrated(calibrated)
 
 }

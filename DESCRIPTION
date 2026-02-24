@@ -4,13 +4,12 @@ Version: 0.0.0.9000
 Authors@R:
     person("Malcolm", "Barrett", , "malcolmbarrett@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0003-0299-5825"))
-Description: A comprehensive toolkit for propensity score analysis in
-    causal inference. Supports calculating propensity score weights for
-    multiple causal estimands across binary, continuous, and categorical
-    exposures. Provides methods for handling extreme propensity scores
-    through trimming, truncation, and calibration. Includes inverse
-    probability weighted estimators that correctly account for propensity
-    score estimation uncertainty.
+Description: Calculates propensity score weights for multiple causal
+    estimands across binary, continuous, and categorical exposures.
+    Provides methods for handling extreme propensity scores through
+    trimming, truncation, and calibration. Includes inverse probability
+    weighted estimators that correctly account for propensity score
+    estimation uncertainty.
 License: MIT + file LICENSE
 URL: https://r-causal.github.io/propensity/,
     https://github.com/r-causal/propensity
