@@ -8,16 +8,16 @@
 ## Citation
 
 Source:
-[`DESCRIPTION`](https://github.com/r-causal/propensity/blob/main/DESCRIPTION)
+[`DESCRIPTION`](https://github.com/r-causal/propensity/blob/v0.1.0/DESCRIPTION)
 
 Barrett M (2026). *propensity: A Toolkit for Calculating and Working
-with Propensity Scores*. R package version 0.0.0.9000,
+with Propensity Scores*. R package version 0.1.0,
 <https://r-causal.github.io/propensity/>.
 
     @Manual{,
       title = {propensity: A Toolkit for Calculating and Working with Propensity Scores},
       author = {Malcolm Barrett},
       year = {2026},
-      note = {R package version 0.0.0.9000},
+      note = {R package version 0.1.0},
       url = {https://r-causal.github.io/propensity/},
     }
