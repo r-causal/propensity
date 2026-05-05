@@ -217,26 +217,6 @@
       i Metadata cannot be preserved when combining incompatible objects
       i Use identical objects or explicitly cast to numeric to avoid this warning
 
-# comparison operations warn about class downgrade
-
-    Code
-      expr
-    Condition <propensity_class_downgrade_warning>
-      Warning in `vec_ptype2.psw.double()`:
-      Converting psw to numeric
-      i Class-specific attributes and metadata have been dropped
-      i Use explicit casting to numeric to avoid this warning
-
----
-
-    Code
-      expr
-    Condition <propensity_class_downgrade_warning>
-      Warning in `vec_ptype2.psw.double()`:
-      Converting psw to numeric
-      i Class-specific attributes and metadata have been dropped
-      i Use explicit casting to numeric to avoid this warning
-
 # c() ordering matters for warnings
 
     Code

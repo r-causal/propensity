@@ -228,6 +228,14 @@ is_refit.psw <- function(x) {
 }
 
 #' @export
+`[.psw` <- function(x, i, ...) {
+  if (is.matrix(i) || is.array(i)) {
+    return(vec_data(x)[i, ...])
+  }
+  NextMethod()
+}
+
+#' @export
 vec_ptype_abbr.psw <- function(x, ...) {
   estimand <- estimand(x)
   if (is.null(estimand)) {
@@ -325,6 +333,62 @@ vec_arith.numeric.psw <- function(op, x, y, ...) {
 vec_arith.psw.integer <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
   vec_restore(result, x)
+}
+
+#' Comparison operators on `psw` short-circuit `vec_equal()`/`vec_compare()`.
+#'
+#' Without these methods, `==.vctrs_vctr` and friends route through
+#' `vec_equal()` -> `vec_cast_common()` -> `vec_ptype2.psw.double()`, which
+#' fires `warn_class_downgrade()` once per call. `glm.fit()` evaluates
+#' `weights == 0` and `weights > 0` repeatedly inside `profile.glm()`, so a
+#' single `tidy(glm, conf.int = TRUE)` call can emit 100+ identical warnings.
+#' Comparing weights returns a logical vector, so no class is actually being
+#' downgraded from the user's perspective; the warning is spurious here.
+#'
+#' Combine paths (`vec_c()`, `vec_cast()`) still go through the warning-emitting
+#' `vec_ptype2` methods, so the user is still informed when the psw class
+#' really is dropped.
+#' @noRd
+psw_compare <- function(e1, e2) {
+  if (inherits(e1, "psw")) e1 <- vec_data(e1)
+  if (inherits(e2, "psw")) e2 <- vec_data(e2)
+  list(e1 = e1, e2 = e2)
+}
+
+#' @export
+`==.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 == args$e2
+}
+
+#' @export
+`!=.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 != args$e2
+}
+
+#' @export
+`<.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 < args$e2
+}
+
+#' @export
+`>.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 > args$e2
+}
+
+#' @export
+`<=.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 <= args$e2
+}
+
+#' @export
+`>=.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 >= args$e2
 }
 
 #' @export
