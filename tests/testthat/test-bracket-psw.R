@@ -87,6 +87,29 @@ test_that("psw comparison operators dispatch on either side and return logicals 
   )
 })
 
+test_that("psw comparisons enforce vctrs strict size semantics", {
+  # vec_equal()/vec_compare() error on size-mismatched inputs (anything other
+  # than equal length, or one side of length 1). The bypass through
+  # psw_compare() must preserve that contract via vec_recycle_common(), not
+  # silently fall back to base R recycling.
+  a <- psw(c(1, 2, 3, 4), estimand = "ate")
+  b <- psw(c(1, 2), estimand = "ate")
+
+  expect_error(a == b, class = "vctrs_error_incompatible_size")
+  expect_error(a > b, class = "vctrs_error_incompatible_size")
+  expect_error(a != b, class = "vctrs_error_incompatible_size")
+
+  # Scalar broadcasting (size-1 RHS) still works and remains silent — this is
+  # the path glm.fit() exercises with `weights == 0` / `weights > 0`.
+  expect_no_warning(
+    {
+      expect_equal(a == 2, c(FALSE, TRUE, FALSE, FALSE))
+      expect_equal(a > 2, c(FALSE, FALSE, TRUE, TRUE))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
 test_that("tidy(glm, conf.int = TRUE) works on glms weighted by psw vectors", {
   skip_if_not_installed("broom")
 

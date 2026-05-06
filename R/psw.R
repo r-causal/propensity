@@ -353,18 +353,22 @@ vec_arith.psw.integer <- function(op, x, y, ...) {
 #' Comparing weights returns a logical vector, so no class is actually being
 #' downgraded from the user's perspective; the warning is spurious here.
 #'
-#' Combine paths (`vec_c()`, `vec_cast()`) still go through the warning-emitting
+#' Strict vctrs size semantics are preserved: `vec_recycle_common()` enforces
+#' the same N-or-1 size rule that `vec_equal()` would, so length-mismatched
+#' comparisons error rather than silently recycling per base R rules. Combine
+#' paths (`vec_c()`, `vec_cast()`) still go through the warning-emitting
 #' `vec_ptype2` methods, so the user is still informed when the psw class
 #' really is dropped.
 #' @noRd
 psw_compare <- function(e1, e2) {
-  if (inherits(e1, "psw")) {
-    e1 <- vec_data(e1)
+  args <- vec_recycle_common(e1, e2)
+  if (inherits(args[[1]], "psw")) {
+    args[[1]] <- vec_data(args[[1]])
   }
-  if (inherits(e2, "psw")) {
-    e2 <- vec_data(e2)
+  if (inherits(args[[2]], "psw")) {
+    args[[2]] <- vec_data(args[[2]])
   }
-  list(e1 = e1, e2 = e2)
+  list(e1 = args[[1]], e2 = args[[2]])
 }
 
 #' @export
