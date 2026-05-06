@@ -113,8 +113,11 @@ Combining \code{psw} objects with \code{\link[=c]{c()}} preserves the class only
 metadata matches; mismatched metadata produces a warning and falls back to a
 plain numeric vector.
 
-Subsetting with \code{[} preserves class and attributes. Summary functions
-(\code{\link[=sum]{sum()}}, \code{\link[=mean]{mean()}}, etc.) return plain numeric values.
+Subsetting with \code{[} preserves class and attributes for vector subscripts.
+Matrix or array subscripts intentionally drop the \code{psw} class and return
+a plain numeric vector via base R linear indexing; this is required so
+\code{glm.fit()}-style internal indexing works on \code{psw}-weighted GLMs.
+Summary functions (\code{\link[=sum]{sum()}}, \code{\link[=mean]{mean()}}, etc.) return plain numeric values.
 }
 }
 \examples{

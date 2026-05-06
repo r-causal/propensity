@@ -35,8 +35,11 @@
 #' metadata matches; mismatched metadata produces a warning and falls back to a
 #' plain numeric vector.
 #'
-#' Subsetting with `[` preserves class and attributes. Summary functions
-#' ([sum()], [mean()], etc.) return plain numeric values.
+#' Subsetting with `[` preserves class and attributes for vector subscripts.
+#' Matrix or array subscripts intentionally drop the `psw` class and return
+#' a plain numeric vector via base R linear indexing; this is required so
+#' `glm.fit()`-style internal indexing works on `psw`-weighted GLMs.
+#' Summary functions ([sum()], [mean()], etc.) return plain numeric values.
 #'
 #' @import vctrs
 #' @export
@@ -229,6 +232,11 @@ is_refit.psw <- function(x) {
 
 #' @export
 `[.psw` <- function(x, i, ...) {
+  # Bare `x[]` must return the whole psw unchanged; reading `i` here would
+  # force the missing argument and error.
+  if (missing(i)) {
+    return(NextMethod())
+  }
   if (is.matrix(i) || is.array(i)) {
     return(vec_data(x)[i, ...])
   }

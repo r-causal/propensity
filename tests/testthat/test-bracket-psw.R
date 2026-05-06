@@ -38,6 +38,55 @@ test_that("[.psw with matrix subscript falls back to base linear indexing", {
   expect_equal(out, c(1, 3, 5))
 })
 
+test_that("[.psw with no subscript returns the full psw unchanged", {
+  w <- psw(c(1, 2, 3), estimand = "ate")
+  out <- w[]
+  expect_s3_class(out, "psw")
+  expect_equal(estimand(out), "ate")
+  expect_equal(vec_data(out), c(1, 2, 3))
+})
+
+test_that("psw comparison operators dispatch on either side and return logicals silently", {
+  w <- psw(c(1, 2, 3), estimand = "ate")
+
+  # All six ops, psw on the LHS.
+  expect_no_warning(
+    {
+      expect_equal(w == 2, c(FALSE, TRUE, FALSE))
+      expect_equal(w != 2, c(TRUE, FALSE, TRUE))
+      expect_equal(w < 2, c(TRUE, FALSE, FALSE))
+      expect_equal(w > 2, c(FALSE, FALSE, TRUE))
+      expect_equal(w <= 2, c(TRUE, TRUE, FALSE))
+      expect_equal(w >= 2, c(FALSE, TRUE, TRUE))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+
+  # psw on the RHS still dispatches to the psw method (S3 group dispatch picks
+  # up the method from either operand). Behavior should mirror LHS.
+  expect_no_warning(
+    {
+      expect_equal(2 == w, c(FALSE, TRUE, FALSE))
+      expect_equal(2 != w, c(TRUE, FALSE, TRUE))
+      expect_equal(2 > w, c(TRUE, FALSE, FALSE))
+      expect_equal(2 < w, c(FALSE, FALSE, TRUE))
+      expect_equal(2 >= w, c(TRUE, TRUE, FALSE))
+      expect_equal(2 <= w, c(FALSE, TRUE, TRUE))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+
+  # psw vs psw: data-only comparison, no metadata check needed.
+  w2 <- psw(c(1, 1, 3), estimand = "att")
+  expect_no_warning(
+    {
+      expect_equal(w == w2, c(TRUE, FALSE, TRUE))
+      expect_equal(w > w2, c(FALSE, TRUE, FALSE))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
 test_that("tidy(glm, conf.int = TRUE) works on glms weighted by psw vectors", {
   skip_if_not_installed("broom")
 
