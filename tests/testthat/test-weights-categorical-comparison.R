@@ -55,7 +55,13 @@ test_that("categorical weights match WeightIt for all estimands", {
     estimand = "ATE"
   )$weights
 
-  expect_equal(as.numeric(w_ate_propensity), w_ate_weightit, tolerance = 1e-5)
+  # WeightIt's $weights inherits row-name names from the data.frame ("1", "2",
+  # ...). vec_cast.double.psw -> vec_data() drops names, so compare values
+  # only; the contract is "our weights match WeightIt's", not name-bearing.
+  expect_equal(
+    as.numeric(w_ate_propensity), w_ate_weightit,
+    tolerance = 1e-5, ignore_attr = "names"
+  )
 
   # Test ATT weights for each focal category
   for (focal in levels(trt)) {
@@ -77,6 +83,7 @@ test_that("categorical weights match WeightIt for all estimands", {
       as.numeric(w_att_propensity),
       w_att_weightit,
       tolerance = 1e-5,
+      ignore_attr = "names",
       label = paste("ATT weights with focal =", focal)
     )
   }
@@ -90,7 +97,10 @@ test_that("categorical weights match WeightIt for all estimands", {
     estimand = "ATO"
   )$weights
 
-  expect_equal(as.numeric(w_ato_propensity), w_ato_weightit, tolerance = 1e-5)
+  expect_equal(
+    as.numeric(w_ato_propensity), w_ato_weightit,
+    tolerance = 1e-5, ignore_attr = "names"
+  )
 
   # Test ATM weights
   w_atm_propensity <- wt_atm(ps_matrix, trt, exposure_type = "categorical")
@@ -101,7 +111,10 @@ test_that("categorical weights match WeightIt for all estimands", {
     estimand = "ATM"
   )$weights
 
-  expect_equal(as.numeric(w_atm_propensity), w_atm_weightit, tolerance = 1e-5)
+  expect_equal(
+    as.numeric(w_atm_propensity), w_atm_weightit,
+    tolerance = 1e-5, ignore_attr = "names"
+  )
 })
 
 test_that("categorical weights produce same treatment effect estimates as PSweight", {
@@ -269,7 +282,10 @@ test_that("categorical weights handle 4+ categories correctly", {
     estimand = "ATE"
   )$weights
 
-  expect_equal(as.numeric(w_ate_propensity), w_ate_weightit, tolerance = 1e-5)
+  expect_equal(
+    as.numeric(w_ate_propensity), w_ate_weightit,
+    tolerance = 1e-5, ignore_attr = "names"
+  )
 
   # Check that weights have correct attributes
   expect_equal(attr(w_ate_propensity, "n_categories"), 4)
@@ -325,7 +341,8 @@ test_that("stabilized categorical ATE weights match WeightIt", {
   expect_equal(
     as.numeric(w_ate_stab_propensity),
     w_ate_stab_weightit,
-    tolerance = 1e-5
+    tolerance = 1e-5,
+    ignore_attr = "names"
   )
   expect_true(is_stabilized(w_ate_stab_propensity))
 })
