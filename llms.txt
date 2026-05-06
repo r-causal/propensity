@@ -21,6 +21,7 @@ You can install propensity from [CRAN](https://cran.r-project.org/)
 with:
 
 ``` r
+
 install.packages("propensity")
 ```
 
@@ -28,6 +29,7 @@ You can install the development version of propensity from
 [GitHub](https://github.com/r-causal/propensity) with:
 
 ``` r
+
 # install.packages("pak")
 pak::pak("r-causal/propensity")
 ```
@@ -35,6 +37,7 @@ pak::pak("r-causal/propensity")
 ## Usage
 
 ``` r
+
 library(propensity)
 
 # Simulate data with a confounder, binary exposure, and binary outcome
@@ -79,14 +82,14 @@ scores when computing standard errors.
 
 Each weight function targets a different population:
 
-| Estimand    | Target population           | Function                                                                                                                                                 |
-|-------------|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **ATE**     | Entire population           | [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
-| **ATT**     | Treated units               | [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
-| **ATU**     | Untreated units             | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md) (alias: [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)) |
-| **ATO**     | Overlap population          | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
-| **ATM**     | Matched population          | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                                  |
-| **Entropy** | Entropy-balanced population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md)                                                                              |
+| Estimand | Target population | Function |
+|----|----|----|
+| **ATE** | Entire population | [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| **ATT** | Treated units | [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| **ATU** | Untreated units | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md) (alias: [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)) |
+| **ATO** | Overlap population | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| **ATM** | Matched population | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| **Entropy** | Entropy-balanced population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
 
 ATO and ATM weights are bounded by construction, making them a good
 alternative when ATE weights are highly variable.

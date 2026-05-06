@@ -133,7 +133,11 @@ retain metadata. Combining `psw` objects with
 metadata matches; mismatched metadata produces a warning and falls back
 to a plain numeric vector.
 
-Subsetting with `[` preserves class and attributes. Summary functions
+Subsetting with `[` preserves class and attributes for vector
+subscripts. Matrix or array subscripts intentionally drop the `psw`
+class and return a plain numeric vector via base R linear indexing; this
+is required so [`glm.fit()`](https://rdrr.io/r/stats/glm.html)-style
+internal indexing works on `psw`-weighted GLMs. Summary functions
 ([`sum()`](https://rdrr.io/r/base/sum.html),
 [`mean()`](https://rdrr.io/r/base/mean.html), etc.) return plain numeric
 values.

@@ -34,7 +34,9 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="propensity-development-version">propensity (development version)<a class="anchor" aria-label="anchor" href="#propensity-development-version"></a></h2>
-<ul><li>Added a <code>NEWS.md</code> file to track changes to the package.</li>
+<ul><li><p>Fixed <code>broom::tidy(glm_fit, conf.int = TRUE)</code> failing on GLMs weighted by <code>psw</code> vectors. <code>confint.glm()</code> builds profile-likelihood intervals via <code>profile.glm()</code>, which refits through <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm.fit()</a></code>; the refit indexes <code>weights[good]</code> with a matrix subscript, which <code>[.vctrs_vctr</code> rejected. Added a <code>[.psw</code> method that falls back to base R linear indexing for matrix/array subscripts and delegates everything else to <code>[.vctrs_vctr</code>.</p></li>
+<li><p>Comparison operators on <code>psw</code> (<code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>) now short-circuit <code>vec_equal()</code> / <code>vec_compare()</code> and return a logical vector silently. Previously each comparison fired a <code>propensity_class_downgrade</code> warning via <code>vec_ptype2.psw.double()</code>, producing 100+ warnings during a single <code>tidy(glm, conf.int = TRUE)</code> call. Combine and cast paths still warn.</p></li>
+<li><p>Added a <code>NEWS.md</code> file to track changes to the package.</p></li>
 </ul></div>
   </main></div>
 

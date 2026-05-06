@@ -9,6 +9,7 @@ also cover what to do when propensity scores are extreme.
 ## Setup
 
 ``` r
+
 library(propensity)
 ```
 
@@ -17,6 +18,7 @@ confounders (`x1` and `x2`), a binary exposure (`z`), and a binary
 outcome (`y`):
 
 ``` r
+
 set.seed(42)
 n <- 100
 x1 <- rnorm(n)
@@ -37,6 +39,7 @@ Start with a model for treatment assignment. Here we use logistic
 regression:
 
 ``` r
+
 ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
 ```
 
@@ -47,6 +50,7 @@ Pass the fitted model directly to
 to get ATE weights. It pulls out the fitted values and exposure for you:
 
 ``` r
+
 wts <- wt_ate(ps_mod)
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
@@ -60,6 +64,7 @@ returns a `psw` object, which is just a numeric vector with some extra
 metadata attached:
 
 ``` r
+
 estimand(wts)
 #> [1] "ate"
 is_stabilized(wts)
@@ -70,6 +75,7 @@ You can also pass propensity scores as a plain numeric vector. In that
 case you need to supply the exposure too:
 
 ``` r
+
 ps <- fitted(ps_mod)
 wt_ate(ps, dat$z)
 #> ℹ Treating `.exposure` as binary
@@ -100,6 +106,7 @@ causal effect estimates. The standard errors use linearization to
 account for the fact that the propensity scores are estimated:
 
 ``` r
+
 result <- ipw(ps_mod, outcome_mod)
 result
 #> Inverse Probability Weight Estimator
@@ -124,14 +131,14 @@ result
 
 Each estimand targets a different population:
 
-| Estimand | Target population           | Function                                                                    |
-|----------|-----------------------------|-----------------------------------------------------------------------------|
-| ATE      | Entire study population     | [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)     |
-| ATT      | Treated (focal) group       | [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)     |
-| ATU      | Untreated (reference) group | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md)     |
-| ATO      | Overlap population          | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md)     |
-| ATM      | Matched population          | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md)     |
-| Entropy  | Entropy-balanced population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| Estimand | Target population | Function |
+|----|----|----|
+| ATE | Entire study population | [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| ATT | Treated (focal) group | [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| ATU | Untreated (reference) group | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| ATO | Overlap population | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| ATM | Matched population | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| Entropy | Entropy-balanced population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
 
 [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
 is an alias for
@@ -146,6 +153,7 @@ on that below).
 To switch estimands, just swap the weight function:
 
 ``` r
+
 wts_ate <- wt_ate(ps_mod)
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
@@ -167,6 +175,7 @@ your variance. The [`summary()`](https://rdrr.io/r/base/summary.html)
 method gives a quick look at the weight distribution:
 
 ``` r
+
 summary(wts_ate)
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 #>   1.092   1.440   1.780   2.028   2.111  12.583
@@ -184,6 +193,7 @@ and
 down-weight observations where overlap is poor:
 
 ``` r
+
 summary(wt_ato(ps_mod))
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
@@ -207,6 +217,7 @@ drops observations with extreme propensity scores by setting them to
 `NA`. The `"ps"` method uses fixed thresholds (by default, 0.1 and 0.9):
 
 ``` r
+
 ps_trimmed <- ps_trim(ps, method = "ps")
 ```
 
@@ -214,12 +225,14 @@ The `"adaptive"` method (Crump et al., 2009) finds a data-driven
 threshold:
 
 ``` r
+
 ps_trimmed_adapt <- ps_trim(ps, method = "adaptive")
 ```
 
 You can inspect the result with a few helpers:
 
 ``` r
+
 # Confirm the object has been trimmed
 is_ps_trimmed(ps_trimmed)
 #> [1] TRUE
@@ -259,6 +272,7 @@ Use `!is_unit_trimmed()` to subset your data down to the retained
 observations:
 
 ``` r
+
 retained <- !is_unit_trimmed(ps_trimmed)
 dat_trimmed <- dat[retained, ]
 ```
@@ -267,6 +281,7 @@ After trimming, you should refit the propensity score model on the
 retained sample so the scores reflect the trimmed population:
 
 ``` r
+
 ps_refitted <- ps_refit(ps_trimmed, ps_mod)
 is_refit(ps_refitted)
 #> [1] TRUE
@@ -275,11 +290,12 @@ is_refit(ps_refitted)
 Then pass the refitted scores to the weight function as usual:
 
 ``` r
+
 wts_trimmed <- wt_ate(ps_refitted, dat$z)
 #> ℹ Treating `.exposure` as binary
 #> ℹ Setting focal level to 1
 summary(wts_trimmed)
-#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
+#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.     NAs 
 #>   1.073   1.386   1.726   1.970   2.157   4.724       2
 ```
 
@@ -294,6 +310,7 @@ Truncation is similar to trimming but keeps all observations – it just
 clips extreme scores to specified bounds:
 
 ``` r
+
 ps_truncated <- ps_trunc(ps, lower = 0.05, upper = 0.95)
 ```
 
@@ -301,6 +318,7 @@ ps_truncated <- ps_trunc(ps, lower = 0.05, upper = 0.95)
 tells you which observations were clipped:
 
 ``` r
+
 is_ps_truncated(ps_truncated)
 #> [1] TRUE
 sum(is_unit_truncated(ps_truncated))
@@ -320,6 +338,7 @@ ps_trunc_meta(ps_truncated)
 ```
 
 ``` r
+
 wts_truncated <- wt_ate(ps_truncated, dat$z)
 #> ℹ Treating `.exposure` as binary
 #> ℹ Setting focal level to 1
@@ -349,6 +368,7 @@ returns three effect measures: the risk difference, log risk ratio, and
 log odds ratio:
 
 ``` r
+
 result
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
@@ -372,6 +392,7 @@ result
 estimates into a data frame:
 
 ``` r
+
 as.data.frame(result)
 #>    effect  estimate   std.err         z  ci.lower  ci.upper conf.level
 #> 1      rd 0.3199973 0.1041062  3.073758 0.1159529 0.5240417       0.95
@@ -388,6 +409,7 @@ natural scale. The standard errors, z-statistics, and p-values stay on
 the log scale:
 
 ``` r
+
 as.data.frame(result, exponentiate = TRUE)
 #>   effect  estimate   std.err         z  ci.lower  ci.upper conf.level
 #> 1     rd 0.3199973 0.1041062  3.073758 0.1159529 0.5240417       0.95
@@ -407,6 +429,7 @@ returns the mean difference. Use
 [`lm()`](https://rdrr.io/r/stats/lm.html) for the outcome model:
 
 ``` r
+
 y_cont <- 2 + 0.8 * z + 0.3 * x1 + 0.2 * x2 + rnorm(n)
 dat$y_cont <- y_cont
 outcome_cont <- lm(y_cont ~ z, data = dat, weights = wts)
@@ -438,6 +461,7 @@ For continuous exposures, weights use density ratios. Stabilization is
 usually a good idea here:
 
 ``` r
+
 # Fit a model for the continuous exposure
 ps_cont <- glm(continuous_exposure ~ x1 + x2, data = dat, family = gaussian())
 
@@ -451,6 +475,7 @@ For multi-level treatments, pass a matrix or data frame of predicted
 probabilities with one column per level:
 
 ``` r
+
 # Multinomial propensity scores (one column per treatment level)
 ps_matrix <- predict(multinom_model, type = "probs")
 wt_ate(ps_matrix, exposure, exposure_type = "categorical")
@@ -468,6 +493,7 @@ calibration reshapes the whole distribution. It supports logistic
 calibration (the default) and isotonic regression:
 
 ``` r
+
 ps_calibrated <- ps_calibrate(ps, dat$z, method = "logistic", smooth = FALSE)
 is_ps_calibrated(ps_calibrated)
 
@@ -481,6 +507,7 @@ calculates inverse probability of censoring weights for survival or
 longitudinal analyses:
 
 ``` r
+
 # Model the probability of being uncensored
 cens_mod <- glm(uncensored ~ x1 + x2, data = dat, family = binomial())
 wts_cens <- wt_cens(cens_mod)

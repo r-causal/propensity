@@ -172,8 +172,11 @@ so operations like normalization (<code>weights / sum(weights)</code>) retain me
 Combining <code>psw</code> objects with <code><a href="https://rdrr.io/r/base/c.html" class="external-link">c()</a></code> preserves the class only when all
 metadata matches; mismatched metadata produces a warning and falls back to a
 plain numeric vector.</p>
-<p>Subsetting with <code>[</code> preserves class and attributes. Summary functions
-(<code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code>, <code><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean()</a></code>, etc.) return plain numeric values.</p>
+<p>Subsetting with <code>[</code> preserves class and attributes for vector subscripts.
+Matrix or array subscripts intentionally drop the <code>psw</code> class and return
+a plain numeric vector via base R linear indexing; this is required so
+<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm.fit()</a></code>-style internal indexing works on <code>psw</code>-weighted GLMs.
+Summary functions (<code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code>, <code><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean()</a></code>, etc.) return plain numeric values.</p>
 </div>
 
     </div>
