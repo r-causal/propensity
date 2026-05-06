@@ -35,8 +35,11 @@
 #' metadata matches; mismatched metadata produces a warning and falls back to a
 #' plain numeric vector.
 #'
-#' Subsetting with `[` preserves class and attributes. Summary functions
-#' ([sum()], [mean()], etc.) return plain numeric values.
+#' Subsetting with `[` preserves class and attributes for vector subscripts.
+#' Matrix or array subscripts intentionally drop the `psw` class and return
+#' a plain numeric vector via base R linear indexing; this is required so
+#' `glm.fit()`-style internal indexing works on `psw`-weighted GLMs.
+#' Summary functions ([sum()], [mean()], etc.) return plain numeric values.
 #'
 #' @import vctrs
 #' @export
@@ -228,6 +231,19 @@ is_refit.psw <- function(x) {
 }
 
 #' @export
+`[.psw` <- function(x, i, ...) {
+  # Bare `x[]` must return the whole psw unchanged; reading `i` here would
+  # force the missing argument and error.
+  if (missing(i)) {
+    return(NextMethod())
+  }
+  if (is.matrix(i) || is.array(i)) {
+    return(vec_data(x)[i, ...])
+  }
+  NextMethod()
+}
+
+#' @export
 vec_ptype_abbr.psw <- function(x, ...) {
   estimand <- estimand(x)
   if (is.null(estimand)) {
@@ -325,6 +341,70 @@ vec_arith.numeric.psw <- function(op, x, y, ...) {
 vec_arith.psw.integer <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
   vec_restore(result, x)
+}
+
+#' Comparison operators on `psw` short-circuit `vec_equal()`/`vec_compare()`.
+#'
+#' Without these methods, `==.vctrs_vctr` and friends route through
+#' `vec_equal()` -> `vec_cast_common()` -> `vec_ptype2.psw.double()`, which
+#' fires `warn_class_downgrade()` once per call. `glm.fit()` evaluates
+#' `weights == 0` and `weights > 0` repeatedly inside `profile.glm()`, so a
+#' single `tidy(glm, conf.int = TRUE)` call can emit 100+ identical warnings.
+#' Comparing weights returns a logical vector, so no class is actually being
+#' downgraded from the user's perspective; the warning is spurious here.
+#'
+#' Strict vctrs size semantics are preserved: `vec_recycle_common()` enforces
+#' the same N-or-1 size rule that `vec_equal()` would, so length-mismatched
+#' comparisons error rather than silently recycling per base R rules. Combine
+#' paths (`vec_c()`, `vec_cast()`) still go through the warning-emitting
+#' `vec_ptype2` methods, so the user is still informed when the psw class
+#' really is dropped.
+#' @noRd
+psw_compare <- function(e1, e2) {
+  args <- vec_recycle_common(e1, e2)
+  if (inherits(args[[1]], "psw")) {
+    args[[1]] <- vec_data(args[[1]])
+  }
+  if (inherits(args[[2]], "psw")) {
+    args[[2]] <- vec_data(args[[2]])
+  }
+  list(e1 = args[[1]], e2 = args[[2]])
+}
+
+#' @export
+`==.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 == args$e2
+}
+
+#' @export
+`!=.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 != args$e2
+}
+
+#' @export
+`<.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 < args$e2
+}
+
+#' @export
+`>.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 > args$e2
+}
+
+#' @export
+`<=.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 <= args$e2
+}
+
+#' @export
+`>=.psw` <- function(e1, e2) {
+  args <- psw_compare(e1, e2)
+  args$e1 >= args$e2
 }
 
 #' @export

@@ -24,6 +24,7 @@ Imports:
     tidyselect,
     vctrs (>= 0.6.5)
 Suggests:
+    broom,
     dplyr,
     ggplot2,
     knitr,

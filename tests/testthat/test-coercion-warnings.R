@@ -313,16 +313,25 @@ test_that("arithmetic operations with different metadata work correctly", {
   expect_equal(as.numeric(result2), c(0.15, 0.56))
 })
 
-test_that("comparison operations warn about class downgrade", {
+test_that("comparison operations on psw return logicals without warning", {
+  # Comparisons short-circuit vec_equal/vec_compare via the dedicated
+  # `==.psw` / `>.psw` / etc. methods, so the user does not see the
+  # `propensity_class_downgrade_warning` that vec_ptype2.psw.double would
+  # otherwise fire. Nothing is being downgraded from the user's perspective:
+  # the result is a logical vector. This also prevents a warning cascade
+  # inside glm.fit() / profile.glm() comparisons during
+  # `tidy(glm, conf.int = TRUE)` on psw-weighted GLMs.
   x <- psw(c(0.5, 0.7), estimand = "ate")
 
-  expect_propensity_warning(
-    result <- x > 0.6
+  expect_no_warning(
+    result <- x > 0.6,
+    class = "propensity_class_downgrade_warning"
   )
   expect_equal(result, c(FALSE, TRUE))
 
-  expect_propensity_warning(
-    result2 <- x == 0.5
+  expect_no_warning(
+    result2 <- x == 0.5,
+    class = "propensity_class_downgrade_warning"
   )
   expect_equal(result2, c(TRUE, FALSE))
 })
