@@ -59,8 +59,10 @@ test_that("categorical weights match WeightIt for all estimands", {
   # ...). vec_cast.double.psw -> vec_data() drops names, so compare values
   # only; the contract is "our weights match WeightIt's", not name-bearing.
   expect_equal(
-    as.numeric(w_ate_propensity), w_ate_weightit,
-    tolerance = 1e-5, ignore_attr = "names"
+    as.numeric(w_ate_propensity),
+    w_ate_weightit,
+    tolerance = 1e-5,
+    ignore_attr = "names"
   )
 
   # Test ATT weights for each focal category
@@ -98,8 +100,10 @@ test_that("categorical weights match WeightIt for all estimands", {
   )$weights
 
   expect_equal(
-    as.numeric(w_ato_propensity), w_ato_weightit,
-    tolerance = 1e-5, ignore_attr = "names"
+    as.numeric(w_ato_propensity),
+    w_ato_weightit,
+    tolerance = 1e-5,
+    ignore_attr = "names"
   )
 
   # Test ATM weights
@@ -112,8 +116,10 @@ test_that("categorical weights match WeightIt for all estimands", {
   )$weights
 
   expect_equal(
-    as.numeric(w_atm_propensity), w_atm_weightit,
-    tolerance = 1e-5, ignore_attr = "names"
+    as.numeric(w_atm_propensity),
+    w_atm_weightit,
+    tolerance = 1e-5,
+    ignore_attr = "names"
   )
 })
 
@@ -283,8 +289,10 @@ test_that("categorical weights handle 4+ categories correctly", {
   )$weights
 
   expect_equal(
-    as.numeric(w_ate_propensity), w_ate_weightit,
-    tolerance = 1e-5, ignore_attr = "names"
+    as.numeric(w_ate_propensity),
+    w_ate_weightit,
+    tolerance = 1e-5,
+    ignore_attr = "names"
   )
 
   # Check that weights have correct attributes

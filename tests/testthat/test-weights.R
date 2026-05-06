@@ -1968,8 +1968,10 @@ test_that("ATE weights match WeightIt", {
 
   # Compare
   expect_equal(
-    as.numeric(our_weights), weightit_weights,
-    tolerance = 1e-10, ignore_attr = "names"
+    as.numeric(our_weights),
+    weightit_weights,
+    tolerance = 1e-10,
+    ignore_attr = "names"
   )
 })
 
@@ -2003,8 +2005,10 @@ test_that("ATT weights match WeightIt", {
 
   # Compare
   expect_equal(
-    as.numeric(our_weights), weightit_weights,
-    tolerance = 1e-10, ignore_attr = "names"
+    as.numeric(our_weights),
+    weightit_weights,
+    tolerance = 1e-10,
+    ignore_attr = "names"
   )
 })
 
@@ -2039,8 +2043,10 @@ test_that("ATU/ATC weights match WeightIt", {
 
   # Compare
   expect_equal(
-    as.numeric(our_weights), weightit_weights,
-    tolerance = 1e-10, ignore_attr = "names"
+    as.numeric(our_weights),
+    weightit_weights,
+    tolerance = 1e-10,
+    ignore_attr = "names"
   )
 })
 
@@ -2075,8 +2081,10 @@ test_that("ATM weights match WeightIt", {
 
   # Compare
   expect_equal(
-    as.numeric(our_weights), weightit_weights,
-    tolerance = 1e-10, ignore_attr = "names"
+    as.numeric(our_weights),
+    weightit_weights,
+    tolerance = 1e-10,
+    ignore_attr = "names"
   )
 })
 
@@ -2111,8 +2119,10 @@ test_that("ATO weights match WeightIt", {
 
   # Compare
   expect_equal(
-    as.numeric(our_weights), weightit_weights,
-    tolerance = 1e-10, ignore_attr = "names"
+    as.numeric(our_weights),
+    weightit_weights,
+    tolerance = 1e-10,
+    ignore_attr = "names"
   )
 })
 
@@ -2382,12 +2392,16 @@ test_that("Data frame methods produce same results as WeightIt", {
 
   # Compare
   expect_equal(
-    as.numeric(our_ate_df), w_ate$weights,
-    tolerance = 1e-10, ignore_attr = "names"
+    as.numeric(our_ate_df),
+    w_ate$weights,
+    tolerance = 1e-10,
+    ignore_attr = "names"
   )
   expect_equal(
-    as.numeric(our_att_df), w_att$weights,
-    tolerance = 1e-10, ignore_attr = "names"
+    as.numeric(our_att_df),
+    w_att$weights,
+    tolerance = 1e-10,
+    ignore_attr = "names"
   )
 })
 

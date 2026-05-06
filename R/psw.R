@@ -350,8 +350,12 @@ vec_arith.psw.integer <- function(op, x, y, ...) {
 #' really is dropped.
 #' @noRd
 psw_compare <- function(e1, e2) {
-  if (inherits(e1, "psw")) e1 <- vec_data(e1)
-  if (inherits(e2, "psw")) e2 <- vec_data(e2)
+  if (inherits(e1, "psw")) {
+    e1 <- vec_data(e1)
+  }
+  if (inherits(e2, "psw")) {
+    e2 <- vec_data(e2)
+  }
   list(e1 = e1, e2 = e2)
 }
 
