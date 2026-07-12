@@ -33,6 +33,8 @@
 #'   propensity score model: `"logit"`, `"probit"`, or `"cloglog"`. Defaults to
 #'   the link used by `ps_mod`.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
+#' @param ... Arguments passed to methods. The generic dispatches on `ps_mod`;
+#'   each method documents the arguments it accepts.
 #'
 #' @details
 #' # Workflow
@@ -130,18 +132,12 @@
 #' @export
 #' @importFrom stats dnorm family formula model.frame model.matrix model.weights
 #' @importFrom stats pnorm predict printCoefmat qnorm var
-ipw <- function(
-  ps_mod,
-  outcome_mod,
-  .data = NULL,
-  estimand = NULL,
-  ps_link = NULL,
-  conf_level = 0.95
-) {
+ipw <- function(ps_mod, outcome_mod, ...) {
   UseMethod("ipw")
 }
 
 #' @export
+#' @rdname ipw
 ipw.glm <- function(
   ps_mod,
   outcome_mod,

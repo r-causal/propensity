@@ -2,10 +2,13 @@
 % Please edit documentation in R/ipw.R
 \name{ipw}
 \alias{ipw}
+\alias{ipw.glm}
 \alias{as.data.frame.ipw}
 \title{Inverse Probability Weighted Estimation}
 \usage{
-ipw(
+ipw(ps_mod, outcome_mod, ...)
+
+\method{ipw}{glm}(
   ps_mod,
   outcome_mod,
   .data = NULL,
@@ -26,6 +29,9 @@ produced the weights, typically a logistic regression of class
 or \code{\link[stats:lm]{stats::lm()}}, with the outcome as the dependent variable and
 propensity score weights supplied via the \code{weights} argument. The weights
 should be created with a propensity weight function such as \code{\link[=wt_ate]{wt_ate()}}.}
+
+\item{...}{Arguments passed to methods. The generic dispatches on \code{ps_mod};
+each method documents the arguments it accepts.}
 
 \item{.data}{A data frame containing the exposure, outcome, and covariates.
 If \code{NULL} (the default), \code{ipw()} extracts data from the model objects.
