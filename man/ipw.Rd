@@ -17,9 +17,10 @@ ipw(
 \method{as.data.frame}{ipw}(x, row.names = NULL, optional = NULL, exponentiate = FALSE, ...)
 }
 \arguments{
-\item{ps_mod}{A fitted propensity score model of class \code{\link[stats:glm]{stats::glm()}},
-typically a logistic regression with the exposure as the left-hand side of
-the formula.}
+\item{ps_mod}{The weighting object: a fitted propensity score model that
+produced the weights, typically a logistic regression of class
+\code{\link[stats:glm]{stats::glm()}} with the exposure as the left-hand side of the formula.
+\code{ipw()} is an S3 generic that dispatches on this object.}
 
 \item{outcome_mod}{A fitted weighted outcome model of class \code{\link[stats:glm]{stats::glm()}}
 or \code{\link[stats:lm]{stats::lm()}}, with the outcome as the dependent variable and
@@ -53,11 +54,13 @@ confidence interval bounds are also exponentiated. Standard errors, z
 statistics, and p-values remain on the log scale. Default is \code{FALSE}.}
 }
 \value{
-An S3 object of class \code{ipw} with the following components:
+Methods of \code{ipw()} return an S3 object of class \code{ipw}. This return
+contract is shared by every method and has the following components:
 \describe{
 \item{\code{estimand}}{The causal estimand: one of \code{"ate"}, \code{"att"}, \code{"ato"},
 or \code{"atm"}.}
-\item{\code{ps_mod}}{The fitted propensity score model.}
+\item{\code{ps_mod}}{The weighting object: the fitted model that produced the
+weights.}
 \item{\code{outcome_mod}}{The fitted outcome model.}
 \item{\code{estimates}}{A data frame with one row per effect measure and the
 following columns: \code{effect} (the measure name), \code{estimate} (point

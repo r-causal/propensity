@@ -12,9 +12,10 @@
 #' ratio, and log odds ratio. For continuous outcomes, it returns the difference
 #' in means.
 #'
-#' @param ps_mod A fitted propensity score model of class [stats::glm()],
-#'   typically a logistic regression with the exposure as the left-hand side of
-#'   the formula.
+#' @param ps_mod The weighting object: a fitted propensity score model that
+#'   produced the weights, typically a logistic regression of class
+#'   [stats::glm()] with the exposure as the left-hand side of the formula.
+#'   `ipw()` is an S3 generic that dispatches on this object.
 #' @param outcome_mod A fitted weighted outcome model of class [stats::glm()]
 #'   or [stats::lm()], with the outcome as the dependent variable and
 #'   propensity score weights supplied via the `weights` argument. The weights
@@ -75,11 +76,13 @@
 #' different types of propensity score weights. *Statistics in Medicine*.
 #' 2024;43(13):2672--2694. \doi{10.1002/sim.10078}
 #'
-#' @return An S3 object of class `ipw` with the following components:
+#' @return Methods of `ipw()` return an S3 object of class `ipw`. This return
+#'   contract is shared by every method and has the following components:
 #' \describe{
 #'   \item{`estimand`}{The causal estimand: one of `"ate"`, `"att"`, `"ato"`,
 #'     or `"atm"`.}
-#'   \item{`ps_mod`}{The fitted propensity score model.}
+#'   \item{`ps_mod`}{The weighting object: the fitted model that produced the
+#'     weights.}
 #'   \item{`outcome_mod`}{The fitted outcome model.}
 #'   \item{`estimates`}{A data frame with one row per effect measure and the
 #'     following columns: `effect` (the measure name), `estimate` (point
@@ -128,6 +131,18 @@
 #' @importFrom stats dnorm family formula model.frame model.matrix model.weights
 #' @importFrom stats pnorm predict printCoefmat qnorm var
 ipw <- function(
+  ps_mod,
+  outcome_mod,
+  .data = NULL,
+  estimand = NULL,
+  ps_link = NULL,
+  conf_level = 0.95
+) {
+  UseMethod("ipw")
+}
+
+#' @export
+ipw.glm <- function(
   ps_mod,
   outcome_mod,
   .data = NULL,
@@ -216,6 +231,26 @@ ipw <- function(
       estimates = estimates
     ),
     class = "ipw"
+  )
+}
+
+#' @export
+ipw.default <- function(
+  ps_mod,
+  outcome_mod,
+  .data = NULL,
+  estimand = NULL,
+  ps_link = NULL,
+  conf_level = 0.95
+) {
+  abort(
+    c(
+      "{.fun ipw} does not know how to handle {.arg ps_mod} of class \\
+      {.cls {class(ps_mod)}}.",
+      i = "{.arg ps_mod} must be a fitted propensity score model of class \\
+      {.cls glm}, such as a logistic regression."
+    ),
+    error_class = "propensity_method_error"
   )
 }
 
