@@ -261,11 +261,11 @@ print.ipw <- function(x, ...) {
   cat("Estimand:", toupper(x$estimand), "\n\n")
 
   cat("Propensity Score Model:\n")
-  cat("  Call:", paste(deparse(x$ps_mod$call), collapse = "\n"), "\n")
+  cat("  Call:", format_model_call(x$ps_mod), "\n")
   cat("\n")
 
   cat("Outcome Model:\n")
-  cat("  Call:", paste(deparse(x$outcome_mod$call), collapse = "\n"), "\n")
+  cat("  Call:", format_model_call(x$outcome_mod), "\n")
 
   cat("\n")
 
@@ -275,6 +275,18 @@ print.ipw <- function(x, ...) {
   printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 2:3, tst.ind = 4)
 
   invisible(x)
+}
+
+# Format a model's originating call for the ipw() summary. Objects that carry an
+# accessible call, such as glm and lm, print the deparsed call; a weighting
+# object that does not expose one, including an S7 object that cannot be
+# subset, falls back to a class label so print() works for any weighting object.
+format_model_call <- function(mod) {
+  call <- tryCatch(stats::getCall(mod), error = function(e) NULL)
+  if (is.null(call)) {
+    return(paste0("<", paste(class(mod), collapse = "/"), ">"))
+  }
+  paste(deparse(call), collapse = "\n")
 }
 
 
