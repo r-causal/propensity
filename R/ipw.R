@@ -33,8 +33,6 @@
 #'   propensity score model: `"logit"`, `"probit"`, or `"cloglog"`. Defaults to
 #'   the link used by `ps_mod`.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
-#' @param ... Arguments passed to methods. The generic dispatches on `ps_mod`;
-#'   each method documents the arguments it accepts.
 #'
 #' @details
 #' # Workflow
@@ -129,15 +127,10 @@
 #' [ps_trim()], [ps_trunc()] for handling extreme propensity scores before
 #'   weighting.
 #'
+#' @name ipw-methods
 #' @export
 #' @importFrom stats dnorm family formula model.frame model.matrix model.weights
 #' @importFrom stats pnorm predict printCoefmat qnorm var
-ipw <- function(ps_mod, outcome_mod, ...) {
-  UseMethod("ipw")
-}
-
-#' @export
-#' @rdname ipw
 ipw.glm <- function(
   ps_mod,
   outcome_mod,
@@ -297,7 +290,7 @@ format_model_call <- function(mod) {
 #'   transformed: point estimates and confidence limits are exponentiated and
 #'   the effect labels become `"rr"` and `"or"`.
 #' @export
-#' @rdname ipw
+#' @rdname ipw-methods
 as.data.frame.ipw <- function(
   x,
   row.names = NULL,

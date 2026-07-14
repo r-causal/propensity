@@ -5,10 +5,7 @@
 \alias{new_psw}
 \alias{is_psw}
 \alias{is_stabilized}
-\alias{is_causal_wt}
 \alias{as_psw}
-\alias{estimand}
-\alias{estimand<-}
 \title{Propensity Score Weight Vectors}
 \usage{
 new_psw(
@@ -34,13 +31,7 @@ is_psw(x)
 
 is_stabilized(wt)
 
-is_causal_wt(x)
-
 as_psw(x, estimand = NULL)
-
-estimand(wt)
-
-estimand(wt) <- value
 }
 \arguments{
 \item{x}{For \code{psw()} and \code{new_psw()}: a numeric vector of weights
@@ -64,8 +55,6 @@ propensity scores? Defaults to \code{FALSE}.}
 \item{...}{Additional attributes stored on the object (developer use only).}
 
 \item{wt}{A \code{psw} or \code{causal_wts} object.}
-
-\item{value}{A character string: the new estimand to assign.}
 }
 \value{
 \itemize{

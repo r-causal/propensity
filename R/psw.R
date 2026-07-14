@@ -57,7 +57,6 @@
 #' @param calibrated Logical. Were the weights derived from calibrated
 #'   propensity scores? Defaults to `FALSE`.
 #' @param wt A `psw` or `causal_wts` object.
-#' @param value A character string: the new estimand to assign.
 #' @param ... Additional attributes stored on the object (developer use only).
 #'
 #' @return
@@ -165,10 +164,9 @@ is_stabilized <- function(wt) {
   isTRUE(attr(wt, "stabilized"))
 }
 
-#' @rdname psw
 #' @export
-is_causal_wt <- function(x) {
-  inherits(x, "causal_wts")
+is_causal_wt.causal_wts <- function(x, ...) {
+  TRUE
 }
 
 #' @rdname psw
@@ -178,18 +176,15 @@ as_psw <- function(x, estimand = NULL) {
   psw(x, estimand = estimand)
 }
 
-#' @rdname psw
 #' @export
-estimand <- function(wt) {
-  attr(wt, "estimand")
+estimand.causal_wts <- function(x, ...) {
+  attr(x, "estimand")
 }
 
-#' @rdname psw
 #' @export
-`estimand<-` <- function(wt, value) {
-  assert_class(wt, "causal_wts")
-  attr(wt, "estimand") <- value
-  wt
+`estimand<-.causal_wts` <- function(x, ..., value) {
+  attr(x, "estimand") <- value
+  x
 }
 
 #' @export
