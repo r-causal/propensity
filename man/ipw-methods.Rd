@@ -9,6 +9,7 @@
 \method{ipw}{glm}(
   ps_mod,
   outcome_mod,
+  ...,
   .data = NULL,
   estimand = NULL,
   ps_link = NULL,
@@ -27,6 +28,10 @@ produced the weights, typically a logistic regression of class
 or \code{\link[stats:lm]{stats::lm()}}, with the outcome as the dependent variable and
 propensity score weights supplied via the \code{weights} argument. The weights
 should be created with a propensity weight function such as \code{\link[=wt_ate]{wt_ate()}}.}
+
+\item{...}{Additional arguments. The \code{as.data.frame()} method passes these
+to \code{\link[base:as.data.frame]{base::as.data.frame()}}; the estimation methods do not currently use
+them and accept \code{...} for consistency with the \code{ipw()} generic.}
 
 \item{.data}{A data frame containing the exposure, outcome, and covariates.
 If \code{NULL} (the default), \code{ipw()} extracts data from the model objects.
@@ -47,7 +52,7 @@ the link used by \code{ps_mod}.}
 
 \item{x}{An \code{ipw} object.}
 
-\item{row.names, optional, ...}{Passed to \code{\link[base:as.data.frame]{base::as.data.frame()}}.}
+\item{row.names, optional}{Passed to \code{\link[base:as.data.frame]{base::as.data.frame()}}.}
 
 \item{exponentiate}{If \code{TRUE}, exponentiate the log risk ratio and log odds
 ratio to produce risk ratios and odds ratios on their natural scale. The

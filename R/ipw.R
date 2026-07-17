@@ -33,6 +33,9 @@
 #'   propensity score model: `"logit"`, `"probit"`, or `"cloglog"`. Defaults to
 #'   the link used by `ps_mod`.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
+#' @param ... Additional arguments. The `as.data.frame()` method passes these
+#'   to [base::as.data.frame()]; the estimation methods do not currently use
+#'   them and accept `...` for consistency with the `ipw()` generic.
 #'
 #' @details
 #' # Workflow
@@ -134,6 +137,7 @@
 ipw.glm <- function(
   ps_mod,
   outcome_mod,
+  ...,
   .data = NULL,
   estimand = NULL,
   ps_link = NULL,
@@ -227,6 +231,7 @@ ipw.glm <- function(
 ipw.default <- function(
   ps_mod,
   outcome_mod,
+  ...,
   .data = NULL,
   estimand = NULL,
   ps_link = NULL,
@@ -284,7 +289,7 @@ format_model_call <- function(mod) {
 #'   ratio to produce risk ratios and odds ratios on their natural scale. The
 #'   confidence interval bounds are also exponentiated. Standard errors, z
 #'   statistics, and p-values remain on the log scale. Default is `FALSE`.
-#' @param row.names,optional,... Passed to [base::as.data.frame()].
+#' @param row.names,optional Passed to [base::as.data.frame()].
 #' @returns `as.data.frame()` returns the `estimates` component as a data
 #'   frame. When `exponentiate = TRUE`, the `log(rr)` and `log(or)` rows are
 #'   transformed: point estimates and confidence limits are exponentiated and

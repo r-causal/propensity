@@ -1,4 +1,6 @@
-# propensity (development version)
+# propensity 0.1.0.9000 (development version)
+
+* `ipw()` gains M-estimation based standard errors via the deli package.
 
 * Fixed `broom::tidy(glm_fit, conf.int = TRUE)` failing on GLMs weighted by
   `psw` vectors. `confint.glm()` builds profile-likelihood intervals via

@@ -15,10 +15,11 @@ URL: https://r-causal.github.io/propensity/,
     https://github.com/r-causal/propensity
 BugReports: https://github.com/r-causal/propensity/issues
 Depends:
-    R (>= 4.2.0)
+    R (>= 4.3)
 Imports:
     causalgenerics,
     cli,
+    deli,
     lifecycle,
     rlang,
     stats,
@@ -41,8 +42,10 @@ Suggests:
     tidyr,
     WeightIt,
     withr
-VignetteBuilder: 
+VignetteBuilder:
     knitr
+Remotes:
+    r-causal/deli
 Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US
