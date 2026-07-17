@@ -414,6 +414,32 @@ check_ipw_weights <- function(wts, call = rlang::caller_env()) {
   invisible(wts)
 }
 
+# Reject an outcome model that carries an offset. The stacked estimating
+# equations rebuild the weighted outcome score without threading an offset, so
+# an offset in the outcome model would converge to a root that disagrees with
+# the fitted model. Detect an offset supplied through the model formula (the
+# terms offset attribute) or through the `offset` argument (the model frame) and
+# direct the user to refit without it. Shared by every mestimation spec path.
+check_ipw_offset <- function(outcome_mod, call = rlang::caller_env()) {
+  has_offset <- !is.null(attr(stats::terms(outcome_mod), "offset")) ||
+    !is.null(stats::model.offset(stats::model.frame(outcome_mod)))
+
+  if (has_offset) {
+    abort(
+      c(
+        "{.arg outcome_mod} was fit with an offset term.",
+        x = "{.fun ipw} does not support offset terms in the outcome model; \\
+        the stacked estimating equations do not thread an offset.",
+        i = "Refit {.arg outcome_mod} without the offset."
+      ),
+      error_class = "propensity_ipw_offset_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
 #' @export
 ipw.default <- function(
   ps_mod,
