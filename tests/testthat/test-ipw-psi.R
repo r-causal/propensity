@@ -33,7 +33,8 @@ sim_categorical <- function(seed = 512, n = 400) {
     1,
     plogis(-0.3 + 0.4 * (a == "b") + 0.8 * (a == "c") + 0.5 * x1)
   )
-  data.frame(x1, x2, a, y)
+  yc <- 0.5 + 0.4 * (a == "b") + 0.9 * (a == "c") + 0.6 * x1 + rnorm(n)
+  data.frame(x1, x2, a, y, yc)
 }
 
 sim_continuous <- function(seed = 77, n = 400) {
@@ -42,7 +43,8 @@ sim_continuous <- function(seed = 77, n = 400) {
   x2 <- rbinom(n, 1, 0.5)
   A <- 0.5 + 0.7 * x1 - 0.3 * x2 + rnorm(n)
   y <- 1 + 0.6 * A + 0.4 * x1 + rnorm(n)
-  data.frame(x1, x2, A, y)
+  yb <- rbinom(n, 1, plogis(-0.5 + 0.5 * A + 0.3 * x1))
+  data.frame(x1, x2, A, y, yb)
 }
 
 # ---- shared builders --------------------------------------------------------
@@ -182,7 +184,8 @@ categorical_spec <- function(
   estimand,
   focal_level = NULL,
   stabilize = FALSE,
-  stab_score = NULL
+  stab_score = NULL,
+  outcome_family = "binomial"
 ) {
   ps_mod <- nnet::multinom(
     a ~ x1 + x2,
@@ -211,12 +214,22 @@ categorical_spec <- function(
     stab_score
   )
 
-  out_mod <- glm(
-    y ~ a + x1,
-    data = dat,
-    family = quasibinomial(),
-    weights = as.double(wts)
-  )
+  outcome_var <- if (outcome_family == "binomial") "y" else "yc"
+  out_fmla <- stats::reformulate(c("a", "x1"), response = outcome_var)
+  if (outcome_family == "binomial") {
+    out_mod <- glm(
+      out_fmla,
+      data = dat,
+      family = quasibinomial(),
+      weights = as.double(wts)
+    )
+    out_link <- "logit"
+    contrasts <- c("rd", "log(rr)", "log(or)")
+  } else {
+    out_mod <- lm(out_fmla, data = dat, weights = as.double(wts))
+    out_link <- "identity"
+    contrasts <- "diff"
+  }
   x_cf <- lapply(lev, function(l) {
     counterfactual_mm_factor(out_mod, dat, "a", l)
   })
@@ -236,19 +249,24 @@ categorical_spec <- function(
     stab = list(stabilized = isTRUE(stabilize), score = stab_score),
     outcome = list(
       X = model.matrix(out_mod),
-      y = dat$y,
-      family = "binomial",
-      link = "logit",
+      y = dat[[outcome_var]],
+      family = outcome_family,
+      link = out_link,
       coefs = coef(out_mod),
       X_counterfactual = x_cf
     ),
-    contrasts = c("rd", "log(rr)", "log(or)"),
+    contrasts = contrasts,
     focal_level = focal_level,
     reference_level = lev[1]
   )
 }
 
-continuous_spec <- function(dat, stabilize = TRUE, stab_score = NULL) {
+continuous_spec <- function(
+  dat,
+  stabilize = TRUE,
+  stab_score = NULL,
+  outcome_family = "gaussian"
+) {
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   fitted_ps <- as.double(fitted(ps_mod))
   A <- dat$A
@@ -262,7 +280,21 @@ continuous_spec <- function(dat, stabilize = TRUE, stab_score = NULL) {
       stabilization_score = stab_score
     )
   )
-  msm <- lm(y ~ A, data = dat, weights = as.double(wts))
+
+  outcome_var <- if (outcome_family == "binomial") "yb" else "y"
+  msm_fmla <- stats::reformulate("A", response = outcome_var)
+  if (outcome_family == "binomial") {
+    msm <- glm(
+      msm_fmla,
+      data = dat,
+      family = quasibinomial(),
+      weights = as.double(wts)
+    )
+    out_link <- "logit"
+  } else {
+    msm <- lm(msm_fmla, data = dat, weights = as.double(wts))
+    out_link <- "identity"
+  }
 
   list(
     exposure_type = "continuous",
@@ -278,9 +310,9 @@ continuous_spec <- function(dat, stabilize = TRUE, stab_score = NULL) {
     stab = list(stabilized = isTRUE(stabilize), score = stab_score),
     outcome = list(
       X = model.matrix(msm),
-      y = dat$y,
-      family = "gaussian",
-      link = "identity",
+      y = dat[[outcome_var]],
+      family = outcome_family,
+      link = out_link,
       coefs = coef(msm),
       X_counterfactual = NULL
     ),
@@ -745,6 +777,23 @@ test_that("build_ipw_psi is root-seeded at init for categorical ate binomial out
   expect_root_seeded(categorical_spec(sim_categorical(), "ate"))
 })
 
+test_that("build_ipw_psi is root-seeded at init for categorical ate gaussian outcome", {
+  skip_if_not_installed("nnet")
+  expect_root_seeded(categorical_spec(
+    sim_categorical(),
+    "ate",
+    outcome_family = "gaussian"
+  ))
+})
+
 test_that("build_ipw_psi is root-seeded at init for continuous stabilized ate MSM", {
   expect_root_seeded(continuous_spec(sim_continuous(), stabilize = TRUE))
+})
+
+test_that("build_ipw_psi is root-seeded at init for continuous stabilized logistic MSM", {
+  expect_root_seeded(continuous_spec(
+    sim_continuous(),
+    stabilize = TRUE,
+    outcome_family = "binomial"
+  ))
 })
