@@ -390,12 +390,11 @@ calculate_estimates <- function(
   rr_raw_est <- marginal_means$mu1 / marginal_means$mu0
   log_rr_est <- log(rr_raw_est)
 
-  # Influence for RR on the raw scale: (l1 / mu1 - l0 / mu0)
-  rr_inf_raw <- lin_vars$l1 /
+  # Influence function for log(RR) via the delta method:
+  #   d log(mu1) - d log(mu0) = l1 / mu1 - l0 / mu0
+  log_rr_inf <- lin_vars$l1 /
     marginal_means$mu1 -
     lin_vars$l0 / marginal_means$mu0
-  # Then for log(RR), the influence is  (1 / RR) * rr_inf_raw
-  log_rr_inf <- (1 / rr_raw_est) * rr_inf_raw
 
   log_rr_var <- var(log_rr_inf) / n
   log_rr_se <- sqrt(log_rr_var)
@@ -414,13 +413,12 @@ calculate_estimates <- function(
     (marginal_means$mu0 / (1 - marginal_means$mu0))
   log_or_est <- log(or_raw_est)
 
-  # Influence for OR on the raw scale:
-  #   l_or_raw = l1 / [mu1*(1 - mu1)] - l0 / [mu0*(1 - mu0)]
-  or_inf_raw <- (lin_vars$l1 /
+  # Influence function for log(OR) via the delta method:
+  #   d logit(mu1) - d logit(mu0)
+  #     = l1 / [mu1*(1 - mu1)] - l0 / [mu0*(1 - mu0)]
+  log_or_inf <- (lin_vars$l1 /
     (marginal_means$mu1 * (1 - marginal_means$mu1))) -
     (lin_vars$l0 / (marginal_means$mu0 * (1 - marginal_means$mu0)))
-  # Then log(OR) influence =  (1 / OR) * or_inf_raw
-  log_or_inf <- (1 / or_raw_est) * or_inf_raw
 
   log_or_var <- var(log_or_inf) / n
   log_or_se <- sqrt(log_or_var)

@@ -13,10 +13,10 @@
         Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) 
       
       Estimates:
-              estimate  std.err        z ci.lower ci.upper conf.level   p.value    
-      rd       0.19988 0.092425 2.162637   0.0187  0.38103       0.95 0.0305691 *  
-      log(rr)  0.56041 0.156172 3.588443   0.2543  0.86651       0.95 0.0003327 ***
-      log(or)  0.87831 0.173946 5.049330   0.5374  1.21924       0.95 4.434e-07 ***
+              estimate  std.err        z ci.lower ci.upper conf.level p.value  
+      rd       0.19988 0.092425 2.162637   0.0187  0.38103       0.95 0.03057 *
+      log(rr)  0.56041 0.273519 2.048903   0.0243  1.09650       0.95 0.04047 *
+      log(or)  0.87831 0.418661 2.097912   0.0578  1.69887       0.95 0.03591 *
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 

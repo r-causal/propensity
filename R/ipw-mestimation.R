@@ -70,7 +70,7 @@ ipw_spec_binary <- function(
     ps = list(
       X = model.matrix(ps_mod),
       link = ps_link,
-      coefs = coef(ps_mod),
+      coefs = stats::coef(ps_mod),
       k = 2L
     ),
     stab = list(
@@ -82,7 +82,7 @@ ipw_spec_binary <- function(
       y = as.double(outcome),
       family = family,
       link = out_link,
-      coefs = coef(outcome_mod),
+      coefs = stats::coef(outcome_mod),
       X_counterfactual = list(X1 = x1, X0 = x0),
       weights = as.double(wts)
     ),
@@ -206,8 +206,8 @@ ipw_mestimation <- function(
 # the column layout that calculate_estimates() produces on the linearization
 # path so the two SE methods return the same shape.
 ipw_mestimation_estimates <- function(spec, fit, conf_level) {
-  co <- coef(fit)
-  se <- sqrt(diag(vcov(fit)))
+  co <- stats::coef(fit)
+  se <- sqrt(diag(stats::vcov(fit)))
   names(se) <- names(co)
 
   effect <- spec$contrasts
