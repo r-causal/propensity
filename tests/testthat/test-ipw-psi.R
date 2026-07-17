@@ -732,6 +732,23 @@ test_that("ipw_theta_layout partitions theta for a continuous stabilized spec", 
   )
 })
 
+test_that("ipw_theta_layout partitions theta for a continuous unstabilized spec", {
+  # the ps block still carries the sigma2_d variance parameter (ncol(X) + 1),
+  # but the stabilization block is empty
+  spec <- continuous_spec(sim_continuous(), stabilize = FALSE)
+  layout <- ipw_theta_layout(spec)
+  expect_layout_partition(
+    layout,
+    list(
+      ps = ncol(spec$ps$X) + 1,
+      stab = 0,
+      out = ncol(spec$outcome$X),
+      mu = 0,
+      contrast = 0
+    )
+  )
+})
+
 # ---- build_ipw_psi: init is the exact root ----------------------------------
 
 test_that("build_ipw_psi is root-seeded at init for binary ate binomial outcome", {
@@ -766,6 +783,10 @@ test_that("build_ipw_psi is root-seeded at init for categorical ate gaussian out
 
 test_that("build_ipw_psi is root-seeded at init for continuous stabilized ate MSM", {
   expect_root_seeded(continuous_spec(sim_continuous(), stabilize = TRUE))
+})
+
+test_that("build_ipw_psi is root-seeded at init for continuous unstabilized ate MSM", {
+  expect_root_seeded(continuous_spec(sim_continuous(), stabilize = FALSE))
 })
 
 test_that("build_ipw_psi is root-seeded at init for continuous stabilized logistic MSM", {
