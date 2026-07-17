@@ -13,7 +13,8 @@
   .data = NULL,
   estimand = NULL,
   ps_link = NULL,
-  conf_level = 0.95
+  conf_level = 0.95,
+  se_method = c("mestimation", "linearization")
 )
 
 \method{as.data.frame}{ipw}(x, row.names = NULL, optional = NULL, exponentiate = FALSE, ...)
@@ -50,6 +51,12 @@ the link used by \code{ps_mod}.}
 
 \item{conf_level}{Confidence level for intervals. Default is \code{0.95}.}
 
+\item{se_method}{Method for standard error estimation. \code{"mestimation"} (the
+default) stacks the propensity score, outcome, and estimand estimating
+equations and returns the empirical sandwich variance. \code{"linearization"}
+uses the influence-function linearization of Kostouraki et al. (2024). Both
+account for the uncertainty of estimating the propensity scores.}
+
 \item{x}{An \code{ipw} object.}
 
 \item{row.names, optional}{Passed to \code{\link[base:as.data.frame]{base::as.data.frame()}}.}
@@ -73,6 +80,10 @@ following columns: \code{effect} (the measure name), \code{estimate} (point
 estimate), \code{std.err} (standard error), \code{z} (z-statistic),
 \code{ci.lower} and \code{ci.upper} (confidence interval bounds),
 \code{conf.level}, and \code{p.value}.}
+\item{\code{se_method}}{The standard error method used, \code{"mestimation"} or
+\code{"linearization"}.}
+\item{\code{fit}}{The fitted M-estimator object when \code{se_method} is
+\code{"mestimation"}, otherwise \code{NULL}.}
 }
 
 \code{as.data.frame()} returns the \code{estimates} component as a data
@@ -124,10 +135,17 @@ odds ratios on their natural scale.
 }
 
 \section{Variance estimation}{
-Standard errors are computed via linearization, which correctly accounts for
-the uncertainty introduced by estimating propensity scores. This avoids the
-known problem of underestimated standard errors that arises from treating
-estimated weights as fixed. See Kostouraki et al. (2024) for details.
+By default (\code{se_method = "mestimation"}), standard errors are computed by
+M-estimation. The propensity score model, the weighted outcome model, the
+marginal means, and the effect contrasts are stacked as a single system of
+estimating equations, and the empirical sandwich variance of that joint
+system is used. Stacking the models accounts for the uncertainty introduced
+by estimating the propensity scores, avoiding the underestimated standard
+errors that arise from treating estimated weights as fixed. See Stefanski
+and Boos (2002) for the M-estimation framework.
+
+Setting \code{se_method = "linearization"} instead uses the influence-function
+linearization of Kostouraki et al. (2024), available for binary exposures.
 }
 
 \examples{
@@ -161,6 +179,9 @@ ipw(ps_mod, outcome_cont)
 
 }
 \references{
+Stefanski LA, Boos DD. The calculus of M-estimation. \emph{The American
+Statistician}. 2002;56(1):29--38. \doi{10.1198/000313002753631330}
+
 Kostouraki A, Hajage D, Rachet B, et al. On variance estimation of the
 inverse probability-of-treatment weighting estimator: A tutorial for
 different types of propensity score weights. \emph{Statistics in Medicine}.

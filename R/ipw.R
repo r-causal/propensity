@@ -33,6 +33,11 @@
 #'   propensity score model: `"logit"`, `"probit"`, or `"cloglog"`. Defaults to
 #'   the link used by `ps_mod`.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
+#' @param se_method Method for standard error estimation. `"mestimation"` (the
+#'   default) stacks the propensity score, outcome, and estimand estimating
+#'   equations and returns the empirical sandwich variance. `"linearization"`
+#'   uses the influence-function linearization of Kostouraki et al. (2024). Both
+#'   account for the uncertainty of estimating the propensity scores.
 #' @param ... Additional arguments. The `as.data.frame()` method passes these
 #'   to [base::as.data.frame()]; the estimation methods do not currently use
 #'   them and accept `...` for consistency with the `ipw()` generic.
@@ -68,12 +73,22 @@
 #'
 #' # Variance estimation
 #'
-#' Standard errors are computed via linearization, which correctly accounts for
-#' the uncertainty introduced by estimating propensity scores. This avoids the
-#' known problem of underestimated standard errors that arises from treating
-#' estimated weights as fixed. See Kostouraki et al. (2024) for details.
+#' By default (`se_method = "mestimation"`), standard errors are computed by
+#' M-estimation. The propensity score model, the weighted outcome model, the
+#' marginal means, and the effect contrasts are stacked as a single system of
+#' estimating equations, and the empirical sandwich variance of that joint
+#' system is used. Stacking the models accounts for the uncertainty introduced
+#' by estimating the propensity scores, avoiding the underestimated standard
+#' errors that arise from treating estimated weights as fixed. See Stefanski
+#' and Boos (2002) for the M-estimation framework.
+#'
+#' Setting `se_method = "linearization"` instead uses the influence-function
+#' linearization of Kostouraki et al. (2024), available for binary exposures.
 #'
 #' @references
+#' Stefanski LA, Boos DD. The calculus of M-estimation. *The American
+#' Statistician*. 2002;56(1):29--38. \doi{10.1198/000313002753631330}
+#'
 #' Kostouraki A, Hajage D, Rachet B, et al. On variance estimation of the
 #' inverse probability-of-treatment weighting estimator: A tutorial for
 #' different types of propensity score weights. *Statistics in Medicine*.
@@ -92,6 +107,10 @@
 #'     estimate), `std.err` (standard error), `z` (z-statistic),
 #'     `ci.lower` and `ci.upper` (confidence interval bounds),
 #'     `conf.level`, and `p.value`.}
+#'   \item{`se_method`}{The standard error method used, `"mestimation"` or
+#'     `"linearization"`.}
+#'   \item{`fit`}{The fitted M-estimator object when `se_method` is
+#'     `"mestimation"`, otherwise `NULL`.}
 #' }
 #'
 #' @examples
@@ -141,10 +160,51 @@ ipw.glm <- function(
   .data = NULL,
   estimand = NULL,
   ps_link = NULL,
-  conf_level = 0.95
+  conf_level = 0.95,
+  se_method = c("mestimation", "linearization")
 ) {
+  se_method <- rlang::arg_match(se_method)
   assert_class(ps_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
+
+  if (identical(ps_mod$family$family, "gaussian")) {
+    abort(
+      c(
+        "{.fun ipw} does not yet support continuous exposures.",
+        x = "{.arg ps_mod} was fit with a {.val gaussian} family, which \\
+        indicates a continuous exposure.",
+        i = "Only binary exposures are currently supported; support for \\
+        continuous exposures is planned."
+      ),
+      error_class = "propensity_ipw_exposure_error"
+    )
+  }
+
+  # Guards first, on the weights that fit the outcome model. These carry the
+  # psw attributes, so a modified propensity score is detected here before any
+  # length reconciliation or estimand parsing that would otherwise fail
+  # obliquely. Both standard error methods share these guards.
+  wts <- extract_weights(outcome_mod)
+  check_ipw_weights(wts)
+
+  if (identical(se_method, "mestimation")) {
+    spec <- ipw_spec_binary(
+      ps_mod,
+      outcome_mod,
+      .data = .data,
+      estimand = estimand,
+      ps_link = ps_link
+    )
+    fit <- ipw_mestimation(spec, conf_level = conf_level)
+    return(new_ipw(
+      estimand = spec$estimand,
+      ps_mod = ps_mod,
+      outcome_mod = outcome_mod,
+      estimates = fit$estimates,
+      se_method = "mestimation",
+      fit = fit$fit
+    ))
+  }
 
   weight_matrix <- model.matrix(ps_mod)
   exposure_name <- fmla_extract_left_chr(ps_mod)
@@ -176,9 +236,6 @@ ipw.glm <- function(
     ))
   }
 
-  # todo: allow user to specify existing weights
-  # or automatically extract weights from outcome model if they exist
-  wts <- extract_weights(outcome_mod)
   estimand <- check_estimand(wts, estimand)
 
   marginal_means <- estimate_marginal_means(
@@ -216,15 +273,92 @@ ipw.glm <- function(
     conf_level = conf_level
   )
 
+  new_ipw(
+    estimand = estimand,
+    ps_mod = ps_mod,
+    outcome_mod = outcome_mod,
+    estimates = estimates,
+    se_method = "linearization",
+    fit = NULL
+  )
+}
+
+# Assemble the ipw() return object. The four core fields are shared by every
+# method; se_method records which variance estimator ran and fit holds the
+# M-estimator object (NULL on the linearization path).
+new_ipw <- function(estimand, ps_mod, outcome_mod, estimates, se_method, fit) {
   structure(
     list(
       estimand = estimand,
       ps_mod = ps_mod,
       outcome_mod = outcome_mod,
-      estimates = estimates
+      estimates = estimates,
+      se_method = se_method,
+      fit = fit
     ),
     class = "ipw"
   )
+}
+
+# Guard the weights that fit the outcome model. ipw() cannot yet account for
+# propensity scores that were trimmed, truncated, or calibrated before
+# weighting, so detect them here and direct the user to refit from the
+# unmodified model. An outcome model fit without weights cannot yield an IPW
+# estimate at all.
+check_ipw_weights <- function(wts, call = rlang::caller_env()) {
+  if (is.null(wts)) {
+    abort(
+      c(
+        "{.arg outcome_mod} must be fit with propensity score weights.",
+        x = "No {.arg weights} were found in {.arg outcome_mod}.",
+        i = "Fit {.arg outcome_mod} with weights from a propensity weight \\
+        function such as {.fun wt_ate}."
+      ),
+      error_class = "propensity_ipw_weights_missing_error",
+      call = call
+    )
+  }
+
+  if (is_ps_trimmed(wts)) {
+    abort(
+      c(
+        "{.arg outcome_mod} was fit with trimmed propensity score weights.",
+        x = "{.fun ipw} cannot yet account for trimmed propensity scores.",
+        i = "Refit the weights from the unmodified propensity score model; \\
+        support for modified weights is planned."
+      ),
+      error_class = "propensity_ipw_trimmed_error",
+      call = call
+    )
+  }
+
+  if (is_ps_truncated(wts)) {
+    abort(
+      c(
+        "{.arg outcome_mod} was fit with truncated propensity score weights.",
+        x = "{.fun ipw} cannot yet account for truncated propensity scores.",
+        i = "Refit the weights from the unmodified propensity score model; \\
+        support for modified weights is planned."
+      ),
+      error_class = "propensity_ipw_truncated_error",
+      call = call
+    )
+  }
+
+  if (is_ps_calibrated(wts)) {
+    abort(
+      c(
+        "{.arg outcome_mod} was fit with calibrated propensity score weights.",
+        x = "{.fun ipw} cannot yet account for calibrated propensity scores.",
+        i = "Refit the weights from the unmodified propensity score model; \\
+        support for modified weights is planned."
+      ),
+      error_class = "propensity_ipw_calibrated_error",
+      call = call
+    )
+  }
+
+  invisible(wts)
 }
 
 #' @export
@@ -235,7 +369,8 @@ ipw.default <- function(
   .data = NULL,
   estimand = NULL,
   ps_link = NULL,
-  conf_level = 0.95
+  conf_level = 0.95,
+  se_method = c("mestimation", "linearization")
 ) {
   abort(
     c(

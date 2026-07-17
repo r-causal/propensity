@@ -14,7 +14,8 @@ ipw_spec_binary <- function(
   outcome_mod,
   .data = NULL,
   estimand = NULL,
-  ps_link = NULL
+  ps_link = NULL,
+  call = rlang::caller_env()
 ) {
   assert_class(ps_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
@@ -26,11 +27,23 @@ ipw_spec_binary <- function(
     exposure <- fmla_extract_left_vctr(ps_mod)
     outcome <- fmla_extract_left_vctr(outcome_mod)
     mm_data <- model.frame(outcome_mod)
+    check_exposure(mm_data, exposure_name, call = call)
   } else {
-    assert_columns_exist(.data, c(exposure_name, outcome_name))
+    assert_columns_exist(.data, c(exposure_name, outcome_name), call = call)
     exposure <- .data[[exposure_name]]
     outcome <- .data[[outcome_name]]
     mm_data <- .data
+  }
+
+  if (!identical(length(exposure), length(outcome))) {
+    abort(
+      c(
+        "{.arg exposure} and {.arg outcome} must be the same length.",
+        x = "{.arg exposure} is length {length(exposure)}",
+        x = "{.arg outcome} is length {length(outcome)}"
+      ),
+      call = call
+    )
   }
 
   if (is.null(ps_link)) {
@@ -38,9 +51,21 @@ ipw_spec_binary <- function(
   }
 
   wts <- extract_weights(outcome_mod)
-  estimand <- check_estimand(wts, estimand)
+  estimand <- check_estimand(wts, estimand, call = call)
 
   exposure_values <- sort(unique(exposure))
+
+  if (!isTRUE(length(exposure_values) == 2)) {
+    abort(
+      c(
+        "{.fun ipw} currently only supports binary exposures.",
+        x = "There are {length(exposure_values)} unique value{?s} of the \\
+        exposure."
+      ),
+      call = call
+    )
+  }
+
   z <- as.double(exposure == exposure_values[[2]])
 
   out_terms <- stats::delete.response(stats::terms(outcome_mod))

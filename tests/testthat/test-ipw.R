@@ -47,28 +47,28 @@ test_that("variance works", {
     family = quasibinomial()
   )
 
-  est <- ipw(ps_mod, outcome_mod_ate)
+  est <- ipw(ps_mod, outcome_mod_ate, se_method = "linearization")
 
   expect_equal(
     get_variance(est, "rd"),
     var(l1_ATEW_cor - l0_ATEW_cor) / nrow(.df)
   )
 
-  est <- ipw(ps_mod, outcome_mod_att)
+  est <- ipw(ps_mod, outcome_mod_att, se_method = "linearization")
 
   expect_equal(
     get_variance(est, "rd"),
     var(l1_ATTW_cor - l0_ATTW_cor) / nrow(.df)
   )
 
-  est <- ipw(ps_mod, outcome_mod_ato)
+  est <- ipw(ps_mod, outcome_mod_ato, se_method = "linearization")
 
   expect_equal(
     get_variance(est, "rd"),
     var(l1_OW_cor - l0_OW_cor) / nrow(.df)
   )
 
-  est <- ipw(ps_mod, outcome_mod_atm)
+  est <- ipw(ps_mod, outcome_mod_atm, se_method = "linearization")
 
   expect_equal(
     get_variance(est, "rd"),
@@ -107,7 +107,8 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
     ps_mod = ps_mod,
     outcome_mod = outcome_mod,
     .data = dat,
-    estimand = "ate"
+    estimand = "ate",
+    se_method = "linearization"
   )
 
   expect_snapshot(res)
@@ -169,7 +170,13 @@ test_that("ipw works for continuous outcome with a confounder, using logistic ps
   outcome_mod2 <- glm(y ~ z, data = dat, weights = wts)
 
   # ipw call
-  res <- ipw(ps_mod, outcome_mod1, .data = dat, estimand = "ate")
+  res <- ipw(
+    ps_mod,
+    outcome_mod1,
+    .data = dat,
+    estimand = "ate",
+    se_method = "linearization"
+  )
 
   expect_snapshot(res)
 
