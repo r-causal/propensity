@@ -341,6 +341,30 @@ test_that("as.data.frame(exponentiate = TRUE) relabels the continuous log odds r
   expect_equal(df$effect, "or")
 })
 
+# ---- offset guard -----------------------------------------------------------
+
+test_that("ipw() continuous rejects an outcome model with an offset term", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  dat$off <- 0.3 * dat$x1
+
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  fitted_ps <- as.double(fitted(ps_mod))
+  wts <- continuous_weights(fitted_ps, dat$A, stabilize = TRUE)
+  outcome_mod <- lm(yc ~ A + offset(off), data = dat, weights = wts)
+
+  # The mestimation psi does not thread the offset into the MSM score block, so
+  # the default path must reject an offset before any estimation and with no
+  # message or other condition signaled first.
+  expect_no_message(
+    expect_error(
+      ipw(ps_mod, outcome_mod),
+      class = "propensity_ipw_offset_error",
+      regexp = "offset"
+    )
+  )
+})
+
 # ---- linearization is unsupported for continuous ----------------------------
 
 test_that("ipw() rejects linearization for a continuous exposure", {

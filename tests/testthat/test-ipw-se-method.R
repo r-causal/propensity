@@ -69,6 +69,20 @@ se_method_outcome_calibrated <- function(dat, ps_mod) {
   glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 }
 
+# Outcome model with an offset term. The offset genuinely shifts the fit
+# (off = 0.3 * x1), so dropping the guard would let ipw() converge to a root
+# that disagrees with the fitted model.
+se_method_outcome_offset <- function(dat, ps_mod) {
+  ps <- predict(ps_mod, type = "response")
+  wts <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+  glm(
+    y ~ z + offset(off),
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+}
+
 # Linearization estimates for the seeded fixture, hardcoded so changes to the
 # linearization path are detected.
 se_method_lin_reference <- function() {
@@ -216,6 +230,24 @@ test_that("calibrated weights error on both SE paths", {
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
     class = "propensity_ipw_calibrated_error",
     regexp = "calibrat"
+  )
+})
+
+test_that("an outcome model with an offset term errors before estimation", {
+  dat <- se_method_data()
+  dat$off <- 0.3 * dat$x1
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_offset(dat, ps_mod)
+
+  # The default (mestimation) path threads no offset through the outcome-score
+  # block, so it must reject an offset outright, before any estimation and with
+  # no message or other condition signaled first.
+  expect_no_message(
+    expect_error(
+      ipw(ps_mod, outcome_mod, .data = dat),
+      class = "propensity_ipw_offset_error",
+      regexp = "offset"
+    )
   )
 })
 
