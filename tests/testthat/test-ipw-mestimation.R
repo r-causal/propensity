@@ -318,8 +318,51 @@ test_that("ipw_mestimation returns a converged deli fit with named theta", {
   expect_equal(dim(vc), c(length(co), length(co)))
 
   # the contrast rows of the solved theta equal the reported estimates
+  # (addressed by position, since theta names are not unique across blocks)
   got <- res$estimates
-  expect_equal(unname(co[got$effect]), got$estimate, tolerance = 1e-8)
+  contrast_idx <- ipw_theta_layout(spec)$idx$contrast
+  expect_equal(unname(co[contrast_idx]), got$estimate, tolerance = 1e-8)
+})
+
+# ---- name collisions between covariates and contrast labels ------------------
+
+test_that("ipw_mestimation addresses contrast rows by position, not by name", {
+  skip_if_not_installed("deli")
+  # A covariate literally named "rd" collides with the rd contrast label. The ps
+  # and outcome coefficient blocks precede the contrast block in theta and keep
+  # their term names, so name-based subsetting of coef(fit) would return the ps
+  # coefficient on "rd" instead of the causal contrast. Positional indexing must
+  # recover the true contrast.
+  withr::local_seed(2024)
+  n <- 800
+  rd <- rnorm(n)
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * rd - 0.2 * x1))
+  y <- rbinom(n, 1, plogis(-0.4 + 1.1 * z + 0.5 * rd - 0.3 * x1))
+  dat <- data.frame(rd, x1, z, y)
+
+  ps_mod <- glm(z ~ rd + x1, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  outcome_mod <- glm(
+    y ~ z + rd + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+
+  spec <- ipw_spec_binary(ps_mod, outcome_mod)
+  got <- ipw_mestimation(spec)$estimates
+
+  ref <- plugin_contrasts(outcome_mod, dat)
+  expect_estimate_match(got, ref, tolerance = 1e-8)
+
+  # the reported rd row is the contrast, not the ps model's coefficient on the
+  # covariate that shares its name
+  rd_estimate <- got$estimate[got$effect == "rd"]
+  expect_false(isTRUE(all.equal(rd_estimate, unname(coef(ps_mod)["rd"]))))
 })
 
 # ---- weight-consistency preflight -------------------------------------------

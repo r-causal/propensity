@@ -197,22 +197,25 @@ ipw_mestimation <- function(
   m <- deli::MEstimator(stacked_equations = psi, init = layout$init)
   m <- deli::estimate(m)
 
-  estimates <- ipw_mestimation_estimates(spec, m, conf_level)
+  estimates <- ipw_mestimation_estimates(spec, m, layout, conf_level)
 
   list(estimates = estimates, fit = m)
 }
 
 # Build the estimates table from the solved contrast rows of theta, mirroring
 # the column layout that calculate_estimates() produces on the linearization
-# path so the two SE methods return the same shape.
-ipw_mestimation_estimates <- function(spec, fit, conf_level) {
+# path so the two SE methods return the same shape. The contrast rows are
+# addressed by their theta positions, not by name: theta names are not unique
+# across blocks (a ps or outcome covariate can share a contrast label such as
+# "rd" or "diff"), so name subsetting could silently return the wrong row.
+ipw_mestimation_estimates <- function(spec, fit, layout, conf_level) {
   co <- stats::coef(fit)
   se <- sqrt(diag(stats::vcov(fit)))
-  names(se) <- names(co)
 
+  idx <- layout$idx$contrast
   effect <- spec$contrasts
-  estimate <- unname(co[effect])
-  std.err <- unname(se[effect])
+  estimate <- unname(co[idx])
+  std.err <- unname(se[idx])
   z <- estimate / std.err
 
   z_val <- stats::qnorm(1 - (1 - conf_level) / 2)
