@@ -64,3 +64,40 @@ ipw.multinom <- function(
     fit = fit$fit
   )
 }
+
+#' @description
+#' The `lm` method estimates the causal dose-response effect for a continuous
+#' exposure from a fitted [stats::lm()] (or gaussian-family [stats::glm()])
+#' propensity score model of the exposure and a weighted marginal structural
+#' outcome model. The only supported estimand is `"ate"`. Standard errors are
+#' computed by M-estimation; the linearization method is not available for
+#' continuous exposures. The marginal structural model must contain exactly one
+#' exposure term, and the reported effect is that single coefficient: `"slope"`
+#' for an identity-link outcome, `"log(or)"` for a logit-link outcome, and
+#' `"log(rr)"` for a log-link outcome. The estimates table keeps the eight-column
+#' contract with no comparison column.
+#'
+#' @name ipw-methods
+#' @exportS3Method causalgenerics::ipw lm
+ipw.lm <- function(
+  ps_mod,
+  outcome_mod,
+  ...,
+  .data = NULL,
+  estimand = NULL,
+  ps_link = NULL,
+  conf_level = 0.95,
+  se_method = c("mestimation", "linearization")
+) {
+  se_method <- rlang::arg_match(se_method)
+  assert_class(outcome_mod, c("glm", "lm"))
+
+  ipw_continuous_estimate(
+    ps_mod,
+    outcome_mod,
+    .data = .data,
+    estimand = estimand,
+    conf_level = conf_level,
+    se_method = se_method
+  )
+}

@@ -46,7 +46,7 @@
       expr
     Condition <propensity_method_error>
       Error in `ipw()`:
-      ! `ipw()` does not know how to handle `ps_mod` of class <lm>.
+      ! `ipw()` does not know how to handle `ps_mod` of class <not_a_model>.
       i `ps_mod` must be a fitted propensity score model of class <glm>, such as a logistic regression.
 
 ---

@@ -117,43 +117,21 @@ ipw_spec_binary <- function(
   )
 }
 
-ipw_spec_categorical <- function(
+# Extract the propensity score design and the exposure and outcome vectors,
+# rebuilding from .data when it is supplied. A propensity model can lose the data
+# behind its fitting call (nnet::multinom stores no model frame; an lm or glm can
+# be fit in an environment that is later gone), so model.matrix(ps_mod) is wrapped
+# and the user is directed to supply .data on failure. When .data is supplied the
+# design is rebuilt from the model terms so no re-evaluation is needed.
+ipw_extract_ps_design <- function(
   ps_mod,
   outcome_mod,
-  .data = NULL,
-  estimand = NULL,
-  .focal_level = NULL,
+  .data,
+  exposure_name,
+  outcome_name,
+  xlev = NULL,
   call = rlang::caller_env()
 ) {
-  assert_class(ps_mod, "multinom")
-  assert_class(outcome_mod, c("glm", "lm"))
-
-  # A multinom fit with case weights would need a weighted score in the stacked
-  # system; the ee_mlogit block is unweighted, so the fitted coefficients would
-  # not sit at the score root and the estimates would drift. multinom always
-  # carries a length-n weights vector, unit for an unweighted fit.
-  if (!is.null(ps_mod$weights) && !all(ps_mod$weights == 1)) {
-    abort(
-      c(
-        "{.fun ipw} does not support a propensity score model fit with case \\
-        weights.",
-        x = "{.arg ps_mod} was fit with non-unit {.arg weights}.",
-        i = "Refit {.arg ps_mod} without {.arg weights}."
-      ),
-      error_class = "propensity_ipw_ps_weights_error",
-      call = call
-    )
-  }
-
-  exposure_name <- fmla_extract_left_chr(ps_mod)
-  outcome_name <- fmla_extract_left_chr(outcome_mod)
-
-  # The propensity score design comes from ps_mod. nnet::multinom stores no model
-  # frame (model = FALSE), so model.matrix(ps_mod) re-evaluates the fitting call
-  # in the formula environment; if the data behind that call is no longer
-  # reachable the extraction fails. When .data is supplied, rebuild the design
-  # from the model terms against .data so no re-evaluation is needed; otherwise
-  # wrap the extraction and direct the user to supply .data on failure.
   if (is.null(.data)) {
     ps_extract <- tryCatch(
       list(
@@ -187,9 +165,57 @@ ipw_spec_categorical <- function(
     ps_X <- model.matrix(
       stats::delete.response(stats::terms(ps_mod)),
       data = .data,
-      xlev = ps_mod$xlevels
+      xlev = xlev
     )
   }
+
+  list(exposure = exposure, outcome = outcome, ps_X = ps_X, mm_data = mm_data)
+}
+
+ipw_spec_categorical <- function(
+  ps_mod,
+  outcome_mod,
+  .data = NULL,
+  estimand = NULL,
+  .focal_level = NULL,
+  call = rlang::caller_env()
+) {
+  assert_class(ps_mod, "multinom")
+  assert_class(outcome_mod, c("glm", "lm"))
+
+  # A multinom fit with case weights would need a weighted score in the stacked
+  # system; the ee_mlogit block is unweighted, so the fitted coefficients would
+  # not sit at the score root and the estimates would drift. multinom always
+  # carries a length-n weights vector, unit for an unweighted fit.
+  if (!is.null(ps_mod$weights) && !all(ps_mod$weights == 1)) {
+    abort(
+      c(
+        "{.fun ipw} does not support a propensity score model fit with case \\
+        weights.",
+        x = "{.arg ps_mod} was fit with non-unit {.arg weights}.",
+        i = "Refit {.arg ps_mod} without {.arg weights}."
+      ),
+      error_class = "propensity_ipw_ps_weights_error",
+      call = call
+    )
+  }
+
+  exposure_name <- fmla_extract_left_chr(ps_mod)
+  outcome_name <- fmla_extract_left_chr(outcome_mod)
+
+  extracted <- ipw_extract_ps_design(
+    ps_mod,
+    outcome_mod,
+    .data = .data,
+    exposure_name = exposure_name,
+    outcome_name = outcome_name,
+    xlev = ps_mod$xlevels,
+    call = call
+  )
+  exposure <- extracted$exposure
+  outcome <- extracted$outcome
+  ps_X <- extracted$ps_X
+  mm_data <- extracted$mm_data
 
   if (!identical(length(exposure), length(outcome))) {
     abort(
@@ -303,6 +329,151 @@ ipw_spec_categorical <- function(
     contrasts = contrasts,
     focal_level = focal_level,
     reference_level = levs[[1]]
+  )
+}
+
+ipw_spec_continuous <- function(
+  ps_mod,
+  outcome_mod,
+  .data = NULL,
+  estimand = NULL,
+  call = rlang::caller_env()
+) {
+  assert_class(ps_mod, c("glm", "lm"))
+  assert_class(outcome_mod, c("glm", "lm"))
+
+  # A propensity model fit with prior case weights would need a weighted score in
+  # the stacked system; the ee_regression ps block is unweighted, so the fitted
+  # coefficients would not sit at the score root and the estimates would drift.
+  # A glm records prior weights in prior.weights (all one when unweighted); an lm
+  # records them in weights (NULL when unweighted).
+  ps_weights <- if (inherits(ps_mod, "glm")) {
+    ps_mod$prior.weights
+  } else {
+    ps_mod$weights
+  }
+  if (!is.null(ps_weights) && !all(ps_weights == 1)) {
+    abort(
+      c(
+        "{.fun ipw} does not support a propensity score model fit with case \\
+        weights.",
+        x = "{.arg ps_mod} was fit with non-unit {.arg weights}.",
+        i = "Refit {.arg ps_mod} without {.arg weights}."
+      ),
+      error_class = "propensity_ipw_ps_weights_error",
+      call = call
+    )
+  }
+
+  exposure_name <- fmla_extract_left_chr(ps_mod)
+  outcome_name <- fmla_extract_left_chr(outcome_mod)
+
+  extracted <- ipw_extract_ps_design(
+    ps_mod,
+    outcome_mod,
+    .data = .data,
+    exposure_name = exposure_name,
+    outcome_name = outcome_name,
+    xlev = ps_mod$xlevels,
+    call = call
+  )
+  exposure <- as.double(extracted$exposure)
+  outcome <- extracted$outcome
+  ps_X <- extracted$ps_X
+
+  if (!identical(length(exposure), length(outcome))) {
+    abort(
+      c(
+        "{.arg exposure} and {.arg outcome} must be the same length.",
+        x = "{.arg exposure} is length {length(exposure)}",
+        x = "{.arg outcome} is length {length(outcome)}"
+      ),
+      call = call
+    )
+  }
+
+  wts <- extract_weights(outcome_mod)
+
+  # A continuous exposure supports only the ate estimand. This guard fires before
+  # check_estimand() so an unsupported request errors with its own class rather
+  # than as an estimand-versus-weights mismatch.
+  if (!is.null(estimand) && !identical(estimand, "ate")) {
+    abort(
+      c(
+        "{.fun ipw} only supports the {.val ate} estimand for a continuous \\
+        exposure.",
+        x = "The {.val {estimand}} estimand is not available for a continuous \\
+        exposure.",
+        i = "Use {.code estimand = \"ate\"} or omit {.arg estimand}."
+      ),
+      error_class = "propensity_ipw_estimand_error",
+      call = call
+    )
+  }
+  estimand <- check_estimand(wts, estimand, call = call)
+
+  # Marginal structural model term detection: exactly one term of the outcome
+  # model references the exposure, contributing exactly one coefficient. A model
+  # with several exposure terms has no single reported effect.
+  out_X <- model.matrix(outcome_mod)
+  term_labels <- attr(stats::terms(outcome_mod), "term.labels")
+  is_exposure_term <- vapply(
+    term_labels,
+    function(l) exposure_name %in% all.vars(str2lang(l)),
+    logical(1)
+  )
+  exposure_cols <- which(attr(out_X, "assign") %in% which(is_exposure_term))
+  if (length(exposure_cols) != 1) {
+    abort(
+      c(
+        "{.fun ipw} requires a marginal structural model with a single \\
+        exposure term for a continuous exposure.",
+        x = "{.arg outcome_mod} contributes {length(exposure_cols)} \\
+        coefficient{?s} for {.val {exposure_name}}.",
+        i = "Read the full coefficient vector from the returned {.field fit} \\
+        object for a model with more than one exposure term."
+      ),
+      error_class = "propensity_ipw_msm_error",
+      call = call
+    )
+  }
+
+  if (is_linear_regression(outcome_mod)) {
+    family <- "gaussian"
+    out_link <- "identity"
+  } else {
+    family <- "binomial"
+    out_link <- outcome_mod$family$link
+  }
+
+  list(
+    exposure_type = "continuous",
+    estimand = estimand,
+    n = length(exposure),
+    exposure = exposure,
+    ps = list(
+      X = ps_X,
+      link = NULL,
+      coefs = stats::coef(ps_mod),
+      k = NULL
+    ),
+    stab = list(
+      stabilized = is_stabilized(wts),
+      score = stabilization_score(wts)
+    ),
+    outcome = list(
+      X = out_X,
+      y = as.double(outcome),
+      family = family,
+      link = out_link,
+      coefs = stats::coef(outcome_mod),
+      X_counterfactual = NULL,
+      weights = as.double(wts),
+      exposure_col = exposure_cols
+    ),
+    contrasts = NULL,
+    focal_level = NULL,
+    reference_level = NULL
   )
 }
 
@@ -422,11 +593,37 @@ ipw_mestimation <- function(
 # addressed by their theta positions, not by name: theta names are not unique
 # across blocks (a ps or outcome covariate can share a contrast label such as
 # "rd" or "diff"), so name subsetting could silently return the wrong row.
+# Effect label for a continuous exposure, taken from the outcome-model link:
+# the reported effect is the single marginal structural model coefficient.
+ipw_continuous_effect_label <- function(link) {
+  switch(
+    link,
+    identity = "slope",
+    logit = "log(or)",
+    log = "log(rr)",
+    abort(
+      "Unsupported outcome link {.val {link}} for a continuous exposure.",
+      error_class = "propensity_ipw_link_error"
+    )
+  )
+}
+
 ipw_mestimation_estimates <- function(spec, fit, layout, conf_level) {
   co <- stats::coef(fit)
   se <- sqrt(diag(stats::vcov(fit)))
 
-  idx <- layout$idx$contrast
+  # A continuous exposure reports the marginal structural model exposure
+  # coefficient, addressed by its outcome-block theta position; binary and
+  # categorical exposures report the contrast rows. Positions are used, not
+  # names, since theta names are not unique across blocks.
+  if (identical(spec$exposure_type, "continuous")) {
+    idx <- layout$idx$out[spec$outcome$exposure_col]
+    effect <- ipw_continuous_effect_label(spec$outcome$link)
+  } else {
+    idx <- layout$idx$contrast
+    effect <- rep(spec$contrasts, times = ipw_n_comparisons(spec))
+  }
+
   estimate <- unname(co[idx])
   std.err <- unname(se[idx])
   z <- estimate / std.err
@@ -437,7 +634,7 @@ ipw_mestimation_estimates <- function(spec, fit, layout, conf_level) {
   p.value <- 2 * (1 - stats::pnorm(abs(z)))
 
   out <- data.frame(
-    effect = rep(spec$contrasts, times = ipw_n_comparisons(spec)),
+    effect = effect,
     estimate = estimate,
     std.err = std.err,
     z = z,

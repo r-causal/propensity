@@ -214,8 +214,8 @@ test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
   # valid ps_mod
   ps_mod <- glm(z ~ x, family = binomial())
 
-  # invalid ps_mod
-  bad_mod <- lm(z ~ x)
+  # invalid ps_mod: a class ipw() has no method for
+  bad_mod <- structure(list(), class = "not_a_model")
 
   # valid outcome mod (logistic)
   wts <- rep(1, n)

@@ -3,6 +3,7 @@
 \name{ipw-methods}
 \alias{ipw-methods}
 \alias{ipw.multinom}
+\alias{ipw.lm}
 \alias{ipw.glm}
 \alias{as.data.frame.ipw}
 \title{Inverse Probability Weighted Estimation}
@@ -17,6 +18,17 @@
   conf_level = 0.95,
   se_method = c("mestimation", "linearization"),
   .focal_level = NULL
+)
+
+\method{ipw}{lm}(
+  ps_mod,
+  outcome_mod,
+  ...,
+  .data = NULL,
+  estimand = NULL,
+  ps_link = NULL,
+  conf_level = 0.95,
+  se_method = c("mestimation", "linearization")
 )
 
 \method{ipw}{glm}(
@@ -118,16 +130,30 @@ K-level exposure, effects are reported for each non-reference level against
 the reference (first) factor level, and the estimates table gains a
 \code{comparison} column identifying the contrast.
 
+The \code{lm} method estimates the causal dose-response effect for a continuous
+exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
+propensity score model of the exposure and a weighted marginal structural
+outcome model. The only supported estimand is \code{"ate"}. Standard errors are
+computed by M-estimation; the linearization method is not available for
+continuous exposures. The marginal structural model must contain exactly one
+exposure term, and the reported effect is that single coefficient: \code{"slope"}
+for an identity-link outcome, \code{"log(or)"} for a logit-link outcome, and
+\code{"log(rr)"} for a log-link outcome. The estimates table keeps the eight-column
+contract with no comparison column.
+
 \code{ipw()} is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
 and a fitted weighted outcome model; \code{ipw()} computes causal effect estimates
 with standard errors that correctly account for the two-step estimation
 process.
 
-\code{ipw()} currently supports binary exposures with binary or continuous
-outcomes. For binary outcomes, it returns the risk difference, log risk
-ratio, and log odds ratio. For continuous outcomes, it returns the difference
-in means.
+\code{ipw()} supports binary, categorical, and continuous exposures. For a binary
+or categorical exposure, a binary outcome returns the risk difference, log
+risk ratio, and log odds ratio, and a continuous outcome returns the
+difference in means. A continuous exposure is supplied through an \code{\link[stats:lm]{stats::lm()}}
+or gaussian-family \code{\link[stats:glm]{stats::glm()}} propensity score model with a weighted
+marginal structural outcome model, and \code{ipw()} reports the single exposure
+coefficient of that model.
 }
 \section{Workflow}{
 \code{ipw()} is designed around a three-step workflow:

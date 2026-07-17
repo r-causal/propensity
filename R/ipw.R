@@ -7,10 +7,13 @@
 #' with standard errors that correctly account for the two-step estimation
 #' process.
 #'
-#' `ipw()` currently supports binary exposures with binary or continuous
-#' outcomes. For binary outcomes, it returns the risk difference, log risk
-#' ratio, and log odds ratio. For continuous outcomes, it returns the difference
-#' in means.
+#' `ipw()` supports binary, categorical, and continuous exposures. For a binary
+#' or categorical exposure, a binary outcome returns the risk difference, log
+#' risk ratio, and log odds ratio, and a continuous outcome returns the
+#' difference in means. A continuous exposure is supplied through an [stats::lm()]
+#' or gaussian-family [stats::glm()] propensity score model with a weighted
+#' marginal structural outcome model, and `ipw()` reports the single exposure
+#' coefficient of that model.
 #'
 #' @param ps_mod The weighting object: a fitted propensity score model that
 #'   produced the weights, typically a logistic regression of class
@@ -167,17 +170,18 @@ ipw.glm <- function(
   assert_class(ps_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
 
+  # A gaussian-family propensity model indicates a continuous exposure. Route it
+  # to the shared continuous path, which an lm propensity model also uses; the two
+  # share fitted values and so produce identical estimates and standard errors.
   if (identical(ps_mod$family$family, "gaussian")) {
-    abort(
-      c(
-        "{.fun ipw} does not yet support continuous exposures.",
-        x = "{.arg ps_mod} was fit with a {.val gaussian} family, which \\
-        indicates a continuous exposure.",
-        i = "Only binary exposures are currently supported; support for \\
-        continuous exposures is planned."
-      ),
-      error_class = "propensity_ipw_exposure_error"
-    )
+    return(ipw_continuous_estimate(
+      ps_mod,
+      outcome_mod,
+      .data = .data,
+      estimand = estimand,
+      conf_level = conf_level,
+      se_method = se_method
+    ))
   }
 
   # Guards first, on the weights that fit the outcome model. These carry the
@@ -297,6 +301,55 @@ new_ipw <- function(estimand, ps_mod, outcome_mod, estimates, se_method, fit) {
       fit = fit
     ),
     class = "ipw"
+  )
+}
+
+# Shared continuous-exposure route for ipw.lm and the gaussian-family branch of
+# ipw.glm. An lm and a gaussian glm propensity model share fitted values, so both
+# reach the same M-estimation fit. Standard errors come only from M-estimation
+# for a continuous exposure; the linearization path is not available.
+ipw_continuous_estimate <- function(
+  ps_mod,
+  outcome_mod,
+  .data = NULL,
+  estimand = NULL,
+  conf_level = 0.95,
+  se_method = "mestimation",
+  call = rlang::caller_env()
+) {
+  if (identical(se_method, "linearization")) {
+    abort(
+      c(
+        "{.fun ipw} does not support {.val linearization} standard errors for \\
+        continuous exposures.",
+        i = "Use {.code se_method = \"mestimation\"} for a continuous exposure."
+      ),
+      error_class = "propensity_method_error",
+      call = call
+    )
+  }
+
+  # Guard the weights that fit the outcome model before building the spec, so a
+  # modified propensity score is detected before any estimand parsing.
+  wts <- extract_weights(outcome_mod)
+  check_ipw_weights(wts, call = call)
+
+  spec <- ipw_spec_continuous(
+    ps_mod,
+    outcome_mod,
+    .data = .data,
+    estimand = estimand,
+    call = call
+  )
+  fit <- ipw_mestimation(spec, conf_level = conf_level, call = call)
+
+  new_ipw(
+    estimand = spec$estimand,
+    ps_mod = ps_mod,
+    outcome_mod = outcome_mod,
+    estimates = fit$estimates,
+    se_method = "mestimation",
+    fit = fit$fit
   )
 }
 

@@ -346,10 +346,18 @@ test_that("as.data.frame(exponentiate = TRUE) relabels the continuous log odds r
 test_that("ipw() rejects linearization for a continuous exposure", {
   skip_if_not_installed("deli")
   dat <- sim_continuous()
-  mods <- fit_continuous_models(dat)
 
+  # the lm propensity route
+  mods_lm <- fit_continuous_models(dat, ps_type = "lm")
   expect_error(
-    ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization"),
+    ipw(mods_lm$ps_mod, mods_lm$outcome_mod, se_method = "linearization"),
+    class = "propensity_method_error"
+  )
+
+  # the gaussian-family glm propensity route rejects it identically
+  mods_glm <- fit_continuous_models(dat, ps_type = "glm")
+  expect_error(
+    ipw(mods_glm$ps_mod, mods_glm$outcome_mod, se_method = "linearization"),
     class = "propensity_method_error"
   )
 })

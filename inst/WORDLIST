@@ -1,3 +1,4 @@
+ACM
 ATO
 ATT
 ATU
@@ -10,6 +11,7 @@ Codecov
 Crump
 Cui
 D'Agostino
+Elkan
 Estimand
 Estimands
 Faries
@@ -32,7 +34,10 @@ PSW
 Platt
 Rachet
 Rosenbaum
+SIGKDD
+Stefanski
 Winsorize
+Zadrozny
 Zaslavsky
 Zhou
 al
@@ -46,6 +51,7 @@ isotonic
 matchable
 misspecification
 misspecified
+multiclass
 pctl
 positivity
 ps
