@@ -1,8 +1,7 @@
 # Tests for the internal psi-building layer that backs the M-estimation path of
 # ipw(): the weight registry (ipw_weight_fn), the theta layout (ipw_theta_layout),
-# and the stacked estimating-function builder (build_ipw_psi). All three are
-# unexported and reached through propensity:::. Specs are constructed directly as
-# plain lists following the M-estimation design contract.
+# and the stacked estimating-function builder (build_ipw_psi). Specs are
+# constructed directly as plain lists following the M-estimation design contract.
 
 # ---- data simulators --------------------------------------------------------
 
@@ -322,27 +321,6 @@ continuous_spec <- function(
   )
 }
 
-# ---- accessors for the functions under test ---------------------------------
-
-# The three targets are unexported, so the tests reach them through `:::`. Each
-# reference is wrapped once here with a targeted jarl suppression: the
-# internal_function rule guards against depending on another package's internals,
-# which does not apply to a package exercising its own.
-new_weight_fn <- function(exposure_type, estimand) {
-  # jarl-ignore internal_function: unexported target exercised by the package's own tests
-  propensity:::ipw_weight_fn(exposure_type, estimand)
-}
-
-new_layout <- function(spec) {
-  # jarl-ignore internal_function: unexported target exercised by the package's own tests
-  propensity:::ipw_theta_layout(spec)
-}
-
-new_psi <- function(spec, layout) {
-  # jarl-ignore internal_function: unexported target exercised by the package's own tests
-  propensity:::build_ipw_psi(spec, layout)
-}
-
 # ---- assertion helpers ------------------------------------------------------
 
 call_weight_fn <- function(
@@ -353,7 +331,7 @@ call_weight_fn <- function(
   extras,
   silent = FALSE
 ) {
-  fn <- new_weight_fn(exposure_type, estimand)
+  fn <- ipw_weight_fn(exposure_type, estimand)
   expect_type(fn, "closure")
   if (silent) {
     return(expect_silent(fn(ps, exposure, extras)))
@@ -396,8 +374,8 @@ expect_layout_partition <- function(layout, sizes) {
 }
 
 expect_root_seeded <- function(spec) {
-  layout <- new_layout(spec)
-  psi <- new_psi(spec, layout)
+  layout <- ipw_theta_layout(spec)
+  psi <- build_ipw_psi(spec, layout)
   mat <- psi(layout$init)
   expect_true(is.matrix(mat))
   expect_equal(dim(mat), c(length(layout$init), spec$n))
@@ -653,11 +631,11 @@ test_that("ipw_weight_fn reproduces continuous ate weights at fitted params", {
 
 test_that("ipw_weight_fn errors on unsupported estimand/exposure combinations", {
   expect_error(
-    new_weight_fn("continuous", "att"),
+    ipw_weight_fn("continuous", "att"),
     class = "propensity_ipw_estimand_error"
   )
   expect_error(
-    new_weight_fn("continuous", "ato"),
+    ipw_weight_fn("continuous", "ato"),
     class = "propensity_ipw_estimand_error"
   )
 })
@@ -667,7 +645,7 @@ test_that("ipw_weight_fn errors on unsupported estimand/exposure combinations", 
 test_that("ipw_theta_layout partitions theta for binary specs", {
   # stabilized ate: stab block present
   spec_stab <- binary_spec(sim_binary(), "ate", stabilize = TRUE)
-  layout_stab <- new_layout(spec_stab)
+  layout_stab <- ipw_theta_layout(spec_stab)
   expect_layout_partition(
     layout_stab,
     list(
@@ -681,7 +659,7 @@ test_that("ipw_theta_layout partitions theta for binary specs", {
 
   # unstabilized ate: no stab block
   spec_unstab <- binary_spec(sim_binary(), "ate")
-  layout_unstab <- new_layout(spec_unstab)
+  layout_unstab <- ipw_theta_layout(spec_unstab)
   expect_layout_partition(
     layout_unstab,
     list(
@@ -695,7 +673,7 @@ test_that("ipw_theta_layout partitions theta for binary specs", {
 
   # gaussian outcome: single linear contrast
   spec_lin <- binary_spec(sim_binary(), "att", outcome_family = "gaussian")
-  layout_lin <- new_layout(spec_lin)
+  layout_lin <- ipw_theta_layout(spec_lin)
   expect_layout_partition(
     layout_lin,
     list(
@@ -713,7 +691,7 @@ test_that("ipw_theta_layout partitions theta for categorical specs", {
 
   spec <- categorical_spec(sim_categorical(), "ate")
   k <- spec$ps$k
-  layout <- new_layout(spec)
+  layout <- ipw_theta_layout(spec)
   expect_layout_partition(
     layout,
     list(
@@ -726,7 +704,7 @@ test_that("ipw_theta_layout partitions theta for categorical specs", {
   )
 
   spec_stab <- categorical_spec(sim_categorical(), "ate", stabilize = TRUE)
-  layout_stab <- new_layout(spec_stab)
+  layout_stab <- ipw_theta_layout(spec_stab)
   expect_layout_partition(
     layout_stab,
     list(
@@ -741,7 +719,7 @@ test_that("ipw_theta_layout partitions theta for categorical specs", {
 
 test_that("ipw_theta_layout partitions theta for a continuous stabilized spec", {
   spec <- continuous_spec(sim_continuous(), stabilize = TRUE)
-  layout <- new_layout(spec)
+  layout <- ipw_theta_layout(spec)
   expect_layout_partition(
     layout,
     list(
