@@ -1,0 +1,453 @@
+# Tests for ipw() with a multinomial (nnet::multinom) propensity score model and
+# a categorical exposure. These exercise ipw() end to end on a fitted multinom
+# propensity score model and a weighted outcome model, the way a user would call
+# it, pinning estimand detection, the estimates-table contract, point-estimate
+# parity with g-computation, a PSweight oracle, focal-level handling, and the
+# print and as.data.frame surfaces.
+
+# ---- data simulator ---------------------------------------------------------
+
+sim_categorical <- function(seed = 2024, n = 700) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  eta_b <- -0.2 + 0.5 * x1 + 0.3 * x2
+  eta_c <- 0.1 - 0.4 * x1 + 0.6 * x2
+  denom <- 1 + exp(eta_b) + exp(eta_c)
+  pa <- 1 / denom
+  pb <- exp(eta_b) / denom
+  u <- runif(n)
+  lab <- ifelse(u < pa, "a", ifelse(u < pa + pb, "b", "c"))
+  a <- factor(lab, levels = c("a", "b", "c"))
+  y <- rbinom(
+    n,
+    1,
+    plogis(-0.3 + 0.4 * (a == "b") + 0.8 * (a == "c") + 0.5 * x1)
+  )
+  yc <- 0.5 + 0.4 * (a == "b") + 0.9 * (a == "c") + 0.6 * x1 + rnorm(n)
+  data.frame(x1, x2, a, y, yc)
+}
+
+# ---- model fitting ----------------------------------------------------------
+
+# Tighten the multinomial fit so the seeded init in the M-estimator sits at the
+# score root well below the 1e-8 point-estimate comparison tolerance, matching
+# the reltol/maxit pattern used in test-ipw-psi.R.
+fit_ps_multinom <- function(dat) {
+  nnet::multinom(
+    a ~ x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+}
+
+# Propensity score matrix in factor-level order, column names set to the levels.
+ps_matrix_named <- function(ps_mod, dat) {
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- levels(dat$a)
+  ps
+}
+
+# Categorical weights for a given estimand, always computed silently.
+categorical_weights <- function(
+  ps_named,
+  a,
+  estimand,
+  focal_level = NULL,
+  stabilize = FALSE
+) {
+  wt_fun <- switch(
+    estimand,
+    ate = wt_ate,
+    att = wt_att,
+    atu = wt_atu,
+    atm = wt_atm,
+    ato = wt_ato,
+    entropy = wt_entropy
+  )
+  args <- list(ps_named, a, exposure_type = "categorical")
+  if (estimand %in% c("att", "atu")) {
+    args$.focal_level <- focal_level
+  }
+  if (estimand == "ate") {
+    args$stabilize <- stabilize
+  }
+  withr::with_options(
+    list(propensity.quiet = TRUE),
+    do.call(wt_fun, args)
+  )
+}
+
+# Fit a weighted outcome model. `covariates = TRUE` adds x1 (the covariate-
+# adjusted g-computation setup); `covariates = FALSE` fits an exposure-only
+# saturated model whose g-computation marginal means equal the Hajek weighted
+# group means, the estimator PSweight reports without an outcome model. The
+# binomial outcome uses a tightened IRLS tolerance so the fitted coefficients
+# sit at the weighted MLE to well below the point-estimate tolerance.
+fit_outcome <- function(
+  dat,
+  wts,
+  outcome_family = "binomial",
+  covariates = TRUE
+) {
+  outcome_var <- if (outcome_family == "binomial") "y" else "yc"
+  rhs <- if (covariates) c("a", "x1") else "a"
+  fmla <- stats::reformulate(rhs, response = outcome_var)
+  if (outcome_family == "binomial") {
+    glm(
+      fmla,
+      data = dat,
+      family = quasibinomial(),
+      weights = as.double(wts),
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+  } else {
+    lm(fmla, data = dat, weights = as.double(wts))
+  }
+}
+
+# Build the propensity score model, the categorical weights, and the weighted
+# outcome model in one step, returning all three plus the level vector.
+fit_categorical_models <- function(
+  dat,
+  estimand,
+  focal_level = NULL,
+  stabilize = FALSE,
+  outcome_family = "binomial",
+  covariates = TRUE,
+  strip_weights = FALSE
+) {
+  ps_mod <- fit_ps_multinom(dat)
+  ps_named <- ps_matrix_named(ps_mod, dat)
+  wts <- categorical_weights(
+    ps_named,
+    dat$a,
+    estimand,
+    focal_level = focal_level,
+    stabilize = stabilize
+  )
+  model_wts <- if (strip_weights) as.double(wts) else wts
+  outcome_mod <- fit_outcome(
+    dat,
+    model_wts,
+    outcome_family = outcome_family,
+    covariates = covariates
+  )
+  list(
+    ps_mod = ps_mod,
+    outcome_mod = outcome_mod,
+    wts = wts,
+    lev = levels(dat$a)
+  )
+}
+
+# ---- plug-in reference ------------------------------------------------------
+
+# Direct g-computation on the weighted outcome model: predict the counterfactual
+# marginal mean for each level, then form per-non-reference-level contrasts
+# against the first (reference) level. Returns a data frame keyed by effect and
+# comparison so it can be matched to the ipw() estimates table irrespective of
+# row order.
+plugin_categorical <- function(outcome_mod, dat, lev, outcome_family) {
+  mu <- vapply(
+    lev,
+    function(l) {
+      d <- dat
+      d$a <- factor(l, levels = lev)
+      mean(predict(outcome_mod, newdata = d, type = "response"))
+    },
+    numeric(1)
+  )
+  ref <- mu[[1]]
+  forms <- if (outcome_family == "binomial") {
+    c("rd", "log(rr)", "log(or)")
+  } else {
+    "diff"
+  }
+  rows <- list()
+  for (j in seq_along(lev)[-1]) {
+    for (f in forms) {
+      val <- switch(
+        f,
+        rd = mu[[j]] - ref,
+        diff = mu[[j]] - ref,
+        "log(rr)" = log(mu[[j]]) - log(ref),
+        "log(or)" = stats::qlogis(mu[[j]]) - stats::qlogis(ref)
+      )
+      rows[[length(rows) + 1]] <- data.frame(
+        effect = f,
+        comparison = paste0(lev[[j]], " vs ", lev[[1]]),
+        estimate = val,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  do.call(rbind, rows)
+}
+
+# Match an estimates table to a reference table on the (effect, comparison) key
+# and compare the point estimates.
+expect_categorical_estimate_match <- function(
+  estimates,
+  reference,
+  tolerance = 1e-8
+) {
+  key_got <- paste(estimates$effect, estimates$comparison)
+  key_ref <- paste(reference$effect, reference$comparison)
+  got <- estimates$estimate[match(key_ref, key_got)]
+  expect_equal(got, reference$estimate, tolerance = tolerance)
+}
+
+cat_estimates_columns <- c(
+  "effect",
+  "comparison",
+  "estimate",
+  "std.err",
+  "z",
+  "ci.lower",
+  "ci.upper",
+  "conf.level",
+  "p.value"
+)
+
+# ---- end-to-end ate ---------------------------------------------------------
+
+test_that("ipw() runs categorical ate end to end and auto-detects the estimand", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_s3_class(res, "ipw")
+  expect_equal(res$se_method, "mestimation")
+  expect_equal(res$estimand, "ate")
+  expect_false(is.null(res$fit))
+})
+
+# ---- estimates table shape --------------------------------------------------
+
+test_that("ipw() categorical estimates table adds a comparison column", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+
+  mods <- fit_categorical_models(dat, "ate")
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  est <- res$estimates
+
+  # the binary eight-column contract plus a comparison column
+  expect_named(est, cat_estimates_columns)
+
+  # three-level exposure: two non-reference comparisons, each vs the reference
+  expect_equal(unique(est$comparison), c("b vs a", "c vs a"))
+
+  # binomial outcome: rd/log(rr)/log(or) per comparison, six rows for three levels
+  expect_equal(nrow(est), 6L)
+  expect_equal(est$effect, rep(c("rd", "log(rr)", "log(or)"), times = 2))
+  expect_equal(
+    est$comparison,
+    rep(c("b vs a", "c vs a"), each = 3)
+  )
+  expect_true(all(est$conf.level == 0.95))
+
+  # gaussian outcome: a single difference per comparison, two rows
+  mods_g <- fit_categorical_models(dat, "ate", outcome_family = "gaussian")
+  res_g <- ipw(mods_g$ps_mod, mods_g$outcome_mod)
+  est_g <- res_g$estimates
+  expect_equal(nrow(est_g), 2L)
+  expect_equal(est_g$effect, c("diff", "diff"))
+  expect_equal(est_g$comparison, c("b vs a", "c vs a"))
+})
+
+# ---- point-estimate parity with the plug-in g-computation -------------------
+
+test_that("ipw() categorical point estimates match the plug-in g-computation", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  for (family in c("binomial", "gaussian")) {
+    dat <- sim_categorical()
+    mods <- fit_categorical_models(dat, "ate", outcome_family = family)
+    res <- ipw(mods$ps_mod, mods$outcome_mod)
+    ref <- plugin_categorical(mods$outcome_mod, dat, mods$lev, family)
+    expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
+  }
+})
+
+# ---- PSweight oracle --------------------------------------------------------
+
+# Compare risk differences and their standard errors per comparison against
+# PSweight for ate (weight = "IPW") and ato (weight = "overlap"). PSweight
+# reports Hajek weighted group means (no outcome model), so the outcome model
+# here is exposure-only (a saturated y ~ a); its g-computation marginal means
+# equal those Hajek means, making the two comparable. PSweight fits its own
+# multinomial model internally, so the fits differ slightly: point estimates are
+# compared at 1e-4 and standard errors at 5 percent relative.
+test_that("ipw() categorical risk differences match PSweight for ate and ato", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  skip_if_not_installed("PSweight")
+
+  dat <- sim_categorical()
+  contrast <- rbind("b-a" = c(-1, 1, 0), "c-a" = c(-1, 0, 1))
+
+  configs <- list(
+    list(estimand = "ate", weight = "IPW"),
+    list(estimand = "ato", weight = "overlap")
+  )
+
+  for (cfg in configs) {
+    mods <- fit_categorical_models(dat, cfg$estimand, covariates = FALSE)
+    res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+    psw_fit <- PSweight::PSweight(
+      ps.formula = a ~ x1 + x2,
+      yname = "y",
+      data = dat,
+      weight = cfg$weight,
+      family = "binomial"
+    )
+    psw_sum <- summary(psw_fit, type = "DIF", contrast = contrast)
+    psw_rd <- psw_sum$estimates[, "Estimate"]
+    psw_se <- psw_sum$estimates[, "Std.Error"]
+
+    rd_rows <- res$estimates[res$estimates$effect == "rd", ]
+    rd_rows <- rd_rows[match(c("b vs a", "c vs a"), rd_rows$comparison), ]
+
+    expect_equal(rd_rows$estimate, unname(psw_rd), tolerance = 1e-4)
+    rel_se <- abs(rd_rows$std.err - psw_se) / psw_se
+    expect_true(
+      all(rel_se < 0.05),
+      label = paste0(
+        cfg$estimand,
+        " SE rel diff: ",
+        paste(format(rel_se, digits = 3), collapse = ", ")
+      )
+    )
+  }
+})
+
+# ---- att and atu with a focal level -----------------------------------------
+
+test_that("ipw() categorical att detects the focal level from the psw attribute", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  # att weights carry the focal level as the psw focal_category attribute
+  mods <- fit_categorical_models(dat, "att", focal_level = "b")
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_equal(res$estimand, "att")
+  expect_equal(unique(res$estimates$comparison), c("b vs a", "c vs a"))
+  ref <- plugin_categorical(mods$outcome_mod, dat, mods$lev, "binomial")
+  expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
+})
+
+test_that("ipw() categorical atu accepts an explicit focal level argument", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "atu", focal_level = "c")
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod, .focal_level = "c")
+
+  expect_equal(res$estimand, "atu")
+  ref <- plugin_categorical(mods$outcome_mod, dat, mods$lev, "binomial")
+  expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
+})
+
+test_that("ipw() categorical att errors when the focal level is unavailable", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  # weights created with a focal level, then stripped to plain numeric so the
+  # focal_category attribute is gone; with estimand = "att" supplied explicitly
+  # and no .focal_level argument there is no focal level to be found
+  mods <- fit_categorical_models(
+    dat,
+    "att",
+    focal_level = "b",
+    strip_weights = TRUE
+  )
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, estimand = "att"),
+    class = "propensity_error"
+  )
+})
+
+# ---- atm and entropy --------------------------------------------------------
+
+test_that("ipw() categorical atm and entropy return finite, ordered intervals", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  for (estimand in c("atm", "entropy")) {
+    dat <- sim_categorical()
+    mods <- fit_categorical_models(dat, estimand)
+    res <- ipw(mods$ps_mod, mods$outcome_mod)
+    est <- res$estimates
+
+    expect_true(all(is.finite(est$std.err) & est$std.err > 0))
+    expect_true(all(est$ci.lower < est$estimate & est$estimate < est$ci.upper))
+  }
+})
+
+# ---- stabilized ate ---------------------------------------------------------
+
+test_that("ipw() runs stabilized categorical ate and matches the plug-in", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate", stabilize = TRUE)
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_equal(res$estimand, "ate")
+  ref <- plugin_categorical(mods$outcome_mod, dat, mods$lev, "binomial")
+  expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
+  expect_true(all(is.finite(res$estimates$std.err) & res$estimates$std.err > 0))
+})
+
+# ---- linearization is unsupported for categorical ---------------------------
+
+test_that("ipw() rejects linearization for a categorical exposure", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization"),
+    class = "propensity_method_error"
+  )
+})
+
+# ---- print and as.data.frame ------------------------------------------------
+
+test_that("ipw() categorical print output is stable", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_snapshot(print(res))
+})
+
+test_that("as.data.frame(exponentiate = TRUE) relabels ratios per comparison", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  df <- as.data.frame(res, exponentiate = TRUE)
+
+  # the ratio rows are relabelled while the comparison column is preserved
+  expect_equal(df$effect, rep(c("rd", "rr", "or"), times = 2))
+  expect_equal(df$comparison, rep(c("b vs a", "c vs a"), each = 3))
+})
