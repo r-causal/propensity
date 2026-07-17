@@ -259,6 +259,8 @@ these attributes:
 \itemize{
 \item \code{estimand}: character, e.g. \code{"ate"}, \code{"att"}, \code{"uncensored"}.
 \item \code{stabilized}: logical, whether stabilization was applied.
+\item \code{stabilization_score}: numeric, the user-supplied stabilization score, or
+\code{NULL} if none was supplied.
 \item \code{trimmed}: logical, whether the propensity scores were trimmed.
 \item \code{truncated}: logical, whether the propensity scores were truncated.
 \item \code{calibrated}: logical, whether the propensity scores were calibrated.

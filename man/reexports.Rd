@@ -14,6 +14,6 @@ These objects are imported from other packages. Follow the links
 below to see their documentation.
 
 \describe{
-  \item{causalgenerics}{\code{\link[causalgenerics:estimand]{estimand()}}, \code{\link[causalgenerics:estimand<-]{estimand<-()}}, \code{\link[causalgenerics:ipw]{ipw()}}, \code{\link[causalgenerics:is_causal_wt]{is_causal_wt()}}}
+  \item{causalgenerics}{\code{\link[causalgenerics:causal-weights]{estimand}}, \code{\link[causalgenerics:causal-weights]{estimand<-}}, \code{\link[causalgenerics]{ipw}}, \code{\link[causalgenerics:causal-weights]{is_causal_wt}}}
 }}
 

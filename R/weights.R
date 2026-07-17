@@ -145,6 +145,8 @@
 #'   these attributes:
 #'   - `estimand`: character, e.g. `"ate"`, `"att"`, `"uncensored"`.
 #'   - `stabilized`: logical, whether stabilization was applied.
+#'   - `stabilization_score`: numeric, the user-supplied stabilization score, or
+#'     `NULL` if none was supplied.
 #'   - `trimmed`: logical, whether the propensity scores were trimmed.
 #'   - `truncated`: logical, whether the propensity scores were truncated.
 #'   - `calibrated`: logical, whether the propensity scores were calibrated.

@@ -80,8 +80,11 @@ wt_ate(ps, dat$z)
 ### Step 3: Estimate causal effects
 
 `ipw()` takes the propensity score model and the weighted outcome model and
-returns causal effect estimates. The standard errors use linearization to
-account for the fact that the propensity scores are estimated:
+returns causal effect estimates. By default, the standard errors come from
+M-estimation: the propensity score and outcome models are stacked into a single
+system of estimating equations, so the uncertainty of estimating the propensity
+scores is carried into the standard errors rather than ignored. Set
+`se_method = "linearization"` to use the influence-function method instead:
 
 ```{r step3}
 result <- ipw(ps_mod, outcome_mod)

@@ -65,10 +65,15 @@ Supply \code{.data} explicitly if the outcome model formula contains
 transformations that prevent extraction of the exposure variable from
 \code{\link[stats:model.frame]{stats::model.frame()}}.}
 
-\item{estimand}{A character string specifying the causal estimand: \code{"ate"},
-\code{"att"}, \code{"ato"}, or \code{"atm"}. If \code{NULL}, the estimand is inferred from the
-weights in \code{outcome_mod}. Auto-detection requires weights created with
-\code{\link[=wt_ate]{wt_ate()}}, \code{\link[=wt_att]{wt_att()}}, \code{\link[=wt_atm]{wt_atm()}}, or \code{\link[=wt_ato]{wt_ato()}}.}
+\item{estimand}{A character string specifying the causal estimand: one of
+\code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or \code{"entropy"}. The available
+estimands depend on the exposure type: a binary or categorical exposure
+supports all six, while a continuous exposure supports only \code{"ate"}. For a
+categorical exposure, \code{"att"} and \code{"atu"} require a focal level (see
+\code{.focal_level}). See the \strong{Estimands} section for the full support matrix.
+If \code{NULL}, the estimand is inferred from the weights in \code{outcome_mod}, which
+requires weights created with a propensity weight function such as
+\code{\link[=wt_ate]{wt_ate()}}.}
 
 \item{ps_link}{A character string specifying the link function used in the
 propensity score model: \code{"logit"}, \code{"probit"}, or \code{"cloglog"}. Defaults to
@@ -100,8 +105,8 @@ statistics, and p-values remain on the log scale. Default is \code{FALSE}.}
 Methods of \code{ipw()} return an S3 object of class \code{ipw}. This return
 contract is shared by every method and has the following components:
 \describe{
-\item{\code{estimand}}{The causal estimand: one of \code{"ate"}, \code{"att"}, \code{"ato"},
-or \code{"atm"}.}
+\item{\code{estimand}}{The causal estimand: one of \code{"ate"}, \code{"att"}, \code{"atu"},
+\code{"atm"}, \code{"ato"}, or \code{"entropy"}.}
 \item{\code{ps_mod}}{The weighting object: the fitted model that produced the
 weights.}
 \item{\code{outcome_mod}}{The fitted outcome model.}
@@ -109,11 +114,16 @@ weights.}
 following columns: \code{effect} (the measure name), \code{estimate} (point
 estimate), \code{std.err} (standard error), \code{z} (z-statistic),
 \code{ci.lower} and \code{ci.upper} (confidence interval bounds),
-\code{conf.level}, and \code{p.value}.}
+\code{conf.level}, and \code{p.value}. For a categorical exposure the data frame
+also has a \code{comparison} column, placed after \code{effect}, naming the
+non-reference level and reference level of each contrast.}
 \item{\code{se_method}}{The standard error method used, \code{"mestimation"} or
 \code{"linearization"}.}
 \item{\code{fit}}{The fitted M-estimator object when \code{se_method} is
-\code{"mestimation"}, otherwise \code{NULL}.}
+\code{"mestimation"}, otherwise \code{NULL}. Calling \code{\link[stats:vcov]{stats::vcov()}} or
+\code{\link[generics:tidy]{generics::tidy()}} on this object exposes the full stacked system of
+estimating equations, including the propensity score, outcome, and
+estimand parameters.}
 }
 
 \code{as.data.frame()} returns the \code{estimates} component as a data
@@ -170,17 +180,50 @@ You are responsible for specifying and fitting both models. \code{ipw()} handles
 the variance estimation.
 }
 
+\section{Estimands}{
+The available estimands depend on the exposure type:\tabular{lccc}{
+   Estimand \tab Binary \tab Categorical \tab Continuous \cr
+   \code{"ate"} \tab yes \tab yes \tab yes \cr
+   \code{"att"} \tab yes \tab yes (needs focal level) \tab no \cr
+   \code{"atu"} \tab yes \tab yes (needs focal level) \tab no \cr
+   \code{"atm"} \tab yes \tab yes \tab no \cr
+   \code{"ato"} \tab yes \tab yes \tab no \cr
+   \code{"entropy"} \tab yes \tab yes \tab no \cr
+}
+
+
+A continuous exposure supports only \code{"ate"}; any other request errors. For a
+categorical exposure, \code{"att"} and \code{"atu"} require a focal level, supplied
+through \code{.focal_level} or taken from the weights (see the \code{multinom} method).
+}
+
 \section{Effect measures}{
-For binary outcomes (\code{\link[stats:glm]{stats::glm()}} with \code{family = binomial()}), \code{ipw()}
-returns three effect measures:
+For a binary exposure, the reported measures depend on the outcome model. A
+binary outcome (\code{\link[stats:glm]{stats::glm()}} with \code{family = binomial()}) returns three
+measures:
 \itemize{
 \item \code{rd}: Risk difference (marginal risk in exposed minus unexposed)
 \item \code{log(rr)}: Log risk ratio
 \item \code{log(or)}: Log odds ratio
 }
 
-For continuous outcomes (\code{\link[stats:lm]{stats::lm()}} or \code{\link[stats:glm]{stats::glm()}} with
-\code{family = gaussian()}), only the difference in means (\code{diff}) is returned.
+A continuous outcome (\code{\link[stats:lm]{stats::lm()}} or \code{\link[stats:glm]{stats::glm()}} with
+\code{family = gaussian()}) returns only the difference in means (\code{diff}).
+
+For a categorical exposure, the same measures are reported for each
+non-reference level against the reference (first) factor level. The estimates
+table gains a \code{comparison} column identifying each contrast (for example
+\code{"b vs a"}), so a K-level exposure produces one block of measures per
+non-reference level.
+
+For a continuous exposure, \code{ipw()} reports the single exposure coefficient of
+the weighted marginal structural outcome model. Its label follows the outcome
+link: \code{slope} for an identity link, \code{log(or)} for a logit link, and
+\code{log(rr)} for a log link. The reported coefficient is the one attached to the
+exposure term of the marginal structural model. When that term is a
+transformation of the exposure (for example an \code{I(A^2)}-only model), the
+coefficient of the transformed term is reported under the same link-based
+label.
 
 Use \code{\link[=as.data.frame]{as.data.frame()}} with \code{exponentiate = TRUE} to obtain risk ratios and
 odds ratios on their natural scale.
@@ -196,8 +239,40 @@ by estimating the propensity scores, avoiding the underestimated standard
 errors that arise from treating estimated weights as fixed. See Stefanski
 and Boos (2002) for the M-estimation framework.
 
+M-estimation standard errors are available for all exposure types: binary
+(from a \code{\link[stats:glm]{stats::glm()}} propensity score model), categorical (from a
+\code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}} or
+gaussian-family \code{\link[stats:glm]{stats::glm()}} model). The \code{atm} weight \code{pmin(e, 1 - e)} is
+not differentiable at a propensity score of \code{0.5}; deli's central finite
+difference straddles the kink there and averages the one-sided slopes. Its
+effect on the variance is negligible unless many observations sit at exactly
+\code{0.5}.
+
 Setting \code{se_method = "linearization"} instead uses the influence-function
-linearization of Kostouraki et al. (2024), available for binary exposures.
+linearization of Kostouraki et al. (2024). It is available only for a binary
+exposure and only for the \code{ate}, \code{att}, \code{ato}, and \code{atm} estimands; a
+categorical or continuous exposure, or the \code{atu} or \code{entropy} estimand,
+requires \code{se_method = "mestimation"}.
+}
+
+\section{Model requirements}{
+\code{ipw()} cannot yet account for propensity scores that were trimmed
+(\code{\link[=ps_trim]{ps_trim()}}), truncated (\code{\link[=ps_trunc]{ps_trunc()}}), or calibrated (\code{\link[=ps_calibrate]{ps_calibrate()}})
+before weighting. The stacked estimating equations rebuild the weights from
+the propensity score model on every evaluation, so a weight that is no longer
+a deterministic function of that model breaks the sandwich variance. Supplying
+weights built from a modified score errors on either standard error method;
+refit the weights from the unmodified propensity score model. An outcome model
+fit without weights also errors on either method.
+
+With the default \code{se_method = "mestimation"}, three further requirements
+apply. The outcome model weights must match the values implied by the
+propensity score model; a mismatch errors. The propensity score model must be
+fit without case weights, since the stacked propensity score equations are
+unweighted and a weighted fit would not sit at the score root. The outcome
+model must not carry an offset term, since the stacked outcome score does not
+thread an offset. None of these three checks fires on the linearization path,
+which treats the weights as fixed.
 }
 
 \examples{
@@ -229,6 +304,37 @@ dat$y_cont <- y_cont
 outcome_cont <- lm(y_cont ~ z, data = dat, weights = wts)
 ipw(ps_mod, outcome_cont)
 
+# Continuous exposure: an lm propensity model of the dose on covariates,
+# stabilized weights, and a weighted marginal structural outcome model
+a <- 0.5 + 0.8 * x1 + rnorm(n)
+y_dose <- 1 + 0.6 * a + 0.3 * x1 + rnorm(n)
+dat$a <- a
+dat$y_dose <- y_dose
+ps_cont <- lm(a ~ x1, data = dat)
+wts_cont <- wt_ate(
+  fitted(ps_cont),
+  a,
+  exposure_type = "continuous",
+  stabilize = TRUE
+)
+msm <- lm(y_dose ~ a, data = dat, weights = wts_cont)
+ipw(ps_cont, msm)
+
+\dontshow{if (requireNamespace("nnet", quietly = TRUE)) withAutoprint(\{ # examplesIf}
+# Categorical exposure: a multinomial propensity model and per-level contrasts
+set.seed(2)
+n <- 300
+x1 <- rnorm(n)
+a <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+y <- rbinom(n, 1, plogis(-0.5 + 0.4 * (a == "b") + 0.8 * (a == "c") + 0.3 * x1))
+dat_cat <- data.frame(x1, a, y)
+
+ps_cat <- nnet::multinom(a ~ x1, data = dat_cat, trace = FALSE)
+ps_mat <- predict(ps_cat, type = "probs")
+wts_cat <- wt_ate(ps_mat, dat_cat$a, exposure_type = "categorical")
+outcome_cat <- glm(y ~ a, data = dat_cat, family = binomial(), weights = wts_cat)
+ipw(ps_cat, outcome_cat)
+\dontshow{\}) # examplesIf}
 }
 \references{
 Stefanski LA, Boos DD. The calculus of M-estimation. \emph{The American
@@ -240,8 +346,8 @@ different types of propensity score weights. \emph{Statistics in Medicine}.
 2024;43(13):2672--2694. \doi{10.1002/sim.10078}
 }
 \seealso{
-\code{\link[=wt_ate]{wt_ate()}}, \code{\link[=wt_att]{wt_att()}}, \code{\link[=wt_atm]{wt_atm()}}, \code{\link[=wt_ato]{wt_ato()}} for calculating propensity
-score weights.
+\code{\link[=wt_ate]{wt_ate()}}, \code{\link[=wt_att]{wt_att()}}, \code{\link[=wt_atu]{wt_atu()}}, \code{\link[=wt_atm]{wt_atm()}}, \code{\link[=wt_ato]{wt_ato()}}, \code{\link[=wt_entropy]{wt_entropy()}}
+for calculating propensity score weights.
 
 \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}} for handling extreme propensity scores before
 weighting.
