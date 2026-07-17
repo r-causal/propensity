@@ -100,11 +100,11 @@ fit_outcome <- function(
       fmla,
       data = dat,
       family = quasibinomial(),
-      weights = as.double(wts),
+      weights = wts,
       control = glm.control(epsilon = 1e-14, maxit = 200)
     )
   } else {
-    lm(fmla, data = dat, weights = as.double(wts))
+    lm(fmla, data = dat, weights = wts)
   }
 }
 
@@ -376,7 +376,7 @@ test_that("ipw() categorical att errors when the focal level is unavailable", {
 
   expect_error(
     ipw(mods$ps_mod, mods$outcome_mod, estimand = "att"),
-    class = "propensity_error"
+    class = "propensity_focal_required_error"
   )
 })
 
@@ -450,4 +450,89 @@ test_that("as.data.frame(exponentiate = TRUE) relabels ratios per comparison", {
   # the ratio rows are relabelled while the comparison column is preserved
   expect_equal(df$effect, rep(c("rd", "rr", "or"), times = 2))
   expect_equal(df$comparison, rep(c("b vs a", "c vs a"), each = 3))
+})
+
+# ---- .data when the multinom model frame is unavailable ----------------------
+
+test_that("ipw() categorical uses .data when the ps model frame is gone", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+
+  # nnet::multinom stores no model frame, so its design must be rebuilt from the
+  # fitting call. Fit it inline against a binding that is then removed, leaving
+  # the model frame unreconstructable, and keep a copy of the data for .data.
+  # Fitting inline (not through a helper) keeps the fitting frame from retaining
+  # the data through the helper's arguments.
+  ps_mod <- nnet::multinom(
+    a ~ x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps_named <- ps_matrix_named(ps_mod, dat)
+  wts <- categorical_weights(ps_named, dat$a, "ate")
+  outcome_mod <- glm(
+    y ~ a + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  dat_copy <- dat
+  rm(dat)
+
+  # Without .data the propensity score design cannot be reconstructed, so the
+  # error names the cause and directs the user to supply .data.
+  expect_error(
+    ipw(ps_mod, outcome_mod),
+    class = "propensity_ipw_data_error"
+  )
+
+  # Supplying .data rebuilds the design and matches the default extraction path.
+  res_data <- ipw(ps_mod, outcome_mod, .data = dat_copy)
+  expect_s3_class(res_data, "ipw")
+  expect_equal(res_data$estimand, "ate")
+  ref <- plugin_categorical(
+    outcome_mod,
+    dat_copy,
+    levels(dat_copy$a),
+    "binomial"
+  )
+  expect_categorical_estimate_match(res_data$estimates, ref, tolerance = 1e-8)
+})
+
+# ---- guard against a weighted multinom --------------------------------------
+
+test_that("ipw() rejects a multinom fit with case weights", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  ps_mod_wtd <- nnet::multinom(
+    a ~ x1 + x2,
+    data = dat,
+    weights = runif(nrow(dat), 0.5, 2),
+    trace = FALSE
+  )
+  mods <- fit_categorical_models(dat, "ate")
+
+  expect_error(
+    ipw(ps_mod_wtd, mods$outcome_mod),
+    class = "propensity_ipw_ps_weights_error"
+  )
+})
+
+# ---- guard against an invalid focal level -----------------------------------
+
+test_that("ipw() rejects a focal level that is not an exposure level", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "att", focal_level = "b")
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .focal_level = "zzz"),
+    class = "propensity_focal_level_error"
+  )
 })

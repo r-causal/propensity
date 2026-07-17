@@ -399,8 +399,19 @@ print.ipw <- function(x, ...) {
   cat("\n")
 
   cat("Estimates:\n")
-  estimates <- x$estimates[-1]
-  rownames(estimates) <- x$estimates$effect
+  if ("comparison" %in% names(x$estimates)) {
+    # A categorical exposure repeats effect labels across comparisons, so the
+    # printed rows are keyed by effect and comparison together and the character
+    # comparison column is dropped from the numeric matrix printCoefmat formats.
+    estimates <- x$estimates[setdiff(
+      names(x$estimates),
+      c("effect", "comparison")
+    )]
+    rownames(estimates) <- paste(x$estimates$effect, x$estimates$comparison)
+  } else {
+    estimates <- x$estimates[-1]
+    rownames(estimates) <- x$estimates$effect
+  }
   printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 2:3, tst.ind = 4)
 
   invisible(x)
