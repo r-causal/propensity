@@ -21,6 +21,23 @@ ipw_spec_binary <- function(
   assert_class(outcome_mod, c("glm", "lm"))
   check_ipw_offset(outcome_mod, call = call)
 
+  # A binary propensity model fit with case weights would need a weighted score
+  # in the stacked system; the ee_glm ps block is unweighted, so the fitted
+  # coefficients would not sit at the score root and the estimates would drift.
+  # A glm records prior weights in prior.weights (all one when unweighted).
+  if (!is.null(ps_mod$prior.weights) && !all(ps_mod$prior.weights == 1)) {
+    abort(
+      c(
+        "{.fun ipw} does not support a propensity score model fit with case \\
+        weights.",
+        x = "{.arg ps_mod} was fit with non-unit {.arg weights}.",
+        i = "Refit {.arg ps_mod} without {.arg weights}."
+      ),
+      error_class = "propensity_ipw_ps_weights_error",
+      call = call
+    )
+  }
+
   exposure_name <- fmla_extract_left_chr(ps_mod)
   outcome_name <- fmla_extract_left_chr(outcome_mod)
 

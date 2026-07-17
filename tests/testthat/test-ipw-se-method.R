@@ -293,6 +293,32 @@ test_that("mismatched weights error on the mestimation path only", {
   )
 })
 
+test_that("a case-weighted binary propensity model errors on the mestimation path", {
+  dat <- se_method_data()
+  case_weights <- rep(c(1, 2), length.out = nrow(dat))
+  ps_mod <- glm(
+    z ~ x1 + x2,
+    data = dat,
+    family = binomial(),
+    weights = case_weights
+  )
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  # The stacked propensity score block is unweighted, so a case-weighted binary
+  # ps model would not sit at the score root and the estimates would drift. The
+  # mestimation path rejects it, matching the categorical and continuous paths.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "mestimation"),
+    class = "propensity_ipw_ps_weights_error"
+  )
+
+  # The linearization path treats the weights as fixed and does not restack the
+  # propensity score model, so a case-weighted ps model is not rejected there.
+  expect_no_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+  )
+})
+
 test_that("stabilized ATE weights work end to end on the default path", {
   withr::local_options(propensity.quiet = TRUE)
   dat <- se_method_data()
