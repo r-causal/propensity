@@ -26,6 +26,8 @@
 #'   `causal_wts` class (which includes `psw` objects).
 #' * `estimand()` and `estimand<-` get and set the estimand attribute.
 #' * `is_stabilized()` returns `TRUE` if the weights are stabilized.
+#' * `stabilization_score()` returns the user-supplied stabilization score, or
+#'   `NULL` when none was recorded.
 #'
 #' ## Arithmetic and combining
 #'
@@ -56,6 +58,8 @@
 #'   scores? Defaults to `FALSE`.
 #' @param calibrated Logical. Were the weights derived from calibrated
 #'   propensity scores? Defaults to `FALSE`.
+#' @param stabilization_score Optional numeric stabilization score to record on
+#'   the object. Defaults to `NULL`, meaning no fixed score was supplied.
 #' @param wt A `psw` or `causal_wts` object.
 #' @param ... Additional attributes stored on the object (developer use only).
 #'
@@ -64,6 +68,7 @@
 #' * `is_psw()`, `is_causal_wt()`, `is_stabilized()`: A single logical value.
 #' * `estimand()`: A character string, or `NULL` if no estimand is set.
 #' * `estimand<-`: The modified `psw` object (called for its side effect).
+#' * `stabilization_score()`: A numeric value, or `NULL` if none was recorded.
 #'
 #' @seealso
 #' [wt_ate()], [wt_att()], [wt_atu()], [wt_atm()], [wt_ato()] for
@@ -111,6 +116,7 @@ new_psw <- function(
   trimmed = FALSE,
   truncated = FALSE,
   calibrated = FALSE,
+  stabilization_score = NULL,
   ...
 ) {
   vec_assert(x, ptype = double())
@@ -123,6 +129,7 @@ new_psw <- function(
     trimmed = trimmed,
     truncated = truncated,
     calibrated = calibrated,
+    stabilization_score = stabilization_score,
     ...,
     class = c("psw", "causal_wts"),
     inherit_base_type = TRUE
@@ -138,7 +145,8 @@ psw <- function(
   stabilized = FALSE,
   trimmed = FALSE,
   truncated = FALSE,
-  calibrated = FALSE
+  calibrated = FALSE,
+  stabilization_score = NULL
 ) {
   x <- vec_cast(x, to = double())
   attributes(x) <- NULL
@@ -148,7 +156,8 @@ psw <- function(
     stabilized = stabilized,
     trimmed = trimmed,
     truncated = truncated,
-    calibrated = calibrated
+    calibrated = calibrated,
+    stabilization_score = stabilization_score
   )
 }
 
@@ -162,6 +171,12 @@ is_psw <- function(x) {
 #' @export
 is_stabilized <- function(wt) {
   isTRUE(attr(wt, "stabilized"))
+}
+
+#' @rdname psw
+#' @export
+stabilization_score <- function(wt) {
+  attr(wt, "stabilization_score")
 }
 
 #' @export
@@ -461,7 +476,8 @@ vec_restore.psw <- function(x, to, ...) {
     stabilized = is_stabilized(to),
     trimmed = is_ps_trimmed(to),
     truncated = is_ps_truncated(to),
-    calibrated = isTRUE(attr(to, "calibrated"))
+    calibrated = isTRUE(attr(to, "calibrated")),
+    stabilization_score = stabilization_score(to)
   )
 }
 
@@ -489,6 +505,12 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
     return(double())
   }
 
+  # Check stabilization score
+  if (!identical(stabilization_score(x), stabilization_score(y))) {
+    warn_incompatible_metadata(x, y, "different stabilization scores")
+    return(double())
+  }
+
   # Check trimmed status
   if (!identical(is_ps_trimmed(x), is_ps_trimmed(y))) {
     warn_incompatible_metadata(x, y, "different trimming status")
@@ -513,7 +535,8 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
     stabilized = is_stabilized(x),
     trimmed = is_ps_trimmed(x),
     truncated = is_ps_truncated(x),
-    calibrated = is_ps_calibrated(x)
+    calibrated = is_ps_calibrated(x),
+    stabilization_score = stabilization_score(x)
   )
 }
 

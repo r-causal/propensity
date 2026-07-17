@@ -334,8 +334,16 @@ wt_ate.numeric <- function(
     abort_unsupported(exposure_type, "ATE")
   }
 
-  # Create psw object with appropriate attributes
-  psw_obj <- psw(wts, "ate", stabilized = isTRUE(stabilize))
+  # Create psw object with appropriate attributes. The stabilization score is
+  # only recorded when the user supplied one and stabilization is on; the
+  # default marginal stabilizer stores nothing so downstream code can tell the
+  # cases apart.
+  psw_obj <- psw(
+    wts,
+    "ate",
+    stabilized = isTRUE(stabilize),
+    stabilization_score = if (isTRUE(stabilize)) stabilization_score else NULL
+  )
 
   # Preserve categorical attributes if they exist
   preserve_categorical_attrs(psw_obj, wts, exposure_type)

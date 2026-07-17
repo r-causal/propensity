@@ -5,6 +5,7 @@
 \alias{new_psw}
 \alias{is_psw}
 \alias{is_stabilized}
+\alias{stabilization_score}
 \alias{as_psw}
 \title{Propensity Score Weight Vectors}
 \usage{
@@ -15,6 +16,7 @@ new_psw(
   trimmed = FALSE,
   truncated = FALSE,
   calibrated = FALSE,
+  stabilization_score = NULL,
   ...
 )
 
@@ -24,12 +26,15 @@ psw(
   stabilized = FALSE,
   trimmed = FALSE,
   truncated = FALSE,
-  calibrated = FALSE
+  calibrated = FALSE,
+  stabilization_score = NULL
 )
 
 is_psw(x)
 
 is_stabilized(wt)
+
+stabilization_score(wt)
 
 as_psw(x, estimand = NULL)
 }
@@ -52,6 +57,9 @@ scores? Defaults to \code{FALSE}.}
 \item{calibrated}{Logical. Were the weights derived from calibrated
 propensity scores? Defaults to \code{FALSE}.}
 
+\item{stabilization_score}{Optional numeric stabilization score to record on
+the object. Defaults to \code{NULL}, meaning no fixed score was supplied.}
+
 \item{...}{Additional attributes stored on the object (developer use only).}
 
 \item{wt}{A \code{psw} or \code{causal_wts} object.}
@@ -62,6 +70,7 @@ propensity scores? Defaults to \code{FALSE}.}
 \item \code{is_psw()}, \code{is_causal_wt()}, \code{is_stabilized()}: A single logical value.
 \item \code{estimand()}: A character string, or \code{NULL} if no estimand is set.
 \item \verb{estimand<-}: The modified \code{psw} object (called for its side effect).
+\item \code{stabilization_score()}: A numeric value, or \code{NULL} if none was recorded.
 }
 }
 \description{
@@ -91,6 +100,8 @@ assumes \code{x} is already a double vector and performs minimal validation.
 \code{causal_wts} class (which includes \code{psw} objects).
 \item \code{estimand()} and \verb{estimand<-} get and set the estimand attribute.
 \item \code{is_stabilized()} returns \code{TRUE} if the weights are stabilized.
+\item \code{stabilization_score()} returns the user-supplied stabilization score, or
+\code{NULL} when none was recorded.
 }
 }
 
