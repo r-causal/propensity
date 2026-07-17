@@ -231,6 +231,133 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
   expect_true(is_ps_truncated(wts_cens_trunc))
 })
 
+test_that("wt_ate stores a user-supplied stabilization_score", {
+  ps <- c(0.2, 0.4, 0.6, 0.8, 0.3, 0.7)
+  exposure <- c(1, 0, 1, 0, 1, 0)
+  score <- 0.42
+
+  w <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+
+  expect_true(is_stabilized(w))
+  expect_equal(attr(w, "stabilization_score"), score)
+  expect_equal(stabilization_score(w), score)
+})
+
+test_that("wt_ate stores a stabilization_score for continuous exposures", {
+  denom_model <- lm(mpg ~ gear + am + carb, data = mtcars)
+  score <- 0.7
+
+  w <- wt_ate(
+    predict(denom_model),
+    .exposure = mtcars$mpg,
+    .sigma = influence(denom_model)$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+
+  expect_true(is_stabilized(w))
+  expect_equal(attr(w, "stabilization_score"), score)
+  expect_equal(stabilization_score(w), score)
+})
+
+test_that("wt_ate records no stabilization_score under default stabilization", {
+  ps <- c(0.2, 0.4, 0.6, 0.8, 0.3, 0.7)
+  exposure <- c(1, 0, 1, 0, 1, 0)
+
+  # Default marginal stabilizer: no fixed score is supplied, so the M-estimation
+  # path must be able to tell that none was stored.
+  w_default <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE
+  )
+  expect_true(is_stabilized(w_default))
+  expect_null(attr(w_default, "stabilization_score"))
+  expect_null(stabilization_score(w_default))
+
+  # Unstabilized weights never carry a stabilization score.
+  w_none <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = FALSE
+  )
+  expect_false(is_stabilized(w_none))
+  expect_null(attr(w_none, "stabilization_score"))
+  expect_null(stabilization_score(w_none))
+})
+
+test_that("wt_cens stores a user-supplied stabilization_score", {
+  ps <- c(0.2, 0.4, 0.6, 0.8, 0.3, 0.7)
+  exposure <- c(1, 0, 1, 0, 1, 0)
+  score <- 0.55
+
+  w <- wt_cens(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+
+  expect_equal(estimand(w), "uncensored")
+  expect_true(is_stabilized(w))
+  expect_equal(attr(w, "stabilization_score"), score)
+  expect_equal(stabilization_score(w), score)
+})
+
+test_that("wt_cens records no stabilization_score under default stabilization", {
+  ps <- c(0.2, 0.4, 0.6, 0.8, 0.3, 0.7)
+  exposure <- c(1, 0, 1, 0, 1, 0)
+
+  w_default <- wt_cens(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE
+  )
+  expect_true(is_stabilized(w_default))
+  expect_null(attr(w_default, "stabilization_score"))
+  expect_null(stabilization_score(w_default))
+
+  w_none <- wt_cens(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = FALSE
+  )
+  expect_false(is_stabilized(w_none))
+  expect_null(attr(w_none, "stabilization_score"))
+  expect_null(stabilization_score(w_none))
+})
+
+test_that("stabilization_score survives subsetting of psw", {
+  ps <- c(0.2, 0.4, 0.6, 0.8, 0.3, 0.7)
+  exposure <- c(1, 0, 1, 0, 1, 0)
+  score <- 0.42
+
+  w <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+
+  w_sub <- w[1:3]
+  expect_true(is_stabilized(w_sub))
+  expect_equal(attr(w_sub, "stabilization_score"), score)
+  expect_equal(stabilization_score(w_sub), score)
+})
+
 test_that("ATE works for binary cases", {
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
