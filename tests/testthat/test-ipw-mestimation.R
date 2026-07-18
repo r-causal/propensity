@@ -52,7 +52,8 @@ fit_binary_models <- function(
   ps_link = "logit",
   outcome_family = "binomial",
   stabilize = FALSE,
-  strip_weights = FALSE
+  strip_weights = FALSE,
+  adjust = TRUE
 ) {
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial(link = ps_link))
   wt_fun <- switch(
@@ -75,7 +76,8 @@ fit_binary_models <- function(
   model_wts <- if (strip_weights) as.double(wts) else wts
 
   outcome_var <- if (outcome_family == "binomial") "y" else "yc"
-  out_fmla <- stats::reformulate(c("z", "x1"), response = outcome_var)
+  rhs <- if (adjust) c("z", "x1") else "z"
+  out_fmla <- stats::reformulate(rhs, response = outcome_var)
   if (outcome_family == "binomial") {
     # Tighten IRLS convergence so the reference outcome model sits at its MLE
     # to well below the 1e-8 point-estimate comparison tolerance. The default
@@ -125,47 +127,33 @@ expect_estimate_match <- function(estimates, reference, tolerance = 1e-8) {
   expect_equal(got, unname(reference), tolerance = tolerance)
 }
 
-# ---- point-estimate parity with ipw() ---------------------------------------
+# ---- point-estimate parity with the g-computation plug-in -------------------
 
-test_that("ipw_mestimation point estimates match ipw() for binomial outcomes", {
+test_that("ipw_mestimation point estimates match the g-computation plug-in for binomial outcomes", {
   skip_if_not_installed("deli")
   for (est in c("ate", "att", "ato", "atm")) {
     dat <- sim_binary()
     mods <- fit_binary_models(dat, est)
-    # pin the linearization comparator so this stays a cross-method check once
-    # mestimation becomes the ipw() default in a later issue
-    ref <- ipw(
-      mods$ps_mod,
-      mods$outcome_mod,
-      se_method = "linearization"
-    )$estimates
+    # The g-computation plug-in is the point-estimate oracle. Both standard error
+    # methods report these same g-computation contrasts, so the plug-in pins the
+    # engine estimates without routing through the linearization path, which is
+    # restricted to exposure-only outcome models.
+    ref <- plugin_contrasts(mods$outcome_mod, dat)
     spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
     got <- ipw_mestimation(spec)$estimates
-    expect_estimate_match(
-      got,
-      stats::setNames(ref$estimate, ref$effect),
-      tolerance = 1e-8
-    )
+    expect_estimate_match(got, ref, tolerance = 1e-8)
   }
 })
 
-test_that("ipw_mestimation point estimates match ipw() for gaussian outcomes", {
+test_that("ipw_mestimation point estimates match the g-computation plug-in for gaussian outcomes", {
   skip_if_not_installed("deli")
   for (est in c("ate", "att", "ato", "atm")) {
     dat <- sim_binary()
     mods <- fit_binary_models(dat, est, outcome_family = "gaussian")
-    ref <- ipw(
-      mods$ps_mod,
-      mods$outcome_mod,
-      se_method = "linearization"
-    )$estimates
+    ref <- plugin_contrasts(mods$outcome_mod, dat, outcome_family = "gaussian")
     spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
     got <- ipw_mestimation(spec)$estimates
-    expect_estimate_match(
-      got,
-      stats::setNames(ref$estimate, ref$effect),
-      tolerance = 1e-8
-    )
+    expect_estimate_match(got, ref, tolerance = 1e-8)
   }
 })
 
@@ -178,7 +166,8 @@ test_that("ipw_mestimation point estimates match ipw() for gaussian outcomes", {
 # the att log risk ratio sits around 2 percent at this sample size (the
 # M-estimation value matches a nonparametric bootstrap; the linearization is the
 # looser approximation). A 3 percent band keeps this a meaningful cross-method
-# sanity check while accommodating that inherent gap.
+# sanity check while accommodating that inherent gap. The outcome model is fit on
+# the exposure alone, the domain where the linearization comparator is valid.
 test_that("ipw_mestimation std.err matches linearization within 3 percent", {
   skip_if_not_installed("deli")
   configs <- list(
@@ -196,7 +185,8 @@ test_that("ipw_mestimation std.err matches linearization within 3 percent", {
       dat,
       cfg$est,
       ps_link = cfg$link,
-      outcome_family = cfg$family
+      outcome_family = cfg$family,
+      adjust = FALSE
     )
     ref <- ipw(
       mods$ps_mod,

@@ -46,6 +46,8 @@
 #'   equations and returns the empirical sandwich variance. `"linearization"`
 #'   uses the influence-function linearization of Kostouraki et al. (2024). Both
 #'   account for the uncertainty of estimating the propensity scores.
+#'   `"linearization"` supports only an outcome model of the exposure alone; a
+#'   covariate-adjusted outcome model requires `"mestimation"`.
 #' @param ... Additional arguments. The `as.data.frame()` method passes these
 #'   to [base::as.data.frame()]; the estimation methods do not currently use
 #'   them and accept `...` for consistency with the `ipw()` generic.
@@ -136,7 +138,14 @@
 #' linearization of Kostouraki et al. (2024). It is available only for a binary
 #' exposure and only for the `ate`, `att`, `ato`, and `atm` estimands; a
 #' categorical or continuous exposure, or the `atu` or `entropy` estimand,
-#' requires `se_method = "mestimation"`.
+#' requires `se_method = "mestimation"`. The linearization also supports only an
+#' outcome model whose formula contains the exposure alone. Its point estimates
+#' come from g-computation on the fitted outcome model, while its influence
+#' functions are those of the Hajek weighted-mean estimator; the two agree only
+#' for an exposure-only outcome model. A covariate-adjusted outcome model (any
+#' term beyond the exposure, including covariates, interactions, or transformed
+#' terms) errors on the linearization path and requires
+#' `se_method = "mestimation"`, which stacks adjusted outcome models correctly.
 #'
 #' # Model requirements
 #'
@@ -147,16 +156,18 @@
 #' a deterministic function of that model breaks the sandwich variance. Supplying
 #' weights built from a modified score errors on either standard error method;
 #' refit the weights from the unmodified propensity score model. An outcome model
-#' fit without weights also errors on either method.
+#' fit without weights also errors on either method. The outcome model must not
+#' carry an offset term on either method, since neither the stacked outcome score
+#' nor the linearization influence functions thread an offset; supplying one
+#' errors.
 #'
-#' With the default `se_method = "mestimation"`, three further requirements
+#' With the default `se_method = "mestimation"`, two further requirements
 #' apply. The outcome model weights must match the values implied by the
 #' propensity score model; a mismatch errors. The propensity score model must be
 #' fit without case weights, since the stacked propensity score equations are
-#' unweighted and a weighted fit would not sit at the score root. The outcome
-#' model must not carry an offset term, since the stacked outcome score does not
-#' thread an offset. None of these three checks fires on the linearization path,
-#' which treats the weights as fixed.
+#' unweighted and a weighted fit would not sit at the score root. Neither of
+#' these two checks fires on the linearization path, which treats the weights as
+#' fixed.
 #'
 #' @references
 #' Stefanski LA, Boos DD. The calculus of M-estimation. *The American
@@ -319,6 +330,9 @@ ipw.glm <- function(
   weight_matrix <- model.matrix(ps_mod)
   exposure_name <- fmla_extract_left_chr(ps_mod)
   outcome_name <- fmla_extract_left_chr(outcome_mod)
+
+  check_ipw_offset(outcome_mod)
+  check_ipw_linearization_outcome(outcome_mod, exposure_name)
 
   if (is.null(.data)) {
     exposure <- fmla_extract_left_vctr(ps_mod)
@@ -539,6 +553,41 @@ check_ipw_offset <- function(outcome_mod, call = rlang::caller_env()) {
         i = "Refit {.arg outcome_mod} without the offset."
       ),
       error_class = "propensity_ipw_offset_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# Restrict the linearization path to an outcome model of the exposure alone. Its
+# point estimates come from g-computation on the fitted weighted outcome model,
+# but the influence functions in linearize_variables_for_wts and correct_for_ps
+# are those of the Hajek weighted-mean estimator. The two agree only when the
+# outcome model regresses on the exposure by itself; any covariate, interaction,
+# or transformed term makes the reported standard error that of a different
+# estimator. The exposure-only condition is that the outcome model's term labels
+# are exactly the exposure name. Detect an adjusted outcome model here and direct
+# the user to the mestimation path, which stacks adjusted outcome models
+# correctly. Applies only to the linearization path.
+check_ipw_linearization_outcome <- function(
+  outcome_mod,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  term_labels <- attr(stats::terms(outcome_mod), "term.labels")
+
+  if (!identical(term_labels, exposure_name)) {
+    abort(
+      c(
+        "{.fun ipw} supports {.val linearization} standard errors only for an \\
+        outcome model of the exposure alone.",
+        x = "{.arg outcome_mod} is adjusted for terms beyond \\
+        {.val {exposure_name}}.",
+        i = "Use {.code se_method = \"mestimation\"} for a covariate-adjusted \\
+        outcome model."
+      ),
+      error_class = "propensity_method_error",
       call = call
     )
   }

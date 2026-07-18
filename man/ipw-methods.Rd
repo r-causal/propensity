@@ -85,7 +85,9 @@ the link used by \code{ps_mod}.}
 default) stacks the propensity score, outcome, and estimand estimating
 equations and returns the empirical sandwich variance. \code{"linearization"}
 uses the influence-function linearization of Kostouraki et al. (2024). Both
-account for the uncertainty of estimating the propensity scores.}
+account for the uncertainty of estimating the propensity scores.
+\code{"linearization"} supports only an outcome model of the exposure alone; a
+covariate-adjusted outcome model requires \code{"mestimation"}.}
 
 \item{.focal_level}{For the categorical (\code{multinom}) method with the \code{att}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
@@ -252,7 +254,14 @@ Setting \code{se_method = "linearization"} instead uses the influence-function
 linearization of Kostouraki et al. (2024). It is available only for a binary
 exposure and only for the \code{ate}, \code{att}, \code{ato}, and \code{atm} estimands; a
 categorical or continuous exposure, or the \code{atu} or \code{entropy} estimand,
-requires \code{se_method = "mestimation"}.
+requires \code{se_method = "mestimation"}. The linearization also supports only an
+outcome model whose formula contains the exposure alone. Its point estimates
+come from g-computation on the fitted outcome model, while its influence
+functions are those of the Hajek weighted-mean estimator; the two agree only
+for an exposure-only outcome model. A covariate-adjusted outcome model (any
+term beyond the exposure, including covariates, interactions, or transformed
+terms) errors on the linearization path and requires
+\code{se_method = "mestimation"}, which stacks adjusted outcome models correctly.
 }
 
 \section{Model requirements}{
@@ -263,16 +272,18 @@ the propensity score model on every evaluation, so a weight that is no longer
 a deterministic function of that model breaks the sandwich variance. Supplying
 weights built from a modified score errors on either standard error method;
 refit the weights from the unmodified propensity score model. An outcome model
-fit without weights also errors on either method.
+fit without weights also errors on either method. The outcome model must not
+carry an offset term on either method, since neither the stacked outcome score
+nor the linearization influence functions thread an offset; supplying one
+errors.
 
-With the default \code{se_method = "mestimation"}, three further requirements
+With the default \code{se_method = "mestimation"}, two further requirements
 apply. The outcome model weights must match the values implied by the
 propensity score model; a mismatch errors. The propensity score model must be
 fit without case weights, since the stacked propensity score equations are
-unweighted and a weighted fit would not sit at the score root. The outcome
-model must not carry an offset term, since the stacked outcome score does not
-thread an offset. None of these three checks fires on the linearization path,
-which treats the weights as fixed.
+unweighted and a weighted fit would not sit at the score root. Neither of
+these two checks fires on the linearization path, which treats the weights as
+fixed.
 }
 
 \examples{

@@ -69,9 +69,9 @@ se_method_outcome_calibrated <- function(dat, ps_mod) {
   glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 }
 
-# Outcome model with an offset term. The offset genuinely shifts the fit
-# (off = 0.3 * x1), so dropping the guard would let ipw() converge to a root
-# that disagrees with the fitted model.
+# Outcome model with an offset term supplied through the formula. The offset
+# genuinely shifts the fit (off = 0.3 * x1), so dropping the guard would let
+# ipw() converge to a root that disagrees with the fitted model.
 se_method_outcome_offset <- function(dat, ps_mod) {
   ps <- predict(ps_mod, type = "response")
   wts <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
@@ -80,6 +80,21 @@ se_method_outcome_offset <- function(dat, ps_mod) {
     data = dat,
     family = quasibinomial(),
     weights = wts
+  )
+}
+
+# The same offset supplied through the `offset` argument rather than the
+# formula. terms() stores it separately, so its term labels are the exposure
+# alone; only the model-frame offset column reveals it.
+se_method_outcome_offset_arg <- function(dat, ps_mod) {
+  ps <- predict(ps_mod, type = "response")
+  wts <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+  glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    offset = off
   )
 }
 
@@ -465,7 +480,6 @@ test_that("a covariate-adjusted outcome model still works on the mestimation pat
 })
 
 test_that("a covariate-adjusted linear outcome model errors on the linearization path", {
-  skip("pending linearization outcome-model restriction")
   dat <- se_method_data_cont()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_adjusted_lm(dat, ps_mod)
@@ -478,7 +492,6 @@ test_that("a covariate-adjusted linear outcome model errors on the linearization
 })
 
 test_that("a covariate-adjusted linear outcome model errors on the linearization path with .data", {
-  skip("pending linearization outcome-model restriction")
   dat <- se_method_data_cont()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_adjusted_lm(dat, ps_mod)
@@ -491,7 +504,6 @@ test_that("a covariate-adjusted linear outcome model errors on the linearization
 })
 
 test_that("a covariate-adjusted quasibinomial outcome model errors on the linearization path", {
-  skip("pending linearization outcome-model restriction")
   dat <- se_method_data_cont()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_adjusted_glm(dat, ps_mod)
@@ -504,7 +516,6 @@ test_that("a covariate-adjusted quasibinomial outcome model errors on the linear
 })
 
 test_that("an exposure-covariate interaction outcome model errors on the linearization path", {
-  skip("pending linearization outcome-model restriction")
   dat <- se_method_data_cont()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_interaction_lm(dat, ps_mod)
@@ -517,7 +528,6 @@ test_that("an exposure-covariate interaction outcome model errors on the lineari
 })
 
 test_that("an outcome model whose every term involves the exposure still errors when adjusted", {
-  skip("pending linearization outcome-model restriction")
   dat <- se_method_data_cont()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_exposure_interaction_lm(dat, ps_mod)
@@ -526,5 +536,35 @@ test_that("an outcome model whose every term involves the exposure still errors 
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
     class = "propensity_method_error",
     regexp = "mestimation"
+  )
+})
+
+test_that("a formula-offset outcome model errors on the linearization path", {
+  dat <- se_method_data()
+  dat$off <- 0.3 * dat$x1
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_offset(dat, ps_mod)
+
+  # The offset shifts the g-computation point estimates while the linearization
+  # influence functions know nothing about it, so reject it before estimating.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_ipw_offset_error",
+    regexp = "offset"
+  )
+})
+
+test_that("an offset-argument outcome model errors on the linearization path", {
+  dat <- se_method_data()
+  dat$off <- 0.3 * dat$x1
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_offset_arg(dat, ps_mod)
+
+  # An offset supplied through the `offset` argument is invisible to the term
+  # labels, so the guard must inspect the model frame to catch this route.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_ipw_offset_error",
+    regexp = "offset"
   )
 })
