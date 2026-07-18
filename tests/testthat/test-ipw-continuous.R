@@ -406,3 +406,101 @@ test_that("ipw_spec_continuous rejects an unsupported outcome family", {
     class = "propensity_ipw_family_error"
   )
 })
+
+# ---- continuous-path link validation ----------------------------------------
+#
+# Two continuous-path inputs fail late or dishonestly today. A gaussian
+# propensity model with a non-identity link reconstructs its linear predictor as
+# the fitted mean, so the weights the user built from fitted() no longer match
+# and the misleading weights-mismatch error blames the weights instead of the
+# unsupported link. A probit marginal structural model is accepted by the family
+# check but has no continuous effect label, so it errors late with a terse
+# internal message rather than fast at entry listing the supported links. These
+# tests pin an honest, fast, classed error; they cannot pass until the
+# continuous-path link validation exists. (A gaussian-identity glm ps model,
+# already covered by the gaussian-glm routing test above, and a logit msm,
+# covered by the effect-label test above, must keep working; the log-link msm
+# below adds the one supported msm link not otherwise exercised.)
+
+test_that("ipw() rejects a non-identity link on the continuous propensity model", {
+  skip("pending continuous-path link validation")
+  dat <- sim_continuous()
+  withr::local_seed(7)
+  dat$Apos <- exp(0.3 + 0.4 * dat$x1 - 0.2 * dat$x2 + 0.3 * rnorm(nrow(dat)))
+  dat$ypos <- 1 + 0.6 * dat$Apos + 0.5 * dat$x1 + rnorm(nrow(dat))
+  ps_mod <- suppressWarnings(
+    glm(Apos ~ x1 + x2, data = dat, family = gaussian(link = "log"))
+  )
+  wts <- continuous_weights(fitted(ps_mod), dat$Apos)
+  msm <- lm(ypos ~ Apos, data = dat, weights = wts)
+
+  # class propensity_ipw_link_error is the natural fit; the implementer may
+  # adjust it, but the error must name the unsupported propensity model link
+  # rather than blame the outcome model weights.
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_link_error"
+  )
+})
+
+test_that("the continuous propensity-link error names the unsupported link", {
+  skip("pending continuous-path link validation")
+  dat <- sim_continuous()
+  withr::local_seed(7)
+  dat$Apos <- exp(0.3 + 0.4 * dat$x1 - 0.2 * dat$x2 + 0.3 * rnorm(nrow(dat)))
+  dat$ypos <- 1 + 0.6 * dat$Apos + 0.5 * dat$x1 + rnorm(nrow(dat))
+  ps_mod <- suppressWarnings(
+    glm(Apos ~ x1 + x2, data = dat, family = gaussian(link = "log"))
+  )
+  wts <- continuous_weights(fitted(ps_mod), dat$Apos)
+  msm <- lm(ypos ~ Apos, data = dat, weights = wts)
+
+  expect_snapshot(error = TRUE, ipw(ps_mod, msm))
+})
+
+test_that("ipw() rejects a non-identity link on the continuous marginal structural model", {
+  skip("pending continuous-path link validation")
+  dat <- sim_continuous()
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  wts <- continuous_weights(fitted(ps_mod), dat$A)
+  msm <- suppressWarnings(
+    glm(yb ~ A, data = dat, family = binomial(link = "probit"), weights = wts)
+  )
+
+  # The continuous effect label supports only identity, logit, and log. A probit
+  # msm must fail fast at entry with a message listing the supported links, not
+  # the terse late "Unsupported outcome link" message it produces today.
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_link_error",
+    regexp = "identity"
+  )
+})
+
+test_that("ipw() continuous works with a log-link marginal structural model", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  # Low baseline risk and a weak dose effect keep the log-binomial fitted
+  # probabilities below 1 so the marginal structural model converges.
+  withr::local_seed(11)
+  dat$ylow <- rbinom(
+    nrow(dat),
+    1,
+    exp(-1.6 + 0.15 * dat$A + 0.1 * dat$x1)
+  )
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  wts <- continuous_weights(fitted(ps_mod), dat$A)
+  msm <- suppressWarnings(glm(
+    ylow ~ A,
+    data = dat,
+    family = binomial(link = "log"),
+    weights = wts,
+    start = c(-1.6, 0.15),
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  ))
+
+  res <- ipw(ps_mod, msm)
+  expect_equal(res$estimates$effect, "log(rr)")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
