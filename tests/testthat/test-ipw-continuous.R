@@ -385,3 +385,25 @@ test_that("ipw() rejects linearization for a continuous exposure", {
     class = "propensity_method_error"
   )
 })
+
+# ---- outcome-family validation ----------------------------------------------
+
+test_that("ipw_spec_continuous rejects an unsupported outcome family", {
+  skip("pending outcome family validation")
+  dat <- sim_continuous()
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+
+  withr::local_seed(1)
+  dat$ycount <- rpois(nrow(dat), exp(0.1 + 0.2 * dat$A))
+  outcome_mod <- suppressWarnings(
+    glm(ycount ~ A, data = dat, family = poisson(), weights = wts)
+  )
+
+  # A poisson marginal structural model is silently stacked as a binomial score
+  # today.
+  expect_error(
+    ipw_spec_continuous(ps_mod, outcome_mod),
+    class = "propensity_ipw_family_error"
+  )
+})

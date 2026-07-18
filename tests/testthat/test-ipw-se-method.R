@@ -764,3 +764,27 @@ test_that("probit linearization RD SE agrees with mestimation", {
   # percent off, so this band separates the two.
   expect_lt(abs(lin_se - mest_se) / mest_se, 0.005)
 })
+
+# ---- outcome-family validation on the linearization path --------------------
+
+test_that("the linearization path rejects an unsupported outcome family", {
+  skip("pending outcome family validation")
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  ps <- predict(ps_mod, type = "response")
+  wts <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+
+  # A low-rate count outcome; the marginal outcome model passes the exposure-only
+  # guard, so the family rejection must fire even on a marginal model. Today the
+  # path returns a finite but meaningless log(or) from count-scale marginal means.
+  withr::local_seed(1)
+  dat$ycount <- rpois(nrow(dat), exp(-0.7 + 0.3 * dat$z + 0.2 * dat$x1))
+  outcome_mod <- suppressWarnings(
+    glm(ycount ~ z, data = dat, family = quasipoisson(), weights = wts)
+  )
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_ipw_family_error"
+  )
+})

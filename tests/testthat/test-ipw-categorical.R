@@ -581,3 +581,26 @@ test_that("ipw() rejects a focal level that is not an exposure level", {
     class = "propensity_focal_level_error"
   )
 })
+
+# ---- outcome-family validation ----------------------------------------------
+
+test_that("ipw_spec_categorical rejects an unsupported outcome family", {
+  skip("pending outcome family validation")
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+  ps_mod <- fit_ps_multinom(dat)
+  ps_named <- ps_matrix_named(ps_mod, dat)
+  wts <- categorical_weights(ps_named, dat$a, "ate")
+
+  withr::local_seed(1)
+  dat$ycount <- rpois(nrow(dat), exp(0.1 + 0.3 * (dat$a == "c") + 0.2 * dat$x1))
+  outcome_mod <- suppressWarnings(
+    glm(ycount ~ a, data = dat, family = poisson(), weights = wts)
+  )
+
+  # A poisson outcome model is silently stacked as a binomial score today.
+  expect_error(
+    ipw_spec_categorical(ps_mod, outcome_mod),
+    class = "propensity_ipw_family_error"
+  )
+})

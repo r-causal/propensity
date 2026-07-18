@@ -711,3 +711,95 @@ test_that("mestimation att SE matches a nonparametric bootstrap for an adjusted 
   expect_lt(abs(eng_diff - mean(boot)), 3 * boot_se)
   expect_lt(abs(eng_se - boot_se) / boot_se, 0.15)
 })
+
+# ---- outcome-family validation ----------------------------------------------
+#
+# The spec constructors classify the outcome model with a two-way branch:
+# gaussian/identity for an lm or gaussian glm, binomial/<link> otherwise. That
+# silently misclassifies poisson, quasipoisson, Gamma, and inverse-gaussian
+# outcome models as a binomial score, and ignores the link of a gaussian glm
+# (gaussian(link = "log") is stacked as identity). Only lm, gaussian-identity
+# glm, and binomial or quasibinomial glm are supported. The rejection tests pin
+# a classed error naming the unsupported family or link; they cannot pass until
+# the shared validator exists.
+
+# Data with count and positive-continuous outcomes for the family tests. The
+# count rate is low so the linearization marginal means stay below 1.
+family_data <- function(seed = 2024, n = 500) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.4)
+  z <- rbinom(n, 1, plogis(0.3 * x1 - 0.6 * x2))
+  y <- rbinom(n, 1, plogis(-0.4 + 1.1 * z + 0.5 * x1 - 0.3 * x2))
+  ycount <- rpois(n, exp(-0.6 + 0.3 * z + 0.2 * x1))
+  ypos <- exp(0.2 + 0.3 * z + 0.2 * x1 + 0.3 * rnorm(n))
+  data.frame(x1, x2, z, y, ycount, ypos)
+}
+
+# Logit ps model and an ATE-weighted outcome model of the requested family. The
+# outcome fit is silenced because a binomial fit on fractional weights warns
+# about non-integer successes; the family, not the fit, is under test.
+family_binary_models <- function(dat, family, response) {
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  ps <- predict(ps_mod, type = "response")
+  wts <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+  fmla <- stats::reformulate("z", response)
+  outcome_mod <- if (identical(family, "lm")) {
+    lm(fmla, data = dat, weights = wts)
+  } else {
+    suppressWarnings(glm(fmla, data = dat, family = family, weights = wts))
+  }
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod)
+}
+
+test_that("ipw_spec_binary rejects unsupported outcome families and links", {
+  skip("pending outcome family validation")
+  dat <- family_data()
+  cases <- list(
+    list(family = poisson(), response = "ycount"),
+    list(family = quasipoisson(), response = "ycount"),
+    list(family = Gamma(), response = "ypos"),
+    list(family = gaussian(link = "log"), response = "ypos")
+  )
+  for (case in cases) {
+    mods <- family_binary_models(dat, case$family, case$response)
+    expect_error(
+      ipw_spec_binary(mods$ps_mod, mods$outcome_mod),
+      class = "propensity_ipw_family_error"
+    )
+  }
+})
+
+test_that("ipw_spec_binary error names the unsupported outcome family", {
+  skip("pending outcome family validation")
+  dat <- family_data()
+  mods <- family_binary_models(dat, poisson(), "ycount")
+  expect_snapshot(
+    error = TRUE,
+    ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  )
+})
+
+test_that("ipw_spec_binary accepts lm, gaussian-identity, binomial, and quasibinomial outcomes", {
+  dat <- family_data()
+
+  m_lm <- family_binary_models(dat, "lm", "y")
+  spec_lm <- ipw_spec_binary(m_lm$ps_mod, m_lm$outcome_mod)
+  expect_equal(spec_lm$outcome$family, "gaussian")
+  expect_equal(spec_lm$outcome$link, "identity")
+
+  m_g <- family_binary_models(dat, gaussian(), "y")
+  spec_g <- ipw_spec_binary(m_g$ps_mod, m_g$outcome_mod)
+  expect_equal(spec_g$outcome$family, "gaussian")
+  expect_equal(spec_g$outcome$link, "identity")
+
+  m_b <- family_binary_models(dat, binomial(), "y")
+  spec_b <- ipw_spec_binary(m_b$ps_mod, m_b$outcome_mod)
+  expect_equal(spec_b$outcome$family, "binomial")
+  expect_equal(spec_b$outcome$link, "logit")
+
+  m_qb <- family_binary_models(dat, quasibinomial(), "y")
+  spec_qb <- ipw_spec_binary(m_qb$ps_mod, m_qb$outcome_mod)
+  expect_equal(spec_qb$outcome$family, "binomial")
+  expect_equal(spec_qb$outcome$link, "logit")
+})
