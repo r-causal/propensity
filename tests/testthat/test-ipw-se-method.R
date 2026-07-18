@@ -112,6 +112,58 @@ estimates_columns <- c(
   "p.value"
 )
 
+# Seeded fixture with an added continuous outcome, so the linear-model cases
+# mirror the covariate-adjusted repro. The continuous outcome is generated
+# deterministically from the shared fixture columns.
+se_method_data_cont <- function() {
+  dat <- se_method_data()
+  set.seed(2025)
+  dat$yc <- 1 + 0.5 * dat$z + 0.7 * dat$x1 - 0.4 * dat$x2 + rnorm(nrow(dat))
+  dat
+}
+
+# ATE weights shared by the outcome-model fixtures below.
+se_method_ate_wts <- function(dat, ps_mod) {
+  ps <- predict(ps_mod, type = "response")
+  wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+}
+
+# Marginal (exposure-only) weighted linear outcome model.
+se_method_outcome_marginal_lm <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  lm(yc ~ z, data = dat, weights = wts)
+}
+
+# Covariate-adjusted weighted linear outcome model. Its right-hand side carries
+# a covariate beyond the exposure, so the linearization influence functions no
+# longer match the g-computation estimator that is reported.
+se_method_outcome_adjusted_lm <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  lm(yc ~ z + x1, data = dat, weights = wts)
+}
+
+# Covariate-adjusted weighted quasibinomial outcome model.
+se_method_outcome_adjusted_glm <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  glm(y ~ z + x1, data = dat, family = quasibinomial(), weights = wts)
+}
+
+# Exposure-by-covariate interaction outcome model. Its expansion carries a bare
+# covariate term (`x1`) alongside the exposure and interaction, so the model is
+# adjusted.
+se_method_outcome_interaction_lm <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  lm(yc ~ z * x1, data = dat, weights = wts)
+}
+
+# Adversarial adjusted model whose every right-hand-side term involves the
+# exposure (`z` and `z:x1`) yet is still covariate-adjusted. A guard that only
+# rejects terms not involving the exposure would wrongly admit this model.
+se_method_outcome_exposure_interaction_lm <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  lm(yc ~ z + z:x1, data = dat, weights = wts)
+}
+
 test_that("ipw() defaults to the mestimation SE method and returns a fit", {
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
@@ -370,5 +422,109 @@ test_that("ipw() print output is stable per SE method", {
   # Pins the explicit linearization print output.
   expect_snapshot(
     print(ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"))
+  )
+})
+
+test_that("a marginal linear outcome model works on the linearization path", {
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_marginal_lm(dat, ps_mod)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+
+  expect_s3_class(res, "ipw")
+  expect_equal(res$se_method, "linearization")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+test_that("a marginal quasibinomial outcome model works on the linearization path", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+
+  expect_s3_class(res, "ipw")
+  expect_equal(res$se_method, "linearization")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+test_that("a covariate-adjusted outcome model still works on the mestimation path", {
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_adjusted_lm(dat, ps_mod)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "mestimation")
+
+  expect_s3_class(res, "ipw")
+  expect_equal(res$se_method, "mestimation")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+test_that("a covariate-adjusted linear outcome model errors on the linearization path", {
+  skip("pending linearization outcome-model restriction")
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_adjusted_lm(dat, ps_mod)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, se_method = "linearization"),
+    class = "propensity_method_error",
+    regexp = "mestimation"
+  )
+})
+
+test_that("a covariate-adjusted linear outcome model errors on the linearization path with .data", {
+  skip("pending linearization outcome-model restriction")
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_adjusted_lm(dat, ps_mod)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error",
+    regexp = "mestimation"
+  )
+})
+
+test_that("a covariate-adjusted quasibinomial outcome model errors on the linearization path", {
+  skip("pending linearization outcome-model restriction")
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_adjusted_glm(dat, ps_mod)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error",
+    regexp = "mestimation"
+  )
+})
+
+test_that("an exposure-covariate interaction outcome model errors on the linearization path", {
+  skip("pending linearization outcome-model restriction")
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_interaction_lm(dat, ps_mod)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error",
+    regexp = "mestimation"
+  )
+})
+
+test_that("an outcome model whose every term involves the exposure still errors when adjusted", {
+  skip("pending linearization outcome-model restriction")
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_exposure_interaction_lm(dat, ps_mod)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error",
+    regexp = "mestimation"
   )
 })
