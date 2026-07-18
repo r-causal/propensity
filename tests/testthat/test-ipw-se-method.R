@@ -568,3 +568,201 @@ test_that("an offset-argument outcome model errors on the linearization path", {
     regexp = "offset"
   )
 })
+
+# ---- probit and cloglog linearization variance ------------------------------
+#
+# The linearization ps correction adds H' A^{-1} s_i to the influence values,
+# where s_i = x_i (Z_i - p_i) / (p_i (1 - p_i) g'(p_i)) is the score of a
+# binomial GLM with link g. The package generalizes the link in the weight
+# derivatives and in the Fisher information A, but hardcodes the score itself to
+# the canonical logit form x_i (Z_i - p_i), omitting the factor
+# 1 / (p (1 - p) g'(p)), which equals 1 only for logit. These reference tests pin
+# the generalized score correction; the probit and cloglog cases fail until the
+# correction is implemented.
+
+# g'(p) for the propensity score link, matching derive_link() in R/ipw.R.
+lin_gprime <- function(p, link) {
+  switch(
+    link,
+    logit = 1 / (p * (1 - p)),
+    probit = 1 / dnorm(qnorm(p)),
+    cloglog = -1 / ((1 - p) * log(1 - p))
+  )
+}
+
+# Hand-coded generalized linearization RD standard error. `if_scale` is the score
+# factor 1 / (p (1 - p) g'(p)) that turns x_i (Z_i - p_i) into the GLM score, and
+# `info_scale` is the same factor entering the Fisher information A. The correct
+# estimator uses the score factor in both places; passing if_scale = 1 reproduces
+# the canonical-logit form the package currently hardcodes, which is the value
+# the probit and cloglog cases return today.
+lin_se_rd <- function(X, p, z, y, w, dwdeta, if_scale, info_scale) {
+  n <- length(z)
+  n1 <- sum(w[z == 1])
+  n0 <- sum(w[z == 0])
+  mu1 <- weighted.mean(y[z == 1], w[z == 1])
+  mu0 <- weighted.mean(y[z == 0], w[z == 0])
+  l1u <- n / n1 * (w * z * (y - mu1))
+  l0u <- n / n0 * (w * (1 - z) * (y - mu0))
+  h1 <- colSums(X * (dwdeta * z * (y - mu1))) / n
+  h0 <- colSums(X * (dwdeta * (1 - z) * (y - mu0))) / n
+  info <- crossprod(X * sqrt(info_scale^2 * p * (1 - p))) / n
+  if_beta <- t(solve(info, t(X * ((z - p) * if_scale))))
+  l1 <- l1u + n / n1 * drop(if_beta %*% h1)
+  l0 <- l0u + n / n0 * drop(if_beta %*% h0)
+  sqrt(var(l1 - l0) / n)
+}
+
+# Design pieces for the RD linearization: the ps design and fitted scores, the
+# score factor, and the ATE weight derivative dw/deta (treated -1/(p^2 g'(p)),
+# untreated 1/((1 - p)^2 g'(p))).
+lin_ate_pieces <- function(ps_mod, z) {
+  p <- as.double(predict(ps_mod, type = "response"))
+  link <- ps_mod$family$link
+  gp <- lin_gprime(p, link)
+  list(
+    X = model.matrix(ps_mod),
+    p = p,
+    score_factor = 1 / (p * (1 - p) * gp),
+    dwdeta = ifelse(z == 1, -1 / (p^2 * gp), 1 / ((1 - p)^2 * gp))
+  )
+}
+
+# Correct RD linearization SE (score factor in both the influence and the
+# information) from a fitted ps model and the outcome data.
+lin_se_correct <- function(ps_mod, z, y, w) {
+  pieces <- lin_ate_pieces(ps_mod, z)
+  lin_se_rd(
+    pieces$X,
+    pieces$p,
+    z,
+    y,
+    as.double(w),
+    pieces$dwdeta,
+    if_scale = pieces$score_factor,
+    info_scale = pieces$score_factor
+  )
+}
+
+# Seeded data whose exposure is generated on the requested link, so the fitted
+# propensity score model is well specified. The confounding is moderate, keeping
+# the propensity scores away from 0 and 1 for both probit and cloglog.
+se_link_data <- function(link, seed = 4242, n = 4000) {
+  set.seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  lp <- 0.7 * x1 - 0.5 * x2
+  pz <- switch(
+    link,
+    logit = plogis(lp),
+    probit = pnorm(lp),
+    cloglog = 1 - exp(-exp(lp))
+  )
+  z <- rbinom(n, 1, pz)
+  y <- rbinom(n, 1, plogis(-0.3 + 0.6 * z + 0.5 * x1 - 0.4 * x2))
+  data.frame(x1, x2, z, y)
+}
+
+# Propensity score model on the requested link and a marginal quasibinomial
+# outcome model weighted with ATE weights (tightened IRLS so the fit sits at the
+# weighted MLE).
+se_link_models <- function(dat, link) {
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial(link = link))
+  ps <- as.double(predict(ps_mod, type = "response"))
+  wts <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+test_that("the hand-coded linearization RD SE reproduces the logit path and reference", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+  wts <- wt_ate(
+    predict(ps_mod, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+
+  # For a logit ps model the score factor is 1, so the generalized helper and the
+  # package agree, validating the helper against the current implementation.
+  hand <- lin_se_correct(ps_mod, dat$z, dat$y, wts)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+  rd_se <- res$estimates$std.err[res$estimates$effect == "rd"]
+  expect_equal(hand, rd_se, tolerance = 1e-8)
+
+  # and against the pinned linearization reference for this fixture
+  reference <- se_method_lin_reference()
+  expect_equal(
+    hand,
+    reference$std.err[reference$effect == "rd"],
+    tolerance = 1e-8
+  )
+})
+
+test_that("probit linearization RD SE matches the generalized score correction", {
+  skip("pending probit and cloglog linearization score correction")
+  dat <- se_link_data("probit")
+  mods <- se_link_models(dat, "probit")
+
+  correct <- lin_se_correct(mods$ps_mod, dat$z, dat$y, mods$wts)
+  res <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = dat,
+    se_method = "linearization"
+  )
+  rd_se <- res$estimates$std.err[res$estimates$effect == "rd"]
+  expect_equal(rd_se, correct, tolerance = 1e-8)
+})
+
+test_that("cloglog linearization RD SE matches the generalized score correction", {
+  skip("pending probit and cloglog linearization score correction")
+  dat <- se_link_data("cloglog")
+  mods <- se_link_models(dat, "cloglog")
+
+  correct <- lin_se_correct(mods$ps_mod, dat$z, dat$y, mods$wts)
+  res <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = dat,
+    se_method = "linearization"
+  )
+  rd_se <- res$estimates$std.err[res$estimates$effect == "rd"]
+  expect_equal(rd_se, correct, tolerance = 1e-8)
+})
+
+test_that("probit linearization RD SE agrees with mestimation", {
+  skip("pending probit and cloglog linearization score correction")
+  dat <- se_link_data("probit")
+  mods <- se_link_models(dat, "probit")
+
+  lin <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = dat,
+    se_method = "linearization"
+  )$estimates
+  mest <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = dat,
+    se_method = "mestimation"
+  )$estimates
+
+  lin_se <- lin$std.err[lin$effect == "rd"]
+  mest_se <- mest$std.err[mest$effect == "rd"]
+
+  # The corrected linearization agrees with the sandwich to well under a percent
+  # (about 0.02 percent here); the current mis-scaled formula is about 1.6
+  # percent off, so this band separates the two.
+  expect_lt(abs(lin_se - mest_se) / mest_se, 0.005)
+})
