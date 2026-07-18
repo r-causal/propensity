@@ -389,7 +389,6 @@ test_that("ipw() rejects linearization for a continuous exposure", {
 # ---- outcome-family validation ----------------------------------------------
 
 test_that("ipw_spec_continuous rejects an unsupported outcome family", {
-  skip("pending outcome family validation")
   dat <- sim_continuous()
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)

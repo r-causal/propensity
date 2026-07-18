@@ -23,6 +23,10 @@
 #'   or [stats::lm()], with the outcome as the dependent variable and
 #'   propensity score weights supplied via the `weights` argument. The weights
 #'   should be created with a propensity weight function such as [wt_ate()].
+#'   Supported outcome models are an [stats::lm()], a gaussian
+#'   [stats::glm()] with an identity link, and a binomial or quasibinomial
+#'   [stats::glm()]; any other family (such as poisson or Gamma) or a
+#'   non-identity gaussian link errors.
 #' @param .data A data frame containing the exposure, outcome, and covariates.
 #'   If `NULL` (the default), `ipw()` extracts data from the model objects.
 #'   Supply `.data` explicitly if the outcome model formula contains
@@ -337,6 +341,7 @@ ipw.glm <- function(
 
   check_ipw_offset(outcome_mod)
   check_ipw_linearization_outcome(outcome_mod, exposure_name)
+  check_ipw_outcome_family(outcome_mod)
 
   if (is.null(.data)) {
     exposure <- fmla_extract_left_vctr(ps_mod)
@@ -562,6 +567,72 @@ check_ipw_offset <- function(outcome_mod, call = rlang::caller_env()) {
   }
 
   invisible(TRUE)
+}
+
+# Reject an outcome model whose family or link the estimating equations cannot
+# stack. Both standard error paths classify the outcome model as either a
+# gaussian identity linear score or a binomial score with the model's link, so
+# only three shapes are supported: an lm, a gaussian glm with an identity link,
+# and a binomial or quasibinomial glm with a link the outcome score reconstructs
+# (the links ipw_inv_link handles). Any other family (poisson, quasipoisson,
+# Gamma, inverse gaussian, ...) would otherwise be silently stacked as a binomial
+# score, solving to a different root than the fitted model; a non-identity
+# gaussian link would be silently treated as identity. Shared by every mestimation
+# spec path and the linearization entry.
+check_ipw_outcome_family <- function(outcome_mod, call = rlang::caller_env()) {
+  # An lm (not a glm) is a gaussian identity linear model.
+  if (!inherits(outcome_mod, "glm")) {
+    return(invisible(TRUE))
+  }
+
+  family <- outcome_mod$family$family
+  link <- outcome_mod$family$link
+  supported_links <- c("logit", "probit", "cloglog", "log", "identity")
+
+  if (identical(family, "gaussian")) {
+    if (!identical(link, "identity")) {
+      abort(
+        c(
+          "{.fun ipw} supports only an identity link for a gaussian outcome \\
+          model.",
+          x = "{.arg outcome_mod} is a gaussian model with a {.val {link}} link.",
+          i = "Refit {.arg outcome_mod} with a gaussian identity link, or use a \\
+          binomial or quasibinomial outcome model."
+        ),
+        error_class = "propensity_ipw_family_error",
+        call = call
+      )
+    }
+    return(invisible(TRUE))
+  }
+
+  if (family %in% c("binomial", "quasibinomial")) {
+    if (!link %in% supported_links) {
+      abort(
+        c(
+          "{.fun ipw} does not support a {.val {link}} link for a \\
+          {.val {family}} outcome model.",
+          x = "{.arg outcome_mod} was fit with a {.val {link}} link.",
+          i = "Refit {.arg outcome_mod} with one of {.val {supported_links}}."
+        ),
+        error_class = "propensity_ipw_family_error",
+        call = call
+      )
+    }
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} does not support {.val {family}} outcome models.",
+      x = "{.arg outcome_mod} was fit with the {.val {family}} family.",
+      i = "Fit {.arg outcome_mod} with a binomial or quasibinomial family for a \\
+      binary outcome, or a gaussian identity link (or an {.fun lm}) for a \\
+      continuous outcome."
+    ),
+    error_class = "propensity_ipw_family_error",
+    call = call
+  )
 }
 
 # Restrict the linearization path to an outcome model of the exposure alone. Its

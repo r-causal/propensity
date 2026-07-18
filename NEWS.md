@@ -49,6 +49,13 @@
   match the propensity score model. It also rejects a propensity score model fit
   with case weights and an outcome model fit with an offset term.
 
+* `ipw()` now rejects an outcome model whose family or link it cannot stack,
+  on both standard error methods, with an informative error instead of silently
+  treating it as a binomial or identity-linear model. A poisson, quasipoisson,
+  Gamma, or inverse-gaussian outcome model, or a gaussian model with a
+  non-identity link, errors and directs you to a binomial or quasibinomial model
+  or a gaussian identity link.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.

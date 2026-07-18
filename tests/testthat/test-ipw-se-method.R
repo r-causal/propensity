@@ -768,7 +768,6 @@ test_that("probit linearization RD SE agrees with mestimation", {
 # ---- outcome-family validation on the linearization path --------------------
 
 test_that("the linearization path rejects an unsupported outcome family", {
-  skip("pending outcome family validation")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   ps <- predict(ps_mod, type = "response")

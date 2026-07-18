@@ -723,8 +723,9 @@ test_that("mestimation att SE matches a nonparametric bootstrap for an adjusted 
 # a classed error naming the unsupported family or link; they cannot pass until
 # the shared validator exists.
 
-# Data with count and positive-continuous outcomes for the family tests. The
-# count rate is low so the linearization marginal means stay below 1.
+# Data with count and positive-continuous outcomes for the family tests, so an
+# outcome model can be fit with poisson, quasipoisson, Gamma, inverse gaussian,
+# or a non-identity gaussian link.
 family_data <- function(seed = 2024, n = 500) {
   withr::local_seed(seed)
   x1 <- rnorm(n)
@@ -753,25 +754,33 @@ family_binary_models <- function(dat, family, response) {
 }
 
 test_that("ipw_spec_binary rejects unsupported outcome families and links", {
-  skip("pending outcome family validation")
   dat <- family_data()
   cases <- list(
-    list(family = poisson(), response = "ycount"),
-    list(family = quasipoisson(), response = "ycount"),
-    list(family = Gamma(), response = "ypos"),
-    list(family = gaussian(link = "log"), response = "ypos")
+    list(label = "poisson", family = poisson(), response = "ycount"),
+    list(label = "quasipoisson", family = quasipoisson(), response = "ycount"),
+    list(label = "Gamma", family = Gamma(), response = "ypos"),
+    list(
+      label = "inverse.gaussian",
+      family = inverse.gaussian(),
+      response = "ypos"
+    ),
+    list(
+      label = "gaussian(log)",
+      family = gaussian(link = "log"),
+      response = "ypos"
+    )
   )
   for (case in cases) {
     mods <- family_binary_models(dat, case$family, case$response)
     expect_error(
       ipw_spec_binary(mods$ps_mod, mods$outcome_mod),
-      class = "propensity_ipw_family_error"
+      class = "propensity_ipw_family_error",
+      label = case$label
     )
   }
 })
 
 test_that("ipw_spec_binary error names the unsupported outcome family", {
-  skip("pending outcome family validation")
   dat <- family_data()
   mods <- family_binary_models(dat, poisson(), "ycount")
   expect_snapshot(

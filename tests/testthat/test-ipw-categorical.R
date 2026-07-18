@@ -585,7 +585,6 @@ test_that("ipw() rejects a focal level that is not an exposure level", {
 # ---- outcome-family validation ----------------------------------------------
 
 test_that("ipw_spec_categorical rejects an unsupported outcome family", {
-  skip("pending outcome family validation")
   skip_if_not_installed("nnet")
   dat <- sim_categorical()
   ps_mod <- fit_ps_multinom(dat)

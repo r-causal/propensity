@@ -20,6 +20,7 @@ ipw_spec_binary <- function(
   assert_class(ps_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
   check_ipw_offset(outcome_mod, call = call)
+  check_ipw_outcome_family(outcome_mod, call = call)
 
   # A binary propensity model fit with case weights would need a weighted score
   # in the stacked system; the ee_glm ps block is unweighted, so the fitted
@@ -201,6 +202,7 @@ ipw_spec_categorical <- function(
   assert_class(ps_mod, "multinom")
   assert_class(outcome_mod, c("glm", "lm"))
   check_ipw_offset(outcome_mod, call = call)
+  check_ipw_outcome_family(outcome_mod, call = call)
 
   # A multinom fit with case weights would need a weighted score in the stacked
   # system; the ee_mlogit block is unweighted, so the fitted coefficients would
@@ -361,6 +363,7 @@ ipw_spec_continuous <- function(
   assert_class(ps_mod, c("glm", "lm"))
   assert_class(outcome_mod, c("glm", "lm"))
   check_ipw_offset(outcome_mod, call = call)
+  check_ipw_outcome_family(outcome_mod, call = call)
 
   # A propensity model fit with prior case weights would need a weighted score in
   # the stacked system; the ee_regression ps block is unweighted, so the fitted
