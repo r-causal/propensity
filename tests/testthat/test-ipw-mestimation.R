@@ -97,24 +97,59 @@ fit_binary_models <- function(
   list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
 }
 
+# Estimand tilt h(e) for the standardized g-computation plug-in. ate is the flat
+# tilt (h = 1); a tilted estimand weights each unit's counterfactual predictions
+# by h of its propensity score. Mirrors the tilt the M-estimation marginal-mean
+# rows apply once they standardize to the target population.
+plugin_tilt <- function(ps, estimand, n) {
+  if (estimand == "ate" || is.null(ps)) {
+    return(rep(1, n))
+  }
+  switch(
+    estimand,
+    att = ps,
+    atu = 1 - ps,
+    atm = pmin(ps, 1 - ps),
+    ato = ps * (1 - ps),
+    entropy = -ps * log(ps) - (1 - ps) * log(1 - ps)
+  )
+}
+
 # Direct plug-in reference: g-computation on the weighted outcome model, matching
-# how estimate_marginal_means() constructs counterfactual predictions in R/ipw.R.
-# Returns a named vector of the contrast point estimates.
-plugin_contrasts <- function(outcome_mod, dat, outcome_family = "binomial") {
-  d1 <- dat
-  d0 <- dat
-  d1$z <- 1
-  d0$z <- 0
-  mu1 <- mean(predict(outcome_mod, newdata = d1, type = "response"))
-  mu0 <- mean(predict(outcome_mod, newdata = d0, type = "response"))
-  if (outcome_family == "binomial") {
+# how the M-estimation marginal-mean rows construct counterfactual predictions.
+# The counterfactual predictions are standardized to the target population by the
+# estimand tilt h(ps): for ate (h = 1, ps = NULL) this is the ordinary mean; for
+# a tilted estimand it is the h-weighted mean. The outcome family is detected from
+# the model. Returns a named vector of the contrast point estimates.
+plugin_contrasts <- function(
+  outcome_mod,
+  data,
+  exposure_name = "z",
+  estimand = "ate",
+  ps = NULL
+) {
+  d1 <- data
+  d0 <- data
+  d1[[exposure_name]] <- 1
+  d0[[exposure_name]] <- 0
+  m1 <- predict(outcome_mod, newdata = d1, type = "response")
+  m0 <- predict(outcome_mod, newdata = d0, type = "response")
+  h <- plugin_tilt(ps, estimand, nrow(data))
+  mu1 <- weighted.mean(m1, h)
+  mu0 <- weighted.mean(m0, h)
+  linear <- if (inherits(outcome_mod, "glm")) {
+    stats::family(outcome_mod)$family == "gaussian"
+  } else {
+    TRUE
+  }
+  if (linear) {
+    c(diff = mu1 - mu0)
+  } else {
     c(
       rd = mu1 - mu0,
       "log(rr)" = log(mu1) - log(mu0),
       "log(or)" = qlogis(mu1) - qlogis(mu0)
     )
-  } else {
-    c(diff = mu1 - mu0)
   }
 }
 
@@ -129,32 +164,29 @@ expect_estimate_match <- function(estimates, reference, tolerance = 1e-8) {
 
 # ---- point-estimate parity with the g-computation plug-in -------------------
 
-test_that("ipw_mestimation point estimates match the g-computation plug-in for binomial outcomes", {
+test_that("ipw_mestimation ate point estimates match the g-computation plug-in for binomial outcomes", {
   skip_if_not_installed("deli")
-  for (est in c("ate", "att", "ato", "atm")) {
-    dat <- sim_binary()
-    mods <- fit_binary_models(dat, est)
-    # The g-computation plug-in is the point-estimate oracle. Both standard error
-    # methods report these same g-computation contrasts, so the plug-in pins the
-    # engine estimates without routing through the linearization path, which is
-    # restricted to exposure-only outcome models.
-    ref <- plugin_contrasts(mods$outcome_mod, dat)
-    spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
-    got <- ipw_mestimation(spec)$estimates
-    expect_estimate_match(got, ref, tolerance = 1e-8)
-  }
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  # The g-computation plug-in is the point-estimate oracle. Both standard error
+  # methods report these same g-computation contrasts, so the plug-in pins the
+  # engine estimates without routing through the linearization path, which is
+  # restricted to exposure-only outcome models. ate is the flat tilt (h = 1);
+  # the tilted estimands are pinned separately once standardization is in place.
+  ref <- plugin_contrasts(mods$outcome_mod, dat, "z", estimand = "ate")
+  spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  got <- ipw_mestimation(spec)$estimates
+  expect_estimate_match(got, ref, tolerance = 1e-8)
 })
 
-test_that("ipw_mestimation point estimates match the g-computation plug-in for gaussian outcomes", {
+test_that("ipw_mestimation ate point estimates match the g-computation plug-in for gaussian outcomes", {
   skip_if_not_installed("deli")
-  for (est in c("ate", "att", "ato", "atm")) {
-    dat <- sim_binary()
-    mods <- fit_binary_models(dat, est, outcome_family = "gaussian")
-    ref <- plugin_contrasts(mods$outcome_mod, dat, outcome_family = "gaussian")
-    spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
-    got <- ipw_mestimation(spec)$estimates
-    expect_estimate_match(got, ref, tolerance = 1e-8)
-  }
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate", outcome_family = "gaussian")
+  ref <- plugin_contrasts(mods$outcome_mod, dat, "z", estimand = "ate")
+  spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  got <- ipw_mestimation(spec)$estimates
+  expect_estimate_match(got, ref, tolerance = 1e-8)
 })
 
 # ---- standard-error cross-validation against linearization ------------------
@@ -212,18 +244,19 @@ test_that("ipw_mestimation std.err matches linearization within 3 percent", {
   }
 })
 
-# ---- atu and entropy: no ipw() comparator, use the direct plug-in -----------
+# ---- atu and entropy: engine runs with finite SEs ---------------------------
 
-test_that("ipw_mestimation estimates atu and entropy via plug-in with finite SEs", {
+# The tilted point-estimate parity for these estimands with an adjusted outcome
+# model is pinned in the skipped tilt-standardization test below; here the engine
+# is only exercised for a converged fit with finite, positive standard errors and
+# ordered intervals, which holds regardless of the marginal-mean standardization.
+test_that("ipw_mestimation runs atu and entropy with finite SEs", {
   skip_if_not_installed("deli")
   for (est in c("atu", "entropy")) {
     dat <- sim_binary()
     mods <- fit_binary_models(dat, est)
     spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
     got <- ipw_mestimation(spec)$estimates
-
-    ref <- plugin_contrasts(mods$outcome_mod, dat)
-    expect_estimate_match(got, ref, tolerance = 1e-8)
 
     expect_true(all(is.finite(got$std.err) & got$std.err > 0))
     expect_true(all(got$ci.lower < got$estimate & got$estimate < got$ci.upper))
@@ -239,7 +272,7 @@ test_that("ipw_mestimation runs stabilized ate and matches the stabilized plug-i
   spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
   got <- ipw_mestimation(spec)$estimates
 
-  ref <- plugin_contrasts(mods$outcome_mod, dat)
+  ref <- plugin_contrasts(mods$outcome_mod, dat, "z", estimand = "ate")
   expect_estimate_match(got, ref, tolerance = 1e-8)
   expect_true(all(is.finite(got$std.err) & got$std.err > 0))
 })
@@ -346,7 +379,7 @@ test_that("ipw_mestimation addresses contrast rows by position, not by name", {
   spec <- ipw_spec_binary(ps_mod, outcome_mod)
   got <- ipw_mestimation(spec)$estimates
 
-  ref <- plugin_contrasts(outcome_mod, dat)
+  ref <- plugin_contrasts(outcome_mod, dat, "z", estimand = "ate")
   expect_estimate_match(got, ref, tolerance = 1e-8)
 
   # the reported rd row is the contrast, not the ps model's coefficient on the
@@ -413,4 +446,266 @@ test_that("ipw_spec_binary errors when the estimand cannot be determined", {
     ipw_spec_binary(mods$ps_mod, mods$outcome_mod, estimand = NULL),
     class = "propensity_error"
   )
+})
+
+# ---- tilted marginal-mean standardization (att/atu/ato/atm/entropy) ----------
+#
+# The marginal-mean rows of the stacked system currently take an unweighted mean
+# of counterfactual predictions over the whole sample for every estimand, which
+# is correct only for ate. For a tilted estimand the marginal means must be
+# standardized to the target population, mu_a = sum_i h(e_i) m_a(x_i) / sum_i
+# h(e_i). With a covariate-adjusted outcome model and a heterogeneous effect the
+# current engine reports the ate-type contrast for every estimand. The tests
+# below pin the tilt-standardized behavior; those that cannot pass until the
+# standardization is in place carry the pending skip. A saturated outcome model
+# (y ~ z) escapes the defect because predictions are constant within arm, so the
+# tilt is a no-op on the contrast; that case is a live regression anchor.
+
+# Heterogeneous-effect simulator with stored potential outcomes. The propensity
+# e = plogis(1.5 x) and the effect y1 - y0 = 2 + 1.5 x are both increasing in x,
+# so the tilted target populations (att up-weights high e, atu low e) carry
+# genuinely different average effects than the ate.
+sim_tilt <- function(seed = 501, n = 20000) {
+  withr::local_seed(seed)
+  x <- rnorm(n)
+  e <- plogis(1.5 * x)
+  z <- rbinom(n, 1, e)
+  y0 <- x + rnorm(n)
+  y1 <- y0 + (2 + 1.5 * x)
+  y <- z * y1 + (1 - z) * y0
+  data.frame(x, e, z, y0, y1, y)
+}
+
+test_that("mestimation diff matches the tilted oracle under a heterogeneous effect", {
+  skip("pending tilted marginal-mean standardization")
+  skip_if_not_installed("deli")
+  dat <- sim_tilt()
+  ps_mod <- glm(z ~ x, data = dat, family = binomial())
+  e_hat <- as.double(predict(ps_mod, type = "response"))
+  tau <- dat$y1 - dat$y0
+
+  for (est in c("att", "atu", "ato")) {
+    wt_fun <- switch(est, att = wt_att, atu = wt_atu, ato = wt_ato)
+    wts <- withr::with_options(list(propensity.quiet = TRUE), wt_fun(ps_mod))
+    om <- lm(y ~ z * x, data = dat, weights = wts)
+    spec <- ipw_spec_binary(ps_mod, om)
+    got <- ipw_mestimation(spec)$estimates
+    est_diff <- got$estimate[got$effect == "diff"]
+    se <- got$std.err[got$effect == "diff"]
+
+    # exact: the engine reports the tilt-standardized g-computation from the
+    # fitted model, weighted.mean(m1 - m0, h(e_hat))
+    ref <- plugin_contrasts(om, dat, "z", estimand = est, ps = e_hat)[["diff"]]
+    expect_equal(est_diff, ref, tolerance = 1e-6, label = est)
+
+    # within sampling noise of the simulation oracle (h-tilted mean of the
+    # simulated individual effects)
+    oracle <- weighted.mean(tau, plugin_tilt(dat$e, est, nrow(dat)))
+    expect_lt(abs(est_diff - oracle), 3 * se, label = est)
+
+    # att and atu target populations are far from the ate
+    if (est %in% c("att", "atu")) {
+      ate_plain <- plugin_contrasts(om, dat, "z", estimand = "ate")[["diff"]]
+      expect_gt(abs(est_diff - ate_plain), 10 * se, label = est)
+    }
+  }
+})
+
+test_that("mestimation att marginal means equal the tilt-standardized predictions at the solved theta", {
+  skip("pending tilted marginal-mean standardization")
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_att(ps_mod))
+  outcome_mod <- glm(
+    y ~ z + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  spec <- ipw_spec_binary(ps_mod, outcome_mod)
+  res <- ipw_mestimation(spec)
+
+  co <- coef(res$fit)
+  layout <- ipw_theta_layout(spec)
+  th_ps <- co[layout$idx$ps]
+  th_out <- co[layout$idx$out]
+  th_mu <- co[layout$idx$mu]
+
+  # rebuild e_hat and the counterfactual predictions from the solved blocks
+  e_hat <- plogis(as.vector(spec$ps$X %*% th_ps))
+  pred1 <- plogis(as.vector(spec$outcome$X_counterfactual$X1 %*% th_out))
+  pred0 <- plogis(as.vector(spec$outcome$X_counterfactual$X0 %*% th_out))
+
+  # att tilt is h(e) = e
+  expect_equal(
+    unname(th_mu[[1]]),
+    weighted.mean(pred1, e_hat),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    unname(th_mu[[2]]),
+    weighted.mean(pred0, e_hat),
+    tolerance = 1e-8
+  )
+})
+
+test_that("mestimation tilted point estimates match the tilt-standardized plug-in for binomial outcomes", {
+  skip("pending tilted marginal-mean standardization")
+  skip_if_not_installed("deli")
+  for (est in c("att", "atu", "atm", "ato", "entropy")) {
+    dat <- sim_binary()
+    mods <- fit_binary_models(dat, est)
+    e_hat <- as.double(predict(mods$ps_mod, type = "response"))
+    ref <- plugin_contrasts(
+      mods$outcome_mod,
+      dat,
+      "z",
+      estimand = est,
+      ps = e_hat
+    )
+    spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+    got <- ipw_mestimation(spec)$estimates
+    expect_estimate_match(got, ref, tolerance = 1e-8)
+  }
+})
+
+test_that("mestimation att with a saturated outcome model matches the tilt-standardized plug-in", {
+  skip_if_not_installed("deli")
+  # A saturated outcome model has predictions constant within arm, so the att
+  # tilt is a no-op on the contrast and the engine already matches the tilt-
+  # standardized plug-in. This anchors the exposure-only case across the fix.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "att", adjust = FALSE)
+  e_hat <- as.double(predict(mods$ps_mod, type = "response"))
+  ref <- plugin_contrasts(
+    mods$outcome_mod,
+    dat,
+    "z",
+    estimand = "att",
+    ps = e_hat
+  )
+  spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  got <- ipw_mestimation(spec)$estimates
+  expect_estimate_match(got, ref, tolerance = 1e-8)
+})
+
+test_that("mestimation categorical att matches the tilt-standardized plug-in", {
+  skip("pending tilted marginal-mean standardization")
+  skip_if_not_installed("deli")
+  skip_if_not_installed("nnet")
+  withr::local_seed(913)
+  n <- 900
+  x <- rnorm(n)
+  eta_b <- -0.3 + 0.9 * x
+  eta_c <- -0.2 - 0.8 * x
+  den <- 1 + exp(eta_b) + exp(eta_c)
+  u <- runif(n)
+  pa <- 1 / den
+  pb <- exp(eta_b) / den
+  a <- ifelse(u < pa, "a", ifelse(u < pa + pb, "b", "c"))
+  a <- factor(a, levels = c("a", "b", "c"))
+  y <- rbinom(
+    n,
+    1,
+    plogis(-0.4 + 0.6 * (a == "b") + 0.9 * (a == "c") + 0.5 * x)
+  )
+  dat <- data.frame(x, a, y)
+
+  ps_mod <- nnet::multinom(a ~ x, data = dat, trace = FALSE)
+  ps_mat <- predict(ps_mod, type = "probs")
+  focal <- "b"
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_att(ps_mat, dat$a, exposure_type = "categorical", .focal_level = focal)
+  )
+  outcome_mod <- glm(
+    y ~ a + x,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+  spec <- ipw_spec_categorical(ps_mod, outcome_mod, .focal_level = focal)
+  got <- ipw_mestimation(spec)$estimates
+
+  # tilt-standardized plug-in with h = e_focal (the focal-level probability)
+  levs <- levels(dat$a)
+  h <- ps_mat[, match(focal, levs)]
+  mu <- vapply(
+    levs,
+    function(l) {
+      d <- dat
+      d$a <- factor(l, levels = levs)
+      weighted.mean(predict(outcome_mod, newdata = d, type = "response"), h)
+    },
+    numeric(1)
+  )
+  nonref <- levs[-1]
+  ref_rd <- vapply(nonref, function(l) mu[[l]] - mu[[1]], numeric(1))
+  got_rd <- got$estimate[got$effect == "rd"]
+  expect_equal(got_rd, unname(ref_rd), tolerance = 1e-8)
+})
+
+# ---- SE oracle: nonparametric bootstrap of the g-computation estimator -------
+
+# Bootstrap the tilt-standardized g-computation estimator for a given estimand,
+# refitting both the propensity score and outcome models on each resample. The
+# tilt uses the resample's own fitted propensity scores. Runs on the
+# heterogeneous-effect fixture so the att target genuinely differs from the ate.
+boot_gcomp_diffs <- function(dat, estimand, reps = 200, seed = 7) {
+  n <- nrow(dat)
+  withr::local_seed(seed)
+  replicate(reps, {
+    idx <- sample(n, replace = TRUE)
+    d <- dat[idx, ]
+    ps_b <- glm(z ~ x, data = d, family = binomial())
+    e_b <- as.double(predict(ps_b, type = "response"))
+    wt_fun <- switch(estimand, ate = wt_ate, att = wt_att)
+    w_b <- withr::with_options(list(propensity.quiet = TRUE), wt_fun(ps_b))
+    om_b <- lm(y ~ z * x, data = d, weights = w_b)
+    plugin_contrasts(om_b, d, "z", estimand = estimand, ps = e_b)[["diff"]]
+  })
+}
+
+test_that("mestimation ate SE matches a nonparametric bootstrap for an adjusted outcome model", {
+  skip_if_not_installed("deli")
+  dat <- sim_tilt(seed = 321, n = 1500)
+  ps_mod <- glm(z ~ x, data = dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- lm(y ~ z * x, data = dat, weights = wts)
+  spec <- ipw_spec_binary(ps_mod, outcome_mod)
+  got <- ipw_mestimation(spec)$estimates
+  eng_diff <- got$estimate[got$effect == "diff"]
+  eng_se <- got$std.err[got$effect == "diff"]
+
+  boot <- boot_gcomp_diffs(dat, "ate")
+  boot_se <- sd(boot)
+
+  # the sandwich SE and the bootstrap SE of the g-computation estimator agree to
+  # within a generous band; the point estimate sits inside the bootstrap spread
+  expect_lt(abs(eng_se - boot_se) / boot_se, 0.15)
+  expect_lt(abs(eng_diff - mean(boot)), 3 * boot_se)
+})
+
+test_that("mestimation att SE matches a nonparametric bootstrap for an adjusted outcome model", {
+  skip("pending tilted marginal-mean standardization")
+  skip_if_not_installed("deli")
+  dat <- sim_tilt(seed = 321, n = 1500)
+  ps_mod <- glm(z ~ x, data = dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_att(ps_mod))
+  outcome_mod <- lm(y ~ z * x, data = dat, weights = wts)
+  spec <- ipw_spec_binary(ps_mod, outcome_mod)
+  got <- ipw_mestimation(spec)$estimates
+  eng_diff <- got$estimate[got$effect == "diff"]
+  eng_se <- got$std.err[got$effect == "diff"]
+
+  boot <- boot_gcomp_diffs(dat, "att")
+  boot_se <- sd(boot)
+
+  # the engine must report the tilted estimator: its point estimate sits inside
+  # the bootstrap spread of the tilted g-computation (the untilted engine reports
+  # the ate-type contrast, many SEs away), and its SE matches the bootstrap
+  expect_lt(abs(eng_diff - mean(boot)), 3 * boot_se)
+  expect_lt(abs(eng_se - boot_se) / boot_se, 0.15)
 })
