@@ -120,9 +120,13 @@
 #' M-estimation. The propensity score model, the weighted outcome model, the
 #' marginal means, and the effect contrasts are stacked as a single system of
 #' estimating equations, and the empirical sandwich variance of that joint
-#' system is used. Stacking the models accounts for the uncertainty introduced
-#' by estimating the propensity scores, avoiding the underestimated standard
-#' errors that arise from treating estimated weights as fixed. See Stefanski
+#' system is used. The stacked marginal means are standardized to the estimand's
+#' tilted target population, so a non-`ate` estimand with a covariate-adjusted
+#' outcome model reports the contrast for that target population rather than the
+#' full-sample average. Stacking the models accounts for the uncertainty
+#' introduced by estimating the propensity scores, avoiding the underestimated
+#' standard errors that arise from treating estimated weights as fixed. See
+#' Stefanski
 #' and Boos (2002) for the M-estimation framework.
 #'
 #' M-estimation standard errors are available for all exposure types: binary

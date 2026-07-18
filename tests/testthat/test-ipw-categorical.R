@@ -145,18 +145,47 @@ fit_categorical_models <- function(
 
 # ---- plug-in reference ------------------------------------------------------
 
+# Categorical estimand tilt h(e) for the standardized g-computation plug-in. ate
+# is the flat tilt; the tilted estimands weight each unit's counterfactual
+# predictions by h of the propensity score matrix (columns in level order).
+# Mirrors ipw_categorical_tilt() in R/ipw-psi.R.
+categorical_plugin_tilt <- function(ps, estimand, lev, focal, n) {
+  if (estimand == "ate") {
+    return(rep(1, n))
+  }
+  focal_col <- if (!is.null(focal)) match(focal, lev) else NULL
+  switch(
+    estimand,
+    att = ps[, focal_col],
+    atu = 1 - ps[, focal_col],
+    ato = 1 / rowSums(1 / ps),
+    atm = do.call(pmin, lapply(seq_len(ncol(ps)), function(j) ps[, j])),
+    entropy = -rowSums(ps * log(ps))
+  )
+}
+
 # Direct g-computation on the weighted outcome model: predict the counterfactual
-# marginal mean for each level, then form per-non-reference-level contrasts
-# against the first (reference) level. Returns a data frame keyed by effect and
+# marginal mean for each level, standardized to the estimand's tilted population
+# by h(ps) (h = 1 for ate), then form per-non-reference-level contrasts against
+# the first (reference) level. Returns a data frame keyed by effect and
 # comparison so it can be matched to the ipw() estimates table irrespective of
 # row order.
-plugin_categorical <- function(outcome_mod, dat, lev, outcome_family) {
+plugin_categorical <- function(
+  outcome_mod,
+  dat,
+  lev,
+  outcome_family,
+  estimand = "ate",
+  ps = NULL,
+  focal = NULL
+) {
+  h <- categorical_plugin_tilt(ps, estimand, lev, focal, nrow(dat))
   mu <- vapply(
     lev,
     function(l) {
       d <- dat
       d$a <- factor(l, levels = lev)
-      mean(predict(outcome_mod, newdata = d, type = "response"))
+      weighted.mean(predict(outcome_mod, newdata = d, type = "response"), h)
     },
     numeric(1)
   )
@@ -343,7 +372,15 @@ test_that("ipw() categorical att detects the focal level from the psw attribute"
 
   expect_equal(res$estimand, "att")
   expect_equal(unique(res$estimates$comparison), c("b vs a", "c vs a"))
-  ref <- plugin_categorical(mods$outcome_mod, dat, mods$lev, "binomial")
+  ref <- plugin_categorical(
+    mods$outcome_mod,
+    dat,
+    mods$lev,
+    "binomial",
+    estimand = "att",
+    ps = ps_matrix_named(mods$ps_mod, dat),
+    focal = "b"
+  )
   expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
 })
 
@@ -356,7 +393,15 @@ test_that("ipw() categorical atu accepts an explicit focal level argument", {
   res <- ipw(mods$ps_mod, mods$outcome_mod, .focal_level = "c")
 
   expect_equal(res$estimand, "atu")
-  ref <- plugin_categorical(mods$outcome_mod, dat, mods$lev, "binomial")
+  ref <- plugin_categorical(
+    mods$outcome_mod,
+    dat,
+    mods$lev,
+    "binomial",
+    estimand = "atu",
+    ps = ps_matrix_named(mods$ps_mod, dat),
+    focal = "c"
+  )
   expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
 })
 

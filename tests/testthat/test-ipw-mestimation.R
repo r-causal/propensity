@@ -102,8 +102,11 @@ fit_binary_models <- function(
 # by h of its propensity score. Mirrors the tilt the M-estimation marginal-mean
 # rows apply once they standardize to the target population.
 plugin_tilt <- function(ps, estimand, n) {
-  if (estimand == "ate" || is.null(ps)) {
+  if (estimand == "ate") {
     return(rep(1, n))
+  }
+  if (is.null(ps)) {
+    stop("plugin_tilt(): a tilted estimand requires propensity scores in `ps`.")
   }
   switch(
     estimand,
@@ -477,7 +480,6 @@ sim_tilt <- function(seed = 501, n = 20000) {
 }
 
 test_that("mestimation diff matches the tilted oracle under a heterogeneous effect", {
-  skip("pending tilted marginal-mean standardization")
   skip_if_not_installed("deli")
   dat <- sim_tilt()
   ps_mod <- glm(z ~ x, data = dat, family = binomial())
@@ -512,7 +514,6 @@ test_that("mestimation diff matches the tilted oracle under a heterogeneous effe
 })
 
 test_that("mestimation att marginal means equal the tilt-standardized predictions at the solved theta", {
-  skip("pending tilted marginal-mean standardization")
   skip_if_not_installed("deli")
   dat <- sim_binary()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
@@ -552,7 +553,6 @@ test_that("mestimation att marginal means equal the tilt-standardized prediction
 })
 
 test_that("mestimation tilted point estimates match the tilt-standardized plug-in for binomial outcomes", {
-  skip("pending tilted marginal-mean standardization")
   skip_if_not_installed("deli")
   for (est in c("att", "atu", "atm", "ato", "entropy")) {
     dat <- sim_binary()
@@ -592,7 +592,6 @@ test_that("mestimation att with a saturated outcome model matches the tilt-stand
 })
 
 test_that("mestimation categorical att matches the tilt-standardized plug-in", {
-  skip("pending tilted marginal-mean standardization")
   skip_if_not_installed("deli")
   skip_if_not_installed("nnet")
   withr::local_seed(913)
@@ -613,7 +612,11 @@ test_that("mestimation categorical att matches the tilt-standardized plug-in", {
   )
   dat <- data.frame(x, a, y)
 
-  ps_mod <- nnet::multinom(a ~ x, data = dat, trace = FALSE)
+  # Tighten the multinom convergence so the fitted coefficients sit at the same
+  # multinomial score root the stacked ee_mlogit block re-solves; the default
+  # tolerance leaves a ~1e-6 gap between the fitted probabilities that tilt the
+  # oracle and the re-solved probabilities the engine tilts by.
+  ps_mod <- nnet::multinom(a ~ x, data = dat, trace = FALSE, reltol = 1e-13)
   ps_mat <- predict(ps_mod, type = "probs")
   focal <- "b"
   wts <- withr::with_options(
@@ -689,7 +692,6 @@ test_that("mestimation ate SE matches a nonparametric bootstrap for an adjusted 
 })
 
 test_that("mestimation att SE matches a nonparametric bootstrap for an adjusted outcome model", {
-  skip("pending tilted marginal-mean standardization")
   skip_if_not_installed("deli")
   dat <- sim_tilt(seed = 321, n = 1500)
   ps_mod <- glm(z ~ x, data = dat, family = binomial())

@@ -2,9 +2,27 @@
 
 * `ipw()` now defaults to M-estimation sandwich standard errors, computed by
   stacking the propensity score, outcome, and estimand estimating equations
-  with the deli package. Point estimates are unchanged. Set
+  with the deli package. Point estimates are unchanged for the `ate` estimand
+  and for saturated (exposure-only) outcome models; the tilted estimands with a
+  covariate-adjusted outcome model are corrected as described below. Set
   `se_method = "linearization"` to restore the previous influence-function
   method (binary exposures only).
+
+* Corrected the marginal-mean standardization for the tilted estimands (`att`,
+  `atu`, `atm`, `ato`, and `entropy`) on the M-estimation path. With a
+  covariate-adjusted outcome model, the stacked marginal means previously
+  averaged the counterfactual predictions over the full sample, reporting an
+  ATE-type contrast for every estimand. The marginal means are now standardized
+  to the estimand's tilted target population, so point estimates and standard
+  errors change for those configurations. The `ate` estimand and saturated
+  outcome models are unaffected.
+
+* `se_method = "linearization"` now requires an exposure-only, offset-free
+  outcome model and errors otherwise, directing you to
+  `se_method = "mestimation"`. The linearization influence functions are those
+  of the Hajek weighted-mean estimator, which match the reported g-computation
+  estimates only for an outcome model of the exposure alone; the M-estimation
+  path handles covariate-adjusted outcome models correctly.
 
 * Corrected the linearization standard errors for `log(rr)` and `log(or)`,
   which were scaled by the reciprocal of the risk ratio and odds ratio,
