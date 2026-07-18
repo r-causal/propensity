@@ -364,6 +364,7 @@ ipw_spec_continuous <- function(
   assert_class(outcome_mod, c("glm", "lm"))
   check_ipw_offset(outcome_mod, call = call)
   check_ipw_outcome_family(outcome_mod, call = call)
+  check_ipw_continuous_links(ps_mod, outcome_mod, call = call)
 
   # A propensity model fit with prior case weights would need a weighted score in
   # the stacked system; the ee_regression ps block is unweighted, so the fitted

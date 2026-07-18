@@ -423,7 +423,6 @@ test_that("ipw_spec_continuous rejects an unsupported outcome family", {
 # below adds the one supported msm link not otherwise exercised.)
 
 test_that("ipw() rejects a non-identity link on the continuous propensity model", {
-  skip("pending continuous-path link validation")
   dat <- sim_continuous()
   withr::local_seed(7)
   dat$Apos <- exp(0.3 + 0.4 * dat$x1 - 0.2 * dat$x2 + 0.3 * rnorm(nrow(dat)))
@@ -444,7 +443,6 @@ test_that("ipw() rejects a non-identity link on the continuous propensity model"
 })
 
 test_that("the continuous propensity-link error names the unsupported link", {
-  skip("pending continuous-path link validation")
   dat <- sim_continuous()
   withr::local_seed(7)
   dat$Apos <- exp(0.3 + 0.4 * dat$x1 - 0.2 * dat$x2 + 0.3 * rnorm(nrow(dat)))
@@ -459,7 +457,6 @@ test_that("the continuous propensity-link error names the unsupported link", {
 })
 
 test_that("ipw() rejects a non-identity link on the continuous marginal structural model", {
-  skip("pending continuous-path link validation")
   dat <- sim_continuous()
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   wts <- continuous_weights(fitted(ps_mod), dat$A)

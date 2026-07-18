@@ -167,9 +167,9 @@ process.
 or categorical exposure, a binary outcome returns the risk difference, log
 risk ratio, and log odds ratio, and a continuous outcome returns the
 difference in means. A continuous exposure is supplied through an \code{\link[stats:lm]{stats::lm()}}
-or gaussian-family \code{\link[stats:glm]{stats::glm()}} propensity score model with a weighted
-marginal structural outcome model, and \code{ipw()} reports the single exposure
-coefficient of that model.
+or identity-link gaussian \code{\link[stats:glm]{stats::glm()}} propensity score model with a weighted
+marginal structural outcome model whose link is identity, logit, or log, and
+\code{ipw()} reports the single exposure coefficient of that model.
 }
 \section{Workflow}{
 \code{ipw()} is designed around a three-step workflow:

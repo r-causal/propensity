@@ -11,9 +11,9 @@
 #' or categorical exposure, a binary outcome returns the risk difference, log
 #' risk ratio, and log odds ratio, and a continuous outcome returns the
 #' difference in means. A continuous exposure is supplied through an [stats::lm()]
-#' or gaussian-family [stats::glm()] propensity score model with a weighted
-#' marginal structural outcome model, and `ipw()` reports the single exposure
-#' coefficient of that model.
+#' or identity-link gaussian [stats::glm()] propensity score model with a weighted
+#' marginal structural outcome model whose link is identity, logit, or log, and
+#' `ipw()` reports the single exposure coefficient of that model.
 #'
 #' @param ps_mod The weighting object: a fitted propensity score model that
 #'   produced the weights, typically a logistic regression of class
@@ -633,6 +633,59 @@ check_ipw_outcome_family <- function(outcome_mod, call = rlang::caller_env()) {
     error_class = "propensity_ipw_family_error",
     call = call
   )
+}
+
+# Validate the propensity score and outcome links on the continuous exposure
+# path, which the binary and categorical paths do not restrict this way. Both
+# checks fire at spec-construction entry, before any M-estimator solve. The
+# continuous propensity score design is reconstructed as the linear predictor
+# X alpha, which equals the fitted mean only under an identity link; a
+# non-identity gaussian propensity link would otherwise surface later as a
+# misleading weights mismatch. The reported effect is labeled from the outcome
+# link (identity for a slope, logit for a log odds ratio, log for a log risk
+# ratio), so an outcome link outside that set has no label.
+check_ipw_continuous_links <- function(
+  ps_mod,
+  outcome_mod,
+  call = rlang::caller_env()
+) {
+  if (inherits(ps_mod, "glm")) {
+    ps_link <- ps_mod$family$link
+    if (!identical(ps_link, "identity")) {
+      abort(
+        c(
+          "{.fun ipw} supports only an identity-link propensity score model \\
+          for a continuous exposure.",
+          x = "{.arg ps_mod} is a gaussian model with a {.val {ps_link}} link.",
+          i = "Refit {.arg ps_mod} as an {.fun lm} or a gaussian glm with an \\
+          identity link."
+        ),
+        error_class = "propensity_ipw_link_error",
+        call = call
+      )
+    }
+  }
+
+  outcome_link <- if (inherits(outcome_mod, "glm")) {
+    outcome_mod$family$link
+  } else {
+    "identity"
+  }
+  supported <- c("identity", "logit", "log")
+  if (!outcome_link %in% supported) {
+    abort(
+      c(
+        "{.fun ipw} does not support a {.val {outcome_link}} link for the \\
+        marginal structural model of a continuous exposure.",
+        x = "{.arg outcome_mod} was fit with a {.val {outcome_link}} link.",
+        i = "Refit {.arg outcome_mod} with one of {.val {supported}}."
+      ),
+      error_class = "propensity_ipw_link_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
 }
 
 # Restrict the linearization path to an outcome model of the exposure alone. Its

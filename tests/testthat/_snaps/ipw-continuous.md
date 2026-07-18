@@ -18,3 +18,13 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
+# the continuous propensity-link error names the unsupported link
+
+    Code
+      ipw(ps_mod, msm)
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` supports only an identity-link propensity score model for a continuous exposure.
+      x `ps_mod` is a gaussian model with a "log" link.
+      i Refit `ps_mod` as an `lm()` or a gaussian glm with an identity link.
+

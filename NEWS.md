@@ -56,6 +56,13 @@
   non-identity link, errors and directs you to a binomial or quasibinomial model
   or a gaussian identity link.
 
+* For a continuous exposure, `ipw()` now validates the propensity score and
+  marginal structural model links at entry with honest errors. A non-identity
+  gaussian propensity score link (previously surfaced as a misleading
+  weights-mismatch error) and a marginal structural model link outside identity,
+  logit, and log (previously an error only after fitting) now fail fast, naming
+  the offending link.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.
