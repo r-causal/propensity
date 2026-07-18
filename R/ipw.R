@@ -856,6 +856,7 @@ linearize_variables_for_ps <- function(
   ps_link
 ) {
   n <- length(exposure)
+  score_factor_f <- derive_score_factor(ps_link)
   weight_derivatives <- derive_weights(
     exposure = exposure,
     ps = ps,
@@ -881,6 +882,7 @@ linearize_variables_for_ps <- function(
       weight_matrix = weight_matrix,
       weight_derivatives = weight_derivatives,
       correction_mat = correction_mat,
+      score_factor_f = score_factor_f,
       n = n
     )
 
@@ -895,6 +897,7 @@ linearize_variables_for_ps <- function(
       weight_matrix = weight_matrix,
       weight_derivatives = weight_derivatives,
       correction_mat = correction_mat,
+      score_factor_f = score_factor_f,
       n = n
     )
 
@@ -939,6 +942,7 @@ correct_for_ps <- function(
   weight_matrix,
   weight_derivatives,
   correction_mat,
+  score_factor_f,
   n
 ) {
   # first, compute partial-derivative sums over subjects (averaged by n)
@@ -947,8 +951,12 @@ correct_for_ps <- function(
   ) /
     n
 
-  # then build the transformation matrix for correction
-  transformation_mat <- correction_mat %*% t((exposure - ps) * weight_matrix)
+  # then build the transformation matrix for correction. The score of a binomial
+  # GLM with link g is x_i (Z_i - p_i) / (p_i (1 - p_i) g'(p_i)); the score factor
+  # 1 / (p (1 - p) g'(p)) generalizes the correction to any link. It is exactly 1
+  # for the canonical logit, leaving the logit influence values unchanged.
+  transformation_mat <- correction_mat %*%
+    t((exposure - ps) * score_factor_f(ps) * weight_matrix)
 
   # and then apply the partial-derivative sums to that transformation
   correction_contrib <- rbind(partial_derivative_sums) %*% transformation_mat
@@ -1074,6 +1082,22 @@ derive_link <- function(ps_link = c("logit", "probit", "cloglog")) {
     logit = function(x) 1 / (x * (1 - x)),
     probit = function(x) 1 / (dnorm(qnorm(x))),
     cloglog = function(x) -1 / ((1 - x) * log(1 - x))
+  )
+}
+
+# Score factor 1 / (p (1 - p) g'(p)) that scales the residual (Z - p) into the
+# binomial GLM score on the linearization ps correction. Returned in closed form
+# per link so the logit factor is exactly 1 (not the round-trip
+# p (1 - p) / (p (1 - p)) of derive_link), keeping the logit influence values
+# bit-for-bit unchanged. Probit and cloglog match 1 / (p (1 - p) g'(p)) with
+# g'(p) from derive_link().
+derive_score_factor <- function(ps_link = c("logit", "probit", "cloglog")) {
+  ps_link <- rlang::arg_match(ps_link)
+  switch(
+    ps_link,
+    logit = function(p) rep(1, length(p)),
+    probit = function(p) dnorm(qnorm(p)) / (p * (1 - p)),
+    cloglog = function(p) -log(1 - p) / p
   )
 }
 

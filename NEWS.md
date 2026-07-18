@@ -29,6 +29,12 @@
   respectively (underestimated when the ratio exceeds one, overestimated
   otherwise). Risk-difference standard errors are unaffected.
 
+* Corrected the linearization standard errors for probit and cloglog propensity
+  score models. The influence function for the propensity score coefficients
+  omitted the GLM score factor `1 / (p (1 - p) g'(p))`, which is 1 only for the
+  canonical logit link, so probit and cloglog standard errors were mis-scaled.
+  Logit standard errors are unchanged.
+
 * `ipw()` now supports categorical exposures through a `nnet::multinom()`
   propensity score model and continuous exposures through an `lm()` or
   gaussian-family `glm()` propensity score model with a weighted marginal

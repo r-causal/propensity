@@ -645,8 +645,9 @@ lin_se_correct <- function(ps_mod, z, y, w) {
 }
 
 # Seeded data whose exposure is generated on the requested link, so the fitted
-# propensity score model is well specified. The confounding is moderate, keeping
-# the propensity scores away from 0 and 1 for both probit and cloglog.
+# propensity score model is well specified. The confounding is moderate, so the
+# propensity score fits converge without separation warnings and the ATE weights
+# stay finite and stable for both probit and cloglog.
 se_link_data <- function(link, seed = 4242, n = 4000) {
   set.seed(seed)
   x1 <- rnorm(n)
@@ -709,7 +710,6 @@ test_that("the hand-coded linearization RD SE reproduces the logit path and refe
 })
 
 test_that("probit linearization RD SE matches the generalized score correction", {
-  skip("pending probit and cloglog linearization score correction")
   dat <- se_link_data("probit")
   mods <- se_link_models(dat, "probit")
 
@@ -725,7 +725,6 @@ test_that("probit linearization RD SE matches the generalized score correction",
 })
 
 test_that("cloglog linearization RD SE matches the generalized score correction", {
-  skip("pending probit and cloglog linearization score correction")
   dat <- se_link_data("cloglog")
   mods <- se_link_models(dat, "cloglog")
 
@@ -741,7 +740,6 @@ test_that("cloglog linearization RD SE matches the generalized score correction"
 })
 
 test_that("probit linearization RD SE agrees with mestimation", {
-  skip("pending probit and cloglog linearization score correction")
   dat <- se_link_data("probit")
   mods <- se_link_models(dat, "probit")
 
