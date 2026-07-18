@@ -787,3 +787,48 @@ test_that("the linearization path rejects an unsupported outcome family", {
     class = "propensity_ipw_family_error"
   )
 })
+
+# ---- factor outcome response on the linearization path ----------------------
+
+test_that("linearization matches a factor outcome response with finite SEs", {
+  skip("pending factor outcome conversion")
+  dat <- se_method_data()
+  dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
+  ps_mod <- se_method_ps_mod(dat)
+  wts <- wt_ate(
+    predict(ps_mod, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  num <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+  fac <- suppressWarnings(
+    glm(yf ~ z, data = dat, family = quasibinomial(), weights = wts)
+  )
+
+  res_num <- ipw(
+    ps_mod,
+    num,
+    .data = dat,
+    se_method = "linearization"
+  )$estimates
+
+  # Today Y - mu is computed on the raw factor, giving NA std.err with
+  # "'-' not meaningful for factors" warnings. The linearization branch extracts
+  # the outcome two ways that fail identically: `.data[[outcome_name]]` when
+  # .data is supplied, and fmla_extract_left_vctr when it is not. Both must
+  # return finite std.err equal to the numeric fit with no warnings.
+  res_data <- expect_no_warning(
+    ipw(ps_mod, fac, .data = dat, se_method = "linearization")$estimates
+  )
+  res_nodata <- expect_no_warning(
+    ipw(ps_mod, fac, se_method = "linearization")$estimates
+  )
+
+  expect_true(all(is.finite(res_data$std.err)))
+  expect_true(all(is.finite(res_nodata$std.err)))
+  expect_equal(res_data$estimate, res_num$estimate, tolerance = 1e-8)
+  expect_equal(res_data$std.err, res_num$std.err, tolerance = 1e-8)
+  expect_equal(res_nodata$estimate, res_num$estimate, tolerance = 1e-8)
+  expect_equal(res_nodata$std.err, res_num$std.err, tolerance = 1e-8)
+})

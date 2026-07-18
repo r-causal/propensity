@@ -812,3 +812,108 @@ test_that("ipw_spec_binary accepts lm, gaussian-identity, binomial, and quasibin
   expect_equal(spec_qb$outcome$family, "binomial")
   expect_equal(spec_qb$outcome$link, "logit")
 })
+
+# ---- factor and logical outcome responses -----------------------------------
+#
+# The spec constructors store as.double(outcome), where outcome is the raw
+# response from model.frame or a .data column. A binomial glm with a factor
+# response (first level failure, others success) then yields level codes 1/2
+# instead of 0/1, so the stacked binomial score has no root and the solve fails.
+# A logical response already doubles to 0/1. These tests pin that a factor
+# response matches the numeric-0/1 fit; the fix will read the converted response.
+# quasibinomial is used throughout: its $y matches binomial for a factor response
+# and it is the weighted-outcome convention. quasibinomial does not warn about
+# non-integer successes on fractional weights (unlike binomial), so the fixture
+# fits are wrapped in suppressWarnings only defensively.
+
+response_binary_data <- function() {
+  dat <- sim_binary()
+  dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
+  dat$yl <- dat$y == 1
+  dat
+}
+
+response_binary_setup <- function(dat) {
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- wt_ate(
+    predict(ps_mod, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  list(ps_mod = ps_mod, wts = wts)
+}
+
+response_outcome <- function(response, dat, wts) {
+  suppressWarnings(glm(
+    stats::reformulate("z", response),
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  ))
+}
+
+test_that("mestimation matches a factor outcome response to the numeric fit", {
+  skip("pending factor outcome conversion")
+  skip_if_not_installed("deli")
+  dat <- response_binary_data()
+  s <- response_binary_setup(dat)
+  num <- ipw(s$ps_mod, response_outcome("y", dat, s$wts))$estimates
+  fac <- ipw(s$ps_mod, response_outcome("yf", dat, s$wts))$estimates
+  expect_equal(fac$estimate, num$estimate, tolerance = 1e-8)
+  expect_equal(fac$std.err, num$std.err, tolerance = 1e-8)
+})
+
+test_that("mestimation matches a logical outcome response to the numeric fit", {
+  skip_if_not_installed("deli")
+  dat <- response_binary_data()
+  s <- response_binary_setup(dat)
+  num <- ipw(s$ps_mod, response_outcome("y", dat, s$wts))$estimates
+  lgl <- ipw(s$ps_mod, response_outcome("yl", dat, s$wts))$estimates
+  expect_equal(lgl$estimate, num$estimate, tolerance = 1e-8)
+  expect_equal(lgl$std.err, num$std.err, tolerance = 1e-8)
+})
+
+test_that("mestimation matches a factor outcome supplied through .data", {
+  skip("pending factor outcome conversion")
+  skip_if_not_installed("deli")
+  dat <- response_binary_data()
+  s <- response_binary_setup(dat)
+  num <- ipw(s$ps_mod, response_outcome("y", dat, s$wts), .data = dat)$estimates
+  fac <- ipw(
+    s$ps_mod,
+    response_outcome("yf", dat, s$wts),
+    .data = dat
+  )$estimates
+  expect_equal(fac$estimate, num$estimate, tolerance = 1e-8)
+  expect_equal(fac$std.err, num$std.err, tolerance = 1e-8)
+})
+
+test_that("mestimation matches a three-level factor outcome to the numeric fit", {
+  skip("pending factor outcome conversion")
+  skip_if_not_installed("deli")
+  dat <- response_binary_data()
+  # A three-level factor whose first level is the failure: glm maps every
+  # non-first level to success, so the response is 0/1, but as.double(f) is
+  # 1/2/3 and as.double(f) - 1 is 0/1/2. Only reading the converted response
+  # (level != first) gives the numeric fit; this pins the .data-column rule.
+  dat$yf3 <- factor(
+    ifelse(dat$y == 0, "none", ifelse(dat$x1 > 0, "severe", "mild")),
+    levels = c("none", "mild", "severe")
+  )
+  dat$ynum <- as.double(dat$yf3 != "none")
+  s <- response_binary_setup(dat)
+  num <- ipw(
+    s$ps_mod,
+    response_outcome("ynum", dat, s$wts),
+    .data = dat
+  )$estimates
+  fac <- ipw(
+    s$ps_mod,
+    response_outcome("yf3", dat, s$wts),
+    .data = dat
+  )$estimates
+  expect_equal(fac$estimate, num$estimate, tolerance = 1e-8)
+  expect_equal(fac$std.err, num$std.err, tolerance = 1e-8)
+})

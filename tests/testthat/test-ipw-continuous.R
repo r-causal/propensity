@@ -501,3 +501,36 @@ test_that("ipw() continuous works with a log-link marginal structural model", {
   expect_true(all(is.finite(res$estimates$estimate)))
   expect_true(all(is.finite(res$estimates$std.err)))
 })
+
+# ---- factor outcome response ------------------------------------------------
+
+test_that("continuous logistic MSM matches a factor outcome response to the numeric fit", {
+  skip("pending factor outcome conversion")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  dat$ybf <- factor(ifelse(dat$yb == 1, "yes", "no"), levels = c("no", "yes"))
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  wts <- continuous_weights(fitted(ps_mod), dat$A)
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+
+  num <- glm(
+    yb ~ A,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = ctrl
+  )
+  fac <- suppressWarnings(
+    glm(
+      ybf ~ A,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts,
+      control = ctrl
+    )
+  )
+  res_num <- ipw(ps_mod, num)$estimates
+  res_fac <- ipw(ps_mod, fac)$estimates
+  expect_equal(res_fac$estimate, res_num$estimate, tolerance = 1e-8)
+  expect_equal(res_fac$std.err, res_num$std.err, tolerance = 1e-8)
+})

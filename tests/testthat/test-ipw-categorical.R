@@ -603,3 +603,37 @@ test_that("ipw_spec_categorical rejects an unsupported outcome family", {
     class = "propensity_ipw_family_error"
   )
 })
+
+# ---- factor outcome response ------------------------------------------------
+
+test_that("categorical mestimation matches a factor outcome response to the numeric fit", {
+  skip("pending factor outcome conversion")
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
+  ps_mod <- fit_ps_multinom(dat)
+  wts <- categorical_weights(ps_matrix_named(ps_mod, dat), dat$a, "ate")
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+
+  num <- glm(
+    y ~ a,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = ctrl
+  )
+  fac <- suppressWarnings(
+    glm(
+      yf ~ a,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts,
+      control = ctrl
+    )
+  )
+  res_num <- ipw(ps_mod, num)$estimates
+  res_fac <- ipw(ps_mod, fac)$estimates
+  expect_equal(res_fac$estimate, res_num$estimate, tolerance = 1e-8)
+  expect_equal(res_fac$std.err, res_num$std.err, tolerance = 1e-8)
+})
