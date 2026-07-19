@@ -1025,3 +1025,26 @@ test_that("the linearization atu rejection names the SE method", {
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
   )
 })
+
+# ---- more-than-two-level exposure on the linearization path ------------------
+
+test_that("a more-than-two-level exposure on the linearization path aborts informatively", {
+  skip("pending two-level abort call fix")
+  # The linearization path routes the extracted exposure through
+  # estimate_marginal_means, whose two-level abort places call = call inside the
+  # c() message vector instead of passing it to abort, so a >2-level exposure
+  # crashes with rlang's "message must be a character vector, not a list" rather
+  # than the intended informative binary-only error. A .data column with three
+  # exposure values reaches the abort.
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+  dat3 <- dat
+  dat3$z <- rep_len(0:2, nrow(dat))
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat3, se_method = "linearization"),
+    class = "propensity_error",
+    regexp = "binary"
+  )
+})
