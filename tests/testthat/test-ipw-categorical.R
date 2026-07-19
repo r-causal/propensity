@@ -636,3 +636,24 @@ test_that("categorical mestimation matches a factor outcome response to the nume
   expect_equal(res_fac$estimate, res_num$estimate, tolerance = 1e-8)
   expect_equal(res_fac$std.err, res_num$std.err, tolerance = 1e-8)
 })
+
+# ---- length-2 .focal_level --------------------------------------------------
+
+test_that("ipw() categorical errors informatively on a length-2 .focal_level", {
+  skip("pending focal_level length assertion")
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "att", focal_level = "b")
+
+  # Today a length-2 .focal_level reaches `!focal_level %in% levs` inside an `&&`,
+  # raising a raw base error ("'length = 2' in coercion to 'logical(1)'") that
+  # does not name .focal_level. It must become a classed error naming the
+  # argument. The length-1 case is covered by "ipw() categorical atu accepts an
+  # explicit focal level argument".
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .focal_level = c("b", "c")),
+    class = "propensity_error",
+    regexp = "focal_level"
+  )
+})
