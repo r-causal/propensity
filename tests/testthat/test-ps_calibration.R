@@ -407,8 +407,8 @@ test_that("isotonic regression handles various cases like WeightIt", {
   treat_extreme <- c(0, 0, 0, 1, 1, 1, 1)
 
   # Our implementation should handle this without error
-  expect_no_error(
-    our_extreme <- ps_calibrate(ps_extreme, treat_extreme, method = "isoreg")
+  our_extreme <- expect_no_error(
+    ps_calibrate(ps_extreme, treat_extreme, method = "isoreg")
   )
   expect_true(all(as.numeric(our_extreme) >= 0 & as.numeric(our_extreme) <= 1))
   expect_true(all(diff(as.numeric(our_extreme)) >= -1e-10)) # Monotonic

@@ -132,8 +132,8 @@ test_that("tidy(glm, conf.int = TRUE) works on glms weighted by psw vectors", {
   # `weights > 0` many times, which used to trigger
   # `propensity_class_downgrade_warning` from vec_ptype2.psw.double on every
   # comparison; the comparison-operator methods on psw silence that path.
-  expect_no_warning(
-    tidied <- broom::tidy(m, exponentiate = TRUE, conf.int = TRUE),
+  tidied <- expect_no_warning(
+    broom::tidy(m, exponentiate = TRUE, conf.int = TRUE),
     class = "propensity_class_downgrade_warning"
   )
   expect_true(all(c("conf.low", "conf.high") %in% names(tidied)))

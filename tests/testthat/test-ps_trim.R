@@ -82,6 +82,7 @@ test_that("adaptive method: ignores lower/upper, warns appropriately", {
 
   # 2) If user sets lower/upper, we expect a warning
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     out_adapt_warn <- ps_trim(
       ps,
       method = "adaptive",
@@ -421,6 +422,7 @@ test_that("Combining two ps_trim with different parameters triggers warning", {
   # Attempt to combine with different parameters
   # This will warn about different trimming parameters and return numeric
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- vec_c(x, y)
   )
   expect_type(result, "double")
@@ -431,6 +433,7 @@ test_that("Combining ps_trim with double => double", {
 
   # vctrs logic => ptype2 => double
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     combined <- vec_c(x, 0.7)
   )
   expect_type(combined, "double")
@@ -613,6 +616,7 @@ test_that("ps_trim warns when combining objects with different parameters", {
 
   # Should warn and return numeric
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     combined <- c(ps_trim1, ps_trim2)
   )
 

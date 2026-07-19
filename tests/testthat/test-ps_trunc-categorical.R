@@ -200,8 +200,8 @@ test_that("ps_trunc handles parsnip-style column names", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   colnames(ps_matrix) <- c(".pred_A", ".pred_B", ".pred_C")
 
-  expect_no_error(
-    truncated <- ps_trunc(
+  truncated <- expect_no_error(
+    ps_trunc(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -221,6 +221,7 @@ test_that("ps_trunc warns when no column names provided", {
   # No column names
 
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     truncated <- ps_trunc(
       ps_matrix,
       .exposure = exposure,
@@ -245,6 +246,7 @@ test_that("ps_trunc.ps_trunc warns about already truncated scores", {
   )
 
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     truncated_twice <- ps_trunc(
       truncated_once,
       .exposure = exposure,

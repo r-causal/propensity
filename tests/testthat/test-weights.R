@@ -365,8 +365,8 @@ test_that("ATE works for binary cases", {
     "Treating `.exposure` as binary"
   )
 
-  expect_silent(
-    weights2 <- wt_ate(
+  weights2 <- expect_silent(
+    wt_ate(
       c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
@@ -386,8 +386,8 @@ test_that("ATE works for binary cases", {
 
   expect_identical(weights, weights3)
 
-  expect_silent(
-    weights4 <- wt_ate(
+  weights4 <- expect_silent(
+    wt_ate(
       c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(2, 2, 1, 2),
       exposure_type = "binary",
@@ -523,6 +523,7 @@ test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning i
 
   # not refit => expect a warning
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     w_ate_unfit <- wt_ate(
       trimmed_ps,
       .exposure = z,
@@ -535,8 +536,8 @@ test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning i
 
   # 2) After refit => no warning
   trimmed_refit <- ps_refit(trimmed_ps, model = fit)
-  expect_silent(
-    w_ate_fit <- wt_ate(
+  w_ate_fit <- expect_silent(
+    wt_ate(
       trimmed_refit,
       .exposure = z,
       exposure_type = "binary",
@@ -559,8 +560,8 @@ test_that("wt_ate() with ps_trunc adds '; truncated' without refit warning", {
   truncated_ps <- ps_trunc(ps, method = "ps", lower = 0.2, upper = 0.8)
 
   # Should produce weighting with no refit warnings
-  expect_silent(
-    w_ate_trunc <- wt_ate(
+  w_ate_trunc <- expect_silent(
+    wt_ate(
       truncated_ps,
       .exposure = z,
       exposure_type = "binary",
@@ -584,6 +585,7 @@ test_that("Other estimands (att, atu, etc.) with ps_trim or ps_trunc", {
   trimmed_ps <- ps_trim(ps, .exposure = z, method = "ps")
   # No refit => warning
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     w_att_trim <- wt_att(
       trimmed_ps,
       .exposure = z,
@@ -597,16 +599,16 @@ test_that("Other estimands (att, atu, etc.) with ps_trim or ps_trunc", {
   # Trunc
   truncated_ps <- ps_trunc(ps, method = "pctl", lower = 0.2, upper = 0.8)
   # No warning
-  expect_silent(
-    w_att_trunc <- wt_att(
+  w_att_trunc <- expect_silent(
+    wt_att(
       truncated_ps,
       .exposure = z,
       exposure_type = "binary",
       .focal_level = 1
     )
   )
-  expect_silent(
-    w_atu_trunc <- wt_atu(
+  w_atu_trunc <- expect_silent(
+    wt_atu(
       truncated_ps,
       .exposure = z,
       exposure_type = "binary",
@@ -656,6 +658,7 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
 
   # Not refit => we get a warning
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     w_atu_unfit <- wt_atu(
       trimmed_obj,
       .exposure = z,
@@ -674,8 +677,8 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
 
   # 2) Now refit => no warning
   refit_obj <- ps_refit(trimmed_obj, model = fit)
-  expect_silent(
-    w_atu_fit <- wt_atu(
+  w_atu_fit <- expect_silent(
+    wt_atu(
       refit_obj,
       .exposure = z,
       exposure_type = "binary",
@@ -710,6 +713,7 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
 
   # Not refit => warning
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     w_atm_unfit <- wt_atm(
       trimmed_obj,
       .exposure = z,
@@ -723,8 +727,8 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
 
   # Refit => no warning
   refit_obj <- ps_refit(trimmed_obj, model = fit)
-  expect_silent(
-    w_atm_fit <- wt_atm(
+  w_atm_fit <- expect_silent(
+    wt_atm(
       refit_obj,
       .exposure = z,
       exposure_type = "binary",
@@ -754,6 +758,7 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
 
   # Not refit => warning
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     w_ato_unfit <- wt_ato(
       trimmed_obj,
       .exposure = z,
@@ -767,8 +772,8 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
 
   # Refit => no warning
   refit_obj <- ps_refit(trimmed_obj, model = fit)
-  expect_silent(
-    w_ato_fit <- wt_ato(
+  w_ato_fit <- expect_silent(
+    wt_ato(
       refit_obj,
       .exposure = z,
       exposure_type = "binary",
@@ -788,8 +793,8 @@ test_that("wt_entropy works for binary cases", {
     "Treating `.exposure` as binary"
   )
 
-  expect_silent(
-    weights2 <- wt_entropy(
+  weights2 <- expect_silent(
+    wt_entropy(
       c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"
@@ -809,8 +814,8 @@ test_that("wt_entropy works for binary cases", {
 
   expect_identical(weights, weights3)
 
-  expect_silent(
-    weights4 <- wt_entropy(
+  weights4 <- expect_silent(
+    wt_entropy(
       c(0.1, 0.3, 0.4, 0.3),
       .exposure = c(2, 2, 1, 2),
       exposure_type = "binary",
@@ -895,8 +900,8 @@ test_that("entropy weights handle extreme propensity scores", {
   ps_extreme <- c(0.001, 0.01, 0.99, 0.999)
   treatment_extreme <- c(0, 0, 1, 1)
 
-  expect_silent(
-    weights_extreme <- wt_entropy(
+  weights_extreme <- expect_silent(
+    wt_entropy(
       ps_extreme,
       .exposure = treatment_extreme,
       exposure_type = "binary"
@@ -919,6 +924,7 @@ test_that("wt_entropy works with ps_trim objects", {
   ps_trimmed <- ps_trim(ps, method = "ps", lower = 0.15, upper = 0.85)
 
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     weights <- wt_entropy(
       ps_trimmed,
       .exposure = c(0, 0, 1, 0),

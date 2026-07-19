@@ -101,6 +101,7 @@ test_that("vec_ptype2 combines psw and other types correctly", {
   # Different estimands should warn and return numeric
   z <- psw(c(0.5, 0.6), estimand = "att")
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- vec_ptype2(x, z)
   )
   expect_identical(result, double())
@@ -221,8 +222,8 @@ test_that("psw objects can convert to character", {
 
 test_that("psw works with ggplot2", {
   skip_if_not_installed("ggplot2")
-  expect_silent(
-    type <- ggplot2::scale_type(psw(1))
+  type <- expect_silent(
+    ggplot2::scale_type(psw(1))
   )
 
   expect_identical(type, "continuous")

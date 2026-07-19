@@ -436,6 +436,7 @@ test_that("ps_trunc warns when combining objects with different parameters", {
 
   # Should warn and return numeric
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     combined <- c(ps_trunc1, ps_trunc2)
   )
 

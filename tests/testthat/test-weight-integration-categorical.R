@@ -18,6 +18,7 @@ test_that("weight functions work with trimmed categorical propensity scores", {
 
   # Calculate ATE weights - expect warning about refitting
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     wt_ate_trimmed <- wt_ate(trimmed_ps, .exposure = exposure)
   )
 
@@ -85,6 +86,7 @@ test_that("weight functions work with data.frame propensity scores for categoric
 
   # Calculate weights - expect warning about refitting
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     wt_ate_trimmed <- wt_ate(trimmed_ps, .exposure = exposure)
   )
 
@@ -115,6 +117,7 @@ test_that("ATT weights work with categorical trimmed propensity scores", {
 
   # Calculate ATT weights for Treat1 as focal - expect warning about refitting
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     wt_att_trimmed <- wt_att(
       trimmed_ps,
       .exposure = exposure,

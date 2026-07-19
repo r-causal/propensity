@@ -4,6 +4,7 @@ test_that("c() with psw objects of different estimands warns and returns correct
 
   # Test c() function specifically
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- c(x, y)
   )
   expect_type(result, "double")
@@ -14,6 +15,7 @@ test_that("c() with psw objects of different estimands warns and returns correct
   z <- psw(c(0.1, 0.2, 0.9), estimand = "ato")
   expect_propensity_warning(
     expect_propensity_warning(
+      # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
       result2 <- c(x, y, z)
     )
   )
@@ -26,7 +28,7 @@ test_that("c() with psw objects of same estimand combines without warning", {
   y <- psw(c(0.3, 0.8), estimand = "ate")
   z <- psw(c(0.1, 0.9), estimand = "ate")
 
-  expect_silent(result <- c(x, y, z))
+  result <- expect_silent(c(x, y, z))
   expect_s3_class(result, "psw")
   expect_equal(estimand(result), "ate")
   expect_equal(as.numeric(result), c(0.5, 0.7, 0.3, 0.8, 0.1, 0.9))
@@ -38,6 +40,7 @@ test_that("c() with psw and numeric values warns and returns numeric", {
 
   # psw with single numeric
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- c(x, 0.9)
   )
   expect_type(result, "double")
@@ -50,6 +53,7 @@ test_that("c() with psw and numeric values warns and returns numeric", {
 
   # psw with multiple numerics
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result3 <- c(x, c(0.2, 0.3))
   )
   expect_equal(result3, c(0.5, 0.7, 0.2, 0.3))
@@ -65,6 +69,7 @@ test_that("c() with ps_trim objects of different parameters warns and returns nu
   y <- ps_trim(c(0.2, 0.6, 0.8), lower = 0.2, upper = 0.8)
 
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- c(x, y)
   )
   expect_type(result, "double")
@@ -77,7 +82,7 @@ test_that("c() with ps_trim objects of same parameters combines correctly", {
   x <- ps_trim(c(0.2, 0.5, 0.8), method = "ps", lower = 0.1, upper = 0.9)
   y <- ps_trim(c(0.3, 0.6, 0.7), method = "ps", lower = 0.1, upper = 0.9)
 
-  expect_silent(result <- c(x, y))
+  result <- expect_silent(c(x, y))
   expect_s3_class(result, "ps_trim")
   expect_equal(length(result), 6)
   # Values should be preserved (no NAs since all are within bounds)
@@ -93,6 +98,7 @@ test_that("c() with ps_trunc objects behaves correctly", {
   y <- ps_trunc(c(0.15, 0.6, 0.85), lower = 0.3, upper = 0.7)
 
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- c(x, y)
   )
   expect_type(result, "double")
@@ -102,7 +108,7 @@ test_that("c() with ps_trunc objects behaves correctly", {
   x2 <- ps_trunc(c(0.1, 0.5, 0.9), lower = 0.2, upper = 0.8)
   y2 <- ps_trunc(c(0.15, 0.6, 0.85), lower = 0.2, upper = 0.8)
 
-  expect_silent(result2 <- c(x2, y2))
+  result2 <- expect_silent(c(x2, y2))
   expect_s3_class(result2, "ps_trunc")
   expect_equal(as.numeric(result2), c(0.2, 0.5, 0.8, 0.2, 0.6, 0.8))
 })
@@ -114,6 +120,7 @@ test_that("c() with mixed propensity classes warns and returns numeric", {
 
   # psw + ps_trim
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result1 <- c(psw_obj, trim_obj)
   )
   expect_type(result1, "double")
@@ -121,6 +128,7 @@ test_that("c() with mixed propensity classes warns and returns numeric", {
 
   # psw + ps_trunc
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result2 <- c(psw_obj, trunc_obj)
   )
   expect_type(result2, "double")
@@ -128,6 +136,7 @@ test_that("c() with mixed propensity classes warns and returns numeric", {
 
   # ps_trim + ps_trunc
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result3 <- c(trim_obj, trunc_obj)
   )
   expect_type(result3, "double")
@@ -136,6 +145,7 @@ test_that("c() with mixed propensity classes warns and returns numeric", {
   # All three - gets multiple warnings
   expect_propensity_warning(
     expect_propensity_warning(
+      # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
       result4 <- c(psw_obj, trim_obj, trunc_obj)
     )
   )
@@ -155,6 +165,7 @@ test_that("c() with empty vectors works correctly", {
 
   # psw with empty numeric - warns in current implementation
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result2 <- c(x, empty_numeric)
   )
   expect_type(result2, "double")
@@ -162,6 +173,7 @@ test_that("c() with empty vectors works correctly", {
 
   # empty psw with numeric
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result3 <- c(empty_psw, 0.5)
   )
   expect_equal(result3, 0.5)
@@ -172,6 +184,7 @@ test_that("c() with single values works correctly", {
   y <- psw(0.7, estimand = "att")
 
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- c(x, y)
   )
   expect_equal(result, c(0.5, 0.7))
@@ -179,6 +192,7 @@ test_that("c() with single values works correctly", {
   # Single with vector
   z <- psw(c(0.1, 0.2), estimand = "ato")
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result2 <- c(x, z)
   )
   expect_equal(result2, c(0.5, 0.1, 0.2))
@@ -200,6 +214,7 @@ test_that("c() with different stabilization status warns", {
   y <- new_psw(c(0.3, 0.8), estimand = "ate", stabilized = FALSE)
 
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- c(x, y)
   )
   expect_type(result, "double")
@@ -212,12 +227,14 @@ test_that("subsetting operations work correctly", {
 
   # Subset then combine
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- c(x[1:2], y)
   )
   expect_equal(result, c(0.1, 0.5, 0.2, 0.6))
 
   # Combine subsets
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result2 <- c(x[c(1, 3)], y[2])
   )
   expect_equal(result2, c(0.1, 0.7, 0.6))
@@ -228,6 +245,7 @@ test_that("append() works like c()", {
   y <- psw(c(0.3, 0.8), estimand = "att")
 
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result <- append(x, y)
   )
   expect_type(result, "double")
@@ -273,6 +291,7 @@ test_that("data.frame operations work as expected", {
 
   # But vec_rbind does trigger the warning
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result2 <- vctrs::vec_rbind(df1, df2)
   )
   expect_equal(nrow(result2), 6)
@@ -286,6 +305,7 @@ test_that("vctrs vec_ptype2 returns appropriate prototypes", {
 
   # This is what vctrs uses internally - verify it returns empty double
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     proto <- vec_ptype2(x, y)
   )
   expect_identical(proto, double())
@@ -293,7 +313,7 @@ test_that("vctrs vec_ptype2 returns appropriate prototypes", {
 
   # Compatible objects return psw prototype
   z <- psw(c(0.1, 0.2), estimand = "ate")
-  expect_silent(proto2 <- vec_ptype2(x, z))
+  proto2 <- expect_silent(vec_ptype2(x, z))
   expect_s3_class(proto2, "psw")
   expect_equal(length(proto2), 0)
 })
@@ -323,14 +343,14 @@ test_that("comparison operations on psw return logicals without warning", {
   # `tidy(glm, conf.int = TRUE)` on psw-weighted GLMs.
   x <- psw(c(0.5, 0.7), estimand = "ate")
 
-  expect_no_warning(
-    result <- x > 0.6,
+  result <- expect_no_warning(
+    x > 0.6,
     class = "propensity_class_downgrade_warning"
   )
   expect_equal(result, c(FALSE, TRUE))
 
-  expect_no_warning(
-    result2 <- x == 0.5,
+  result2 <- expect_no_warning(
+    x == 0.5,
     class = "propensity_class_downgrade_warning"
   )
   expect_equal(result2, c(TRUE, FALSE))
@@ -356,6 +376,7 @@ test_that("c() ordering matters for warnings", {
 
   # psw first triggers warning
   expect_propensity_warning(
+    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
     result1 <- c(x, num)
   )
   expect_equal(result1, c(0.5, 0.7, 0.3, 0.4))

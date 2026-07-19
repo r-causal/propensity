@@ -608,13 +608,13 @@ test_that("categorical weights work with parsnip-style column names", {
   colnames(ps_matrix) <- c(".pred_A", ".pred_B", ".pred_C")
 
   # Should work without error
-  expect_no_error(
-    w_ate <- wt_ate(ps_matrix, trt, exposure_type = "categorical")
+  w_ate <- expect_no_error(
+    wt_ate(ps_matrix, trt, exposure_type = "categorical")
   )
 
   # Test focal matching works correctly
-  expect_no_error(
-    w_att <- wt_att(
+  w_att <- expect_no_error(
+    wt_att(
       ps_matrix,
       trt,
       exposure_type = "categorical",
