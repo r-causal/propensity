@@ -421,7 +421,7 @@ test_that("ipw works for cloglog link in the propensity score model", {
   expect_true(any(res$estimates$effect == "log(or)"))
 })
 
-test_that("ipw works for cloglog link in the propensity score model", {
+test_that("ipw errors on a length mismatch and a transformed exposure formula", {
   set.seed(3003)
   n <- 400
   x3 <- rnorm(n)

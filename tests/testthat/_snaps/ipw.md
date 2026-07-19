@@ -101,7 +101,7 @@
       Error in `ipw()`:
       ! Estimand in weights different from `estimand`: "ate" vs. "att"
 
-# ipw works for cloglog link in the propensity score model
+# ipw errors on a length mismatch and a transformed exposure formula
 
     Code
       expr
