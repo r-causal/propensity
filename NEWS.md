@@ -97,6 +97,10 @@
   argument, instead of raising a raw length-coercion error from an internal
   comparison.
 
+* Supplying a non-`NULL` `ps_link` with a multinomial propensity score model now
+  errors, instead of silently ignoring it; `ps_link` applies only to a binomial
+  glm propensity model on the binary path.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.

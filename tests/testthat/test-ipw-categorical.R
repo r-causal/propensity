@@ -660,7 +660,6 @@ test_that("ipw() categorical errors informatively on a length-2 .focal_level", {
 # ---- non-NULL ps_link -------------------------------------------------------
 
 test_that("ipw() categorical rejects a non-NULL ps_link", {
-  skip("pending ps_link rejection on ipw.multinom")
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_categorical()

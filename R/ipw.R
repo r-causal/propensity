@@ -47,7 +47,9 @@
 #'   [wt_ate()].
 #' @param ps_link A character string specifying the link function used in the
 #'   propensity score model: `"logit"`, `"probit"`, or `"cloglog"`. Defaults to
-#'   the link used by `ps_mod`.
+#'   the link used by `ps_mod`. This applies only to a binomial [stats::glm()]
+#'   propensity score model on the binary path; leave it `NULL` for a
+#'   multinomial or continuous propensity score model.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
 #' @param se_method Method for standard error estimation. `"mestimation"` (the
 #'   default) stacks the propensity score, outcome, and estimand estimating

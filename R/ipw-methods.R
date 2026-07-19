@@ -28,6 +28,23 @@ ipw.multinom <- function(
   se_method <- rlang::arg_match(se_method)
   assert_class(outcome_mod, c("glm", "lm"))
 
+  # ps_link overrides the link of a binomial glm propensity model on the binary
+  # path; a multinomial propensity model has no such link, so reject a non-NULL
+  # argument rather than silently ignoring it.
+  if (!is.null(ps_link)) {
+    abort(
+      c(
+        "{.fun ipw} does not accept {.arg ps_link} for a multinomial propensity \\
+        score model.",
+        x = "A multinomial propensity score model has no link for \\
+        {.arg ps_link} to override.",
+        i = "Omit {.arg ps_link}; it applies only to a binomial glm propensity \\
+        score model."
+      ),
+      error_class = "propensity_ipw_link_error"
+    )
+  }
+
   if (identical(se_method, "linearization")) {
     abort(
       c(

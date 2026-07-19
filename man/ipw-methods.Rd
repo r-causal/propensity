@@ -85,7 +85,9 @@ requires weights created with a propensity weight function such as
 
 \item{ps_link}{A character string specifying the link function used in the
 propensity score model: \code{"logit"}, \code{"probit"}, or \code{"cloglog"}. Defaults to
-the link used by \code{ps_mod}.}
+the link used by \code{ps_mod}. This applies only to a binomial \code{\link[stats:glm]{stats::glm()}}
+propensity score model on the binary path; leave it \code{NULL} for a
+multinomial or continuous propensity score model.}
 
 \item{conf_level}{Confidence level for intervals. Default is \code{0.95}.}
 
