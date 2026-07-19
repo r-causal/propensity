@@ -1319,7 +1319,8 @@ check_estimand <- function(wts, estimand, call = rlang::caller_env()) {
       c(
         "Can't determine the estimand from weights.",
         i = "Please specify {.arg estimand}."
-      )
+      ),
+      call = call
     )
   }
 

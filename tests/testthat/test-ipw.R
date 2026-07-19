@@ -462,7 +462,6 @@ test_that("the cannot-determine-estimand error is attributed to ipw()", {
   # snapshot pins the "Error in `ipw()`" condition header. (The class of this
   # error is already covered by test-ipw-mestimation.R,
   # "ipw_spec_binary errors when the estimand cannot be determined".)
-  skip("pending check_estimand call threading")
   set.seed(2024)
   n <- 300
   x1 <- rnorm(n)

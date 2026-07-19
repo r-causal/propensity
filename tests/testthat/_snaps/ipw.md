@@ -89,7 +89,7 @@
     Code
       expr
     Condition <propensity_error>
-      Error in `check_estimand()`:
+      Error in `ipw()`:
       ! Can't determine the estimand from weights.
       i Please specify `estimand`.
 
@@ -120,4 +120,13 @@
       ! "z" not found in `model.frame(outcome_mod)`.
       i The outcome model may have transformations in the formula.
       i Please specify `.data`
+
+# the cannot-determine-estimand error is attributed to ipw()
+
+    Code
+      ipw(ps_mod, outcome_mod, .data = dat)
+    Condition
+      Error in `ipw()`:
+      ! Can't determine the estimand from weights.
+      i Please specify `estimand`.
 

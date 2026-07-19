@@ -86,6 +86,9 @@
   `se_method = "mestimation"`, matching the categorical and continuous paths.
   Previously it raised a bare internal argument-matching error.
 
+* The error raised when `ipw()` cannot determine the estimand from the weights is
+  now attributed to `ipw()` rather than the internal `check_estimand()` helper.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.
