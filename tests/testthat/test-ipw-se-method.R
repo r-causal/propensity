@@ -1087,7 +1087,6 @@ matrix_lhs_models <- function() {
 }
 
 test_that("a matrix-response propensity model errors consistently on both SE paths", {
-  skip("pending matrix-LHS ps_mod error alignment")
   m <- matrix_lhs_models()
   for (se in c("mestimation", "linearization")) {
     expect_error(
@@ -1099,7 +1098,6 @@ test_that("a matrix-response propensity model errors consistently on both SE pat
 })
 
 test_that("the matrix-response propensity model error names the matrix response", {
-  skip("pending matrix-LHS ps_mod error alignment")
   m <- matrix_lhs_models()
   expect_snapshot(
     error = TRUE,

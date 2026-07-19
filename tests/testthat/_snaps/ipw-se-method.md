@@ -51,3 +51,13 @@
       ! `ipw()` does not support "linearization" standard errors for the "atu" estimand.
       i Use `se_method = "mestimation"` for the "atu" estimand.
 
+# the matrix-response propensity model error names the matrix response
+
+    Code
+      ipw(m$ps_mod, m$outcome_mod, .data = m$dat)
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` does not support a matrix response in the propensity score model.
+      x `ps_mod` has a matrix response, such as `cbind(successes, failures)`; a binary exposure must be a single-column response.
+      i Fit `ps_mod` with a single binary response column.
+

@@ -101,6 +101,11 @@
   errors, instead of silently ignoring it; `ps_link` applies only to a binomial
   glm propensity model on the binary path.
 
+* A propensity score model with a matrix response (such as
+  `cbind(successes, failures)`) now errors with one consistent message on both
+  standard error methods, instead of diverging into a misleading case-weights or
+  adjusted-outcome error; a binary exposure must be a single-column response.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.

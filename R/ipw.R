@@ -300,6 +300,7 @@ ipw.glm <- function(
   se_method <- rlang::arg_match(se_method)
   assert_class(ps_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
+  check_ipw_ps_response(ps_mod)
 
   # A gaussian-family propensity model indicates a continuous exposure. Route it
   # to the shared continuous path, which an lm propensity model also uses; the two
@@ -574,6 +575,39 @@ check_ipw_weights <- function(wts, call = rlang::caller_env()) {
   }
 
   invisible(wts)
+}
+
+# Reject a propensity score model with a matrix response. A binary exposure must
+# be a single-column response; a cbind(successes, failures) binomial response is
+# not one, and its two columns otherwise surface obliquely and inconsistently
+# across the SE paths (as case weights on the mestimation path, and as a mangled
+# multi-element exposure name on the linearization path). Detect it two ways: the
+# model frame's response is a matrix, and, as a frame-independent fallback for a
+# model fit without a stored frame, the formula's left-hand side is not a single
+# symbol. Shared by ipw.glm entry and ipw_spec_binary.
+check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
+  lhs_not_single <- length(fmla_extract_left_chr(ps_mod)) != 1L
+  response_is_matrix <- tryCatch(
+    is.matrix(stats::model.response(stats::model.frame(ps_mod))),
+    error = function(e) FALSE
+  )
+
+  if (lhs_not_single || response_is_matrix) {
+    abort(
+      c(
+        "{.fun ipw} does not support a matrix response in the propensity score \\
+        model.",
+        x = "{.arg ps_mod} has a matrix response, such as \\
+        {.code cbind(successes, failures)}; a binary exposure must be a \\
+        single-column response.",
+        i = "Fit {.arg ps_mod} with a single binary response column."
+      ),
+      error_class = "propensity_ipw_exposure_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
 }
 
 # Reject an outcome model that carries an offset. The stacked estimating

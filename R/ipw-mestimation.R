@@ -19,6 +19,7 @@ ipw_spec_binary <- function(
 ) {
   assert_class(ps_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
+  check_ipw_ps_response(ps_mod, call = call)
   check_ipw_offset(outcome_mod, call = call)
   check_ipw_outcome_family(outcome_mod, call = call)
 
