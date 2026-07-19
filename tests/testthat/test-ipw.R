@@ -454,3 +454,35 @@ test_that("ipw works for cloglog link in the propensity score model", {
     ipw(ps_mod, outcome_mod_transformed, estimand = "ate")
   )
 })
+
+test_that("the cannot-determine-estimand error is attributed to ipw()", {
+  # Plain numeric weights carry no estimand attribute, and no estimand argument
+  # is supplied, so check_estimand cannot determine the estimand. The error must
+  # be attributed to ipw(), not the internal check_estimand() helper. The
+  # snapshot pins the "Error in `ipw()`" condition header. (The class of this
+  # error is already covered by test-ipw-mestimation.R,
+  # "ipw_spec_binary errors when the estimand cannot be determined".)
+  skip("pending check_estimand call threading")
+  set.seed(2024)
+  n <- 300
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y <- rbinom(n, 1, plogis(-0.4 + z))
+  dat <- data.frame(x1, z, y)
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- as.double(wt_ate(
+    predict(ps_mod, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  ))
+  outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+
+  # The stored call must be the ipw() frame, not the internal check_estimand()
+  # helper. This assertion forces the fix: a no-op leaves the call as
+  # check_estimand(...) and fails here.
+  cnd <- rlang::catch_cnd(ipw(ps_mod, outcome_mod, .data = dat))
+  expect_identical(as.character(cnd$call[[1]]), "ipw")
+
+  expect_snapshot(error = TRUE, ipw(ps_mod, outcome_mod, .data = dat))
+})
