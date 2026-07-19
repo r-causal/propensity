@@ -656,3 +656,23 @@ test_that("ipw() categorical errors informatively on a length-2 .focal_level", {
     regexp = "focal_level"
   )
 })
+
+# ---- non-NULL ps_link -------------------------------------------------------
+
+test_that("ipw() categorical rejects a non-NULL ps_link", {
+  skip("pending ps_link rejection on ipw.multinom")
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # ps_link is meaningful only for a binomial glm on the binary path; a multinom
+  # propensity model must reject it rather than silently ignore it. The default
+  # ps_link = NULL is covered by "ipw() runs categorical ate end to end and
+  # auto-detects the estimand".
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit"),
+    class = "propensity_error",
+    regexp = "ps_link"
+  )
+})
