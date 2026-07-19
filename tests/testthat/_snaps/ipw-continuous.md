@@ -13,8 +13,8 @@
         Call: lm(formula = msm_fmla, data = dat, weights = wts) 
       
       Estimates:
-            estimate   std.err         z ci.lower ci.upper conf.level   p.value    
-      slope  0.67913  0.037942 17.899158   0.6048  0.75349       0.95 < 2.2e-16 ***
+            estimate  std.err      z ci.lower ci.upper conf.level   p.value    
+      slope 0.679126 0.037942 17.899  0.60476  0.75349       0.95 < 2.2e-16 ***
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 

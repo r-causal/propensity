@@ -841,7 +841,7 @@ print.ipw <- function(x, ...) {
     estimates <- x$estimates[-1]
     rownames(estimates) <- x$estimates$effect
   }
-  printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 2:3, tst.ind = 4)
+  printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 1:2, tst.ind = 3)
 
   invisible(x)
 }

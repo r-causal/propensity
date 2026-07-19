@@ -106,6 +106,11 @@
   standard error methods, instead of diverging into a misleading case-weights or
   adjusted-outcome error; a binary exposure must be a single-column response.
 
+* `print()` of an `ipw` object now formats the estimate and standard error as the
+  coefficient pair and the z statistic as the test statistic; previously the
+  columns were misassigned, so the z statistic printed at full precision and the
+  lower confidence bound was truncated.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.

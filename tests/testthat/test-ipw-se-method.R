@@ -1108,7 +1108,6 @@ test_that("the matrix-response propensity model error names the matrix response"
 # ---- printCoefmat column formatting -----------------------------------------
 
 test_that("print.ipw formats the z column as a test statistic, not a coefficient", {
-  skip("pending printCoefmat column fix")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_ate(dat, ps_mod)
