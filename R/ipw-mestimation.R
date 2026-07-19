@@ -206,6 +206,21 @@ ipw_spec_categorical <- function(
   check_ipw_offset(outcome_mod, call = call)
   check_ipw_outcome_family(outcome_mod, call = call)
 
+  # A focal level names a single exposure level. Reject a longer argument here,
+  # before the membership check reaches an `&&` on a non-scalar and raises a raw
+  # coercion error. A length-1 character or factor level, or NULL (ate has no
+  # focal level), is left to the resolution and membership logic below.
+  if (!is.null(.focal_level) && length(.focal_level) != 1) {
+    abort(
+      c(
+        "{.arg .focal_level} must be a single exposure level.",
+        x = "{.arg .focal_level} has length {length(.focal_level)}."
+      ),
+      error_class = "propensity_focal_level_error",
+      call = call
+    )
+  }
+
   # A multinom fit with case weights would need a weighted score in the stacked
   # system; the ee_mlogit block is unweighted, so the fitted coefficients would
   # not sit at the score root and the estimates would drift. multinom always

@@ -640,7 +640,6 @@ test_that("categorical mestimation matches a factor outcome response to the nume
 # ---- length-2 .focal_level --------------------------------------------------
 
 test_that("ipw() categorical errors informatively on a length-2 .focal_level", {
-  skip("pending focal_level length assertion")
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_categorical()

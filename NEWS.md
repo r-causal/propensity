@@ -93,6 +93,10 @@
   informative binary-only error instead of an internal
   "message must be a character vector" crash.
 
+* A `.focal_level` longer than one now errors informatively, naming the
+  argument, instead of raising a raw length-coercion error from an internal
+  comparison.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.
