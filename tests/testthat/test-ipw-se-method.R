@@ -831,3 +831,140 @@ test_that("linearization matches a factor outcome response with finite SEs", {
   expect_equal(res_nodata$estimate, res_num$estimate, tolerance = 1e-8)
   expect_equal(res_nodata$std.err, res_num$std.err, tolerance = 1e-8)
 })
+
+# ---- factor exposures on the linearization path -----------------------------
+#
+# The mestimation path recodes the exposure to 0/1 via
+# as.double(exposure == exposure_values[[2]]) (the second sorted level), but the
+# linearization path passes the raw extracted exposure into
+# linearize_variables_for_wts (wts * Z, 1 - Z), ate_derivative (exposure == 1),
+# and correct_for_ps ((exposure - ps)). A factor exposure then triggers
+# "not meaningful for factors" warnings and, in these fixtures, a hard error
+# ("'x' must be an array of at least two dimensions"); exposure == 1 is also
+# FALSE for every unit, so the treated/control derivative branches would be
+# misassigned. These tests pin parity with the numeric-0/1 analysis, isolating
+# the exposure recoding: the factor and numeric arms share the same fitted
+# propensity scores and the same weight object, differing only in whether the
+# exposure is a factor or its 0/1 recode.
+
+factor_exposure_data <- function(seed = 2024, n = 800) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y <- rbinom(n, 1, plogis(-0.4 + 1.0 * z + 0.5 * x1))
+  trt <- factor(
+    ifelse(z == 1, "treated", "control"),
+    levels = c("control", "treated")
+  )
+  trt_rev <- factor(
+    ifelse(z == 1, "treated", "control"),
+    levels = c("treated", "control")
+  )
+  data.frame(x1, z, y, trt, trt_rev)
+}
+
+# Build a factor-exposure arm and its numeric-0/1 counterpart. The 0/1 recode is
+# the factor's second sorted level (the mestimation reference level), so the ps
+# models share fitted values and the weights (built once from the factor with a
+# matching focal level) are reused by both outcome models. `wt_fun` selects the
+# estimand.
+factor_numeric_arms <- function(dat, factor_col, wt_fun) {
+  focal <- levels(dat[[factor_col]])[[2]]
+  d <- dat
+  d$znum <- as.double(d[[factor_col]] == focal)
+  ps_fac <- glm(
+    stats::reformulate("x1", factor_col),
+    data = d,
+    family = binomial()
+  )
+  ps_num <- glm(znum ~ x1, data = d, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_fun(
+      predict(ps_fac, type = "response"),
+      d[[factor_col]],
+      exposure_type = "binary",
+      .focal_level = focal
+    )
+  )
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+  om_fac <- suppressWarnings(glm(
+    stats::reformulate(factor_col, "y"),
+    data = d,
+    family = quasibinomial(),
+    weights = wts,
+    control = ctrl
+  ))
+  om_num <- glm(
+    y ~ znum,
+    data = d,
+    family = quasibinomial(),
+    weights = wts,
+    control = ctrl
+  )
+  list(
+    ps_fac = ps_fac,
+    om_fac = om_fac,
+    ps_num = ps_num,
+    om_num = om_num,
+    dat = d
+  )
+}
+
+test_that("linearization recodes a factor exposure to match the numeric fit", {
+  skip("pending factor exposure recoding on the linearization path")
+  arms <- factor_numeric_arms(factor_exposure_data(), "trt", wt_ate)
+  ref <- ipw(arms$ps_num, arms$om_num, se_method = "linearization")$estimates
+
+  # Both linearization extraction routes must recode the factor: no .data
+  # (fmla_extract_left_vctr) and .data (the .data column).
+  res_nodata <- expect_no_warning(
+    ipw(arms$ps_fac, arms$om_fac, se_method = "linearization")$estimates
+  )
+  res_data <- expect_no_warning(
+    ipw(
+      arms$ps_fac,
+      arms$om_fac,
+      .data = arms$dat,
+      se_method = "linearization"
+    )$estimates
+  )
+  expect_true(all(is.finite(res_nodata$std.err)))
+  expect_true(all(is.finite(res_data$std.err)))
+  expect_equal(res_nodata, ref, tolerance = 1e-8)
+  expect_equal(res_data, ref, tolerance = 1e-8)
+})
+
+test_that("linearization recodes a reversed-level factor exposure to match the numeric fit", {
+  skip("pending factor exposure recoding on the linearization path")
+  # Levels c("treated", "control"): the second sorted level is "control", so the
+  # recode codes control as 1. A fix hardcoding a label or level order fails.
+  arms <- factor_numeric_arms(factor_exposure_data(), "trt_rev", wt_ate)
+  ref <- ipw(arms$ps_num, arms$om_num, se_method = "linearization")$estimates
+  res <- expect_no_warning(
+    ipw(arms$ps_fac, arms$om_fac, se_method = "linearization")$estimates
+  )
+  expect_true(all(is.finite(res$std.err)))
+  expect_equal(res, ref, tolerance = 1e-8)
+})
+
+test_that("linearization recodes a factor exposure for the att estimand", {
+  skip("pending factor exposure recoding on the linearization path")
+  # att_derivative branches on exposure == 1, which is FALSE for every unit of a
+  # factor exposure, so the recode must precede the derivative as well.
+  arms <- factor_numeric_arms(factor_exposure_data(), "trt", wt_att)
+  ref <- ipw(arms$ps_num, arms$om_num, se_method = "linearization")$estimates
+  res <- expect_no_warning(
+    ipw(arms$ps_fac, arms$om_fac, se_method = "linearization")$estimates
+  )
+  expect_true(all(is.finite(res$std.err)))
+  expect_equal(res, ref, tolerance = 1e-8)
+})
+
+test_that("mestimation matches a factor exposure to the numeric fit", {
+  skip_if_not_installed("deli")
+  arms <- factor_numeric_arms(factor_exposure_data(), "trt", wt_ate)
+  res_fac <- ipw(arms$ps_fac, arms$om_fac, se_method = "mestimation")$estimates
+  res_num <- ipw(arms$ps_num, arms$om_num, se_method = "mestimation")$estimates
+  expect_equal(res_fac, res_num, tolerance = 1e-8)
+})
