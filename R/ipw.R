@@ -805,8 +805,10 @@ ipw.default <- function(
     c(
       "{.fun ipw} does not know how to handle {.arg ps_mod} of class \\
       {.cls {class(ps_mod)}}.",
-      i = "{.arg ps_mod} must be a fitted propensity score model of class \\
-      {.cls glm}, such as a logistic regression."
+      i = "{.arg ps_mod} must be a fitted propensity score model: a \\
+      {.cls glm} for a binary exposure, an {.cls lm} or gaussian \\
+      identity-link {.cls glm} for a continuous exposure, or a \\
+      {.cls multinom} for a categorical exposure."
     ),
     error_class = "propensity_method_error"
   )
