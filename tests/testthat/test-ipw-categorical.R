@@ -675,3 +675,39 @@ test_that("ipw() categorical rejects a non-NULL ps_link", {
     regexp = "ps_link"
   )
 })
+
+# ---- offset guard -----------------------------------------------------------
+
+test_that("ipw() categorical rejects an outcome model with an offset term", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  dat$off <- 0.3 * dat$x1
+  mods <- fit_categorical_models(dat, "ate")
+
+  # The offset guard (check_ipw_offset) is wired at ipw_spec_categorical entry;
+  # the stacked outcome score does not thread an offset. Both offset routes must
+  # be rejected on the categorical path.
+  om_formula <- glm(
+    y ~ a + offset(off),
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts
+  )
+  expect_error(
+    ipw(mods$ps_mod, om_formula),
+    class = "propensity_ipw_offset_error"
+  )
+
+  om_arg <- glm(
+    y ~ a,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    offset = off
+  )
+  expect_error(
+    ipw(mods$ps_mod, om_arg),
+    class = "propensity_ipw_offset_error"
+  )
+})
