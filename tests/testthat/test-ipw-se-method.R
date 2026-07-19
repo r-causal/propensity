@@ -1029,7 +1029,6 @@ test_that("the linearization atu rejection names the SE method", {
 # ---- more-than-two-level exposure on the linearization path ------------------
 
 test_that("a more-than-two-level exposure on the linearization path aborts informatively", {
-  skip("pending two-level abort call fix")
   # The linearization path routes the extracted exposure through
   # estimate_marginal_means, whose two-level abort places call = call inside the
   # c() message vector instead of passing it to abort, so a >2-level exposure

@@ -1144,11 +1144,14 @@ estimate_marginal_means <- function(
   exposure_values <- sort(unique(exposure))
 
   if (!isTRUE(length(exposure_values) == 2)) {
-    abort(c(
-      "{.code ipw()} currently only supports binary exposures.",
-      x = "There are {length(exposure_values)} unique value{?s} of the exposure.",
+    abort(
+      c(
+        "{.code ipw()} currently only supports binary exposures.",
+        x = "There are {length(exposure_values)} unique value{?s} of the \\
+        exposure."
+      ),
       call = call
-    ))
+    )
   }
 
   .data_1 <- .data

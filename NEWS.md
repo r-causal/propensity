@@ -89,6 +89,10 @@
 * The error raised when `ipw()` cannot determine the estimand from the weights is
   now attributed to `ipw()` rather than the internal `check_estimand()` helper.
 
+* A more-than-two-level exposure on the linearization path now raises the
+  informative binary-only error instead of an internal
+  "message must be a character vector" crash.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.
