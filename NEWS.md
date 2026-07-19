@@ -81,6 +81,11 @@
   paths. Previously it failed with a raw "object not found" error that `.data`
   did not resolve.
 
+* Requesting the `atu` or `entropy` estimand with `se_method = "linearization"`
+  now errors with the documented message directing you to
+  `se_method = "mestimation"`, matching the categorical and continuous paths.
+  Previously it raised a bare internal argument-matching error.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.

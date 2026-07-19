@@ -989,7 +989,6 @@ test_that("mestimation matches a factor exposure to the numeric fit", {
 # test-ipw-mestimation.R ("ipw_mestimation runs atu and entropy with finite SEs").
 
 test_that("linearization rejects the atu estimand with a classed error", {
-  skip("pending classed estimand rejection on the binary linearization path")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   wts <- withr::with_options(list(propensity.quiet = TRUE), wt_atu(ps_mod))
@@ -1003,7 +1002,6 @@ test_that("linearization rejects the atu estimand with a classed error", {
 })
 
 test_that("linearization rejects the entropy estimand with a classed error", {
-  skip("pending classed estimand rejection on the binary linearization path")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   wts <- withr::with_options(list(propensity.quiet = TRUE), wt_entropy(ps_mod))
@@ -1017,7 +1015,6 @@ test_that("linearization rejects the entropy estimand with a classed error", {
 })
 
 test_that("the linearization atu rejection names the SE method", {
-  skip("pending classed estimand rejection on the binary linearization path")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   wts <- withr::with_options(list(propensity.quiet = TRUE), wt_atu(ps_mod))

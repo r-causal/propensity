@@ -380,6 +380,22 @@ ipw.glm <- function(
 
   estimand <- check_estimand(wts, estimand)
 
+  # The linearization influence functions are derived only for ate, att, ato, and
+  # atm; atu and entropy require the mestimation path. Reject them here with the
+  # documented classed error rather than letting the request reach derive_weights,
+  # whose internal arg_match raises a bare, misleading error.
+  if (!estimand %in% c("ate", "att", "ato", "atm")) {
+    abort(
+      c(
+        "{.fun ipw} does not support {.val linearization} standard errors for \\
+        the {.val {estimand}} estimand.",
+        i = "Use {.code se_method = \"mestimation\"} for the {.val {estimand}} \\
+        estimand."
+      ),
+      error_class = "propensity_method_error"
+    )
+  }
+
   marginal_means <- estimate_marginal_means(
     outcome_mod = outcome_mod,
     wts = wts,

@@ -42,3 +42,12 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
+# the linearization atu rejection names the SE method
+
+    Code
+      ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` does not support "linearization" standard errors for the "atu" estimand.
+      i Use `se_method = "mestimation"` for the "atu" estimand.
+
