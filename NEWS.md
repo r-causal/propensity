@@ -74,6 +74,13 @@
   the M-estimation path. Previously a factor exposure crashed the linearization
   variance with factor-arithmetic errors.
 
+* The binary M-estimation path now reconstructs the propensity score design from
+  `.data` when the model frame is unavailable (for example, a model fit with
+  `model = FALSE` whose fitting data is gone) and reports an informative error
+  directing you to supply `.data`, matching the categorical and continuous
+  paths. Previously it failed with a raw "object not found" error that `.data`
+  did not resolve.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.

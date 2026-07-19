@@ -42,17 +42,19 @@ ipw_spec_binary <- function(
   exposure_name <- fmla_extract_left_chr(ps_mod)
   outcome_name <- fmla_extract_left_chr(outcome_mod)
 
-  if (is.null(.data)) {
-    exposure <- fmla_extract_left_vctr(ps_mod)
-    outcome <- fmla_extract_left_vctr(outcome_mod)
-    mm_data <- model.frame(outcome_mod)
-    check_exposure(mm_data, exposure_name, call = call)
-  } else {
-    assert_columns_exist(.data, c(exposure_name, outcome_name), call = call)
-    exposure <- .data[[exposure_name]]
-    outcome <- .data[[outcome_name]]
-    mm_data <- .data
-  }
+  extracted <- ipw_extract_ps_design(
+    ps_mod,
+    outcome_mod,
+    .data = .data,
+    exposure_name = exposure_name,
+    outcome_name = outcome_name,
+    xlev = ps_mod$xlevels,
+    call = call
+  )
+  exposure <- extracted$exposure
+  outcome <- extracted$outcome
+  ps_X <- extracted$ps_X
+  mm_data <- extracted$mm_data
 
   if (!identical(length(exposure), length(outcome))) {
     abort(
@@ -112,7 +114,7 @@ ipw_spec_binary <- function(
     n = length(z),
     exposure = z,
     ps = list(
-      X = model.matrix(ps_mod),
+      X = ps_X,
       link = ps_link,
       coefs = stats::coef(ps_mod),
       k = 2L

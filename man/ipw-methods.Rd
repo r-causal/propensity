@@ -69,7 +69,9 @@ them and accept \code{...} for consistency with the \code{ipw()} generic.}
 If \code{NULL} (the default), \code{ipw()} extracts data from the model objects.
 Supply \code{.data} explicitly if the outcome model formula contains
 transformations that prevent extraction of the exposure variable from
-\code{\link[stats:model.frame]{stats::model.frame()}}.}
+\code{\link[stats:model.frame]{stats::model.frame()}}, or if the propensity score model cannot reconstruct
+its design (for example, fit with \code{model = FALSE} with the fitting data no
+longer available); \code{ipw()} then rebuilds the propensity design from \code{.data}.}
 
 \item{estimand}{A character string specifying the causal estimand: one of
 \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or \code{"entropy"}. The available

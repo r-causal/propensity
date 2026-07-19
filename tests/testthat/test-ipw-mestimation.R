@@ -935,7 +935,6 @@ ps_design_data <- function(seed = 2024, n = 600) {
 }
 
 test_that("mestimation reconstructs the binary ps design from .data when the fit frame is gone", {
-  skip("pending binary ps design extraction through the shared helper")
   skip_if_not_installed("deli")
   dat <- ps_design_data()
   ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
@@ -971,7 +970,6 @@ test_that("mestimation reconstructs the binary ps design from .data when the fit
 })
 
 test_that("mestimation errors with the supply-.data hint when the binary ps fit frame is gone", {
-  skip("pending binary ps design extraction through the shared helper")
   dat <- ps_design_data()
   ps_gone <- glm(z ~ x1, data = dat, family = binomial(), model = FALSE)
   wts <- wt_ate(

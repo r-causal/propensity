@@ -33,7 +33,9 @@
 #'   If `NULL` (the default), `ipw()` extracts data from the model objects.
 #'   Supply `.data` explicitly if the outcome model formula contains
 #'   transformations that prevent extraction of the exposure variable from
-#'   [stats::model.frame()].
+#'   [stats::model.frame()], or if the propensity score model cannot reconstruct
+#'   its design (for example, fit with `model = FALSE` with the fitting data no
+#'   longer available); `ipw()` then rebuilds the propensity design from `.data`.
 #' @param estimand A character string specifying the causal estimand: one of
 #'   `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or `"entropy"`. The available
 #'   estimands depend on the exposure type: a binary or categorical exposure
