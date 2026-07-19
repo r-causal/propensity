@@ -1047,3 +1047,62 @@ test_that("a more-than-two-level exposure on the linearization path aborts infor
     regexp = "binary"
   )
 })
+
+# ---- matrix-response (cbind) propensity model -------------------------------
+#
+# A ps model with a matrix LHS (cbind(successes, failures) binomial response) is
+# not a binary exposure. The two SE paths currently diverge and mislead: the
+# mestimation path reports case weights (the cbind totals become prior weights)
+# and the linearization path reports an adjusted outcome model (the mangled
+# length-3 exposure name c("cbind", "y1", "y0") never matches the outcome term).
+# Neither names the matrix response. These tests pin one aligned matrix-response
+# error across both paths; "matrix" is absent from both current messages ("cbind"
+# is not, since it appears as the mangled exposure name on the linearization
+# path), so it is the discriminating regexp.
+
+matrix_lhs_models <- function() {
+  set.seed(2024)
+  n <- 300
+  x1 <- rnorm(n)
+  y1 <- rbinom(n, 5, plogis(0.3 * x1))
+  y0 <- 5 - y1
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y <- rbinom(n, 1, plogis(-0.4 + z))
+  dat <- data.frame(x1, y1, y0, z, y)
+  ps_mod <- glm(cbind(y1, y0) ~ x1, data = dat, family = binomial())
+  ps_bin <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- wt_ate(
+    predict(ps_bin, type = "response"),
+    z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, dat = dat)
+}
+
+test_that("a matrix-response propensity model errors consistently on both SE paths", {
+  skip("pending matrix-LHS ps_mod error alignment")
+  m <- matrix_lhs_models()
+  for (se in c("mestimation", "linearization")) {
+    expect_error(
+      ipw(m$ps_mod, m$outcome_mod, .data = m$dat, se_method = se),
+      class = "propensity_error",
+      regexp = "matrix"
+    )
+  }
+})
+
+test_that("the matrix-response propensity model error names the matrix response", {
+  skip("pending matrix-LHS ps_mod error alignment")
+  m <- matrix_lhs_models()
+  expect_snapshot(
+    error = TRUE,
+    ipw(m$ps_mod, m$outcome_mod, .data = m$dat)
+  )
+})
