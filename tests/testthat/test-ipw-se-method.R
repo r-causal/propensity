@@ -975,3 +975,56 @@ test_that("mestimation matches a factor exposure to the numeric fit", {
     expect_equal(res_fac, res_num, tolerance = 1e-8)
   }
 })
+
+# ---- atu and entropy rejection on the linearization path --------------------
+#
+# The linearization path supports only ate, att, ato, and atm. An atu or entropy
+# request currently reaches derive_weights, whose rlang::arg_match raises a bare,
+# unclassed rlang error attributed to the internal function and claiming the
+# estimand "must be one of ate, att, ato, atm" (misleading: atu and entropy are
+# valid estimands, just unsupported by this SE method). These tests pin a classed
+# propensity_method_error directing to se_method = "mestimation", matching the
+# categorical and continuous paths. The four supported estimands on linearization
+# are covered by test-ipw.R ("variance works"); atu and entropy on mestimation by
+# test-ipw-mestimation.R ("ipw_mestimation runs atu and entropy with finite SEs").
+
+test_that("linearization rejects the atu estimand with a classed error", {
+  skip("pending classed estimand rejection on the binary linearization path")
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_atu(ps_mod))
+  outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error",
+    regexp = "mestimation"
+  )
+})
+
+test_that("linearization rejects the entropy estimand with a classed error", {
+  skip("pending classed estimand rejection on the binary linearization path")
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_entropy(ps_mod))
+  outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error",
+    regexp = "mestimation"
+  )
+})
+
+test_that("the linearization atu rejection names the SE method", {
+  skip("pending classed estimand rejection on the binary linearization path")
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_atu(ps_mod))
+  outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+  )
+})
