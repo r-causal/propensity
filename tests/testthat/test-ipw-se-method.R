@@ -1104,3 +1104,36 @@ test_that("the matrix-response propensity model error names the matrix response"
     ipw(m$ps_mod, m$outcome_mod, .data = m$dat)
   )
 })
+
+# ---- printCoefmat column formatting -----------------------------------------
+
+test_that("print.ipw formats the z column as a test statistic, not a coefficient", {
+  skip("pending printCoefmat column fix")
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+
+  # Reconstruct the numeric matrix print.ipw formats, then derive the two
+  # renderings: the current (wrong) call marks std.err + z as the coefficient
+  # pair and ci.lower as the test statistic; the corrected call marks estimate +
+  # std.err as the pair and z as the test statistic. z prints at full precision
+  # under the wrong call and as a rounded test statistic under the fix.
+  estimates <- res$estimates[-1]
+  rownames(estimates) <- res$estimates$effect
+  fixed <- capture.output(
+    printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 1:2, tst.ind = 3)
+  )
+  current <- capture.output(
+    printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 2:3, tst.ind = 4)
+  )
+
+  data_rows <- function(lines) grep("^(rd|log)", lines, value = TRUE)
+  printed <- data_rows(capture.output(print(res)))
+
+  # The two renderings genuinely differ (guards the discriminator), and the
+  # printed table must match the corrected rendering, not the current one.
+  expect_false(identical(data_rows(fixed), data_rows(current)))
+  expect_identical(printed, data_rows(fixed))
+  expect_false(identical(printed, data_rows(current)))
+})
