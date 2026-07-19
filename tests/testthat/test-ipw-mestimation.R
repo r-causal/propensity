@@ -376,7 +376,8 @@ test_that("ipw_mestimation addresses contrast rows by position, not by name", {
     y ~ z + rd + x1,
     data = dat,
     family = quasibinomial(),
-    weights = wts
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
   )
 
   spec <- ipw_spec_binary(ps_mod, outcome_mod)
