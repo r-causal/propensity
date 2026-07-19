@@ -19,7 +19,8 @@
 
 * `se_method = "linearization"` now requires an exposure-only, offset-free
   outcome model and errors otherwise, directing you to
-  `se_method = "mestimation"`. The linearization influence functions are those
+  `se_method = "mestimation"` for a covariate-adjusted outcome model. The
+  linearization influence functions are those
   of the Hajek weighted-mean estimator, which match the reported g-computation
   estimates only for an outcome model of the exposure alone; the M-estimation
   path handles covariate-adjusted outcome models correctly.
@@ -69,10 +70,10 @@
   response crashed the M-estimation solve or produced `NA` linearization
   standard errors with factor-arithmetic warnings.
 
-* Factor and logical exposures now work on the linearization path, recoded to
-  0/1 with the second factor level (or `TRUE`) as the exposed group, matching
-  the M-estimation path. Previously a factor exposure crashed the linearization
-  variance with factor-arithmetic errors.
+* Factor exposures now work on the linearization path, recoded to 0/1 with the
+  second factor level as the exposed group, matching the M-estimation path;
+  logical exposures are recoded the same way. Previously a factor exposure
+  crashed the linearization variance with factor-arithmetic errors.
 
 * The binary M-estimation path now reconstructs the propensity score design from
   `.data` when the model frame is unavailable (for example, a model fit with
