@@ -56,8 +56,10 @@ propensity score weights supplied via the \code{weights} argument. The weights
 should be created with a propensity weight function such as \code{\link[=wt_ate]{wt_ate()}}.
 Supported outcome models are an \code{\link[stats:lm]{stats::lm()}}, a gaussian
 \code{\link[stats:glm]{stats::glm()}} with an identity link, and a binomial or quasibinomial
-\code{\link[stats:glm]{stats::glm()}}; any other family (such as poisson or Gamma) or a
-non-identity gaussian link errors. A factor or logical outcome response is
+\code{\link[stats:glm]{stats::glm()}} with a logit, probit, cloglog, log, or identity link; any
+other family (such as poisson or Gamma), an unsupported link (such as
+cauchit), or a non-identity gaussian link errors. A factor or logical
+outcome response is
 converted to \code{0}/\code{1} following glm's coding (the first factor level is the
 failure, every other level is the success).}
 
@@ -314,7 +316,7 @@ ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 
 # Step 2: Calculate ATE weights and fit a weighted outcome model
 wts <- wt_ate(ps_mod)
-outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
+outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
 # Step 3: Estimate causal effects with correct standard errors
 result <- ipw(ps_mod, outcome_mod)
@@ -357,7 +359,7 @@ dat_cat <- data.frame(x1, a, y)
 ps_cat <- nnet::multinom(a ~ x1, data = dat_cat, trace = FALSE)
 ps_mat <- predict(ps_cat, type = "probs")
 wts_cat <- wt_ate(ps_mat, dat_cat$a, exposure_type = "categorical")
-outcome_cat <- glm(y ~ a, data = dat_cat, family = binomial(), weights = wts_cat)
+outcome_cat <- glm(y ~ a, data = dat_cat, family = quasibinomial(), weights = wts_cat)
 ipw(ps_cat, outcome_cat)
 \dontshow{\}) # examplesIf}
 }
