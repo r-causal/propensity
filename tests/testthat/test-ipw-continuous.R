@@ -505,7 +505,6 @@ test_that("ipw() continuous works with a log-link marginal structural model", {
 # ---- factor outcome response ------------------------------------------------
 
 test_that("continuous logistic MSM matches a factor outcome response to the numeric fit", {
-  skip("pending factor outcome conversion")
   skip_if_not_installed("deli")
   dat <- sim_continuous()
   dat$ybf <- factor(ifelse(dat$yb == 1, "yes", "no"), levels = c("no", "yes"))

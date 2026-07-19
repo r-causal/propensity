@@ -791,7 +791,6 @@ test_that("the linearization path rejects an unsupported outcome family", {
 # ---- factor outcome response on the linearization path ----------------------
 
 test_that("linearization matches a factor outcome response with finite SEs", {
-  skip("pending factor outcome conversion")
   dat <- se_method_data()
   dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
   ps_mod <- se_method_ps_mod(dat)

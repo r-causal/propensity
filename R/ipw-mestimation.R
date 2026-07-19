@@ -123,7 +123,7 @@ ipw_spec_binary <- function(
     ),
     outcome = list(
       X = model.matrix(outcome_mod),
-      y = as.double(outcome),
+      y = ipw_outcome_numeric(outcome),
       family = family,
       link = out_link,
       coefs = stats::coef(outcome_mod),
@@ -340,7 +340,7 @@ ipw_spec_categorical <- function(
     ),
     outcome = list(
       X = model.matrix(outcome_mod),
-      y = as.double(outcome),
+      y = ipw_outcome_numeric(outcome),
       family = family,
       link = out_link,
       coefs = stats::coef(outcome_mod),
@@ -487,7 +487,7 @@ ipw_spec_continuous <- function(
     ),
     outcome = list(
       X = out_X,
-      y = as.double(outcome),
+      y = ipw_outcome_numeric(outcome),
       family = family,
       link = out_link,
       coefs = stats::coef(outcome_mod),

@@ -63,6 +63,12 @@
   logit, and log (previously an error only after fitting) now fail fast, naming
   the offending link.
 
+* `ipw()` now converts a factor or logical outcome response to the model's 0/1
+  coding on both standard error methods, following glm's convention (the first
+  factor level is failure, every other level is success). Previously a factor
+  response crashed the M-estimation solve or produced `NA` linearization
+  standard errors with factor-arithmetic warnings.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.

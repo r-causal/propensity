@@ -26,7 +26,9 @@
 #'   Supported outcome models are an [stats::lm()], a gaussian
 #'   [stats::glm()] with an identity link, and a binomial or quasibinomial
 #'   [stats::glm()]; any other family (such as poisson or Gamma) or a
-#'   non-identity gaussian link errors.
+#'   non-identity gaussian link errors. A factor or logical outcome response is
+#'   converted to `0`/`1` following glm's coding (the first factor level is the
+#'   failure, every other level is the success).
 #' @param .data A data frame containing the exposure, outcome, and covariates.
 #'   If `NULL` (the default), `ipw()` extracts data from the model objects.
 #'   Supply `.data` explicitly if the outcome model formula contains
@@ -354,6 +356,11 @@ ipw.glm <- function(
     exposure <- .data[[exposure_name]]
     outcome <- .data[[outcome_name]]
   }
+
+  # Convert a factor or logical response to its 0/1 coding so the influence
+  # values compute Y - mu on numeric values rather than factor level codes.
+  # Covers both extraction routes above.
+  outcome <- ipw_outcome_numeric(outcome)
 
   ps <- predict(ps_mod, type = "response", newdata = .data)
 
@@ -1229,6 +1236,20 @@ extract_weights <- function(.mod) {
   .mod |>
     model.frame() |>
     model.weights()
+}
+
+# Convert an outcome response to the 0/1 numeric coding a binomial glm uses. A
+# factor maps every non-first level to success (glm treats the first level as
+# failure), matching outcome_mod$y; a logical or numeric response doubles
+# directly. Applied to the raw outcome vector at each extraction site (a model
+# frame response or a .data column) so that a factor or logical response stacks
+# and linearizes as its converted value rather than as level codes.
+ipw_outcome_numeric <- function(outcome) {
+  if (is.factor(outcome)) {
+    as.double(outcome != levels(outcome)[[1L]])
+  } else {
+    as.double(outcome)
+  }
 }
 
 check_estimand <- function(wts, estimand, call = rlang::caller_env()) {

@@ -607,7 +607,6 @@ test_that("ipw_spec_categorical rejects an unsupported outcome family", {
 # ---- factor outcome response ------------------------------------------------
 
 test_that("categorical mestimation matches a factor outcome response to the numeric fit", {
-  skip("pending factor outcome conversion")
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_categorical()

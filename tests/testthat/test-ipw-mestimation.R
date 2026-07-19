@@ -855,7 +855,6 @@ response_outcome <- function(response, dat, wts) {
 }
 
 test_that("mestimation matches a factor outcome response to the numeric fit", {
-  skip("pending factor outcome conversion")
   skip_if_not_installed("deli")
   dat <- response_binary_data()
   s <- response_binary_setup(dat)
@@ -876,7 +875,6 @@ test_that("mestimation matches a logical outcome response to the numeric fit", {
 })
 
 test_that("mestimation matches a factor outcome supplied through .data", {
-  skip("pending factor outcome conversion")
   skip_if_not_installed("deli")
   dat <- response_binary_data()
   s <- response_binary_setup(dat)
@@ -891,7 +889,6 @@ test_that("mestimation matches a factor outcome supplied through .data", {
 })
 
 test_that("mestimation matches a three-level factor outcome to the numeric fit", {
-  skip("pending factor outcome conversion")
   skip_if_not_installed("deli")
   dat <- response_binary_data()
   # A three-level factor whose first level is the failure: glm maps every

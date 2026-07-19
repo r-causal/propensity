@@ -57,7 +57,9 @@ should be created with a propensity weight function such as \code{\link[=wt_ate]
 Supported outcome models are an \code{\link[stats:lm]{stats::lm()}}, a gaussian
 \code{\link[stats:glm]{stats::glm()}} with an identity link, and a binomial or quasibinomial
 \code{\link[stats:glm]{stats::glm()}}; any other family (such as poisson or Gamma) or a
-non-identity gaussian link errors.}
+non-identity gaussian link errors. A factor or logical outcome response is
+converted to \code{0}/\code{1} following glm's coding (the first factor level is the
+failure, every other level is the success).}
 
 \item{...}{Additional arguments. The \code{as.data.frame()} method passes these
 to \code{\link[base:as.data.frame]{base::as.data.frame()}}; the estimation methods do not currently use
