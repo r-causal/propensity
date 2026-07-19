@@ -266,6 +266,14 @@ difference straddles the kink there and averages the one-sided slopes. Its
 effect on the variance is negligible unless many observations sit at exactly
 \code{0.5}.
 
+M-estimation standard errors for a categorical exposure allocate memory
+roughly linearly in the number of observations, on the order of 70 to 90
+kilobytes per observation for a single fit, so a sample of 10,000
+observations allocates on the order of hundreds of megabytes. The cost comes
+from the stacked estimating-equation machinery rather than any single term,
+and for very large samples you can expect long, garbage-collection-heavy
+fits. This is expected behavior.
+
 Setting \code{se_method = "linearization"} instead uses the influence-function
 linearization of Kostouraki et al. (2024). It is available only for a binary
 exposure and only for the \code{ate}, \code{att}, \code{ato}, and \code{atm} estimands; a
