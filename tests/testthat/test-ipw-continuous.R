@@ -533,3 +533,26 @@ test_that("continuous logistic MSM matches a factor outcome response to the nume
   expect_equal(res_fac$estimate, res_num$estimate, tolerance = 1e-8)
   expect_equal(res_fac$std.err, res_num$std.err, tolerance = 1e-8)
 })
+
+# ---- ps design reconstruction from .data ------------------------------------
+
+test_that("continuous reconstructs the ps design from .data when the fit frame is gone", {
+  skip_if_not_installed("deli")
+  # The continuous path already routes the ps design through
+  # ipw_extract_ps_design: with the fitting data gone, no .data raises the
+  # guarded error and .data rebuilds the design. This is the parity reference the
+  # binary path (bd-30i.6) must match.
+  dat <- sim_continuous()
+  ps_gone <- lm(A ~ x1 + x2, data = dat, model = FALSE)
+  wts <- continuous_weights(fitted(ps_gone), dat$A)
+  om <- lm(yc ~ A, data = dat, weights = wts)
+  ps_ref <- lm(A ~ x1 + x2, data = dat)
+  dat_copy <- dat
+  rm(dat)
+
+  expect_error(ipw(ps_gone, om), class = "propensity_ipw_data_error")
+
+  ref <- ipw(ps_ref, om)$estimates
+  res <- ipw(ps_gone, om, .data = dat_copy)$estimates
+  expect_equal(res, ref, tolerance = 1e-8)
+})

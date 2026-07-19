@@ -914,3 +914,145 @@ test_that("mestimation matches a three-level factor outcome to the numeric fit",
   expect_equal(fac$estimate, num$estimate, tolerance = 1e-8)
   expect_equal(fac$std.err, num$std.err, tolerance = 1e-8)
 })
+
+# ---- binary ps design extraction with .data ---------------------------------
+#
+# ipw_spec_binary extracts the ps design directly (fmla_extract_left_vctr and
+# model.matrix(ps_mod)) rather than through the shared ipw_extract_ps_design the
+# categorical and continuous paths use. So a binary ps model fit with
+# model = FALSE whose fitting data is gone fails with a raw "object not found"
+# error even when .data is supplied, and without .data it raises that raw error
+# instead of the informative propensity_ipw_data_error. These tests pin the
+# guarded, .data-aware behavior in parity with the other paths.
+
+ps_design_data <- function(seed = 2024, n = 600) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  cov <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+  z <- rbinom(n, 1, plogis(0.3 * x1 - 0.4 * (cov == "b")))
+  y <- rbinom(n, 1, plogis(-0.4 + 1.0 * z + 0.5 * x1))
+  data.frame(x1, cov, z, y)
+}
+
+test_that("mestimation reconstructs the binary ps design from .data when the fit frame is gone", {
+  skip("pending binary ps design extraction through the shared helper")
+  skip_if_not_installed("deli")
+  dat <- ps_design_data()
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+  # model = FALSE drops the stored model frame; removing the fitting data leaves
+  # model.matrix(ps_mod) unable to reconstruct it, so .data must rebuild it.
+  ps_gone <- glm(z ~ x1, data = dat, family = binomial(), model = FALSE)
+  wts <- wt_ate(
+    predict(ps_gone, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = ctrl
+  )
+  # reconstructable reference: an identical fit whose frame is retained
+  ps_ref <- glm(z ~ x1, data = dat, family = binomial())
+  dat_copy <- dat
+  rm(dat)
+
+  ref <- ipw(ps_ref, out, se_method = "mestimation")$estimates
+  res <- ipw(
+    ps_gone,
+    out,
+    .data = dat_copy,
+    se_method = "mestimation"
+  )$estimates
+  expect_equal(res, ref, tolerance = 1e-8)
+})
+
+test_that("mestimation errors with the supply-.data hint when the binary ps fit frame is gone", {
+  skip("pending binary ps design extraction through the shared helper")
+  dat <- ps_design_data()
+  ps_gone <- glm(z ~ x1, data = dat, family = binomial(), model = FALSE)
+  wts <- wt_ate(
+    predict(ps_gone, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  out <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+  rm(dat)
+
+  # Without .data the raw "object not found" must become the guarded error.
+  expect_error(
+    ipw(ps_gone, out, se_method = "mestimation"),
+    class = "propensity_ipw_data_error"
+  )
+})
+
+test_that("mestimation binary estimates are unchanged when redundant .data is supplied", {
+  skip_if_not_installed("deli")
+  # A normal, reconstructable ps fit with a factor covariate: supplying .data
+  # must not change the estimates. The fix rebuilds the same design (xlevels and
+  # all), so this guards against drift when .data is redundant and exercises the
+  # factor-covariate design rebuild.
+  dat <- ps_design_data(seed = 11)
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- wt_ate(
+    predict(ps_mod, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  no_data <- ipw(ps_mod, out, se_method = "mestimation")$estimates
+  with_data <- ipw(
+    ps_mod,
+    out,
+    .data = dat,
+    se_method = "mestimation"
+  )$estimates
+  expect_equal(with_data, no_data, tolerance = 1e-8)
+})
+
+test_that("mestimation binary estimates are unchanged when .data re-levels a ps factor covariate", {
+  skip_if_not_installed("deli")
+  # .data with the same factor-covariate values but a reordered levels attribute
+  # (a user re-leveling for presentation after fitting) stays row-aligned. The
+  # ps design rebuild must honor ps_mod$xlevels so the design matches the fit.
+  # Passes vacuously today (.data is ignored for the ps design); becomes load
+  # bearing once the constructor rebuilds through the shared helper.
+  dat <- ps_design_data(seed = 11)
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- wt_ate(
+    predict(ps_mod, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  dat_relevel <- dat
+  dat_relevel$cov <- factor(as.character(dat$cov), levels = c("c", "b", "a"))
+
+  no_data <- ipw(ps_mod, out, se_method = "mestimation")$estimates
+  releveled <- ipw(
+    ps_mod,
+    out,
+    .data = dat_relevel,
+    se_method = "mestimation"
+  )$estimates
+  expect_equal(releveled, no_data, tolerance = 1e-8)
+})
