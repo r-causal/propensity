@@ -864,10 +864,10 @@ factor_exposure_data <- function(seed = 2024, n = 800) {
 }
 
 # Build a factor-exposure arm and its numeric-0/1 counterpart. The 0/1 recode is
-# the factor's second sorted level (the mestimation reference level), so the ps
-# models share fitted values and the weights (built once from the factor with a
-# matching focal level) are reused by both outcome models. `wt_fun` selects the
-# estimand.
+# the factor's second sorted level (the mestimation focal, coded-1, level), so
+# the ps models share fitted values and the weights (built once from the factor
+# with a matching focal level) are reused by both outcome models. `wt_fun`
+# selects the estimand.
 factor_numeric_arms <- function(dat, factor_col, wt_fun) {
   focal <- levels(dat[[factor_col]])[[2]]
   d <- dat
@@ -912,7 +912,6 @@ factor_numeric_arms <- function(dat, factor_col, wt_fun) {
 }
 
 test_that("linearization recodes a factor exposure to match the numeric fit", {
-  skip("pending factor exposure recoding on the linearization path")
   arms <- factor_numeric_arms(factor_exposure_data(), "trt", wt_ate)
   ref <- ipw(arms$ps_num, arms$om_num, se_method = "linearization")$estimates
 
@@ -936,7 +935,6 @@ test_that("linearization recodes a factor exposure to match the numeric fit", {
 })
 
 test_that("linearization recodes a reversed-level factor exposure to match the numeric fit", {
-  skip("pending factor exposure recoding on the linearization path")
   # Levels c("treated", "control"): the second sorted level is "control", so the
   # recode codes control as 1. A fix hardcoding a label or level order fails.
   arms <- factor_numeric_arms(factor_exposure_data(), "trt_rev", wt_ate)
@@ -949,7 +947,6 @@ test_that("linearization recodes a reversed-level factor exposure to match the n
 })
 
 test_that("linearization recodes a factor exposure for the att estimand", {
-  skip("pending factor exposure recoding on the linearization path")
   # att_derivative branches on exposure == 1, which is FALSE for every unit of a
   # factor exposure, so the recode must precede the derivative as well.
   arms <- factor_numeric_arms(factor_exposure_data(), "trt", wt_att)
@@ -963,8 +960,18 @@ test_that("linearization recodes a factor exposure for the att estimand", {
 
 test_that("mestimation matches a factor exposure to the numeric fit", {
   skip_if_not_installed("deli")
-  arms <- factor_numeric_arms(factor_exposure_data(), "trt", wt_ate)
-  res_fac <- ipw(arms$ps_fac, arms$om_fac, se_method = "mestimation")$estimates
-  res_num <- ipw(arms$ps_num, arms$om_num, se_method = "mestimation")$estimates
-  expect_equal(res_fac, res_num, tolerance = 1e-8)
+  for (factor_col in c("trt", "trt_rev")) {
+    arms <- factor_numeric_arms(factor_exposure_data(), factor_col, wt_ate)
+    res_fac <- ipw(
+      arms$ps_fac,
+      arms$om_fac,
+      se_method = "mestimation"
+    )$estimates
+    res_num <- ipw(
+      arms$ps_num,
+      arms$om_num,
+      se_method = "mestimation"
+    )$estimates
+    expect_equal(res_fac, res_num, tolerance = 1e-8)
+  }
 })

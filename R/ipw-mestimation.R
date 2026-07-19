@@ -85,7 +85,7 @@ ipw_spec_binary <- function(
     )
   }
 
-  z <- as.double(exposure == exposure_values[[2]])
+  z <- ipw_recode_binary_exposure(exposure)
 
   out_terms <- stats::delete.response(stats::terms(outcome_mod))
   counterfactual_mm <- function(value) {

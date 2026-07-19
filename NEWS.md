@@ -69,6 +69,11 @@
   response crashed the M-estimation solve or produced `NA` linearization
   standard errors with factor-arithmetic warnings.
 
+* Factor and logical exposures now work on the linearization path, recoded to
+  0/1 with the second factor level (or `TRUE`) as the exposed group, matching
+  the M-estimation path. Previously a factor exposure crashed the linearization
+  variance with factor-arithmetic errors.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.

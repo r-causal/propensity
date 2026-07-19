@@ -386,15 +386,21 @@ ipw.glm <- function(
     .data = .data
   )
 
+  # Recode the exposure to 0/1 for the influence functions, in parity with the
+  # M-estimation recode. The marginal means above keep the original exposure so
+  # they set the counterfactual levels the outcome model expects; the influence
+  # values below need the numeric indicator (wts * Z, exposure == 1, Z - ps).
+  exposure_binary <- ipw_recode_binary_exposure(exposure)
+
   uncorrected_lin_vars <- linearize_variables_for_wts(
-    exposure,
+    exposure_binary,
     outcome,
     wts,
     marginal_means
   )
 
   lin_vars <- linearize_variables_for_ps(
-    exposure = exposure,
+    exposure = exposure_binary,
     outcome = outcome,
     wts = wts,
     ps = ps,
@@ -1249,6 +1255,22 @@ ipw_outcome_numeric <- function(outcome) {
     as.double(outcome != levels(outcome)[[1L]])
   } else {
     as.double(outcome)
+  }
+}
+
+# Recode a binary exposure to 0/1 for the influence-function computations, taking
+# the second sorted value as the exposed group (coded 1): a factor's second
+# level, TRUE for a logical, or the larger value for a numeric. Shared by the
+# M-estimation spec and the linearization path so the two recode identically. A
+# numeric 0/1 exposure is returned unchanged (sort(unique(c(0, 1)))[[2]] is 1).
+# An exposure with more than two unique values is returned untouched so the
+# downstream two-level check still fires on the original values.
+ipw_recode_binary_exposure <- function(exposure) {
+  exposure_values <- sort(unique(exposure))
+  if (length(exposure_values) == 2) {
+    as.double(exposure == exposure_values[[2]])
+  } else {
+    exposure
   }
 }
 
