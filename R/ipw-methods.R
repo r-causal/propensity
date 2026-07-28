@@ -15,7 +15,7 @@
 #' @name ipw-methods
 #' @exportS3Method causalgenerics::ipw multinom
 ipw.multinom <- function(
-  ps_mod,
+  wt_mod,
   outcome_mod,
   ...,
   .data = NULL,
@@ -64,7 +64,7 @@ ipw.multinom <- function(
   check_ipw_weights(wts)
 
   spec <- ipw_spec_categorical(
-    ps_mod,
+    wt_mod,
     outcome_mod,
     .data = .data,
     estimand = estimand,
@@ -74,7 +74,7 @@ ipw.multinom <- function(
 
   new_ipw(
     estimand = spec$estimand,
-    ps_mod = ps_mod,
+    wt_mod = wt_mod,
     outcome_mod = outcome_mod,
     estimates = fit$estimates,
     se_method = "mestimation",
@@ -97,7 +97,7 @@ ipw.multinom <- function(
 #' @name ipw-methods
 #' @exportS3Method causalgenerics::ipw lm
 ipw.lm <- function(
-  ps_mod,
+  wt_mod,
   outcome_mod,
   ...,
   .data = NULL,
@@ -110,7 +110,7 @@ ipw.lm <- function(
   assert_class(outcome_mod, c("glm", "lm"))
 
   ipw_continuous_estimate(
-    ps_mod,
+    wt_mod,
     outcome_mod,
     .data = .data,
     estimand = estimand,

@@ -104,7 +104,7 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
 
   # 4) ipw call
   res <- ipw(
-    ps_mod = ps_mod,
+    wt_mod = ps_mod,
     outcome_mod = outcome_mod,
     .data = dat,
     estimand = "ate",
@@ -222,7 +222,7 @@ test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
   outcome_mod <- glm(y ~ z, family = binomial(), weights = wts)
 
   expect_propensity_error(
-    ipw(ps_mod = bad_mod, outcome_mod = outcome_mod)
+    ipw(wt_mod = bad_mod, outcome_mod = outcome_mod)
   )
 
   expect_propensity_error(
@@ -237,11 +237,11 @@ test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
   bad_outcome <- list(call = quote(foo()), class = "list")
 
   expect_propensity_error(
-    ipw(ps_mod = ps_mod, outcome_mod = bad_outcome)
+    ipw(wt_mod = ps_mod, outcome_mod = bad_outcome)
   )
 
   expect_propensity_error(
-    ipw(ps_mod = ps_mod, outcome_mod = outcome_mod, .data = data.frame(x))
+    ipw(wt_mod = ps_mod, outcome_mod = outcome_mod, .data = data.frame(x))
   )
 })
 
@@ -355,7 +355,7 @@ test_that("Estimand mismatch triggers an error if outcome weights differ from us
   # If your code properly checks mismatch, this should raise an error
   expect_propensity_error(
     ipw(
-      ps_mod = ps_mod,
+      wt_mod = ps_mod,
       outcome_mod = outcome_mod_ate,
       .data = dat,
       estimand = "att"

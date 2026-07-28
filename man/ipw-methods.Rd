@@ -8,7 +8,7 @@
 \title{Inverse Probability Weighted Estimation}
 \usage{
 \method{ipw}{multinom}(
-  ps_mod,
+  wt_mod,
   outcome_mod,
   ...,
   .data = NULL,
@@ -20,7 +20,7 @@
 )
 
 \method{ipw}{lm}(
-  ps_mod,
+  wt_mod,
   outcome_mod,
   ...,
   .data = NULL,
@@ -31,7 +31,7 @@
 )
 
 \method{ipw}{glm}(
-  ps_mod,
+  wt_mod,
   outcome_mod,
   ...,
   .data = NULL,
@@ -42,7 +42,7 @@
 )
 }
 \arguments{
-\item{ps_mod}{The weighting object: a fitted propensity score model that
+\item{wt_mod}{The weighting object: a fitted propensity score model that
 produced the weights, typically a logistic regression of class
 \code{\link[stats:glm]{stats::glm()}} with the exposure as the left-hand side of the formula.
 \code{ipw()} is an S3 generic that dispatches on this object.}
@@ -83,7 +83,7 @@ requires weights created with a propensity weight function such as
 
 \item{ps_link}{A character string specifying the link function used in the
 propensity score model: \code{"logit"}, \code{"probit"}, or \code{"cloglog"}. Defaults to
-the link used by \code{ps_mod}. This applies only to a binomial \code{\link[stats:glm]{stats::glm()}}
+the link used by \code{wt_mod}. This applies only to a binomial \code{\link[stats:glm]{stats::glm()}}
 propensity score model on the binary path; leave it \code{NULL} for a
 multinomial or continuous propensity score model.}
 

@@ -333,12 +333,12 @@ test_that("an ipw result prints its labelled sections and model calls", {
   expect_identical(out[[1]], "Inverse Probability Weight Estimator")
   expect_identical(out[[2]], "Estimand: ATE ")
   expect_identical(out[[3]], "")
-  expect_identical(out[[4]], "Propensity Score Model:")
+  expect_identical(out[[4]], "Weight Estimator:")
   expect_identical(
     out[[5]],
     paste0(
       "  Call: ",
-      paste(deparse(stats::getCall(res$ps_mod)), collapse = "\n"),
+      paste(deparse(stats::getCall(res$wt_mod)), collapse = "\n"),
       " "
     )
   )
@@ -384,7 +384,7 @@ test_that("an ipw result prints a weighting object with no call as a class label
 
   # A weighting object that carries no call falls back to a class label so
   # print() works for any weighting object.
-  res$ps_mod <- structure(list(), class = c("weighting_object", "list"))
+  res$wt_mod <- structure(list(), class = c("weighting_object", "list"))
   expect_identical(
     capture.output(print(res))[[5]],
     "  Call: <weighting_object/list> "
@@ -392,7 +392,7 @@ test_that("an ipw result prints a weighting object with no call as a class label
 
   # An object that cannot be subset at all reaches the same fallback, by way of
   # the guard around `stats::getCall()` rather than a `NULL` return.
-  res$ps_mod <- 1
+  res$wt_mod <- 1
   expect_identical(capture.output(print(res))[[5]], "  Call: <numeric> ")
 })
 

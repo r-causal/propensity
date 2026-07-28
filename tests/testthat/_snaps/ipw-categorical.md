@@ -6,7 +6,7 @@
       Inverse Probability Weight Estimator
       Estimand: ATE 
       
-      Propensity Score Model:
+      Weight Estimator:
         Call: nnet::multinom(formula = a ~ x1 + x2, data = dat, trace = FALSE, 
           reltol = 1e-14, maxit = 2000) 
       

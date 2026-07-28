@@ -15,7 +15,7 @@
 #' marginal structural outcome model whose link is identity, logit, or log, and
 #' `ipw()` reports the single exposure coefficient of that model.
 #'
-#' @param ps_mod The weighting object: a fitted propensity score model that
+#' @param wt_mod The weighting object: a fitted propensity score model that
 #'   produced the weights, typically a logistic regression of class
 #'   [stats::glm()] with the exposure as the left-hand side of the formula.
 #'   `ipw()` is an S3 generic that dispatches on this object.
@@ -49,7 +49,7 @@
 #'   [wt_ate()].
 #' @param ps_link A character string specifying the link function used in the
 #'   propensity score model: `"logit"`, `"probit"`, or `"cloglog"`. Defaults to
-#'   the link used by `ps_mod`. This applies only to a binomial [stats::glm()]
+#'   the link used by `wt_mod`. This applies only to a binomial [stats::glm()]
 #'   propensity score model on the binary path; leave it `NULL` for a
 #'   multinomial or continuous propensity score model.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
@@ -291,7 +291,7 @@
 #' @importFrom stats dnorm family formula model.frame model.matrix model.weights
 #' @importFrom stats pnorm predict qnorm var
 ipw.glm <- function(
-  ps_mod,
+  wt_mod,
   outcome_mod,
   ...,
   .data = NULL,
@@ -301,16 +301,16 @@ ipw.glm <- function(
   se_method = c("mestimation", "linearization")
 ) {
   se_method <- rlang::arg_match(se_method)
-  assert_class(ps_mod, "glm")
+  assert_class(wt_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
-  check_ipw_ps_response(ps_mod)
+  check_ipw_ps_response(wt_mod)
 
   # A gaussian-family propensity model indicates a continuous exposure. Route it
   # to the shared continuous path, which an lm propensity model also uses; the two
   # share fitted values and so produce identical estimates and standard errors.
-  if (identical(ps_mod$family$family, "gaussian")) {
+  if (identical(wt_mod$family$family, "gaussian")) {
     return(ipw_continuous_estimate(
-      ps_mod,
+      wt_mod,
       outcome_mod,
       .data = .data,
       estimand = estimand,
@@ -328,7 +328,7 @@ ipw.glm <- function(
 
   if (identical(se_method, "mestimation")) {
     spec <- ipw_spec_binary(
-      ps_mod,
+      wt_mod,
       outcome_mod,
       .data = .data,
       estimand = estimand,
@@ -337,7 +337,7 @@ ipw.glm <- function(
     fit <- ipw_mestimation(spec, conf_level = conf_level)
     return(new_ipw(
       estimand = spec$estimand,
-      ps_mod = ps_mod,
+      wt_mod = wt_mod,
       outcome_mod = outcome_mod,
       estimates = fit$estimates,
       se_method = "mestimation",
@@ -345,8 +345,8 @@ ipw.glm <- function(
     ))
   }
 
-  weight_matrix <- model.matrix(ps_mod)
-  exposure_name <- fmla_extract_left_chr(ps_mod)
+  weight_matrix <- model.matrix(wt_mod)
+  exposure_name <- fmla_extract_left_chr(wt_mod)
   outcome_name <- fmla_extract_left_chr(outcome_mod)
 
   check_ipw_offset(outcome_mod)
@@ -354,7 +354,7 @@ ipw.glm <- function(
   check_ipw_outcome_family(outcome_mod)
 
   if (is.null(.data)) {
-    exposure <- fmla_extract_left_vctr(ps_mod)
+    exposure <- fmla_extract_left_vctr(wt_mod)
     outcome <- fmla_extract_left_vctr(outcome_mod)
   } else {
     assert_class(exposure_name, "character", .length = 1)
@@ -370,10 +370,10 @@ ipw.glm <- function(
   # Covers both extraction routes above.
   outcome <- ipw_outcome_numeric(outcome)
 
-  ps <- predict(ps_mod, type = "response", newdata = .data)
+  ps <- predict(wt_mod, type = "response", newdata = .data)
 
   if (is.null(ps_link)) {
-    ps_link <- ps_mod$family$link
+    ps_link <- wt_mod$family$link
   }
 
   if (!identical(length(exposure), length(outcome))) {
@@ -445,7 +445,7 @@ ipw.glm <- function(
 
   new_ipw(
     estimand = estimand,
-    ps_mod = ps_mod,
+    wt_mod = wt_mod,
     outcome_mod = outcome_mod,
     estimates = estimates,
     se_method = "linearization",
@@ -494,7 +494,7 @@ ipw_continuous_estimate <- function(
 
   new_ipw(
     estimand = spec$estimand,
-    ps_mod = ps_mod,
+    wt_mod = ps_mod,
     outcome_mod = outcome_mod,
     estimates = fit$estimates,
     se_method = "mestimation",
@@ -778,7 +778,7 @@ check_ipw_linearization_outcome <- function(
 
 #' @exportS3Method causalgenerics::ipw default
 ipw.default <- function(
-  ps_mod,
+  wt_mod,
   outcome_mod,
   ...,
   .data = NULL,
@@ -790,7 +790,7 @@ ipw.default <- function(
   abort(
     c(
       "{.fun ipw} does not know how to handle {.arg ps_mod} of class \\
-      {.cls {class(ps_mod)}}.",
+      {.cls {class(wt_mod)}}.",
       i = "{.arg ps_mod} must be a fitted propensity score model: a \\
       {.cls glm} for a binary exposure, an {.cls lm} or gaussian \\
       identity-link {.cls glm} for a continuous exposure, or a \\

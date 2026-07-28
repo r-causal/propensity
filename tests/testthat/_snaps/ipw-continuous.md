@@ -6,7 +6,7 @@
       Inverse Probability Weight Estimator
       Estimand: ATE 
       
-      Propensity Score Model:
+      Weight Estimator:
         Call: lm(formula = A ~ x1 + x2, data = dat) 
       
       Outcome Model:

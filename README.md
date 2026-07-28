@@ -65,7 +65,7 @@ ipw(ps_mod, outcome_mod)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
 #> 
-#> Propensity Score Model:
+#> Weight Estimator:
 #>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) 
 #> 
 #> Outcome Model:
