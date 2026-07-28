@@ -179,27 +179,11 @@ stabilization_score <- function(wt) {
   attr(wt, "stabilization_score")
 }
 
-#' @export
-is_causal_wt.causal_wts <- function(x, ...) {
-  TRUE
-}
-
 #' @rdname psw
 #' @export
 as_psw <- function(x, estimand = NULL) {
   x <- vec_cast(x, to = double())
   psw(x, estimand = estimand)
-}
-
-#' @export
-estimand.causal_wts <- function(x, ...) {
-  attr(x, "estimand")
-}
-
-#' @export
-`estimand<-.causal_wts` <- function(x, ..., value) {
-  attr(x, "estimand") <- value
-  x
 }
 
 #' @export
@@ -238,19 +222,6 @@ is_refit.psw <- function(x) {
     return(isTRUE(meta$refit))
   }
   FALSE
-}
-
-#' @export
-`[.psw` <- function(x, i, ...) {
-  # Bare `x[]` must return the whole psw unchanged; reading `i` here would
-  # force the missing argument and error.
-  if (missing(i)) {
-    return(NextMethod())
-  }
-  if (is.matrix(i) || is.array(i)) {
-    return(vec_data(x)[i, ...])
-  }
-  NextMethod()
 }
 
 #' @export
@@ -351,115 +322,6 @@ vec_arith.numeric.psw <- function(op, x, y, ...) {
 vec_arith.psw.integer <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
   vec_restore(result, x)
-}
-
-#' Comparison operators on `psw` short-circuit `vec_equal()`/`vec_compare()`.
-#'
-#' Without these methods, `==.vctrs_vctr` and friends route through
-#' `vec_equal()` -> `vec_cast_common()` -> `vec_ptype2.psw.double()`, which
-#' fires `warn_class_downgrade()` once per call. `glm.fit()` evaluates
-#' `weights == 0` and `weights > 0` repeatedly inside `profile.glm()`, so a
-#' single `tidy(glm, conf.int = TRUE)` call can emit 100+ identical warnings.
-#' Comparing weights returns a logical vector, so no class is actually being
-#' downgraded from the user's perspective; the warning is spurious here.
-#'
-#' Strict vctrs size semantics are preserved: `vec_recycle_common()` enforces
-#' the same N-or-1 size rule that `vec_equal()` would, so length-mismatched
-#' comparisons error rather than silently recycling per base R rules. Combine
-#' paths (`vec_c()`, `vec_cast()`) still go through the warning-emitting
-#' `vec_ptype2` methods, so the user is still informed when the psw class
-#' really is dropped.
-#' @noRd
-psw_compare <- function(e1, e2) {
-  args <- vec_recycle_common(e1, e2)
-  if (inherits(args[[1]], "psw")) {
-    args[[1]] <- vec_data(args[[1]])
-  }
-  if (inherits(args[[2]], "psw")) {
-    args[[2]] <- vec_data(args[[2]])
-  }
-  list(e1 = args[[1]], e2 = args[[2]])
-}
-
-#' @export
-`==.psw` <- function(e1, e2) {
-  args <- psw_compare(e1, e2)
-  args$e1 == args$e2
-}
-
-#' @export
-`!=.psw` <- function(e1, e2) {
-  args <- psw_compare(e1, e2)
-  args$e1 != args$e2
-}
-
-#' @export
-`<.psw` <- function(e1, e2) {
-  args <- psw_compare(e1, e2)
-  args$e1 < args$e2
-}
-
-#' @export
-`>.psw` <- function(e1, e2) {
-  args <- psw_compare(e1, e2)
-  args$e1 > args$e2
-}
-
-#' @export
-`<=.psw` <- function(e1, e2) {
-  args <- psw_compare(e1, e2)
-  args$e1 <= args$e2
-}
-
-#' @export
-`>=.psw` <- function(e1, e2) {
-  args <- psw_compare(e1, e2)
-  args$e1 >= args$e2
-}
-
-#' @export
-vec_math.psw <- function(.fn, .x, ...) {
-  # Some functions like cumsum/cumprod should preserve psw class
-  if (.fn %in% c("cumsum", "cumprod", "cummin", "cummax")) {
-    result <- vec_math_base(.fn, vec_data(.x), ...)
-    return(vec_restore(result, .x))
-  }
-  # Other functions like log, sqrt return numeric
-  vec_math_base(.fn, vec_data(.x), ...)
-}
-
-#' @export
-Summary.psw <- function(..., na.rm = FALSE) {
-  .fn <- .Generic
-  args <- list(...)
-  numeric_args <- lapply(args, vec_data)
-  do.call(.fn, c(numeric_args, list(na.rm = na.rm)))
-}
-
-#' @export
-min.psw <- function(..., na.rm = FALSE) {
-  args <- list(...)
-  numeric_args <- lapply(args, vec_data)
-  do.call("min", c(numeric_args, list(na.rm = na.rm)))
-}
-
-#' @export
-max.psw <- function(..., na.rm = FALSE) {
-  args <- list(...)
-  numeric_args <- lapply(args, vec_data)
-  do.call("max", c(numeric_args, list(na.rm = na.rm)))
-}
-
-#' @export
-range.psw <- function(..., na.rm = FALSE) {
-  args <- list(...)
-  numeric_args <- lapply(args, vec_data)
-  do.call("range", c(numeric_args, list(na.rm = na.rm)))
-}
-
-#' @export
-median.psw <- function(x, na.rm = FALSE, ...) {
-  median(vec_data(x), na.rm = na.rm, ...)
 }
 
 #' @export
@@ -617,24 +479,4 @@ vec_cast.psw.ps_trunc <- function(x, to, ...) {
 #' @export
 vec_cast.ps_trunc.psw <- function(x, to, ...) {
   ps_trunc(vec_data(x), method = "ps", lower = 0, upper = 1)
-}
-
-#' @export
-summary.psw <- function(object, ...) {
-  summary(as.numeric(object), ...)
-}
-
-#' @export
-quantile.psw <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
-  quantile(vec_data(x), probs = probs, na.rm = na.rm, ...)
-}
-
-#' @export
-anyDuplicated.psw <- function(x, incomparables = FALSE, ...) {
-  anyDuplicated(vec_data(x), incomparables = incomparables, ...)
-}
-
-#' @export
-diff.psw <- function(x, lag = 1L, differences = 1L, ...) {
-  diff(vec_data(x), lag = lag, differences = differences, ...)
 }
