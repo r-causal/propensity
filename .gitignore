@@ -9,3 +9,5 @@ scratch/
 CLAUDE.md
 /doc/
 /Meta/
+vignettes/*.html
+vignettes/*.pdf
