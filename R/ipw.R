@@ -122,8 +122,9 @@
 #' coefficient of the transformed term is reported under the same link-based
 #' label.
 #'
-#' Use [as.data.frame()] with `exponentiate = TRUE` to obtain risk ratios and
-#' odds ratios on their natural scale.
+#' Use [`as.data.frame()`][causalgenerics::new_ipw()] with
+#' `exponentiate = TRUE` to obtain risk ratios and odds ratios on their natural
+#' scale.
 #'
 #' # Variance estimation
 #'
@@ -204,8 +205,8 @@
 #' @return Methods of `ipw()` return an S3 object of class `ipw`. That result
 #'   class is shared across packages and its components, its `print()` method,
 #'   and its `as.data.frame()` method are documented at
-#'   [causalgenerics::new_ipw()]. propensity's methods fill three of the
-#'   components as follows:
+#'   [causalgenerics::new_ipw()]. propensity's methods fill every component;
+#'   three of them take propensity-specific values:
 #' \describe{
 #'   \item{`estimand`}{One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or
 #'     `"entropy"`.}
@@ -285,7 +286,7 @@
 #'   weighting.
 #'
 #' @name ipw-methods
-#' @export
+#' @exportS3Method causalgenerics::ipw glm
 #' @importFrom causalgenerics new_ipw
 #' @importFrom stats dnorm family formula model.frame model.matrix model.weights
 #' @importFrom stats pnorm predict qnorm var
@@ -775,7 +776,7 @@ check_ipw_linearization_outcome <- function(
   invisible(TRUE)
 }
 
-#' @export
+#' @exportS3Method causalgenerics::ipw default
 ipw.default <- function(
   ps_mod,
   outcome_mod,

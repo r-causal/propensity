@@ -106,8 +106,8 @@ value overrides the attribute.}
 Methods of \code{ipw()} return an S3 object of class \code{ipw}. That result
 class is shared across packages and its components, its \code{print()} method,
 and its \code{as.data.frame()} method are documented at
-\code{\link[causalgenerics:new_ipw]{causalgenerics::new_ipw()}}. propensity's methods fill three of the
-components as follows:
+\code{\link[causalgenerics:new_ipw]{causalgenerics::new_ipw()}}. propensity's methods fill every component;
+three of them take propensity-specific values:
 \describe{
 \item{\code{estimand}}{One of \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or
 \code{"entropy"}.}
@@ -213,8 +213,9 @@ transformation of the exposure (for example an \code{I(A^2)}-only model), the
 coefficient of the transformed term is reported under the same link-based
 label.
 
-Use \code{\link[=as.data.frame]{as.data.frame()}} with \code{exponentiate = TRUE} to obtain risk ratios and
-odds ratios on their natural scale.
+Use \code{\link[causalgenerics:new_ipw]{as.data.frame()}} with
+\code{exponentiate = TRUE} to obtain risk ratios and odds ratios on their natural
+scale.
 }
 
 \section{Variance estimation}{
