@@ -319,6 +319,11 @@ test_that("ipw() rejects an unsupported model with propensity's error class", {
 # ---- behavior that must survive the change of owner -------------------------
 
 test_that("an ipw result prints its labelled sections and model calls", {
+  # testthat 3e pins the output width but not the number of significant digits,
+  # and `printCoefmat()` wraps the estimates table past 80 columns under a
+  # larger `digits`, which splits the rows this test reads by position.
+  withr::local_options(digits = 7)
+
   res <- fit_ipw_binary(sim_ipw_binary())
   expect_identical(class(res), "ipw")
 
@@ -423,6 +428,15 @@ test_that("as.data.frame() on an ipw result returns the estimates component", {
   # `row.names` reaches `base::as.data.frame()`.
   named <- as.data.frame(res, row.names = c("a", "b", "c"))
   expect_identical(rownames(named), c("a", "b", "c"))
+
+  # `optional` is part of the signature `base::as.data.frame()` requires. The
+  # data frame method ignores it, so it must be accepted and leave the
+  # estimates untouched rather than error or reshape them.
+  expect_equal(as.data.frame(res, optional = TRUE), res$estimates)
+
+  # `...` passes through to `base::as.data.frame()`. An argument the data frame
+  # method does not use is absorbed there, not rejected as unused here.
+  expect_equal(as.data.frame(res, stringsAsFactors = FALSE), res$estimates)
 })
 
 test_that("exponentiating an ipw result transforms only the estimate and bounds", {

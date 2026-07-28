@@ -60,8 +60,7 @@
 #'   account for the uncertainty of estimating the propensity scores.
 #'   `"linearization"` supports only an outcome model of the exposure alone; a
 #'   covariate-adjusted outcome model requires `"mestimation"`.
-#' @param ... Additional arguments. The `as.data.frame()` method passes these
-#'   to [base::as.data.frame()]; the estimation methods do not currently use
+#' @param ... Additional arguments. The estimation methods do not currently use
 #'   them and accept `...` for consistency with the `ipw()` generic.
 #'
 #' @details
@@ -202,23 +201,15 @@
 #' different types of propensity score weights. *Statistics in Medicine*.
 #' 2024;43(13):2672--2694. \doi{10.1002/sim.10078}
 #'
-#' @return Methods of `ipw()` return an S3 object of class `ipw`. This return
-#'   contract is shared by every method and has the following components:
+#' @return Methods of `ipw()` return an S3 object of class `ipw`. That result
+#'   class is shared across packages and its components, its `print()` method,
+#'   and its `as.data.frame()` method are documented at
+#'   [causalgenerics::new_ipw()]. propensity's methods fill three of the
+#'   components as follows:
 #' \describe{
-#'   \item{`estimand`}{The causal estimand: one of `"ate"`, `"att"`, `"atu"`,
-#'     `"atm"`, `"ato"`, or `"entropy"`.}
-#'   \item{`ps_mod`}{The weighting object: the fitted model that produced the
-#'     weights.}
-#'   \item{`outcome_mod`}{The fitted outcome model.}
-#'   \item{`estimates`}{A data frame with one row per effect measure and the
-#'     following columns: `effect` (the measure name), `estimate` (point
-#'     estimate), `std.err` (standard error), `z` (z-statistic),
-#'     `ci.lower` and `ci.upper` (confidence interval bounds),
-#'     `conf.level`, and `p.value`. For a categorical exposure the data frame
-#'     also has a `comparison` column, placed after `effect`, naming the
-#'     non-reference level and reference level of each contrast.}
-#'   \item{`se_method`}{The standard error method used, `"mestimation"` or
-#'     `"linearization"`.}
+#'   \item{`estimand`}{One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or
+#'     `"entropy"`.}
+#'   \item{`se_method`}{Either `"mestimation"` or `"linearization"`.}
 #'   \item{`fit`}{The fitted M-estimator object when `se_method` is
 #'     `"mestimation"`, otherwise `NULL`. Calling [stats::vcov()] or
 #'     [generics::tidy()] on this object exposes the full stacked system of
@@ -295,8 +286,9 @@
 #'
 #' @name ipw-methods
 #' @export
+#' @importFrom causalgenerics new_ipw
 #' @importFrom stats dnorm family formula model.frame model.matrix model.weights
-#' @importFrom stats pnorm predict printCoefmat qnorm var
+#' @importFrom stats pnorm predict qnorm var
 ipw.glm <- function(
   ps_mod,
   outcome_mod,
@@ -457,23 +449,6 @@ ipw.glm <- function(
     estimates = estimates,
     se_method = "linearization",
     fit = NULL
-  )
-}
-
-# Assemble the ipw() return object. The four core fields are shared by every
-# method; se_method records which variance estimator ran and fit holds the
-# M-estimator object (NULL on the linearization path).
-new_ipw <- function(estimand, ps_mod, outcome_mod, estimates, se_method, fit) {
-  structure(
-    list(
-      estimand = estimand,
-      ps_mod = ps_mod,
-      outcome_mod = outcome_mod,
-      estimates = estimates,
-      se_method = se_method,
-      fit = fit
-    ),
-    class = "ipw"
   )
 }
 
@@ -822,109 +797,6 @@ ipw.default <- function(
     ),
     error_class = "propensity_method_error"
   )
-}
-
-#' @export
-print.ipw <- function(x, ...) {
-  cat("Inverse Probability Weight Estimator\n")
-  # todo: make this more adaptive, e.g. ATE without L2FU
-  cat("Estimand:", toupper(x$estimand), "\n\n")
-
-  cat("Propensity Score Model:\n")
-  cat("  Call:", format_model_call(x$ps_mod), "\n")
-  cat("\n")
-
-  cat("Outcome Model:\n")
-  cat("  Call:", format_model_call(x$outcome_mod), "\n")
-
-  cat("\n")
-
-  cat("Estimates:\n")
-  if ("comparison" %in% names(x$estimates)) {
-    # A categorical exposure repeats effect labels across comparisons, so the
-    # printed rows are keyed by effect and comparison together and the character
-    # comparison column is dropped from the numeric matrix printCoefmat formats.
-    estimates <- x$estimates[setdiff(
-      names(x$estimates),
-      c("effect", "comparison")
-    )]
-    rownames(estimates) <- paste(x$estimates$effect, x$estimates$comparison)
-  } else {
-    estimates <- x$estimates[-1]
-    rownames(estimates) <- x$estimates$effect
-  }
-  printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 1:2, tst.ind = 3)
-
-  invisible(x)
-}
-
-# Format a model's originating call for the ipw() summary. Objects that carry an
-# accessible call, such as glm and lm, print the deparsed call; a weighting
-# object that does not expose one, including an S7 object that cannot be
-# subset, falls back to a class label so print() works for any weighting object.
-format_model_call <- function(mod) {
-  call <- tryCatch(stats::getCall(mod), error = function(e) NULL)
-  if (is.null(call)) {
-    return(paste0("<", paste(class(mod), collapse = "/"), ">"))
-  }
-  paste(deparse(call), collapse = "\n")
-}
-
-
-#' @param x An `ipw` object.
-#' @param exponentiate If `TRUE`, exponentiate the log risk ratio and log odds
-#'   ratio to produce risk ratios and odds ratios on their natural scale. The
-#'   confidence interval bounds are also exponentiated. Standard errors, z
-#'   statistics, and p-values remain on the log scale. Default is `FALSE`.
-#' @param row.names,optional Passed to [base::as.data.frame()].
-#' @returns `as.data.frame()` returns the `estimates` component as a data
-#'   frame. When `exponentiate = TRUE`, the `log(rr)` and `log(or)` rows are
-#'   transformed: point estimates and confidence limits are exponentiated and
-#'   the effect labels become `"rr"` and `"or"`.
-#' @export
-#' @rdname ipw-methods
-as.data.frame.ipw <- function(
-  x,
-  row.names = NULL,
-  optional = NULL,
-  exponentiate = FALSE,
-  ...
-) {
-  df <- as.data.frame(
-    x$estimates,
-    row.names = row.names,
-    optional = optional,
-    ...
-  )
-
-  if (!exponentiate) {
-    # Return as-is
-    return(df)
-  }
-
-  # If exponentiate=TRUE, we transform the "log_rr" and "log_or" rows to the raw scale
-  # by exponentiating estimate, ci.lower, and ci.upper.
-
-  is_log_rr <- df$effect == "log(rr)"
-  is_log_or <- df$effect == "log(or)"
-
-  rows_to_expo <- is_log_rr | is_log_or
-
-  # Exponentiate estimate, ci.lower, ci.upper
-  df$estimate[rows_to_expo] <- exp(df$estimate[rows_to_expo])
-  df$ci.lower[rows_to_expo] <- exp(df$ci.lower[rows_to_expo])
-  df$ci.upper[rows_to_expo] <- exp(df$ci.upper[rows_to_expo])
-
-  # Rename effect labels for clarity
-  # "log_rr" -> "rr"
-  # "log_or" -> "or"
-  df$effect[is_log_rr] <- "rr"
-  df$effect[is_log_or] <- "or"
-
-  # note: variance, std.err, z_stat, p_value remain on the log scale.
-  # significance testing is typically done on log-scale.
-
-  df
 }
 
 calculate_estimates <- function(

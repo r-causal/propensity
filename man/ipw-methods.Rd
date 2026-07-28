@@ -5,7 +5,6 @@
 \alias{ipw.multinom}
 \alias{ipw.lm}
 \alias{ipw.glm}
-\alias{as.data.frame.ipw}
 \title{Inverse Probability Weighted Estimation}
 \usage{
 \method{ipw}{multinom}(
@@ -41,8 +40,6 @@
   conf_level = 0.95,
   se_method = c("mestimation", "linearization")
 )
-
-\method{as.data.frame}{ipw}(x, row.names = NULL, optional = NULL, exponentiate = FALSE, ...)
 }
 \arguments{
 \item{ps_mod}{The weighting object: a fitted propensity score model that
@@ -63,8 +60,7 @@ outcome response is
 converted to \code{0}/\code{1} following glm's coding (the first factor level is the
 failure, every other level is the success).}
 
-\item{...}{Additional arguments. The \code{as.data.frame()} method passes these
-to \code{\link[base:as.data.frame]{base::as.data.frame()}}; the estimation methods do not currently use
+\item{...}{Additional arguments. The estimation methods do not currently use
 them and accept \code{...} for consistency with the \code{ipw()} generic.}
 
 \item{.data}{A data frame containing the exposure, outcome, and covariates.
@@ -105,45 +101,23 @@ covariate-adjusted outcome model requires \code{"mestimation"}.}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
 the \code{focal_category} attribute of the weights in \code{outcome_mod}. An explicit
 value overrides the attribute.}
-
-\item{x}{An \code{ipw} object.}
-
-\item{row.names, optional}{Passed to \code{\link[base:as.data.frame]{base::as.data.frame()}}.}
-
-\item{exponentiate}{If \code{TRUE}, exponentiate the log risk ratio and log odds
-ratio to produce risk ratios and odds ratios on their natural scale. The
-confidence interval bounds are also exponentiated. Standard errors, z
-statistics, and p-values remain on the log scale. Default is \code{FALSE}.}
 }
 \value{
-Methods of \code{ipw()} return an S3 object of class \code{ipw}. This return
-contract is shared by every method and has the following components:
+Methods of \code{ipw()} return an S3 object of class \code{ipw}. That result
+class is shared across packages and its components, its \code{print()} method,
+and its \code{as.data.frame()} method are documented at
+\code{\link[causalgenerics:new_ipw]{causalgenerics::new_ipw()}}. propensity's methods fill three of the
+components as follows:
 \describe{
-\item{\code{estimand}}{The causal estimand: one of \code{"ate"}, \code{"att"}, \code{"atu"},
-\code{"atm"}, \code{"ato"}, or \code{"entropy"}.}
-\item{\code{ps_mod}}{The weighting object: the fitted model that produced the
-weights.}
-\item{\code{outcome_mod}}{The fitted outcome model.}
-\item{\code{estimates}}{A data frame with one row per effect measure and the
-following columns: \code{effect} (the measure name), \code{estimate} (point
-estimate), \code{std.err} (standard error), \code{z} (z-statistic),
-\code{ci.lower} and \code{ci.upper} (confidence interval bounds),
-\code{conf.level}, and \code{p.value}. For a categorical exposure the data frame
-also has a \code{comparison} column, placed after \code{effect}, naming the
-non-reference level and reference level of each contrast.}
-\item{\code{se_method}}{The standard error method used, \code{"mestimation"} or
-\code{"linearization"}.}
+\item{\code{estimand}}{One of \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or
+\code{"entropy"}.}
+\item{\code{se_method}}{Either \code{"mestimation"} or \code{"linearization"}.}
 \item{\code{fit}}{The fitted M-estimator object when \code{se_method} is
 \code{"mestimation"}, otherwise \code{NULL}. Calling \code{\link[stats:vcov]{stats::vcov()}} or
 \code{\link[generics:tidy]{generics::tidy()}} on this object exposes the full stacked system of
 estimating equations, including the propensity score, outcome, and
 estimand parameters.}
 }
-
-\code{as.data.frame()} returns the \code{estimates} component as a data
-frame. When \code{exponentiate = TRUE}, the \code{log(rr)} and \code{log(or)} rows are
-transformed: point estimates and confidence limits are exponentiated and
-the effect labels become \code{"rr"} and \code{"or"}.
 }
 \description{
 The \code{multinom} method estimates causal effects for a categorical exposure
