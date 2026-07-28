@@ -18,7 +18,7 @@ A named list with truncation metadata, including:
 }
 }
 \description{
-Returns the metadata list attached to a \code{\link[=ps_trunc]{ps_trunc}}
+Returns the metadata list attached to a \code{\link{ps_trunc}}
 object. The list includes fields such as \code{method}, \code{lower_bound},
 \code{upper_bound}, and \code{truncated_idx}.
 }
