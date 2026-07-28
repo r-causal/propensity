@@ -204,7 +204,7 @@ test_that("ipw works for continuous outcome with a confounder, using logistic ps
   expect_no_error(ipw(ps_mod, outcome_mod2, .data = dat, estimand = "ate"))
 })
 
-test_that("ps_mod must be glm, outcome_mod must be glm or lm", {
+test_that("wt_mod must be glm, outcome_mod must be glm or lm", {
   set.seed(103)
   n <- 100
   x <- rnorm(n)

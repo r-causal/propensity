@@ -32,8 +32,8 @@ ipw_spec_binary <- function(
       c(
         "{.fun ipw} does not support a propensity score model fit with case \\
         weights.",
-        x = "{.arg ps_mod} was fit with non-unit {.arg weights}.",
-        i = "Refit {.arg ps_mod} without {.arg weights}."
+        x = "The propensity score model was fit with non-unit {.arg weights}.",
+        i = "Refit the propensity score model without {.arg weights}."
       ),
       error_class = "propensity_ipw_ps_weights_error",
       call = call
@@ -166,7 +166,7 @@ ipw_extract_ps_design <- function(
       cause <- conditionMessage(ps_extract)
       abort(
         c(
-          "Can't reconstruct the data behind {.arg ps_mod}.",
+          "Can't reconstruct the data behind {.arg wt_mod}.",
           x = "{cause}",
           i = "Supply {.arg .data} with the exposure, outcome, and covariates."
         ),
@@ -231,8 +231,8 @@ ipw_spec_categorical <- function(
       c(
         "{.fun ipw} does not support a propensity score model fit with case \\
         weights.",
-        x = "{.arg ps_mod} was fit with non-unit {.arg weights}.",
-        i = "Refit {.arg ps_mod} without {.arg weights}."
+        x = "The propensity score model was fit with non-unit {.arg weights}.",
+        i = "Refit the propensity score model without {.arg weights}."
       ),
       error_class = "propensity_ipw_ps_weights_error",
       call = call
@@ -399,8 +399,8 @@ ipw_spec_continuous <- function(
       c(
         "{.fun ipw} does not support a propensity score model fit with case \\
         weights.",
-        x = "{.arg ps_mod} was fit with non-unit {.arg weights}.",
-        i = "Refit {.arg ps_mod} without {.arg weights}."
+        x = "The propensity score model was fit with non-unit {.arg weights}.",
+        i = "Refit the propensity score model without {.arg weights}."
       ),
       error_class = "propensity_ipw_ps_weights_error",
       call = call
@@ -593,7 +593,7 @@ ipw_check_weight_consistency <- function(
       c(
         "The weights used to fit {.arg outcome_mod} are not consistent with \\
         the propensity score model and estimand.",
-        i = "The {.val {spec$estimand}} weights recomputed from {.arg ps_mod} \\
+        i = "The {.val {spec$estimand}} weights recomputed from {.arg wt_mod} \\
         differ from the weights supplied to {.arg outcome_mod} (compared at \\
         relative tolerance 1e-6).",
         i = "Refit {.arg outcome_mod} with weights from this propensity score \\

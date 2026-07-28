@@ -40,14 +40,14 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-# ps_mod must be glm, outcome_mod must be glm or lm
+# wt_mod must be glm, outcome_mod must be glm or lm
 
     Code
       expr
     Condition <propensity_method_error>
       Error in `ipw()`:
-      ! `ipw()` does not know how to handle `ps_mod` of class <not_a_model>.
-      i `ps_mod` must be a fitted propensity score model: a <glm> for a binary exposure, an <lm> or gaussian identity-link <glm> for a continuous exposure, or a <multinom> for a categorical exposure.
+      ! `ipw()` does not know how to handle `wt_mod` of class <not_a_model>.
+      i `wt_mod` must be a fitted propensity score model: a <glm> for a binary exposure, an <lm> or gaussian identity-link <glm> for a continuous exposure, or a <multinom> for a categorical exposure.
 
 ---
 

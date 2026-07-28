@@ -25,6 +25,6 @@
     Condition
       Error in `ipw()`:
       ! `ipw()` supports only an identity-link propensity score model for a continuous exposure.
-      x `ps_mod` is a gaussian model with a "log" link.
-      i Refit `ps_mod` as an `lm()` or a gaussian glm with an identity link.
+      x `wt_mod` is a gaussian model with a "log" link.
+      i Refit `wt_mod` as an `lm()` or a gaussian glm with an identity link.
 

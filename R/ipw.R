@@ -583,10 +583,10 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
       c(
         "{.fun ipw} does not support a matrix response in the propensity score \\
         model.",
-        x = "{.arg ps_mod} has a matrix response, such as \\
+        x = "{.arg wt_mod} has a matrix response, such as \\
         {.code cbind(successes, failures)}; a binary exposure must be a \\
         single-column response.",
-        i = "Fit {.arg ps_mod} with a single binary response column."
+        i = "Fit {.arg wt_mod} with a single binary response column."
       ),
       error_class = "propensity_ipw_exposure_error",
       call = call
@@ -709,8 +709,8 @@ check_ipw_continuous_links <- function(
         c(
           "{.fun ipw} supports only an identity-link propensity score model \\
           for a continuous exposure.",
-          x = "{.arg ps_mod} is a gaussian model with a {.val {ps_link}} link.",
-          i = "Refit {.arg ps_mod} as an {.fun lm} or a gaussian glm with an \\
+          x = "{.arg wt_mod} is a gaussian model with a {.val {ps_link}} link.",
+          i = "Refit {.arg wt_mod} as an {.fun lm} or a gaussian glm with an \\
           identity link."
         ),
         error_class = "propensity_ipw_link_error",
@@ -789,9 +789,9 @@ ipw.default <- function(
 ) {
   abort(
     c(
-      "{.fun ipw} does not know how to handle {.arg ps_mod} of class \\
+      "{.fun ipw} does not know how to handle {.arg wt_mod} of class \\
       {.cls {class(wt_mod)}}.",
-      i = "{.arg ps_mod} must be a fitted propensity score model: a \\
+      i = "{.arg wt_mod} must be a fitted propensity score model: a \\
       {.cls glm} for a binary exposure, an {.cls lm} or gaussian \\
       identity-link {.cls glm} for a continuous exposure, or a \\
       {.cls multinom} for a categorical exposure."

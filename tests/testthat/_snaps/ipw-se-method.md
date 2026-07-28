@@ -58,6 +58,6 @@
     Condition
       Error in `ipw()`:
       ! `ipw()` does not support a matrix response in the propensity score model.
-      x `ps_mod` has a matrix response, such as `cbind(successes, failures)`; a binary exposure must be a single-column response.
-      i Fit `ps_mod` with a single binary response column.
+      x `wt_mod` has a matrix response, such as `cbind(successes, failures)`; a binary exposure must be a single-column response.
+      i Fit `wt_mod` with a single binary response column.
 
