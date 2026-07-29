@@ -17,7 +17,7 @@ BugReports: https://github.com/r-causal/propensity/issues
 Depends:
     R (>= 4.3)
 Imports:
-    causalgenerics (>= 0.0.0.9001),
+    causalgenerics (>= 0.0.0.9000),
     cli,
     deli,
     lifecycle,
