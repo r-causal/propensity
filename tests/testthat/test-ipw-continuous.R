@@ -691,3 +691,41 @@ test_that("ipw() rejects a gaussian gam propensity model on the continuous path"
     regexp = "gam"
   )
 })
+
+# ---- arguments that fall into the dots --------------------------------------
+
+test_that("ipw() lm rejects arguments that fall into the dots", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+
+  # `.data` was the third positional argument in earlier releases; it now lands
+  # in the dots, where it would be discarded without a signal.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, dat),
+    class = "rlib_error_dots_nonempty"
+  )
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, nonsense = 42),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("ipw() lm accepts every argument supplied by name", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+
+  baseline <- ipw(mods$ps_mod, mods$outcome_mod)
+  named <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = dat,
+    estimand = "ate",
+    conf_level = 0.95,
+    se_method = "mestimation"
+  )
+
+  expect_equal(named$estimates, baseline$estimates)
+})

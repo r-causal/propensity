@@ -485,3 +485,131 @@ test_that("the cannot-determine-estimand error is attributed to ipw()", {
 
   expect_snapshot(error = TRUE, ipw(ps_mod, outcome_mod, .data = dat))
 })
+
+# ---- arguments that fall into the dots --------------------------------------
+
+# `ipw()` places `...` ahead of its named arguments, so anything the caller does
+# not name lands in the dots: `.data` supplied positionally, which earlier
+# releases accepted, and any misspelled argument name. Both must error rather
+# than run to completion with the supplied value discarded and the default used.
+
+dots_binary_fixture <- function() {
+  withr::local_seed(2024)
+  n <- 300
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y <- rbinom(n, 1, plogis(-0.4 + 1.1 * z + 0.5 * x1))
+  dat <- data.frame(x1, z, y)
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- wt_ate(
+    predict(ps_mod, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(dat = dat, ps_mod = ps_mod, outcome_mod = outcome_mod)
+}
+
+test_that("ipw() glm rejects .data supplied positionally", {
+  fx <- dots_binary_fixture()
+
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_mod, fx$dat),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("ipw() glm rejects a misspelled argument", {
+  fx <- dots_binary_fixture()
+
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_mod, nonsense = 42),
+    class = "rlib_error_dots_nonempty"
+  )
+
+  # A near miss of a real argument name is the case most likely to go unnoticed:
+  # the call reads as though it selected linearization.
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_mod, se_methd = "linearization"),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("ipw() default rejects an argument it has no name for", {
+  fx <- dots_binary_fixture()
+  bad_mod <- structure(list(), class = "not_a_model")
+
+  expect_error(
+    ipw(bad_mod, fx$outcome_mod, nonsense = 42),
+    class = "rlib_error_dots_nonempty"
+  )
+
+  # With the dots empty the unsupported class is still what the user hears
+  # about.
+  expect_error(
+    ipw(bad_mod, fx$outcome_mod),
+    class = "propensity_method_error"
+  )
+})
+
+test_that("ipw() glm accepts every argument supplied by name", {
+  fx <- dots_binary_fixture()
+
+  baseline <- ipw(fx$ps_mod, fx$outcome_mod)
+  named <- ipw(
+    fx$ps_mod,
+    fx$outcome_mod,
+    .data = fx$dat,
+    estimand = "ate",
+    ps_link = "logit",
+    conf_level = 0.95,
+    se_method = "mestimation"
+  )
+
+  expect_equal(named$estimates, baseline$estimates)
+  expect_equal(named$estimates$effect, c("rd", "log(rr)", "log(or)"))
+  expect_equal(
+    named$estimates$estimate,
+    c(0.293149648386106, 0.579445266649124, 1.21028245127107),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    named$estimates$std.err,
+    c(0.0545082497807004, 0.121118456441513, 0.238716341998527),
+    tolerance = 1e-6
+  )
+})
+
+test_that("ipw() glm accepts every argument supplied by name under linearization", {
+  fx <- dots_binary_fixture()
+
+  named <- ipw(
+    fx$ps_mod,
+    fx$outcome_mod,
+    .data = fx$dat,
+    estimand = "ate",
+    ps_link = "logit",
+    conf_level = 0.9,
+    se_method = "linearization"
+  )
+
+  expect_equal(named$se_method, "linearization")
+  expect_equal(unique(named$estimates$conf.level), 0.9)
+  expect_equal(
+    named$estimates$estimate,
+    c(0.293149648386107, 0.579445266649124, 1.21028245127107),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    named$estimates$std.err,
+    c(0.054599327536842, 0.121320826160904, 0.239115226595756),
+    tolerance = 1e-6
+  )
+})

@@ -975,3 +975,51 @@ test_that("ipw() categorical accepts a saturated no-intercept outcome model", {
     tolerance = 1e-6
   )
 })
+
+# ---- arguments that fall into the dots --------------------------------------
+
+test_that("ipw() multinom rejects arguments that fall into the dots", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # `.data` was the third positional argument in earlier releases; it now lands
+  # in the dots, where it would be discarded without a signal.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, dat),
+    class = "rlib_error_dots_nonempty"
+  )
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, nonsense = 42),
+    class = "rlib_error_dots_nonempty"
+  )
+
+  # `.focal_level` is a multinom-only argument, so a misspelling of it has no
+  # name to match on any method.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, focal_level = "b"),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("ipw() multinom accepts every argument supplied by name", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "att", focal_level = "b")
+
+  baseline <- ipw(mods$ps_mod, mods$outcome_mod)
+  named <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = dat,
+    estimand = "att",
+    conf_level = 0.95,
+    se_method = "mestimation",
+    .focal_level = "b"
+  )
+
+  expect_equal(named$estimates, baseline$estimates)
+})
