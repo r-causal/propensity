@@ -787,12 +787,23 @@ check_ipw_continuous_links <- function(
 # are exactly the exposure name. Detect an adjusted outcome model here and direct
 # the user to the mestimation path, which stacks adjusted outcome models
 # correctly. Applies only to the linearization path.
+#
+# The intercept is load-bearing for the same reason and is checked separately,
+# because dropping it leaves the term labels untouched. Without an intercept the
+# linear predictor at the unexposed level is zero for every unit, so the
+# g-computation mean under no exposure is pinned at the link's zero point
+# (plogis(0) = 0.5 for a binomial family, 0 for a linear model) instead of being
+# estimated from the data. The reported estimates are then no longer the Hajek
+# means the influence functions describe, and the standard errors describe an
+# estimator that was never fit. The check is on the terms object, so it applies
+# to lm and glm outcome models alike.
 check_ipw_linearization_outcome <- function(
   outcome_mod,
   exposure_name,
   call = rlang::caller_env()
 ) {
-  term_labels <- attr(stats::terms(outcome_mod), "term.labels")
+  outcome_terms <- stats::terms(outcome_mod)
+  term_labels <- attr(outcome_terms, "term.labels")
 
   if (!identical(term_labels, exposure_name)) {
     abort(
@@ -803,6 +814,21 @@ check_ipw_linearization_outcome <- function(
         {.val {exposure_name}}.",
         i = "Use {.code se_method = \"mestimation\"} for a covariate-adjusted \\
         outcome model."
+      ),
+      error_class = "propensity_method_error",
+      call = call
+    )
+  }
+
+  if (!identical(attr(outcome_terms, "intercept"), 1L)) {
+    abort(
+      c(
+        "{.fun ipw} supports {.val linearization} standard errors only for an \\
+        outcome model with an intercept.",
+        x = "{.arg outcome_mod} was fit without an intercept, which fixes the \\
+        mean under no exposure instead of estimating it.",
+        i = "Include an intercept in {.arg outcome_mod}, or use \\
+        {.code se_method = \"mestimation\"}."
       ),
       error_class = "propensity_method_error",
       call = call

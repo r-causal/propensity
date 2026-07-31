@@ -188,6 +188,13 @@ se_method_outcome_no_intercept <- function(dat, ps_mod) {
   glm(y ~ z - 1, data = dat, family = quasibinomial(), weights = wts)
 }
 
+# The same omission in a linear outcome model, whose mean under no exposure is
+# pinned at 0 rather than 0.5.
+se_method_outcome_no_intercept_lm <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  lm(yc ~ z - 1, data = dat, weights = wts)
+}
+
 test_that("ipw() defaults to the mestimation SE method and returns a fit", {
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
@@ -618,6 +625,19 @@ test_that("a no-intercept outcome model errors on the linearization path without
   # the model just the same.
   expect_error(
     ipw(ps_mod, outcome_mod, se_method = "linearization"),
+    class = "propensity_method_error"
+  )
+})
+
+test_that("a no-intercept linear outcome model errors on the linearization path", {
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_no_intercept_lm(dat, ps_mod)
+
+  # The guard reads the terms object, not the family, so a linear outcome model
+  # is rejected on the same grounds.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
     class = "propensity_method_error"
   )
 })

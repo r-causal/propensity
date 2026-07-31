@@ -42,6 +42,16 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
+# the no-intercept rejection names the intercept and the SE method
+
+    Code
+      ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` supports "linearization" standard errors only for an outcome model with an intercept.
+      x `outcome_mod` was fit without an intercept, which fixes the mean under no exposure instead of estimating it.
+      i Include an intercept in `outcome_mod`, or use `se_method = "mestimation"`.
+
 # the linearization atu rejection names the SE method
 
     Code
