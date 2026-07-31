@@ -31,6 +31,7 @@ Suggests:
     generics,
     ggplot2,
     knitr,
+    MASS,
     mgcv,
     nnet,
     parsnip,

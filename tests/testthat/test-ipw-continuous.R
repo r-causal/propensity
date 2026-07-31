@@ -578,3 +578,76 @@ test_that("the continuous weight-consistency error names no focal level", {
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_false(grepl("focal", msg, fixed = TRUE))
 })
+
+# ---- propensity model class validation --------------------------------------
+#
+# The continuous path stacks an ordinary least-squares score block for the
+# propensity model, so the M-estimator solves its coefficients to the
+# least-squares root no matter how the supplied model was actually fit. An lm
+# subclass whose coefficients are not that root therefore yields estimates for a
+# propensity model the user never fit. Nothing catches it today: MASS::rlm
+# carries class c("rlm", "lm") and so reaches the lm method, and the weights
+# built from its fitted values agree with the weights recomputed at the seeded
+# init, so the weight-consistency preflight passes. The same holds through the
+# gaussian-family branch of the glm method, which routes a gaussian mgcv::gam to
+# the identical path. The continuous path must therefore accept only a plain lm
+# or a gaussian glm and reject any other subclass at entry, naming the class it
+# was given.
+
+# A fixture whose robust and least-squares propensity fits genuinely disagree:
+# adding a block of large outliers to the exposure pulls the least-squares fit
+# away from the robust fit, so the two imply different weights and different
+# estimates. The outcome is regenerated from the contaminated exposure, under
+# its own seed, so the marginal structural model remains coherent.
+sim_continuous_outliers <- function(seed = 2024, n = 800, n_outliers = 40) {
+  dat <- sim_continuous(seed = seed, n = n)
+  dat$A[seq_len(n_outliers)] <- dat$A[seq_len(n_outliers)] + 12
+  withr::local_seed(seed + 1L)
+  dat$yc <- 1 + 0.6 * dat$A + 0.5 * dat$x1 - 0.3 * dat$x2 + rnorm(n)
+  dat
+}
+
+test_that("ipw() rejects a robust linear propensity model on the continuous path", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat)
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  # The particular propensity_*_error subclass is the implementer's choice, but
+  # the error must name the class it was handed rather than accept the model and
+  # silently report the least-squares analysis instead.
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_error",
+    regexp = "rlm"
+  )
+
+  # Control: on the same fixture a plain lm propensity model still runs. Parity
+  # between the lm and gaussian-glm routes is covered above by "ipw() routes a
+  # gaussian-family glm ps model identically to lm".
+  lm_mod <- lm(A ~ x1 + x2, data = dat)
+  lm_wts <- continuous_weights(as.double(fitted(lm_mod)), dat$A)
+  lm_msm <- lm(yc ~ A, data = dat, weights = lm_wts)
+  expect_s3_class(ipw(lm_mod, lm_msm), "ipw")
+})
+
+test_that("ipw() rejects a gaussian gam propensity model on the continuous path", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_continuous_outliers()
+
+  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  # A gaussian gam reaches the continuous path through the glm method, so the
+  # restriction has to hold at that entry point too and not only in the lm
+  # method.
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_error",
+    regexp = "gam"
+  )
+})
