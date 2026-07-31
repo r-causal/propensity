@@ -1258,3 +1258,107 @@ test_that("print.ipw formats the z column as a test statistic, not a coefficient
   expect_identical(printed, data_rows(fixed))
   expect_false(identical(printed, data_rows(current)))
 })
+
+# ---- linearization ps design extraction with .data ---------------------------
+#
+# The linearization branch calls model.matrix(wt_mod) unconditionally instead of
+# routing through the shared ipw_extract_ps_design() the M-estimation path uses.
+# A propensity score model fit with model = FALSE whose fitting data is gone
+# therefore raw-errors with "object 'd_local' not found" on both routes: without
+# .data, where the M-estimation path raises the informative
+# propensity_ipw_data_error, and with .data, where the M-estimation path rebuilds
+# the design and succeeds. The parity these pin is with the M-estimation tests in
+# test-ipw-mestimation.R under "binary ps design extraction with .data".
+#
+# The branch also never reconciles the outcome model's row count against the
+# .data columns, so a .data of a different length is silently accepted: the
+# estimates are computed from the .data rows while the weights and the propensity
+# design come from the fitted models, and the reported standard errors shrink by
+# a factor of roughly the row ratio with nothing signaled.
+
+# A binary propensity score model fit with model = FALSE inside a scope whose
+# fitting data is then gone. predict() still works from the stored fit, so the
+# weights can be built, but model.matrix() cannot rebuild the design and .data is
+# the only route to it. The inner name is distinct from any name in the calling
+# scope, so the lookup fails on the whole parent chain.
+se_method_ps_mod_gone <- function(dat) {
+  local({
+    d_local <- dat
+    m <- glm(z ~ x1 + x2, data = d_local, family = binomial(), model = FALSE)
+    rm(d_local)
+    m
+  })
+}
+
+test_that("linearization errors with the supply-.data hint when the ps fit frame is gone", {
+  dat <- se_method_data()
+  ps_gone <- se_method_ps_mod_gone(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_gone)
+
+  # Without .data the raw "object not found" must become the guarded error that
+  # names the missing data and directs the user to supply .data.
+  expect_error(
+    ipw(ps_gone, outcome_mod, se_method = "linearization"),
+    class = "propensity_ipw_data_error"
+  )
+})
+
+test_that("linearization reconstructs the ps design from .data when the fit frame is gone", {
+  dat <- se_method_data()
+  ps_gone <- se_method_ps_mod_gone(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_gone)
+
+  # A reconstructable reference: the same formula on the same data, so the
+  # coefficients are identical and only the retained model frame differs.
+  ps_ref <- se_method_ps_mod(dat)
+  dat_copy <- dat
+  rm(dat)
+
+  ref <- ipw(ps_ref, outcome_mod, se_method = "linearization")$estimates
+  res <- ipw(
+    ps_gone,
+    outcome_mod,
+    .data = dat_copy,
+    se_method = "linearization"
+  )$estimates
+  expect_equal(res, ref, tolerance = 1e-8)
+})
+
+test_that("linearization estimates are unchanged when redundant .data is supplied", {
+  # A normal, reconstructable ps fit: rebuilding the design from .data must
+  # produce the same design and so the same estimates. Guards the rebuild against
+  # drifting when .data is redundant.
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  no_data <- ipw(ps_mod, outcome_mod, se_method = "linearization")$estimates
+  with_data <- ipw(
+    ps_mod,
+    outcome_mod,
+    .data = dat,
+    se_method = "linearization"
+  )$estimates
+  expect_equal(with_data, no_data, tolerance = 1e-8)
+})
+
+test_that("linearization errors when .data has fewer rows than the fitted models", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  # 100 rows of .data against 400-row fits. The weights and the propensity design
+  # still come from the models, so the pieces are recycled against each other and
+  # the standard errors come out about half their correct size with nothing
+  # signaled. Reject the mismatch instead.
+  expect_error(
+    ipw(
+      ps_mod,
+      outcome_mod,
+      .data = head(dat, 100),
+      se_method = "linearization"
+    ),
+    class = "propensity_error",
+    regexp = "length|rows"
+  )
+})
