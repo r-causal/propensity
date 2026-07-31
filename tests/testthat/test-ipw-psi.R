@@ -578,40 +578,34 @@ test_that("ipw_weight_fn reproduces categorical stabilized ate weights", {
 
 # ---- categorical propensity score reconstruction ----------------------------
 
-# Level-major, term-minor theta for a three-level exposure on the design below:
-# category b loads only on xa, category c loads only on xb, so the two
-# non-reference linear predictors can be driven apart independently.
-extreme_ps_design <- function() {
-  cbind(
-    `(Intercept)` = 1,
-    xa = c(100, 0, -100, 100, 0.3),
-    xb = c(0, 100, -100, 99, -0.2)
-  )
-}
-
-extreme_ps_theta <- function() {
-  c(0, 10, 0, 0, 0, 10)
-}
-
 # Reference-first softmax written out without any shift, the reconstruction the
 # psi layer performs. Used as an independent oracle rather than comparing
-# ipw_categorical_ps() against itself.
+# ipw_categorical_ps() against itself. vapply() drops to a bare vector for a
+# single-row design, so the linear predictors are reshaped explicitly.
 unshifted_softmax <- function(x, theta, k) {
   b <- ncol(x)
-  num <- cbind(
-    1,
-    exp(vapply(
+  eta <- matrix(
+    vapply(
       seq_len(k - 1),
       function(j) as.vector(x %*% theta[((j - 1) * b + 1):(j * b)]),
       numeric(nrow(x))
-    ))
+    ),
+    nrow = nrow(x)
   )
+  num <- cbind(1, exp(eta))
   num / rowSums(num)
 }
 
 test_that("ipw_categorical_ps stays finite for extreme linear predictors", {
-  x <- extreme_ps_design()
-  theta <- extreme_ps_theta()
+  # Level-major, term-minor theta for a three-level exposure: category b loads
+  # only on xa, category c loads only on xb, so the two non-reference linear
+  # predictors can be driven apart independently.
+  x <- cbind(
+    `(Intercept)` = 1,
+    xa = c(100, 0, -100, 100, 0.3),
+    xb = c(0, 100, -100, 99, -0.2)
+  )
+  theta <- c(0, 10, 0, 0, 0, 10)
 
   ps <- ipw_categorical_ps(x, theta, 3)
 
@@ -628,6 +622,31 @@ test_that("ipw_categorical_ps stays finite for extreme linear predictors", {
   expect_equal(
     ps[4, ],
     c(0, 1, exp(-10)) / (1 + exp(-10)),
+    tolerance = 1e-15
+  )
+
+  # Four levels, one category per design column, so the running maximum has to
+  # accumulate over three non-reference categories rather than track any single
+  # one of them. Row 1 has linear predictors (0, 0, 0, 1000), putting the row
+  # maximum in the third non-reference category; row 2 has (0, 1000, 995, 0),
+  # putting it in the first with a genuine softmax split behind it.
+  x4 <- cbind(
+    `(Intercept)` = 1,
+    xa = c(0, 100),
+    xb = c(0, 99.5),
+    xc = c(100, 0)
+  )
+  theta4 <- c(0, 10, 0, 0, 0, 0, 10, 0, 0, 0, 0, 10)
+
+  ps4 <- ipw_categorical_ps(x4, theta4, 4)
+
+  expect_true(all(is.finite(ps4)))
+  expect_true(all(ps4 >= 0 & ps4 <= 1))
+  expect_lt(max(abs(rowSums(ps4) - 1)), 1e-12)
+  expect_equal(ps4[1, ], c(0, 0, 0, 1))
+  expect_equal(
+    ps4[2, ],
+    c(0, 1, exp(-5), 0) / (1 + exp(-5)),
     tolerance = 1e-15
   )
 })
