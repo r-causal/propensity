@@ -751,3 +751,95 @@ test_that("ipw() categorical accepts an outcome model containing the exposure wh
   expect_s3_class(res, "ipw")
   expect_equal(res$estimand, "ate")
 })
+
+# ---- exposure levels come from the fitted model, not from .data --------------
+#
+# nnet::multinom records its training levels in ps_mod$lev and lays its
+# coefficient rows out in that order. The exposure column in .data carries no
+# such guarantee: a character column resolves alphabetically and a factor can be
+# releveled. The indicator matrix, the counterfactual designs, and the reference
+# level must follow the fitted model's ordering rather than whatever ordering
+# .data happens to imply. The factor-.data control is already pinned by "ipw()
+# categorical uses .data when the ps model frame is gone" and by "ipw()
+# categorical accepts an outcome model containing the exposure when .data is
+# supplied".
+
+# sim_categorical() builds levels c("a", "b", "c"), which already agree with the
+# alphabetical ordering a character column would produce. Relabel them so the
+# fitted order (low, mid, high) and the alphabetical order (high, low, mid)
+# disagree, leaving the values and the model fit otherwise unchanged.
+sim_categorical_nonalpha <- function(...) {
+  dat <- sim_categorical(...)
+  nonalpha <- c("low", "mid", "high")
+  dat$a <- factor(nonalpha[as.integer(dat$a)], levels = nonalpha)
+  dat
+}
+
+test_that("ipw() categorical resolves a character .data exposure against the fitted levels", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical_nonalpha()
+  mods <- fit_categorical_models(dat, "ate")
+
+  dat_chr <- dat
+  dat_chr$a <- as.character(dat_chr$a)
+
+  # the two orderings genuinely disagree, so the fixture exercises the contract
+  expect_equal(mods$ps_mod$lev, c("low", "mid", "high"))
+  expect_equal(levels(as.factor(dat_chr$a)), c("high", "low", "mid"))
+
+  res_fac <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat)
+  res_chr <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat_chr)
+
+  # same values, same model: the character column must give the same answer,
+  # including the reference level the comparisons are formed against
+  expect_equal(res_chr$estimates, res_fac$estimates, tolerance = 1e-8)
+  expect_equal(
+    unique(res_chr$estimates$comparison),
+    c("mid vs low", "high vs low")
+  )
+})
+
+test_that("ipw() categorical ignores a releveled .data exposure ordering", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical_nonalpha()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # the same values in a different factor ordering: releveling a column cannot
+  # change which level the fitted model treats as the reference
+  dat_relevel <- dat
+  dat_relevel$a <- factor(
+    as.character(dat$a),
+    levels = c("high", "low", "mid")
+  )
+
+  res_fac <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat)
+  res_relevel <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat_relevel)
+
+  expect_equal(res_relevel$estimates, res_fac$estimates, tolerance = 1e-8)
+  expect_equal(
+    unique(res_relevel$estimates$comparison),
+    c("mid vs low", "high vs low")
+  )
+})
+
+test_that("ipw() categorical rejects a .data exposure value the model never saw", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical_nonalpha()
+  mods <- fit_categorical_models(dat, "ate")
+
+  dat_unknown <- dat
+  dat_unknown$a <- as.character(dat_unknown$a)
+  dat_unknown$a[[1]] <- "unknown"
+
+  # Today the extra level reaches the theta layout, where it raises a raw base
+  # error about a names-length mismatch. It must be a classed propensity error
+  # that names the value the model cannot score.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat_unknown),
+    class = "propensity_error",
+    regexp = "unknown"
+  )
+})
