@@ -1103,13 +1103,19 @@ linearize_variables_for_ps <- function(
 ) {
   n <- length(exposure)
   score_factor_f <- derive_score_factor(ps_link)
+
+  # derive_weights() differentiates the unstabilized weight. A stabilizer
+  # multiplies each weight by a factor that does not depend on the propensity
+  # coefficients, so the derivative of the weight actually in use is the
+  # unstabilized derivative times that same factor, observation by observation.
   weight_derivatives <- derive_weights(
     exposure = exposure,
     ps = ps,
     weight_matrix = weight_matrix,
     ps_link = ps_link,
     estimand = estimand
-  )
+  ) *
+    effective_stabilizer(wts, exposure, estimand)
 
   correction_mat <- compute_ps_correction_matrix_inv(
     weight_matrix = weight_matrix,
@@ -1354,6 +1360,31 @@ derive_score_factor <- function(ps_link = c("logit", "probit", "cloglog")) {
     probit = function(p) dnorm(qnorm(p)) / (p * (1 - p)),
     cloglog = function(p) -log(1 - p) / p
   )
+}
+
+# The per-observation factor a stabilizer multiplies the weights by, recovered
+# from the weights themselves. Two forms reach here. An explicit
+# `stabilization_score` is recorded on the weights and used as recorded; a scalar
+# recycles. The default stabilizer records no score and instead scales the
+# treated weights by the sample exposure mean and the untreated weights by its
+# complement, exactly as ate_binary() builds them, so it is reconstructed from
+# the same recoded exposure. Treating that sample mean as fixed is exact rather
+# than an approximation: each group constant scales that group's weights and that
+# group's weight total identically, so it cancels from the Hajek ratio and
+# contributes no influence term of its own. Weights carrying neither form take
+# the identity factor, which covers every unstabilized analysis.
+effective_stabilizer <- function(wts, exposure, estimand) {
+  score <- stabilization_score(wts)
+  if (!is.null(score)) {
+    return(score)
+  }
+
+  if (is_stabilized(wts) && identical(estimand, "ate")) {
+    p1 <- mean(exposure)
+    return(ifelse(exposure == 1, p1, 1 - p1))
+  }
+
+  1
 }
 
 extract_weights <- function(.mod) {
