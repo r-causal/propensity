@@ -1,5 +1,28 @@
 # propensity 0.1.0.9000 (development version)
 
+* The first argument of `ipw()` is now `wt_mod` rather than `ps_mod`, on the
+  generic and on every method. It still takes the fitted weighting model, but a
+  call that supplied it by name, such as `ipw(ps_mod = fit, outcome_mod = out)`,
+  now errors. `.data`, `estimand`, `ps_link`, and `conf_level` follow `...` in
+  the method signatures and must be supplied by name; a value passed into one
+  of those slots by position is absorbed by `...`.
+
+* The `ipw` result object renames its `ps_mod` component to `wt_mod` to match,
+  so code reading `result$ps_mod` now gets `NULL` rather than the fitted
+  weighting model.
+
+* `ipw()` is an S3 generic. The generic now belongs to the causalgenerics
+  package, which propensity imports from, re-exporting `ipw()` and registering
+  its `glm`, `multinom`, `lm`, and default methods against it. `estimand()`,
+  `estimand<-`, and `is_causal_wt()` come from causalgenerics as well, and the
+  `causal_wts` methods that `psw` objects inherit are defined there rather than
+  here. Calling any of them is unchanged, but a method registered against a
+  propensity-owned `ipw` generic is no longer dispatched to; register it
+  against `causalgenerics::ipw()` instead. The causalgenerics and deli packages
+  are new hard dependencies.
+
+* The minimum R version is now 4.3, raised from 4.2.0.
+
 * `ipw()` now defaults to M-estimation sandwich standard errors, computed by
   stacking the propensity score, outcome, and estimand estimating equations
   with the deli package. Point estimates are unchanged for the `ate` estimand
@@ -52,10 +75,15 @@
 * Corrected the linearization standard errors for stabilized ATE weights. The
   weight derivative omitted the stabilizer, so the propensity score correction
   was divided by the group constant with nothing multiplying it back. Standard
-  errors change for any analysis weighted by stabilized `wt_ate()` weights: on
-  one representative sample, by about 3 percent under the default marginal
-  stabilization and by about 0.1 percent for an explicitly supplied
-  `stabilization_score`. Unstabilized weights are unaffected.
+  errors change for any analysis weighted by stabilized `wt_ate()` weights, by
+  an amount that tracks how far the stabilizer sits from one: on one
+  representative sample the risk-difference standard error fell by about 3
+  percent under the default marginal stabilization, by about 3.6 percent under
+  a `stabilization_score` taken from a numerator model, and by about 2.7
+  percent under a scalar score of 0.5, while a score averaging close to one
+  moved it by about 0.1 percent. The log risk ratio and log odds ratio standard
+  errors move in the same direction by somewhat less. Unstabilized weights are
+  unaffected.
 
 * `ipw()` now supports categorical exposures through a `nnet::multinom()`
   propensity score model and continuous exposures through an `lm()` or
@@ -107,7 +135,8 @@
   silently, and a cauchit link failed late with an internal message.
 
 * Binary `wt_att()` and `wt_atu()` now record the focal level they were built
-  with, and `ipw()` errors when that level is not the one it treats as focal
+  with whenever the caller names `.focal_level` or `.reference_level`, and
+  `ipw()` errors when that level is not the one it treats as focal
   (the second sorted level of the exposure), naming both levels and directing
   you to relevel and refit. Previously the linearization path silently mirrored
   the estimand's derivative roles, and the M-estimation path reported an
@@ -187,10 +216,11 @@
   accessor.
 
 * A per-observation `stabilization_score` is now dropped, with a new
-  `propensity_stabilization_score_warning`, by any operation that changes the
-  length of a `psw` vector, since the score cannot be re-indexed to the
-  observations that remain. A scalar score and length-preserving operations
-  such as arithmetic are unaffected.
+  `propensity_stabilization_score_warning`, when an operation changes a `psw`
+  vector to a different, non-zero length, since the score cannot be re-indexed
+  to the observations that remain. A scalar score, length-preserving operations
+  such as arithmetic, and zero-length results such as `w[0]`, which leave no
+  observations for a score to line up against, are unaffected.
 
 * Fixed `broom::tidy(glm_fit, conf.int = TRUE)` failing on GLMs weighted by
   `psw` vectors. `confint.glm()` builds profile-likelihood intervals via
