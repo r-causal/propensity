@@ -133,9 +133,13 @@
 #' @param stabilize If `TRUE`, multiply weights by an estimate of the marginal
 #'   treatment probability (binary) or density (continuous). Only supported by
 #'   `wt_ate()` and `wt_cens()`. See **Stabilization** in Details.
-#' @param stabilization_score Optional numeric value to use as the
-#'   stabilization multiplier instead of the default (the marginal mean of
-#'   `.exposure`). Ignored when `stabilize = FALSE`.
+#' @param stabilization_score Optional stabilization multiplier to use instead
+#'   of the default (the marginal mean of `.exposure`). Either a single value
+#'   applied to every weight or a numeric vector holding one value per
+#'   observation. A per-observation score is recorded on the result and is
+#'   dropped, with a warning, by any operation that changes the length of the
+#'   weight vector, since it cannot be re-indexed for the new length. Ignored
+#'   when `stabilize = FALSE`.
 #' @param .propensity_col Column to use when `.propensity` is a data frame
 #'   with a binary exposure. Accepts a column name (quoted or unquoted) or
 #'   numeric index. Defaults to the second column. Ignored for categorical
@@ -145,8 +149,8 @@
 #'   these attributes:
 #'   - `estimand`: character, e.g. `"ate"`, `"att"`, `"uncensored"`.
 #'   - `stabilized`: logical, whether stabilization was applied.
-#'   - `stabilization_score`: numeric, the user-supplied stabilization score, or
-#'     `NULL` if none was supplied.
+#'   - `stabilization_score`: numeric, the user-supplied stabilization score
+#'     (one value, or one per observation), or `NULL` if none was supplied.
 #'   - `trimmed`: logical, whether the propensity scores were trimmed.
 #'   - `truncated`: logical, whether the propensity scores were truncated.
 #'   - `calibrated`: logical, whether the propensity scores were calibrated.

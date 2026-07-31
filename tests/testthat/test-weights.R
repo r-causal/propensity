@@ -373,6 +373,19 @@ stabilized_psw <- function(score) {
   )
 }
 
+count_score_warnings <- function(expr) {
+  count <- 0
+  value <- withCallingHandlers(
+    expr,
+    propensity_stabilization_score_warning = function(cnd) {
+      count <<- count + 1
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  list(value = value, count = count)
+}
+
 test_that("vector stabilization_score is dropped with a warning when `[` shortens a psw", {
   score <- c(0.51, 0.52, 0.53, 0.54, 0.55, 0.56)
   w <- stabilized_psw(score)
@@ -432,6 +445,39 @@ test_that("vector stabilization_score is carried through length-preserving psw a
   expect_s3_class(w_doubled, "psw")
   expect_equal(stabilization_score(w_doubled), score)
   expect_equal(vec_data(w_doubled), vec_data(w) * 2)
+})
+
+test_that("zero-length restores of a vector-score psw keep the score silently", {
+  score <- c(0.51, 0.52, 0.53, 0.54, 0.55, 0.56)
+  w <- stabilized_psw(score)
+
+  # A prototype and an empty subset hold no observations, so a score on them
+  # lines up with nothing and is left alone.
+  proto <- expect_silent(vctrs::vec_ptype(w))
+  expect_length(proto, 0)
+  expect_equal(stabilization_score(proto), score)
+
+  empty <- expect_silent(w[integer(0)])
+  expect_length(empty, 0)
+  expect_equal(stabilization_score(empty), score)
+})
+
+test_that("concatenating vector-score psw objects warns and drops the score", {
+  score <- c(0.51, 0.52, 0.53, 0.54, 0.55, 0.56)
+  w <- stabilized_psw(score)
+
+  out <- count_score_warnings(c(w, w))
+
+  # A score recorded on six observations means nothing on twelve, so it goes.
+  # vctrs restores the concatenated result more than once, so the number of
+  # warnings follows its internals rather than this contract; that at least one
+  # fires, and that no other condition escapes, is what is pinned here.
+  expect_gte(out$count, 1)
+  expect_s3_class(out$value, "psw")
+  expect_length(out$value, 12)
+  expect_null(stabilization_score(out$value))
+  expect_true(is_stabilized(out$value))
+  expect_equal(estimand(out$value), "ate")
 })
 
 test_that("ATE works for binary cases", {

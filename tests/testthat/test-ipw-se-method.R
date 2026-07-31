@@ -1189,6 +1189,44 @@ test_that("the matrix-response propensity model error names the matrix response"
   )
 })
 
+# ---- per-observation stabilization scores on the linearization path ----------
+
+test_that("linearization is silent for weights carrying a vector stabilization score", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  ps <- predict(ps_mod, type = "response")
+
+  # A per-observation score aligned with the weights: nothing about this call
+  # changes the length of the weight vector, so nothing about the score is in
+  # question and the call must say nothing about it.
+  score <- ifelse(dat$z == 1, mean(dat$z), 1 - mean(dat$z))
+  wts <- wt_ate(
+    ps,
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1,
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+  expect_length(stabilization_score(wts), nrow(dat))
+
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+
+  res <- expect_no_warning(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+  )
+
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
 # ---- printCoefmat column formatting -----------------------------------------
 
 test_that("print.ipw formats the z column as a test statistic, not a coefficient", {

@@ -58,7 +58,8 @@ scores? Defaults to \code{FALSE}.}
 propensity scores? Defaults to \code{FALSE}.}
 
 \item{stabilization_score}{Optional numeric stabilization score to record on
-the object. Defaults to \code{NULL}, meaning no fixed score was supplied.}
+the object, either a single value or one value per observation. Defaults to
+\code{NULL}, meaning no fixed score was supplied.}
 
 \item{...}{Additional attributes stored on the object (developer use only).}
 
@@ -70,7 +71,8 @@ the object. Defaults to \code{NULL}, meaning no fixed score was supplied.}
 \item \code{is_psw()}, \code{is_causal_wt()}, \code{is_stabilized()}: A single logical value.
 \item \code{estimand()}: A character string, or \code{NULL} if no estimand is set.
 \item \verb{estimand<-}: The modified \code{psw} object (called for its side effect).
-\item \code{stabilization_score()}: A numeric value, or \code{NULL} if none was recorded.
+\item \code{stabilization_score()}: A numeric value or vector, or \code{NULL} if none was
+recorded or a per-observation score was dropped.
 }
 }
 \description{
@@ -101,7 +103,8 @@ assumes \code{x} is already a double vector and performs minimal validation.
 \item \code{estimand()} and \verb{estimand<-} get and set the estimand attribute.
 \item \code{is_stabilized()} returns \code{TRUE} if the weights are stabilized.
 \item \code{stabilization_score()} returns the user-supplied stabilization score, or
-\code{NULL} when none was recorded.
+\code{NULL} when none was recorded or when a per-observation score was dropped
+because an operation changed the length of the weights.
 }
 }
 
@@ -114,6 +117,11 @@ metadata matches; mismatched metadata produces a warning and falls back to a
 plain numeric vector.
 
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
+The one exception is a \code{stabilization_score} holding one value per
+observation: it is indexed by observation and cannot be re-indexed for the
+subset, so any operation that changes the length of the weights drops it and
+warns. The result stays a \code{psw} and keeps every other attribute, including
+its stabilized status. A single-value score is unaffected.
 Matrix or array subscripts intentionally drop the \code{psw} class and return
 a plain numeric vector via base R linear indexing; this is required so
 \code{glm.fit()}-style internal indexing works on \code{psw}-weighted GLMs.

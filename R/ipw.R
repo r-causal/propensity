@@ -1142,10 +1142,16 @@ estimate_marginal_means <- function(
   .data_1[[exposure_name]] <- exposure_values[[2]]
   .data_0[[exposure_name]] <- exposure_values[[1]]
 
-  n1 <- sum(wts[exposure == exposure_values[[2]]])
+  # Group totals are sums of the underlying numbers, so work from the bare
+  # doubles. Masking the weights themselves would build a shorter psw that only
+  # ever feeds sum(), and any metadata that cannot follow that subset would be
+  # reported against an internal temporary the caller never sees.
+  wt_values <- as.double(wts)
+
+  n1 <- sum(wt_values[exposure == exposure_values[[2]]])
   mu1 <- mean(predict(outcome_mod, newdata = .data_1, type = "response"))
 
-  n0 <- sum(wts[exposure == exposure_values[[1]]])
+  n0 <- sum(wt_values[exposure == exposure_values[[1]]])
   mu0 <- mean(predict(outcome_mod, newdata = .data_0, type = "response"))
 
   list(

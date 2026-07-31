@@ -27,7 +27,8 @@
 #' * `estimand()` and `estimand<-` get and set the estimand attribute.
 #' * `is_stabilized()` returns `TRUE` if the weights are stabilized.
 #' * `stabilization_score()` returns the user-supplied stabilization score, or
-#'   `NULL` when none was recorded.
+#'   `NULL` when none was recorded or when a per-observation score was dropped
+#'   because an operation changed the length of the weights.
 #'
 #' ## Arithmetic and combining
 #'
@@ -38,6 +39,11 @@
 #' plain numeric vector.
 #'
 #' Subsetting with `[` preserves class and attributes for vector subscripts.
+#' The one exception is a `stabilization_score` holding one value per
+#' observation: it is indexed by observation and cannot be re-indexed for the
+#' subset, so any operation that changes the length of the weights drops it and
+#' warns. The result stays a `psw` and keeps every other attribute, including
+#' its stabilized status. A single-value score is unaffected.
 #' Matrix or array subscripts intentionally drop the `psw` class and return
 #' a plain numeric vector via base R linear indexing; this is required so
 #' `glm.fit()`-style internal indexing works on `psw`-weighted GLMs.
@@ -59,7 +65,8 @@
 #' @param calibrated Logical. Were the weights derived from calibrated
 #'   propensity scores? Defaults to `FALSE`.
 #' @param stabilization_score Optional numeric stabilization score to record on
-#'   the object. Defaults to `NULL`, meaning no fixed score was supplied.
+#'   the object, either a single value or one value per observation. Defaults to
+#'   `NULL`, meaning no fixed score was supplied.
 #' @param wt A `psw` or `causal_wts` object.
 #' @param ... Additional attributes stored on the object (developer use only).
 #'
@@ -68,7 +75,8 @@
 #' * `is_psw()`, `is_causal_wt()`, `is_stabilized()`: A single logical value.
 #' * `estimand()`: A character string, or `NULL` if no estimand is set.
 #' * `estimand<-`: The modified `psw` object (called for its side effect).
-#' * `stabilization_score()`: A numeric value, or `NULL` if none was recorded.
+#' * `stabilization_score()`: A numeric value or vector, or `NULL` if none was
+#'   recorded or a per-observation score was dropped.
 #'
 #' @seealso
 #' [wt_ate()], [wt_att()], [wt_atu()], [wt_atm()], [wt_ato()] for
@@ -331,6 +339,36 @@ vec_restore.psw <- function(x, to, ...) {
     x <- vec_data(x)
   }
 
+  # A stabilization score of length > 1 is indexed by observation, so it is only
+  # meaningful at the length it was recorded on. This hook is not given the
+  # indices behind a length-changing operation, and the subscript method for
+  # this class is owned upstream, so per-observation metadata cannot be
+  # re-indexed here. Dropping it is the safe outcome: a later read sees an
+  # absent score rather than one silently misaligned with the weights.
+  #
+  # Zero-length data is exempt. A prototype or empty subset carries no
+  # observations, so a score on it lines up with nothing and misleads no one,
+  # and keeping it lets the restore that builds the real result compare the
+  # score against the length that observations actually arrive at.
+  score <- stabilization_score(to)
+  if (length(x) > 0 && length(score) > 1 && length(score) != length(x)) {
+    warn(
+      c(
+        "Dropping the per-observation {.arg stabilization_score}.",
+        i = "A score of length {length(score)} cannot be carried through an
+             operation that changes the length of the weights to
+             {length(x)}.",
+        i = "The result is still marked as stabilized. Recompute the weights
+             on the subset if you need a score aligned with them."
+      ),
+      warning_class = "propensity_stabilization_score_warning",
+      # Restore is reached through vctrs' internal dispatch, whose call would
+      # be reported here and names nothing the caller wrote.
+      call = NULL
+    )
+    score <- NULL
+  }
+
   # Preserve psw attributes
   new_psw(
     x,
@@ -339,7 +377,7 @@ vec_restore.psw <- function(x, to, ...) {
     trimmed = is_ps_trimmed(to),
     truncated = is_ps_truncated(to),
     calibrated = isTRUE(attr(to, "calibrated")),
-    stabilization_score = stabilization_score(to)
+    stabilization_score = score
   )
 }
 
