@@ -454,6 +454,33 @@ test_that("ipw_weight_fn reproduces binary stabilized ate weights", {
   )
 })
 
+test_that("binary entropy tilt stays finite at saturated propensity scores", {
+  # The solver reaches saturated scores on its own: plogis() returns exactly 1
+  # once the linear predictor exceeds about 36.7, and exactly 0 once it falls
+  # below about -744.
+  expect_identical(stats::plogis(40), 1)
+
+  e <- c(0, 1e-3, 0.5, 1 - 1e-3, 1)
+  tilt <- ipw_binary_tilt(e, "entropy")
+
+  expect_true(all(is.finite(tilt)))
+
+  # The guard must leave every score strictly inside (0, 1) bit for bit.
+  interior <- e[2:4]
+  expect_identical(
+    tilt[2:4],
+    -interior * log(interior) - (1 - interior) * log(1 - interior)
+  )
+
+  # Saturated scores take the same clamp as the categorical tilt, which
+  # substitutes .Machine$double.eps for a zero probability. The binary form
+  # carries an extra -(1 - e) log(1 - e) term worth one machine epsilon at the
+  # clamp, so the two agree on an absolute scale rather than exactly.
+  degenerate <- ipw_categorical_tilt(cbind(c(0, 1), c(1, 0)), "entropy")
+  expect_lt(max(abs(tilt[c(1, 5)] - degenerate)), 1e-15)
+  expect_identical(tilt[[1]], tilt[[5]])
+})
+
 # ---- weight registry: categorical -------------------------------------------
 
 test_that("ipw_weight_fn reproduces categorical weight functions at fitted params", {
