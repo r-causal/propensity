@@ -231,9 +231,9 @@
 * Fixed `broom::tidy(glm_fit, conf.int = TRUE)` failing on GLMs weighted by
   `psw` vectors. `confint.glm()` builds profile-likelihood intervals via
   `profile.glm()`, which refits through `glm.fit()`; the refit indexes
-  `weights[good]` with a matrix subscript, which `[.vctrs_vctr` rejected.
-  Added a `[.psw` method that falls back to base R linear indexing for
-  matrix/array subscripts and delegates everything else to `[.vctrs_vctr`.
+  `weights[good]` with a matrix subscript, which `[.vctrs_vctr` rejected. A
+  matrix or array subscript on a `psw` vector now falls back to base R linear
+  indexing; every other subscript still goes through `[.vctrs_vctr`.
 
 * Comparison operators on `psw` (`==`, `!=`, `<`, `>`, `<=`, `>=`) now
   short-circuit `vec_equal()` / `vec_compare()` and return a logical vector
