@@ -179,6 +179,15 @@ se_method_outcome_exposure_interaction_lm <- function(dat, ps_mod) {
   lm(yc ~ z + z:x1, data = dat, weights = wts)
 }
 
+# Exposure-only outcome model fit without an intercept. Its term labels are the
+# exposure alone, so it passes a guard that only compares term labels, but the
+# fit carries no reference level: the linear predictor at z = 0 is 0 for every
+# unit.
+se_method_outcome_no_intercept <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  glm(y ~ z - 1, data = dat, family = quasibinomial(), weights = wts)
+}
+
 test_that("ipw() defaults to the mestimation SE method and returns a fit", {
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
@@ -566,6 +575,61 @@ test_that("an offset-argument outcome model errors on the linearization path", {
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
     class = "propensity_ipw_offset_error",
     regexp = "offset"
+  )
+})
+
+# ---- no-intercept outcome model on the linearization path -------------------
+#
+# `y ~ z - 1` has term labels equal to the exposure name, so the exposure-only
+# guard admits it, but the model has no reference level: the linear predictor at
+# z = 0 is 0 for every unit, so the g-computation mu0 is plogis(0) = 0.5 whatever
+# the data say. The weighted score no longer ties mu0 to the Hajek mean the
+# influence functions assume, and the reported effects drift far from the Hajek
+# contrast while the standard errors stay narrow, with nothing signaled. The
+# intercept-bearing counterpart is covered above by "a marginal quasibinomial
+# outcome model works on the linearization path", which must keep passing.
+
+test_that("a no-intercept outcome model errors on the linearization path", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_no_intercept(dat, ps_mod)
+
+  # The message must name the missing intercept, which distinguishes this guard
+  # from the covariate-adjusted rejection that shares the error class.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error",
+    regexp = "[Ii]ntercept"
+  )
+
+  # and it must direct the user to the SE method that handles this model.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    regexp = "mestimation"
+  )
+})
+
+test_that("a no-intercept outcome model errors on the linearization path without .data", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_no_intercept(dat, ps_mod)
+
+  # The guard runs before either extraction route, so omitting .data must reject
+  # the model just the same.
+  expect_error(
+    ipw(ps_mod, outcome_mod, se_method = "linearization"),
+    class = "propensity_method_error"
+  )
+})
+
+test_that("the no-intercept rejection names the intercept and the SE method", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_no_intercept(dat, ps_mod)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
   )
 })
 
