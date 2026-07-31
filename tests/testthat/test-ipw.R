@@ -478,8 +478,8 @@ test_that("the cannot-determine-estimand error is attributed to ipw()", {
   outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
   # The stored call must be the ipw() frame, not the internal check_estimand()
-  # helper. This assertion forces the fix: a no-op leaves the call as
-  # check_estimand(...) and fails here.
+  # helper. Without the call threaded through, the condition reports
+  # check_estimand(...) and this assertion fails.
   cnd <- rlang::catch_cnd(ipw(ps_mod, outcome_mod, .data = dat))
   expect_identical(as.character(cnd$call[[1]]), "ipw")
 

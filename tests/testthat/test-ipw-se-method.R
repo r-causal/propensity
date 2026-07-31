@@ -657,12 +657,11 @@ test_that("the no-intercept rejection names the intercept and the SE method", {
 #
 # The linearization ps correction adds H' A^{-1} s_i to the influence values,
 # where s_i = x_i (Z_i - p_i) / (p_i (1 - p_i) g'(p_i)) is the score of a
-# binomial GLM with link g. The package generalizes the link in the weight
-# derivatives and in the Fisher information A, but hardcodes the score itself to
-# the canonical logit form x_i (Z_i - p_i), omitting the factor
-# 1 / (p (1 - p) g'(p)), which equals 1 only for logit. These reference tests pin
-# the generalized score correction; the probit and cloglog cases fail until the
-# correction is implemented.
+# binomial GLM with link g. The link enters the weight derivatives, the Fisher
+# information A, and the score itself: the canonical logit form
+# x_i (Z_i - p_i) omits the factor 1 / (p (1 - p) g'(p)), which equals 1 only
+# for logit. These reference tests pin the generalized score correction, so the
+# probit and cloglog cases are the discriminating ones.
 
 # g'(p) for the propensity score link, matching derive_link() in R/ipw.R.
 lin_gprime <- function(p, link) {
@@ -678,8 +677,8 @@ lin_gprime <- function(p, link) {
 # factor 1 / (p (1 - p) g'(p)) that turns x_i (Z_i - p_i) into the GLM score, and
 # `info_scale` is the same factor entering the Fisher information A. The correct
 # estimator uses the score factor in both places; passing if_scale = 1 reproduces
-# the canonical-logit form the package currently hardcodes, which is the value
-# the probit and cloglog cases return today.
+# the canonical-logit form, which differs from the correct value for probit and
+# cloglog.
 lin_se_rd <- function(X, p, z, y, w, dwdeta, if_scale, info_scale) {
   n <- length(z)
   n1 <- sum(w[z == 1])
@@ -781,7 +780,7 @@ test_that("the hand-coded linearization RD SE reproduces the logit path and refe
   )
 
   # For a logit ps model the score factor is 1, so the generalized helper and the
-  # package agree, validating the helper against the current implementation.
+  # package agree, validating the helper against the package implementation.
   hand <- lin_se_correct(ps_mod, dat$z, dat$y, wts)
 
   res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
@@ -847,9 +846,9 @@ test_that("probit linearization RD SE agrees with mestimation", {
   lin_se <- lin$std.err[lin$effect == "rd"]
   mest_se <- mest$std.err[mest$effect == "rd"]
 
-  # The corrected linearization agrees with the sandwich to well under a percent
-  # (about 0.02 percent here); the current mis-scaled formula is about 1.6
-  # percent off, so this band separates the two.
+  # The score-corrected linearization agrees with the sandwich to well under a
+  # percent (about 0.02 percent here); dropping the score factor puts it about
+  # 1.6 percent off, so this band separates the two.
   expect_lt(abs(lin_se - mest_se) / mest_se, 0.005)
 })
 
@@ -862,8 +861,9 @@ test_that("the linearization path rejects an unsupported outcome family", {
   wts <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
 
   # A low-rate count outcome; the marginal outcome model passes the exposure-only
-  # guard, so the family rejection must fire even on a marginal model. Today the
-  # path returns a finite but meaningless log(or) from count-scale marginal means.
+  # guard, so the family rejection must fire even on a marginal model. Without it
+  # the path returns a finite but meaningless log(or) from count-scale marginal
+  # means.
   withr::local_seed(1)
   dat$ycount <- rpois(nrow(dat), exp(-0.7 + 0.3 * dat$z + 0.2 * dat$x1))
   outcome_mod <- suppressWarnings(
@@ -900,11 +900,12 @@ test_that("linearization matches a factor outcome response with finite SEs", {
     se_method = "linearization"
   )$estimates
 
-  # Today Y - mu is computed on the raw factor, giving NA std.err with
-  # "'-' not meaningful for factors" warnings. The linearization branch extracts
-  # the outcome two ways that fail identically: `.data[[outcome_name]]` when
-  # .data is supplied, and fmla_extract_left_vctr when it is not. Both must
-  # return finite std.err equal to the numeric fit with no warnings.
+  # Y - mu must be computed on the 0/1 coding: on a raw factor it gives NA
+  # std.err with "'-' not meaningful for factors" warnings. The linearization
+  # branch extracts the outcome two ways that would fail identically:
+  # `.data[[outcome_name]]` when .data is supplied, and fmla_extract_left_vctr
+  # when it is not. Both return finite std.err equal to the numeric fit with no
+  # warnings.
   res_data <- expect_no_warning(
     ipw(ps_mod, fac, .data = dat, se_method = "linearization")$estimates
   )
@@ -1067,14 +1068,15 @@ test_that("mestimation matches a factor exposure to the numeric fit", {
 # ---- atu and entropy rejection on the linearization path --------------------
 #
 # The linearization path supports only ate, att, ato, and atm. An atu or entropy
-# request currently reaches derive_weights, whose rlang::arg_match raises a bare,
-# unclassed rlang error attributed to the internal function and claiming the
-# estimand "must be one of ate, att, ato, atm" (misleading: atu and entropy are
-# valid estimands, just unsupported by this SE method). These tests pin a classed
-# propensity_method_error directing to se_method = "mestimation", matching the
-# categorical and continuous paths. The four supported estimands on linearization
-# are covered by test-ipw.R ("variance works"); atu and entropy on mestimation by
-# test-ipw-mestimation.R ("ipw_mestimation runs atu and entropy with finite SEs").
+# request has to be rejected before derive_weights, whose rlang::arg_match
+# raises a bare, unclassed rlang error attributed to the internal function and
+# claiming the estimand "must be one of ate, att, ato, atm" (misleading: atu and
+# entropy are valid estimands, just unsupported by this SE method). These tests
+# pin a classed propensity_method_error directing to se_method = "mestimation",
+# matching the categorical and continuous paths. The four supported estimands on
+# linearization are covered by test-ipw.R ("variance works"); atu and entropy on
+# mestimation by test-ipw-mestimation.R ("ipw_mestimation runs atu and entropy
+# with finite SEs").
 
 test_that("linearization rejects the atu estimand with a classed error", {
   dat <- se_method_data()
@@ -1139,14 +1141,14 @@ test_that("a more-than-two-level exposure on the linearization path aborts infor
 # ---- matrix-response (cbind) propensity model -------------------------------
 #
 # A ps model with a matrix LHS (cbind(successes, failures) binomial response) is
-# not a binary exposure. The two SE paths currently diverge and mislead: the
-# mestimation path reports case weights (the cbind totals become prior weights)
-# and the linearization path reports an adjusted outcome model (the mangled
-# length-3 exposure name c("cbind", "y1", "y0") never matches the outcome term).
-# Neither names the matrix response. These tests pin one aligned matrix-response
-# error across both paths; "matrix" is absent from both current messages ("cbind"
-# is not, since it appears as the mangled exposure name on the linearization
-# path), so it is the discriminating regexp.
+# not a binary exposure, and both SE paths reject it with the same error naming
+# the matrix response. Left to their downstream guards the two diverge and
+# mislead: the mestimation path reports case weights (the cbind totals become
+# prior weights) and the linearization path reports an adjusted outcome model
+# (the mangled length-3 exposure name c("cbind", "y1", "y0") never matches the
+# outcome term). "matrix" is absent from both of those messages ("cbind" is not,
+# since it appears as the mangled exposure name on the linearization path), so
+# it is the discriminating regexp.
 
 matrix_lhs_models <- function() {
   set.seed(2024)
@@ -1359,10 +1361,10 @@ test_that("print.ipw formats the z column as a test statistic, not a coefficient
   res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
 
   # Reconstruct the numeric matrix print.ipw formats, then derive the two
-  # renderings: the current (wrong) call marks std.err + z as the coefficient
-  # pair and ci.lower as the test statistic; the corrected call marks estimate +
-  # std.err as the pair and z as the test statistic. z prints at full precision
-  # under the wrong call and as a rounded test statistic under the fix.
+  # candidate renderings. `fixed` marks estimate + std.err as the coefficient
+  # pair and z as the test statistic; `current` is the off-by-one assignment
+  # that marks std.err + z as the pair and ci.lower as the test statistic, under
+  # which z prints at full precision rather than as a rounded test statistic.
   estimates <- res$estimates[-1]
   rownames(estimates) <- res$estimates$effect
   fixed <- capture.output(
@@ -1376,7 +1378,7 @@ test_that("print.ipw formats the z column as a test statistic, not a coefficient
   printed <- data_rows(capture.output(print(res)))
 
   # The two renderings genuinely differ (guards the discriminator), and the
-  # printed table must match the corrected rendering, not the current one.
+  # printed table matches the correct assignment, not the off-by-one one.
   expect_false(identical(data_rows(fixed), data_rows(current)))
   expect_identical(printed, data_rows(fixed))
   expect_false(identical(printed, data_rows(current)))

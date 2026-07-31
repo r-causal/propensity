@@ -748,12 +748,14 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
   invisible(TRUE)
 }
 
-# Reject an outcome model that carries an offset. The stacked estimating
-# equations rebuild the weighted outcome score without threading an offset, so
-# an offset in the outcome model would converge to a root that disagrees with
-# the fitted model. Detect an offset supplied through the model formula (the
-# terms offset attribute) or through the `offset` argument (the model frame) and
-# direct the user to refit without it. Shared by every mestimation spec path.
+# Reject an outcome model that carries an offset. Neither standard error path
+# accounts for one: the stacked estimating equations rebuild the weighted
+# outcome score without threading an offset, and the linearization influence
+# functions are derived for the same unoffset weighted fit, so the reported
+# results would disagree with the model that was fit. Detect an offset supplied
+# through the model formula (the terms offset attribute) or through the `offset`
+# argument (the model frame) and direct the user to refit without it. Called
+# from every mestimation spec path and from the linearization branch.
 check_ipw_offset <- function(outcome_mod, call = rlang::caller_env()) {
   has_offset <- !is.null(attr(stats::terms(outcome_mod), "offset")) ||
     !is.null(stats::model.offset(stats::model.frame(outcome_mod)))

@@ -399,8 +399,8 @@ test_that("ipw_spec_continuous rejects an unsupported outcome family", {
     glm(ycount ~ A, data = dat, family = poisson(), weights = wts)
   )
 
-  # A poisson marginal structural model is silently stacked as a binomial score
-  # today.
+  # Without the family guard a poisson marginal structural model is stacked as a
+  # binomial score.
   expect_error(
     ipw_spec_continuous(ps_mod, outcome_mod),
     class = "propensity_ipw_family_error"
@@ -409,18 +409,17 @@ test_that("ipw_spec_continuous rejects an unsupported outcome family", {
 
 # ---- continuous-path link validation ----------------------------------------
 #
-# Two continuous-path inputs fail late or dishonestly today. A gaussian
-# propensity model with a non-identity link reconstructs its linear predictor as
-# the fitted mean, so the weights the user built from fitted() no longer match
-# and the misleading weights-mismatch error blames the weights instead of the
-# unsupported link. A probit marginal structural model is accepted by the family
-# check but has no continuous effect label, so it errors late with a terse
-# internal message rather than fast at entry listing the supported links. These
-# tests pin an honest, fast, classed error; they cannot pass until the
-# continuous-path link validation exists. (A gaussian-identity glm ps model,
-# already covered by the gaussian-glm routing test above, and a logit msm,
-# covered by the effect-label test above, must keep working; the log-link msm
-# below adds the one supported msm link not otherwise exercised.)
+# Two continuous-path inputs are rejected at entry with a classed error naming
+# the supported links. Left to their downstream failures both mislead: a
+# gaussian propensity model with a non-identity link reconstructs its linear
+# predictor as the fitted mean, so the weights the user built from fitted() no
+# longer match and the weights-mismatch error blames the weights instead of the
+# unsupported link; a probit marginal structural model passes the family check
+# but has no continuous effect label, so it errors late with a terse internal
+# message. (A gaussian-identity glm ps model, already covered by the
+# gaussian-glm routing test above, and a logit msm, covered by the effect-label
+# test above, must keep working; the log-link msm below adds the one supported
+# msm link not otherwise exercised.)
 
 test_that("ipw() rejects a non-identity link on the continuous propensity model", {
   dat <- sim_continuous()
@@ -465,8 +464,8 @@ test_that("ipw() rejects a non-identity link on the continuous marginal structur
   )
 
   # The continuous effect label supports only identity, logit, and log. A probit
-  # msm must fail fast at entry with a message listing the supported links, not
-  # the terse late "Unsupported outcome link" message it produces today.
+  # msm fails at entry with a message listing the supported links, rather than
+  # reaching the terse "Unsupported outcome link" message downstream.
   expect_error(
     ipw(ps_mod, msm),
     class = "propensity_ipw_link_error",
@@ -579,10 +578,10 @@ test_that("continuous logistic MSM matches a factor outcome response to the nume
 
 test_that("continuous reconstructs the ps design from .data when the fit frame is gone", {
   skip_if_not_installed("deli")
-  # The continuous path already routes the ps design through
-  # ipw_extract_ps_design: with the fitting data gone, no .data raises the
-  # guarded error and .data rebuilds the design. This is the parity reference the
-  # binary path (bd-30i.6) must match.
+  # The continuous path routes the ps design through ipw_extract_ps_design:
+  # with the fitting data gone, no .data raises the guarded error and .data
+  # rebuilds the design. The binary path matches this behavior; see
+  # test-ipw-mestimation.R.
   dat <- sim_continuous()
   ps_gone <- lm(A ~ x1 + x2, data = dat, model = FALSE)
   wts <- continuous_weights(fitted(ps_gone), dat$A)
@@ -625,15 +624,15 @@ test_that("the continuous weight-consistency error names no focal level", {
 # The continuous path stacks an ordinary least-squares score block for the
 # propensity model, so the M-estimator solves its coefficients to the
 # least-squares root no matter how the supplied model was actually fit. An lm
-# subclass whose coefficients are not that root therefore yields estimates for a
-# propensity model the user never fit. Nothing catches it today: MASS::rlm
-# carries class c("rlm", "lm") and so reaches the lm method, and the weights
-# built from its fitted values agree with the weights recomputed at the seeded
-# init, so the weight-consistency preflight passes. The same holds through the
-# gaussian-family branch of the glm method, which routes a gaussian mgcv::gam to
-# the identical path. The continuous path must therefore accept only a plain lm
-# or a gaussian glm and reject any other subclass at entry, naming the class it
-# was given.
+# subclass whose coefficients are not that root would therefore yield estimates
+# for a propensity model the user never fit, and no downstream guard catches it:
+# MASS::rlm carries class c("rlm", "lm") and so reaches the lm method, and the
+# weights built from its fitted values agree with the weights recomputed at the
+# seeded init, so the weight-consistency preflight passes. The same holds
+# through the gaussian-family branch of the glm method, which routes a gaussian
+# mgcv::gam to the identical path. The continuous path therefore accepts only a
+# plain lm or a gaussian glm and rejects any other subclass at entry, naming the
+# class it was given.
 
 # A fixture whose robust and least-squares propensity fits genuinely disagree:
 # adding a block of large outliers to the exposure pulls the least-squares fit
@@ -657,9 +656,9 @@ test_that("ipw() rejects a robust linear propensity model on the continuous path
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
   msm <- lm(yc ~ A, data = dat, weights = wts)
 
-  # The particular propensity_*_error subclass is the implementer's choice, but
-  # the error must name the class it was handed rather than accept the model and
-  # silently report the least-squares analysis instead.
+  # The test pins the general propensity_error class rather than a specific
+  # subclass; what matters is that the error names the class it was handed
+  # instead of accepting the model and reporting the least-squares analysis.
   expect_error(
     ipw(ps_mod, msm),
     class = "propensity_error",

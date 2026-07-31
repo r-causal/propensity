@@ -126,9 +126,9 @@ test_that("tidy(glm, conf.int = TRUE) works on glms weighted by psw vectors", {
 
   m <- glm(y ~ x, data = d, weights = w, family = quasibinomial())
 
-  # The bug originally errored with `Subscript `i` must be a simple vector,
-  # not a matrix.` Once the [.psw matrix-subscript fix is in place,
-  # profile.glm() runs to completion. It also evaluates `weights == 0` and
+  # This originally errored with `Subscript `i` must be a simple vector,
+  # not a matrix.` With a matrix subscript handled on psw, profile.glm() runs to
+  # completion. It also evaluates `weights == 0` and
   # `weights > 0` many times, which used to trigger
   # `propensity_class_downgrade_warning` from vec_ptype2.psw.double on every
   # comparison; the comparison-operator methods on psw silence that path.

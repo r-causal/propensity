@@ -113,7 +113,7 @@ fit_outcome_without_exposure <- function(dat, wts) {
 # Estimand tilt h(e) for the standardized g-computation plug-in. ate is the flat
 # tilt (h = 1); a tilted estimand weights each unit's counterfactual predictions
 # by h of its propensity score. Mirrors the tilt the M-estimation marginal-mean
-# rows apply once they standardize to the target population.
+# rows apply when standardizing to the target population.
 plugin_tilt <- function(ps, estimand, n) {
   if (estimand == "ate") {
     return(rep(1, n))
@@ -484,16 +484,14 @@ test_that("ipw_spec_binary errors when the estimand cannot be determined", {
 
 # ---- tilted marginal-mean standardization (att/atu/ato/atm/entropy) ----------
 #
-# The marginal-mean rows of the stacked system currently take an unweighted mean
-# of counterfactual predictions over the whole sample for every estimand, which
-# is correct only for ate. For a tilted estimand the marginal means must be
-# standardized to the target population, mu_a = sum_i h(e_i) m_a(x_i) / sum_i
-# h(e_i). With a covariate-adjusted outcome model and a heterogeneous effect the
-# current engine reports the ate-type contrast for every estimand. The tests
-# below pin the tilt-standardized behavior; those that cannot pass until the
-# standardization is in place carry the pending skip. A saturated outcome model
-# (y ~ z) escapes the defect because predictions are constant within arm, so the
-# tilt is a no-op on the contrast; that case is a live regression anchor.
+# The marginal-mean rows of the stacked system standardize to the estimand's
+# target population, mu_a = sum_i h(e_i) m_a(x_i) / sum_i h(e_i). An unweighted
+# mean of counterfactual predictions over the whole sample is correct only for
+# ate; with a covariate-adjusted outcome model and a heterogeneous effect it
+# reports the ate-type contrast for every estimand, which is why these tests
+# combine both features. A saturated outcome model (y ~ z) has predictions
+# constant within arm, so the tilt is a no-op on the contrast; that case is a
+# live regression anchor.
 
 # Heterogeneous-effect simulator with stored potential outcomes. The propensity
 # e = plogis(1.5 x) and the effect y1 - y0 = 2 + 1.5 x are both increasing in x,
@@ -605,8 +603,9 @@ test_that("mestimation tilted point estimates match the tilt-standardized plug-i
 test_that("mestimation att with a saturated outcome model matches the tilt-standardized plug-in", {
   skip_if_not_installed("deli")
   # A saturated outcome model has predictions constant within arm, so the att
-  # tilt is a no-op on the contrast and the engine already matches the tilt-
-  # standardized plug-in. This anchors the exposure-only case across the fix.
+  # tilt is a no-op on the contrast and the engine matches the tilt-standardized
+  # plug-in whether or not the standardization is applied. This anchors the
+  # exposure-only case.
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "att", adjust = FALSE)
   e_hat <- as.double(predict(mods$ps_mod, type = "response"))
@@ -745,14 +744,13 @@ test_that("mestimation att SE matches a nonparametric bootstrap for an adjusted 
 
 # ---- outcome-family validation ----------------------------------------------
 #
-# The spec constructors classify the outcome model with a two-way branch:
-# gaussian/identity for an lm or gaussian glm, binomial/<link> otherwise. That
-# silently misclassifies poisson, quasipoisson, Gamma, and inverse-gaussian
-# outcome models as a binomial score, and ignores the link of a gaussian glm
-# (gaussian(link = "log") is stacked as identity). Only lm, gaussian-identity
-# glm, and binomial or quasibinomial glm are supported. The rejection tests pin
-# a classed error naming the unsupported family or link; they cannot pass until
-# the shared validator exists.
+# Only an lm, a gaussian-identity glm, and a binomial or quasibinomial glm are
+# supported as outcome models. The spec constructors classify the model with a
+# two-way branch, gaussian/identity for an lm or gaussian glm and binomial/<link>
+# otherwise, so without a validator ahead of it a poisson, quasipoisson, Gamma,
+# or inverse-gaussian model is stacked as a binomial score and a non-identity
+# gaussian link is stacked as identity. The rejection tests pin a classed error
+# naming the unsupported family or link.
 
 # Data with count and positive-continuous outcomes for the family tests, so an
 # outcome model can be fit with poisson, quasipoisson, Gamma, inverse gaussian,
@@ -849,12 +847,12 @@ test_that("ipw_spec_binary accepts lm, gaussian-identity, binomial, and quasibin
 # `ps_link` documents exactly three links for a binary propensity score model:
 # logit, probit, and cloglog, which is also the set the linearization path
 # arg-matches in derive_link() and derive_score_factor(). The M-estimation path
-# must restrict the resolved link to the same three at the entry of
-# ipw_spec_binary(). The resolved link is otherwise only ever consumed by
-# ipw_inv_link(), which serves outcome-link reconstruction as well and so accepts
-# identity and log too, leaving an unsupported propensity model to be estimated
-# silently or to abort from an internal frame with a message that names neither
-# the argument nor the supported set.
+# restricts the resolved link to the same three at the entry of
+# ipw_spec_binary(). The guard belongs there because the resolved link is
+# otherwise only ever consumed by ipw_inv_link(), which serves outcome-link
+# reconstruction as well and so accepts identity and log too: an unsupported
+# propensity model would be estimated without comment or abort from an internal
+# frame with a message that names neither the argument nor the supported set.
 #
 # Controls for the three supported links on the M-estimation path are covered by
 # "ipw_mestimation std.err matches linearization within 3 percent", which builds
@@ -929,12 +927,12 @@ test_that("the ps_link argument is validated against the supported set", {
 
 # ---- factor and logical outcome responses -----------------------------------
 #
-# The spec constructors store as.double(outcome), where outcome is the raw
-# response from model.frame or a .data column. A binomial glm with a factor
-# response (first level failure, others success) then yields level codes 1/2
-# instead of 0/1, so the stacked binomial score has no root and the solve fails.
-# A logical response already doubles to 0/1. These tests pin that a factor
-# response matches the numeric-0/1 fit; the fix will read the converted response.
+# The spec constructors store the outcome through ipw_outcome_numeric(), where
+# the raw response comes from model.frame or a .data column. A plain
+# as.double() on a binomial glm's factor response (first level failure, others
+# success) yields level codes 1/2 instead of 0/1, leaving the stacked binomial
+# score with no root and failing the solve. A logical response already doubles
+# to 0/1. These tests pin that a factor response matches the numeric-0/1 fit.
 # quasibinomial is used throughout: its $y matches binomial for a factor response
 # and it is the weighted-outcome convention. quasibinomial does not warn about
 # non-integer successes on fractional weights (unlike binomial), so the fixture
@@ -1031,13 +1029,12 @@ test_that("mestimation matches a three-level factor outcome to the numeric fit",
 
 # ---- binary ps design extraction with .data ---------------------------------
 #
-# ipw_spec_binary extracts the ps design directly (fmla_extract_left_vctr and
-# model.matrix(ps_mod)) rather than through the shared ipw_extract_ps_design the
-# categorical and continuous paths use. So a binary ps model fit with
-# model = FALSE whose fitting data is gone fails with a raw "object not found"
-# error even when .data is supplied, and without .data it raises that raw error
-# instead of the informative propensity_ipw_data_error. These tests pin the
-# guarded, .data-aware behavior in parity with the other paths.
+# ipw_spec_binary takes its propensity design from the shared
+# ipw_extract_ps_design() helper, in parity with the categorical and continuous
+# paths. So a binary ps model fit with model = FALSE whose fitting data is gone
+# rebuilds its design from .data, and without .data raises the informative
+# propensity_ipw_data_error rather than a raw "object not found". These tests
+# pin the guarded, .data-aware behavior.
 
 ps_design_data <- function(seed = 2024, n = 600) {
   withr::local_seed(seed)
@@ -1095,7 +1092,8 @@ test_that("mestimation errors with the supply-.data hint when the binary ps fit 
   out <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
   rm(dat)
 
-  # Without .data the raw "object not found" must become the guarded error.
+  # Without .data the design cannot be rebuilt, so the guarded error stands in
+  # for the raw "object not found".
   expect_error(
     ipw(ps_gone, out, se_method = "mestimation"),
     class = "propensity_ipw_data_error"
@@ -1105,9 +1103,9 @@ test_that("mestimation errors with the supply-.data hint when the binary ps fit 
 test_that("mestimation binary estimates are unchanged when redundant .data is supplied", {
   skip_if_not_installed("deli")
   # A normal, reconstructable ps fit with a factor covariate: supplying .data
-  # must not change the estimates. The fix rebuilds the same design (xlevels and
-  # all), so this guards against drift when .data is redundant and exercises the
-  # factor-covariate design rebuild.
+  # must not change the estimates. The rebuild reproduces the same design
+  # (xlevels and all), so this guards against drift when .data is redundant and
+  # exercises the factor-covariate design rebuild.
   dat <- ps_design_data(seed = 11)
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- wt_ate(
@@ -1138,9 +1136,7 @@ test_that("mestimation binary estimates are unchanged when .data re-levels a ps 
   skip_if_not_installed("deli")
   # .data with the same factor-covariate values but a reordered levels attribute
   # (a user re-leveling for presentation after fitting) stays row-aligned. The
-  # ps design rebuild must honor ps_mod$xlevels so the design matches the fit.
-  # Passes vacuously today (.data is ignored for the ps design); becomes load
-  # bearing once the constructor rebuilds through the shared helper.
+  # ps design rebuild honors ps_mod$xlevels so the design matches the fit.
   dat <- ps_design_data(seed = 11)
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- wt_ate(
@@ -1173,14 +1169,15 @@ test_that("mestimation binary estimates are unchanged when .data re-levels a ps 
 #
 # The counterfactual designs are built by setting the exposure to each level in
 # the outcome model's data, so an outcome model fit on covariates alone yields
-# identical X1 and X0 designs: every contrast collapses to zero with a degenerate
-# standard error rather than erroring. check_ipw_outcome_exposure() reads the
-# model terms, so it must fire on both extraction routes. The .data route is the
-# one that was silently degenerate; the no-.data route reached check_exposure(),
-# whose "Please specify .data" hint funnelled the user straight into it. Both
-# routes are pinned below, so moving the guard into the .data branch alone would
-# fail. A transformed exposure such as I(z^2) still names the exposure and is not
-# this error; that case belongs to check_exposure() and is pinned in test-ipw.R.
+# identical X1 and X0 designs: without a guard every contrast would collapse to
+# zero with a degenerate standard error rather than erroring.
+# check_ipw_outcome_exposure() reads the model terms, so it fires on both
+# extraction routes. The .data route was the degenerate one; the no-.data route
+# reached check_exposure(), whose "Please specify .data" hint funnelled the user
+# straight into it. Both routes are pinned below, so moving the guard into the
+# .data branch alone would fail. A transformed exposure such as I(z^2) still
+# names the exposure and is not this error; that case belongs to
+# check_exposure() and is pinned in test-ipw.R.
 
 test_that("mestimation rejects a binary outcome model that omits the exposure when .data is supplied", {
   skip_if_not_installed("deli")

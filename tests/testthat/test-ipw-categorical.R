@@ -597,7 +597,8 @@ test_that("ipw_spec_categorical rejects an unsupported outcome family", {
     glm(ycount ~ a, data = dat, family = poisson(), weights = wts)
   )
 
-  # A poisson outcome model is silently stacked as a binomial score today.
+  # Without the family guard a poisson outcome model is stacked as a binomial
+  # score.
   expect_error(
     ipw_spec_categorical(ps_mod, outcome_mod),
     class = "propensity_ipw_family_error"
@@ -645,11 +646,11 @@ test_that("ipw() categorical errors informatively on a length-2 .focal_level", {
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "att", focal_level = "b")
 
-  # Today a length-2 .focal_level reaches `!focal_level %in% levs` inside an `&&`,
-  # raising a raw base error ("'length = 2' in coercion to 'logical(1)'") that
-  # does not name .focal_level. It must become a classed error naming the
-  # argument. The length-1 case is covered by "ipw() categorical atu accepts an
-  # explicit focal level argument".
+  # The length assertion runs ahead of `!focal_level %in% levs`, which sits
+  # inside an `&&` and would otherwise raise a raw base error ("'length = 2' in
+  # coercion to 'logical(1)'") that does not name .focal_level. The length-1
+  # case is covered by "ipw() categorical atu accepts an explicit focal level
+  # argument".
   expect_error(
     ipw(mods$ps_mod, mods$outcome_mod, .focal_level = c("b", "c")),
     class = "propensity_error",
@@ -715,9 +716,9 @@ test_that("ipw() categorical rejects an outcome model with an offset term", {
 # ---- the outcome model must contain the exposure -----------------------------
 #
 # As on the binary path, supplying .data bypasses the check_exposure() guard, so
-# an outcome model fit without the exposure produces one identical counterfactual
-# design per level and every contrast collapses to zero. The categorical path
-# must reject it with the same classed error.
+# an outcome model fit without the exposure would produce one identical
+# counterfactual design per level and collapse every contrast to zero. The
+# categorical path rejects it with the same classed error.
 
 test_that("ipw() categorical rejects an outcome model that omits the exposure when .data is supplied", {
   skip_if_not_installed("nnet")
