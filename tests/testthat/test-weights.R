@@ -358,6 +358,82 @@ test_that("stabilization_score survives subsetting of psw", {
   expect_equal(stabilization_score(w_sub), score)
 })
 
+# A per-observation stabilization score is indexed by observation, so it is only
+# meaningful at the length of the weights it was recorded on. Restoring a psw at
+# a different length cannot carry it, and the slice indices are not available to
+# subset it, so the contract is to drop it and say so.
+
+stabilized_psw <- function(score) {
+  wt_ate(
+    c(0.2, 0.4, 0.6, 0.8, 0.3, 0.7),
+    c(1, 0, 1, 0, 1, 0),
+    exposure_type = "binary",
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+}
+
+test_that("vector stabilization_score is dropped with a warning when `[` shortens a psw", {
+  score <- c(0.51, 0.52, 0.53, 0.54, 0.55, 0.56)
+  w <- stabilized_psw(score)
+  expect_equal(stabilization_score(w), score)
+
+  cnd <- expect_warning(
+    w_sub <- w[1:3],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_s3_class(cnd, "propensity_warning")
+
+  expect_s3_class(w_sub, "psw")
+  expect_length(w_sub, 3)
+  expect_null(stabilization_score(w_sub))
+  expect_null(attr(w_sub, "stabilization_score"))
+
+  # Every other piece of metadata is unaffected by the drop.
+  expect_equal(estimand(w_sub), "ate")
+  expect_true(is_stabilized(w_sub))
+  expect_equal(vec_data(w_sub), vec_data(w)[1:3])
+})
+
+test_that("vector stabilization_score is dropped with a warning when vec_slice shortens a psw", {
+  score <- c(0.51, 0.52, 0.53, 0.54, 0.55, 0.56)
+  w <- stabilized_psw(score)
+
+  cnd <- expect_warning(
+    w_sub <- vctrs::vec_slice(w, 1:3),
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_s3_class(cnd, "propensity_warning")
+
+  expect_s3_class(w_sub, "psw")
+  expect_length(w_sub, 3)
+  expect_null(stabilization_score(w_sub))
+  expect_null(attr(w_sub, "stabilization_score"))
+  expect_equal(estimand(w_sub), "ate")
+  expect_true(is_stabilized(w_sub))
+})
+
+test_that("scalar stabilization_score is carried through psw slicing silently", {
+  score <- 0.42
+  w <- stabilized_psw(score)
+
+  w_sub <- expect_silent(w[1:3])
+  expect_equal(stabilization_score(w_sub), score)
+
+  w_slice <- expect_silent(vctrs::vec_slice(w, 1:3))
+  expect_equal(stabilization_score(w_slice), score)
+})
+
+test_that("vector stabilization_score is carried through length-preserving psw arithmetic", {
+  score <- c(0.51, 0.52, 0.53, 0.54, 0.55, 0.56)
+  w <- stabilized_psw(score)
+
+  w_doubled <- expect_silent(w * 2)
+  expect_s3_class(w_doubled, "psw")
+  expect_equal(stabilization_score(w_doubled), score)
+  expect_equal(vec_data(w_doubled), vec_data(w) * 2)
+})
+
 test_that("ATE works for binary cases", {
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
