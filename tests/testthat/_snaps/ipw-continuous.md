@@ -28,3 +28,13 @@
       x `wt_mod` is a gaussian model with a "log" link.
       i Refit `wt_mod` as an `lm()` or a gaussian glm with an identity link.
 
+# the continuous ps_link error explains why the argument does not apply
+
+    Code
+      ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit")
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` does not accept `ps_link` for a continuous propensity score model.
+      x A continuous propensity score model has no link for `ps_link` to override.
+      i Omit `ps_link`; it applies only to a binomial glm propensity score model.
+

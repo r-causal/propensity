@@ -324,6 +324,7 @@ ipw.glm <- function(
       outcome_mod,
       .data = .data,
       estimand = estimand,
+      ps_link = ps_link,
       conf_level = conf_level,
       se_method = se_method
     ))
@@ -494,6 +495,7 @@ ipw_continuous_estimate <- function(
   outcome_mod,
   .data = NULL,
   estimand = NULL,
+  ps_link = NULL,
   conf_level = 0.95,
   se_method = "mestimation",
   call = rlang::caller_env()
@@ -517,6 +519,24 @@ ipw_continuous_estimate <- function(
         {.code stats::glm(family = gaussian())}."
       ),
       error_class = "propensity_class_error",
+      call = call
+    )
+  }
+
+  # ps_link overrides the link of a binomial glm propensity model on the binary
+  # path; a continuous propensity model has no such link, so reject a non-NULL
+  # argument rather than silently ignoring it.
+  if (!is.null(ps_link)) {
+    abort(
+      c(
+        "{.fun ipw} does not accept {.arg ps_link} for a continuous propensity \\
+        score model.",
+        x = "A continuous propensity score model has no link for \\
+        {.arg ps_link} to override.",
+        i = "Omit {.arg ps_link}; it applies only to a binomial glm propensity \\
+        score model."
+      ),
+      error_class = "propensity_ipw_link_error",
       call = call
     )
   }

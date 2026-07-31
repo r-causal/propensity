@@ -504,13 +504,12 @@ test_that("ipw() continuous works with a log-link marginal structural model", {
 
 # ---- ps_link on the continuous path -----------------------------------------
 #
-# `ps_link` overrides the link of a binomial glm propensity model on the binary
-# path. A continuous propensity model has no such link, so a supplied value has
-# nothing to override and is silently ignored today. `ipw.multinom` already
-# rejects it for the same reason, and the continuous path must too, from both
-# entries: the lm method and the gaussian-family branch of ipw.glm. The default
-# of `NULL` is the control, exercised by every other test in this file through
-# both entries (see the end-to-end and gaussian-glm routing tests above).
+# ps_link is meaningful only for a binomial glm on the binary path, where it
+# overrides the model's link. A continuous propensity model has no such link, so
+# both continuous entries, the lm method and the gaussian-family branch of
+# ipw.glm, must reject it rather than silently ignore it. The default
+# ps_link = NULL is covered by every other test in this file, through both
+# entries (see the end-to-end and gaussian-glm routing tests above).
 
 test_that("ipw() rejects ps_link for an lm propensity model", {
   dat <- sim_continuous()

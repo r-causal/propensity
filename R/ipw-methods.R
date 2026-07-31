@@ -114,6 +114,7 @@ ipw.lm <- function(
     outcome_mod,
     .data = .data,
     estimand = estimand,
+    ps_link = ps_link,
     conf_level = conf_level,
     se_method = se_method
   )
