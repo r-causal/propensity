@@ -551,6 +551,110 @@ test_that("ATE works for binary cases", {
   )
 })
 
+# ---- focal level recorded on binary att and atu weights ---------------------
+#
+# Binary att and atu weights are mirror images of each other: att weights built
+# on the first sorted exposure level from 1 - e are numerically identical to atu
+# weights built on the second level from e. Nothing in the returned weights tells
+# the two apart, so a consumer cannot tell which level the weights target. The
+# resolved focal level is recorded under the attribute name the categorical path
+# already uses. The remaining binary estimands have symmetric tilting functions,
+# so the mirrored construction reproduces the unmirrored weights exactly and
+# there is nothing to record.
+
+test_that("binary wt_att() records an explicitly supplied focal level", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- factor(
+    c("control", "treat", "control", "treat"),
+    levels = c("control", "treat")
+  )
+
+  weights <- wt_att(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    .focal_level = "control"
+  )
+
+  expect_identical(attr(weights, "focal_category"), "control")
+})
+
+test_that("binary wt_atu() records an explicitly supplied focal level", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- factor(
+    c("control", "treat", "control", "treat"),
+    levels = c("control", "treat")
+  )
+
+  weights <- wt_atu(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    .focal_level = "control"
+  )
+
+  expect_identical(attr(weights, "focal_category"), "control")
+})
+
+test_that("binary wt_att() records the focal level implied by a reference level", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- factor(
+    c("control", "treat", "control", "treat"),
+    levels = c("control", "treat")
+  )
+
+  # `.reference_level` codes every other level as focal, which for a two-level
+  # exposure resolves to the single remaining level.
+  weights <- wt_att(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    .reference_level = "treat"
+  )
+
+  expect_identical(attr(weights, "focal_category"), "control")
+})
+
+test_that("binary att and atu weights record no focal level when none is given", {
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- factor(
+    c("control", "treat", "control", "treat"),
+    levels = c("control", "treat")
+  )
+
+  weights_att <- wt_att(ps, exposure, exposure_type = "binary")
+  weights_atu <- wt_atu(ps, exposure, exposure_type = "binary")
+
+  expect_null(attr(weights_att, "focal_category"))
+  expect_null(attr(weights_atu, "focal_category"))
+})
+
+test_that("binary estimands other than att and atu record no focal level", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- factor(
+    c("control", "treat", "control", "treat"),
+    levels = c("control", "treat")
+  )
+
+  symmetric <- list(
+    ate = wt_ate,
+    atm = wt_atm,
+    ato = wt_ato,
+    entropy = wt_entropy
+  )
+
+  for (estimand_name in names(symmetric)) {
+    weights <- symmetric[[estimand_name]](
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .focal_level = "control"
+    )
+    expect_null(attr(weights, "focal_category"))
+  }
+})
+
 test_that("ATE works for continuous cases", {
   denom_model <- lm(mpg ~ gear + am + carb, data = mtcars)
 

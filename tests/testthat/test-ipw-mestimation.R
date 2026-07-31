@@ -453,6 +453,23 @@ test_that("ipw_check_weight_consistency errors on manually doubled weights", {
   )
 })
 
+test_that("the weight-consistency error names a focal level as a possible cause", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  doubled <- 2 * as.double(model.weights(model.frame(mods$outcome_mod)))
+
+  # Hand-built weights carry no focal level for the guard in ipw() to read, so
+  # the mismatch error is the only place a flipped focal level can be raised as
+  # an explanation.
+  expect_error(
+    ipw_check_weight_consistency(spec, doubled),
+    class = "propensity_ipw_weights_mismatch_error",
+    regexp = "focal"
+  )
+})
+
 test_that("ipw_spec_binary errors when the estimand cannot be determined", {
   skip_if_not_installed("deli")
   dat <- sim_binary()

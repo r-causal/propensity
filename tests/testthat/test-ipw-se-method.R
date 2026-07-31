@@ -1360,3 +1360,138 @@ test_that("linearization errors when .data has fewer rows than the fitted models
     regexp = "length|rows"
   )
 })
+
+# ---- focal level flipped against the coded-1 exposure level -----------------
+#
+# The binary path has no focal level of its own: it codes the second sorted
+# exposure level as 1, and the estimand derivatives assume that coding. att
+# weights targeting the first sorted level are numerically identical to atu
+# weights targeting the second, so weights labelled att but built the other way
+# round reach the linearization path and are corrected with the treated and
+# control roles mirrored, producing standard errors for an estimand nobody asked
+# for. The mestimation path rejects the same weights, but only through the
+# weight-consistency preflight, whose hints never name the cause. Both paths must
+# reject a recorded focal level that is not the level they code as 1.
+
+se_method_data_factor <- function() {
+  dat <- se_method_data()
+  dat$zf <- factor(
+    ifelse(dat$z == 1, "treat", "control"),
+    levels = c("control", "treat")
+  )
+  dat
+}
+
+se_method_ps_mod_factor <- function(dat) {
+  glm(zf ~ x1 + x2, data = dat, family = binomial())
+}
+
+# Weights targeting "control", the first sorted exposure level and the level the
+# binary path treats as unexposed. The propensity score is flipped to 1 - e so
+# the values are the correct weights for that focal level: the att weights below
+# equal wt_atu(e, zf) exactly, and the atu weights equal wt_att(e, zf).
+se_method_outcome_focal_control <- function(dat, ps_mod, wt_fun) {
+  e_treat <- predict(ps_mod, type = "response")
+  wts <- wt_fun(
+    1 - e_treat,
+    dat$zf,
+    exposure_type = "binary",
+    .focal_level = "control"
+  )
+  glm(y ~ zf, data = dat, family = quasibinomial(), weights = wts)
+}
+
+test_that("linearization rejects att weights focal on the first exposure level", {
+  dat <- se_method_data_factor()
+  ps_mod <- se_method_ps_mod_factor(dat)
+  outcome_mod <- se_method_outcome_focal_control(dat, ps_mod, wt_att)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_focal_level_error",
+    regexp = "control"
+  )
+})
+
+test_that("mestimation rejects att weights focal on the first exposure level", {
+  dat <- se_method_data_factor()
+  ps_mod <- se_method_ps_mod_factor(dat)
+  outcome_mod <- se_method_outcome_focal_control(dat, ps_mod, wt_att)
+
+  # The weight-consistency preflight also rejects these weights, but its hints
+  # describe a refit rather than the flipped focal level, so the focal guard must
+  # run first.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "mestimation"),
+    class = "propensity_focal_level_error",
+    regexp = "control"
+  )
+})
+
+test_that("mestimation rejects atu weights focal on the first exposure level", {
+  # The atu mirror of the att case. The linearization path has no atu support to
+  # reach, so this pair is pinned on the mestimation path alone.
+  dat <- se_method_data_factor()
+  ps_mod <- se_method_ps_mod_factor(dat)
+  outcome_mod <- se_method_outcome_focal_control(dat, ps_mod, wt_atu)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "mestimation"),
+    class = "propensity_focal_level_error",
+    regexp = "control"
+  )
+})
+
+test_that("the focal level rejection names both the recorded and coded levels", {
+  dat <- se_method_data_factor()
+  ps_mod <- se_method_ps_mod_factor(dat)
+  outcome_mod <- se_method_outcome_focal_control(dat, ps_mod, wt_att)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+  )
+})
+
+test_that("att weights focal on the second exposure level estimate unchanged", {
+  dat <- se_method_data_factor()
+  ps_mod <- se_method_ps_mod_factor(dat)
+  e_treat <- predict(ps_mod, type = "response")
+
+  # "treat" is the level the binary path codes as 1, so recording it must leave
+  # the estimates exactly where the same weights without a recorded focal level
+  # put them.
+  wts_focal <- wt_att(
+    e_treat,
+    dat$zf,
+    exposure_type = "binary",
+    .focal_level = "treat"
+  )
+  wts_plain <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_att(e_treat, dat$zf, exposure_type = "binary")
+  )
+  expect_equal(as.double(wts_focal), as.double(wts_plain))
+
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+  outcome_focal <- glm(
+    y ~ zf,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts_focal,
+    control = ctrl
+  )
+  outcome_plain <- glm(
+    y ~ zf,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts_plain,
+    control = ctrl
+  )
+
+  for (method in c("linearization", "mestimation")) {
+    res_focal <- ipw(ps_mod, outcome_focal, .data = dat, se_method = method)
+    res_plain <- ipw(ps_mod, outcome_plain, .data = dat, se_method = method)
+    expect_equal(res_focal$estimates, res_plain$estimates, tolerance = 1e-8)
+  }
+})
