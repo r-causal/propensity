@@ -97,6 +97,19 @@ fit_binary_models <- function(
   list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
 }
 
+# Fit the outcome model on the covariate alone, dropping the exposure, while
+# keeping the ate weights the propensity score model implies. Used by the
+# missing-exposure guard tests at the end of the file.
+fit_outcome_without_exposure <- function(dat, wts) {
+  glm(
+    stats::reformulate("x1", response = "y"),
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+}
+
 # Estimand tilt h(e) for the standardized g-computation plug-in. ate is the flat
 # tilt (h = 1); a tilted estimand weights each unit's counterfactual predictions
 # by h of its propensity score. Mirrors the tilt the M-estimation marginal-mean
@@ -1058,25 +1071,16 @@ test_that("mestimation binary estimates are unchanged when .data re-levels a ps 
 
 # ---- the outcome model must contain the exposure -----------------------------
 #
-# On the .data route the spec constructor takes the exposure and the
-# counterfactual designs from .data and never checks that the outcome model
-# references the exposure. An outcome model fit on covariates alone then yields
-# identical X1 and X0 designs, so every contrast collapses to zero with a
-# degenerate standard error rather than erroring. Without .data the same mistake
-# is caught by check_exposure(); that route is already pinned in test-ipw.R.
-# These tests pin the guarded behavior on the .data route.
-
-# Refit the outcome model on the covariate alone, dropping the exposure, while
-# keeping the ate weights the propensity score model implies.
-fit_outcome_without_exposure <- function(dat, wts) {
-  glm(
-    stats::reformulate("x1", response = "y"),
-    data = dat,
-    family = quasibinomial(),
-    weights = wts,
-    control = glm.control(epsilon = 1e-14, maxit = 200)
-  )
-}
+# The counterfactual designs are built by setting the exposure to each level in
+# the outcome model's data, so an outcome model fit on covariates alone yields
+# identical X1 and X0 designs: every contrast collapses to zero with a degenerate
+# standard error rather than erroring. check_ipw_outcome_exposure() reads the
+# model terms, so it must fire on both extraction routes. The .data route is the
+# one that was silently degenerate; the no-.data route reached check_exposure(),
+# whose "Please specify .data" hint funnelled the user straight into it. Both
+# routes are pinned below, so moving the guard into the .data branch alone would
+# fail. A transformed exposure such as I(z^2) still names the exposure and is not
+# this error; that case belongs to check_exposure() and is pinned in test-ipw.R.
 
 test_that("mestimation rejects a binary outcome model that omits the exposure when .data is supplied", {
   skip_if_not_installed("deli")
@@ -1086,6 +1090,22 @@ test_that("mestimation rejects a binary outcome model that omits the exposure wh
 
   expect_error(
     ipw(mods$ps_mod, no_exposure, .data = dat),
+    class = "propensity_ipw_exposure_error"
+  )
+})
+
+test_that("mestimation rejects a binary outcome model that omits the exposure without .data", {
+  skip_if_not_installed("deli")
+  # The guard reads the model terms, so it fires before the frame-based
+  # check_exposure() on this route too. Without it the call reached
+  # check_exposure(), whose "Please specify .data" hint sent the user to the
+  # .data route and its silently degenerate fit.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  no_exposure <- fit_outcome_without_exposure(dat, mods$wts)
+
+  expect_error(
+    ipw(mods$ps_mod, no_exposure),
     class = "propensity_ipw_exposure_error"
   )
 })

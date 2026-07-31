@@ -622,6 +622,42 @@ check_ipw_offset <- function(outcome_mod, call = rlang::caller_env()) {
   invisible(TRUE)
 }
 
+# Reject an outcome model that never references the exposure. The counterfactual
+# designs are built by setting the exposure in the outcome model's data to each
+# level in turn, so a model whose formula omits the exposure yields identical
+# designs: every contrast collapses to zero with a degenerate standard error
+# rather than failing. Read the model terms rather than the model frame so the
+# guard fires on both extraction routes. Supplying `.data` bypasses the
+# frame-based check_exposure() entirely, and without `.data` check_exposure()
+# would direct the user to supply it, which drops them into that same silent
+# degenerate path. A transformed exposure such as `I(z^2)` still names the
+# exposure among its variables, so this guard passes it through: with `.data` the
+# design is rebuilt from the supplied column and the fit runs, and without it the
+# term is unreadable from the model frame and check_exposure() reports that.
+check_ipw_outcome_exposure <- function(
+  outcome_mod,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  out_terms <- stats::delete.response(stats::terms(outcome_mod))
+
+  if (!exposure_name %in% all.vars(out_terms)) {
+    abort(
+      c(
+        "{.arg outcome_mod} must contain the exposure {.val {exposure_name}}.",
+        x = "{.val {exposure_name}} does not appear in the formula of \\
+        {.arg outcome_mod}.",
+        i = "Refit {.arg outcome_mod} with {.val {exposure_name}} on the \\
+        right-hand side of the formula."
+      ),
+      error_class = "propensity_ipw_exposure_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
 # Reject an outcome model whose family or link the estimating equations cannot
 # stack. Both standard error paths classify the outcome model as either a
 # gaussian identity linear score or a binomial score with the model's link, so

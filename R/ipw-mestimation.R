@@ -43,6 +43,8 @@ ipw_spec_binary <- function(
   exposure_name <- fmla_extract_left_chr(ps_mod)
   outcome_name <- fmla_extract_left_chr(outcome_mod)
 
+  check_ipw_outcome_exposure(outcome_mod, exposure_name, call = call)
+
   extracted <- ipw_extract_ps_design(
     ps_mod,
     outcome_mod,
@@ -241,6 +243,8 @@ ipw_spec_categorical <- function(
 
   exposure_name <- fmla_extract_left_chr(ps_mod)
   outcome_name <- fmla_extract_left_chr(outcome_mod)
+
+  check_ipw_outcome_exposure(outcome_mod, exposure_name, call = call)
 
   extracted <- ipw_extract_ps_design(
     ps_mod,
