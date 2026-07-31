@@ -13,7 +13,8 @@
 #' difference in means. A continuous exposure is supplied through an [stats::lm()]
 #' or identity-link gaussian [stats::glm()] propensity score model with a weighted
 #' marginal structural outcome model whose link is identity, logit, or log, and
-#' `ipw()` reports the single exposure coefficient of that model.
+#' `ipw()` reports the single exposure coefficient of that model. A subclass of
+#' either propensity score model, such as a robust or an additive fit, errors.
 #'
 #' @param wt_mod The weighting object: a fitted propensity score model that
 #'   produced the weights, typically a logistic regression of class
@@ -497,6 +498,29 @@ ipw_continuous_estimate <- function(
   se_method = "mestimation",
   call = rlang::caller_env()
 ) {
+  # The stacked system carries an ordinary least-squares score block for the
+  # propensity model and rebuilds its design from the model formula, so only a
+  # plain lm or a gaussian glm is safe here. A subclass whose coefficients are
+  # not the least-squares root, such as a robust fit, would drift silently to
+  # the ordinary least-squares solution in the solve; a subclass whose design is
+  # not the formula's, such as an additive fit's smooth basis, would be
+  # reconstructed as something else. Either way the estimates would describe a
+  # propensity score model the user never fit.
+  ps_class <- class(ps_mod)
+  if (!identical(ps_class, "lm") && !identical(ps_class, c("glm", "lm"))) {
+    abort(
+      c(
+        "{.fun ipw} supports only {.fun stats::lm} or gaussian \\
+        {.fun stats::glm} propensity score models for a continuous exposure.",
+        x = "{.arg wt_mod} has class {.cls {ps_class}}.",
+        i = "Refit {.arg wt_mod} with {.fun stats::lm} or \\
+        {.code stats::glm(family = gaussian())}."
+      ),
+      error_class = "propensity_class_error",
+      call = call
+    )
+  }
+
   if (identical(se_method, "linearization")) {
     abort(
       c(

@@ -151,7 +151,8 @@ risk ratio, and log odds ratio, and a continuous outcome returns the
 difference in means. A continuous exposure is supplied through an \code{\link[stats:lm]{stats::lm()}}
 or identity-link gaussian \code{\link[stats:glm]{stats::glm()}} propensity score model with a weighted
 marginal structural outcome model whose link is identity, logit, or log, and
-\code{ipw()} reports the single exposure coefficient of that model.
+\code{ipw()} reports the single exposure coefficient of that model. A subclass of
+either propensity score model, such as a robust or an additive fit, errors.
 }
 \section{Workflow}{
 \code{ipw()} is designed around a three-step workflow:
