@@ -25,12 +25,18 @@
   estimates only for an outcome model of the exposure alone; the M-estimation
   path handles covariate-adjusted outcome models correctly.
 
-* `se_method = "linearization"` now also requires an outcome model fit with an
-  intercept and errors otherwise. Without an intercept the marginal mean under
-  no exposure was pinned at the link's zero point rather than estimated, so the
-  reported estimates silently stopped matching the Hajek means the influence
-  functions describe. Use `se_method = "mestimation"` for a no-intercept
-  outcome model.
+* Both standard error methods now require an outcome model that can represent a
+  baseline at every exposure level. `se_method = "linearization"` requires an
+  intercept outright: without one the marginal mean under no exposure was
+  pinned at the link's zero point rather than estimated, so the reported
+  estimates silently stopped matching the Hajek means the influence functions
+  describe. `se_method = "mestimation"` rejects a counterfactual design matrix
+  that is identically zero, which is what a numeric no-intercept coding such as
+  `y ~ z - 1` produces at the zero-coded level. The marginal mean there was
+  fixed by the outcome link rather than estimated, and the reported effect could
+  carry the opposite sign with less than half the standard error. A saturated
+  factor coding such as `y ~ 0 + zf` is a reparameterization rather than a
+  missing baseline, and still works on the M-estimation path.
 
 * Corrected the linearization standard errors for `log(rr)` and `log(or)`,
   which were scaled by the reciprocal of the risk ratio and odds ratio,

@@ -9,6 +9,48 @@
 
 # ---- spec constructor -------------------------------------------------------
 
+# Reject a counterfactual design matrix that is identically zero. The designs are
+# built by setting the exposure to each level in turn, so a numeric no-intercept
+# coding such as `y ~ z - 1` leaves the design at the zero-coded level with no
+# nonzero entry at all. The marginal mean there is then inv_link(0) for every
+# unit, a constant fixed by the outcome link rather than a quantity estimated
+# from the data (0.5 for a binomial family, 0 for a linear model), and every
+# contrast formed against it is wrong with nothing signaled.
+#
+# The condition is the design itself, not the presence of an intercept. A
+# saturated factor coding such as `y ~ 0 + zf` carries no intercept yet its dummy
+# columns sum to one at every level, and `y ~ z + x1 - 1` still estimates the
+# marginal mean from the covariate. Both are honest g-computation on the model as
+# specified and are left alone.
+check_ipw_counterfactual_designs <- function(
+  designs,
+  exposure_levels,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  degenerate <- vapply(designs, function(x) isTRUE(all(x == 0)), logical(1))
+
+  if (any(degenerate)) {
+    bad <- exposure_levels[degenerate]
+    abort(
+      c(
+        "{.arg outcome_mod} must be able to represent the outcome at every \\
+        exposure level.",
+        x = "Setting {.arg {exposure_name}} to {.val {bad}} leaves the \\
+        counterfactual design identically zero, which pins the marginal mean \\
+        there to the outcome link's zero point instead of estimating it.",
+        i = "Include an intercept in {.arg outcome_mod}, or code the exposure \\
+        as a factor, whose no-intercept coding is saturated and represents \\
+        every level."
+      ),
+      error_class = "propensity_ipw_exposure_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
 ipw_spec_binary <- function(
   ps_mod,
   outcome_mod,
@@ -122,6 +164,13 @@ ipw_spec_binary <- function(
   }
   x1 <- counterfactual_mm(exposure_values[[2]])
   x0 <- counterfactual_mm(exposure_values[[1]])
+
+  check_ipw_counterfactual_designs(
+    list(x0, x1),
+    as.character(exposure_values),
+    exposure_name,
+    call = call
+  )
 
   if (is_linear_regression(outcome_mod)) {
     family <- "gaussian"
@@ -399,6 +448,8 @@ ipw_spec_categorical <- function(
     model.matrix(out_terms, data = d)
   })
   names(x_cf) <- levs
+
+  check_ipw_counterfactual_designs(x_cf, levs, exposure_name, call = call)
 
   if (is_linear_regression(outcome_mod)) {
     family <- "gaussian"

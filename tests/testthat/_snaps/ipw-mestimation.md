@@ -28,3 +28,13 @@
       x "z" does not appear in the formula of `outcome_mod`.
       i Refit `outcome_mod` with "z" on the right-hand side of the formula.
 
+# the degenerate-design error names the pinned level and the remedy
+
+    Code
+      ipw(mods$ps_mod, no_intercept)
+    Condition
+      Error in `ipw()`:
+      ! `outcome_mod` must be able to represent the outcome at every exposure level.
+      x Setting `z` to "0" leaves the counterfactual design identically zero, which pins the marginal mean there to the outcome link's zero point instead of estimating it.
+      i Include an intercept in `outcome_mod`, or code the exposure as a factor, whose no-intercept coding is saturated and represents every level.
+

@@ -32,3 +32,13 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
+# the categorical degenerate-design error names the pinned levels
+
+    Code
+      ipw(mods$ps_mod, collapsed, .data = dat)
+    Condition
+      Error in `ipw()`:
+      ! `outcome_mod` must be able to represent the outcome at every exposure level.
+      x Setting `a` to "a" and "b" leaves the counterfactual design identically zero, which pins the marginal mean there to the outcome link's zero point instead of estimating it.
+      i Include an intercept in `outcome_mod`, or code the exposure as a factor, whose no-intercept coding is saturated and represents every level.
+

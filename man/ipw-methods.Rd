@@ -97,9 +97,11 @@ default) stacks the propensity score, outcome, and estimand estimating
 equations and returns the empirical sandwich variance. \code{"linearization"}
 uses the influence-function linearization of Kostouraki et al. (2024). Both
 account for the uncertainty of estimating the propensity scores.
-\code{"linearization"} supports only an outcome model of the exposure alone,
-fit with an intercept; a covariate-adjusted or no-intercept outcome model
-requires \code{"mestimation"}.}
+\code{"linearization"} supports only an outcome model of the exposure alone, fit
+with an intercept; a covariate-adjusted outcome model requires
+\code{"mestimation"}. Both methods require an outcome model that can represent a
+baseline, so a numeric no-intercept coding such as \code{y ~ z - 1} errors on
+either.}
 
 \item{.focal_level}{For the categorical (\code{multinom}) method with the \code{att}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
@@ -276,11 +278,14 @@ term beyond the exposure, including covariates, interactions, or transformed
 terms) errors on the linearization path and requires
 \code{se_method = "mestimation"}, which stacks adjusted outcome models correctly.
 
-The linearization outcome model must also carry an intercept. Without one the
-linear predictor under no exposure is fixed at the link's zero point rather
-than estimated, so the g-computation marginal means no longer match the Hajek
-means the influence functions describe. A no-intercept outcome model errors on
-the linearization path and requires \code{se_method = "mestimation"}.
+The linearization outcome model must also carry an intercept, which is a
+stricter requirement than the M-estimation path imposes. Without an intercept
+the linear predictor under no exposure is fixed at the link's zero point
+rather than estimated, so the g-computation marginal means no longer match the
+Hajek means the influence functions describe. Every no-intercept outcome model
+errors on the linearization path, including the saturated factor codings the
+M-estimation path accepts. See \strong{Model requirements} for the baseline
+contract both methods impose.
 }
 
 \section{Model requirements}{
@@ -300,6 +305,24 @@ For a binary or categorical exposure, the outcome model formula must contain
 the exposure. The counterfactual designs are built by setting the exposure to
 each level in turn, so a model fit on covariates alone gives one identical
 design per level; it errors on either standard error method.
+
+For those two exposure types, the outcome model must also be able to represent
+a baseline at every level, either through an intercept or through a saturated
+factor coding of the exposure. A numeric no-intercept coding such as
+\code{y ~ z - 1} errors on both standard error methods, for different reasons. On
+the M-estimation path the counterfactual design at the zero-coded level is
+identically zero, so the marginal mean there is fixed by the outcome link
+(\code{0.5} for a binomial family, \code{0} for a linear model) rather than estimated
+from the data. On the linearization path the intercept is required outright,
+because without it the g-computation means stop matching the Hajek means the
+influence functions describe. A saturated factor coding such as \code{y ~ 0 + zf}
+is a reparameterization whose designs are the level indicators, so the
+M-estimation path accepts it and reproduces the with-intercept fit; the
+linearization path still requires the intercept. A no-intercept model that
+keeps a covariate, such as \code{y ~ z + x1 - 1}, still estimates the marginal mean
+from that covariate and runs on the M-estimation path. A continuous exposure
+has no counterfactual designs, since \code{ipw()} reports the marginal structural
+model's own exposure coefficient, and is unaffected.
 
 With the default \code{se_method = "mestimation"}, two further requirements
 apply. The outcome model weights must match the values implied by the
