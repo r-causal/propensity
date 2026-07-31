@@ -74,6 +74,28 @@ ipw_spec_binary <- function(
     ps_link <- ps_mod$family$link
   }
 
+  # Restrict the resolved link, whether it came from `ps_link` or the model's
+  # family, to the three links the binary propensity score is documented and
+  # derived for. Without this the link reaches ipw_inv_link(), which serves
+  # outcome-link reconstruction as well and so also accepts identity and log,
+  # leaving an unsupported propensity model to be estimated without complaint.
+  # Membership is all that is checked: a supported link whose weights disagree
+  # with the fitted model is the weight-consistency preflight's business.
+  ps_link_supported <- c("logit", "probit", "cloglog")
+  if (!isTRUE(ps_link %in% ps_link_supported)) {
+    abort(
+      c(
+        "{.fun ipw} does not support the {.val {ps_link}} link for a binary \\
+        propensity score model.",
+        i = "Supported links: {.val {ps_link_supported}}.",
+        i = "Refit {.arg wt_mod} with a supported link, or set {.arg ps_link} \\
+        to one of them."
+      ),
+      error_class = "propensity_ipw_link_error",
+      call = call
+    )
+  }
+
   wts <- extract_weights(outcome_mod)
   estimand <- check_estimand(wts, estimand, call = call)
 

@@ -13,8 +13,10 @@
     Code
       ipw(mods$ps_mod, mods$outcome_mod)
     Condition
-      Error in `ipw_inv_link()`:
-      ! Unsupported link "cauchit".
+      Error in `ipw()`:
+      ! `ipw()` does not support the "cauchit" link for a binary propensity score model.
+      i Supported links: "logit", "probit", and "cloglog".
+      i Refit `wt_mod` with a supported link, or set `ps_link` to one of them.
 
 # the missing-exposure error names the exposure and directs the user to refit
 
