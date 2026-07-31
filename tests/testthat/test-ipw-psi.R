@@ -576,6 +576,82 @@ test_that("ipw_weight_fn reproduces categorical stabilized ate weights", {
   )
 })
 
+# ---- categorical propensity score reconstruction ----------------------------
+
+# Level-major, term-minor theta for a three-level exposure on the design below:
+# category b loads only on xa, category c loads only on xb, so the two
+# non-reference linear predictors can be driven apart independently.
+extreme_ps_design <- function() {
+  cbind(
+    `(Intercept)` = 1,
+    xa = c(100, 0, -100, 100, 0.3),
+    xb = c(0, 100, -100, 99, -0.2)
+  )
+}
+
+extreme_ps_theta <- function() {
+  c(0, 10, 0, 0, 0, 10)
+}
+
+# Reference-first softmax written out without any shift, the reconstruction the
+# psi layer performs. Used as an independent oracle rather than comparing
+# ipw_categorical_ps() against itself.
+unshifted_softmax <- function(x, theta, k) {
+  b <- ncol(x)
+  num <- cbind(
+    1,
+    exp(vapply(
+      seq_len(k - 1),
+      function(j) as.vector(x %*% theta[((j - 1) * b + 1):(j * b)]),
+      numeric(nrow(x))
+    ))
+  )
+  num / rowSums(num)
+}
+
+test_that("ipw_categorical_ps stays finite for extreme linear predictors", {
+  x <- extreme_ps_design()
+  theta <- extreme_ps_theta()
+
+  ps <- ipw_categorical_ps(x, theta, 3)
+
+  expect_true(all(is.finite(ps)))
+  expect_true(all(ps >= 0 & ps <= 1))
+  expect_lt(max(abs(rowSums(ps) - 1)), 1e-12)
+
+  # Rows 1 and 2 saturate on a single category, row 3 saturates on the
+  # reference, and row 4 has two large predictors ten apart, so its answer is a
+  # genuine softmax rather than a degenerate 0/1 split.
+  expect_equal(ps[1, ], c(0, 1, 0))
+  expect_equal(ps[2, ], c(0, 0, 1))
+  expect_equal(ps[3, ], c(1, 0, 0))
+  expect_equal(
+    ps[4, ],
+    c(0, 1, exp(-10)) / (1 + exp(-10)),
+    tolerance = 1e-15
+  )
+})
+
+test_that("ipw_categorical_ps is unchanged for moderate linear predictors", {
+  withr::local_seed(918)
+  x <- cbind(1, rnorm(6), rnorm(6))
+  theta <- c(-0.2, 0.5, 0.3, 0.1, -0.4, 0.6)
+
+  expect_equal(
+    ipw_categorical_ps(x, theta, 3),
+    unshifted_softmax(x, theta, 3),
+    tolerance = 1e-15
+  )
+
+  # When the reference category already holds the largest linear predictor the
+  # shift is exactly zero, so the reconstruction is unchanged bit for bit.
+  theta_ref <- c(-3, 0.2, 0.1, -4, -0.1, 0.05)
+  expect_identical(
+    ipw_categorical_ps(x, theta_ref, 3),
+    unshifted_softmax(x, theta_ref, 3)
+  )
+})
+
 # ---- weight registry: continuous --------------------------------------------
 
 test_that("ipw_weight_fn reproduces continuous ate weights at fitted params", {
