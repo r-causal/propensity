@@ -502,6 +502,48 @@ test_that("ipw() continuous works with a log-link marginal structural model", {
   expect_true(all(is.finite(res$estimates$std.err)))
 })
 
+# ---- ps_link on the continuous path -----------------------------------------
+#
+# `ps_link` overrides the link of a binomial glm propensity model on the binary
+# path. A continuous propensity model has no such link, so a supplied value has
+# nothing to override and is silently ignored today. `ipw.multinom` already
+# rejects it for the same reason, and the continuous path must too, from both
+# entries: the lm method and the gaussian-family branch of ipw.glm. The default
+# of `NULL` is the control, exercised by every other test in this file through
+# both entries (see the end-to-end and gaussian-glm routing tests above).
+
+test_that("ipw() rejects ps_link for an lm propensity model", {
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit"),
+    class = "propensity_ipw_link_error",
+    regexp = "ps_link"
+  )
+})
+
+test_that("ipw() rejects ps_link for a gaussian glm propensity model", {
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat, ps_type = "glm")
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit"),
+    class = "propensity_ipw_link_error",
+    regexp = "ps_link"
+  )
+})
+
+test_that("the continuous ps_link error explains why the argument does not apply", {
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit")
+  )
+})
+
 # ---- factor outcome response ------------------------------------------------
 
 test_that("continuous logistic MSM matches a factor outcome response to the numeric fit", {
