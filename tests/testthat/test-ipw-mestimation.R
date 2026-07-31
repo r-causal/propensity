@@ -844,6 +844,89 @@ test_that("ipw_spec_binary accepts lm, gaussian-identity, binomial, and quasibin
   expect_equal(spec_qb$outcome$link, "logit")
 })
 
+# ---- binary propensity score link validation --------------------------------
+#
+# `ps_link` documents exactly three links for a binary propensity score model:
+# logit, probit, and cloglog, which is also the set the linearization path
+# arg-matches in derive_link() and derive_score_factor(). The M-estimation path
+# must restrict the resolved link to the same three at the entry of
+# ipw_spec_binary(). The resolved link is otherwise only ever consumed by
+# ipw_inv_link(), which serves outcome-link reconstruction as well and so accepts
+# identity and log too, leaving an unsupported propensity model to be estimated
+# silently or to abort from an internal frame with a message that names neither
+# the argument nor the supported set.
+#
+# Controls for the three supported links on the M-estimation path are covered by
+# "ipw_mestimation std.err matches linearization within 3 percent", which builds
+# a spec with ipw_spec_binary() and solves it for each of logit, probit, and
+# cloglog.
+
+test_that("mestimation rejects a propensity score link outside the supported set", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  # Both entry points are asserted. The validation belongs at spec construction,
+  # so ipw_spec_binary() must reject the link on its own rather than relying on
+  # ipw() to reach it first.
+  for (link in c("cauchit", "log", "identity")) {
+    mods <- fit_binary_models(dat, "ate", ps_link = link)
+    expect_error(
+      ipw(mods$ps_mod, mods$outcome_mod),
+      class = "propensity_ipw_link_error",
+      label = link
+    )
+    expect_error(
+      ipw_spec_binary(mods$ps_mod, mods$outcome_mod),
+      class = "propensity_ipw_link_error",
+      label = link
+    )
+  }
+})
+
+test_that("the propensity score link error names the link and the supported set", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate", ps_link = "cauchit")
+
+  cnd <- rlang::catch_cnd(ipw(mods$ps_mod, mods$outcome_mod))
+  msg <- conditionMessage(cnd)
+
+  # The message must name the offending link and every supported link, so a user
+  # reading it knows both what was rejected and what to fit instead. Asserted
+  # outside the snapshot because snapshots are skipped under --as-cran.
+  expect_match(msg, "cauchit", fixed = TRUE)
+  expect_match(msg, "logit", fixed = TRUE)
+  expect_match(msg, "probit", fixed = TRUE)
+  expect_match(msg, "cloglog", fixed = TRUE)
+
+  # The error must be attributed to ipw(), the user-facing entry point, not to
+  # the internal frame that raises it.
+  expect_identical(as.character(cnd$call[[1]]), "ipw")
+
+  expect_snapshot(error = TRUE, ipw(mods$ps_mod, mods$outcome_mod))
+})
+
+test_that("the ps_link argument is validated against the supported set", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate", ps_link = "logit")
+
+  # A supported override is still accepted.
+  expect_s3_class(ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit"), "ipw")
+
+  # The argument overrides the family link, so what must be validated is the
+  # resolved link rather than the link the propensity model was fit with. An
+  # unsupported override otherwise reaches the weight-consistency preflight,
+  # which reports a weights mismatch and directs the user to refit the outcome
+  # model, naming the wrong problem.
+  for (link in c("log", "identity", "cauchit")) {
+    expect_error(
+      ipw(mods$ps_mod, mods$outcome_mod, ps_link = link),
+      class = "propensity_ipw_link_error",
+      label = link
+    )
+  }
+})
+
 # ---- factor and logical outcome responses -----------------------------------
 #
 # The spec constructors store as.double(outcome), where outcome is the raw

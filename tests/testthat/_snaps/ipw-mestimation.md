@@ -8,6 +8,14 @@
       x `outcome_mod` was fit with the "poisson" family.
       i Fit `outcome_mod` with a binomial or quasibinomial family for a binary outcome, or a gaussian identity link (or an `lm()`) for a continuous outcome.
 
+# the propensity score link error names the link and the supported set
+
+    Code
+      ipw(mods$ps_mod, mods$outcome_mod)
+    Condition
+      Error in `ipw_inv_link()`:
+      ! Unsupported link "cauchit".
+
 # the missing-exposure error names the exposure and directs the user to refit
 
     Code
