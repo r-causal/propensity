@@ -72,7 +72,15 @@ ipw_binary_tilt <- function(e, estimand) {
     atu = 1 - e,
     atm = pmin(e, 1 - e),
     ato = e * (1 - e),
-    entropy = -e * log(e) - (1 - e) * log(1 - e)
+    entropy = {
+      # The inverse link saturates to exactly 0 or 1 for extreme linear
+      # predictors, where the tilt would evaluate 0 * log(0). Nudge the
+      # saturated scores off the boundary as the categorical tilt does.
+      e_safe <- e
+      e_safe[e == 0] <- .Machine$double.eps
+      e_safe[e == 1] <- 1 - .Machine$double.eps
+      -e_safe * log(e_safe) - (1 - e_safe) * log(1 - e_safe)
+    }
   )
 }
 

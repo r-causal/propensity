@@ -457,7 +457,7 @@ test_that("ipw_weight_fn reproduces binary stabilized ate weights", {
 test_that("binary entropy tilt stays finite at saturated propensity scores", {
   # The solver reaches saturated scores on its own: plogis() returns exactly 1
   # once the linear predictor exceeds about 36.7, and exactly 0 once it falls
-  # below about -744.
+  # below about -710, where exp(-eta) overflows to Inf.
   expect_identical(stats::plogis(40), 1)
 
   e <- c(0, 1e-3, 0.5, 1 - 1e-3, 1)
