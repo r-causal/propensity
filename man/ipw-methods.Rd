@@ -60,8 +60,10 @@ outcome response is
 converted to \code{0}/\code{1} following glm's coding (the first factor level is the
 failure, every other level is the success).}
 
-\item{...}{Additional arguments. The estimation methods do not currently use
-them and accept \code{...} for consistency with the \code{ipw()} generic.}
+\item{...}{These dots are for future extensions and must be empty. They
+separate the two models from the remaining arguments, which must therefore
+be supplied by name. Anything left in them, such as a \code{.data} argument
+given positionally or a misspelled argument name, errors.}
 
 \item{.data}{A data frame containing the exposure, outcome, and covariates.
 If \code{NULL} (the default), \code{ipw()} extracts data from the model objects.

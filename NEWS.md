@@ -4,8 +4,14 @@
   generic and on every method. It still takes the fitted weighting model, but a
   call that supplied it by name, such as `ipw(ps_mod = fit, outcome_mod = out)`,
   now errors. `.data`, `estimand`, `ps_link`, and `conf_level` follow `...` in
-  the method signatures and must be supplied by name; a value passed into one
-  of those slots by position is absorbed by `...`.
+  the method signatures and must be supplied by name. A value passed into one
+  of those slots by position, such as the `ipw(ps_mod, outcome_mod, dat)` form
+  that earlier releases accepted, falls into `...` and errors.
+
+* `ipw()` now errors on anything left in `...`, which the methods do not use.
+  This catches a misspelled argument name and an argument supplied by position
+  where the signature requires a name; both were previously accepted in silence
+  and the default used.
 
 * The `ipw` result object renames its `ps_mod` component to `wt_mod` to match,
   so code reading `result$ps_mod` now gets `NULL` rather than the fitted

@@ -67,8 +67,10 @@
 #'   `"mestimation"`. Both methods require an outcome model that can represent a
 #'   baseline, so a numeric no-intercept coding such as `y ~ z - 1` errors on
 #'   either.
-#' @param ... Additional arguments. The estimation methods do not currently use
-#'   them and accept `...` for consistency with the `ipw()` generic.
+#' @param ... These dots are for future extensions and must be empty. They
+#'   separate the two models from the remaining arguments, which must therefore
+#'   be supplied by name. Anything left in them, such as a `.data` argument
+#'   given positionally or a misspelled argument name, errors.
 #'
 #' @details
 #' # Workflow
@@ -350,6 +352,7 @@ ipw.glm <- function(
   conf_level = 0.95,
   se_method = c("mestimation", "linearization")
 ) {
+  rlang::check_dots_empty()
   se_method <- rlang::arg_match(se_method)
   assert_class(wt_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
@@ -1043,6 +1046,7 @@ ipw.default <- function(
   conf_level = 0.95,
   se_method = c("mestimation", "linearization")
 ) {
+  rlang::check_dots_empty()
   abort(
     c(
       "{.fun ipw} does not know how to handle {.arg wt_mod} of class \\

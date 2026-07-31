@@ -25,6 +25,7 @@ ipw.multinom <- function(
   se_method = c("mestimation", "linearization"),
   .focal_level = NULL
 ) {
+  rlang::check_dots_empty()
   se_method <- rlang::arg_match(se_method)
   assert_class(outcome_mod, c("glm", "lm"))
 
@@ -106,6 +107,7 @@ ipw.lm <- function(
   conf_level = 0.95,
   se_method = c("mestimation", "linearization")
 ) {
+  rlang::check_dots_empty()
   se_method <- rlang::arg_match(se_method)
   assert_class(outcome_mod, c("glm", "lm"))
 
