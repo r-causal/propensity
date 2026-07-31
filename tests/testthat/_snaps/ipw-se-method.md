@@ -71,3 +71,13 @@
       x `wt_mod` has a matrix response, such as `cbind(successes, failures)`; a binary exposure must be a single-column response.
       i Fit `wt_mod` with a single binary response column.
 
+# the focal level rejection names both the recorded and coded levels
+
+    Code
+      ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+    Condition
+      Error in `ipw()`:
+      ! The weights that fit `outcome_mod` target a different exposure level than `ipw()` does.
+      x The weights record "control" as the focal level, but `ipw()` treats "treat" as focal: it takes the second sorted level of a binary exposure as the exposed group.
+      i Relevel `zf` so that "control" sorts second, then refit both `wt_mod` and `outcome_mod`.
+

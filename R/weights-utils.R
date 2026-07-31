@@ -130,6 +130,80 @@ transform_exposure_binary <- function(
   }
 }
 
+# The exposure level `transform_exposure_binary()` actually codes as 1, which is
+# not always the level the caller named: an exposure that is already 0/1, or
+# logical, is returned untouched and the supplied levels are never consulted.
+# Mirrors that function's branching in the same order.
+effective_binary_focal_level <- function(
+  .exposure,
+  .focal_level = NULL,
+  .reference_level = NULL
+) {
+  if (is_binary(.exposure)) {
+    return(1)
+  }
+
+  if (is.logical(.exposure)) {
+    return(TRUE)
+  }
+
+  if (!is.null(.focal_level)) {
+    return(.focal_level)
+  }
+
+  if (!is.null(.reference_level)) {
+    # Every level other than the reference is coded as focal, so a single focal
+    # level is named only when the exposure takes exactly one other value.
+    remaining <- unique(.exposure[.exposure != .reference_level])
+    if (length(remaining) != 1) {
+      return(NULL)
+    }
+    return(as_focal_label(remaining))
+  }
+
+  if (!has_two_levels(.exposure)) {
+    return(NULL)
+  }
+
+  if (is.factor(.exposure)) {
+    levels(.exposure)[[2]]
+  } else {
+    sort(unique(.exposure))[[2]]
+  }
+}
+
+# Subsetting a factor yields a factor; record its label, which is what the
+# categorical path stores and what comparisons against exposure values expect.
+as_focal_label <- function(x) {
+  if (is.factor(x)) as.character(x) else x
+}
+
+# Binary att and atu weights are mirror images of one another: att weights built
+# on one exposure level are numerically identical to atu weights built on the
+# other, so nothing in the values records which level they target. Store the
+# level under the attribute name the categorical path uses, but only when the
+# caller named one; with no level named there is no intent to check against.
+record_binary_focal_level <- function(
+  psw_obj,
+  .exposure,
+  exposure_type,
+  .focal_level = NULL,
+  .reference_level = NULL
+) {
+  level_supplied <- !is.null(.focal_level) || !is.null(.reference_level)
+  if (!identical(exposure_type, "binary") || !level_supplied) {
+    return(psw_obj)
+  }
+
+  attr(psw_obj, "focal_category") <- effective_binary_focal_level(
+    .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
+  )
+
+  psw_obj
+}
+
 is_binary <- function(.exposure) {
   identical(sort(unique(.exposure)), c(0, 1))
 }

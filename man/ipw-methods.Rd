@@ -183,6 +183,15 @@ The available estimands depend on the exposure type:\tabular{lccc}{
 A continuous exposure supports only \code{"ate"}; any other request errors. For a
 categorical exposure, \code{"att"} and \code{"atu"} require a focal level, supplied
 through \code{.focal_level} or taken from the weights (see the \code{multinom} method).
+
+A binary exposure takes no focal level: \code{ipw()} always treats the second
+sorted exposure level as the exposed group, which is the second level of a
+factor, \code{TRUE} for a logical, and the larger of two numeric values. Because
+\code{"att"} and \code{"atu"} weights are mirror images of each other, weights built
+with \code{\link[=wt_att]{wt_att()}} or \code{\link[=wt_atu]{wt_atu()}} on the other level carry values that are
+correct for the reversed roles, and \code{ipw()} rejects them rather than
+correcting them as though the roles matched. To target the other level,
+relevel the exposure so that it sorts second and refit both models.
 }
 
 \section{Effect measures}{

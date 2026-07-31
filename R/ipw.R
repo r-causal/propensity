@@ -95,6 +95,15 @@
 #' categorical exposure, `"att"` and `"atu"` require a focal level, supplied
 #' through `.focal_level` or taken from the weights (see the `multinom` method).
 #'
+#' A binary exposure takes no focal level: `ipw()` always treats the second
+#' sorted exposure level as the exposed group, which is the second level of a
+#' factor, `TRUE` for a logical, and the larger of two numeric values. Because
+#' `"att"` and `"atu"` weights are mirror images of each other, weights built
+#' with [wt_att()] or [wt_atu()] on the other level carry values that are
+#' correct for the reversed roles, and `ipw()` rejects them rather than
+#' correcting them as though the roles matched. To target the other level,
+#' relevel the exposure so that it sorts second and refit both models.
+#'
 #' # Effect measures
 #'
 #' For a binary exposure, the reported measures depend on the outcome model. A
@@ -325,6 +334,7 @@ ipw.glm <- function(
   # obliquely. Both standard error methods share these guards.
   wts <- extract_weights(outcome_mod)
   check_ipw_weights(wts)
+  check_ipw_binary_focal(wts, wt_mod, .data = .data, estimand = estimand)
 
   if (identical(se_method, "mestimation")) {
     spec <- ipw_spec_binary(
@@ -582,6 +592,83 @@ check_ipw_weights <- function(wts, call = rlang::caller_env()) {
   }
 
   invisible(wts)
+}
+
+# Reject att or atu weights built with a focal level other than the one the
+# binary path treats as focal. That path has no focal level of its own: it codes
+# the second sorted exposure level as 1, and both the estimand derivatives and
+# the weight recomputation assume that coding. att and atu weights are mirror
+# images of each other, so weights targeting the other level carry values that
+# are correct for the roles reversed and would be corrected as though they were
+# not, silently reporting a different estimand than the one requested.
+#
+# Only weights that record a focal level can be checked, and only against an
+# exposure whose own values contain it: a level this exposure never takes says
+# nothing about this analysis, since equivalent codings of the same exposure
+# carry different labels. Those fall to the weight-consistency preflight.
+check_ipw_binary_focal <- function(
+  wts,
+  wt_mod,
+  .data = NULL,
+  estimand = NULL,
+  call = rlang::caller_env()
+) {
+  focal <- attr(wts, "focal_category")
+  if (is.null(focal)) {
+    return(invisible(TRUE))
+  }
+
+  # Only att and atu weights ever record a focal level, so the weights' own
+  # estimand answers this whenever it is present.
+  wt_estimand <- if (is_causal_wt(wts)) estimand(wts) else estimand
+  if (!isTRUE(wt_estimand %in% c("att", "atu"))) {
+    return(invisible(TRUE))
+  }
+
+  exposure_name <- fmla_extract_left_chr(wt_mod)
+  exposure <- if (!is.null(.data) && exposure_name %in% names(.data)) {
+    .data[[exposure_name]]
+  } else {
+    # A propensity model that has lost the data behind its fitting call raises
+    # its own guided error further down; say nothing here.
+    tryCatch(fmla_extract_left_vctr(wt_mod), error = function(e) NULL)
+  }
+  if (is.null(exposure)) {
+    return(invisible(TRUE))
+  }
+
+  # The same ordering ipw_recode_binary_exposure() uses, so the coded-1 value is
+  # exactly the level this path treats as focal. Levels are compared as
+  # characters: a focal level of 1 recorded against a 0/1 numeric exposure is a
+  # match, not a mismatch.
+  exposure_values <- as.character(sort(unique(exposure)))
+  if (length(exposure_values) != 2) {
+    return(invisible(TRUE))
+  }
+  focal <- as.character(focal)
+  coded_focal <- exposure_values[[2]]
+
+  if (
+    length(focal) != 1 ||
+      !focal %in% exposure_values ||
+      identical(focal, coded_focal)
+  ) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "The weights that fit {.arg outcome_mod} target a different exposure \\
+      level than {.fun ipw} does.",
+      x = "The weights record {.val {focal}} as the focal level, but \\
+      {.fun ipw} treats {.val {coded_focal}} as focal: it takes the second \\
+      sorted level of a binary exposure as the exposed group.",
+      i = "Relevel {.arg {exposure_name}} so that {.val {focal}} sorts \\
+      second, then refit both {.arg wt_mod} and {.arg outcome_mod}."
+    ),
+    error_class = "propensity_focal_level_error",
+    call = call
+  )
 }
 
 # Reject a propensity score model with a matrix response. A binary exposure must

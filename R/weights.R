@@ -593,7 +593,15 @@ wt_att.numeric <- function(
   psw_obj <- psw(wts, "att")
 
   # Preserve categorical attributes if they exist
-  preserve_categorical_attrs(psw_obj, wts, exposure_type)
+  psw_obj <- preserve_categorical_attrs(psw_obj, wts, exposure_type)
+
+  record_binary_focal_level(
+    psw_obj,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
+  )
 }
 
 #' @export
@@ -758,7 +766,15 @@ wt_atu.numeric <- function(
   psw_obj <- psw(wts, "atu")
 
   # Preserve categorical attributes if they exist
-  preserve_categorical_attrs(psw_obj, wts, exposure_type)
+  psw_obj <- preserve_categorical_attrs(psw_obj, wts, exposure_type)
+
+  record_binary_focal_level(
+    psw_obj,
+    .exposure = .exposure,
+    exposure_type = exposure_type,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
+  )
 }
 
 #' @export

@@ -601,7 +601,10 @@ ipw_check_weight_consistency <- function(
         differ from the weights supplied to {.arg outcome_mod} (compared at \\
         relative tolerance 1e-6).",
         i = "Refit {.arg outcome_mod} with weights from this propensity score \\
-        model and estimand."
+        model and estimand.",
+        i = "A non-default {.arg .focal_level} or {.arg .reference_level} in \\
+        the weights is one cause: {.fun ipw} treats the second sorted level of \\
+        a binary exposure as focal."
       ),
       error_class = "propensity_ipw_weights_mismatch_error",
       call = call
