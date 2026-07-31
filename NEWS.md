@@ -25,6 +25,13 @@
   estimates only for an outcome model of the exposure alone; the M-estimation
   path handles covariate-adjusted outcome models correctly.
 
+* `se_method = "linearization"` now also requires an outcome model fit with an
+  intercept and errors otherwise. Without an intercept the marginal mean under
+  no exposure was pinned at the link's zero point rather than estimated, so the
+  reported estimates silently stopped matching the Hajek means the influence
+  functions describe. Use `se_method = "mestimation"` for a no-intercept
+  outcome model.
+
 * Corrected the linearization standard errors for `log(rr)` and `log(or)`,
   which were scaled by the reciprocal of the risk ratio and odds ratio,
   respectively (underestimated when the ratio exceeds one, overestimated
@@ -35,6 +42,14 @@
   omitted the GLM score factor `1 / (p (1 - p) g'(p))`, which is 1 only for the
   canonical logit link, so probit and cloglog standard errors were mis-scaled.
   Logit standard errors are unchanged.
+
+* Corrected the linearization standard errors for stabilized ATE weights. The
+  weight derivative omitted the stabilizer, so the propensity score correction
+  was divided by the group constant with nothing multiplying it back. Standard
+  errors change for any analysis weighted by stabilized `wt_ate()` weights: on
+  one representative sample, by about 3 percent under the default marginal
+  stabilization and by about 0.1 percent for an explicitly supplied
+  `stabilization_score`. Unstabilized weights are unaffected.
 
 * `ipw()` now supports categorical exposures through a `nnet::multinom()`
   propensity score model and continuous exposures through an `lm()` or
@@ -64,6 +79,40 @@
   logit, and log (previously an error only after fitting) now fail fast, naming
   the offending link.
 
+* For a continuous exposure, `ipw()` now accepts only a plain `lm()` or a
+  gaussian `glm()` propensity score model and errors on any subclass, such as a
+  robust or an additive fit, naming the class it was given. The stacked system
+  carries an ordinary least-squares score block, so a subclass was previously
+  solved to the least-squares root (a 3 percent estimate drift on a robust fit
+  in one measured sample) or had its design reconstructed as something other
+  than the one it was fit with.
+
+* `ipw()` now rejects an outcome model whose formula omits the exposure, for
+  binary and categorical exposures and on both standard error methods. The
+  counterfactual designs are built by setting the exposure to each level in
+  turn, so such a model gave one identical design per level: with `.data` the
+  result was a table of near-zero estimates with `NaN` standard errors, and
+  without `.data` the call reported a misleading "supply `.data`" hint that led
+  straight into it.
+
+* The binary M-estimation path now validates the propensity score link at entry
+  against logit, probit, and cloglog, whether the link comes from `ps_link` or
+  from the model's family. A log or identity link was previously accepted
+  silently, and a cauchit link failed late with an internal message.
+
+* Binary `wt_att()` and `wt_atu()` now record the focal level they were built
+  with, and `ipw()` errors when that level is not the one it treats as focal
+  (the second sorted level of the exposure), naming both levels and directing
+  you to relevel and refit. Previously the linearization path silently mirrored
+  the estimand's derivative roles, and the M-estimation path reported an
+  unrelated weights mismatch.
+
+* For a categorical exposure, `ipw()` now resolves the exposure levels against
+  the fitted `nnet::multinom()` model's own training levels rather than the
+  ordering `.data` implies. An exposure column supplied as character, or as a
+  factor with a different level order, now gives the same answer as the column
+  the model was fit to, and a value the model never saw errors naming it.
+
 * `ipw()` now converts a factor or logical outcome response to the model's 0/1
   coding on both standard error methods, following glm's convention (the first
   factor level is failure, every other level is success). Previously a factor
@@ -82,6 +131,14 @@
   paths. Previously it failed with a raw "object not found" error that `.data`
   did not resolve.
 
+* The linearization path now reconstructs the propensity score design through
+  the same extractor as the M-estimation path, so a propensity score model
+  whose fitting data is gone rebuilds its design from `.data` and reports the
+  same informative error when `.data` is missing. It also rejects a `.data`
+  whose row count disagrees with the fitted models; such a `.data` was
+  previously accepted silently and shrank the reported standard errors by
+  roughly the square root of the row ratio.
+
 * Requesting the `atu` or `entropy` estimand with `se_method = "linearization"`
   now errors with the documented message directing you to
   `se_method = "mestimation"`, matching the categorical and continuous paths.
@@ -98,9 +155,11 @@
   argument, instead of raising a raw length-coercion error from an internal
   comparison.
 
-* Supplying a non-`NULL` `ps_link` with a multinomial propensity score model now
-  errors, instead of silently ignoring it; `ps_link` applies only to a binomial
-  glm propensity model on the binary path.
+* Supplying a non-`NULL` `ps_link` with a multinomial or continuous propensity
+  score model now errors, instead of silently ignoring it; `ps_link` applies
+  only to a binomial glm propensity model on the binary path. The continuous
+  rejection covers both entries, the `lm()` method and the gaussian branch of
+  the `glm()` method.
 
 * A propensity score model with a matrix response (such as
   `cbind(successes, failures)`) now errors with one consistent message on both
@@ -112,9 +171,20 @@
   columns were misassigned, so the z statistic printed at full precision and the
   lower confidence bound was truncated.
 
+* The M-estimation solve no longer produces `NaN` at saturated or extreme
+  propensity scores: the binary entropy tilt and the categorical propensity
+  score reconstruction are both guarded at the endpoints of the unit interval
+  and against overflow in the linear predictor.
+
 * `wt_ate()` and `wt_cens()` now record a user-supplied `stabilization_score`
   attribute on the returned weights, readable with the new `stabilization_score()`
   accessor.
+
+* A per-observation `stabilization_score` is now dropped, with a new
+  `propensity_stabilization_score_warning`, by any operation that changes the
+  length of a `psw` vector, since the score cannot be re-indexed to the
+  observations that remain. A scalar score and length-preserving operations
+  such as arithmetic are unaffected.
 
 * Fixed `broom::tidy(glm_fit, conf.int = TRUE)` failing on GLMs weighted by
   `psw` vectors. `confint.glm()` builds profile-likelihood intervals via
