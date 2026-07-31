@@ -976,6 +976,32 @@ test_that("ipw() categorical accepts a saturated no-intercept outcome model", {
   )
 })
 
+test_that("ipw() categorical accepts a no-intercept outcome model adjusted for a covariate", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # y ~ a + x1 - 1 has no intercept, but the exposure keeps its saturated dummy
+  # coding and the covariate still varies at every level, so no counterfactual
+  # design is identically zero. It is g-computation on the model as specified
+  # and must run. This is the categorical companion to "mestimation accepts a
+  # no-intercept outcome model adjusted for a covariate" in
+  # test-ipw-mestimation.R.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  adjusted <- glm(
+    y ~ a + x1 - 1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  res <- ipw(mods$ps_mod, adjusted)
+
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
 # ---- arguments that fall into the dots --------------------------------------
 
 test_that("ipw() multinom rejects arguments that fall into the dots", {
