@@ -39,6 +39,8 @@
 #'   [stats::model.frame()], or if the propensity score model cannot reconstruct
 #'   its design (for example, fit with `model = FALSE` with the fitting data no
 #'   longer available); `ipw()` then rebuilds the propensity design from `.data`.
+#'   `.data` must have one row per observation the models were fit to; a row
+#'   count that disagrees with the fitted models errors.
 #' @param estimand A character string specifying the causal estimand: one of
 #'   `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or `"entropy"`. The available
 #'   estimands depend on the exposure type: a binary or categorical exposure
@@ -51,16 +53,18 @@
 #' @param ps_link A character string specifying the link function used in the
 #'   propensity score model: `"logit"`, `"probit"`, or `"cloglog"`. Defaults to
 #'   the link used by `wt_mod`. This applies only to a binomial [stats::glm()]
-#'   propensity score model on the binary path; leave it `NULL` for a
-#'   multinomial or continuous propensity score model.
+#'   propensity score model on the binary path. A multinomial or continuous
+#'   propensity score model has no link for `ps_link` to override, so a
+#'   non-`NULL` value errors on both of those paths; leave it `NULL` there.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
 #' @param se_method Method for standard error estimation. `"mestimation"` (the
 #'   default) stacks the propensity score, outcome, and estimand estimating
 #'   equations and returns the empirical sandwich variance. `"linearization"`
 #'   uses the influence-function linearization of Kostouraki et al. (2024). Both
 #'   account for the uncertainty of estimating the propensity scores.
-#'   `"linearization"` supports only an outcome model of the exposure alone; a
-#'   covariate-adjusted outcome model requires `"mestimation"`.
+#'   `"linearization"` supports only an outcome model of the exposure alone,
+#'   fit with an intercept; a covariate-adjusted or no-intercept outcome model
+#'   requires `"mestimation"`.
 #' @param ... Additional arguments. The estimation methods do not currently use
 #'   them and accept `...` for consistency with the `ipw()` generic.
 #'
@@ -154,11 +158,11 @@
 #' M-estimation standard errors are available for all exposure types: binary
 #' (from a [stats::glm()] propensity score model), categorical (from a
 #' [nnet::multinom()] model), and continuous (from an [stats::lm()] or
-#' gaussian-family [stats::glm()] model). The `atm` weight `pmin(e, 1 - e)` is
-#' not differentiable at a propensity score of `0.5`; deli's central finite
-#' difference straddles the kink there and averages the one-sided slopes. Its
-#' effect on the variance is negligible unless many observations sit at exactly
-#' `0.5`.
+#' identity-link gaussian [stats::glm()] model). The `atm` weight
+#' `pmin(e, 1 - e)` is not differentiable at a propensity score of `0.5`; deli's
+#' central finite difference straddles the kink there and averages the one-sided
+#' slopes. Its effect on the variance is negligible unless many observations sit
+#' at exactly `0.5`.
 #'
 #' M-estimation standard errors for a categorical exposure allocate memory
 #' roughly linearly in the number of observations, on the order of 70 to 90
@@ -181,6 +185,12 @@
 #' terms) errors on the linearization path and requires
 #' `se_method = "mestimation"`, which stacks adjusted outcome models correctly.
 #'
+#' The linearization outcome model must also carry an intercept. Without one the
+#' linear predictor under no exposure is fixed at the link's zero point rather
+#' than estimated, so the g-computation marginal means no longer match the Hajek
+#' means the influence functions describe. A no-intercept outcome model errors on
+#' the linearization path and requires `se_method = "mestimation"`.
+#'
 #' # Model requirements
 #'
 #' `ipw()` cannot yet account for propensity scores that were trimmed
@@ -195,13 +205,20 @@
 #' nor the linearization influence functions thread an offset; supplying one
 #' errors.
 #'
+#' For a binary or categorical exposure, the outcome model formula must contain
+#' the exposure. The counterfactual designs are built by setting the exposure to
+#' each level in turn, so a model fit on covariates alone gives one identical
+#' design per level; it errors on either standard error method.
+#'
 #' With the default `se_method = "mestimation"`, two further requirements
 #' apply. The outcome model weights must match the values implied by the
 #' propensity score model; a mismatch errors. The propensity score model must be
 #' fit without case weights, since the stacked propensity score equations are
 #' unweighted and a weighted fit would not sit at the score root. Neither of
-#' these two checks fires on the linearization path, which treats the weights as
-#' fixed.
+#' these two checks runs on the linearization path, which does not restack the
+#' propensity score model. The linearization path still corrects for the
+#' uncertainty of estimating the propensity scores; it does so through the
+#' influence functions rather than through a stacked score.
 #'
 #' @references
 #' Stefanski LA, Boos DD. The calculus of M-estimation. *The American

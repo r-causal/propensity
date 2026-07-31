@@ -69,7 +69,9 @@ Supply \code{.data} explicitly if the outcome model formula contains
 transformations that prevent extraction of the exposure variable from
 \code{\link[stats:model.frame]{stats::model.frame()}}, or if the propensity score model cannot reconstruct
 its design (for example, fit with \code{model = FALSE} with the fitting data no
-longer available); \code{ipw()} then rebuilds the propensity design from \code{.data}.}
+longer available); \code{ipw()} then rebuilds the propensity design from \code{.data}.
+\code{.data} must have one row per observation the models were fit to; a row
+count that disagrees with the fitted models errors.}
 
 \item{estimand}{A character string specifying the causal estimand: one of
 \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or \code{"entropy"}. The available
@@ -84,8 +86,9 @@ requires weights created with a propensity weight function such as
 \item{ps_link}{A character string specifying the link function used in the
 propensity score model: \code{"logit"}, \code{"probit"}, or \code{"cloglog"}. Defaults to
 the link used by \code{wt_mod}. This applies only to a binomial \code{\link[stats:glm]{stats::glm()}}
-propensity score model on the binary path; leave it \code{NULL} for a
-multinomial or continuous propensity score model.}
+propensity score model on the binary path. A multinomial or continuous
+propensity score model has no link for \code{ps_link} to override, so a
+non-\code{NULL} value errors on both of those paths; leave it \code{NULL} there.}
 
 \item{conf_level}{Confidence level for intervals. Default is \code{0.95}.}
 
@@ -94,8 +97,9 @@ default) stacks the propensity score, outcome, and estimand estimating
 equations and returns the empirical sandwich variance. \code{"linearization"}
 uses the influence-function linearization of Kostouraki et al. (2024). Both
 account for the uncertainty of estimating the propensity scores.
-\code{"linearization"} supports only an outcome model of the exposure alone; a
-covariate-adjusted outcome model requires \code{"mestimation"}.}
+\code{"linearization"} supports only an outcome model of the exposure alone,
+fit with an intercept; a covariate-adjusted or no-intercept outcome model
+requires \code{"mestimation"}.}
 
 \item{.focal_level}{For the categorical (\code{multinom}) method with the \code{att}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
@@ -245,11 +249,11 @@ and Boos (2002) for the M-estimation framework.
 M-estimation standard errors are available for all exposure types: binary
 (from a \code{\link[stats:glm]{stats::glm()}} propensity score model), categorical (from a
 \code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}} or
-gaussian-family \code{\link[stats:glm]{stats::glm()}} model). The \code{atm} weight \code{pmin(e, 1 - e)} is
-not differentiable at a propensity score of \code{0.5}; deli's central finite
-difference straddles the kink there and averages the one-sided slopes. Its
-effect on the variance is negligible unless many observations sit at exactly
-\code{0.5}.
+identity-link gaussian \code{\link[stats:glm]{stats::glm()}} model). The \code{atm} weight
+\code{pmin(e, 1 - e)} is not differentiable at a propensity score of \code{0.5}; deli's
+central finite difference straddles the kink there and averages the one-sided
+slopes. Its effect on the variance is negligible unless many observations sit
+at exactly \code{0.5}.
 
 M-estimation standard errors for a categorical exposure allocate memory
 roughly linearly in the number of observations, on the order of 70 to 90
@@ -271,6 +275,12 @@ for an exposure-only outcome model. A covariate-adjusted outcome model (any
 term beyond the exposure, including covariates, interactions, or transformed
 terms) errors on the linearization path and requires
 \code{se_method = "mestimation"}, which stacks adjusted outcome models correctly.
+
+The linearization outcome model must also carry an intercept. Without one the
+linear predictor under no exposure is fixed at the link's zero point rather
+than estimated, so the g-computation marginal means no longer match the Hajek
+means the influence functions describe. A no-intercept outcome model errors on
+the linearization path and requires \code{se_method = "mestimation"}.
 }
 
 \section{Model requirements}{
@@ -286,13 +296,20 @@ carry an offset term on either method, since neither the stacked outcome score
 nor the linearization influence functions thread an offset; supplying one
 errors.
 
+For a binary or categorical exposure, the outcome model formula must contain
+the exposure. The counterfactual designs are built by setting the exposure to
+each level in turn, so a model fit on covariates alone gives one identical
+design per level; it errors on either standard error method.
+
 With the default \code{se_method = "mestimation"}, two further requirements
 apply. The outcome model weights must match the values implied by the
 propensity score model; a mismatch errors. The propensity score model must be
 fit without case weights, since the stacked propensity score equations are
 unweighted and a weighted fit would not sit at the score root. Neither of
-these two checks fires on the linearization path, which treats the weights as
-fixed.
+these two checks runs on the linearization path, which does not restack the
+propensity score model. The linearization path still corrects for the
+uncertainty of estimating the propensity scores; it does so through the
+influence functions rather than through a stacked score.
 }
 
 \examples{
