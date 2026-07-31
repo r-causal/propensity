@@ -14,8 +14,8 @@
 # coding such as `y ~ z - 1` leaves the design at the zero-coded level with no
 # nonzero entry at all. The marginal mean there is then inv_link(0) for every
 # unit, a constant fixed by the outcome link rather than a quantity estimated
-# from the data (0.5 for a binomial family, 0 for a linear model), and every
-# contrast formed against it is wrong with nothing signaled.
+# from the data (0.5 for a logit or probit outcome link, 0 for a linear model),
+# and every contrast formed against it is wrong with nothing signaled.
 #
 # The condition is the design itself, not the presence of an intercept. A
 # saturated factor coding such as `y ~ 0 + zf` carries no intercept yet its dummy
@@ -37,8 +37,9 @@ check_ipw_counterfactual_designs <- function(
         "{.arg outcome_mod} must be able to represent the outcome at every \\
         exposure level.",
         x = "Setting {.arg {exposure_name}} to {.val {bad}} leaves the \\
-        counterfactual design identically zero, which pins the marginal mean \\
-        there to the outcome link's zero point instead of estimating it.",
+        counterfactual design{?s} identically zero, which pins the marginal \\
+        mean{?s} there to the outcome link's zero point instead of estimating \\
+        {?it/them}.",
         i = "Include an intercept in {.arg outcome_mod}, or code the exposure \\
         as a factor, whose no-intercept coding is saturated and represents \\
         every level."

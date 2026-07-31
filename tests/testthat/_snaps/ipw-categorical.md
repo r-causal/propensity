@@ -39,6 +39,6 @@
     Condition
       Error in `ipw()`:
       ! `outcome_mod` must be able to represent the outcome at every exposure level.
-      x Setting `a` to "a" and "b" leaves the counterfactual design identically zero, which pins the marginal mean there to the outcome link's zero point instead of estimating it.
+      x Setting `a` to "a" and "b" leaves the counterfactual designs identically zero, which pins the marginal means there to the outcome link's zero point instead of estimating them.
       i Include an intercept in `outcome_mod`, or code the exposure as a factor, whose no-intercept coding is saturated and represents every level.
 

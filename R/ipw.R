@@ -64,13 +64,13 @@
 #'   account for the uncertainty of estimating the propensity scores.
 #'   `"linearization"` supports only an outcome model of the exposure alone, fit
 #'   with an intercept; a covariate-adjusted outcome model requires
-#'   `"mestimation"`. Both methods require an outcome model that can represent a
-#'   baseline, so a numeric no-intercept coding such as `y ~ z - 1` errors on
-#'   either.
+#'   `"mestimation"`. For a binary or categorical exposure, both methods require
+#'   an outcome model that can represent a baseline, so a numeric no-intercept
+#'   coding such as `y ~ z - 1` errors on either.
 #' @param ... These dots are for future extensions and must be empty. They
 #'   separate the two models from the remaining arguments, which must therefore
 #'   be supplied by name. Anything left in them, such as a `.data` argument
-#'   given positionally or a misspelled argument name, errors.
+#'   given by position or a misspelled argument name, errors.
 #'
 #' @details
 #' # Workflow
@@ -218,17 +218,17 @@
 #' design per level; it errors on either standard error method.
 #'
 #' For those two exposure types, the outcome model must also be able to represent
-#' a baseline at every level, either through an intercept or through a saturated
-#' factor coding of the exposure. A numeric no-intercept coding such as
+#' a baseline at every level, for example through an intercept or through a
+#' saturated factor coding of the exposure. A numeric no-intercept coding such as
 #' `y ~ z - 1` errors on both standard error methods, for different reasons. On
 #' the M-estimation path the counterfactual design at the zero-coded level is
 #' identically zero, so the marginal mean there is fixed by the outcome link
-#' (`0.5` for a binomial family, `0` for a linear model) rather than estimated
-#' from the data. On the linearization path the intercept is required outright,
-#' because without it the g-computation means stop matching the Hajek means the
-#' influence functions describe. A saturated factor coding such as `y ~ 0 + zf`
-#' is a reparameterization whose designs are the level indicators, so the
-#' M-estimation path accepts it and reproduces the with-intercept fit; the
+#' (`0.5` under a logit or probit link, `0` for a linear model) rather than
+#' estimated from the data. On the linearization path the intercept is required
+#' outright, because without it the g-computation means stop matching the Hajek
+#' means the influence functions describe. A saturated factor coding such as
+#' `y ~ 0 + zf` is a reparameterization whose designs are the level indicators,
+#' so the M-estimation path accepts it and reproduces the with-intercept fit; the
 #' linearization path still requires the intercept. A no-intercept model that
 #' keeps a covariate, such as `y ~ z + x1 - 1`, still estimates the marginal mean
 #' from that covariate and runs on the M-estimation path. A continuous exposure

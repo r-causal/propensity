@@ -1237,8 +1237,9 @@ test_that("mestimation accepts a binary outcome model containing the exposure wh
 # The counterfactual designs come from delete.response(terms(outcome_mod)) with
 # the exposure set to each level in turn. A numeric exposure fit without an
 # intercept, y ~ z - 1, leaves the design at z = 0 identically zero, so mu0 is
-# inv_link(0) for every unit whatever the data say: 0.5 for a binomial family
-# and 0 for a linear model. Nothing about the fit signals it. On this fixture
+# inv_link(0) for every unit whatever the data say: 0.5 for a logit or probit
+# outcome link and 0 for a linear model. Nothing about the fit signals it. On
+# this fixture
 # the risk difference reads 0.1306 against the correct 0.2347, with a standard
 # error of 0.0255 against 0.0340, and the linear model reports a difference of
 # 2.179 against the correct 0.788.
