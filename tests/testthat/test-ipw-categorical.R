@@ -834,12 +834,41 @@ test_that("ipw() categorical rejects a .data exposure value the model never saw"
   dat_unknown$a <- as.character(dat_unknown$a)
   dat_unknown$a[[1]] <- "unknown"
 
-  # Today the extra level reaches the theta layout, where it raises a raw base
-  # error about a names-length mismatch. It must be a classed propensity error
-  # that names the value the model cannot score.
+  # Without level resolution, the extra level reached the theta layout and
+  # raised a raw base error about a names-length mismatch. It must be a classed
+  # propensity error that names the value the model cannot score.
   expect_error(
     ipw(mods$ps_mod, mods$outcome_mod, .data = dat_unknown),
     class = "propensity_error",
     regexp = "unknown"
   )
+})
+
+# ---- weight-consistency hint wording ----------------------------------------
+
+test_that("the categorical weight-consistency error omits the binary focal convention", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  spec <- ipw_spec_categorical(mods$ps_mod, mods$outcome_mod)
+  doubled <- 2 * as.double(model.weights(model.frame(mods$outcome_mod)))
+
+  err <- expect_error(
+    ipw_check_weight_consistency(spec, doubled),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+
+  # The focal-level hint is worded per exposure type. A categorical exposure
+  # takes its focal level from the weights or from .focal_level and has no
+  # sorted-level convention, so the binary sentence must not appear here. The
+  # binary wording is pinned by "the weight-consistency error names a focal
+  # level as a possible cause" in test-ipw-mestimation.R.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(
+    msg,
+    "Weights built with a different `.focal_level`",
+    fixed = TRUE
+  )
+  expect_false(grepl("second sorted level", msg, fixed = TRUE))
 })

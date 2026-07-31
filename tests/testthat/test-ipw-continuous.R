@@ -556,3 +556,25 @@ test_that("continuous reconstructs the ps design from .data when the fit frame i
   res <- ipw(ps_gone, om, .data = dat_copy)$estimates
   expect_equal(res, ref, tolerance = 1e-8)
 })
+
+# ---- weight-consistency hint wording ----------------------------------------
+
+test_that("the continuous weight-consistency error names no focal level", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+  spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+  doubled <- 2 * as.double(model.weights(model.frame(mods$outcome_mod)))
+
+  err <- expect_error(
+    ipw_check_weight_consistency(spec, doubled),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+
+  # A continuous exposure has no focal level, so the focal-level hint the binary
+  # and categorical paths offer must be absent rather than reworded. The binary
+  # wording is pinned by "the weight-consistency error names a focal level as a
+  # possible cause" in test-ipw-mestimation.R.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_false(grepl("focal", msg, fixed = TRUE))
+})

@@ -196,6 +196,44 @@ ipw_extract_ps_design <- function(
   list(exposure = exposure, outcome = outcome, ps_X = ps_X, mm_data = mm_data)
 }
 
+# Resolve the exposure to a factor whose levels are ordered the way the fitted
+# multinomial model orders them. nnet::multinom records its training levels in
+# `lev` and lays its coefficient rows out in that order, so that order governs
+# the indicator matrix, the coefficient naming, the counterfactual designs, and
+# the reference level. The exposure column reaching this point carries no such
+# guarantee: a character column orders alphabetically and a factor can be
+# releveled, either of which would silently disagree with the coefficients. A
+# model that carries no `lev` leaves nothing to resolve against, so the column's
+# own ordering is used, as it was before.
+ipw_categorical_exposure_factor <- function(
+  exposure,
+  lev,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  if (is.null(lev)) {
+    return(as.factor(exposure))
+  }
+
+  values <- as.character(exposure)
+  unknown <- unique(values[!is.na(values) & !values %in% lev])
+  if (length(unknown) > 0) {
+    abort(
+      c(
+        "{.arg {exposure_name}} holds values the propensity score model was \\
+        not fit on.",
+        x = "{.val {unknown}} {?is/are} not among the model's levels.",
+        i = "The model was fit on {.val {lev}}.",
+        i = "Supply data whose {.arg {exposure_name}} holds only those levels."
+      ),
+      error_class = "propensity_ipw_exposure_error",
+      call = call
+    )
+  }
+
+  factor(values, levels = lev)
+}
+
 ipw_spec_categorical <- function(
   ps_mod,
   outcome_mod,
@@ -271,7 +309,12 @@ ipw_spec_categorical <- function(
     )
   }
 
-  exposure <- as.factor(exposure)
+  exposure <- ipw_categorical_exposure_factor(
+    exposure,
+    ps_mod$lev,
+    exposure_name,
+    call = call
+  )
   levs <- levels(exposure)
   k <- length(levs)
 
@@ -593,19 +636,34 @@ ipw_check_weight_consistency <- function(
     isTRUE(all.equal(recomputed, observed, tolerance = 1e-6))
 
   if (!consistent) {
+    msg <- c(
+      "The weights used to fit {.arg outcome_mod} are not consistent with \\
+      the propensity score model and estimand.",
+      i = "The {.val {spec$estimand}} weights recomputed from {.arg wt_mod} \\
+      differ from the weights supplied to {.arg outcome_mod} (compared at \\
+      relative tolerance 1e-6).",
+      i = "Refit {.arg outcome_mod} with weights from this propensity score \\
+      model and estimand."
+    )
+    # The focal level is a common cause of a mismatch, but for different reasons
+    # per exposure type, so the hint is only offered where it applies: a binary
+    # exposure has a fixed focal convention the weights can disagree with, a
+    # categorical exposure takes its focal level from the weights or the
+    # argument, and a continuous exposure has no focal level at all.
+    focal_hint <- switch(
+      spec$exposure_type,
+      binary = "A non-default {.arg .focal_level} or {.arg .reference_level} \\
+      in the weights is one cause: {.fun ipw} treats the second sorted level \\
+      of a binary exposure as focal.",
+      categorical = "Weights built with a different {.arg .focal_level} than \\
+      the one {.fun ipw} resolved are one cause.",
+      NULL
+    )
+    if (!is.null(focal_hint)) {
+      msg <- c(msg, i = focal_hint)
+    }
     abort(
-      c(
-        "The weights used to fit {.arg outcome_mod} are not consistent with \\
-        the propensity score model and estimand.",
-        i = "The {.val {spec$estimand}} weights recomputed from {.arg wt_mod} \\
-        differ from the weights supplied to {.arg outcome_mod} (compared at \\
-        relative tolerance 1e-6).",
-        i = "Refit {.arg outcome_mod} with weights from this propensity score \\
-        model and estimand.",
-        i = "A non-default {.arg .focal_level} or {.arg .reference_level} in \\
-        the weights is one cause: {.fun ipw} treats the second sorted level of \\
-        a binary exposure as focal."
-      ),
+      msg,
       error_class = "propensity_ipw_weights_mismatch_error",
       call = call
     )
