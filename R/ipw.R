@@ -345,24 +345,45 @@ ipw.glm <- function(
     ))
   }
 
-  weight_matrix <- model.matrix(wt_mod)
   exposure_name <- fmla_extract_left_chr(wt_mod)
   outcome_name <- fmla_extract_left_chr(outcome_mod)
 
+  # Guards on the model structure run before the data is reconstructed, so a
+  # model this path cannot support is rejected on its own terms rather than
+  # through whatever the reconstruction happens to fail on first.
   check_ipw_offset(outcome_mod)
   check_ipw_linearization_outcome(outcome_mod, exposure_name)
   check_ipw_outcome_family(outcome_mod)
 
-  if (is.null(.data)) {
-    exposure <- fmla_extract_left_vctr(wt_mod)
-    outcome <- fmla_extract_left_vctr(outcome_mod)
-  } else {
-    assert_class(exposure_name, "character", .length = 1)
-    assert_class(outcome_name, "character", .length = 1)
-    assert_columns_exist(.data, c(exposure_name, outcome_name))
+  # Shared with the mestimation specs, so a propensity model that has lost the
+  # data behind its fitting call raises the same guided error here and rebuilds
+  # its design from `.data` the same way.
+  extracted <- ipw_extract_ps_design(
+    wt_mod,
+    outcome_mod,
+    .data = .data,
+    exposure_name = exposure_name,
+    outcome_name = outcome_name,
+    xlev = wt_mod$xlevels
+  )
+  exposure <- extracted$exposure
+  outcome <- extracted$outcome
+  weight_matrix <- extracted$ps_X
 
-    exposure <- .data[[exposure_name]]
-    outcome <- .data[[outcome_name]]
+  # With `.data` supplied, every piece above is sized to `.data` while the
+  # weights come from the outcome model fit. A row-count mismatch recycles the
+  # two against each other and shrinks the standard errors with nothing
+  # signaled, so reconcile them before estimating.
+  if (!is.null(.data) && !identical(length(exposure), length(wts))) {
+    abort(
+      c(
+        "{.arg .data} must have one row per observation the models were fit to.",
+        x = "{.arg .data} has {length(exposure)} rows.",
+        x = "{.arg outcome_mod} was fit to {length(wts)} observations.",
+        i = "Supply the data the models were fit to, or omit {.arg .data}."
+      ),
+      error_class = "propensity_ipw_data_error"
+    )
   }
 
   # Convert a factor or logical response to its 0/1 coding so the influence

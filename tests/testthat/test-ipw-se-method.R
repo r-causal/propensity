@@ -1261,20 +1261,19 @@ test_that("print.ipw formats the z column as a test statistic, not a coefficient
 
 # ---- linearization ps design extraction with .data ---------------------------
 #
-# The linearization branch calls model.matrix(wt_mod) unconditionally instead of
-# routing through the shared ipw_extract_ps_design() the M-estimation path uses.
-# A propensity score model fit with model = FALSE whose fitting data is gone
-# therefore raw-errors with "object 'd_local' not found" on both routes: without
-# .data, where the M-estimation path raises the informative
-# propensity_ipw_data_error, and with .data, where the M-estimation path rebuilds
-# the design and succeeds. The parity these pin is with the M-estimation tests in
-# test-ipw-mestimation.R under "binary ps design extraction with .data".
+# The linearization path takes its propensity design from the shared
+# ipw_extract_ps_design() helper, so it behaves like the M-estimation path when
+# the data behind a propensity fit is gone: without .data the call raises the
+# classed propensity_ipw_data_error that names .data as the remedy, and with
+# .data the design is rebuilt and the estimates match a reconstructable
+# reference fit. Redundant .data on a fit that needs none changes nothing. The
+# parity pinned here is with the M-estimation tests in test-ipw-mestimation.R
+# under "binary ps design extraction with .data".
 #
-# The branch also never reconciles the outcome model's row count against the
-# .data columns, so a .data of a different length is silently accepted: the
-# estimates are computed from the .data rows while the weights and the propensity
-# design come from the fitted models, and the reported standard errors shrink by
-# a factor of roughly the row ratio with nothing signaled.
+# A .data whose row count disagrees with the fitted models is rejected. That
+# guard exists because the design was once read from model.matrix(wt_mod) with
+# .data ignored, so a shorter .data was recycled against the model-sized weights
+# and the reported standard errors came out far too small with nothing signaled.
 
 # A binary propensity score model fit with model = FALSE inside a scope whose
 # fitting data is then gone. predict() still works from the stored fit, so the
@@ -1295,8 +1294,8 @@ test_that("linearization errors with the supply-.data hint when the ps fit frame
   ps_gone <- se_method_ps_mod_gone(dat)
   outcome_mod <- se_method_outcome_ate(dat, ps_gone)
 
-  # Without .data the raw "object not found" must become the guarded error that
-  # names the missing data and directs the user to supply .data.
+  # The lookup failure inside model.matrix() must surface as the guarded error
+  # that names the missing data and directs the user to supply .data.
   expect_error(
     ipw(ps_gone, outcome_mod, se_method = "linearization"),
     class = "propensity_ipw_data_error"
@@ -1347,10 +1346,9 @@ test_that("linearization errors when .data has fewer rows than the fitted models
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_ate(dat, ps_mod)
 
-  # 100 rows of .data against 400-row fits. The weights and the propensity design
-  # still come from the models, so the pieces are recycled against each other and
-  # the standard errors come out about half their correct size with nothing
-  # signaled. Reject the mismatch instead.
+  # 100 rows of .data against 400-row fits. The weights still come from the
+  # outcome model, so an unreconciled .data would be recycled against them and
+  # report standard errors far too small; the mismatch must be rejected instead.
   expect_error(
     ipw(
       ps_mod,
@@ -1358,7 +1356,7 @@ test_that("linearization errors when .data has fewer rows than the fitted models
       .data = head(dat, 100),
       se_method = "linearization"
     ),
-    class = "propensity_error",
+    class = "propensity_ipw_data_error",
     regexp = "length|rows"
   )
 })
