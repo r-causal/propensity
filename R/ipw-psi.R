@@ -490,22 +490,23 @@ ipw_psi_binary <- function(spec, layout, weight_fn) {
 
 # Reconstruct the n-by-K propensity score matrix from the multinomial ps block,
 # matching deli::ee_mlogit's internal softmax. Column order is reference-first.
+# A softmax is invariant to a common shift of its linear predictors, so each row
+# is shifted by its largest predictor, the reference category's implicit 0
+# included, before exponentiating. Without the shift a linear predictor above
+# about 709 overflows exp() to Inf and the row normalizes to NaN, which the
+# solver can reach on its own while iterating toward the root.
 ipw_categorical_ps <- function(x, theta, k) {
   n <- nrow(x)
   b <- ncol(x)
-  denom <- rep(1, n)
-  exp_pred <- matrix(0, nrow = n, ncol = k - 1)
+  eta <- matrix(0, nrow = n, ncol = k)
+  shift <- rep(0, n)
   for (j in seq_len(k - 1)) {
     idx <- ((j - 1) * b + 1):(j * b)
-    exp_pred[, j] <- exp(as.vector(x %*% theta[idx]))
-    denom <- denom + exp_pred[, j]
+    eta[, j + 1] <- as.vector(x %*% theta[idx])
+    shift <- pmax(shift, eta[, j + 1])
   }
-  ps <- matrix(0, nrow = n, ncol = k)
-  ps[, 1] <- 1 / denom
-  for (j in seq_len(k - 1)) {
-    ps[, j + 1] <- exp_pred[, j] / denom
-  }
-  ps
+  ps <- exp(eta - shift)
+  ps / rowSums(ps)
 }
 
 ipw_psi_categorical <- function(spec, layout, weight_fn) {
