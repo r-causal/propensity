@@ -711,3 +711,43 @@ test_that("ipw() categorical rejects an outcome model with an offset term", {
     class = "propensity_ipw_offset_error"
   )
 })
+
+# ---- the outcome model must contain the exposure -----------------------------
+#
+# As on the binary path, supplying .data bypasses the check_exposure() guard, so
+# an outcome model fit without the exposure produces one identical counterfactual
+# design per level and every contrast collapses to zero. The categorical path
+# must reject it with the same classed error.
+
+test_that("ipw() categorical rejects an outcome model that omits the exposure when .data is supplied", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  no_exposure <- glm(
+    stats::reformulate("x1", response = "y"),
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_error(
+    ipw(mods$ps_mod, no_exposure, .data = dat),
+    class = "propensity_ipw_exposure_error"
+  )
+})
+
+test_that("ipw() categorical accepts an outcome model containing the exposure when .data is supplied", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # The guard must not fire on the ordinary case: the same call with the
+  # exposure on the right-hand side runs through to an ipw object.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat)
+
+  expect_s3_class(res, "ipw")
+  expect_equal(res$estimand, "ate")
+})

@@ -1055,3 +1055,62 @@ test_that("mestimation binary estimates are unchanged when .data re-levels a ps 
   )$estimates
   expect_equal(releveled, no_data, tolerance = 1e-8)
 })
+
+# ---- the outcome model must contain the exposure -----------------------------
+#
+# On the .data route the spec constructor takes the exposure and the
+# counterfactual designs from .data and never checks that the outcome model
+# references the exposure. An outcome model fit on covariates alone then yields
+# identical X1 and X0 designs, so every contrast collapses to zero with a
+# degenerate standard error rather than erroring. Without .data the same mistake
+# is caught by check_exposure(); that route is already pinned in test-ipw.R.
+# These tests pin the guarded behavior on the .data route.
+
+# Refit the outcome model on the covariate alone, dropping the exposure, while
+# keeping the ate weights the propensity score model implies.
+fit_outcome_without_exposure <- function(dat, wts) {
+  glm(
+    stats::reformulate("x1", response = "y"),
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+}
+
+test_that("mestimation rejects a binary outcome model that omits the exposure when .data is supplied", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  no_exposure <- fit_outcome_without_exposure(dat, mods$wts)
+
+  expect_error(
+    ipw(mods$ps_mod, no_exposure, .data = dat),
+    class = "propensity_ipw_exposure_error"
+  )
+})
+
+test_that("the missing-exposure error names the exposure and directs the user to refit", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  no_exposure <- fit_outcome_without_exposure(dat, mods$wts)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, no_exposure, .data = dat)
+  )
+})
+
+test_that("mestimation accepts a binary outcome model containing the exposure when .data is supplied", {
+  skip_if_not_installed("deli")
+  # The guard must not fire on the ordinary case: the same call with the
+  # exposure on the right-hand side runs through to an ipw object.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat)
+
+  expect_s3_class(res, "ipw")
+  expect_equal(res$estimand, "ate")
+})
