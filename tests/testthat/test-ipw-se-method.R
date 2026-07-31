@@ -713,8 +713,12 @@ lin_ate_pieces <- function(ps_mod, z) {
 }
 
 # Correct RD linearization SE (score factor in both the influence and the
-# information) from a fitted ps model and the outcome data.
-lin_se_correct <- function(ps_mod, z, y, w) {
+# information) from a fitted ps model and the outcome data. `score` is the
+# per-observation stabilization score carried on the weights: the weights are
+# base * score, so the score scales the weight derivative observation-wise while
+# leaving the propensity score's own score factor and information untouched. The
+# default of 1 leaves unstabilized analyses unchanged.
+lin_se_correct <- function(ps_mod, z, y, w, score = 1) {
   pieces <- lin_ate_pieces(ps_mod, z)
   lin_se_rd(
     pieces$X,
@@ -722,7 +726,7 @@ lin_se_correct <- function(ps_mod, z, y, w) {
     z,
     y,
     as.double(w),
-    pieces$dwdeta,
+    pieces$dwdeta * score,
     if_scale = pieces$score_factor,
     info_scale = pieces$score_factor
   )
@@ -1190,6 +1194,125 @@ test_that("the matrix-response propensity model error names the matrix response"
 })
 
 # ---- per-observation stabilization scores on the linearization path ----------
+
+# Marginal quasibinomial outcome model weighted with the supplied weights, fit
+# with tightened IRLS so the fit sits at the weighted MLE and the hand-coded
+# oracle applies exactly.
+se_score_outcome <- function(dat, wts) {
+  glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+}
+
+# Propensity score model, score-carrying stabilized ATE weights, and the marginal
+# outcome model they weight.
+se_score_models <- function(dat, score) {
+  ps_mod <- se_method_ps_mod(dat)
+  ps <- as.double(predict(ps_mod, type = "response"))
+  wts <- wt_ate(
+    ps,
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1,
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+  list(
+    ps_mod = ps_mod,
+    outcome_mod = se_score_outcome(dat, wts),
+    wts = wts
+  )
+}
+
+# RD standard error from the linearization path for the supplied weights.
+se_score_lin_rd <- function(dat, ps_mod, wts) {
+  res <- ipw(
+    ps_mod,
+    se_score_outcome(dat, wts),
+    .data = dat,
+    se_method = "linearization"
+  )
+  res$estimates$std.err[res$estimates$effect == "rd"]
+}
+
+test_that("linearization threads a covariate-correlated stabilization score through the weight derivatives", {
+  dat <- se_method_data()
+  # A score correlated with a propensity score covariate, so omitting it from the
+  # weight derivatives misstates the propensity score correction rather than
+  # cancelling out of it.
+  score <- exp(0.5 * dat$x1)
+  mods <- se_score_models(dat, score)
+
+  correct <- lin_se_correct(
+    mods$ps_mod,
+    dat$z,
+    dat$y,
+    mods$wts,
+    score = score
+  )
+  res <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = dat,
+    se_method = "linearization"
+  )
+  rd_se <- res$estimates$std.err[res$estimates$effect == "rd"]
+  expect_equal(rd_se, correct, tolerance = 1e-8)
+})
+
+test_that("linearization matches the hand-coded SE for a unit stabilization score", {
+  dat <- se_method_data()
+  # A recorded score of 1 leaves the weights and their derivatives at their
+  # unstabilized values, so threading the score must not move this analysis.
+  score <- rep(1, nrow(dat))
+  mods <- se_score_models(dat, score)
+
+  correct <- lin_se_correct(
+    mods$ps_mod,
+    dat$z,
+    dat$y,
+    mods$wts,
+    score = score
+  )
+  res <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = dat,
+    se_method = "linearization"
+  )
+  rd_se <- res$estimates$std.err[res$estimates$effect == "rd"]
+  expect_equal(rd_se, correct, tolerance = 1e-8)
+})
+
+test_that("linearization default stabilization reproduces the unstabilized SE", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  ps <- as.double(predict(ps_mod, type = "response"))
+
+  # The default stabilizer scales the treated weights by mean(z) and the
+  # untreated weights by 1 - mean(z). Each group constant scales that group's
+  # weights and that group's weight total identically, so it cancels out of the
+  # Hajek ratio and out of the propensity score correction alike: the stabilized
+  # analysis must report exactly the unstabilized standard error.
+  stabilized <- wt_ate(
+    ps,
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1,
+    stabilize = TRUE
+  )
+  unstabilized <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+
+  expect_equal(
+    se_score_lin_rd(dat, ps_mod, stabilized),
+    se_score_lin_rd(dat, ps_mod, unstabilized),
+    tolerance = 1e-8
+  )
+})
 
 test_that("linearization is silent for weights carrying a vector stabilization score", {
   dat <- se_method_data()
