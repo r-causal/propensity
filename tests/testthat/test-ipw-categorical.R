@@ -873,3 +873,105 @@ test_that("the categorical weight-consistency error omits the binary focal conve
   )
   expect_false(grepl("second sorted level", msg, fixed = TRUE))
 })
+
+# ---- degenerate counterfactual designs --------------------------------------
+#
+# One counterfactual design is built per level by setting the exposure factor to
+# that level and rebuilding the outcome design. A numeric no-intercept coding of
+# the exposure, y ~ as.numeric(a == "c") - 1, leaves the designs at "a" and at
+# "b" identically zero, so both marginal means are pinned at plogis(0) = 0.5:
+# the "b vs a" contrast collapses to a rounding-error zero and "c vs a" is
+# measured against a constant rather than against the data, with nothing
+# signaled.
+#
+# The condition is a design that is identically zero, not a missing intercept.
+# The saturated factor coding y ~ a - 1 is a reparameterization whose designs
+# are the level indicators, and it must keep working.
+
+test_that("ipw() categorical rejects an outcome model whose counterfactual design is identically zero", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  # The transformed term is unreadable from the model frame, so this coding
+  # reaches the counterfactual designs only through .data.
+  collapsed <- glm(
+    y ~ as.numeric(a == "c") - 1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(mods$ps_mod, collapsed, .data = dat),
+    class = "propensity_error",
+    regexp = "identically zero"
+  )
+
+  # The message must name every level whose design is degenerate. Whitespace is
+  # normalized because cli wraps the bullet.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "`a` to \"a\" and \"b\"", fixed = TRUE)
+})
+
+test_that("the categorical degenerate-design error names the pinned levels", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  collapsed <- glm(
+    y ~ as.numeric(a == "c") - 1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, collapsed, .data = dat)
+  )
+})
+
+test_that("ipw() categorical accepts a saturated no-intercept outcome model", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # y ~ a - 1 is a reparameterization of y ~ a, not a model without a baseline:
+  # its counterfactual designs are the level indicators, which are never zero.
+  # It must give the same answer as the with-intercept fit.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+  saturated <- glm(
+    y ~ a - 1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = ctrl
+  )
+  with_intercept <- glm(
+    y ~ a,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = ctrl
+  )
+
+  res_sat <- ipw(mods$ps_mod, saturated)
+  res_int <- ipw(mods$ps_mod, with_intercept)
+
+  expect_s3_class(res_sat, "ipw")
+  expect_equal(res_sat$estimates$effect, res_int$estimates$effect)
+  expect_equal(res_sat$estimates$comparison, res_int$estimates$comparison)
+  expect_equal(
+    res_sat$estimates$estimate,
+    res_int$estimates$estimate,
+    tolerance = 1e-6
+  )
+  expect_equal(
+    res_sat$estimates$std.err,
+    res_int$estimates$std.err,
+    tolerance = 1e-6
+  )
+})

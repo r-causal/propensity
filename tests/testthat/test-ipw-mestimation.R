@@ -1231,3 +1231,164 @@ test_that("mestimation accepts a binary outcome model containing the exposure wh
   expect_s3_class(res, "ipw")
   expect_equal(res$estimand, "ate")
 })
+
+# ---- degenerate counterfactual designs --------------------------------------
+#
+# The counterfactual designs come from delete.response(terms(outcome_mod)) with
+# the exposure set to each level in turn. A numeric exposure fit without an
+# intercept, y ~ z - 1, leaves the design at z = 0 identically zero, so mu0 is
+# inv_link(0) for every unit whatever the data say: 0.5 for a binomial family
+# and 0 for a linear model. Nothing about the fit signals it. On this fixture
+# the risk difference reads 0.1306 against the correct 0.2347, with a standard
+# error of 0.0255 against 0.0340, and the linear model reports a difference of
+# 2.179 against the correct 0.788.
+#
+# The condition is a design that is identically zero, not a missing intercept.
+# A saturated factor coding, y ~ 0 + zf, has dummy columns that sum to one at
+# every level and reproduces the with-intercept fit; y ~ z + x1 - 1 still
+# estimates mu0 from the covariate and is honest g-computation on the model as
+# specified. Both must keep working.
+
+# Two-level factor recoding of the numeric exposure, with the propensity score
+# model and the ate weights that coding implies. A no-intercept outcome model
+# on this coding is a saturated reparameterization, not a degenerate one.
+fit_binary_factor_models <- function(dat, intercept = TRUE) {
+  dat$zf <- factor(dat$z, levels = c(0, 1), labels = c("no", "yes"))
+  ps_mod <- glm(zf ~ x1 + x2, data = dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    if (intercept) y ~ zf else y ~ 0 + zf,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, dat = dat)
+}
+
+# The weighted outcome model of a numeric binary exposure, refit without the
+# intercept. Any `outcome_family` other than "binomial" fits the linear
+# counterpart on the continuous outcome.
+fit_outcome_no_intercept <- function(dat, wts, outcome_family = "binomial") {
+  if (identical(outcome_family, "binomial")) {
+    glm(
+      y ~ z - 1,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+  } else {
+    lm(yc ~ z - 1, data = dat, weights = wts)
+  }
+}
+
+test_that("mestimation rejects a binary outcome model whose unexposed design is identically zero", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  no_intercept <- fit_outcome_no_intercept(dat, mods$wts)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, no_intercept),
+    class = "propensity_error",
+    regexp = "identically zero"
+  )
+
+  # The message must name the exposure level whose design is degenerate, so a
+  # user can tell which marginal mean was pinned. Whitespace is normalized
+  # because cli wraps the bullet.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "`z` to \"0\"", fixed = TRUE)
+})
+
+test_that("mestimation rejects a degenerate counterfactual design when .data is supplied", {
+  skip_if_not_installed("deli")
+  # Supplying .data rebuilds the counterfactual designs from the supplied
+  # columns rather than from the model frame. The guard must fire on that route
+  # too.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  no_intercept <- fit_outcome_no_intercept(dat, mods$wts)
+
+  expect_error(
+    ipw(mods$ps_mod, no_intercept, .data = dat),
+    class = "propensity_error",
+    regexp = "identically zero"
+  )
+})
+
+test_that("mestimation rejects a degenerate counterfactual design in a linear outcome model", {
+  skip_if_not_installed("deli")
+  # The guard reads the design, not the family, so the linear model whose mu0 is
+  # pinned at 0 rather than 0.5 is rejected on the same grounds.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate", outcome_family = "gaussian")
+  no_intercept <- fit_outcome_no_intercept(dat, mods$wts, "gaussian")
+
+  expect_error(
+    ipw(mods$ps_mod, no_intercept),
+    class = "propensity_error",
+    regexp = "identically zero"
+  )
+})
+
+test_that("the degenerate-design error names the pinned level and the remedy", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  no_intercept <- fit_outcome_no_intercept(dat, mods$wts)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, no_intercept)
+  )
+})
+
+test_that("mestimation accepts a saturated no-intercept factor outcome model", {
+  skip_if_not_installed("deli")
+  # y ~ 0 + zf is a reparameterization of y ~ zf, not a model without a
+  # baseline: its counterfactual designs are the level indicators, which are
+  # never zero. It must give the same answer as the with-intercept fit.
+  dat <- sim_binary()
+  with_intercept <- fit_binary_factor_models(dat, intercept = TRUE)
+  saturated <- fit_binary_factor_models(dat, intercept = FALSE)
+
+  res_sat <- ipw(saturated$ps_mod, saturated$outcome_mod)
+  res_int <- ipw(with_intercept$ps_mod, with_intercept$outcome_mod)
+
+  expect_s3_class(res_sat, "ipw")
+  expect_equal(res_sat$estimates$effect, res_int$estimates$effect)
+  expect_equal(
+    res_sat$estimates$estimate,
+    res_int$estimates$estimate,
+    tolerance = 1e-6
+  )
+  expect_equal(
+    res_sat$estimates$std.err,
+    res_int$estimates$std.err,
+    tolerance = 1e-6
+  )
+})
+
+test_that("mestimation accepts a no-intercept outcome model adjusted for a covariate", {
+  skip_if_not_installed("deli")
+  # y ~ z + x1 - 1 has no intercept, but the covariate still varies at z = 0, so
+  # mu0 is estimated from the data rather than pinned. It is g-computation on
+  # the model as specified and must run.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  adjusted <- glm(
+    y ~ z + x1 - 1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  res <- ipw(mods$ps_mod, adjusted)
+
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(res$estimates$std.err > 0))
+})
