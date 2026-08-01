@@ -1108,6 +1108,118 @@ test_that("ipw() categorical rejects pairwise-identical counterfactual designs u
   expect_match(msg, "`a` to \"a\" and \"b\"", fixed = TRUE)
 })
 
+# ---- a numeric-coded exposure in the outcome model --------------------------
+#
+# nnet::multinom is happy to model a numeric exposure, recording its levels as
+# the character forms of the values. The counterfactual designs are then built
+# by setting the exposure to a factor of those levels, so model.matrix expands
+# it into dummy columns. An outcome model that holds the same exposure as a
+# single numeric term has one slot for it in its coefficient vector, and the two
+# no longer line up: the design gains a column per non-reference level while the
+# coefficients do not.
+#
+# The two codings also mean different things. A numeric term fits one slope
+# across the levels and assumes they are equally spaced; the counterfactual
+# designs assume nothing of the sort. Rather than reconcile them, the outcome
+# model must carry the exposure as a factor, which is what the error says.
+#
+# The guard's negative case is every factor-exposure test in this file, starting
+# with "ipw() runs categorical ate end to end and auto-detects the estimand".
+
+sim_numeric_categorical <- function(seed = 2024, n = 700) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  z <- sample(0:2, n, replace = TRUE)
+  y <- rbinom(n, 1, plogis(-0.3 + 0.4 * (z == 1) + 0.8 * (z == 2) + 0.5 * x1))
+  data.frame(x1, z, y)
+}
+
+# Propensity score model, categorical weights, and a weighted outcome model that
+# holds the exposure as the bare numeric column. `double` recodes the exposure to
+# double first, so the same fixture serves the integer and double cases.
+fit_numeric_categorical_models <- function(dat, double = FALSE) {
+  if (double) {
+    dat$z <- as.numeric(dat$z)
+  }
+  ps_mod <- nnet::multinom(
+    z ~ x1,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- ps_mod$lev
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$z, exposure_type = "categorical")
+  )
+  outcome_mod <- glm(
+    y ~ z + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts, dat = dat)
+}
+
+test_that("ipw() categorical rejects an outcome model holding the exposure as a numeric term", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_numeric_categorical()
+  mods <- fit_numeric_categorical_models(dat)
+
+  # Without a guard this reaches the estimating equations and dies on a raw
+  # base "non-conformable arguments" from X %*% beta, with nothing naming the
+  # exposure or the coding that caused it.
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  # Whitespace is normalized because cli wraps the bullet. Only the remedy is
+  # pinned here; the full wording is pinned by the snapshot.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "as a factor", fixed = TRUE)
+})
+
+test_that("ipw() categorical rejects a numeric-term exposure when .data is supplied", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # Supplying .data changes how the exposure column is recovered but not how the
+  # outcome model codes it, so the same error must fire on this route too.
+  dat <- sim_numeric_categorical()
+  mods <- fit_numeric_categorical_models(dat)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "as a factor", fixed = TRUE)
+})
+
+test_that("ipw() categorical rejects a double-coded exposure in the outcome model", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # The defect is the numeric coding, not the storage type. A double column
+  # reaches the model frame as the same single term an integer column does, so
+  # it must be rejected the same way.
+  dat <- sim_numeric_categorical()
+  mods <- fit_numeric_categorical_models(dat, double = TRUE)
+  expect_type(mods$dat$z, "double")
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "as a factor", fixed = TRUE)
+})
+
 # ---- arguments that fall into the dots --------------------------------------
 
 test_that("ipw() multinom rejects arguments that fall into the dots", {
