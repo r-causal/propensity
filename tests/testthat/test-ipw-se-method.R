@@ -631,6 +631,66 @@ test_that("a no-intercept outcome model errors on the linearization path without
   )
 })
 
+# Factor-coded exposure with the outcome model either intercept-bearing or
+# saturated. The saturated form is the case the roxygen's "including the
+# saturated factor codings" clause rests on. Local to this file: test files do
+# not share each other's top-level definitions, and test-ipw-mestimation.R's
+# equivalent fixture is not reachable here.
+se_method_factor_models <- function(dat, intercept = TRUE) {
+  dat$zf <- factor(dat$z, levels = c(0, 1), labels = c("no", "yes"))
+  ps_mod <- glm(zf ~ x1 + x2, data = dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    if (intercept) y ~ zf else y ~ 0 + zf,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, dat = dat)
+}
+
+test_that("a saturated factor no-intercept outcome model errors on the linearization path", {
+  # The documented contract is that EVERY no-intercept outcome model is rejected
+  # here, including the saturated factor codings the M-estimation path accepts.
+  # The tests above use `y ~ z - 1`, whose cell mean under no exposure really is
+  # pinned at the link's zero point. `y ~ 0 + zf` is the case the claim rests on
+  # and the one that was unpinned: it estimates both cell means, is a
+  # reparameterization of the with-intercept fit, and is still refused, because
+  # the influence functions are derived for the intercept parameterization.
+  dat <- se_method_data()
+  mods <- se_method_factor_models(dat, intercept = FALSE)
+
+  # the fixture is saturated rather than zero-pinned: one coefficient per level
+  expect_equal(
+    names(coef(mods$outcome_mod)),
+    c("zfno", "zfyes")
+  )
+
+  expect_error(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      .data = mods$dat,
+      se_method = "linearization"
+    ),
+    class = "propensity_method_error",
+    regexp = "[Ii]ntercept"
+  )
+
+  # and the with-intercept counterpart, the same fit reparameterized, runs
+  with_intercept <- se_method_factor_models(dat, intercept = TRUE)
+  expect_s3_class(
+    ipw(
+      with_intercept$ps_mod,
+      with_intercept$outcome_mod,
+      .data = with_intercept$dat,
+      se_method = "linearization"
+    ),
+    "ipw"
+  )
+})
+
 test_that("a no-intercept linear outcome model errors on the linearization path", {
   dat <- se_method_data_cont()
   ps_mod <- se_method_ps_mod(dat)

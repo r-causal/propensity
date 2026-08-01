@@ -1199,13 +1199,20 @@ check_ipw_continuous_links <- function(
 # correctly. Applies only to the linearization path.
 #
 # The intercept is load-bearing for the same reason and is checked separately,
-# because dropping it leaves the term labels untouched. Without an intercept the
-# linear predictor at the unexposed level is zero for every unit, so the
-# g-computation mean under no exposure is pinned at the link's zero point
-# (plogis(0) = 0.5 for a binomial family, 0 for a linear model) instead of being
-# estimated from the data. The reported estimates are then no longer the Hajek
+# because dropping it leaves the term labels untouched. Under a numeric coding
+# such as `y ~ z - 1` the linear predictor at the unexposed level is zero for
+# every unit, so the g-computation mean under no exposure is pinned at the link's
+# zero point (plogis(0) = 0.5 for a binomial family, 0 for a linear model)
+# instead of being estimated. The reported estimates are then no longer the Hajek
 # means the influence functions describe, and the standard errors describe an
-# estimator that was never fit. The check is on the terms object, so it applies
+# estimator that was never fit.
+#
+# The rejection is broader than that mechanism. A saturated factor coding such as
+# `y ~ 0 + zf` does estimate both cell means, and the M-estimation path accepts
+# it, but the linearization influence functions are derived for the intercept
+# parameterization and this path requires it regardless. The error message is
+# therefore worded as the fact of the missing intercept rather than as the
+# numeric coding's consequence. The check is on the terms object, so it applies
 # to lm and glm outcome models alike.
 check_ipw_linearization_outcome <- function(
   outcome_mod,
@@ -1235,8 +1242,9 @@ check_ipw_linearization_outcome <- function(
       c(
         "{.fun ipw} supports {.val linearization} standard errors only for an \\
         outcome model with an intercept.",
-        x = "{.arg outcome_mod} was fit without an intercept, which fixes the \\
-        mean under no exposure instead of estimating it.",
+        x = "{.arg outcome_mod} was fit without an intercept.",
+        i = "This covers every no-intercept coding, including a saturated \\
+        factor coding of the exposure, which the M-estimation path accepts.",
         i = "Include an intercept in {.arg outcome_mod}, or use \\
         {.code se_method = \"mestimation\"}."
       ),

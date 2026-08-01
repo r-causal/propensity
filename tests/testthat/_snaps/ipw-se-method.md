@@ -49,7 +49,8 @@
     Condition
       Error in `ipw()`:
       ! `ipw()` supports "linearization" standard errors only for an outcome model with an intercept.
-      x `outcome_mod` was fit without an intercept, which fixes the mean under no exposure instead of estimating it.
+      x `outcome_mod` was fit without an intercept.
+      i This covers every no-intercept coding, including a saturated factor coding of the exposure, which the M-estimation path accepts.
       i Include an intercept in `outcome_mod`, or use `se_method = "mestimation"`.
 
 # the linearization atu rejection names the SE method
