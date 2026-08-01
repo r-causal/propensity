@@ -532,6 +532,71 @@ test_that("ipw() categorical rejects a matrix-response outcome model", {
   expect_match(msg, "matrix response", fixed = TRUE)
 })
 
+# ---- a .data whose covariates rebuild a differently shaped design ------------
+#
+# The propensity design is rebuilt from `.data` while the coefficients come from
+# the fit, and the multinomial coefficient block is named by pairing each level
+# with each design column. If `.data` gives a covariate a different type than the
+# fit saw, the rebuild can produce a different number of columns, and the pairing
+# produces more names than there are coefficients. What surfaces is a raw error
+# about a names attribute, which says nothing about `.data` or about the column
+# that changed.
+#
+# Only a change in the number of columns matters. A covariate that changes type
+# without changing the design's width is a reparameterization of the same
+# numbers, and the pin below keeps a guard from rejecting one.
+
+test_that("ipw() categorical rejects a .data whose covariate types skew the design", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # x2 was numeric in the fit, so the design had one column for it. As a
+  # three-level factor it expands to two, and the design gains a column the
+  # coefficients have no counterpart for.
+  dat_skew <- dat
+  dat_skew$x2 <- factor(
+    ifelse(dat$x2 == 1, "hi", ifelse(dat$x1 > 0, "mid", "lo")),
+    levels = c("lo", "mid", "hi")
+  )
+  expect_equal(ncol(model.matrix(~ x1 + x2, data = dat)), 3)
+  expect_equal(ncol(model.matrix(~ x1 + x2, data = dat_skew)), 4)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat_skew),
+    class = "propensity_ipw_data_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, ".data", fixed = TRUE)
+})
+
+test_that("ipw() categorical accepts a .data covariate recoded to the same width", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # Passing pin, correct today. A two-level factor in place of the 0/1 numeric
+  # gives one dummy column carrying the same values, so the design is the same
+  # numbers and the analysis is the same analysis. A guard that keyed on the
+  # column's type, or on the design's column names, rather than on the count
+  # would reject this.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  dat_recoded <- dat
+  dat_recoded$x2 <- factor(
+    ifelse(dat$x2 == 1, "hi", "lo"),
+    levels = c("lo", "hi")
+  )
+  expect_equal(ncol(model.matrix(~ x1 + x2, data = dat_recoded)), 3)
+
+  expect_equal(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat_recoded)$estimates$estimate,
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat)$estimates$estimate,
+    tolerance = 1e-10
+  )
+})
+
 # ---- a wrong-sized .data is a data problem -----------------------------------
 #
 # The categorical path sizes the exposure, the outcome, and the designs to
