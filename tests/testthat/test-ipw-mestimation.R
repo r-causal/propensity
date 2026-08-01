@@ -1257,6 +1257,27 @@ test_that("linearization errors informatively when the outcome model frame is go
   }
 })
 
+test_that("the frame-gone outcome error explains why .data cannot help", {
+  skip_if_not_installed("deli")
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  outcome_gone <- frame_gone_outcome(dat, wts)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(ps_mod, outcome_gone, se_method = "mestimation")
+  )
+})
+
 test_that("the categorical path errors informatively when the outcome frame is gone", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")

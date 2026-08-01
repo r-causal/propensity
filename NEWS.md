@@ -1,5 +1,13 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now reports an outcome model whose fitting data can no longer be
+  reached with a classed error naming `outcome_mod`, on every exposure type and
+  both standard error methods, instead of the raw object-not-found error the
+  refitting attempt produced. The message directs the user to refit
+  `outcome_mod`, and says why `.data` is not the remedy it is for a propensity
+  model in the same state: the weights are read from the outcome model's own
+  frame, which `.data` cannot supply.
+
 * `ipw(se_method = "mestimation")` now rejects a propensity score model that
   separates the exposure, with an error that says so and names how many
   observations are affected. A separating model has no finite maximum likelihood

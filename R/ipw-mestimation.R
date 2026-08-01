@@ -307,8 +307,23 @@ ipw_extract_ps_design <- function(
     }
     exposure <- ps_extract$exposure
     ps_X <- ps_extract$ps_X
-    outcome <- fmla_extract_left_vctr(outcome_mod)
-    mm_data <- model.frame(outcome_mod)
+
+    # The outcome model's frame gets the same treatment. Every public `ipw()`
+    # method reads the weights out of that frame before any design work, so a
+    # frame-gone outcome model is rejected there first and never arrives here;
+    # this guard is for callers that reach the spec constructors directly.
+    outcome_extract <- tryCatch(
+      list(
+        outcome = fmla_extract_left_vctr(outcome_mod),
+        mm_data = model.frame(outcome_mod)
+      ),
+      error = function(e) e
+    )
+    if (inherits(outcome_extract, "error")) {
+      abort_outcome_frame_gone(conditionMessage(outcome_extract), call = call)
+    }
+    outcome <- outcome_extract$outcome
+    mm_data <- outcome_extract$mm_data
     check_exposure(mm_data, exposure_name, call = call)
   } else {
     assert_columns_exist(.data, c(exposure_name, outcome_name), call = call)

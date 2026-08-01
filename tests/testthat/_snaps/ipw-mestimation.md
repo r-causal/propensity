@@ -18,6 +18,17 @@
       i Supported links: "logit", "probit", and "cloglog".
       i Refit `wt_mod` with a supported link, or set `ps_link` to one of them.
 
+# the frame-gone outcome error explains why .data cannot help
+
+    Code
+      ipw(ps_mod, outcome_gone, se_method = "mestimation")
+    Condition
+      Error in `ipw()`:
+      ! Can't reconstruct the data behind `outcome_mod`.
+      x object 'd_local' not found
+      i Refit `outcome_mod` where its data is available, or fit it with `model = TRUE` so the model frame is kept.
+      i `.data` cannot stand in here: the weights are read from `outcome_mod`'s own model frame.
+
 # the separation error names the count and points at the model
 
     Code

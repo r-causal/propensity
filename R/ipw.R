@@ -1605,10 +1605,37 @@ effective_stabilizer <- function(wts, exposure, estimand) {
   1
 }
 
-extract_weights <- function(.mod) {
-  .mod |>
-    model.frame() |>
-    model.weights()
+# Report an outcome model whose fitting data can no longer be reached, the
+# counterpart of the guard `ipw_extract_ps_design()` applies to the propensity
+# model. The remedy is different and the difference is the point: `.data` rebuilds
+# a propensity design, but it cannot stand in for the outcome model's frame,
+# because the weights are read from that frame and `.data` carries covariates
+# rather than weights. Offering `.data` here would send the user somewhere that
+# cannot work, so the message says to refit and says why.
+abort_outcome_frame_gone <- function(cause, call = rlang::caller_env()) {
+  abort(
+    c(
+      "Can't reconstruct the data behind {.arg outcome_mod}.",
+      x = "{cause}",
+      i = "Refit {.arg outcome_mod} where its data is available, or fit it \\
+      with {.code model = TRUE} so the model frame is kept.",
+      i = "{.arg .data} cannot stand in here: the weights are read from \\
+      {.arg outcome_mod}'s own model frame."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# Every caller supplies the outcome model, so the guard above names it directly.
+extract_weights <- function(.mod, call = rlang::caller_env()) {
+  mf <- tryCatch(model.frame(.mod), error = function(e) e)
+
+  if (inherits(mf, "error")) {
+    abort_outcome_frame_gone(conditionMessage(mf), call = call)
+  }
+
+  model.weights(mf)
 }
 
 # Convert an outcome response to the 0/1 numeric coding a binomial glm uses. A
