@@ -979,26 +979,39 @@ test_that("ipw() categorical accepts a saturated no-intercept outcome model", {
 test_that("ipw() categorical accepts a no-intercept outcome model adjusted for a covariate", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
-  # y ~ a + x1 - 1 has no intercept, but the exposure keeps its saturated dummy
-  # coding and the covariate still varies at every level, so no counterfactual
-  # design is identically zero. It is g-computation on the model as specified
-  # and must run. This is the categorical companion to "mestimation accepts a
-  # no-intercept outcome model adjusted for a covariate" in
-  # test-ipw-mestimation.R.
+  # The covariate is what keeps this model out of both guards, which is why the
+  # exposure is coded as numeric indicators rather than as the factor. Dropping
+  # an intercept does not cost a factor its baseline: R answers y ~ a + x1 - 1
+  # with full dummy coding, so the designs there are nonzero whether or not x1
+  # is present and the case reduces to the saturated test above. With one
+  # indicator per non-reference level the reference design is the indicators at
+  # zero, so y ~ ind_b + ind_c - 1 alone would trip the zero-design guard at
+  # "a"; x1 is the only column keeping that design alive.
+  #
+  # The same designs are also pairwise distinct, "a" at the origin, "b" and "c"
+  # one step along their own axis, so this doubles as the pin that the
+  # indistinguishable-design guard leaves a legitimate reparameterization alone.
+  #
+  # This is the categorical companion to "mestimation accepts a no-intercept
+  # outcome model adjusted for a covariate" in test-ipw-mestimation.R, where
+  # numeric z gives the binary path the same reference-at-the-origin design.
+  # The transformed terms are unreadable from the model frame, so this coding
+  # reaches the counterfactual designs only through .data.
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   adjusted <- glm(
-    y ~ a + x1 - 1,
+    y ~ as.numeric(a == "b") + as.numeric(a == "c") + x1 - 1,
     data = dat,
     family = quasibinomial(),
     weights = mods$wts,
     control = glm.control(epsilon = 1e-14, maxit = 200)
   )
 
-  res <- ipw(mods$ps_mod, adjusted)
+  res <- ipw(mods$ps_mod, adjusted, .data = dat)
 
   expect_s3_class(res, "ipw")
   expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
   expect_true(all(res$estimates$std.err > 0))
 })
 
@@ -1016,7 +1029,9 @@ test_that("ipw() categorical accepts a no-intercept outcome model adjusted for a
 #
 # The condition is pairwise equality of the designs, not the absence of a
 # covariate or of an intercept. A coding that carries one indicator per
-# non-reference level separates every pair and must keep working.
+# non-reference level separates every pair and must keep working; that negative
+# case is pinned by "ipw() categorical accepts a no-intercept outcome model
+# adjusted for a covariate" above, which uses exactly that coding.
 
 test_that("ipw() categorical rejects an outcome model whose counterfactual designs are pairwise identical", {
   skip_if_not_installed("nnet")
@@ -1091,32 +1106,6 @@ test_that("ipw() categorical rejects pairwise-identical counterfactual designs u
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "identical counterfactual designs", fixed = TRUE)
   expect_match(msg, "`a` to \"a\" and \"b\"", fixed = TRUE)
-})
-
-test_that("ipw() categorical accepts a numeric indicator per non-reference level", {
-  skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
-  # One indicator per non-reference level is the numeric reparameterization of
-  # y ~ a + x1 - 1. The "a" design has both indicators at zero, "b" has the first
-  # at one, "c" has the second, so no pair coincides and no design is zero. It is
-  # honest g-computation on the model as specified and must keep running with
-  # every contrast finite.
-  dat <- sim_categorical()
-  mods <- fit_categorical_models(dat, "ate")
-  dual <- glm(
-    y ~ as.numeric(a == "b") + as.numeric(a == "c") + x1 - 1,
-    data = dat,
-    family = quasibinomial(),
-    weights = mods$wts,
-    control = glm.control(epsilon = 1e-14, maxit = 200)
-  )
-
-  res <- ipw(mods$ps_mod, dual, .data = dat)
-
-  expect_s3_class(res, "ipw")
-  expect_true(all(is.finite(res$estimates$estimate)))
-  expect_true(all(is.finite(res$estimates$std.err)))
-  expect_true(all(res$estimates$std.err > 0))
 })
 
 # ---- arguments that fall into the dots --------------------------------------
