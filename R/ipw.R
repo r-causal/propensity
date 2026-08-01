@@ -623,23 +623,7 @@ ipw_continuous_estimate <- function(
     )
   }
 
-  # ps_link overrides the link of a binomial glm propensity model on the binary
-  # path; a continuous propensity model has no such link, so reject a non-NULL
-  # argument rather than silently ignoring it.
-  if (!is.null(ps_link)) {
-    abort(
-      c(
-        "{.fun ipw} does not accept {.arg ps_link} for a continuous propensity \\
-        score model.",
-        x = "A continuous propensity score model has no link for \\
-        {.arg ps_link} to override.",
-        i = "Omit {.arg ps_link}; it applies only to a binomial glm propensity \\
-        score model."
-      ),
-      error_class = "propensity_ipw_link_error",
-      call = call
-    )
-  }
+  check_ipw_ps_link_absent(ps_link, "continuous", call = call)
 
   if (identical(se_method, "linearization")) {
     abort(
@@ -813,6 +797,34 @@ check_ipw_binary_focal <- function(
     error_class = "propensity_focal_level_error",
     call = call
   )
+}
+
+# Reject a non-NULL `ps_link` for a propensity model that has no link to
+# override. `ps_link` restates the link of a binomial glm on the binary path;
+# a multinomial or continuous propensity model has none, so accepting the
+# argument there would silently ignore it. `model_kind` names the model in the
+# message and is the only thing that differs between the two callers.
+check_ipw_ps_link_absent <- function(
+  ps_link,
+  model_kind,
+  call = rlang::caller_env()
+) {
+  if (!is.null(ps_link)) {
+    abort(
+      c(
+        "{.fun ipw} does not accept {.arg ps_link} for a {model_kind} \\
+        propensity score model.",
+        x = "A {model_kind} propensity score model has no link for \\
+        {.arg ps_link} to override.",
+        i = "Omit {.arg ps_link}; it applies only to a binomial glm propensity \\
+        score model."
+      ),
+      error_class = "propensity_ipw_link_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
 }
 
 # Reject a propensity score model with a matrix response. A binary exposure must

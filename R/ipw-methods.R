@@ -32,19 +32,7 @@ ipw.multinom <- function(
   # ps_link overrides the link of a binomial glm propensity model on the binary
   # path; a multinomial propensity model has no such link, so reject a non-NULL
   # argument rather than silently ignoring it.
-  if (!is.null(ps_link)) {
-    abort(
-      c(
-        "{.fun ipw} does not accept {.arg ps_link} for a multinomial propensity \\
-        score model.",
-        x = "A multinomial propensity score model has no link for \\
-        {.arg ps_link} to override.",
-        i = "Omit {.arg ps_link}; it applies only to a binomial glm propensity \\
-        score model."
-      ),
-      error_class = "propensity_ipw_link_error"
-    )
-  }
+  check_ipw_ps_link_absent(ps_link, "multinomial")
 
   if (identical(se_method, "linearization")) {
     abort(
