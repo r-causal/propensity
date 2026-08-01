@@ -332,6 +332,41 @@ vec_arith.psw.integer <- function(op, x, y, ...) {
   vec_restore(result, x)
 }
 
+# A stabilization score of length > 1 is indexed by observation, so it is only
+# meaningful at the length it was recorded on. Nothing rebuilding a psw is given
+# the indices behind a length change, and the subscript method for this class is
+# owned upstream, so per-observation metadata cannot be re-indexed here.
+#
+# Zero-length data is exempt. A prototype or empty subset carries no
+# observations, so a score on it lines up with nothing and misleads no one, and
+# keeping it lets the restore that builds the real result compare the score
+# against the length that observations actually arrive at.
+stabilization_score_aligns <- function(score, n) {
+  n == 0 || length(score) <= 1 || length(score) == n
+}
+
+# The psw type is all six metadata fields, so anything that rebuilds a psw
+# around another vector's data owes every one of them to the object supplying
+# the type. A misaligned per-observation score is the exception and is dropped:
+# a later read sees an absent score rather than one silently misaligned with the
+# weights.
+carry_psw_metadata <- function(x, to) {
+  score <- stabilization_score(to)
+  if (!stabilization_score_aligns(score, length(x))) {
+    score <- NULL
+  }
+
+  new_psw(
+    x,
+    estimand = estimand(to),
+    stabilized = is_stabilized(to),
+    trimmed = is_ps_trimmed(to),
+    truncated = is_ps_truncated(to),
+    calibrated = is_ps_calibrated(to),
+    stabilization_score = score
+  )
+}
+
 #' @export
 vec_restore.psw <- function(x, to, ...) {
   # Extract numeric data if needed
@@ -339,19 +374,15 @@ vec_restore.psw <- function(x, to, ...) {
     x <- vec_data(x)
   }
 
-  # A stabilization score of length > 1 is indexed by observation, so it is only
-  # meaningful at the length it was recorded on. This hook is not given the
-  # indices behind a length-changing operation, and the subscript method for
-  # this class is owned upstream, so per-observation metadata cannot be
-  # re-indexed here. Dropping it is the safe outcome: a later read sees an
-  # absent score rather than one silently misaligned with the weights.
-  #
-  # Zero-length data is exempt. A prototype or empty subset carries no
-  # observations, so a score on it lines up with nothing and misleads no one,
-  # and keeping it lets the restore that builds the real result compare the
-  # score against the length that observations actually arrive at.
+  # Only a restore announces the drop, because only a restore has an audience
+  # for it: `to` is the weights the operation was performed on, so a user who
+  # recorded a per-observation score has something to act on. In a cast, `to`
+  # supplies the type and its score describes `to`'s own observations rather
+  # than the incoming data. Outside vctrs' subassignment intermediates, where
+  # the restore that follows reattaches the target's score anyway, a cast's `to`
+  # is a prototype, which cannot carry a score misaligned with itself.
   score <- stabilization_score(to)
-  if (length(x) > 0 && length(score) > 1 && length(score) != length(x)) {
+  if (!stabilization_score_aligns(score, length(x))) {
     warn(
       c(
         "Dropping the per-observation {.arg stabilization_score}.",
@@ -366,19 +397,9 @@ vec_restore.psw <- function(x, to, ...) {
       # be reported here and names nothing the caller wrote.
       call = NULL
     )
-    score <- NULL
   }
 
-  # Preserve psw attributes
-  new_psw(
-    x,
-    estimand = estimand(to),
-    stabilized = is_stabilized(to),
-    trimmed = is_ps_trimmed(to),
-    truncated = is_ps_truncated(to),
-    calibrated = isTRUE(attr(to, "calibrated")),
-    stabilization_score = score
-  )
+  carry_psw_metadata(x, to)
 }
 
 #' @export
@@ -452,11 +473,20 @@ vec_ptype2.double.psw <- function(x, y, ...) {
   double()
 }
 
+# A cast returns `x`'s data in `to`'s type, so the data is stripped back to bare
+# doubles and the whole type, metadata included, comes from `to`.
+cast_to_psw <- function(x, to) {
+  x <- vec_cast(vec_data(x), to = double())
+  attributes(x) <- NULL
+
+  carry_psw_metadata(x, to)
+}
+
 #' @export
 vec_cast.psw.psw <- function(x, to, ...) x
 
 #' @export
-vec_cast.psw.double <- function(x, to, ...) psw(x, estimand = estimand(to))
+vec_cast.psw.double <- function(x, to, ...) cast_to_psw(x, to)
 
 #' @export
 vec_cast.double.psw <- function(x, to, ...) vec_data(x)
@@ -490,9 +520,7 @@ vec_ptype2.integer.psw <- function(x, y, ...) {
 }
 
 #' @export
-vec_cast.psw.integer <- function(x, to, estimand = NULL, ...) {
-  psw(x, estimand = estimand(to))
-}
+vec_cast.psw.integer <- function(x, to, ...) cast_to_psw(x, to)
 
 #' @export
 vec_cast.integer.psw <- function(x, to, ...) {
@@ -500,9 +528,7 @@ vec_cast.integer.psw <- function(x, to, ...) {
 }
 
 #' @export
-vec_cast.psw.ps_trim <- function(x, to, ...) {
-  psw(vec_data(x), estimand = estimand(to))
-}
+vec_cast.psw.ps_trim <- function(x, to, ...) cast_to_psw(x, to)
 
 #' @export
 vec_cast.ps_trim.psw <- function(x, to, ...) {
@@ -510,9 +536,7 @@ vec_cast.ps_trim.psw <- function(x, to, ...) {
 }
 
 #' @export
-vec_cast.psw.ps_trunc <- function(x, to, ...) {
-  psw(vec_data(x), estimand = estimand(to))
-}
+vec_cast.psw.ps_trunc <- function(x, to, ...) cast_to_psw(x, to)
 
 #' @export
 vec_cast.ps_trunc.psw <- function(x, to, ...) {

@@ -180,15 +180,13 @@ test_that("vec_cast keeps a per-observation stabilization score at a matching le
   expect_true(is_stabilized(out))
 })
 
-test_that("vec_cast drops a per-observation stabilization score at a different length", {
+test_that("vec_cast drops a per-observation stabilization score at a different length silently", {
   score <- c(0.51, 0.52, 0.53)
   to <- psw_cast_prototype(stabilization_score = score)
 
-  cnd <- expect_warning(
-    out <- vec_cast(c(1, 2), to = to),
-    class = "propensity_stabilization_score_warning"
-  )
-  expect_s3_class(cnd, "propensity_warning")
+  # The score describes the observations behind `to`, not the data being cast,
+  # so a length it does not match is nothing the caller can act on.
+  out <- expect_silent(vec_cast(c(1, 2), to = to))
 
   expect_s3_class(out, "psw")
   expect_length(out, 2)

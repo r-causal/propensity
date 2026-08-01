@@ -1,5 +1,15 @@
 # propensity 0.1.0.9000 (development version)
 
+* Casting a double vector, an integer vector, a `ps_trim`, or a `ps_trunc` to a
+  `psw` prototype now carries every metadata field of the prototype rather than
+  its estimand alone. The stabilized, trimmed, truncated, and calibrated flags
+  and the stabilization score were dropped, so such a cast returned weights that
+  described themselves as neither stabilized nor modified whatever the prototype
+  said, with nothing signaled. A per-observation stabilization score transfers
+  only when its length matches the data being cast, since it describes the
+  prototype's observations rather than the incoming data; at any other length it
+  is dropped silently and the result stays marked as stabilized.
+
 * `ipw(se_method = "linearization")` now rejects a `ps_link` naming a link other
   than the one the propensity score model was fit with, naming both. The score
   factor, the weight derivatives, and the correction matrix are all derived from
