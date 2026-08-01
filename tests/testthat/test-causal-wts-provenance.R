@@ -325,13 +325,15 @@ test_that("subsetting a trimmed psw drops the unit-level trimming index", {
 
   # The trimming index is written against the full vector and nothing rebuilding
   # a psw is handed the subscript, so a subset cannot re-index it and the index
-  # is dropped. The drop is silent because `model.frame()` shortens these weights
-  # inside every outcome model fit on them, with no subscript in the user's code.
-  # What the assertion guards on the other side is the blind-attribute-copy
-  # regression, which would re-attach an index built against the original vector
-  # and return a length-`n` logical for a length-2 subset. With no index left,
-  # `is_unit_trimmed()` reports that it cannot answer rather than reporting every
-  # unit as retained.
+  # is dropped. The drop is silent because vctrs sees only some of the routes
+  # these weights take: base R re-attaches the index to a shortened weights
+  # column inside `model.frame()`, so a warning here would be neither complete
+  # nor about anything in the user's code. What the assertion guards on the other
+  # side is the blind-attribute-copy regression, which would re-attach an index
+  # built against the original vector and return a length-`n` logical for a
+  # length-2 subset. Whether the index is missing or merely does not cover these
+  # weights, `is_unit_trimmed()` reports that it cannot answer rather than
+  # answering from it.
   first_two <- expect_silent(wt[1:2])
   expect_true(is_ps_trimmed(first_two))
   expect_null(ps_trim_meta(first_two))

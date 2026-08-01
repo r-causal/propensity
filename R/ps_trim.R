@@ -595,7 +595,20 @@ is_ps_trimmed.ps_trim_matrix <- function(x) {
 #'   to [is_ps_trimmed()], which tests whether the object has been trimmed at
 #'   all.
 #'
-#' @param x A `ps_trim` object created by [ps_trim()].
+#'   On a [psw] vector built from trimmed propensity scores, the answer comes
+#'   from the trimming record carried on the weights. That record is written for
+#'   a fixed set of observations, and it can both be lost and outlive them: a
+#'   subset drops it, while `model.frame()` re-attaches it to the shortened
+#'   weights column of an outcome model fit on these weights, and subassignment
+#'   that grows the vector carries it across the length change.
+#'   `is_unit_trimmed()` therefore checks that the record covers the vector it
+#'   is given, and raises an error of class `propensity_missing_meta_error` when
+#'   it does not, or when weights marked as trimmed carry no record at all,
+#'   rather than name trimmed units at stale positions. Query the `ps_trim`
+#'   object the weights were built from instead.
+#'
+#' @param x A `ps_trim` object created by [ps_trim()], or a [psw] vector built
+#'   from one.
 #' @return A logical vector the same length as `x`, where `TRUE` marks a
 #'   trimmed unit.
 #'
@@ -1321,6 +1334,15 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
 #' `is_refit()` tests whether `x` is a `ps_trim` object whose propensity
 #' model has been refit on the retained (non-trimmed) observations via
 #' [ps_refit()].
+#'
+#' On a [psw] vector built from trimmed propensity scores, the answer comes from
+#' the trimming record carried on the weights. `is_refit()` reads a single flag
+#' out of that record rather than a position, so unlike [is_unit_trimmed()] it
+#' answers from any record present, whatever length the weights have since taken
+#' on. It raises an error of class `propensity_missing_meta_error` only when
+#' weights marked as trimmed carry no record at all, which is what a subset of
+#' such weights leaves behind. Weights that were never trimmed have nothing
+#' missing and return `FALSE`.
 #'
 #' @param x An object to test (typically a [ps_trim] vector).
 #' @return A single `TRUE` or `FALSE`.

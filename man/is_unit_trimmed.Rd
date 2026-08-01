@@ -7,7 +7,8 @@
 is_unit_trimmed(x)
 }
 \arguments{
-\item{x}{A \code{ps_trim} object created by \code{\link[=ps_trim]{ps_trim()}}.}
+\item{x}{A \code{ps_trim} object created by \code{\link[=ps_trim]{ps_trim()}}, or a \link{psw} vector built
+from one.}
 }
 \value{
 A logical vector the same length as \code{x}, where \code{TRUE} marks a
@@ -18,6 +19,18 @@ trimmed unit.
 observations were removed by trimming. This is a per-unit query, as opposed
 to \code{\link[=is_ps_trimmed]{is_ps_trimmed()}}, which tests whether the object has been trimmed at
 all.
+
+On a \link{psw} vector built from trimmed propensity scores, the answer comes
+from the trimming record carried on the weights. That record is written for
+a fixed set of observations, and it can both be lost and outlive them: a
+subset drops it, while \code{model.frame()} re-attaches it to the shortened
+weights column of an outcome model fit on these weights, and subassignment
+that grows the vector carries it across the length change.
+\code{is_unit_trimmed()} therefore checks that the record covers the vector it
+is given, and raises an error of class \code{propensity_missing_meta_error} when
+it does not, or when weights marked as trimmed carry no record at all,
+rather than name trimmed units at stale positions. Query the \code{ps_trim}
+object the weights were built from instead.
 }
 \examples{
 ps <- c(0.05, 0.3, 0.6, 0.95)

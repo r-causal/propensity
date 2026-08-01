@@ -117,11 +117,42 @@ metadata matches; mismatched metadata produces a warning and falls back to a
 plain numeric vector.
 
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
-The one exception is a \code{stabilization_score} holding one value per
-observation: it is indexed by observation and cannot be re-indexed for the
-subset, so any operation that changes the length of the weights drops it and
-warns. The result stays a \code{psw} and keeps every other attribute, including
-its stabilized status. A single-value score is unaffected.
+Two kinds of attribute hold one value per observation and so cannot be
+re-indexed for a subset: a \code{stabilization_score} with more than one value,
+and the records left by a modified propensity score (\code{ps_trim_meta},
+\code{ps_trunc_meta}, and \code{ps_calib_meta}). Where an operation goes through
+vctrs, these are carried when the result comes back at the length they were
+recorded on and dropped when it does not. Any same-length operation keeps
+them, a reordering or a subscript with duplicates included, so the positions
+a record names can end up describing different observations than they did.
+
+Dropping the \code{stabilization_score} warns, because the score was supplied by
+the user and the weights can be recomputed on the subset. Dropping a
+modification record is silent, because these records also travel by routes
+vctrs does not see, and a warning on the one route it controls would be
+neither complete nor about anything the user wrote. Subassignment that grows
+the vector carries a record across the length change, since \verb{[<-} casts the
+replacement and then leaves base R to preserve the attributes; and
+\code{model.frame()} drops the \code{NA}-weighted rows from a weights column in C and
+re-attaches the original variable's attributes to the shortened result, so
+weights built on trimmed propensity scores come back out of every outcome
+model fit on them still carrying a record written for rows that are no
+longer there.
+
+Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} answers by
+position, so it checks that the record covers the vector it is given and
+raises an error of class \code{propensity_missing_meta_error} when it does not,
+or when weights marked as trimmed carry no record at all, rather than name
+trimmed units at stale positions. \code{\link[=is_refit]{is_refit()}} reads a single flag rather
+than a position, so it answers from any record present and refuses only when
+the record is absent entirely.
+
+The result of any of these operations stays a \code{psw} and keeps every other
+attribute, including its stabilized, trimmed, truncated, and calibrated
+status, and the attributes describing a categorical exposure, which name the
+exposure levels rather than the units and so mean the same thing at any
+length.
+
 Matrix or array subscripts intentionally drop the \code{psw} class and return
 a plain numeric vector via base R linear indexing; this is required so
 \code{glm.fit()}-style internal indexing works on \code{psw}-weighted GLMs.

@@ -1,5 +1,45 @@
 # propensity 0.1.0.9000 (development version)
 
+* Arithmetic and subsetting on a `psw` vector now carry the record left by a
+  modified propensity score (`ps_trim_meta`, `ps_trunc_meta`, and
+  `ps_calib_meta`) whenever the result comes back at the length the record was
+  written for. Every such operation previously discarded these records, so
+  `is_unit_trimmed()` on the result of something as ordinary as
+  `weights / sum(weights)` reported every unit as retained while
+  `is_ps_trimmed()` still reported the weights as trimmed. An operation that
+  shortens the weights drops the record, silently: these records also travel by
+  routes vctrs does not control, so a warning on the one route it does control
+  would be neither complete nor about anything the user wrote.
+
+* `is_unit_trimmed()` and `is_refit()` on a `psw` vector now raise an error of
+  class `propensity_missing_meta_error`, pointing at the `ps_trim` object the
+  weights were built from, instead of answering from a trimming record they
+  cannot use. `is_unit_trimmed()` answers by position, so it refuses both when
+  weights marked as trimmed carry no record and when the record does not cover
+  the vector it is given. The second case is reachable with no subsetting at all
+  in the user's code: `model.frame()` drops the `NA`-weighted rows from a
+  weights column in C and re-attaches the original variable's attributes to the
+  shortened result, so the weights read back out of an outcome model fit on
+  trimmed weights carry a record written for rows that are no longer there, and
+  previously reported trimmed units at stale positions among rows that had all
+  been retained. `is_refit()` reads a single flag rather than a position, so it
+  answers from any record present and refuses only when the record is absent
+  entirely. Weights that were never trimmed are unaffected.
+
+* `is_unit_trimmed()` on an empty `psw` now returns an empty logical vector.
+  Where the weights were empty but still carried a trimming record, indexing by
+  the positions that record named grew the result instead, returning a vector as
+  long as the original weights, padded with `NA`, for a vector of no
+  observations.
+
+* The attributes describing a categorical exposure (`n_categories`,
+  `category_names`, and `focal_category`) now survive `psw` arithmetic and
+  subsetting, including subsetting that shortens the weights. They name the
+  exposure levels rather than the units, so they mean the same thing at any
+  length. Previously any arithmetic or subsetting dropped them, which left
+  `ipw()` unable to resolve the focal level for categorical `"att"` and `"atu"`
+  weights that had passed through a data frame operation.
+
 * Casting a double vector, an integer vector, a `ps_trim`, or a `ps_trunc` to a
   `psw` prototype now carries every metadata field of the prototype rather than
   its estimand alone. The stabilized, trimmed, truncated, and calibrated flags

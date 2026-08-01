@@ -350,17 +350,23 @@ test_that("psw works with ggplot2", {
 
 # Weights built from a modified propensity score carry the modification's
 # record: `ps_trim_meta`, `ps_trunc_meta`, or `ps_calib_meta`. Those records are
-# indexed by observation, so they are kept whenever the weights come back at the
-# length the record was written for, dropped when they do not, and left alone at
-# zero length.
+# indexed by observation, so where an operation goes through vctrs they are kept
+# whenever the weights come back at the length the record was written for,
+# dropped when they do not, and left alone at zero length.
 #
-# The drop is silent. `model.frame()` slices `NA`-weighted rows out of the
-# weights, so weights built on a trimmed propensity score are shortened inside
-# every outcome model fit on them, with no subscript anywhere in the user's code
-# and no indices available to a restore. A warning there would fire on ordinary
-# work and say nothing actionable. Honesty lives at query time instead:
-# `is_unit_trimmed()` and `is_refit()` refuse to answer once the record is gone
-# rather than reporting every unit as retained.
+# The drop is silent, because vctrs is not the only route these records take. A
+# `[<-` that grows the vector carries one across a length change, and
+# `model.frame()` shortens a weights column in C and re-attaches the original
+# variable's attributes to it, so weights built on a trimmed propensity score
+# come back out of every outcome model fit on them still carrying a record for
+# rows that were dropped. A warning on the one route vctrs controls would fire
+# on ordinary work while saying nothing about the others.
+#
+# Honesty lives at query time instead. `is_unit_trimmed()` answers by position,
+# so it refuses a record that does not cover the vector it is given, whichever
+# route that vector arrived by. `is_refit()` reads one flag rather than a
+# position, so it answers from any record present and refuses only when weights
+# marked as trimmed have no record at all.
 #
 # The categorical attributes are not indexed by observation and describe the
 # exposure rather than the units, so they follow no length rule and survive
@@ -565,6 +571,12 @@ test_that("a zero-length psw restore keeps the trimming record silently", {
   proto <- expect_silent(vec_ptype(w))
   expect_length(proto, 0)
   expect_identical(ps_trim_meta(proto), meta)
+
+  # No observations, no answers. Indexing an empty logical by the positions the
+  # record names would grow one as long as the original weights, padded with
+  # `NA`, which is neither an answer nor the documented return length.
+  expect_identical(is_unit_trimmed(empty), logical(0))
+  expect_identical(is_unit_trimmed(proto), logical(0))
 })
 
 test_that("shortening a psw with a score and a trimming record warns only for the score", {
@@ -618,10 +630,12 @@ test_that("subassigning into a decorated psw is silent and keeps its metadata", 
   x <- trimmed_psw(stabilization_score = score)
   meta <- ps_trim_meta(x)
 
-  # Subassignment casts the replacement to the target's type and then restores
-  # the result at full length. The intermediate cast is shorter than the record,
-  # so anything that warned there would warn on an operation that ends with both
-  # the score and the record intact.
+  # `[<-` casts the replacement to the target's type and then hands off to base
+  # R, which assigns into the target and leaves its attributes alone; no restore
+  # runs on the result. Only the cast passes through this package, and it sees a
+  # length-2 value against a length-5 record, so anything that warned there
+  # would warn on an operation that ends with both the score and the record
+  # intact and correct.
   expect_silent({
     x[1:2] <- c(0.5, 0.6)
   })
@@ -715,4 +729,63 @@ test_that("is_refit() aborts on a trimmed psw with no trimming record", {
 
   # A record that simply does not mention a refit is an answer, not a gap.
   expect_false(is_refit(trimmed_psw()))
+})
+
+test_that("weights read out of an outcome model's frame refuse the positional query", {
+  # The route the silence design turns on, and the one no subscript in the
+  # user's code goes near. `model.frame()` drops the `NA`-weighted rows in C and
+  # re-attaches the original variable's attributes to the shortened column, so
+  # the weights arrive carrying a record written for rows that are gone. Every
+  # row that survived was retained, so the record's positions name trimmed units
+  # among units that were all kept.
+  set.seed(9)
+  n <- 40
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  y <- rbinom(n, 1, 0.4)
+  ps <- ps_trim(plogis(0.5 * x), method = "ps", lower = 0.35, upper = 0.65)
+  w <- without_refit_warning(
+    wt_ate(ps, z, exposure_type = "binary", .focal_level = 1)
+  )
+  expect_gt(sum(is.na(w)), 0)
+
+  fit <- glm(
+    y ~ x,
+    data = data.frame(y = y, x = x),
+    weights = w,
+    family = quasibinomial()
+  )
+  model_wts <- model.frame(fit)[["(weights)"]]
+
+  expect_s3_class(model_wts, "psw")
+  expect_lt(length(model_wts), length(w))
+  expect_identical(ps_trim_meta(model_wts), ps_trim_meta(w))
+
+  expect_error(
+    is_unit_trimmed(model_wts),
+    class = "propensity_missing_meta_error"
+  )
+
+  # A refit is one fact about the propensity model rather than about any
+  # position, so a record that no longer covers these weights still answers it.
+  expect_false(expect_silent(is_refit(model_wts)))
+
+  # Where the weights came from is vector-level provenance and is untouched.
+  expect_true(is_ps_trimmed(model_wts))
+})
+
+test_that("growing a psw by subassignment leaves a record that no longer covers it", {
+  # `[<-` casts the replacement and then leaves base R to preserve the target's
+  # attributes, so the record crosses a length change no restore ever sees. It
+  # describes five observations and the weights now hold seven.
+  w <- trimmed_psw()
+  expect_silent({
+    w[7] <- 2
+  })
+
+  expect_length(w, 7)
+  expect_identical(ps_trim_meta(w), ps_trim_meta(trimmed_psw()))
+  expect_true(is_ps_trimmed(w))
+  expect_error(is_unit_trimmed(w), class = "propensity_missing_meta_error")
+  expect_false(expect_silent(is_refit(w)))
 })

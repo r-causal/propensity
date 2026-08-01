@@ -39,11 +39,42 @@
 #' plain numeric vector.
 #'
 #' Subsetting with `[` preserves class and attributes for vector subscripts.
-#' The one exception is a `stabilization_score` holding one value per
-#' observation: it is indexed by observation and cannot be re-indexed for the
-#' subset, so any operation that changes the length of the weights drops it and
-#' warns. The result stays a `psw` and keeps every other attribute, including
-#' its stabilized status. A single-value score is unaffected.
+#' Two kinds of attribute hold one value per observation and so cannot be
+#' re-indexed for a subset: a `stabilization_score` with more than one value,
+#' and the records left by a modified propensity score (`ps_trim_meta`,
+#' `ps_trunc_meta`, and `ps_calib_meta`). Where an operation goes through
+#' vctrs, these are carried when the result comes back at the length they were
+#' recorded on and dropped when it does not. Any same-length operation keeps
+#' them, a reordering or a subscript with duplicates included, so the positions
+#' a record names can end up describing different observations than they did.
+#'
+#' Dropping the `stabilization_score` warns, because the score was supplied by
+#' the user and the weights can be recomputed on the subset. Dropping a
+#' modification record is silent, because these records also travel by routes
+#' vctrs does not see, and a warning on the one route it controls would be
+#' neither complete nor about anything the user wrote. Subassignment that grows
+#' the vector carries a record across the length change, since `[<-` casts the
+#' replacement and then leaves base R to preserve the attributes; and
+#' `model.frame()` drops the `NA`-weighted rows from a weights column in C and
+#' re-attaches the original variable's attributes to the shortened result, so
+#' weights built on trimmed propensity scores come back out of every outcome
+#' model fit on them still carrying a record written for rows that are no
+#' longer there.
+#'
+#' Honesty therefore lives at query time. [is_unit_trimmed()] answers by
+#' position, so it checks that the record covers the vector it is given and
+#' raises an error of class `propensity_missing_meta_error` when it does not,
+#' or when weights marked as trimmed carry no record at all, rather than name
+#' trimmed units at stale positions. [is_refit()] reads a single flag rather
+#' than a position, so it answers from any record present and refuses only when
+#' the record is absent entirely.
+#'
+#' The result of any of these operations stays a `psw` and keeps every other
+#' attribute, including its stabilized, trimmed, truncated, and calibrated
+#' status, and the attributes describing a categorical exposure, which name the
+#' exposure levels rather than the units and so mean the same thing at any
+#' length.
+#'
 #' Matrix or array subscripts intentionally drop the `psw` class and return
 #' a plain numeric vector via base R linear indexing; this is required so
 #' `glm.fit()`-style internal indexing works on `psw`-weighted GLMs.
@@ -199,12 +230,87 @@ is_ps_trimmed.psw <- function(x) {
   isTRUE(attr(x, "trimmed"))
 }
 
+# The number of observations a trimming record was written for. `keep_idx` and
+# `trimmed_idx` partition those observations in every `ps_trim()` method, so
+# their total is the length the record is entitled to speak for.
+recorded_trim_length <- function(meta) {
+  length(meta$keep_idx) + length(meta$trimmed_idx)
+}
+
+# `recorded` is the length the record covers, or NULL when there is no record.
+abort_trim_meta <- function(fn, recorded, n, call) {
+  problem <- if (is.null(recorded)) {
+    "These weights are marked as built from trimmed propensity scores but
+     carry no record of which units were trimmed."
+  } else {
+    "The record covers {recorded} observation{?s} and these weights have {n},
+     so its positions do not describe them."
+  }
+
+  abort(
+    c(
+      "{.code {fn}} has no usable trimming record for these weights.",
+      x = problem,
+      i = "Call {.code {fn}} on the {.cls ps_trim} object the weights were
+           built from, or rebuild the weights from it."
+    ),
+    error_class = "propensity_missing_meta_error",
+    call = call
+  )
+}
+
+# Both unit-level queries read their answer out of `ps_trim_meta`, so weights
+# marked as trimmed with no record left have no answer to give: reporting every
+# unit as retained, or no refit as having happened, would be a wrong answer
+# rather than a missing one.
+check_trim_meta <- function(x, fn, call = rlang::caller_env()) {
+  if (!is_ps_trimmed(x) || !is.null(ps_trim_meta(x))) {
+    return(invisible(x))
+  }
+
+  abort_trim_meta(fn, recorded = NULL, n = length(x), call = call)
+}
+
+# A positional query needs more than a record: it needs one written for the
+# vector in front of it. A record can outlive the observations it describes,
+# because it does not only travel by routes vctrs controls. `model.frame()`
+# drops the `NA`-weighted rows from a weights column in C and re-attaches the
+# original variable's attributes to the shortened result, so weights built on
+# trimmed propensity scores come back out of every outcome model fit on them
+# still carrying a record written for rows that are no longer there. Growing a
+# psw by subassignment crosses a length change the same way. Answering from
+# either would name trimmed units at positions holding retained ones.
+check_trim_meta_covers <- function(x, fn, call = rlang::caller_env()) {
+  check_trim_meta(x, fn, call = call)
+
+  meta <- ps_trim_meta(x)
+  if (is.null(meta) || recorded_trim_length(meta) == length(x)) {
+    return(invisible(x))
+  }
+
+  abort_trim_meta(
+    fn,
+    recorded = recorded_trim_length(meta),
+    n = length(x),
+    call = call
+  )
+}
+
 #' @export
 is_unit_trimmed.psw <- function(x) {
+  # No observations, no answers. A record kept on an empty vector describes
+  # observations it does not have, and indexing an empty logical by the
+  # positions it names would grow one padded with `NA`.
+  if (length(x) == 0) {
+    return(logical(0))
+  }
+
   out <- vector("logical", length = length(x))
   if (!is_ps_trimmed(x)) {
     return(out)
   }
+
+  check_trim_meta_covers(x, "is_unit_trimmed()")
 
   meta <- ps_trim_meta(x)
   out[meta$trimmed_idx] <- TRUE
@@ -225,11 +331,11 @@ is_unit_truncated.psw <- function(x) {
 
 #' @export
 is_refit.psw <- function(x) {
-  meta <- ps_trim_meta(x)
-  if (!is.null(meta)) {
-    return(isTRUE(meta$refit))
-  }
-  FALSE
+  # `refit` is one flag about the propensity model, not a fact about any
+  # position, so a record that no longer covers these weights still answers it.
+  check_trim_meta(x, "is_refit()")
+
+  isTRUE(ps_trim_meta(x)$refit)
 }
 
 #' @export
@@ -345,18 +451,45 @@ stabilization_score_aligns <- function(score, n) {
   n == 0 || length(score) <= 1 || length(score) == n
 }
 
-# The psw type is all six metadata fields, so anything that rebuilds a psw
-# around another vector's data owes every one of them to the object supplying
-# the type. A misaligned per-observation score is the exception and is dropped:
-# a later read sees an absent score rather than one silently misaligned with the
-# weights.
+# The records a modified propensity score leaves on the weights built from it.
+# Each holds indices into the observations it was recorded on, so like a
+# per-observation stabilization score, each is only meaningful at that length.
+psw_modification_meta <- c("ps_trim_meta", "ps_trunc_meta", "ps_calib_meta")
+
+# Attributes describing a categorical exposure. These name the exposure levels
+# rather than the units, so they carry no length of their own.
+psw_categorical_attrs <- c("n_categories", "category_names", "focal_category")
+
+# A modification record is judged against `to`, the object supplying the type:
+# the record was written for `to`'s observations, so data arriving at `to`'s
+# length is the only data those indices describe. Zero-length data is exempt for
+# the reason a stabilization score is: it lines up with nothing and so
+# contradicts nothing, and a prototype that keeps the record lets the restore
+# building the real result carry it on to the observations.
+#
+# Any same-length operation keeps indices that may no longer point where they
+# did, a reordering or a subscript with duplicates included. Nothing rebuilding
+# a psw is handed the subscript, so neither can be told apart from an untouched
+# vector here. `is_unit_trimmed()` checks the record covers the vector it is
+# given, which catches a length change from any route, but a same-length
+# rearrangement is beyond what either can see and is documented rather than
+# guarded.
+modification_meta_aligns <- function(x, to) {
+  length(x) == 0 || length(x) == length(to)
+}
+
+# The psw type is every attribute the object carries, so anything that rebuilds
+# a psw around another vector's data owes all of them to the object supplying
+# the type. The attributes indexed by observation are the exception, and are
+# dropped when the data arrives at a length they do not describe: a later read
+# sees an absent record rather than one silently misaligned with the weights.
 carry_psw_metadata <- function(x, to) {
   score <- stabilization_score(to)
   if (!stabilization_score_aligns(score, length(x))) {
     score <- NULL
   }
 
-  new_psw(
+  out <- new_psw(
     x,
     estimand = estimand(to),
     stabilized = is_stabilized(to),
@@ -365,6 +498,18 @@ carry_psw_metadata <- function(x, to) {
     calibrated = is_ps_calibrated(to),
     stabilization_score = score
   )
+
+  if (modification_meta_aligns(x, to)) {
+    for (meta in psw_modification_meta) {
+      attr(out, meta) <- attr(to, meta)
+    }
+  }
+
+  for (attribute in psw_categorical_attrs) {
+    attr(out, attribute) <- attr(to, attribute)
+  }
+
+  out
 }
 
 #' @export
