@@ -154,7 +154,11 @@ effective_binary_focal_level <- function(
   if (!is.null(.reference_level)) {
     # Every level other than the reference is coded as focal, so a single focal
     # level is named only when the exposure takes exactly one other value.
-    remaining <- unique(.exposure[.exposure != .reference_level])
+    # Missing values are dropped first: `!=` returns NA rather than FALSE for
+    # them, so an NA would survive the subscript and count as a second remaining
+    # value, leaving a two-level exposure with no focal level recorded.
+    observed <- .exposure[!is.na(.exposure)]
+    remaining <- unique(observed[observed != .reference_level])
     if (length(remaining) != 1) {
       return(NULL)
     }

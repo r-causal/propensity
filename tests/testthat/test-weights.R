@@ -615,6 +615,28 @@ test_that("binary wt_att() records the focal level implied by a reference level"
   expect_identical(attr(weights, "focal_category"), "control")
 })
 
+test_that("binary wt_att() resolves a reference level with missing exposure values", {
+  ps <- c(0.2, 0.4, 0.6, 0.8, 0.5)
+  exposure <- factor(
+    c("control", "treat", "control", "treat", NA),
+    levels = c("control", "treat")
+  )
+
+  # A missing exposure value is not a third level. `.reference_level` still
+  # leaves exactly one other level, so the focal level is recorded; the NA row's
+  # own weight stays NA either way.
+  weights <- wt_att(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    .reference_level = "treat"
+  )
+
+  expect_identical(attr(weights, "focal_category"), "control")
+  expect_true(is.na(as.double(weights)[[5]]))
+  expect_false(anyNA(as.double(weights)[1:4]))
+})
+
 test_that("binary att and atu weights record no focal level when none is given", {
   withr::local_options(propensity.quiet = TRUE)
   ps <- c(0.2, 0.4, 0.6, 0.8)
