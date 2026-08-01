@@ -1754,6 +1754,95 @@ test_that("linearization rejects stabilized weights whose score was dropped", {
   )
 })
 
+# ---- ps_link must agree with the propensity model's own link ----------------
+#
+# On the linearization path `ps_link` reaches `derive_weights`, the score factor,
+# and the correction matrix, none of which consult the fitted model. Naming a
+# supported link that is not the one `wt_mod` was fit with therefore scales the
+# estimation correction by the wrong derivative, and the only thing that moves is
+# the standard error: the point estimates come from the outcome model and its
+# weights and are unchanged to the last digit. The weight-consistency preflight
+# cannot see it either, since the weights do not depend on the link.
+#
+# The M-estimation path already refuses the same misuse, because there the link
+# inverts the coefficient block into propensity scores and the recomputed weights
+# then disagree. That boundary is pinned separately; the point here is only that
+# the linearization path currently accepts what the other rejects.
+#
+# The legitimate probit path is covered by "probit linearization RD SE matches
+# the generalized score correction" and "probit linearization RD SE agrees with
+# mestimation" above; nothing here should disturb it.
+
+se_link_fit <- function(dat, link) {
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial(link = link))
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod)
+}
+
+test_that("linearization rejects a ps_link that differs from the model's link", {
+  dat <- se_method_data()
+
+  # Both directions, so the guard cannot be written as a rule about logit.
+  cases <- list(
+    list(fit = "logit", ps_link = "probit"),
+    list(fit = "logit", ps_link = "cloglog"),
+    list(fit = "probit", ps_link = "logit")
+  )
+
+  for (case in cases) {
+    mods <- se_link_fit(dat, case$fit)
+    err <- expect_error(
+      ipw(
+        mods$ps_mod,
+        mods$outcome_mod,
+        ps_link = case$ps_link,
+        se_method = "linearization"
+      ),
+      class = "propensity_ipw_link_error"
+    )
+
+    # the message has to name both, or it cannot say what disagrees with what
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, case$fit, fixed = TRUE)
+    expect_match(msg, case$ps_link, fixed = TRUE)
+  }
+})
+
+test_that("linearization accepts a ps_link equal to the model's link", {
+  dat <- se_method_data()
+
+  # Passing pin, correct today. Naming the link the model was already fit with
+  # asks for the behavior the default gives, and must stay a no-op rather than
+  # become collateral damage of the guard above.
+  for (link in c("logit", "probit")) {
+    mods <- se_link_fit(dat, link)
+    expect_identical(
+      ipw(
+        mods$ps_mod,
+        mods$outcome_mod,
+        ps_link = link,
+        se_method = "linearization"
+      )$estimates,
+      ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")$estimates
+    )
+  }
+})
+
 # ---- focal level flipped against the coded-1 exposure level -----------------
 #
 # The binary path has no focal level of its own: it codes the second sorted
