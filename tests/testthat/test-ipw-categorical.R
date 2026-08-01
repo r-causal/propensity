@@ -1002,6 +1002,104 @@ test_that("ipw() categorical accepts a no-intercept outcome model adjusted for a
   expect_true(all(res$estimates$std.err > 0))
 })
 
+# ---- indistinguishable counterfactual designs -------------------------------
+#
+# A counterfactual design can be free of zero columns and still fail to separate
+# two levels. A single numeric indicator for one level, such as
+# y ~ as.numeric(a == "c") + x1 - 1, leaves the designs at "a" and at "b"
+# identical element for element: the indicator is zero at both and the covariate
+# is untouched. Every unit's counterfactual prediction is then the same number at
+# both levels, so the "b vs a" contrast is zero to rounding error and its
+# standard error is NaN. The outcome model cannot represent a difference between
+# those two levels, so per-level contrasts against them are not estimable and the
+# call must be rejected instead of reported.
+#
+# The condition is pairwise equality of the designs, not the absence of a
+# covariate or of an intercept. A coding that carries one indicator per
+# non-reference level separates every pair and must keep working.
+
+test_that("ipw() categorical rejects an outcome model whose counterfactual designs are pairwise identical", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  # The covariate keeps every design nonzero, so the zero-design guard has
+  # nothing to catch; only the "a" and "b" designs coinciding is wrong here. The
+  # transformed term is unreadable from the model frame, so this coding reaches
+  # the counterfactual designs only through .data.
+  indistinguishable <- glm(
+    y ~ as.numeric(a == "c") + x1 - 1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(mods$ps_mod, indistinguishable, .data = dat),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  # The message must name the levels the model cannot tell apart. Whitespace is
+  # normalized because cli wraps the bullet.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "identical counterfactual designs", fixed = TRUE)
+  expect_match(msg, "`a` to \"a\" and \"b\"", fixed = TRUE)
+})
+
+test_that("ipw() categorical rejects pairwise-identical counterfactual designs under an intercept", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # Adding the intercept back changes nothing about the defect: the "a" and "b"
+  # designs still agree in every column, they are just no longer zero anywhere.
+  # The same error must fire, which is what shows the guard keys on pairwise
+  # equality rather than on a missing intercept.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  indistinguishable <- glm(
+    y ~ as.numeric(a == "c") + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(mods$ps_mod, indistinguishable, .data = dat),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "identical counterfactual designs", fixed = TRUE)
+  expect_match(msg, "`a` to \"a\" and \"b\"", fixed = TRUE)
+})
+
+test_that("ipw() categorical accepts a numeric indicator per non-reference level", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # One indicator per non-reference level is the numeric reparameterization of
+  # y ~ a + x1 - 1. The "a" design has both indicators at zero, "b" has the first
+  # at one, "c" has the second, so no pair coincides and no design is zero. It is
+  # honest g-computation on the model as specified and must keep running with
+  # every contrast finite.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  dual <- glm(
+    y ~ as.numeric(a == "b") + as.numeric(a == "c") + x1 - 1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  res <- ipw(mods$ps_mod, dual, .data = dat)
+
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
 # ---- arguments that fall into the dots --------------------------------------
 
 test_that("ipw() multinom rejects arguments that fall into the dots", {
