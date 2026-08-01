@@ -1165,6 +1165,126 @@ test_that("mestimation binary estimates are unchanged when .data re-levels a ps 
   expect_equal(releveled, no_data, tolerance = 1e-8)
 })
 
+# ---- a wrong-sized .data is a data problem ----------------------------------
+#
+# The linearization path already rejects a `.data` whose row count disagrees
+# with the fitted models, naming the two counts and pointing at `.data`. The
+# M-estimation paths size everything to `.data` instead, so the disagreement
+# surfaces further downstream in the weight-consistency preflight, whose message
+# is about weights and focal levels. That message sends someone to look at how
+# they built their weights when what they actually passed was the wrong data
+# frame. The row count is the more specific diagnosis and belongs first.
+#
+# The count check owns count mismatches only. A `.data` of the right size but
+# the wrong content is not detectable from a row count and stays with the
+# preflight, which recomputes the propensity scores and notices; that division
+# is pinned below.
+#
+# The linearization behavior these mirror is pinned in test-ipw-se-method.R by
+# "linearization rejects a .data whose row count disagrees with the fits".
+
+test_that("mestimation rejects a .data with too few rows", {
+  skip_if_not_installed("deli")
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(ps_mod, out, .data = dat[-1, ], se_method = "mestimation"),
+    class = "propensity_ipw_data_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "one row per observation", fixed = TRUE)
+})
+
+test_that("mestimation rejects a .data with too many rows", {
+  skip_if_not_installed("deli")
+  # A longer .data is the same mistake as a shorter one and today produces the
+  # same weights-mismatch message. The check is on inequality, not on being
+  # short, so both directions must report the row counts.
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(
+      ps_mod,
+      out,
+      .data = rbind(dat, dat[1, ]),
+      se_method = "mestimation"
+    ),
+    class = "propensity_ipw_data_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "one row per observation", fixed = TRUE)
+})
+
+test_that("a right-sized .data with the wrong content stays a weights problem", {
+  skip_if_not_installed("deli")
+  # The boundary between the two checks. Different data of the same size passes
+  # any row count comparison, and the propensity scores recomputed from it no
+  # longer reproduce the supplied weights, which is what the preflight exists to
+  # catch. The new count check must not take this case over.
+  dat <- ps_design_data(seed = 11)
+  other <- ps_design_data(seed = 99)
+  expect_identical(nrow(other), nrow(dat))
+
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_error(
+    ipw(ps_mod, out, .data = other, se_method = "mestimation"),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+})
+
 # ---- design rebuilds must honor the fitted models' contrasts ----------------
 #
 # Every design the engine rebuilds is multiplied by coefficients from the model

@@ -597,6 +597,28 @@ test_that("continuous reconstructs the ps design from .data when the fit frame i
   expect_equal(res, ref, tolerance = 1e-8)
 })
 
+# ---- a wrong-sized .data is a data problem -----------------------------------
+#
+# As on the binary and categorical paths, a `.data` whose row count disagrees
+# with the fitted models is a data problem and reads as one only if it is
+# reported as one. Today it reaches the weight-consistency preflight, which
+# talks about weights instead. The binary companion is "mestimation rejects a
+# .data with too few rows" in test-ipw-mestimation.R.
+
+test_that("ipw() continuous rejects a .data with too few rows", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat[-1, ]),
+    class = "propensity_ipw_data_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "one row per observation", fixed = TRUE)
+})
+
 # ---- weight-consistency hint wording ----------------------------------------
 
 test_that("the continuous weight-consistency error names no focal level", {

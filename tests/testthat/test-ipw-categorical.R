@@ -497,6 +497,30 @@ test_that("as.data.frame(exponentiate = TRUE) relabels ratios per comparison", {
   expect_equal(df$comparison, rep(c("b vs a", "c vs a"), each = 3))
 })
 
+# ---- a wrong-sized .data is a data problem -----------------------------------
+#
+# The categorical path sizes the exposure, the outcome, and the designs to
+# `.data`, so a `.data` that does not line up with the fitted models is only
+# noticed later, by the weight-consistency preflight, whose message is about
+# weights and focal levels rather than about the data frame that was passed. The
+# binary companion is "mestimation rejects a .data with too few rows" in
+# test-ipw-mestimation.R.
+
+test_that("ipw() categorical rejects a .data with too few rows", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat[-1, ]),
+    class = "propensity_ipw_data_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "one row per observation", fixed = TRUE)
+})
+
 # ---- .data when the multinom model frame is unavailable ----------------------
 
 test_that("ipw() categorical uses .data when the ps model frame is gone", {
