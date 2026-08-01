@@ -572,6 +572,43 @@ test_that("ipw() categorical rejects a .data whose covariate types skew the desi
   expect_match(msg, ".data", fixed = TRUE)
 })
 
+test_that("the design-width error names both widths", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  dat_skew <- dat
+  dat_skew$x2 <- factor(
+    ifelse(dat$x2 == 1, "hi", ifelse(dat$x1 > 0, "mid", "lo")),
+    levels = c("lo", "mid", "hi")
+  )
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat_skew)
+  )
+})
+
+test_that("ipw() categorical reports a .data missing a model covariate", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # The column check once covered only the exposure and the outcome, so a
+  # covariate missing from .data reached model.matrix and raised a raw
+  # object-not-found naming the variable but nothing else.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  dat_missing <- dat
+  dat_missing$x2 <- NULL
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat_missing),
+    class = "propensity_columns_exist_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "x2", fixed = TRUE)
+})
+
 test_that("ipw() categorical accepts a .data covariate recoded to the same width", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")

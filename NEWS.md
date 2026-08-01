@@ -1,5 +1,18 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now checks that `.data` rebuilds the design its propensity score model
+  was fit to, reporting a disagreement as a data error naming both widths and
+  the usual cause, a column whose type differs from the fitting data. Such a
+  `.data` previously produced a raw error about a names attribute for a
+  categorical exposure, and would have produced a non-conformable multiply
+  elsewhere. A covariate recoded without changing the design's width is
+  unaffected, since it carries the same numbers.
+
+* `ipw()` now reports a `.data` missing any covariate either model was fit with
+  as a missing column, alongside the exposure and outcome it already checked.
+  Previously only the exposure and outcome were checked and a missing covariate
+  surfaced as a raw object-not-found error from `model.matrix()`.
+
 * `ipw()` now rejects an outcome model with a matrix response, such as
   `cbind(successes, failures)`, with an error naming the response shape, on
   every exposure type and both standard error methods. Such a model previously

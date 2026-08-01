@@ -1324,6 +1324,54 @@ test_that("the categorical path errors informatively when the outcome frame is g
   expect_match(msg, "outcome_mod", fixed = TRUE)
 })
 
+# ---- a .data that rebuilds a different design -------------------------------
+#
+# The width check lives in the shared extraction, so the binary path gets it for
+# the same reason the categorical one does: the rebuilt design multiplies the
+# fitted coefficients positionally. On the categorical path the mismatch first
+# showed up in the coefficient naming; here it would be a non-conformable
+# multiply. The categorical companions are "ipw() categorical rejects a .data
+# whose covariate types skew the design" and its same-width control in
+# test-ipw-categorical.R.
+
+test_that("mestimation rejects a .data whose covariate types skew the design", {
+  skip_if_not_installed("deli")
+  dat <- ps_design_data()
+  # x1 is numeric in the fit, so the propensity model records no contrasts for
+  # it and the design has one column for it. As a three-level factor in .data it
+  # expands to two, and the design gains a column the coefficients cannot match.
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  dat_skew <- dat
+  dat_skew$x1 <- cut(dat$x1, breaks = 3, labels = c("lo", "mid", "hi"))
+  expect_equal(length(coef(ps_mod)), 2)
+  expect_equal(ncol(model.matrix(~x1, data = dat_skew)), 3)
+
+  err <- expect_error(
+    ipw(ps_mod, out, .data = dat_skew, se_method = "mestimation"),
+    class = "propensity_ipw_data_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, ".data", fixed = TRUE)
+})
+
 # ---- a wrong-sized .data is a data problem ----------------------------------
 #
 # The linearization path already rejects a `.data` whose row count disagrees

@@ -32,6 +32,17 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
+# the design-width error names both widths
+
+    Code
+      ipw(mods$ps_mod, mods$outcome_mod, .data = dat_skew)
+    Condition
+      Error in `ipw()`:
+      ! `.data` must rebuild the design `wt_mod` was fit to.
+      x The design rebuilt from `.data` has 4 columns.
+      x `wt_mod` was fit with 3 coefficients per equation.
+      i A column whose type differs from the fitting data is the usual cause: a factor expands to one column per non-reference level where a numeric takes one.
+
 # the categorical degenerate-design error names the pinned levels
 
     Code

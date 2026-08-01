@@ -327,7 +327,20 @@ ipw_extract_ps_design <- function(
     mm_data <- outcome_extract$mm_data
     check_exposure(mm_data, exposure_name, call = call)
   } else {
-    assert_columns_exist(.data, c(exposure_name, outcome_name), call = call)
+    # Both models' covariates are needed, not just the exposure and the outcome:
+    # the designs below are rebuilt from `.data`, and a covariate missing from it
+    # otherwise surfaces as a raw object-not-found from `model.matrix` rather
+    # than as the missing column it is.
+    assert_columns_exist(
+      .data,
+      unique(c(
+        exposure_name,
+        outcome_name,
+        ipw_model_covariates(ps_mod),
+        ipw_model_covariates(outcome_mod)
+      )),
+      call = call
+    )
 
     # Everything downstream is sized to `.data` while the weights come from the
     # outcome model fit, so a row count that disagrees leaves the two to be
@@ -374,9 +387,63 @@ ipw_extract_ps_design <- function(
       xlev = xlev,
       contrasts.arg = ps_mod$contrasts
     )
+    check_ipw_ps_design_width(ps_X, ps_mod, call = call)
   }
 
   list(exposure = exposure, outcome = outcome, ps_X = ps_X, mm_data = mm_data)
+}
+
+# Terms per estimating equation in a fitted propensity model. A glm or lm has one
+# equation and a coefficient vector as long as its design. nnet::multinom has one
+# per non-reference level and returns a level-by-term matrix, except at two
+# levels, where it returns that single row as a bare vector.
+ipw_ps_terms_per_equation <- function(ps_mod) {
+  coefs <- stats::coef(ps_mod)
+
+  if (is.matrix(coefs)) ncol(coefs) else length(coefs)
+}
+
+# Variable names a model's right-hand side reads, so a rebuild from `.data` can
+# be told which columns it needs before it goes looking for them.
+ipw_model_covariates <- function(mod) {
+  all.vars(stats::delete.response(stats::terms(mod)))
+}
+
+# Require the design rebuilt from `.data` to be as wide as the one the propensity
+# model was fit to. Everything downstream multiplies the two together
+# positionally: the propensity scores, the stacked score block, and, for a
+# categorical exposure, the coefficient names built by pairing each level with
+# each design column. A width that disagrees produced a raw error about a names
+# attribute or a non-conformable multiply, neither of which mentions `.data`.
+#
+# The usual cause is a column whose type differs between the fitting data and
+# `.data`, since a factor expands to one column per non-reference level where a
+# numeric takes one. Only the count is checked: a covariate recoded to the same
+# width carries the same numbers and is the same design.
+check_ipw_ps_design_width <- function(
+  ps_X,
+  ps_mod,
+  call = rlang::caller_env()
+) {
+  n_fitted <- ipw_ps_terms_per_equation(ps_mod)
+
+  if (!identical(ncol(ps_X), n_fitted)) {
+    abort(
+      c(
+        "{.arg .data} must rebuild the design {.arg wt_mod} was fit to.",
+        x = "The design rebuilt from {.arg .data} has {ncol(ps_X)} column{?s}.",
+        x = "{.arg wt_mod} was fit with {n_fitted} coefficient{?s} per \\
+        equation.",
+        i = "A column whose type differs from the fitting data is the usual \\
+        cause: a factor expands to one column per non-reference level where a \\
+        numeric takes one."
+      ),
+      error_class = "propensity_ipw_data_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
 }
 
 # Clear the contrasts attribute from the named columns of a data frame. Only for
