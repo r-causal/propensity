@@ -9,19 +9,33 @@
 
 # ---- spec constructor -------------------------------------------------------
 
-# Reject a counterfactual design matrix that is identically zero. The designs are
-# built by setting the exposure to each level in turn, so a numeric no-intercept
-# coding such as `y ~ z - 1` leaves the design at the zero-coded level with no
-# nonzero entry at all. The marginal mean there is then inv_link(0) for every
-# unit, a constant fixed by the outcome link rather than a quantity estimated
-# from the data (0.5 for a logit or probit outcome link, 0 for a linear model),
-# and every contrast formed against it is wrong with nothing signaled.
+# Reject counterfactual designs the outcome model cannot use. The designs are
+# built by setting the exposure to each level in turn, so the coding of the
+# exposure decides whether a per-level marginal mean is estimable at all. Two
+# ways it is not, checked in this order:
 #
-# The condition is the design itself, not the presence of an intercept. A
-# saturated factor coding such as `y ~ 0 + zf` carries no intercept yet its dummy
-# columns sum to one at every level, and `y ~ z + x1 - 1` still estimates the
-# marginal mean from the covariate. Both are honest g-computation on the model as
-# specified and are left alone.
+# A design that is identically zero. A numeric no-intercept coding such as
+# `y ~ z - 1` leaves the design at the zero-coded level with no nonzero entry at
+# all. The marginal mean there is then inv_link(0) for every unit, a constant
+# fixed by the outcome link rather than a quantity estimated from the data (0.5
+# for a logit or probit outcome link, 0 for a linear model), and every contrast
+# formed against it is wrong with nothing signaled.
+#
+# A pair of designs that are elementwise identical. An indicator for a single
+# level of a multi-level exposure, such as `y ~ as.numeric(z == "c") + x1`,
+# leaves the designs at every other level agreeing in every column: the
+# indicator is zero at all of them and the covariates are untouched. The model
+# predicts one and the same outcome at both levels, so their contrast is zero to
+# rounding error, its standard error degenerates to NaN, and the number reported
+# says nothing about the exposure. The zero case is checked first because two
+# all-zero designs are also identical to each other and the zero message is the
+# more specific diagnosis.
+#
+# Neither condition is about the presence of an intercept. A saturated factor
+# coding such as `y ~ 0 + zf` carries no intercept yet its dummy columns sum to
+# one at every level and separate every pair, and `y ~ z + x1 - 1` still
+# estimates the marginal mean from the covariate. Both are honest g-computation
+# on the model as specified and are left alone.
 check_ipw_counterfactual_designs <- function(
   designs,
   exposure_levels,
@@ -49,7 +63,46 @@ check_ipw_counterfactual_designs <- function(
     )
   }
 
+  # The designs are deterministic constructions from one terms object, so equal
+  # entries are bit-for-bit equal and no tolerance is involved. Only the first
+  # offending pair is reported: any fix is a recoding of the exposure, after
+  # which the guard runs again over the new designs.
+  bad <- first_identical_design_pair(designs)
+
+  if (!is.null(bad)) {
+    bad <- exposure_levels[bad]
+    abort(
+      c(
+        "{.arg outcome_mod} must be able to distinguish every pair of \\
+        exposure levels.",
+        x = "Setting {.arg {exposure_name}} to {.val {bad}} produces identical \\
+        counterfactual designs, so the model predicts the same outcome at both \\
+        levels and the contrast between them is degenerate.",
+        i = "Code the exposure so {.arg outcome_mod} separates every level, \\
+        for example as a factor rather than an indicator for a single level."
+      ),
+      error_class = "propensity_ipw_exposure_error",
+      call = call
+    )
+  }
+
   invisible(TRUE)
+}
+
+# Index pair of the first two designs that agree in every entry, or NULL if all
+# of them differ. Pairs are visited in level order, so the pair reported is
+# stable across calls.
+first_identical_design_pair <- function(designs) {
+  for (j in seq_along(designs)[-1]) {
+    for (i in seq_len(j - 1)) {
+      same_dim <- identical(dim(designs[[i]]), dim(designs[[j]]))
+      if (same_dim && isTRUE(all(designs[[i]] == designs[[j]]))) {
+        return(c(i, j))
+      }
+    }
+  }
+
+  NULL
 }
 
 ipw_spec_binary <- function(

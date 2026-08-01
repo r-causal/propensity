@@ -1047,6 +1047,25 @@ test_that("ipw() categorical rejects an outcome model whose counterfactual desig
   expect_match(msg, "`a` to \"a\" and \"b\"", fixed = TRUE)
 })
 
+test_that("the categorical indistinguishable-design error names the pinned levels", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  indistinguishable <- glm(
+    y ~ as.numeric(a == "c") + x1 - 1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, indistinguishable, .data = dat)
+  )
+})
+
 test_that("ipw() categorical rejects pairwise-identical counterfactual designs under an intercept", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
