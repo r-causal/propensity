@@ -497,6 +497,102 @@ test_that("as.data.frame(exponentiate = TRUE) relabels ratios per comparison", {
   expect_equal(df$comparison, rep(c("b vs a", "c vs a"), each = 3))
 })
 
+# ---- a transformed exposure in the outcome formula ---------------------------
+#
+# The two extraction routes treat a transformed exposure differently, and the
+# difference is the intended behavior rather than an inconsistency.
+#
+# With `.data`, each counterfactual design is built by setting the exposure
+# column to a level and rebuilding the outcome design, so `model.matrix`
+# re-evaluates the transformation at the level being set. A term reading
+# `as.numeric(a == "c")` becomes 1 in the design for level "c" and 0 elsewhere,
+# which is what g-computation on that model means.
+#
+# Without `.data` there is no exposure column to set: the model frame holds the
+# transformed term under its own label and the exposure cannot be read back
+# through it, so the call errors and says to supply `.data`.
+#
+# The dual-indicator no-intercept coding is pinned running by "ipw() categorical
+# accepts a no-intercept outcome model adjusted for a covariate"; what is pinned
+# here is that the re-evaluation produces the same answer as writing the same
+# design without a transformation.
+
+test_that("a transformed exposure with .data matches the untransformed equivalent", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+
+  # One indicator per non-reference level, with an intercept, is the treatment
+  # coding `y ~ a + x1` writes for itself. The two designs hold the same numbers
+  # in the same order, so the only difference is that one route has to
+  # re-evaluate the transformation at each counterfactual level.
+  transformed <- glm(
+    y ~ as.numeric(a == "b") + as.numeric(a == "c") + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = ctrl
+  )
+  factor_coded <- glm(
+    y ~ a + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = ctrl
+  )
+
+  # the two designs really are the same numbers, attributes aside
+  expect_equal(
+    unname(model.matrix(transformed)[,]),
+    unname(model.matrix(factor_coded)[,])
+  )
+
+  transformed_estimates <- ipw(
+    mods$ps_mod,
+    transformed,
+    .data = dat
+  )$estimates
+  factor_estimates <- ipw(mods$ps_mod, factor_coded)$estimates
+
+  expect_equal(
+    transformed_estimates$estimate,
+    factor_estimates$estimate,
+    tolerance = 1e-12
+  )
+  expect_equal(transformed_estimates, factor_estimates, tolerance = 1e-10)
+})
+
+test_that("a transformed exposure without .data errors and asks for it", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # The other half of the contract. The exposure is present in the formula, so
+  # the guard requiring it is satisfied; what fails is reading its values back
+  # out of a model frame that only holds the transformed term.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  transformed <- glm(
+    y ~ as.numeric(a == "b") + as.numeric(a == "c") + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  # the exposure name is genuinely absent from the model frame
+  expect_false("a" %in% names(stats::model.frame(transformed)))
+
+  err <- expect_error(
+    ipw(mods$ps_mod, transformed),
+    class = "propensity_columns_exist_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "a", fixed = TRUE)
+  expect_match(msg, ".data", fixed = TRUE)
+})
+
 # ---- a matrix-response outcome model -----------------------------------------
 #
 # The response-shape guard has one call per exposure type, so a fix applied only

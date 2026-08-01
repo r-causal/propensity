@@ -41,6 +41,15 @@
 #'   longer available); `ipw()` then rebuilds the propensity design from `.data`.
 #'   `.data` must have one row per observation the models were fit to; a row
 #'   count that disagrees with the fitted models errors.
+#'
+#'   Supplying `.data` also decides how a term that transforms the exposure is
+#'   handled. The counterfactual designs are built by setting the exposure column
+#'   to each level in turn and rebuilding the outcome design from `.data`, so a
+#'   term such as `as.numeric(a == "c")` or `I(z^2)` is re-evaluated at the level
+#'   being set rather than held at its observed value. Such a model is therefore
+#'   honest g-computation on the model as specified. Without `.data` the exposure
+#'   cannot be read back through the transformation and the call errors, naming
+#'   the exposure and directing you here.
 #' @param estimand A character string specifying the causal estimand: one of
 #'   `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or `"entropy"`. The available
 #'   estimands depend on the exposure type: a binary or categorical exposure

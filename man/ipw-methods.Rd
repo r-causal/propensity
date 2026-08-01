@@ -73,7 +73,16 @@ transformations that prevent extraction of the exposure variable from
 its design (for example, fit with \code{model = FALSE} with the fitting data no
 longer available); \code{ipw()} then rebuilds the propensity design from \code{.data}.
 \code{.data} must have one row per observation the models were fit to; a row
-count that disagrees with the fitted models errors.}
+count that disagrees with the fitted models errors.
+
+Supplying \code{.data} also decides how a term that transforms the exposure is
+handled. The counterfactual designs are built by setting the exposure column
+to each level in turn and rebuilding the outcome design from \code{.data}, so a
+term such as \code{as.numeric(a == "c")} or \code{I(z^2)} is re-evaluated at the level
+being set rather than held at its observed value. Such a model is therefore
+honest g-computation on the model as specified. Without \code{.data} the exposure
+cannot be read back through the transformation and the call errors, naming
+the exposure and directing you here.}
 
 \item{estimand}{A character string specifying the causal estimand: one of
 \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or \code{"entropy"}. The available
