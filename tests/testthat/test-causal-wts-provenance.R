@@ -323,16 +323,22 @@ test_that("subsetting a trimmed psw drops the unit-level trimming index", {
   expect_true(is_ps_trimmed(wt))
   expect_length(is_unit_trimmed(wt), n)
 
-  # `vec_restore.psw` rebuilds the psw attributes rather than copying them, and
-  # it does not carry the trimming index across: `ps_trim_meta()` on a subset is
-  # `NULL`, so every retained unit reports as untrimmed even when it was in fact
-  # trimmed. This pins current behavior, not desired behavior. What the
-  # assertion guards is the blind-attribute-copy regression, which would
-  # re-attach flags indexed against the original vector and return a
-  # length-`n` logical for a length-2 subset.
-  first_two <- wt[1:2]
+  # The trimming index is written against the full vector and nothing rebuilding
+  # a psw is handed the subscript, so a subset cannot re-index it and the index
+  # is dropped. The drop is silent because `model.frame()` shortens these weights
+  # inside every outcome model fit on them, with no subscript in the user's code.
+  # What the assertion guards on the other side is the blind-attribute-copy
+  # regression, which would re-attach an index built against the original vector
+  # and return a length-`n` logical for a length-2 subset. With no index left,
+  # `is_unit_trimmed()` reports that it cannot answer rather than reporting every
+  # unit as retained.
+  first_two <- expect_silent(wt[1:2])
   expect_true(is_ps_trimmed(first_two))
-  expect_identical(is_unit_trimmed(first_two), c(FALSE, FALSE))
+  expect_null(ps_trim_meta(first_two))
+  expect_error(
+    is_unit_trimmed(first_two),
+    class = "propensity_missing_meta_error"
+  )
 })
 
 test_that("the causal_wts accessors read and write the estimand attribute", {
