@@ -1,5 +1,19 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now rebuilds its design matrices under the contrasts the supplied
+  models were fit with. The counterfactual and propensity score designs were
+  previously rebuilt under whatever coding was in force at the time of the call,
+  which for a model fit with non-default contrasts is a different design than
+  the one its coefficients belong to. Because the two are multiplied together
+  positionally, a categorical exposure carrying non-default contrasts, an
+  ordered factor exposure, a two-level factor exposure with non-default
+  contrasts, or a `contrasts` option changed between fitting and calling `ipw()`
+  produced silently wrong estimates, sometimes reversed in sign. A propensity
+  score model adjusted for a covariate with non-default contrasts instead
+  produced a spurious warning and, when `.data` was supplied, a weight-mismatch
+  error against weights that were correct. All of these are now fixed. Results
+  from models fit under the default contrasts are unchanged.
+
 * The `glm` methods of `wt_ate()`, `wt_att()`, `wt_atu()`, `wt_atm()`,
   `wt_ato()`, `wt_entropy()`, and `wt_cens()` now supply the numeric methods
   with the probability of the level resolved as focal. Fitted values give the

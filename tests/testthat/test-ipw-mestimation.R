@@ -1252,7 +1252,11 @@ test_that("mestimation accepts a sum-coded ps covariate rebuilt from .data", {
     se_method = "mestimation"
   )$estimates
 
-  expect_equal(got, reference, tolerance = 1e-8)
+  # As elsewhere in this section, the point estimates agree to machine precision
+  # and the sandwich standard errors carry the numerical derivative's noise at a
+  # different coefficient basis.
+  expect_equal(got$estimate, reference$estimate, tolerance = 1e-12)
+  expect_equal(got, reference, tolerance = 1e-6)
 })
 
 test_that("the .data ps design rebuild does not warn on a sum-coded covariate", {
@@ -1314,6 +1318,85 @@ test_that("mestimation binary counterfactual designs keep a sum-coded outcome co
   # the estimates themselves by whole percentage points.
   expect_equal(got$estimate, reference$estimate, tolerance = 1e-12)
   expect_equal(got, reference, tolerance = 1e-6)
+})
+
+test_that("mestimation binary counterfactual designs keep a sum-coded factor exposure", {
+  skip_if_not_installed("deli")
+  # A two-level factor exposure carries contrasts of its own. Setting the
+  # exposure column to one level subsets the factor, which drops the attribute,
+  # so this is the binary counterpart of the categorical rebuild rather than of
+  # the covariate case above: without the fit's coding the design is treatment
+  # coded against sum-coded coefficients and the contrast changes sign.
+  dat <- contrast_design_data()
+  dat$zf <- factor(
+    ifelse(dat$z == 1, "trt", "ctl"),
+    levels = c("ctl", "trt")
+  )
+  dat_sum <- dat
+  contrasts(dat_sum$zf) <- contr.sum(2)
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+
+  fit_factor_exposure <- function(d) {
+    ps_mod <- glm(zf ~ x1, data = d, family = binomial())
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_ate(
+        predict(ps_mod, type = "response"),
+        d$zf,
+        exposure_type = "binary",
+        .focal_level = "trt"
+      )
+    )
+    outcome_mod <- glm(
+      y ~ zf + x1,
+      data = d,
+      family = quasibinomial(),
+      weights = wts,
+      control = ctrl
+    )
+    ipw(ps_mod, outcome_mod, se_method = "mestimation")$estimates
+  }
+
+  got <- fit_factor_exposure(dat_sum)
+  reference <- fit_factor_exposure(dat)
+
+  expect_equal(got$estimate, reference$estimate, tolerance = 1e-12)
+  expect_equal(got, reference, tolerance = 1e-6)
+})
+
+test_that("mestimation is unaffected by a contrasts option changed after fitting", {
+  skip_if_not_installed("deli")
+  # The rebuilds used to consult the ambient contrasts option rather than the
+  # fit, so a fit made under a non-default option and analyzed after it was
+  # restored silently disagreed with itself. Reading the coding off the fitted
+  # models makes the call independent of the option in force when it runs.
+  dat <- contrast_design_data()
+
+  under_option <- withr::with_options(
+    list(contrasts = c("contr.sum", "contr.poly")),
+    fit_contrast_models(dat)
+  )
+  expect_equal(
+    names(coef(under_option$ps_mod)),
+    c("(Intercept)", "x1", "g1", "g2")
+  )
+  expect_equal(getOption("contrasts")[["unordered"]], "contr.treatment")
+
+  default <- fit_contrast_models(dat)
+
+  expect_equal(
+    ipw(
+      under_option$ps_mod,
+      under_option$outcome_mod,
+      se_method = "mestimation"
+    )$estimates$estimate,
+    ipw(
+      default$ps_mod,
+      default$outcome_mod,
+      se_method = "mestimation"
+    )$estimates$estimate,
+    tolerance = 1e-12
+  )
 })
 
 # ---- the outcome model must contain the exposure -----------------------------

@@ -1434,17 +1434,22 @@ test_that("ipw() categorical is unchanged by a sum-coded exposure", {
   )
 
   reference <- ipw(default$ps_mod, default$outcome_mod)$estimates
+  frame_route <- ipw(sum_coded$ps_mod, sum_coded$outcome_mod)$estimates
+  data_route <- ipw(
+    sum_coded$ps_mod,
+    sum_coded$outcome_mod,
+    .data = dat_sum
+  )$estimates
 
-  expect_equal(
-    ipw(sum_coded$ps_mod, sum_coded$outcome_mod)$estimates,
-    reference,
-    tolerance = 1e-8
-  )
-  expect_equal(
-    ipw(sum_coded$ps_mod, sum_coded$outcome_mod, .data = dat_sum)$estimates,
-    reference,
-    tolerance = 1e-8
-  )
+  # The point estimates are what the counterfactual rebuild determines, and they
+  # agree to machine precision. The sandwich standard errors differ in their
+  # eighth significant figure, which is the numerical derivative taken at a
+  # different coefficient basis rather than a coding mismatch; a real one
+  # reverses the sign of a contrast.
+  expect_equal(frame_route$estimate, reference$estimate, tolerance = 1e-12)
+  expect_equal(data_route$estimate, reference$estimate, tolerance = 1e-12)
+  expect_equal(frame_route, reference, tolerance = 1e-6)
+  expect_equal(data_route, reference, tolerance = 1e-6)
 })
 
 test_that("ipw() categorical is unchanged by an ordered-factor exposure", {
@@ -1467,11 +1472,14 @@ test_that("ipw() categorical is unchanged by an ordered-factor exposure", {
   expect_equal(ord$outcome_mod$xlevels$a, c("a", "b", "c"))
   expect_equal(names(coef(ord$outcome_mod))[2:3], c("a.L", "a.Q"))
 
-  expect_equal(
-    ipw(ord$ps_mod, ord$outcome_mod)$estimates,
-    ipw(default$ps_mod, default$outcome_mod)$estimates,
-    tolerance = 1e-8
-  )
+  got <- ipw(ord$ps_mod, ord$outcome_mod)$estimates
+  reference <- ipw(default$ps_mod, default$outcome_mod)$estimates
+
+  # As above: the estimates match to machine precision once the rebuild carries
+  # the polynomial coding, and the residual is sandwich noise at a different
+  # coefficient basis.
+  expect_equal(got$estimate, reference$estimate, tolerance = 1e-12)
+  expect_equal(got, reference, tolerance = 1e-6)
 })
 
 # ---- arguments that fall into the dots --------------------------------------

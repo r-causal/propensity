@@ -210,11 +210,15 @@ ipw_spec_binary <- function(
 
   z <- ipw_recode_binary_exposure(exposure)
 
+  # The rebuilt design multiplies the outcome model's coefficients positionally,
+  # so it has to reproduce the coding those coefficients were fit under.
+  # `contrasts.arg` carries it: setting the exposure column drops any contrasts
+  # attribute it had, and a factor-free fit records NULL, which is the default.
   out_terms <- stats::delete.response(stats::terms(outcome_mod))
   counterfactual_mm <- function(value) {
     d <- mm_data
     d[[exposure_name]] <- value
-    model.matrix(out_terms, data = d)
+    model.matrix(out_terms, data = d, contrasts.arg = outcome_mod$contrasts)
   }
   x1 <- counterfactual_mm(exposure_values[[2]])
   x0 <- counterfactual_mm(exposure_values[[1]])
@@ -311,14 +315,35 @@ ipw_extract_ps_design <- function(
     exposure <- .data[[exposure_name]]
     outcome <- .data[[outcome_name]]
     mm_data <- .data
+    # Rebuilding a factor against `xlev` drops its contrasts attribute, so the
+    # fit's own coding has to be supplied here or the design no longer matches
+    # the coefficients it is multiplied by. NULL, for a factor-free fit, is the
+    # default. Carrying the coding in `contrasts.arg` also makes the attribute
+    # on the column redundant, so drop it first: `model.frame()` would otherwise
+    # warn that re-leveling lost it, which says nothing about this rebuild. The
+    # design is the same either way.
     ps_X <- model.matrix(
       stats::delete.response(stats::terms(ps_mod)),
-      data = .data,
-      xlev = xlev
+      data = drop_contrasts_attrs(.data, names(ps_mod$contrasts)),
+      xlev = xlev,
+      contrasts.arg = ps_mod$contrasts
     )
   }
 
   list(exposure = exposure, outcome = outcome, ps_X = ps_X, mm_data = mm_data)
+}
+
+# Clear the contrasts attribute from the named columns of a data frame. Only for
+# rebuilds that pass the coding separately through `contrasts.arg`, where the
+# attribute duplicates it. Columns not present are skipped, so a fit whose
+# covariates are absent from the data still reaches the error model.matrix
+# raises rather than one from here.
+drop_contrasts_attrs <- function(data, cols) {
+  for (nm in intersect(cols, names(data))) {
+    attr(data[[nm]], "contrasts") <- NULL
+  }
+
+  data
 }
 
 # Resolve the exposure to a factor whose levels are ordered the way the fitted
@@ -501,12 +526,17 @@ ipw_spec_categorical <- function(
   }
 
   # One counterfactual design per level: set the exposure factor to that level,
-  # preserving all levels, and rebuild the outcome model matrix.
+  # preserving all levels, and rebuild the outcome model matrix. The replacement
+  # is a bare factor carrying no contrasts attribute, and the design multiplies
+  # the outcome model's coefficients positionally, so the fit's own coding has
+  # to be supplied through `contrasts.arg`. It keys by column name and overrides
+  # the column, which is what lets an ordered fit's polynomial coding be
+  # reproduced here from an unordered replacement.
   out_terms <- stats::delete.response(stats::terms(outcome_mod))
   x_cf <- lapply(levs, function(l) {
     d <- mm_data
     d[[exposure_name]] <- factor(l, levels = levs)
-    model.matrix(out_terms, data = d)
+    model.matrix(out_terms, data = d, contrasts.arg = outcome_mod$contrasts)
   })
   names(x_cf) <- levs
 

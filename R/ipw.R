@@ -446,7 +446,15 @@ ipw.glm <- function(
   # Covers both extraction routes above.
   outcome <- ipw_outcome_numeric(outcome)
 
-  ps <- predict(wt_mod, type = "response", newdata = .data)
+  # `predict.lm` applies the fit's own contrasts to `newdata`, so the scores are
+  # right either way, but it re-levels against `xlevels` first and warns that
+  # doing so dropped a contrasts attribute the column happened to carry. That
+  # attribute is redundant to the one predict is about to apply, so clear it.
+  ps <- predict(
+    wt_mod,
+    type = "response",
+    newdata = drop_contrasts_attrs(.data, names(wt_mod$contrasts))
+  )
 
   if (is.null(ps_link)) {
     ps_link <- wt_mod$family$link
