@@ -1486,6 +1486,122 @@ test_that("linearization errors when .data has fewer rows than the fitted models
   )
 })
 
+# ---- the weights must be consistent with the propensity model ---------------
+#
+# The linearization path predicts the propensity scores from `wt_mod` and takes
+# the weights from the outcome model fit, and nothing checks that the two belong
+# together. The M-estimation path checks, by recomputing the weights the
+# propensity scores imply and comparing them to the ones actually used, and the
+# same check belongs here.
+#
+# What goes wrong when they disagree is confined to the standard errors. The
+# point estimates come from the outcome model and its weights, so they are
+# unmoved; the propensity scores enter only through the estimation correction.
+# A wrong standard error that agrees to the last digit on the estimate beside it
+# is exactly the kind of error nobody looks twice at, which is why these are
+# rejections rather than warnings.
+#
+# The correct-`.data` and intact-weight cases are pinned already and are not
+# repeated here: "linearization estimates are unchanged when redundant .data is
+# supplied", "linearization default stabilization reproduces the unstabilized
+# SE", "linearization is silent for weights carrying a vector stabilization
+# score", and "linearization threads a covariate-correlated stabilization score
+# through the weight derivatives".
+
+test_that("linearization rejects a .data whose covariates disagree with the fitted weights", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  # Row-aligned and the right size, so nothing about the shape is wrong; only
+  # the covariate values differ, which moves the predicted propensity scores
+  # away from the ones the weights were built on. The M-estimation path rejects
+  # this same call.
+  perturbed <- dat
+  perturbed$x1 <- perturbed$x1 + 1
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_mod, .data = perturbed, se_method = "linearization"),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(
+    msg,
+    "not consistent with the propensity score model",
+    fixed = TRUE
+  )
+})
+
+test_that("linearization rejects stabilized weights whose score was dropped", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  ps <- as.double(predict(ps_mod, type = "response"))
+  score <- exp(0.5 * dat$x1)
+  wts <- wt_ate(
+    ps,
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1,
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+
+  # Slicing a psw drops a per-observation score it can no longer align, and says
+  # so, but leaves the weights marked stabilized. That is the state below: the
+  # values are still the score-stabilized ones, and nothing records which score
+  # produced them.
+  sliced <- NULL
+  expect_warning(
+    sliced <- wts[1:200],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_true(is_stabilized(sliced))
+  expect_null(stabilization_score(sliced))
+
+  # Reproduce that state at full length so the weights remain the ones this
+  # propensity model implies and the dropped score is the only thing wrong.
+  # Slicing itself cannot be used here: it would also shorten the weights, and
+  # the row-count guard would reject the call before the weights were examined.
+  degraded <- wts
+  attr(degraded, "stabilization_score") <- NULL
+  expect_true(is_stabilized(degraded))
+  expect_null(stabilization_score(degraded))
+  expect_identical(as.double(degraded), as.double(wts))
+
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = degraded,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  # Without the score there is nothing to rebuild these weights from, and the
+  # default group-constant stabilizer is not what produced them: it differs by
+  # more than 8 on some observations. Reconstructing it silently is the defect.
+  default_stabilized <- wt_ate(
+    ps,
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1,
+    stabilize = TRUE
+  )
+  expect_gt(max(abs(as.double(default_stabilized) - as.double(wts))), 1)
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(
+    msg,
+    "not consistent with the propensity score model",
+    fixed = TRUE
+  )
+})
+
 # ---- focal level flipped against the coded-1 exposure level -----------------
 #
 # The binary path has no focal level of its own: it codes the second sorted
