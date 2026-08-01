@@ -497,6 +497,41 @@ test_that("as.data.frame(exponentiate = TRUE) relabels ratios per comparison", {
   expect_equal(df$comparison, rep(c("b vs a", "c vs a"), each = 3))
 })
 
+# ---- a matrix-response outcome model -----------------------------------------
+#
+# The response-shape guard has one call per exposure type, so a fix applied only
+# to the binary path would look complete. The binary companions are "a
+# matrix-response outcome model errors on its shape without .data" and its
+# .data counterpart in test-ipw-se-method.R.
+
+test_that("ipw() categorical rejects a matrix-response outcome model", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  dat$y1 <- rbinom(nrow(dat), 5, 0.4)
+  dat$y0 <- 5 - dat$y1
+  ps_mod <- fit_ps_multinom(dat)
+  ps <- ps_matrix_named(ps_mod, dat)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$a, exposure_type = "categorical")
+  )
+  matrix_outcome <- glm(
+    cbind(y1, y0) ~ a,
+    data = dat,
+    family = binomial(),
+    weights = wts
+  )
+
+  err <- expect_error(
+    ipw(ps_mod, matrix_outcome),
+    class = "propensity_ipw_response_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "matrix response", fixed = TRUE)
+})
+
 # ---- a wrong-sized .data is a data problem -----------------------------------
 #
 # The categorical path sizes the exposure, the outcome, and the designs to

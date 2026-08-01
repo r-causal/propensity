@@ -1197,6 +1197,96 @@ test_that("the matrix-response propensity model error names the matrix response"
   )
 })
 
+test_that("the matrix-response propensity guard carries the response class", {
+  # A matrix response is a statement about the shape of a model's left-hand
+  # side, not about the semantics of the exposure. The guards that are about
+  # exposure semantics keep propensity_ipw_exposure_error, so the two families
+  # can be caught apart; see "mestimation rejects a binary outcome model that
+  # omits the exposure without .data" in test-ipw-mestimation.R for one of them.
+  m <- matrix_lhs_models()
+  for (se in c("mestimation", "linearization")) {
+    expect_error(
+      ipw(m$ps_mod, m$outcome_mod, .data = m$dat, se_method = se),
+      class = "propensity_ipw_response_error"
+    )
+  }
+})
+
+# ---- matrix-response (cbind) outcome model ----------------------------------
+#
+# The outcome model's counterpart, and unguarded. A cbind(successes, failures)
+# response is twice the length of the exposure once the model frame flattens it,
+# and what the user is told depends on the route: without .data the length
+# reconciliation reports an outcome of length 600 against an exposure of length
+# 300, and with .data the extraction asks for a column named "cbind", which does
+# not exist and never will. Neither says the response is a matrix, and the
+# second actively sends the user to add a column named after a function.
+#
+# The single-column case is what every other test in this file fits, so it needs
+# no pin of its own here.
+
+matrix_outcome_models <- function() {
+  set.seed(2024)
+  n <- 300
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y1 <- rbinom(n, 5, plogis(-0.4 + z))
+  y0 <- 5 - y1
+  dat <- data.frame(x1, z, y1, y0)
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  outcome_mod <- glm(
+    cbind(y1, y0) ~ z,
+    data = dat,
+    family = binomial(),
+    weights = wts
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, dat = dat)
+}
+
+test_that("a matrix-response outcome model errors on its shape without .data", {
+  skip_if_not_installed("deli")
+  m <- matrix_outcome_models()
+
+  # the fixture is the shape it claims to be
+  expect_true(is.matrix(stats::model.response(stats::model.frame(
+    m$outcome_mod
+  ))))
+
+  for (se in c("mestimation", "linearization")) {
+    err <- expect_error(
+      ipw(m$ps_mod, m$outcome_mod, se_method = se),
+      class = "propensity_ipw_response_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "matrix response", fixed = TRUE)
+  }
+})
+
+test_that("a matrix-response outcome model errors on its shape with .data", {
+  skip_if_not_installed("deli")
+  # The .data route fails differently today, asking for a "cbind" column, so it
+  # is pinned separately rather than folded into the test above.
+  m <- matrix_outcome_models()
+
+  for (se in c("mestimation", "linearization")) {
+    err <- expect_error(
+      ipw(m$ps_mod, m$outcome_mod, .data = m$dat, se_method = se),
+      class = "propensity_ipw_response_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "matrix response", fixed = TRUE)
+  }
+})
+
 # ---- per-observation stabilization scores on the linearization path ----------
 
 # Marginal quasibinomial outcome model weighted with the supplied weights, fit
