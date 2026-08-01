@@ -1612,6 +1612,87 @@ test_that("mestimation reports separation when .data is supplied", {
   expect_match(msg, "separation", ignore.case = TRUE)
 })
 
+test_that("mestimation reports separation for every estimand", {
+  skip_if_not_installed("deli")
+  # Only the ate weights go non-finite under separation: every other estimand
+  # carries a tilt that vanishes where the propensity score saturates, which
+  # cancels the singularity and left the weight comparison satisfied. Those
+  # estimands used to reach the solver and fail there with an error from deli,
+  # carrying no indication that the propensity model was the problem. Keying the
+  # guard on the saturated scores rather than on the weights is what makes the
+  # diagnosis the same for all of them.
+  dat <- separation_data()
+  ps_mod <- suppressWarnings(glm(
+    z ~ x1,
+    data = dat,
+    family = binomial(),
+    control = glm.control(maxit = 200, epsilon = 1e-14)
+  ))
+
+  for (est in c("att", "atu", "atm", "ato", "entropy")) {
+    wt_fun <- switch(
+      est,
+      att = wt_att,
+      atu = wt_atu,
+      atm = wt_atm,
+      ato = wt_ato,
+      entropy = wt_entropy
+    )
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_fun(ps_mod)
+    )
+    outcome_mod <- suppressWarnings(glm(
+      y ~ z,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    ))
+
+    # the premise: these weights are finite, so a non-finite weight check would
+    # not have caught any of them
+    expect_true(all(is.finite(as.double(wts))))
+    expect_error(
+      ipw(ps_mod, outcome_mod, se_method = "mestimation"),
+      class = "propensity_ipw_separation_error"
+    )
+  }
+})
+
+test_that("the separation error names the count and points at the model", {
+  skip_if_not_installed("deli")
+  dat <- separation_data()
+  mods <- separation_models(dat)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  )
+})
+
+test_that("linearization still runs on a separated propensity model", {
+  # The documented boundary of the guard. The linearization path takes its
+  # propensity scores from predict(), which goes through the fitted family's
+  # inverse link, and that link clamps: it cannot return an exact 0 or 1, so
+  # nothing saturates and no weight is undefined. The M-estimation rebuild uses
+  # plogis instead, deliberately, because the clamp would flatten the psi
+  # derivatives and corrupt the sandwich variance.
+  #
+  # This is not an endorsement of the answer. A separated model has no overlap
+  # and the estimate below means little; whether this path should refuse it is a
+  # separate design question. The pin is here so that turning it into an error
+  # is a decision someone makes rather than a side effect of touching the guard.
+  dat <- separation_data()
+  mods <- separation_models(dat)
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
 # ---- the outcome model must contain the exposure -----------------------------
 #
 # The counterfactual designs are built by setting the exposure to each level in

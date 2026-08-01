@@ -18,6 +18,17 @@
       i Supported links: "logit", "probit", and "cloglog".
       i Refit `wt_mod` with a supported link, or set `ps_link` to one of them.
 
+# the separation error names the count and points at the model
+
+    Code
+      ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+    Condition
+      Error in `ipw()`:
+      ! `wt_mod` must not separate the exposure.
+      x Rebuilding the propensity scores gives a probability of exactly 0 or 1 for 389 observations, whose weights are then undefined.
+      i This is separation: some covariate pattern predicts the exposure without error, so the fit has no finite maximum likelihood estimate.
+      i Check overlap in `wt_mod` rather than the weights. Dropping or combining the covariate that separates, or penalizing the fit, gives a model with finite coefficients.
+
 # the missing-exposure error names the exposure and directs the user to refit
 
     Code

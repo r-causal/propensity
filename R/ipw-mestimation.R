@@ -762,9 +762,55 @@ ipw_spec_continuous <- function(
 
 # ---- weight-consistency preflight -------------------------------------------
 
+# Reject a propensity score model that separates. A model whose covariates
+# predict the exposure without error has no finite maximum likelihood estimate,
+# and `glm` returns whatever its convergence criterion stopped at, which can be
+# a linear predictor in the tens of thousands. Rebuilding the propensity scores
+# from those coefficients gives probabilities of exactly zero or one, and a unit
+# whose own probability is zero has no finite weight.
+#
+# Two things this guard has to be checked against, neither visible from the code.
+#
+# It is not redundant with the weight comparison that follows. `glm` never hands
+# back an exact zero or one, because `binomial()$linkinv` clamps its argument, so
+# the weights a user builds from a separated fit are finite and the comparison
+# sees a mismatch rather than a singularity. Under `ate` that produced an error
+# about the weights and the focal level, neither of which was the cause; under
+# the other estimands the tilt cancels the singularity, the comparison passed,
+# and the solver failed later with an error from deli. This runs first so the
+# diagnosis names the model.
+#
+# The rebuild deliberately keeps using `plogis` rather than the fitted family's
+# clamped inverse link. The clamp would flatten the psi derivatives past its
+# threshold and quietly corrupt the sandwich variance, so the rebuild stays
+# mathematically honest and a fit it cannot represent is rejected here instead.
+#
+# A continuous exposure has no saturating inverse link and needs no such check.
+check_ipw_ps_separation <- function(n_saturated, call = rlang::caller_env()) {
+  if (n_saturated > 0) {
+    abort(
+      c(
+        "{.arg wt_mod} must not separate the exposure.",
+        x = "Rebuilding the propensity scores gives a probability of exactly \\
+        0 or 1 for {n_saturated} observation{?s}, whose weight{?s} {?is/are} \\
+        then undefined.",
+        i = "This is separation: some covariate pattern predicts the exposure \\
+        without error, so the fit has no finite maximum likelihood estimate.",
+        i = "Check overlap in {.arg wt_mod} rather than the weights. Dropping \\
+        or combining the covariate that separates, or penalizing the fit, \\
+        gives a model with finite coefficients."
+      ),
+      error_class = "propensity_ipw_separation_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
 # Recompute the weights implied by the spec at its seeded init, mirroring the
 # weight computation each psi builder performs at theta = init.
-ipw_weights_at_init <- function(spec, layout) {
+ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
   weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand)
   init <- layout$init
   idx <- layout$idx
@@ -777,12 +823,22 @@ ipw_weights_at_init <- function(spec, layout) {
     binary = {
       inv_ps <- ipw_inv_link(spec$ps$link)
       e <- inv_ps(as.vector(spec$ps$X %*% th_ps))
+      check_ipw_ps_separation(sum(e == 0 | e == 1), call = call)
       stab_prob <- if (length(th_stab)) th_stab[[1]] else NULL
       weight_fn(e, spec$exposure, list(stab_prob = stab_prob, score = score))
     },
     categorical = {
       k <- spec$ps$k
       ps_mat <- ipw_categorical_ps(spec$ps$X, th_ps, k)
+      # Only the score at the level each unit was actually assigned divides the
+      # weight. A softmax row can underflow to an exact zero in the columns for
+      # the levels a unit was not assigned, and under ordinary separation that is
+      # where the zeros land, leaving the denominator positive and the analysis
+      # sound. Firing on those would reject working fits.
+      check_ipw_ps_separation(
+        sum(rowSums(spec$exposure * ps_mat) == 0),
+        call = call
+      )
       focal_idx <- if (!is.null(spec$focal_level)) {
         match(spec$focal_level, names(spec$outcome$X_counterfactual))
       } else {
@@ -825,7 +881,7 @@ ipw_check_weight_consistency <- function(
   layout <- ipw_theta_layout(spec)
 
   ipw_compare_weights(
-    ipw_weights_at_init(spec, layout),
+    ipw_weights_at_init(spec, layout, call = call),
     observed_wts,
     spec$exposure_type,
     spec$estimand,

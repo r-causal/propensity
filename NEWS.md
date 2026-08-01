@@ -1,5 +1,16 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw(se_method = "mestimation")` now rejects a propensity score model that
+  separates the exposure, with an error that says so and names how many
+  observations are affected. A separating model has no finite maximum likelihood
+  estimate, and rebuilding its propensity scores for the estimating equations
+  gives probabilities of exactly zero or one, which leave the corresponding
+  weights undefined. Previously this surfaced as an error about the outcome
+  model's weights and the focal level for the `"ate"` estimand, and as an error
+  from the solver for the others, neither of which pointed at the propensity
+  model. `se_method = "linearization"` is unaffected: it takes its propensity
+  scores from `predict()`, whose inverse link cannot return exactly zero or one.
+
 * `ipw(se_method = "linearization")` now checks the outcome model's weights
   against the propensity score model, as the M-estimation path already did. The
   linearization path predicts the propensity scores and takes the weights from
