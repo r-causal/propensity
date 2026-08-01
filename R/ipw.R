@@ -412,7 +412,11 @@ ipw.glm <- function(
 
   # Shared with the mestimation specs, so a propensity model that has lost the
   # data behind its fitting call raises the same guided error here and rebuilds
-  # its design from `.data` the same way.
+  # its design from `.data` the same way. The shared helper also reconciles a
+  # `.data` whose row count disagrees with the fits, which this path needs
+  # because everything below is sized to `.data` while the weights come from the
+  # outcome model, and an unreconciled mismatch recycles the two against each
+  # other and shrinks the standard errors with nothing signaled.
   extracted <- ipw_extract_ps_design(
     wt_mod,
     outcome_mod,
@@ -424,22 +428,6 @@ ipw.glm <- function(
   exposure <- extracted$exposure
   outcome <- extracted$outcome
   weight_matrix <- extracted$ps_X
-
-  # With `.data` supplied, every piece above is sized to `.data` while the
-  # weights come from the outcome model fit. A row-count mismatch recycles the
-  # two against each other and shrinks the standard errors with nothing
-  # signaled, so reconcile them before estimating.
-  if (!is.null(.data) && !identical(length(exposure), length(wts))) {
-    abort(
-      c(
-        "{.arg .data} must have one row per observation the models were fit to.",
-        x = "{.arg .data} has {length(exposure)} rows.",
-        x = "{.arg outcome_mod} was fit to {length(wts)} observations.",
-        i = "Supply the data the models were fit to, or omit {.arg .data}."
-      ),
-      error_class = "propensity_ipw_data_error"
-    )
-  }
 
   # Convert a factor or logical response to its 0/1 coding so the influence
   # values compute Y - mu on numeric values rather than factor level codes.

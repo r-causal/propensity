@@ -312,6 +312,36 @@ ipw_extract_ps_design <- function(
     check_exposure(mm_data, exposure_name, call = call)
   } else {
     assert_columns_exist(.data, c(exposure_name, outcome_name), call = call)
+
+    # Everything downstream is sized to `.data` while the weights come from the
+    # outcome model fit, so a row count that disagrees leaves the two to be
+    # recycled against each other. Left alone it surfaces much later, as weights
+    # that fail their consistency check, which reports a problem with how the
+    # weights were built when the mistake was the data frame that was passed.
+    #
+    # Compare against the fitted model frame rather than `stats::nobs()`: the
+    # model frame's row count is the length of the weights the outcome model was
+    # fit with, which is what this reconciliation is really about, while `nobs()`
+    # subtracts zero-weight observations and would reject a correct `.data` for a
+    # fit that has any. The frame is already built before this point on every
+    # path, by the weight extraction each `ipw()` method runs first, so asking
+    # for it here cannot fail on its own.
+    n_fitted <- nrow(stats::model.frame(outcome_mod))
+
+    if (!identical(nrow(.data), n_fitted)) {
+      abort(
+        c(
+          "{.arg .data} must have one row per observation the models were fit \\
+          to.",
+          x = "{.arg .data} has {nrow(.data)} rows.",
+          x = "{.arg outcome_mod} was fit to {n_fitted} observations.",
+          i = "Supply the data the models were fit to, or omit {.arg .data}."
+        ),
+        error_class = "propensity_ipw_data_error",
+        call = call
+      )
+    }
+
     exposure <- .data[[exposure_name]]
     outcome <- .data[[outcome_name]]
     mm_data <- .data

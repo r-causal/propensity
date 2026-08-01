@@ -1,5 +1,15 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now reports a `.data` whose row count disagrees with the fitted models
+  as a problem with `.data`, on every exposure type and both standard error
+  methods. The linearization path already did. The M-estimation paths sized
+  their designs to `.data` instead, so the disagreement surfaced later as a
+  weight-consistency failure, whose message asks about how the weights were
+  built and, for a binary or categorical exposure, about the focal level. None
+  of that is the cause when the mistake is the wrong data frame. A `.data` of
+  the right size but the wrong content is still reported as a weights
+  inconsistency, since a row count cannot detect it.
+
 * `ipw()` now rebuilds its design matrices under the contrasts the supplied
   models were fit with. The counterfactual and propensity score designs were
   previously rebuilt under whatever coding was in force at the time of the call,
