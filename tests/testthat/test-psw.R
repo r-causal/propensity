@@ -93,6 +93,127 @@ test_that("vec_cast works for psw and integer with precision checks", {
   )
 })
 
+# A prototype carrying a distinct value in each of the six metadata fields, so a
+# cast that drops any one of them is visible.
+psw_cast_prototype <- function(stabilization_score = 0.42) {
+  psw(
+    double(),
+    estimand = "ate",
+    stabilized = TRUE,
+    trimmed = TRUE,
+    truncated = FALSE,
+    calibrated = TRUE,
+    stabilization_score = stabilization_score
+  )
+}
+
+test_that("vec_cast from double carries every metadata field of the psw prototype", {
+  to <- psw_cast_prototype()
+
+  out <- vec_cast(c(1, 2, 3), to = to)
+
+  expect_s3_class(out, "psw")
+  expect_equal(vec_data(out), c(1, 2, 3))
+  expect_equal(estimand(out), "ate")
+  expect_true(is_stabilized(out))
+  expect_true(is_ps_trimmed(out))
+  expect_false(is_ps_truncated(out))
+  expect_true(is_ps_calibrated(out))
+  expect_equal(stabilization_score(out), 0.42)
+})
+
+test_that("vec_cast from integer carries every metadata field of the psw prototype", {
+  to <- psw_cast_prototype()
+
+  out <- vec_cast(c(1L, 2L, 3L), to = to)
+
+  expect_s3_class(out, "psw")
+  expect_equal(vec_data(out), c(1, 2, 3))
+  expect_equal(estimand(out), "ate")
+  expect_true(is_stabilized(out))
+  expect_true(is_ps_trimmed(out))
+  expect_false(is_ps_truncated(out))
+  expect_true(is_ps_calibrated(out))
+  expect_equal(stabilization_score(out), 0.42)
+})
+
+test_that("vec_cast from ps_trim carries every metadata field of the psw prototype", {
+  to <- psw_cast_prototype()
+  ps <- ps_trim(c(0.2, 0.5, 0.8), method = "ps", lower = 0.1, upper = 0.9)
+
+  out <- vec_cast(ps, to = to)
+
+  expect_s3_class(out, "psw")
+  expect_equal(vec_data(out), c(0.2, 0.5, 0.8))
+  expect_equal(estimand(out), "ate")
+  expect_true(is_stabilized(out))
+  expect_true(is_ps_trimmed(out))
+  expect_false(is_ps_truncated(out))
+  expect_true(is_ps_calibrated(out))
+  expect_equal(stabilization_score(out), 0.42)
+})
+
+test_that("vec_cast from ps_trunc carries every metadata field of the psw prototype", {
+  to <- psw_cast_prototype()
+  ps <- ps_trunc(c(0.2, 0.5, 0.8), method = "ps", lower = 0.1, upper = 0.9)
+
+  out <- vec_cast(ps, to = to)
+
+  expect_s3_class(out, "psw")
+  expect_equal(vec_data(out), c(0.2, 0.5, 0.8))
+  expect_equal(estimand(out), "ate")
+  expect_true(is_stabilized(out))
+  expect_true(is_ps_trimmed(out))
+  expect_false(is_ps_truncated(out))
+  expect_true(is_ps_calibrated(out))
+  expect_equal(stabilization_score(out), 0.42)
+})
+
+test_that("vec_cast keeps a per-observation stabilization score at a matching length", {
+  score <- c(0.51, 0.52, 0.53)
+  to <- psw_cast_prototype(stabilization_score = score)
+
+  out <- expect_no_warning(vec_cast(c(1, 2, 3), to = to))
+
+  expect_s3_class(out, "psw")
+  expect_equal(stabilization_score(out), score)
+  expect_true(is_stabilized(out))
+})
+
+test_that("vec_cast drops a per-observation stabilization score at a different length", {
+  score <- c(0.51, 0.52, 0.53)
+  to <- psw_cast_prototype(stabilization_score = score)
+
+  cnd <- expect_warning(
+    out <- vec_cast(c(1, 2), to = to),
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_s3_class(cnd, "propensity_warning")
+
+  expect_s3_class(out, "psw")
+  expect_length(out, 2)
+  expect_null(stabilization_score(out))
+  expect_null(attr(out, "stabilization_score"))
+  expect_true(is_stabilized(out))
+  expect_equal(estimand(out), "ate")
+})
+
+test_that("vec_cast from psw to double returns the bare data", {
+  x <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    trimmed = TRUE,
+    calibrated = TRUE,
+    stabilization_score = 0.42
+  )
+
+  out <- vec_cast(x, to = double())
+
+  expect_identical(out, c(1, 2, 3))
+  expect_null(attributes(out))
+})
+
 test_that("vec_ptype2 combines psw and other types correctly", {
   x <- psw(c(0.1, 0.2), estimand = "ate")
   y <- psw(c(0.3, 0.4), estimand = "ate")
