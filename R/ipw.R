@@ -855,6 +855,58 @@ check_ipw_outcome_exposure <- function(
   invisible(TRUE)
 }
 
+# Reject a categorical outcome model that holds the exposure as a numeric term.
+# The counterfactual designs are built by replacing the exposure column with a
+# factor of the fitted levels, so `model.matrix` expands it into one dummy per
+# non-reference level. A numeric term occupies a single coefficient slot, so the
+# design gains columns the coefficient vector does not have, and the marginal
+# mean is `X %*% beta` with no names consulted: the multiply is positional, and
+# here it is not even conformable.
+#
+# The two codings mean different things in any case. A numeric term fits one
+# slope across the levels and assumes they are equally spaced, which is not the
+# model the counterfactual designs represent, so reconciling the two would
+# silently answer a different question than the user asked.
+#
+# Only "numeric" is rejected. `.MFclass` folds integer columns into "numeric",
+# so that single value covers both storage types. A character column is left
+# alone because `model.frame` coerces it to a factor, giving the same dummy
+# expansion and the same estimates as an explicit factor. A logical column
+# cannot reach here at all: it carries at most two levels, and the weight layer
+# rejects a two-level categorical exposure before `ipw()` is ever called.
+#
+# The guard is silent when the exposure name is absent from `dataClasses`, which
+# happens when the formula transforms it, as in `y ~ factor(z) + x1`. There the
+# term label is the call rather than the name, and those paths fail their own
+# way.
+check_ipw_outcome_exposure_class <- function(
+  outcome_mod,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  data_classes <- attr(stats::terms(outcome_mod), "dataClasses")
+
+  if (!exposure_name %in% names(data_classes)) {
+    return(invisible(TRUE))
+  }
+
+  if (identical(data_classes[[exposure_name]], "numeric")) {
+    abort(
+      c(
+        "{.arg outcome_mod} must hold a categorical exposure as a factor.",
+        x = "{.val {exposure_name}} enters {.arg outcome_mod} as a numeric \\
+        term, which gives it one coefficient instead of one per level.",
+        i = "Refit {.arg outcome_mod} after converting {.val {exposure_name}} \\
+        to a factor in the data, rather than wrapping it in the formula."
+      ),
+      error_class = "propensity_ipw_exposure_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
 # Reject an outcome model whose family or link the estimating equations cannot
 # stack. Both standard error paths classify the outcome model as either a
 # gaussian identity linear score or a binomial score with the model's link, so

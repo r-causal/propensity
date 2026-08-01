@@ -408,6 +408,7 @@ ipw_spec_categorical <- function(
   outcome_name <- fmla_extract_left_chr(outcome_mod)
 
   check_ipw_outcome_exposure(outcome_mod, exposure_name, call = call)
+  check_ipw_outcome_exposure_class(outcome_mod, exposure_name, call = call)
 
   extracted <- ipw_extract_ps_design(
     ps_mod,

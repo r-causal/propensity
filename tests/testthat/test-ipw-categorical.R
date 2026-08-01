@@ -1184,6 +1184,18 @@ test_that("ipw() categorical rejects an outcome model holding the exposure as a 
   expect_match(msg, "as a factor", fixed = TRUE)
 })
 
+test_that("the categorical numeric-exposure error names the exposure and the remedy", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_numeric_categorical()
+  mods <- fit_numeric_categorical_models(dat)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, mods$outcome_mod)
+  )
+})
+
 test_that("ipw() categorical rejects a numeric-term exposure when .data is supplied", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")

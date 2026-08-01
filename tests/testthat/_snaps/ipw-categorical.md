@@ -52,3 +52,13 @@
       x Setting `a` to "a" and "b" produces identical counterfactual designs, so the model predicts the same outcome at both levels and the contrast between them is degenerate.
       i Code the exposure so `outcome_mod` separates every level, for example as a factor rather than an indicator for a single level.
 
+# the categorical numeric-exposure error names the exposure and the remedy
+
+    Code
+      ipw(mods$ps_mod, mods$outcome_mod)
+    Condition
+      Error in `ipw()`:
+      ! `outcome_mod` must hold a categorical exposure as a factor.
+      x "z" enters `outcome_mod` as a numeric term, which gives it one coefficient instead of one per level.
+      i Refit `outcome_mod` after converting "z" to a factor in the data, rather than wrapping it in the formula.
+
