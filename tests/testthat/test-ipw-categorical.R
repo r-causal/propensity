@@ -1232,6 +1232,120 @@ test_that("ipw() categorical rejects a double-coded exposure in the outcome mode
   expect_match(msg, "as a factor", fixed = TRUE)
 })
 
+# ---- both models must share the exposure's factor level order ---------------
+#
+# The counterfactual designs are built by setting the exposure to
+# factor(level, levels = ps_mod$lev), so their dummy columns are laid out in the
+# propensity score model's level order. The coefficients they multiply come from
+# the outcome model's own coding, and the multiply is positional: nothing
+# consults the column names. Fitting the outcome model on a releveled copy of
+# the same exposure keeps the same level set and the same fit, and changes only
+# the order, which is enough to pair each design column with the wrong
+# coefficient. The estimates that come back are wrong, sometimes sign-flipped,
+# with no warning and no NaN to notice.
+#
+# The same mismatch is reachable without anyone releveling anything: an outcome
+# model fit on a character exposure column gets its levels from model.frame,
+# which sorts them alphabetically. When the propensity score model was fit on a
+# factor whose order is not alphabetical, the two disagree.
+#
+# The aligned case is pinned throughout this file. Two tests pin it specifically
+# for a non-alphabetical level order, so a guard that compared against sorted
+# levels rather than against the fitted order would fail them: "ipw() categorical
+# resolves a character .data exposure against the fitted levels" and "ipw()
+# categorical ignores a releveled .data exposure ordering".
+
+test_that("ipw() categorical rejects an outcome model fit on a releveled exposure", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # Same units, same weights, same fit: relevel() only reorders the factor, so
+  # the outcome model's fitted values are unchanged and the weight-consistency
+  # preflight has nothing to object to. Only the coefficient order moves.
+  dat_relevel <- dat
+  dat_relevel$a <- relevel(dat$a, ref = "c")
+  releveled <- glm(
+    y ~ a + x1,
+    data = dat_relevel,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  # the fixture is the mismatch it claims to be
+  expect_equal(mods$ps_mod$lev, c("a", "b", "c"))
+  expect_equal(releveled$xlevels$a, c("c", "a", "b"))
+
+  err <- expect_error(
+    ipw(mods$ps_mod, releveled),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "level order", fixed = TRUE)
+})
+
+test_that("ipw() categorical rejects a releveled outcome exposure when .data is supplied", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # Supplying .data changes how the exposure column is recovered, not how the
+  # outcome model's coefficients are ordered, so this route is equally wrong and
+  # must be rejected too.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  dat_relevel <- dat
+  dat_relevel$a <- relevel(dat$a, ref = "c")
+  releveled <- glm(
+    y ~ a + x1,
+    data = dat_relevel,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(mods$ps_mod, releveled, .data = dat_relevel),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "level order", fixed = TRUE)
+})
+
+test_that("ipw() categorical rejects a character outcome exposure ordered against the fitted levels", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # Nobody relevels anything here. The propensity score model is fit on a factor
+  # ordered low, mid, high; the outcome model is fit on the same column stored as
+  # character, which model.frame sorts to high, low, mid. The orders disagree and
+  # the estimates are silently wrong. The .data route fails the same way.
+  dat <- sim_categorical_nonalpha()
+  mods <- fit_categorical_models(dat, "ate")
+  dat_chr <- dat
+  dat_chr$a <- as.character(dat$a)
+  chr_outcome <- glm(
+    y ~ a + x1,
+    data = dat_chr,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  # the orders genuinely disagree, so the fixture exercises the contract
+  expect_equal(mods$ps_mod$lev, c("low", "mid", "high"))
+  expect_equal(chr_outcome$xlevels$a, c("high", "low", "mid"))
+
+  err <- expect_error(
+    ipw(mods$ps_mod, chr_outcome),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "level order", fixed = TRUE)
+})
+
 # ---- arguments that fall into the dots --------------------------------------
 
 test_that("ipw() multinom rejects arguments that fall into the dots", {
