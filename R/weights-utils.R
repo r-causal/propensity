@@ -178,6 +178,32 @@ as_focal_label <- function(x) {
   if (is.factor(x)) as.character(x) else x
 }
 
+# Whether the named levels leave the focal level where the default coding puts
+# it. Both sides come from `effective_binary_focal_level()`, so this agrees with
+# `transform_exposure_binary()` by construction, including for exposures that
+# ignore the named levels entirely. A level that cannot be resolved counts as
+# the default, leaving the exposure to be handled downstream as it is today.
+resolved_focal_is_default <- function(
+  .exposure,
+  .focal_level = NULL,
+  .reference_level = NULL
+) {
+  resolved <- effective_binary_focal_level(
+    .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
+  )
+  default <- effective_binary_focal_level(.exposure)
+
+  if (is.null(resolved) || is.null(default)) {
+    return(TRUE)
+  }
+
+  # `==` rather than `identical()`, matching how `transform_exposure_binary()`
+  # compares the exposure against a named level: 1 and 1L are the same level.
+  isTRUE(resolved == default)
+}
+
 # Binary att and atu weights are mirror images of one another: att weights built
 # on one exposure level are numerically identical to atu weights built on the
 # other, so nothing in the values records which level they target. Store the
@@ -729,4 +755,65 @@ extract_exposure_from_glm <- function(
     alert_info("Using exposure variable {.val {exposure_name}} from GLM model")
   }
   .exposure
+}
+
+# Shared preparation for the GLM methods of the weight functions.
+#
+# Fitted values report the probability of the level the response's default
+# coding treats as focal: the second factor level, or the second sorted value.
+# The weight formulas read `.propensity` as the probability of the level
+# actually resolved as focal, so naming the other level means the fitted values
+# must be inverted before the numeric method sees them.
+#
+# The deprecated arguments are resolved here rather than downstream. The
+# resolved focal level is needed to decide whether to invert, and mapping it
+# twice would emit the deprecation warning twice, so the numeric method
+# receives the mapped levels and no deprecated arguments.
+prepare_glm_weight_args <- function(
+  glm_obj,
+  .exposure,
+  exposure_type,
+  valid_exposure_types,
+  .focal_level,
+  .reference_level,
+  .treated,
+  .untreated,
+  fn_name,
+  call = rlang::caller_env()
+) {
+  .exposure <- extract_exposure_from_glm(glm_obj, .exposure)
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    valid_exposure_types
+  )
+
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    fn_name
+  )
+
+  ps_vec <- extract_propensity_from_glm(glm_obj, call = call)
+
+  invert <- identical(exposure_type, "binary") &&
+    !resolved_focal_is_default(
+      .exposure,
+      .focal_level = focal_params$.focal_level,
+      .reference_level = focal_params$.reference_level
+    )
+
+  if (invert) {
+    ps_vec <- 1 - ps_vec
+  }
+
+  list(
+    propensity = ps_vec,
+    exposure = .exposure,
+    exposure_type = exposure_type,
+    focal_level = focal_params$.focal_level,
+    reference_level = focal_params$.reference_level
+  )
 }

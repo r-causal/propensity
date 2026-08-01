@@ -1011,6 +1011,74 @@ test_that("glm weights on a 0/1 response ignore a named focal level", {
   )
 })
 
+test_that("glm weights on a logical response ignore a named focal level", {
+  withr::local_options(propensity.quiet = TRUE)
+  set.seed(412)
+  n <- 40
+  x <- rnorm(n)
+  # a logical response is coded by `as.numeric()` without consulting the named
+  # levels, so the resolved focal is always TRUE
+  z <- rbinom(n, 1, plogis(0.4 * x)) == 1
+  ps_mod <- glm(z ~ x, family = binomial)
+
+  expect_equal(
+    as.numeric(wt_att(ps_mod, exposure_type = "binary", .focal_level = FALSE)),
+    as.numeric(wt_att(ps_mod, exposure_type = "binary"))
+  )
+})
+
+test_that("glm wt_cens() uses the named focal level's fitted probability", {
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- focal_glm_fixture()
+  focal_ps <- 1 - unname(fitted(fixture$model))
+
+  weights <- wt_cens(
+    fixture$model,
+    exposure_type = "binary",
+    .focal_level = "a"
+  )
+
+  expect_equal(
+    weights,
+    wt_cens(
+      focal_ps,
+      fixture$exposure,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+  expect_equal(estimand(weights), "uncensored")
+})
+
+test_that("glm weights resolve the deprecated `.untreated` to the same reference level", {
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- focal_glm_fixture()
+  e <- 1 - unname(fitted(fixture$model))
+  is_focal <- fixture$exposure == "a"
+
+  withr::with_options(
+    list(lifecycle_verbosity = "warning"),
+    expect_warning(
+      wt_att(fixture$model, exposure_type = "binary", .untreated = "b"),
+      class = "lifecycle_warning_deprecated"
+    )
+  )
+
+  # the deprecation is asserted above; take the value without re-raising it
+  withr::local_options(lifecycle_verbosity = "quiet")
+  att_untreated <- wt_att(
+    fixture$model,
+    exposure_type = "binary",
+    .untreated = "b"
+  )
+
+  expect_equal(
+    att_untreated,
+    wt_att(fixture$model, exposure_type = "binary", .reference_level = "b")
+  )
+  expect_equal(as.numeric(att_untreated), ifelse(is_focal, 1, e / (1 - e)))
+})
+
 test_that("ATE works for continuous cases", {
   denom_model <- lm(mpg ~ gear + am + carb, data = mtcars)
 

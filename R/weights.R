@@ -111,6 +111,13 @@
 #'   * A fitted **`glm`** object -- fitted values are extracted automatically.
 #'   * A modified propensity score created by [ps_trim()], [ps_trunc()],
 #'     [ps_refit()], or [ps_calibrate()].
+#'
+#'   For a binary exposure, `.propensity` is the probability of the focal
+#'   level, so a numeric vector must be supplied on the scale of whichever
+#'   level `.focal_level` or `.reference_level` resolves to. The `glm` methods
+#'   derive it from the fitted values, which give the probability of the
+#'   response's second level, and subtract them from one when the resolved
+#'   focal level is the first level instead.
 #' @param .exposure The exposure (treatment) variable. For binary exposures, a
 #'   numeric 0/1 vector, logical, or two-level factor. For categorical
 #'   exposures, a factor or character vector. For continuous exposures, a
@@ -404,30 +411,33 @@ wt_ate.glm <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Handle optional exposure argument
-  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
-
-  # Extract fitted values (propensity scores) from GLM
-  ps_vec <- extract_propensity_from_glm(.propensity)
+  args <- prepare_glm_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_ate"
+  )
 
   # For continuous exposures, extract sigma if not provided
-  if (is.null(.sigma) && exposure_type == "continuous") {
+  if (is.null(.sigma) && args$exposure_type == "continuous") {
     .sigma <- stats::influence(.propensity)$sigma
   }
 
   # Call the numeric method
   wt_ate.numeric(
-    .propensity = ps_vec,
-    .exposure = .exposure,
+    .propensity = args$propensity,
+    .exposure = args$exposure,
     .sigma = .sigma,
-    exposure_type = exposure_type,
-    .focal_level = .focal_level,
-    .reference_level = .reference_level,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
-    .treated = .treated,
-    .untreated = .untreated,
     ...
   )
 }
@@ -644,21 +654,25 @@ wt_att.glm <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Handle optional exposure argument
-  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
-
-  # Extract fitted values (propensity scores) from GLM
-  ps_vec <- extract_propensity_from_glm(.propensity)
-
-  # Call the numeric method
-  wt_att.numeric(
-    .propensity = ps_vec,
-    .exposure = .exposure,
+  args <- prepare_glm_weight_args(
+    .propensity,
+    .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
+    fn_name = "wt_att"
+  )
+
+  # Call the numeric method
+  wt_att.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
     ...
   )
 }
@@ -817,21 +831,25 @@ wt_atu.glm <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Handle optional exposure argument
-  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
-
-  # Extract fitted values (propensity scores) from GLM
-  ps_vec <- extract_propensity_from_glm(.propensity)
-
-  # Call the numeric method
-  wt_atu.numeric(
-    .propensity = ps_vec,
-    .exposure = .exposure,
+  args <- prepare_glm_weight_args(
+    .propensity,
+    .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
+    fn_name = "wt_atu"
+  )
+
+  # Call the numeric method
+  wt_atu.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
     ...
   )
 }
@@ -984,21 +1002,25 @@ wt_atm.glm <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Handle optional exposure argument
-  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
-
-  # Extract fitted values (propensity scores) from GLM
-  ps_vec <- extract_propensity_from_glm(.propensity)
-
-  # Call the numeric method
-  wt_atm.numeric(
-    .propensity = ps_vec,
-    .exposure = .exposure,
+  args <- prepare_glm_weight_args(
+    .propensity,
+    .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
+    fn_name = "wt_atm"
+  )
+
+  # Call the numeric method
+  wt_atm.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
     ...
   )
 }
@@ -1150,21 +1172,25 @@ wt_ato.glm <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Handle optional exposure argument
-  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
-
-  # Extract fitted values (propensity scores) from GLM
-  ps_vec <- extract_propensity_from_glm(.propensity)
-
-  # Call the numeric method
-  wt_ato.numeric(
-    .propensity = ps_vec,
-    .exposure = .exposure,
+  args <- prepare_glm_weight_args(
+    .propensity,
+    .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
+    fn_name = "wt_ato"
+  )
+
+  # Call the numeric method
+  wt_ato.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
     ...
   )
 }
@@ -1314,21 +1340,25 @@ wt_entropy.glm <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Handle optional exposure argument
-  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
-
-  # Extract fitted values (propensity scores) from GLM
-  ps_vec <- extract_propensity_from_glm(.propensity)
-
-  # Call the numeric method
-  wt_entropy.numeric(
-    .propensity = ps_vec,
-    .exposure = .exposure,
+  args <- prepare_glm_weight_args(
+    .propensity,
+    .exposure,
     exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
+    fn_name = "wt_entropy"
+  )
+
+  # Call the numeric method
+  wt_entropy.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
     ...
   )
 }
@@ -1488,28 +1518,31 @@ wt_cens.glm <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Handle optional exposure argument
-  .exposure <- extract_exposure_from_glm(.propensity, .exposure)
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
-
-  # Extract fitted values (propensity scores) from GLM
-  ps_vec <- extract_propensity_from_glm(.propensity)
+  args <- prepare_glm_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_cens"
+  )
 
   # For continuous exposures, extract sigma if not provided
-  if (is.null(.sigma) && exposure_type == "continuous") {
+  if (is.null(.sigma) && args$exposure_type == "continuous") {
     .sigma <- stats::influence(.propensity)$sigma
   }
 
   # Call the numeric method
   wt_cens.numeric(
-    .propensity = ps_vec,
-    .exposure = .exposure,
+    .propensity = args$propensity,
+    .exposure = args$exposure,
     .sigma = .sigma,
-    exposure_type = exposure_type,
-    .focal_level = .focal_level,
-    .reference_level = .reference_level,
-    .treated = .treated,
-    .untreated = .untreated,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     ...

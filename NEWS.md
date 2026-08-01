@@ -1,5 +1,15 @@
 # propensity 0.1.0.9000 (development version)
 
+* The `glm` methods of `wt_ate()`, `wt_att()`, `wt_atu()`, `wt_atm()`,
+  `wt_ato()`, `wt_entropy()`, and `wt_cens()` now supply the numeric methods
+  with the probability of the level resolved as focal. Fitted values give the
+  probability of the response's second level, and they are subtracted from one
+  when `.focal_level` names the first level, or `.reference_level` names the
+  second. Weights built from a fitted model with a flipped focal level were
+  previously inverted, weighting each unit by the other group's probability;
+  they are now correct. Calls that leave the focal level at its default are
+  unchanged.
+
 * The first argument of `ipw()` is now `wt_mod` rather than `ps_mod`, on the
   generic and on every method. It still takes the fitted weighting model, but a
   call that supplied it by name, such as `ipw(ps_mod = fit, outcome_mod = out)`,

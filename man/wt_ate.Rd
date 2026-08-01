@@ -211,7 +211,14 @@ wt_cens(
 \item A fitted \strong{\code{glm}} object -- fitted values are extracted automatically.
 \item A modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
 \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
-}}
+}
+
+For a binary exposure, \code{.propensity} is the probability of the focal
+level, so a numeric vector must be supplied on the scale of whichever
+level \code{.focal_level} or \code{.reference_level} resolves to. The \code{glm} methods
+derive it from the fitted values, which give the probability of the
+response's second level, and subtract them from one when the resolved
+focal level is the first level instead.}
 
 \item{.exposure}{The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
