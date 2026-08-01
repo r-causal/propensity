@@ -407,6 +407,7 @@ ipw.glm <- function(
   # model this path cannot support is rejected on its own terms rather than
   # through whatever the reconstruction happens to fail on first.
   check_ipw_offset(outcome_mod)
+  check_ipw_outcome_response(outcome_mod)
   check_ipw_linearization_outcome(outcome_mod, exposure_name)
   check_ipw_outcome_family(outcome_mod)
 
@@ -789,6 +790,15 @@ check_ipw_binary_focal <- function(
 # model frame's response is a matrix, and, as a frame-independent fallback for a
 # model fit without a stored frame, the formula's left-hand side is not a single
 # symbol. Shared by ipw.glm entry and ipw_spec_binary.
+#
+# The error class says what is wrong with the model rather than which model it
+# is: `propensity_ipw_response_error` belongs to this guard and to the outcome
+# model's counterpart below, and to nothing else. It is deliberately not
+# `propensity_ipw_exposure_error`, which is reserved for the guards about what
+# the exposure means rather than what shape a response has: an outcome model
+# that omits the exposure, one that codes it numerically, one whose factor
+# levels are ordered against the propensity model's, the counterfactual design
+# guards, and an exposure value the propensity model never saw.
 check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
   lhs_not_single <- length(fmla_extract_left_chr(ps_mod)) != 1L
   response_is_matrix <- tryCatch(
@@ -806,7 +816,58 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
         single-column response.",
         i = "Fit {.arg wt_mod} with a single binary response column."
       ),
-      error_class = "propensity_ipw_exposure_error",
+      error_class = "propensity_ipw_response_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# Reject an outcome model with a matrix response, the counterpart of the guard
+# above. A cbind(successes, failures) response leaves the model frame twice as
+# long as the exposure, and what the user was told depended on the route:
+# without `.data` the length reconciliation reported an outcome twice the length
+# of the exposure, and with `.data` the extraction asked for a column named
+# "cbind", which cannot exist. Neither named the response, and the second sent
+# the user to add a column named after a function.
+#
+# The prongs are not the ps guard's. There, a left-hand side that is not a bare
+# symbol is rejected, which is right for an exposure. Here it would be wrong: a
+# transformed single-column response such as `log(y)`, `sqrt(y)`, or `I(y / 10)`
+# is an ordinary outcome model that estimates marginal means correctly, and "not
+# a single symbol" is true of every one of them. So the frame-independent prong
+# is narrowed to a literal `cbind` call, which is a matrix response by
+# construction and cannot match a transformation, leaving the general test to
+# `is.matrix` on the built frame.
+#
+# That narrowed prong is redundant on every public route, since each `ipw()`
+# method builds the outcome frame to read its weights before any spec is
+# constructed. It is kept for callers that reach the spec constructors directly,
+# where this guard runs before that frame is ever demanded.
+check_ipw_outcome_response <- function(
+  outcome_mod,
+  call = rlang::caller_env()
+) {
+  lhs <- fmla_extract_left_chr(outcome_mod)
+  lhs_is_cbind <- length(lhs) > 1L && identical(lhs[[1]], "cbind")
+  response_is_matrix <- tryCatch(
+    is.matrix(stats::model.response(stats::model.frame(outcome_mod))),
+    error = function(e) FALSE
+  )
+
+  if (lhs_is_cbind || response_is_matrix) {
+    abort(
+      c(
+        "{.fun ipw} does not support a matrix response in the outcome model.",
+        x = "{.arg outcome_mod} has a matrix response, such as \\
+        {.code cbind(successes, failures)}; the marginal means are estimated \\
+        from a single-column response.",
+        i = "Refit {.arg outcome_mod} on one row per observation, weighted by \\
+        the propensity score weights. Aggregated counts have to be expanded \\
+        first, because the outcome model must carry exactly those weights."
+      ),
+      error_class = "propensity_ipw_response_error",
       call = call
     )
   }

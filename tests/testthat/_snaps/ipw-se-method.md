@@ -71,6 +71,16 @@
       x `wt_mod` has a matrix response, such as `cbind(successes, failures)`; a binary exposure must be a single-column response.
       i Fit `wt_mod` with a single binary response column.
 
+# the matrix-response outcome model error names the outcome model
+
+    Code
+      ipw(m$ps_mod, m$outcome_mod)
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` does not support a matrix response in the outcome model.
+      x `outcome_mod` has a matrix response, such as `cbind(successes, failures)`; the marginal means are estimated from a single-column response.
+      i Refit `outcome_mod` on one row per observation, weighted by the propensity score weights. Aggregated counts have to be expanded first, because the outcome model must carry exactly those weights.
+
 # the focal level rejection names both the recorded and coded levels
 
     Code

@@ -1,5 +1,16 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now rejects an outcome model with a matrix response, such as
+  `cbind(successes, failures)`, with an error naming the response shape, on
+  every exposure type and both standard error methods. Such a model previously
+  failed further downstream and differently depending on the call: without
+  `.data` it reported an outcome twice the length of the exposure, and with
+  `.data` it reported a missing column named `"cbind"`, which cannot exist. The
+  matrix-response guards for the propensity score model and the outcome model
+  now share the error class `propensity_ipw_response_error`;
+  `propensity_ipw_exposure_error` is reserved for the guards concerned with what
+  the exposure means rather than what shape a response has.
+
 * `ipw()` now reports an outcome model whose fitting data can no longer be
   reached with a classed error naming `outcome_mod`, on every exposure type and
   both standard error methods, instead of the raw object-not-found error the

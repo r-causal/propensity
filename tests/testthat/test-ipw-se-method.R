@@ -1271,6 +1271,66 @@ test_that("a matrix-response outcome model errors on its shape without .data", {
   }
 })
 
+test_that("a transformed single-column outcome response is not a matrix response", {
+  skip_if_not_installed("deli")
+  # `log(y)` and friends make the formula's left-hand side a call rather than a
+  # symbol, which is what the propensity guard rejects and what an early version
+  # of this guard rejected too. They are ordinary single-column responses and
+  # the analysis is correct, so the only honest check is the built frame. The
+  # reference fits the same model on a precomputed column, which is the same
+  # model written differently and must give the same answer.
+  set.seed(2024)
+  n <- 300
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y <- rlnorm(n, -0.4 + z + 0.3 * x1)
+  dat <- data.frame(x1, z, y, log_y = log(y), sqrt_y = sqrt(y))
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+
+  for (se in c("mestimation", "linearization")) {
+    for (pair in list(c("log(y)", "log_y"), c("sqrt(y)", "sqrt_y"))) {
+      transformed <- lm(
+        stats::reformulate("z", response = pair[[1]]),
+        data = dat,
+        weights = wts
+      )
+      precomputed <- lm(
+        stats::reformulate("z", response = pair[[2]]),
+        data = dat,
+        weights = wts
+      )
+
+      expect_false(
+        is.matrix(stats::model.response(stats::model.frame(transformed)))
+      )
+      expect_equal(
+        ipw(ps_mod, transformed, se_method = se)$estimates$estimate,
+        ipw(ps_mod, precomputed, se_method = se)$estimates$estimate,
+        tolerance = 1e-10
+      )
+    }
+  }
+})
+
+test_that("the matrix-response outcome model error names the outcome model", {
+  skip_if_not_installed("deli")
+  m <- matrix_outcome_models()
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(m$ps_mod, m$outcome_mod)
+  )
+})
+
 test_that("a matrix-response outcome model errors on its shape with .data", {
   skip_if_not_installed("deli")
   # The .data route fails differently today, asking for a "cbind" column, so it
