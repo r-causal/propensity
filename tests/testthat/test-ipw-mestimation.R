@@ -1519,6 +1519,99 @@ test_that("mestimation is unaffected by a contrasts option changed after fitting
   )
 })
 
+# ---- separation in the propensity score model -------------------------------
+#
+# A propensity model whose covariates perfectly predict the exposure has no
+# finite maximum likelihood estimate. `glm` stops when its convergence criterion
+# is met rather than at an optimum, leaving a linear predictor in the tens of
+# thousands, and reports that fitted probabilities of numerically zero or one
+# occurred.
+#
+# `glm` itself never hands back an exact zero or one: `binomial()$linkinv`
+# clamps its argument, so the largest fitted value it can produce is the double
+# just below one. The M-estimation path does not go through that clamp. It
+# rebuilds the propensity scores as `plogis(X %*% theta)`, and `plogis`
+# saturates to exactly one above about 36.74, so the weights recomputed for the
+# preflight contain 0/0 where the supplied weights were finite. What the user
+# sees is the generic weight-consistency error, which asks them to check how
+# they built their weights and to consider the focal level. Neither is the
+# cause, and neither leads anywhere: the weights are the ones this propensity
+# model implies, and the model is the problem.
+#
+# Only the `ate` weights go non-finite. The other estimands carry a tilt that
+# vanishes at the saturation point, which cancels the singularity, so their
+# recomputed weights stay finite and the preflight is satisfied. They break
+# further in instead; that is recorded separately and is not what these pin.
+
+separation_data <- function(seed = 2024, n = 400) {
+  set.seed(seed)
+  x1 <- rnorm(n)
+  # x1 predicts z with no error, so the fit has no finite optimum
+  z <- as.integer(x1 > 0)
+  y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.4 * x1))
+  data.frame(x1, z, y)
+}
+
+# The propensity fit warns that fitted probabilities of zero or one occurred,
+# which is the fixture working as intended rather than anything under test. The
+# iteration limit is raised so the linear predictor reaches the range where
+# plogis saturates, which is the state these tests are about.
+separation_models <- function(dat) {
+  ps_mod <- suppressWarnings(glm(
+    z ~ x1,
+    data = dat,
+    family = binomial(),
+    control = glm.control(maxit = 200, epsilon = 1e-14)
+  ))
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  outcome_mod <- suppressWarnings(glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  ))
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+test_that("mestimation reports separation in the propensity model as its own error", {
+  skip_if_not_installed("deli")
+  dat <- separation_data()
+  mods <- separation_models(dat)
+
+  # The fixture is separated, and the weights the user holds are finite: the
+  # mismatch is manufactured by the rebuild, not by anything they did.
+  expect_gt(max(abs(predict(mods$ps_mod))), 100)
+  expect_true(all(is.finite(as.double(mods$wts))))
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation"),
+    class = "propensity_ipw_separation_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "separation", ignore.case = TRUE)
+})
+
+test_that("mestimation reports separation when .data is supplied", {
+  skip_if_not_installed("deli")
+  # The propensity scores are rebuilt from the same coefficients either way, so
+  # supplying .data does not change what saturates.
+  dat <- separation_data()
+  mods <- separation_models(dat)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat, se_method = "mestimation"),
+    class = "propensity_ipw_separation_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "separation", ignore.case = TRUE)
+})
+
 # ---- the outcome model must contain the exposure -----------------------------
 #
 # The counterfactual designs are built by setting the exposure to each level in
