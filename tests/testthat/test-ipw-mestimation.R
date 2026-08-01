@@ -1165,6 +1165,144 @@ test_that("mestimation binary estimates are unchanged when .data re-levels a ps 
   expect_equal(releveled, no_data, tolerance = 1e-8)
 })
 
+# ---- an outcome model whose fitting data is gone -----------------------------
+#
+# The propensity model's counterpart is handled: a `wt_mod` that cannot rebuild
+# its design says so and names `.data` as the remedy, and supplying `.data`
+# recovers the analysis. An `outcome_mod` in the same state raw-errors with
+# whatever object the fitting call could not find.
+#
+# It is not the same situation, and the guidance cannot be the same. The weights
+# live in the outcome model's frame, and `ipw()` reads them from there before it
+# does anything else, so a frame it cannot rebuild means weights it cannot
+# recover. `.data` carries covariates, not weights, and does not help: every
+# route below fails identically with and without it. What the user needs to be
+# told is to refit the outcome model where its data survives, not to supply
+# something that cannot fix it.
+#
+# The failure is at the weight extraction each `ipw()` method performs first,
+# ahead of any design work, so it is shared by all three exposure types. The
+# categorical pin below is here because that shared site has one call per method
+# and fixing only the binary one would look complete.
+
+frame_gone_outcome <- function(dat, wts) {
+  # model = FALSE alone is not enough: model.frame() rebuilds from the fitting
+  # environment when it still holds the data. Fitting inside a local() whose
+  # bindings are removed leaves the reconstruction nothing to reach.
+  local({
+    d_local <- dat
+    w_local <- wts
+    m <- glm(
+      y ~ z,
+      data = d_local,
+      family = quasibinomial(),
+      weights = w_local,
+      model = FALSE,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+    rm(d_local, w_local)
+    m
+  })
+}
+
+test_that("mestimation errors informatively when the outcome model frame is gone", {
+  skip_if_not_installed("deli")
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  outcome_gone <- frame_gone_outcome(dat, wts)
+
+  # the fixture is genuinely unreconstructable
+  expect_error(stats::model.frame(outcome_gone))
+
+  for (supplied in list(NULL, dat)) {
+    err <- expect_error(
+      ipw(ps_mod, outcome_gone, .data = supplied, se_method = "mestimation"),
+      class = "propensity_ipw_data_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "outcome_mod", fixed = TRUE)
+  }
+})
+
+test_that("linearization errors informatively when the outcome model frame is gone", {
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  outcome_gone <- frame_gone_outcome(dat, wts)
+
+  for (supplied in list(NULL, dat)) {
+    err <- expect_error(
+      ipw(ps_mod, outcome_gone, .data = supplied, se_method = "linearization"),
+      class = "propensity_ipw_data_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "outcome_mod", fixed = TRUE)
+  }
+})
+
+test_that("the categorical path errors informatively when the outcome frame is gone", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # The weight extraction is per method, so the guided treatment has to reach
+  # every one of them.
+  dat <- ps_design_data()
+  dat$a <- factor(
+    ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
+    levels = c("a", "b", "c")
+  )
+  ps_mod <- nnet::multinom(
+    a ~ x1,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- ps_mod$lev
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$a, exposure_type = "categorical")
+  )
+  outcome_gone <- local({
+    d_local <- dat
+    w_local <- wts
+    m <- glm(
+      y ~ a,
+      data = d_local,
+      family = quasibinomial(),
+      weights = w_local,
+      model = FALSE,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+    rm(d_local, w_local)
+    m
+  })
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_gone),
+    class = "propensity_ipw_data_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "outcome_mod", fixed = TRUE)
+})
+
 # ---- a wrong-sized .data is a data problem ----------------------------------
 #
 # The linearization path already rejects a `.data` whose row count disagrees
