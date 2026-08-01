@@ -326,15 +326,15 @@ from that covariate and runs on the M-estimation path. A continuous exposure
 has no counterfactual designs, since \code{ipw()} reports the marginal structural
 model's own exposure coefficient, and is unaffected.
 
-With the default \code{se_method = "mestimation"}, two further requirements
-apply. The outcome model weights must match the values implied by the
-propensity score model; a mismatch errors. The propensity score model must be
-fit without case weights, since the stacked propensity score equations are
-unweighted and a weighted fit would not sit at the score root. Neither of
-these two checks runs on the linearization path, which does not restack the
-propensity score model. The linearization path still corrects for the
-uncertainty of estimating the propensity scores; it does so through the
-influence functions rather than through a stacked score.
+Two further requirements apply to the weights and the propensity score model.
+The outcome model weights must match the values implied by the propensity
+score model; a mismatch errors, on both standard error methods. The propensity
+score model must be fit without case weights, since the stacked propensity
+score equations are unweighted and a weighted fit would not sit at the score
+root; that requirement applies to \code{se_method = "mestimation"} alone, because
+the linearization path does not restack the propensity score model. It still
+corrects for the uncertainty of estimating the propensity scores; it does so
+through the influence functions rather than through a stacked score.
 }
 
 \examples{

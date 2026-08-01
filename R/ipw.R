@@ -235,15 +235,15 @@
 #' has no counterfactual designs, since `ipw()` reports the marginal structural
 #' model's own exposure coefficient, and is unaffected.
 #'
-#' With the default `se_method = "mestimation"`, two further requirements
-#' apply. The outcome model weights must match the values implied by the
-#' propensity score model; a mismatch errors. The propensity score model must be
-#' fit without case weights, since the stacked propensity score equations are
-#' unweighted and a weighted fit would not sit at the score root. Neither of
-#' these two checks runs on the linearization path, which does not restack the
-#' propensity score model. The linearization path still corrects for the
-#' uncertainty of estimating the propensity scores; it does so through the
-#' influence functions rather than through a stacked score.
+#' Two further requirements apply to the weights and the propensity score model.
+#' The outcome model weights must match the values implied by the propensity
+#' score model; a mismatch errors, on both standard error methods. The propensity
+#' score model must be fit without case weights, since the stacked propensity
+#' score equations are unweighted and a weighted fit would not sit at the score
+#' root; that requirement applies to `se_method = "mestimation"` alone, because
+#' the linearization path does not restack the propensity score model. It still
+#' corrects for the uncertainty of estimating the propensity scores; it does so
+#' through the influence functions rather than through a stacked score.
 #'
 #' @references
 #' Stefanski LA, Boos DD. The calculus of M-estimation. *The American
@@ -474,6 +474,39 @@ ipw.glm <- function(
     )
   }
 
+  # Recode the exposure to 0/1 for the influence functions, in parity with the
+  # M-estimation recode. The marginal means below keep the original exposure so
+  # they set the counterfactual levels the outcome model expects; the influence
+  # values need the numeric indicator (wts * Z, exposure == 1, Z - ps).
+  exposure_binary <- ipw_recode_binary_exposure(exposure)
+
+  # The propensity scores above and the weights that fit the outcome model are
+  # taken from two different places and nothing so far requires them to describe
+  # the same analysis. Recompute the weights the scores imply and reject a
+  # disagreement, the same check and the same message the M-estimation path
+  # applies. It matters here because a mismatch moves only the standard errors:
+  # the estimates come from the outcome model and its weights, so the output
+  # looks untouched beside a variance that is quietly wrong.
+  #
+  # The stabilizer mirrors the M-estimation init seed exactly: a per-observation
+  # score is used when the weights carry one, and otherwise a stabilized weight
+  # is rebuilt from the group-constant mean(z) that ipw_init_binary() seeds. That
+  # equivalence is what lets weights whose score was dropped in a length-changing
+  # operation be caught here rather than silently rebuilt from the wrong
+  # stabilizer.
+  stab_score <- stabilization_score(wts)
+  recomputed_wts <- ipw_weight_fn("binary", estimand)(
+    ps,
+    exposure_binary,
+    list(
+      stab_prob = if (is_stabilized(wts) && is.null(stab_score)) {
+        mean(exposure_binary)
+      },
+      score = stab_score
+    )
+  )
+  ipw_compare_weights(recomputed_wts, wts, "binary", estimand)
+
   marginal_means <- estimate_marginal_means(
     outcome_mod = outcome_mod,
     wts = wts,
@@ -481,12 +514,6 @@ ipw.glm <- function(
     exposure_name = exposure_name,
     .data = .data
   )
-
-  # Recode the exposure to 0/1 for the influence functions, in parity with the
-  # M-estimation recode. The marginal means above keep the original exposure so
-  # they set the counterfactual levels the outcome model expects; the influence
-  # values below need the numeric indicator (wts * Z, exposure == 1, Z - ps).
-  exposure_binary <- ipw_recode_binary_exposure(exposure)
 
   uncorrected_lin_vars <- linearize_variables_for_wts(
     exposure_binary,

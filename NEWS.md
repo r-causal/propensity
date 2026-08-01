@@ -1,5 +1,16 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw(se_method = "linearization")` now checks the outcome model's weights
+  against the propensity score model, as the M-estimation path already did. The
+  linearization path predicts the propensity scores and takes the weights from
+  the outcome model without requiring the two to describe the same analysis, so
+  a `.data` whose covariate values differ from the ones the weights were built
+  on, or weights that lost their per-observation stabilization score in an
+  operation that changed their length, changed the standard errors with nothing
+  signaled. The point estimates were unaffected in both cases, which made the
+  output look untouched. Both now raise the same error the M-estimation path
+  raises.
+
 * `ipw()` now reports a `.data` whose row count disagrees with the fitted models
   as a problem with `.data`, on every exposure type and both standard error
   methods. The linearization path already did. The M-estimation paths sized

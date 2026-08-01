@@ -823,7 +823,29 @@ ipw_check_weight_consistency <- function(
   call = rlang::caller_env()
 ) {
   layout <- ipw_theta_layout(spec)
-  recomputed <- as.double(ipw_weights_at_init(spec, layout))
+
+  ipw_compare_weights(
+    ipw_weights_at_init(spec, layout),
+    observed_wts,
+    spec$exposure_type,
+    spec$estimand,
+    call = call
+  )
+}
+
+# Compare weights recomputed from the propensity score model against the ones
+# the outcome model was actually fit with, and reject a disagreement. Shared by
+# the M-estimation preflight above and the linearization path, which recomputes
+# its weights from predicted propensity scores rather than from a spec but has
+# to reach the same verdict and say the same thing when it fails.
+ipw_compare_weights <- function(
+  recomputed,
+  observed_wts,
+  exposure_type,
+  estimand,
+  call = rlang::caller_env()
+) {
+  recomputed <- as.double(recomputed)
   observed <- as.double(observed_wts)
 
   consistent <- length(recomputed) == length(observed) &&
@@ -833,7 +855,7 @@ ipw_check_weight_consistency <- function(
     msg <- c(
       "The weights used to fit {.arg outcome_mod} are not consistent with \\
       the propensity score model and estimand.",
-      i = "The {.val {spec$estimand}} weights recomputed from {.arg wt_mod} \\
+      i = "The {.val {estimand}} weights recomputed from {.arg wt_mod} \\
       differ from the weights supplied to {.arg outcome_mod} (compared at \\
       relative tolerance 1e-6).",
       i = "Refit {.arg outcome_mod} with weights from this propensity score \\
@@ -845,7 +867,7 @@ ipw_check_weight_consistency <- function(
     # categorical exposure takes its focal level from the weights or the
     # argument, and a continuous exposure has no focal level at all.
     focal_hint <- switch(
-      spec$exposure_type,
+      exposure_type,
       binary = "A non-default {.arg .focal_level} or {.arg .reference_level} \\
       in the weights is one cause: {.fun ipw} treats the second sorted level \\
       of a binary exposure as focal.",

@@ -347,7 +347,7 @@ test_that("the modified-weight guard fires before estimand parsing", {
   )
 })
 
-test_that("mismatched weights error on the mestimation path only", {
+test_that("mismatched weights error on both standard error paths", {
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   ps <- predict(ps_mod, type = "response")
@@ -362,17 +362,19 @@ test_that("mismatched weights error on the mestimation path only", {
     weights = wts + wts
   )
 
-  # The mestimation preflight recomputes the weights from the PS model and
-  # detects the mismatch.
+  # Both preflights recompute the weights from the propensity score model and
+  # detect the mismatch. The linearization path once accepted this call: it
+  # predicts the propensity scores and takes the weights from the outcome model
+  # without requiring the two to agree, so doubled weights changed the standard
+  # errors and nothing said so.
   expect_error(
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "mestimation"),
     class = "propensity_ipw_weights_mismatch_error"
   )
 
-  # The linearization path has no registry check, so mismatched weights are not
-  # detectable there and estimation proceeds without error.
-  expect_no_error(
-    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_ipw_weights_mismatch_error"
   )
 })
 
