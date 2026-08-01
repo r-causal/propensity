@@ -1,5 +1,13 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw(se_method = "linearization")` now rejects a `ps_link` naming a link other
+  than the one the propensity score model was fit with, naming both. The score
+  factor, the weight derivatives, and the correction matrix are all derived from
+  `ps_link`, so a mismatched value scaled the estimation correction by the wrong
+  derivative and changed the standard errors while leaving the estimates
+  untouched, with nothing signaled. `ps_link` left at its `NULL` default, or set
+  to the model's own link, is unaffected.
+
 * `ipw()` now checks that `.data` rebuilds the design its propensity score model
   was fit to, reporting a disagreement as a data error naming both widths and
   the usual cause, a column whose type differs from the fitting data. Such a

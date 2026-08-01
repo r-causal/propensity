@@ -81,6 +81,16 @@
       x `outcome_mod` has a matrix response, such as `cbind(successes, failures)`; the marginal means are estimated from a single-column response.
       i Refit `outcome_mod` on one row per observation, weighted by the propensity score weights. Aggregated counts have to be expanded first, because the outcome model must carry exactly those weights.
 
+# the ps_link mismatch error names both links
+
+    Code
+      ipw(mods$ps_mod, mods$outcome_mod, ps_link = "probit", se_method = "linearization")
+    Condition
+      Error in `ipw()`:
+      ! `ps_link` must match the link `wt_mod` was fit with for "linearization" standard errors.
+      x `ps_link` is "probit"; `wt_mod` was fit with a "logit" link.
+      i Omit `ps_link` to use the model's own link, or refit `wt_mod` with the link you intend.
+
 # the focal level rejection names both the recorded and coded levels
 
     Code

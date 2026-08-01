@@ -56,6 +56,10 @@
 #'   propensity score model on the binary path. A multinomial or continuous
 #'   propensity score model has no link for `ps_link` to override, so a
 #'   non-`NULL` value errors on both of those paths; leave it `NULL` there.
+#'   `ps_link` cannot name a link other than the one `wt_mod` was fit with:
+#'   `se_method = "linearization"` errors, and `se_method = "mestimation"`
+#'   reports the resulting weights as inconsistent with the propensity score
+#'   model.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
 #' @param se_method Method for standard error estimation. `"mestimation"` (the
 #'   default) stacks the propensity score, outcome, and estimand estimating
@@ -445,8 +449,28 @@ ipw.glm <- function(
     newdata = drop_contrasts_attrs(.data, names(wt_mod$contrasts))
   )
 
+  # The score factor, the weight derivatives, and the correction matrix are all
+  # derived from `ps_link` and none of them consults the fitted model, so naming
+  # a link other than the one `wt_mod` was fit with scales the estimation
+  # correction by the wrong derivative. Only the standard errors move: the
+  # estimates come from the outcome model and its weights and are untouched, and
+  # the weight-consistency preflight cannot see it either, because the weights do
+  # not depend on the link. That leaves nothing to notice, so reject it here.
   if (is.null(ps_link)) {
     ps_link <- wt_mod$family$link
+  } else if (!identical(ps_link, wt_mod$family$link)) {
+    fitted_link <- wt_mod$family$link
+    abort(
+      c(
+        "{.arg ps_link} must match the link {.arg wt_mod} was fit with for \\
+        {.val linearization} standard errors.",
+        x = "{.arg ps_link} is {.val {ps_link}}; {.arg wt_mod} was fit with a \\
+        {.val {fitted_link}} link.",
+        i = "Omit {.arg ps_link} to use the model's own link, or refit \\
+        {.arg wt_mod} with the link you intend."
+      ),
+      error_class = "propensity_ipw_link_error"
+    )
   }
 
   if (!identical(length(exposure), length(outcome))) {

@@ -90,7 +90,11 @@ propensity score model: \code{"logit"}, \code{"probit"}, or \code{"cloglog"}. De
 the link used by \code{wt_mod}. This applies only to a binomial \code{\link[stats:glm]{stats::glm()}}
 propensity score model on the binary path. A multinomial or continuous
 propensity score model has no link for \code{ps_link} to override, so a
-non-\code{NULL} value errors on both of those paths; leave it \code{NULL} there.}
+non-\code{NULL} value errors on both of those paths; leave it \code{NULL} there.
+\code{ps_link} cannot name a link other than the one \code{wt_mod} was fit with:
+\code{se_method = "linearization"} errors, and \code{se_method = "mestimation"}
+reports the resulting weights as inconsistent with the propensity score
+model.}
 
 \item{conf_level}{Confidence level for intervals. Default is \code{0.95}.}
 

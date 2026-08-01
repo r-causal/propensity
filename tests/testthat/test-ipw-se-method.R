@@ -1823,6 +1823,21 @@ test_that("linearization rejects a ps_link that differs from the model's link", 
   }
 })
 
+test_that("the ps_link mismatch error names both links", {
+  dat <- se_method_data()
+  mods <- se_link_fit(dat, "logit")
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      ps_link = "probit",
+      se_method = "linearization"
+    )
+  )
+})
+
 test_that("linearization accepts a ps_link equal to the model's link", {
   dat <- se_method_data()
 
