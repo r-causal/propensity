@@ -1165,6 +1165,157 @@ test_that("mestimation binary estimates are unchanged when .data re-levels a ps 
   expect_equal(releveled, no_data, tolerance = 1e-8)
 })
 
+# ---- design rebuilds must honor the fitted models' contrasts ----------------
+#
+# Every design the engine rebuilds is multiplied by coefficients from the model
+# that produced it, and the multiply is positional. A model fit under
+# non-default contrasts therefore has to be rebuilt under those same contrasts
+# or the two disagree column for column. A contrast change is only a
+# reparameterization: the fit, its fitted values, and every marginal quantity
+# are unchanged, so the estimates must match the default-coded fit exactly.
+# These pin against a default-coded fit computed in the test rather than against
+# stored numbers.
+#
+# The exposure column and the covariate columns fare differently. model.frame()
+# keeps the contrasts attribute on the columns it stores, so a rebuild that only
+# replaces the exposure leaves a covariate's coding intact; the binary
+# counterfactual rebuild is faithful for that reason and is pinned below as a
+# regression. The .data rebuild of the ps design is not: model.matrix() rebuilds
+# the factor against xlev, which drops the attribute.
+
+contrast_design_data <- function(seed = 2024, n = 800) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  g <- factor(
+    sample(c("p", "q", "r"), n, replace = TRUE),
+    levels = c("p", "q", "r")
+  )
+  z <- rbinom(n, 1, plogis(0.3 * x1 - 0.6 * (g == "r")))
+  y <- rbinom(n, 1, plogis(-0.4 + 1.1 * z + 0.5 * x1 - 0.3 * (g == "q")))
+  data.frame(x1, g, z, y)
+}
+
+# Propensity score model adjusted for the factor covariate, ate weights, and an
+# exposure-only outcome model, so the covariate reaches the ps design rebuild
+# and nothing else.
+fit_contrast_models <- function(dat) {
+  ps_mod <- glm(z ~ x1 + g, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+test_that("mestimation accepts a sum-coded ps covariate rebuilt from .data", {
+  skip_if_not_installed("deli")
+  # The ps design rebuild drops the sum coding and rebuilds under treatment
+  # coding, so the recomputed propensity scores no longer match the fit. The
+  # weights supplied to the outcome model are correct; it is the rebuild that is
+  # wrong, and today the mismatch is reported as though the user's weights were
+  # at fault.
+  dat <- contrast_design_data()
+  dat_sum <- dat
+  contrasts(dat_sum$g) <- contr.sum(3)
+
+  default <- fit_contrast_models(dat)
+  sum_coded <- fit_contrast_models(dat_sum)
+
+  # a reparameterization: same fit, same weights, different coefficient basis
+  expect_equal(
+    names(coef(sum_coded$ps_mod)),
+    c("(Intercept)", "x1", "g1", "g2")
+  )
+  expect_equal(
+    as.double(sum_coded$wts),
+    as.double(default$wts),
+    tolerance = 1e-10
+  )
+
+  reference <- ipw(
+    default$ps_mod,
+    default$outcome_mod,
+    .data = dat,
+    se_method = "mestimation"
+  )$estimates
+  got <- ipw(
+    sum_coded$ps_mod,
+    sum_coded$outcome_mod,
+    .data = dat_sum,
+    se_method = "mestimation"
+  )$estimates
+
+  expect_equal(got, reference, tolerance = 1e-8)
+})
+
+test_that("the .data ps design rebuild does not warn on a sum-coded covariate", {
+  skip_if_not_installed("deli")
+  # Rebuilding the factor against xlev drops its contrasts attribute, and R
+  # signals that with a bare "contrasts dropped from factor g" warning. The
+  # linearization estimates survive it because the two codings span the same
+  # column space and the correction is a projection, but the warning is a real
+  # signal that the rebuilt design is not the fitted one.
+  dat <- contrast_design_data()
+  dat_sum <- dat
+  contrasts(dat_sum$g) <- contr.sum(3)
+  mods <- fit_contrast_models(dat_sum)
+
+  expect_no_warning(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      .data = dat_sum,
+      se_method = "linearization"
+    )
+  )
+})
+
+test_that("mestimation binary counterfactual designs keep a sum-coded outcome covariate", {
+  skip_if_not_installed("deli")
+  # Regression pin, correct today. The counterfactual rebuild replaces only the
+  # exposure column, and model.frame() hands back the covariate with its
+  # contrasts attribute intact, so the rebuilt design already matches the fit.
+  # Threading contrasts through the rebuilds must not disturb this.
+  dat <- contrast_design_data()
+  dat_sum <- dat
+  contrasts(dat_sum$g) <- contr.sum(3)
+  ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
+
+  fit_adjusted <- function(d) {
+    ps_mod <- glm(z ~ x1 + g, data = d, family = binomial())
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_ate(ps_mod)
+    )
+    outcome_mod <- glm(
+      y ~ z + g,
+      data = d,
+      family = quasibinomial(),
+      weights = wts,
+      control = ctrl
+    )
+    ipw(ps_mod, outcome_mod, se_method = "mestimation")$estimates
+  }
+
+  got <- fit_adjusted(dat_sum)
+  reference <- fit_adjusted(dat)
+
+  # The point estimates are what the counterfactual rebuild determines, and they
+  # agree to machine precision. The sandwich standard errors carry a relative
+  # difference around 1e-7, which is the numerical derivative evaluated at a
+  # different coefficient basis rather than a coding mismatch; a real one moves
+  # the estimates themselves by whole percentage points.
+  expect_equal(got$estimate, reference$estimate, tolerance = 1e-12)
+  expect_equal(got, reference, tolerance = 1e-6)
+})
+
 # ---- the outcome model must contain the exposure -----------------------------
 #
 # The counterfactual designs are built by setting the exposure to each level in

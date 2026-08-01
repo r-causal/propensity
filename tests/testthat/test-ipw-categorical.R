@@ -1397,6 +1397,83 @@ test_that("the level-order guard passes a formula-transformed exposure through",
   expect_false(grepl("level order", msg, fixed = TRUE))
 })
 
+# ---- counterfactual rebuilds must honor the outcome model's contrasts -------
+#
+# The counterfactual designs are rebuilt by replacing the exposure column with
+# factor(level, levels = levs), a bare factor carrying no contrasts attribute,
+# and calling model.matrix without passing the fitted model's contrasts. An
+# outcome model fit under non-default contrasts is therefore rebuilt under
+# treatment coding while its coefficients stay in the coding it was fit under,
+# and the positional multiply pairs them up wrongly.
+#
+# Changing a factor's contrasts is only a reparameterization. The fit, its
+# fitted values, and every marginal mean are unchanged, so the estimates must
+# equal those from the default-coded fit on the same data with the same weights.
+# The reference is computed in the test rather than stored, so it cannot drift.
+#
+# Contrasts do not touch the level order, so the level-order guard passes these
+# models: xlevels still records the levels in the order they were declared.
+
+test_that("ipw() categorical is unchanged by a sum-coded exposure", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  dat_sum <- dat
+  contrasts(dat_sum$a) <- contr.sum(3)
+
+  default <- fit_categorical_models(dat, "ate")
+  sum_coded <- fit_categorical_models(dat_sum, "ate")
+
+  # a reparameterization, and one the level-order guard has no quarrel with
+  expect_equal(names(coef(sum_coded$outcome_mod))[2:3], c("a1", "a2"))
+  expect_equal(sum_coded$outcome_mod$xlevels$a, c("a", "b", "c"))
+  expect_equal(
+    unname(fitted(sum_coded$outcome_mod)),
+    unname(fitted(default$outcome_mod)),
+    tolerance = 1e-10
+  )
+
+  reference <- ipw(default$ps_mod, default$outcome_mod)$estimates
+
+  expect_equal(
+    ipw(sum_coded$ps_mod, sum_coded$outcome_mod)$estimates,
+    reference,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    ipw(sum_coded$ps_mod, sum_coded$outcome_mod, .data = dat_sum)$estimates,
+    reference,
+    tolerance = 1e-8
+  )
+})
+
+test_that("ipw() categorical is unchanged by an ordered-factor exposure", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # An ordered factor carries polynomial contrasts by default, so this reaches
+  # the same defect without anyone setting a contrasts attribute. multinom takes
+  # an ordered exposure and records the same levels in the same order, the
+  # weight layer accepts it, and every exposure-coding guard passes, so nothing
+  # stands between the poly-coded coefficients and the treatment-coded rebuild.
+  dat <- sim_categorical()
+  dat_ord <- dat
+  dat_ord$a <- ordered(as.character(dat$a), levels = c("a", "b", "c"))
+
+  default <- fit_categorical_models(dat, "ate")
+  ord <- fit_categorical_models(dat_ord, "ate")
+
+  expect_s3_class(dat_ord$a, "ordered")
+  expect_equal(ord$ps_mod$lev, c("a", "b", "c"))
+  expect_equal(ord$outcome_mod$xlevels$a, c("a", "b", "c"))
+  expect_equal(names(coef(ord$outcome_mod))[2:3], c("a.L", "a.Q"))
+
+  expect_equal(
+    ipw(ord$ps_mod, ord$outcome_mod)$estimates,
+    ipw(default$ps_mod, default$outcome_mod)$estimates,
+    tolerance = 1e-8
+  )
+})
+
 # ---- arguments that fall into the dots --------------------------------------
 
 test_that("ipw() multinom rejects arguments that fall into the dots", {
