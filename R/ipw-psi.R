@@ -11,7 +11,7 @@
 # Inverse link functions. Covers the propensity score links (logit, probit,
 # cloglog) and the outcome links (logit, identity, log) used when reconstructing
 # fitted values from a coefficient block.
-ipw_inv_link <- function(link) {
+ipw_inv_link <- function(link, call = rlang::caller_env()) {
   switch(
     link,
     logit = stats::plogis,
@@ -21,14 +21,15 @@ ipw_inv_link <- function(link) {
     log = exp,
     abort(
       "Unsupported link {.val {link}}.",
-      error_class = "propensity_ipw_link_error"
+      error_class = "propensity_ipw_link_error",
+      call = call
     )
   )
 }
 
 # ---- weight registry --------------------------------------------------------
 
-ipw_weight_fn <- function(exposure_type, estimand) {
+ipw_weight_fn <- function(exposure_type, estimand, call = rlang::caller_env()) {
   supported <- switch(
     exposure_type,
     binary = c("ate", "att", "atu", "atm", "ato", "entropy"),
@@ -36,7 +37,8 @@ ipw_weight_fn <- function(exposure_type, estimand) {
     continuous = "ate",
     abort(
       "Unsupported exposure type {.val {exposure_type}}.",
-      error_class = "propensity_ipw_estimand_error"
+      error_class = "propensity_ipw_estimand_error",
+      call = call
     )
   )
 
@@ -48,7 +50,8 @@ ipw_weight_fn <- function(exposure_type, estimand) {
         i = "Supported estimands for {.val {exposure_type}} exposures: \\
         {.val {supported}}."
       ),
-      error_class = "propensity_ipw_estimand_error"
+      error_class = "propensity_ipw_estimand_error",
+      call = call
     )
   }
 
@@ -189,12 +192,12 @@ ipw_continuous_weight_fn <- function(estimand) {
 
 # ---- theta layout -----------------------------------------------------------
 
-ipw_theta_layout <- function(spec) {
+ipw_theta_layout <- function(spec, call = rlang::caller_env()) {
   blocks <- switch(
     spec$exposure_type,
-    binary = ipw_init_binary(spec),
-    categorical = ipw_init_categorical(spec),
-    continuous = ipw_init_continuous(spec)
+    binary = ipw_init_binary(spec, call = call),
+    categorical = ipw_init_categorical(spec, call = call),
+    continuous = ipw_init_continuous(spec, call = call)
   )
 
   block_order <- c("ps", "stab", "out", "mu", "contrast")
@@ -238,7 +241,7 @@ ipw_init_contrasts <- function(contrasts, mu_hi, mu_lo, suffix = NULL) {
   stats::setNames(vals, nm)
 }
 
-ipw_init_binary <- function(spec) {
+ipw_init_binary <- function(spec, call = rlang::caller_env()) {
   ps_block <- spec$ps$coefs
 
   if (spec$stab$stabilized && is.null(spec$stab$score)) {
@@ -248,7 +251,7 @@ ipw_init_binary <- function(spec) {
   }
 
   beta <- spec$outcome$coefs
-  inv_out <- ipw_inv_link(spec$outcome$link)
+  inv_out <- ipw_inv_link(spec$outcome$link, call = call)
   pred1 <- inv_out(as.vector(spec$outcome$X_counterfactual$X1 %*% beta))
   pred0 <- inv_out(as.vector(spec$outcome$X_counterfactual$X0 %*% beta))
   # Seed the marginal means at the tilt-standardized weighted mean so the init
@@ -258,7 +261,9 @@ ipw_init_binary <- function(spec) {
     mu1 <- mean(pred1)
     mu0 <- mean(pred0)
   } else {
-    e_fit <- ipw_inv_link(spec$ps$link)(as.vector(spec$ps$X %*% spec$ps$coefs))
+    e_fit <- ipw_inv_link(spec$ps$link, call = call)(as.vector(
+      spec$ps$X %*% spec$ps$coefs
+    ))
     h <- ipw_binary_tilt(e_fit, spec$estimand)
     mu1 <- stats::weighted.mean(pred1, h)
     mu0 <- stats::weighted.mean(pred0, h)
@@ -290,7 +295,7 @@ ipw_name_categorical_ps <- function(spec) {
   stats::setNames(spec$ps$coefs, nm)
 }
 
-ipw_init_categorical <- function(spec) {
+ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
   ps_block <- ipw_name_categorical_ps(spec)
 
   levs <- names(spec$outcome$X_counterfactual)
@@ -303,7 +308,7 @@ ipw_init_categorical <- function(spec) {
   }
 
   beta <- spec$outcome$coefs
-  inv_out <- ipw_inv_link(spec$outcome$link)
+  inv_out <- ipw_inv_link(spec$outcome$link, call = call)
   k <- spec$ps$k
   # Seed each level's marginal mean at the tilt-standardized weighted mean, the
   # exact root of the standardized mu rows. ate keeps the ordinary mean so its
@@ -348,7 +353,7 @@ ipw_init_categorical <- function(spec) {
   )
 }
 
-ipw_init_continuous <- function(spec) {
+ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   alpha <- spec$ps$coefs
   fitted_ps <- as.vector(spec$ps$X %*% alpha)
   sigma2_d <- mean((spec$exposure - fitted_ps)^2)
@@ -373,13 +378,13 @@ ipw_init_continuous <- function(spec) {
 
 # ---- psi builder ------------------------------------------------------------
 
-build_ipw_psi <- function(spec, layout) {
-  weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand)
+build_ipw_psi <- function(spec, layout, call = rlang::caller_env()) {
+  weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand, call = call)
   switch(
     spec$exposure_type,
-    binary = ipw_psi_binary(spec, layout, weight_fn),
-    categorical = ipw_psi_categorical(spec, layout, weight_fn),
-    continuous = ipw_psi_continuous(spec, layout, weight_fn)
+    binary = ipw_psi_binary(spec, layout, weight_fn, call = call),
+    categorical = ipw_psi_categorical(spec, layout, weight_fn, call = call),
+    continuous = ipw_psi_continuous(spec, layout, weight_fn, call = call)
   )
 }
 
@@ -424,17 +429,22 @@ ipw_outcome_rows <- function(theta, x, y, family, link, weights) {
   }
 }
 
-ipw_psi_binary <- function(spec, layout, weight_fn) {
+ipw_psi_binary <- function(
+  spec,
+  layout,
+  weight_fn,
+  call = rlang::caller_env()
+) {
   idx <- layout$idx
   x_ps <- spec$ps$X
   ps_link <- spec$ps$link
-  inv_ps <- ipw_inv_link(ps_link)
+  inv_ps <- ipw_inv_link(ps_link, call = call)
   z <- spec$exposure
   x_out <- spec$outcome$X
   y <- spec$outcome$y
   family <- spec$outcome$family
   out_link <- spec$outcome$link
-  inv_out <- ipw_inv_link(out_link)
+  inv_out <- ipw_inv_link(out_link, call = call)
   x1 <- spec$outcome$X_counterfactual$X1
   x0 <- spec$outcome$X_counterfactual$X0
   score <- spec$stab$score
@@ -509,7 +519,12 @@ ipw_categorical_ps <- function(x, theta, k) {
   ps / rowSums(ps)
 }
 
-ipw_psi_categorical <- function(spec, layout, weight_fn) {
+ipw_psi_categorical <- function(
+  spec,
+  layout,
+  weight_fn,
+  call = rlang::caller_env()
+) {
   idx <- layout$idx
   x_ps <- spec$ps$X
   k <- spec$ps$k
@@ -518,7 +533,7 @@ ipw_psi_categorical <- function(spec, layout, weight_fn) {
   y <- spec$outcome$y
   family <- spec$outcome$family
   out_link <- spec$outcome$link
-  inv_out <- ipw_inv_link(out_link)
+  inv_out <- ipw_inv_link(out_link, call = call)
   x_cf <- spec$outcome$X_counterfactual
   levs <- names(x_cf)
   score <- spec$stab$score
@@ -602,7 +617,12 @@ ipw_psi_categorical <- function(spec, layout, weight_fn) {
   }
 }
 
-ipw_psi_continuous <- function(spec, layout, weight_fn) {
+ipw_psi_continuous <- function(
+  spec,
+  layout,
+  weight_fn,
+  call = rlang::caller_env()
+) {
   idx <- layout$idx
   x_ps <- spec$ps$X
   a <- spec$exposure

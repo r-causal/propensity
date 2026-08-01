@@ -963,7 +963,7 @@ ipw_check_weight_consistency <- function(
   observed_wts,
   call = rlang::caller_env()
 ) {
-  layout <- ipw_theta_layout(spec)
+  layout <- ipw_theta_layout(spec, call = call)
 
   ipw_compare_weights(
     ipw_weights_at_init(spec, layout, call = call),
@@ -1036,8 +1036,8 @@ ipw_mestimation <- function(
   conf_level = 0.95,
   call = rlang::caller_env()
 ) {
-  layout <- ipw_theta_layout(spec)
-  psi <- build_ipw_psi(spec, layout)
+  layout <- ipw_theta_layout(spec, call = call)
+  psi <- build_ipw_psi(spec, layout, call = call)
 
   if (!is.null(spec$outcome$weights)) {
     ipw_check_weight_consistency(spec, spec$outcome$weights, call = call)
@@ -1046,7 +1046,13 @@ ipw_mestimation <- function(
   m <- deli::MEstimator(stacked_equations = psi, init = layout$init)
   m <- deli::estimate(m)
 
-  estimates <- ipw_mestimation_estimates(spec, m, layout, conf_level)
+  estimates <- ipw_mestimation_estimates(
+    spec,
+    m,
+    layout,
+    conf_level,
+    call = call
+  )
 
   list(estimates = estimates, fit = m)
 }
@@ -1059,7 +1065,7 @@ ipw_mestimation <- function(
 # "rd" or "diff"), so name subsetting could silently return the wrong row.
 # Effect label for a continuous exposure, taken from the outcome-model link:
 # the reported effect is the single marginal structural model coefficient.
-ipw_continuous_effect_label <- function(link) {
+ipw_continuous_effect_label <- function(link, call = rlang::caller_env()) {
   switch(
     link,
     identity = "slope",
@@ -1067,12 +1073,19 @@ ipw_continuous_effect_label <- function(link) {
     log = "log(rr)",
     abort(
       "Unsupported outcome link {.val {link}} for a continuous exposure.",
-      error_class = "propensity_ipw_link_error"
+      error_class = "propensity_ipw_link_error",
+      call = call
     )
   )
 }
 
-ipw_mestimation_estimates <- function(spec, fit, layout, conf_level) {
+ipw_mestimation_estimates <- function(
+  spec,
+  fit,
+  layout,
+  conf_level,
+  call = rlang::caller_env()
+) {
   co <- stats::coef(fit)
   se <- sqrt(diag(stats::vcov(fit)))
 
@@ -1082,7 +1095,7 @@ ipw_mestimation_estimates <- function(spec, fit, layout, conf_level) {
   # names, since theta names are not unique across blocks.
   if (identical(spec$exposure_type, "continuous")) {
     idx <- layout$idx$out[spec$outcome$exposure_col]
-    effect <- ipw_continuous_effect_label(spec$outcome$link)
+    effect <- ipw_continuous_effect_label(spec$outcome$link, call = call)
   } else {
     idx <- layout$idx$contrast
     effect <- rep(spec$contrasts, times = ipw_n_comparisons(spec))
