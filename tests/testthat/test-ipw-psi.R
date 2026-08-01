@@ -481,6 +481,122 @@ test_that("binary entropy tilt stays finite at saturated propensity scores", {
   expect_identical(tilt[[1]], tilt[[5]])
 })
 
+# ---- tilt behavior at degenerate propensity scores --------------------------
+#
+# The tilts implement mathematical limits, and at a propensity score of exactly
+# zero or one those limits are the values the arithmetic already produces. att's
+# tilt at e = 0 is 0 because the weight on an unexposed unit's contribution to
+# the treated population really is zero there; ato and atm vanish for the same
+# reason. None of that needs correcting, and a clamp applied to them would move
+# the answer away from the limit rather than toward it.
+#
+# entropy is the single exception, and the reason is specific: its -e log(e)
+# form is 0 * log(0) at the boundary, an indeterminate whose limit is 0 but whose
+# raw arithmetic is NaN. The clamp exists to resolve that one indeterminate. The
+# tests below pin the others as unclamped so a future tidy-up cannot hoist the
+# clamp out of the entropy branch and quietly change four estimands.
+#
+# The entropy branch's own behavior is pinned above by "binary entropy tilt stays
+# finite at saturated propensity scores".
+
+test_that("binary tilts other than entropy pass boundary scores through unclamped", {
+  e <- c(0, 1)
+
+  # Each is the limit, reached by the ordinary arithmetic.
+  expect_identical(ipw_binary_tilt(e, "att"), c(0, 1))
+  expect_identical(ipw_binary_tilt(e, "atu"), c(1, 0))
+  expect_identical(ipw_binary_tilt(e, "atm"), c(0, 0))
+  expect_identical(ipw_binary_tilt(e, "ato"), c(0, 0))
+  expect_identical(ipw_binary_tilt(e, "ate"), c(1, 1))
+
+  # entropy is the exception: clamped, so strictly positive rather than the 0
+  # the other tilts return, and finite rather than the NaN the raw form gives.
+  entropy <- ipw_binary_tilt(e, "entropy")
+  expect_true(all(is.finite(entropy)))
+  expect_true(all(entropy > 0))
+  expect_true(is.nan(-0 * log(0) - 1 * log(1)))
+})
+
+test_that("categorical tilts other than entropy pass degenerate rows through unclamped", {
+  # Rows one and three are degenerate: all the mass sits on a single level.
+  ps <- rbind(c(0, 1, 0), c(0.2, 0.3, 0.5), c(1, 0, 0))
+
+  # ato reaches exactly zero through an infinite row sum rather than by a guard.
+  expect_identical(sum(1 / ps[1, ]), Inf)
+  ato <- ipw_categorical_tilt(ps, "ato")
+  expect_identical(ato[c(1, 3)], c(0, 0))
+  expect_gt(ato[[2]], 0)
+
+  expect_identical(ipw_categorical_tilt(ps, "atm")[c(1, 3)], c(0, 0))
+
+  # att and atu read the focal column as it stands, boundary values included.
+  expect_identical(
+    ipw_categorical_tilt(ps, "att", focal_idx = 2),
+    c(1, 0.3, 0)
+  )
+  expect_identical(
+    ipw_categorical_tilt(ps, "atu", focal_idx = 2),
+    c(0, 0.7, 1)
+  )
+
+  # entropy again the exception: clamped to a small positive number where the
+  # unclamped tilts give exactly zero.
+  entropy <- ipw_categorical_tilt(ps, "entropy")
+  expect_true(all(is.finite(entropy)))
+  expect_true(all(entropy > 0))
+})
+
+test_that("categorical weights stay finite when an off-level score is zero", {
+  # Only the score at the level a unit was actually assigned divides its weight,
+  # so a zero somewhere else in the row is not a problem. This is what makes the
+  # separation guard's condition the observed-level score rather than any zero in
+  # the matrix; see "mestimation reports separation in the propensity model as
+  # its own error" in test-ipw-mestimation.R.
+  ps <- rbind(c(0.6, 0, 0.4), c(0.2, 0.3, 0.5))
+  exposure <- rbind(c(1, 0, 0), c(1, 0, 0))
+  expect_identical(rowSums(exposure * ps), c(0.6, 0.2))
+
+  for (estimand in c("ate", "att", "atu", "atm", "ato", "entropy")) {
+    weights <- ipw_weight_fn("categorical", estimand)(
+      ps,
+      exposure,
+      list(focal_idx = 1)
+    )
+    expect_true(all(is.finite(weights)))
+  }
+})
+
+test_that("a zero observed-level score gives a non-finite weight at the registry", {
+  # Called directly, with no guard in front of it, the weight is the tilt divided
+  # by the observed-level score, and dividing by zero is what it is. Which
+  # non-finite value appears depends on the tilt: a nonzero numerator gives Inf,
+  # and a tilt that vanishes at the same row gives NaN from 0/0. Pinned as the
+  # arithmetic rather than as a contract anyone should rely on, since through
+  # ipw() the separation guard rejects this before the registry is reached.
+  ps <- rbind(c(0, 1, 0), c(0.2, 0.3, 0.5))
+  exposure <- rbind(c(1, 0, 0), c(1, 0, 0))
+  expect_identical(rowSums(exposure * ps)[[1]], 0)
+
+  weight_at_row1 <- function(estimand) {
+    ipw_weight_fn("categorical", estimand)(
+      ps,
+      exposure,
+      list(focal_idx = 2)
+    )[[1]]
+  }
+
+  # Tilts that are nonzero on this row: ate is flat, att reads the focal column
+  # (one here), and entropy's clamp leaves it small but positive.
+  expect_identical(weight_at_row1("ate"), Inf)
+  expect_identical(weight_at_row1("att"), Inf)
+  expect_identical(weight_at_row1("entropy"), Inf)
+
+  # Tilts that vanish on this row divide zero by zero.
+  expect_true(is.nan(weight_at_row1("atu")))
+  expect_true(is.nan(weight_at_row1("atm")))
+  expect_true(is.nan(weight_at_row1("ato")))
+})
+
 # ---- weight registry: categorical -------------------------------------------
 
 test_that("ipw_weight_fn reproduces categorical weight functions at fitted params", {
