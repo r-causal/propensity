@@ -907,6 +907,59 @@ check_ipw_outcome_exposure_class <- function(
   invisible(TRUE)
 }
 
+# Require both models to order the exposure's levels the same way. The
+# counterfactual designs set the exposure to a factor of the propensity score
+# model's levels, so their dummy columns follow that order, while the
+# coefficients they multiply follow the outcome model's own coding. `X %*% beta`
+# is positional and consults no names, so an outcome model fit on a releveled
+# copy of the same exposure pairs each design column with the wrong coefficient
+# and returns estimates that are wrong, and can be sign-flipped, with nothing
+# signaled. Releveling is not the only way in: a character exposure column is
+# factored alphabetically by `model.frame`, which disagrees with any fitted
+# order that is not alphabetical.
+#
+# Read the levels from the fitted `xlevels` and never from `.data`. R drops
+# levels that appear in the data but never in the fit, so an exposure declared
+# with an extra unobserved level is analyzed correctly and its `xlevels` match;
+# a check against the column's own `levels()` would see the extra level and
+# reject that correct analysis.
+#
+# Silent when the outcome model records no levels under the exposure's name, as
+# when the formula transforms it, and when the propensity score model carries no
+# `lev` to compare against. Both are handled elsewhere.
+check_ipw_outcome_exposure_levels <- function(
+  outcome_mod,
+  exposure_name,
+  ps_lev,
+  call = rlang::caller_env()
+) {
+  xlevels <- outcome_mod$xlevels
+
+  if (is.null(ps_lev) || !exposure_name %in% names(xlevels)) {
+    return(invisible(TRUE))
+  }
+
+  out_lev <- xlevels[[exposure_name]]
+
+  if (!identical(out_lev, ps_lev)) {
+    abort(
+      c(
+        "{.arg outcome_mod} and {.arg wt_mod} must code the exposure on the \\
+        same levels in the same level order.",
+        x = "{.arg outcome_mod} was fit on {.val {out_lev}}; {.arg wt_mod} was \\
+        fit on {.val {ps_lev}}.",
+        i = "Refit {.arg outcome_mod} with {.val {exposure_name}} factored in \\
+        the propensity score model's order. A character column is factored \\
+        alphabetically, so convert it to a factor with that order first."
+      ),
+      error_class = "propensity_ipw_exposure_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
 # Reject an outcome model whose family or link the estimating equations cannot
 # stack. Both standard error paths classify the outcome model as either a
 # gaussian identity linear score or a binomial score with the model's link, so

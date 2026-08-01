@@ -1287,6 +1287,27 @@ test_that("ipw() categorical rejects an outcome model fit on a releveled exposur
   expect_match(msg, "level order", fixed = TRUE)
 })
 
+test_that("the categorical level-order error names both orders", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  dat_relevel <- dat
+  dat_relevel$a <- relevel(dat$a, ref = "c")
+  releveled <- glm(
+    y ~ a + x1,
+    data = dat_relevel,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, releveled)
+  )
+})
+
 test_that("ipw() categorical rejects a releveled outcome exposure when .data is supplied", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
@@ -1344,6 +1365,36 @@ test_that("ipw() categorical rejects a character outcome exposure ordered agains
 
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "level order", fixed = TRUE)
+})
+
+test_that("the level-order guard passes a formula-transformed exposure through", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # y ~ factor(a) + x1 records its levels under the term label rather than under
+  # the exposure name, so the guard has nothing to compare and must stay out of
+  # the way. What this path does instead is owned elsewhere and deliberately not
+  # pinned here: the assertion is only that the level-order guard is not what
+  # stops it, whether it errors or runs.
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  wrapped <- glm(
+    y ~ factor(a) + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = mods$wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_false("a" %in% names(wrapped$xlevels))
+
+  msg <- tryCatch(
+    {
+      ipw(mods$ps_mod, wrapped, .data = dat)
+      ""
+    },
+    error = function(e) gsub("[[:space:]]+", " ", conditionMessage(e))
+  )
+  expect_false(grepl("level order", msg, fixed = TRUE))
 })
 
 # ---- arguments that fall into the dots --------------------------------------

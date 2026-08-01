@@ -62,3 +62,13 @@
       x "z" enters `outcome_mod` as a numeric term, which gives it one coefficient instead of one per level.
       i Refit `outcome_mod` after converting "z" to a factor in the data, rather than wrapping it in the formula.
 
+# the categorical level-order error names both orders
+
+    Code
+      ipw(mods$ps_mod, releveled)
+    Condition
+      Error in `ipw()`:
+      ! `outcome_mod` and `wt_mod` must code the exposure on the same levels in the same level order.
+      x `outcome_mod` was fit on "c", "a", and "b"; `wt_mod` was fit on "a", "b", and "c".
+      i Refit `outcome_mod` with "a" factored in the propensity score model's order. A character column is factored alphabetically, so convert it to a factor with that order first.
+

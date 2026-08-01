@@ -409,6 +409,12 @@ ipw_spec_categorical <- function(
 
   check_ipw_outcome_exposure(outcome_mod, exposure_name, call = call)
   check_ipw_outcome_exposure_class(outcome_mod, exposure_name, call = call)
+  check_ipw_outcome_exposure_levels(
+    outcome_mod,
+    exposure_name,
+    ps_mod$lev,
+    call = call
+  )
 
   extracted <- ipw_extract_ps_design(
     ps_mod,
