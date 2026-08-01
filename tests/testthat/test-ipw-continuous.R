@@ -654,8 +654,8 @@ test_that("continuous rejects a .data whose covariate types skew the design", {
 #
 # As on the binary and categorical paths, a `.data` whose row count disagrees
 # with the fitted models is a data problem and reads as one only if it is
-# reported as one. Today it reaches the weight-consistency preflight, which
-# talks about weights instead. The binary companion is "mestimation rejects a
+# reported as one. Without the guard it would reach the weight-consistency
+# preflight, which talks about weights instead. The binary companion is "mestimation rejects a
 # .data with too few rows" in test-ipw-mestimation.R.
 
 test_that("ipw() continuous rejects a .data with too few rows", {
@@ -719,6 +719,8 @@ sim_continuous_outliers <- function(seed = 2024, n = 800, n_outliers = 40) {
   dat$A[seq_len(n_outliers)] <- dat$A[seq_len(n_outliers)] + 12
   withr::local_seed(seed + 1L)
   dat$yc <- 1 + 0.6 * dat$A + 0.5 * dat$x1 - 0.3 * dat$x2 + rnorm(n)
+  # yb came from the pre-contamination exposure and no caller reads it.
+  dat$yb <- NULL
   dat
 }
 

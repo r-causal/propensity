@@ -79,10 +79,12 @@ Supplying \code{.data} also decides how a term that transforms the exposure is
 handled. The counterfactual designs are built by setting the exposure column
 to each level in turn and rebuilding the outcome design from \code{.data}, so a
 term such as \code{as.numeric(a == "c")} or \code{I(z^2)} is re-evaluated at the level
-being set rather than held at its observed value. Such a model is therefore
-honest g-computation on the model as specified. Without \code{.data} the exposure
-cannot be read back through the transformation and the call errors, naming
-the exposure and directing you here.}
+being set rather than held at its observed value, so such a model is
+g-computation on the model as specified. This covers transformations that
+re-evaluate cleanly at a reassigned exposure; a term that rebuilds the
+exposure's own type, such as \code{factor(a)}, errors instead. Without \code{.data}
+the exposure cannot be read back through the transformation and the call
+errors, naming the exposure and directing you here.}
 
 \item{estimand}{A character string specifying the causal estimand: one of
 \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or \code{"entropy"}. The available
@@ -294,12 +296,14 @@ terms) errors on the linearization path and requires
 \code{se_method = "mestimation"}, which stacks adjusted outcome models correctly.
 
 The linearization outcome model must also carry an intercept, which is a
-stricter requirement than the M-estimation path imposes. Without an intercept
-the linear predictor under no exposure is fixed at the link's zero point
-rather than estimated, so the g-computation marginal means no longer match the
-Hajek means the influence functions describe. Every no-intercept outcome model
-errors on the linearization path, including the saturated factor codings the
-M-estimation path accepts. See \strong{Model requirements} for the baseline
+stricter requirement than the M-estimation path imposes. Under a numeric
+coding such as \code{y ~ z - 1} the linear predictor under no exposure is fixed at
+the link's zero point rather than estimated, so the g-computation marginal
+means no longer match the Hajek means the influence functions describe. The
+rejection is broader than that mechanism: a saturated factor coding such as
+\code{y ~ 0 + zf} does estimate both cell means, and the M-estimation path accepts
+it, but the linearization influence functions are derived for the intercept
+parameterization, so every no-intercept outcome model errors here. See \strong{Model requirements} for the baseline
 contract both methods impose.
 }
 

@@ -698,6 +698,8 @@ test_that("ipw_weight_fn reproduces categorical stabilized ate weights", {
 # psi layer performs. Used as an independent oracle rather than comparing
 # ipw_categorical_ps() against itself. vapply() drops to a bare vector for a
 # single-row design, so the linear predictors are reshaped explicitly.
+# Assumes at least one design row: the vapply template is sized from nrow(x),
+# so a zero-row design would not round-trip through the matrix() call below.
 unshifted_softmax <- function(x, theta, k) {
   b <- ncol(x)
   eta <- matrix(

@@ -589,7 +589,7 @@ test_that("a transformed exposure without .data errors and asks for it", {
   )
 
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
-  expect_match(msg, "a", fixed = TRUE)
+  expect_match(msg, "\"a\"", fixed = TRUE)
   expect_match(msg, ".data", fixed = TRUE)
 })
 

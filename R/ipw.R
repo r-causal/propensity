@@ -46,10 +46,12 @@
 #'   handled. The counterfactual designs are built by setting the exposure column
 #'   to each level in turn and rebuilding the outcome design from `.data`, so a
 #'   term such as `as.numeric(a == "c")` or `I(z^2)` is re-evaluated at the level
-#'   being set rather than held at its observed value. Such a model is therefore
-#'   honest g-computation on the model as specified. Without `.data` the exposure
-#'   cannot be read back through the transformation and the call errors, naming
-#'   the exposure and directing you here.
+#'   being set rather than held at its observed value, so such a model is
+#'   g-computation on the model as specified. This covers transformations that
+#'   re-evaluate cleanly at a reassigned exposure; a term that rebuilds the
+#'   exposure's own type, such as `factor(a)`, errors instead. Without `.data`
+#'   the exposure cannot be read back through the transformation and the call
+#'   errors, naming the exposure and directing you here.
 #' @param estimand A character string specifying the causal estimand: one of
 #'   `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or `"entropy"`. The available
 #'   estimands depend on the exposure type: a binary or categorical exposure
@@ -203,12 +205,14 @@
 #' `se_method = "mestimation"`, which stacks adjusted outcome models correctly.
 #'
 #' The linearization outcome model must also carry an intercept, which is a
-#' stricter requirement than the M-estimation path imposes. Without an intercept
-#' the linear predictor under no exposure is fixed at the link's zero point
-#' rather than estimated, so the g-computation marginal means no longer match the
-#' Hajek means the influence functions describe. Every no-intercept outcome model
-#' errors on the linearization path, including the saturated factor codings the
-#' M-estimation path accepts. See **Model requirements** for the baseline
+#' stricter requirement than the M-estimation path imposes. Under a numeric
+#' coding such as `y ~ z - 1` the linear predictor under no exposure is fixed at
+#' the link's zero point rather than estimated, so the g-computation marginal
+#' means no longer match the Hajek means the influence functions describe. The
+#' rejection is broader than that mechanism: a saturated factor coding such as
+#' `y ~ 0 + zf` does estimate both cell means, and the M-estimation path accepts
+#' it, but the linearization influence functions are derived for the intercept
+#' parameterization, so every no-intercept outcome model errors here. See **Model requirements** for the baseline
 #' contract both methods impose.
 #'
 #' # Model requirements
@@ -591,7 +595,7 @@ ipw.glm <- function(
 # reach the same M-estimation fit. Standard errors come only from M-estimation
 # for a continuous exposure; the linearization path is not available.
 ipw_continuous_estimate <- function(
-  ps_mod,
+  wt_mod,
   outcome_mod,
   .data = NULL,
   estimand = NULL,
@@ -608,7 +612,7 @@ ipw_continuous_estimate <- function(
   # not the formula's, such as an additive fit's smooth basis, would be
   # reconstructed as something else. Either way the estimates would describe a
   # propensity score model the user never fit.
-  ps_class <- class(ps_mod)
+  ps_class <- class(wt_mod)
   if (!identical(ps_class, "lm") && !identical(ps_class, c("glm", "lm"))) {
     abort(
       c(
@@ -643,7 +647,7 @@ ipw_continuous_estimate <- function(
   check_ipw_weights(wts, call = call)
 
   spec <- ipw_spec_continuous(
-    ps_mod,
+    wt_mod,
     outcome_mod,
     .data = .data,
     estimand = estimand,
@@ -653,7 +657,7 @@ ipw_continuous_estimate <- function(
 
   new_ipw(
     estimand = spec$estimand,
-    wt_mod = ps_mod,
+    wt_mod = wt_mod,
     outcome_mod = outcome_mod,
     estimates = fit$estimates,
     se_method = "mestimation",
@@ -999,8 +1003,9 @@ check_ipw_outcome_exposure <- function(
 #
 # Only "numeric" is rejected. `.MFclass` folds integer columns into "numeric",
 # so that single value covers both storage types. A character column is left
-# alone because `model.frame` coerces it to a factor, giving the same dummy
-# expansion and the same estimates as an explicit factor. A logical column
+# alone because the model frame keeps it as character and `model.matrix`
+# expands it into the same dummy columns an explicit factor would give, for the
+# same estimates. A logical column
 # cannot reach here at all: it carries at most two levels, and the weight layer
 # rejects a two-level categorical exposure before `ipw()` is ever called.
 #
@@ -1223,7 +1228,7 @@ check_ipw_continuous_links <- function(
 # because dropping it leaves the term labels untouched. Under a numeric coding
 # such as `y ~ z - 1` the linear predictor at the unexposed level is zero for
 # every unit, so the g-computation mean under no exposure is pinned at the link's
-# zero point (plogis(0) = 0.5 for a binomial family, 0 for a linear model)
+# zero point (0.5 under a logit or probit outcome link, 0 for a linear model)
 # instead of being estimated. The reported estimates are then no longer the Hajek
 # means the influence functions describe, and the standard errors describe an
 # estimator that was never fit.

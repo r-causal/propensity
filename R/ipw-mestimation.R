@@ -879,8 +879,10 @@ check_ipw_ps_separation <- function(n_saturated, call = rlang::caller_env()) {
         x = "Rebuilding the propensity scores gives a probability of exactly \\
         0 or 1 for {n_saturated} observation{?s}, whose weight{?s} {?is/are} \\
         then undefined.",
-        i = "This is separation: some covariate pattern predicts the exposure \\
-        without error, so the fit has no finite maximum likelihood estimate.",
+        i = "This is usually separation: some covariate pattern predicts the \\
+        exposure without error, so the fit has no finite maximum likelihood \\
+        estimate. An extreme covariate pattern can saturate the scores even \\
+        where the estimate is finite.",
         i = "Check overlap in {.arg wt_mod} rather than the weights. Dropping \\
         or combining the covariate that separates, or penalizing the fit, \\
         gives a model with finite coefficients."

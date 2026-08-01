@@ -187,6 +187,9 @@ as_focal_label <- function(x) {
 # `transform_exposure_binary()` by construction, including for exposures that
 # ignore the named levels entirely. A level that cannot be resolved counts as
 # the default, leaving the exposure to be handled downstream as it is today.
+# Note that an NA-bearing exposure short-circuits this to TRUE regardless of
+# the argument: `has_two_levels()` counts NA as a level, so the default focal
+# level is NULL and the comparison below never runs.
 resolved_focal_is_default <- function(
   .exposure,
   .focal_level = NULL,

@@ -90,8 +90,7 @@
   `wt_ato()`, `wt_entropy()`, and `wt_cens()` now supply the numeric methods
   with the probability of the level resolved as focal. Fitted values give the
   probability of the response's second level, and they are subtracted from one
-  when `.focal_level` names the first level, or `.reference_level` names the
-  second. Weights built from a fitted model with a flipped focal level were
+  whenever the focal level resolves to the first level instead. Weights built from a fitted model with a flipped focal level were
   previously inverted, weighting each unit by the other group's probability;
   they are now correct. Calls that leave the focal level at its default are
   unchanged.

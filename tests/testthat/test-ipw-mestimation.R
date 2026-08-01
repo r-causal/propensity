@@ -1463,7 +1463,7 @@ test_that("mestimation rejects a .data whose covariate types skew the design", {
 # is pinned below.
 #
 # The linearization behavior these mirror is pinned in test-ipw-se-method.R by
-# "linearization rejects a .data whose row count disagrees with the fits".
+# "linearization errors when .data has fewer rows than the fitted models".
 
 test_that("mestimation rejects a .data with too few rows", {
   skip_if_not_installed("deli")
@@ -1724,8 +1724,9 @@ test_that("mestimation binary counterfactual designs keep a sum-coded outcome co
 
 test_that("mestimation binary counterfactual designs keep a sum-coded factor exposure", {
   skip_if_not_installed("deli")
-  # A two-level factor exposure carries contrasts of its own. Setting the
-  # exposure column to one level subsets the factor, which drops the attribute,
+  # A two-level factor exposure carries contrasts of its own. The counterfactual
+  # levels come from sort(unique(exposure)), and that subsetting drops the
+  # attribute before the column is ever set,
   # so this is the binary counterpart of the categorical rebuild rather than of
   # the covariate case above: without the fit's coding the design is treatment
   # coded against sum-coded coefficients and the contrast changes sign.
@@ -2048,9 +2049,8 @@ test_that("mestimation accepts a binary outcome model containing the exposure wh
 # the exposure set to each level in turn. A numeric exposure fit without an
 # intercept, y ~ z - 1, leaves the design at z = 0 identically zero, so mu0 is
 # inv_link(0) for every unit whatever the data say: 0.5 for a logit or probit
-# outcome link and 0 for a linear model. Nothing about the fit signals it. On
-# this fixture
-# the risk difference reads 0.1306 against the correct 0.2347, with a standard
+# outcome link and 0 for a linear model. Nothing about the fit signals it.
+# On this fixture the risk difference reads 0.1306 against the correct 0.2347, with a standard
 # error of 0.0255 against 0.0340, and the linear model reports a difference of
 # 2.179 against the correct 0.788.
 #

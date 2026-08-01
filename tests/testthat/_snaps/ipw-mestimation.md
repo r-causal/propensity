@@ -47,7 +47,7 @@
       Error in `ipw()`:
       ! `wt_mod` must not separate the exposure.
       x Rebuilding the propensity scores gives a probability of exactly 0 or 1 for 389 observations, whose weights are then undefined.
-      i This is separation: some covariate pattern predicts the exposure without error, so the fit has no finite maximum likelihood estimate.
+      i This is usually separation: some covariate pattern predicts the exposure without error, so the fit has no finite maximum likelihood estimate. An extreme covariate pattern can saturate the scores even where the estimate is finite.
       i Check overlap in `wt_mod` rather than the weights. Dropping or combining the covariate that separates, or penalizing the fit, gives a model with finite coefficients.
 
 # the missing-exposure error names the exposure and directs the user to refit
