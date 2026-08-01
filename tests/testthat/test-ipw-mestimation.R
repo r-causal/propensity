@@ -1100,6 +1100,81 @@ test_that("mestimation errors with the supply-.data hint when the binary ps fit 
   )
 })
 
+test_that("the ps frame-gone error names the propensity model and the remedy", {
+  # Parity with the outcome model's frame-gone snapshot. The two messages are
+  # deliberately different: `.data` rebuilds a propensity design and is offered
+  # here, whereas it cannot stand in for the outcome model's frame, which holds
+  # the weights. Snapshotting both keeps that difference visible if either is
+  # edited.
+  dat <- ps_design_data()
+  ps_gone <- glm(z ~ x1, data = dat, family = binomial(), model = FALSE)
+  wts <- wt_ate(
+    predict(ps_gone, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  out <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+  rm(dat)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(ps_gone, out, se_method = "mestimation")
+  )
+})
+
+test_that("mestimation rejects an outcome model that cannot distinguish the exposure levels", {
+  skip_if_not_installed("deli")
+  # The binary companion to the categorical indistinguishable-design tests. A
+  # term that is constant across both exposure levels leaves the two
+  # counterfactual designs identical, so the contrast between them is degenerate.
+  #
+  # Such a term is necessarily constant in sample as well, so glm aliases it and
+  # reports an NA coefficient. That is expected and does not weaken the pin: the
+  # guard reads the designs, not the coefficients, and fires before anything
+  # would consult them. There is no binary construction that yields identical
+  # designs without a rank-deficient column, so this is the honest fixture rather
+  # than a contrived one.
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "response"),
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1
+    )
+  )
+  degenerate <- glm(
+    y ~ I(z * 0) + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  # the fixture is the degeneracy it claims to be: both designs coincide
+  out_terms <- stats::delete.response(stats::terms(degenerate))
+  mf <- stats::model.frame(degenerate)
+  design_at <- function(value) {
+    d <- mf
+    d[["z"]] <- value
+    stats::model.matrix(out_terms, d, contrasts.arg = degenerate$contrasts)
+  }
+  expect_equal(unname(design_at(0)), unname(design_at(1)))
+
+  err <- expect_error(
+    ipw(ps_mod, degenerate, .data = dat, se_method = "mestimation"),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  # the reported pair follows the exposure's level order, low then high
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "identical counterfactual designs", fixed = TRUE)
+  expect_match(msg, "`z` to \"0\" and \"1\"", fixed = TRUE)
+})
+
 test_that("mestimation binary estimates are unchanged when redundant .data is supplied", {
   skip_if_not_installed("deli")
   # A normal, reconstructable ps fit with a factor covariate: supplying .data

@@ -1528,6 +1528,47 @@ test_that("linearization default stabilization reproduces the unstabilized SE", 
   )
 })
 
+test_that("linearization is unchanged by a scalar stabilization score", {
+  # The companion to the default-stabilizer pin above, for a score supplied as a
+  # single number rather than computed per group. One constant scales every
+  # weight and the weight total identically, so it cancels from the Hajek ratio
+  # and from the propensity score correction, and the whole estimates table has
+  # to come back unchanged rather than only the risk difference standard error.
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  ps <- as.double(predict(ps_mod, type = "response"))
+
+  unstabilized <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+  scored <- function(score) {
+    wt_ate(
+      ps,
+      dat$z,
+      exposure_type = "binary",
+      .focal_level = 1,
+      stabilize = TRUE,
+      stabilization_score = score
+    )
+  }
+  lin_estimates <- function(wts) {
+    ipw(
+      ps_mod,
+      se_score_outcome(dat, wts),
+      .data = dat,
+      se_method = "linearization"
+    )$estimates
+  }
+
+  # A score of one leaves the weights themselves untouched, so that case is
+  # exact; a score of 2.5 genuinely rescales them and has to cancel downstream.
+  expect_identical(as.double(scored(1)), as.double(unstabilized))
+  expect_false(identical(as.double(scored(2.5)), as.double(unstabilized)))
+  expect_true(is_stabilized(scored(2.5)))
+
+  reference <- lin_estimates(unstabilized)
+  expect_identical(lin_estimates(scored(1)), reference)
+  expect_equal(lin_estimates(scored(2.5)), reference, tolerance = 1e-12)
+})
+
 test_that("linearization is silent for weights carrying a vector stabilization score", {
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
@@ -1895,6 +1936,33 @@ test_that("the ps_link mismatch error names both links", {
       ps_link = "probit",
       se_method = "linearization"
     )
+  )
+})
+
+test_that("mestimation reports a mismatched ps_link as a weights mismatch", {
+  skip_if_not_installed("deli")
+  # The deliberate boundary between the two paths, pinned so neither drifts into
+  # the other. The membership guard checks only that the link is one this package
+  # supports, and a supported-but-wrong link passes it. What catches the misuse
+  # on this path is the weight recomputation: the link inverts the coefficient
+  # block into propensity scores, so a mismatched link produces weights that do
+  # not reproduce the ones the outcome model was fit with. The linearization path
+  # cannot detect it that way, because its weights do not depend on the link, and
+  # rejects the same misuse with a link error instead; see "linearization rejects
+  # a ps_link that differs from the model's link".
+  dat <- se_method_data()
+  mods <- se_link_fit(dat, "logit")
+
+  expect_identical(mods$ps_mod$family$link, "logit")
+
+  expect_error(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      ps_link = "probit",
+      se_method = "mestimation"
+    ),
+    class = "propensity_ipw_weights_mismatch_error"
   )
 })
 

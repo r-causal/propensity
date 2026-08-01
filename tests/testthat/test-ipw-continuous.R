@@ -597,6 +597,59 @@ test_that("continuous reconstructs the ps design from .data when the fit frame i
   expect_equal(res, ref, tolerance = 1e-8)
 })
 
+test_that("continuous errors informatively when the outcome model frame is gone", {
+  skip_if_not_installed("deli")
+  # The companion to the binary and categorical pins in test-ipw-mestimation.R.
+  # The guard lives in the weight extraction every ipw() method runs first, so
+  # the continuous route gets it by sharing that helper rather than by having
+  # its own check. This pin exists so a refactor that moves this path off the
+  # shared helper is caught rather than silently losing the guided error.
+  dat <- sim_continuous()
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  wts <- continuous_weights(fitted(ps_mod), dat$A)
+  outcome_gone <- local({
+    d_local <- dat
+    w_local <- wts
+    m <- lm(yc ~ A, data = d_local, weights = w_local, model = FALSE)
+    rm(d_local, w_local)
+    m
+  })
+
+  # the fixture is genuinely unreconstructable
+  expect_error(stats::model.frame(outcome_gone))
+
+  for (supplied in list(NULL, dat)) {
+    err <- expect_error(
+      ipw(ps_mod, outcome_gone, .data = supplied),
+      class = "propensity_ipw_data_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "outcome_mod", fixed = TRUE)
+  }
+})
+
+test_that("continuous rejects a .data whose covariate types skew the design", {
+  skip_if_not_installed("deli")
+  # The continuous companion to the binary and categorical width pins. Same
+  # rationale as the frame-gone pin above: the check lives in the shared
+  # extraction, and this fixes that it covers this route.
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+
+  dat_skew <- dat
+  dat_skew$x1 <- cut(dat$x1, breaks = 3, labels = c("lo", "mid", "hi"))
+  expect_equal(length(coef(mods$ps_mod)), 3)
+  expect_equal(ncol(model.matrix(~ x1 + x2, data = dat_skew)), 4)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat_skew),
+    class = "propensity_ipw_data_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, ".data", fixed = TRUE)
+})
+
 # ---- a wrong-sized .data is a data problem -----------------------------------
 #
 # As on the binary and categorical paths, a `.data` whose row count disagrees

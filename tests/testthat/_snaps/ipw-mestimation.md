@@ -18,6 +18,16 @@
       i Supported links: "logit", "probit", and "cloglog".
       i Refit `wt_mod` with a supported link, or set `ps_link` to one of them.
 
+# the ps frame-gone error names the propensity model and the remedy
+
+    Code
+      ipw(ps_gone, out, se_method = "mestimation")
+    Condition
+      Error in `ipw()`:
+      ! Can't reconstruct the data behind `wt_mod`.
+      x object 'dat' not found
+      i Supply `.data` with the exposure, outcome, and covariates.
+
 # the frame-gone outcome error explains why .data cannot help
 
     Code
