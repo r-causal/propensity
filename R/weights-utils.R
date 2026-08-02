@@ -278,6 +278,30 @@ check_refit <- function(.propensity, call = rlang::caller_env()) {
   }
 }
 
+# `call` is plumbing. Each route into a weight function binds the frame it was
+# dispatched into and hands it down, so that a condition raised several frames
+# below the surface still names the function the user called. The generics pass
+# their dots to their methods, so the argument is reachable from user code, and
+# a value the condition system cannot read as a call would turn the next guard
+# that fires into a report of rlang's internals. Checked where the value
+# arrives, before anything is done with it.
+check_call_arg <- function(call, error_call = rlang::caller_env()) {
+  if (is.null(call) || rlang::is_environment(call) || rlang::is_call(call)) {
+    return(invisible(call))
+  }
+
+  abort(
+    c(
+      "{.arg call} must be a call or an environment.",
+      x = "It has class {.cls {class(call)}}.",
+      i = "{.arg call} names the frame a condition is attributed to. Leave it
+           unset unless you are wrapping a weight function."
+    ),
+    error_class = "propensity_call_arg_error",
+    call = error_call
+  )
+}
+
 check_ps_range <- function(ps, call = rlang::caller_env()) {
   if (is.matrix(ps) || is.data.frame(ps)) {
     # For matrices/data frames, check all values
@@ -553,15 +577,16 @@ calculate_weight_from_modified_ps <- function(
   .exposure,
   weight_fn,
   modification_type = c("trim", "trunc", "calib"),
-  ...
+  ...,
+  call = rlang::caller_env()
 ) {
-  modification_type <- rlang::arg_match(modification_type)
-
   # `weight_fn` is a numeric method invoked through a local symbol, so its own
-  # frame deparses as `weight_fn()`. Bind the dispatching method's frame here
-  # and hand it down, so conditions raised inside the weight machinery name the
-  # weight function the user called.
-  call <- rlang::caller_env()
+  # frame deparses as `weight_fn()`. The default is the dispatching method's
+  # frame, which is handed down so that conditions raised inside the weight
+  # machinery name the weight function the user called.
+  check_call_arg(call, error_call = rlang::caller_env())
+
+  modification_type <- rlang::arg_match(modification_type)
 
   # Only check refit for trim
   if (modification_type == "trim") {
@@ -799,13 +824,22 @@ handle_data_frame_weight_calculation <- function(
   .treated = NULL,
   .untreated = NULL,
   fn_name,
-  ...
+  ...,
+  call = rlang::caller_env()
 ) {
+  # The default is the frame of the data frame method this was called from,
+  # which is the frame the generic dispatched into and so the one that names the
+  # weight function the user called. A caller may name another frame, and the
+  # generics' dots deliver it here rather than to the numeric method, so that
+  # the whole route is attributed to the same place. A value that cannot be
+  # read as a call is reported against the method rather than against itself.
+  check_call_arg(call, error_call = rlang::caller_env())
+
   # Validate inputs
   if (!is.data.frame(.propensity)) {
     abort(
       "`.propensity` must be a data frame.",
-      call = rlang::caller_env(2),
+      call = call,
       error_class = "propensity_matrix_type_error"
     )
   }
@@ -815,7 +849,7 @@ handle_data_frame_weight_calculation <- function(
     exposure_type,
     .exposure,
     valid_exposure_types,
-    call = rlang::caller_env()
+    call = call
   )
 
   focal_params <- handle_focal_deprecation(
@@ -834,6 +868,7 @@ handle_data_frame_weight_calculation <- function(
       exposure_type = exposure_type,
       .focal_level = focal_params$.focal_level,
       .reference_level = focal_params$.reference_level,
+      call = call,
       ...
     ))
   }
@@ -846,16 +881,18 @@ handle_data_frame_weight_calculation <- function(
     exposure_type = exposure_type_check,
     .focal_level = focal_params$.focal_level,
     .reference_level = focal_params$.reference_level,
-    call = rlang::caller_env(2)
+    call = call
   )
 
-  # Call the numeric method
+  # The numeric method is reached by value here, so its own frame deparses as
+  # `weight_fn_numeric()`. Hand it the call the route was entered on.
   weight_fn_numeric(
     .propensity = ps_vec,
     .exposure = .exposure,
     exposure_type = exposure_type,
     .focal_level = focal_params$.focal_level,
     .reference_level = focal_params$.reference_level,
+    call = call,
     ...
   )
 }

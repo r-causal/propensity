@@ -12,7 +12,7 @@
     Code
       expr
     Condition <propensity_matrix_type_error>
-      Error:
+      Error in `wt_ate()`:
       ! For categorical exposures, `.propensity` must be a matrix or data frame.
 
 # wt_ate() with ps_trim issues refit warning if not refit, no warning if refit
@@ -83,7 +83,7 @@
     Code
       expr
     Condition <propensity_matrix_type_error>
-      Error:
+      Error in `wt_entropy()`:
       ! For categorical exposures, `.propensity` must be a matrix or data frame.
 
 ---
@@ -99,7 +99,7 @@
     Code
       expr
     Condition <propensity_df_ncol_error>
-      Error:
+      Error in `wt_ate()`:
       ! `.propensity` data frame must have at least one column.
 
 ---
@@ -107,7 +107,7 @@
     Code
       expr
     Condition <propensity_df_column_error>
-      Error:
+      Error in `wt_ate()`:
       ! Column selection failed:
 
 # GLM methods error on non-GLM objects
@@ -175,7 +175,7 @@
     Code
       expr
     Condition <propensity_matrix_type_error>
-      Error:
+      Error in `wt_att()`:
       ! For categorical exposures, `.propensity` must be a matrix or data frame.
 
 # an invalid exposure_type on the numeric method names wt_ate()
@@ -235,7 +235,7 @@
     Code
       expr
     Condition <propensity_df_ncol_error>
-      Error:
+      Error in `wt_ate()`:
       ! `.propensity` data frame must have at least one column.
 
 ---
@@ -243,7 +243,7 @@
     Code
       expr
     Condition <propensity_df_column_error>
-      Error:
+      Error in `wt_ate()`:
       ! Column selection failed:
 
 ---
@@ -251,7 +251,7 @@
     Code
       expr
     Condition <propensity_df_column_error>
-      Error:
+      Error in `wt_ate()`:
       ! Column selection failed:
 
 ---
@@ -270,7 +270,7 @@
     Code
       expr
     Condition <propensity_range_error>
-      Error in `weight_fn_numeric()`:
+      Error in `wt_ate()`:
       ! The propensity score must be between 0 and 1.
       i The range of `ps` is 0.5 and 1.5
 
@@ -287,7 +287,7 @@
     Code
       expr
     Condition <propensity_length_error>
-      Error in `wt_ate.numeric()`:
+      Error in `wt_ate()`:
       ! `.propensity` and `.exposure` must have the same length.
       i `.propensity` has length 2
       i `.exposure` has length 4
@@ -353,7 +353,7 @@
     Code
       expr
     Condition <propensity_length_error>
-      Error in `wt_ate.numeric()`:
+      Error in `wt_ate()`:
       ! `.propensity` and `.exposure` must have the same length.
       i `.propensity` has length 18
       i `.exposure` has length 20

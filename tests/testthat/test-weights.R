@@ -3291,6 +3291,19 @@ test_that("data frame column selection failures name the weight function", {
   )
 })
 
+test_that("the data frame helper attributes its own type guard to the method", {
+  # The generic dispatches on a data frame, so the helper's own type guard is
+  # reachable only by calling the method directly, the way a `NextMethod()` from
+  # a method for a subclass would. It still has to name a frame the condition
+  # can be read from rather than the frame that called the method.
+  expect_identical(
+    weight_error_call_name(
+      wt_ate.data.frame(c(0.2, 0.5), c(0, 1), exposure_type = "binary")
+    ),
+    "wt_ate.data.frame"
+  )
+})
+
 test_that("a propensity score out of range on the data frame route names the weight function", {
   out_of_range <- data.frame(
     low = c(-1, 2, 0.5, 0.5),
@@ -3381,6 +3394,169 @@ test_that("an unsupported exposure type names the weight function on every route
     ),
     "wt_att"
   )
+})
+
+focal_required_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a"))
+  ps_matrix <- matrix(
+    c(
+      0.2,
+      0.3,
+      0.5,
+      0.3,
+      0.3,
+      0.4,
+      0.2,
+      0.3,
+      0.5,
+      0.5,
+      0.3,
+      0.2
+    ),
+    nrow = 4,
+    byrow = TRUE
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(
+    exposure = exposure,
+    ps_matrix = ps_matrix,
+    ps_df = as.data.frame(ps_matrix)
+  )
+}
+
+test_that("a missing focal level on a categorical exposure names the weight function", {
+  fixture <- focal_required_fixture()
+
+  # Each generic is called by name inside its own closure, so the frame the
+  # condition names is the call the user wrote rather than the local symbol a
+  # loop would carry.
+  routes <- list(
+    wt_att = function(ps, exposure) {
+      wt_att(ps, exposure, exposure_type = "categorical")
+    },
+    wt_atu = function(ps, exposure) {
+      wt_atu(ps, exposure, exposure_type = "categorical")
+    }
+  )
+
+  for (fn_name in names(routes)) {
+    route <- routes[[fn_name]]
+
+    cnd <- rlang::catch_cnd(
+      route(fixture$ps_matrix, fixture$exposure),
+      classes = "error"
+    )
+    expect_s3_class(cnd, "propensity_focal_required_error")
+
+    expect_identical(
+      weight_error_call_name(route(fixture$ps_matrix, fixture$exposure)),
+      fn_name
+    )
+
+    expect_identical(
+      weight_error_call_name(route(fixture$ps_df, fixture$exposure)),
+      fn_name
+    )
+  }
+})
+
+test_that("a missing focal level names the weight function, not the caller", {
+  fixture <- focal_required_fixture()
+
+  wrapping_focal_fn <- function() {
+    wt_att(fixture$ps_matrix, fixture$exposure, exposure_type = "categorical")
+  }
+
+  expect_identical(weight_error_call_name(wrapping_focal_fn()), "wt_att")
+})
+
+# An exposure with more than two levels forced to binary cannot be coded 0/1
+# without a level named, and each weight formula refuses it through the shared
+# transformation. The refusal is raised two frames below the numeric method, in
+# a helper named after the estimand rather than after anything the user typed.
+
+uncodable_binary_routes <- function() {
+  list(
+    wt_ate = function(ps, exposure) {
+      wt_ate(ps, exposure, exposure_type = "binary")
+    },
+    wt_att = function(ps, exposure) {
+      wt_att(ps, exposure, exposure_type = "binary")
+    },
+    wt_atu = function(ps, exposure) {
+      wt_atu(ps, exposure, exposure_type = "binary")
+    },
+    wt_atm = function(ps, exposure) {
+      wt_atm(ps, exposure, exposure_type = "binary")
+    },
+    wt_ato = function(ps, exposure) {
+      wt_ato(ps, exposure, exposure_type = "binary")
+    },
+    wt_entropy = function(ps, exposure) {
+      wt_entropy(ps, exposure, exposure_type = "binary")
+    },
+    wt_cens = function(ps, exposure) {
+      wt_cens(ps, exposure, exposure_type = "binary")
+    }
+  )
+}
+
+test_that("an exposure that cannot be coded 0/1 names the weight function", {
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+  uncodable <- c(1, 2, 3, 4)
+  routes <- uncodable_binary_routes()
+
+  for (fn_name in names(routes)) {
+    route <- routes[[fn_name]]
+
+    cnd <- rlang::catch_cnd(route(ps, uncodable), classes = "error")
+    expect_s3_class(cnd, "propensity_binary_transform_error")
+
+    expect_identical(weight_error_call_name(route(ps, uncodable)), fn_name)
+  }
+})
+
+test_that("an exposure that cannot be coded 0/1 names the weight function on every route", {
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+  uncodable <- c(1, 2, 3, 4)
+  fixture <- exposure_type_fixture()
+
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(
+        data.frame(treated = ps),
+        uncodable,
+        exposure_type = "binary",
+        .propensity_col = 1
+      )
+    ),
+    "wt_ate"
+  )
+
+  glm_fixture <- zero_one_glm_fixture()
+  expect_identical(
+    weight_error_call_name(
+      wt_atm(glm_fixture$model, rep(1:4, 10), exposure_type = "binary")
+    ),
+    "wt_atm"
+  )
+
+  expect_identical(
+    weight_error_call_name(
+      suppressWarnings(wt_ato(
+        fixture$ps_trimmed,
+        uncodable,
+        exposure_type = "binary"
+      ))
+    ),
+    "wt_ato"
+  )
+
+  wrapping_binary_fn <- function() {
+    wt_entropy(ps, uncodable, exposure_type = "binary")
+  }
+  expect_identical(weight_error_call_name(wrapping_binary_fn()), "wt_entropy")
 })
 
 # ---- the `call` argument is plumbing, and is checked as such ----------------

@@ -1,5 +1,32 @@
 # propensity 0.1.0.9000 (development version)
 
+* Errors and warnings from the weight functions now name the function you
+  called on every route into them. A rejection from `wt_ate()` and friends
+  previously reported an internal frame, or no call at all, whenever the
+  propensity score arrived as a data frame, as a fitted model, or as trimmed,
+  truncated, or calibrated scores, and whenever the exposure was categorical.
+  Even on a plain numeric propensity score, an exposure that cannot be coded
+  0 and 1 was refused in the name of the internal helper that holds the weight
+  formula. A categorical rejection reported the function you called it from,
+  which named your own code rather than the weight function. The messages
+  themselves are unchanged.
+
+* The weight functions now reject a `call` argument that is neither a call nor
+  an environment with an error of class `propensity_call_arg_error`. The
+  argument names the frame a condition is attributed to, and the weight
+  generics pass their arguments on to their methods, so a value of any other
+  type was accepted in silence and then reported the condition system's own
+  internals when a later check failed.
+
+* A `stabilization_score` with dimensions is now rejected. A matrix holding one
+  value per observation passed the length rule and was silently flattened into
+  the order its values happened to be stored in.
+
+* `wt_ate()` now reports a `.propensity` and `.exposure` of different lengths
+  before it checks the stabilization score. A score matching `.propensity` was
+  reported as the wrong length for the weights, which described the score
+  rather than the mismatch that made it wrong.
+
 * New `ps_tilt()` returns the tilting function h of the propensity score that
   defines an estimand's target population, with methods for a numeric
   propensity score (binary exposure) and for a matrix or data frame of

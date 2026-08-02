@@ -323,7 +323,8 @@ wt_ate.numeric <- function(
   .untreated = NULL,
   call = rlang::current_env()
 ) {
-  rlang::check_dots_empty()
+  check_call_arg(call)
+  rlang::check_dots_empty(call = call)
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -342,6 +343,16 @@ wt_ate.numeric <- function(
     call = call
   )
 
+  # The exposure supplies the number of observations the score is checked
+  # against, so a `.propensity` of a different length has to be caught first.
+  # Otherwise a score that matches `.propensity` is reported against the
+  # exposure's count, which describes the score rather than the mismatch that
+  # made it wrong. The categorical route checks the two lengths against each
+  # other in `calculate_categorical_weights()`.
+  if (exposure_type %in% c("binary", "continuous")) {
+    check_lengths_match(.propensity, .exposure, call = call)
+  }
+
   # The score is checked again by `psw()`, which is the choke point for every
   # route that records one. It is checked here as well because the formulas
   # below multiply it into the weights first, and a length that neither matches
@@ -357,18 +368,17 @@ wt_ate.numeric <- function(
   }
 
   if (exposure_type == "binary") {
-    check_lengths_match(.propensity, .exposure)
-    check_ps_range(.propensity)
+    check_ps_range(.propensity, call = call)
     wts <- ate_binary(
       .propensity = .propensity,
       .exposure = .exposure,
       .focal_level = .focal_level,
       .reference_level = .reference_level,
       stabilize = stabilize,
-      stabilization_score = stabilization_score
+      stabilization_score = stabilization_score,
+      call = call
     )
   } else if (exposure_type == "continuous") {
-    check_lengths_match(.propensity, .exposure)
     wts <- ate_continuous(
       .propensity = .propensity,
       .exposure = .exposure,
@@ -386,10 +396,10 @@ wt_ate.numeric <- function(
       .focal_level = NULL,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
-      call = rlang::caller_env()
+      call = call
     )
   } else {
-    abort_unsupported(exposure_type, "ATE")
+    abort_unsupported(exposure_type, "ATE", call = call)
   }
 
   # Create psw object with appropriate attributes. The stabilization score is
@@ -455,8 +465,11 @@ wt_ate.glm <- function(
   stabilization_score = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
+
   args <- prepare_glm_weight_args(
     .propensity,
     .exposure,
@@ -466,7 +479,8 @@ wt_ate.glm <- function(
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    fn_name = "wt_ate"
+    fn_name = "wt_ate",
+    call = call
   )
 
   # For continuous exposures, extract sigma if not provided
@@ -484,6 +498,7 @@ wt_ate.glm <- function(
     .reference_level = args$reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    call = call,
     ...
   )
 }
@@ -495,12 +510,14 @@ ate_binary <- function(
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
-  stabilization_score = NULL
+  stabilization_score = NULL,
+  call = rlang::caller_env()
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .focal_level = .focal_level,
-    .reference_level = .reference_level
+    .reference_level = .reference_level,
+    call = call
   )
 
   if (isTRUE(stabilize) && is.null(stabilization_score)) {
@@ -603,7 +620,8 @@ wt_att.numeric <- function(
   .untreated = NULL,
   call = rlang::current_env()
 ) {
-  rlang::check_dots_empty()
+  check_call_arg(call)
+  rlang::check_dots_empty(call = call)
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -624,13 +642,14 @@ wt_att.numeric <- function(
   )
 
   if (exposure_type == "binary") {
-    check_lengths_match(.propensity, .exposure)
-    check_ps_range(.propensity)
+    check_lengths_match(.propensity, .exposure, call = call)
+    check_ps_range(.propensity, call = call)
     wts <- att_binary(
       .propensity = .propensity,
       .exposure = .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -641,10 +660,10 @@ wt_att.numeric <- function(
       .focal_level = .focal_level,
       stabilize = FALSE,
       stabilization_score = NULL,
-      call = rlang::caller_env()
+      call = call
     )
   } else {
-    abort_unsupported(exposure_type, "ATT")
+    abort_unsupported(exposure_type, "ATT", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -701,8 +720,11 @@ wt_att.glm <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
+
   args <- prepare_glm_weight_args(
     .propensity,
     .exposure,
@@ -712,7 +734,8 @@ wt_att.glm <- function(
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    fn_name = "wt_att"
+    fn_name = "wt_att",
+    call = call
   )
 
   # Call the numeric method
@@ -722,6 +745,7 @@ wt_att.glm <- function(
     exposure_type = args$exposure_type,
     .focal_level = args$focal_level,
     .reference_level = args$reference_level,
+    call = call,
     ...
   )
 }
@@ -730,12 +754,14 @@ att_binary <- function(
   .propensity,
   .exposure,
   .focal_level = NULL,
-  .reference_level = NULL
+  .reference_level = NULL,
+  call = rlang::caller_env()
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .focal_level = .focal_level,
-    .reference_level = .reference_level
+    .reference_level = .reference_level,
+    call = call
   )
 
   tilted_binary_weights(.propensity, .exposure, "att")
@@ -782,7 +808,8 @@ wt_atu.numeric <- function(
   .untreated = NULL,
   call = rlang::current_env()
 ) {
-  rlang::check_dots_empty()
+  check_call_arg(call)
+  rlang::check_dots_empty(call = call)
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -803,13 +830,14 @@ wt_atu.numeric <- function(
   )
 
   if (exposure_type == "binary") {
-    check_lengths_match(.propensity, .exposure)
-    check_ps_range(.propensity)
+    check_lengths_match(.propensity, .exposure, call = call)
+    check_ps_range(.propensity, call = call)
     wts <- atu_binary(
       .propensity = .propensity,
       .exposure = .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -820,10 +848,10 @@ wt_atu.numeric <- function(
       .focal_level = .focal_level,
       stabilize = FALSE,
       stabilization_score = NULL,
-      call = rlang::caller_env()
+      call = call
     )
   } else {
-    abort_unsupported(exposure_type, "ATU")
+    abort_unsupported(exposure_type, "ATU", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -880,8 +908,11 @@ wt_atu.glm <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
+
   args <- prepare_glm_weight_args(
     .propensity,
     .exposure,
@@ -891,7 +922,8 @@ wt_atu.glm <- function(
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    fn_name = "wt_atu"
+    fn_name = "wt_atu",
+    call = call
   )
 
   # Call the numeric method
@@ -901,6 +933,7 @@ wt_atu.glm <- function(
     exposure_type = args$exposure_type,
     .focal_level = args$focal_level,
     .reference_level = args$reference_level,
+    call = call,
     ...
   )
 }
@@ -909,12 +942,14 @@ atu_binary <- function(
   .propensity,
   .exposure,
   .focal_level = NULL,
-  .reference_level = NULL
+  .reference_level = NULL,
+  call = rlang::caller_env()
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .focal_level = .focal_level,
-    .reference_level = .reference_level
+    .reference_level = .reference_level,
+    call = call
   )
 
   tilted_binary_weights(.propensity, .exposure, "atu")
@@ -961,7 +996,8 @@ wt_atm.numeric <- function(
   .untreated = NULL,
   call = rlang::current_env()
 ) {
-  rlang::check_dots_empty()
+  check_call_arg(call)
+  rlang::check_dots_empty(call = call)
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -982,13 +1018,14 @@ wt_atm.numeric <- function(
   )
 
   if (exposure_type == "binary") {
-    check_lengths_match(.propensity, .exposure)
-    check_ps_range(.propensity)
+    check_lengths_match(.propensity, .exposure, call = call)
+    check_ps_range(.propensity, call = call)
     wts <- atm_binary(
       .propensity = .propensity,
       .exposure = .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -999,10 +1036,10 @@ wt_atm.numeric <- function(
       .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
-      call = rlang::caller_env()
+      call = call
     )
   } else {
-    abort_unsupported(exposure_type, "ATM")
+    abort_unsupported(exposure_type, "ATM", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -1051,8 +1088,11 @@ wt_atm.glm <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
+
   args <- prepare_glm_weight_args(
     .propensity,
     .exposure,
@@ -1062,7 +1102,8 @@ wt_atm.glm <- function(
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    fn_name = "wt_atm"
+    fn_name = "wt_atm",
+    call = call
   )
 
   # Call the numeric method
@@ -1072,6 +1113,7 @@ wt_atm.glm <- function(
     exposure_type = args$exposure_type,
     .focal_level = args$focal_level,
     .reference_level = args$reference_level,
+    call = call,
     ...
   )
 }
@@ -1080,12 +1122,14 @@ atm_binary <- function(
   .propensity,
   .exposure,
   .focal_level = NULL,
-  .reference_level = NULL
+  .reference_level = NULL,
+  call = rlang::caller_env()
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .focal_level = .focal_level,
-    .reference_level = .reference_level
+    .reference_level = .reference_level,
+    call = call
   )
 
   tilted_binary_weights(.propensity, .exposure, "atm")
@@ -1133,7 +1177,8 @@ wt_ato.numeric <- function(
   .untreated = NULL,
   call = rlang::current_env()
 ) {
-  rlang::check_dots_empty()
+  check_call_arg(call)
+  rlang::check_dots_empty(call = call)
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -1154,13 +1199,14 @@ wt_ato.numeric <- function(
   )
 
   if (exposure_type == "binary") {
-    check_lengths_match(.propensity, .exposure)
-    check_ps_range(.propensity)
+    check_lengths_match(.propensity, .exposure, call = call)
+    check_ps_range(.propensity, call = call)
     wts <- ato_binary(
       .propensity = .propensity,
       .exposure = .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -1171,10 +1217,10 @@ wt_ato.numeric <- function(
       .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
-      call = rlang::caller_env()
+      call = call
     )
   } else {
-    abort_unsupported(exposure_type, "ATO")
+    abort_unsupported(exposure_type, "ATO", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -1223,8 +1269,11 @@ wt_ato.glm <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
+
   args <- prepare_glm_weight_args(
     .propensity,
     .exposure,
@@ -1234,7 +1283,8 @@ wt_ato.glm <- function(
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    fn_name = "wt_ato"
+    fn_name = "wt_ato",
+    call = call
   )
 
   # Call the numeric method
@@ -1244,6 +1294,7 @@ wt_ato.glm <- function(
     exposure_type = args$exposure_type,
     .focal_level = args$focal_level,
     .reference_level = args$reference_level,
+    call = call,
     ...
   )
 }
@@ -1252,12 +1303,14 @@ ato_binary <- function(
   .propensity,
   .exposure,
   .focal_level = NULL,
-  .reference_level = NULL
+  .reference_level = NULL,
+  call = rlang::caller_env()
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .focal_level = .focal_level,
-    .reference_level = .reference_level
+    .reference_level = .reference_level,
+    call = call
   )
 
   tilted_binary_weights(.propensity, .exposure, "ato")
@@ -1304,7 +1357,8 @@ wt_entropy.numeric <- function(
   .untreated = NULL,
   call = rlang::current_env()
 ) {
-  rlang::check_dots_empty()
+  check_call_arg(call)
+  rlang::check_dots_empty(call = call)
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -1325,13 +1379,14 @@ wt_entropy.numeric <- function(
   )
 
   if (exposure_type == "binary") {
-    check_lengths_match(.propensity, .exposure)
-    check_ps_range(.propensity)
+    check_lengths_match(.propensity, .exposure, call = call)
+    check_ps_range(.propensity, call = call)
     wts <- entropy_binary(
       .propensity = .propensity,
       .exposure = .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
   } else if (exposure_type == "categorical") {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -1342,10 +1397,10 @@ wt_entropy.numeric <- function(
       .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
-      call = rlang::caller_env()
+      call = call
     )
   } else {
-    abort_unsupported(exposure_type, "entropy")
+    abort_unsupported(exposure_type, "entropy", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -1394,8 +1449,11 @@ wt_entropy.glm <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
+
   args <- prepare_glm_weight_args(
     .propensity,
     .exposure,
@@ -1405,7 +1463,8 @@ wt_entropy.glm <- function(
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    fn_name = "wt_entropy"
+    fn_name = "wt_entropy",
+    call = call
   )
 
   # Call the numeric method
@@ -1415,6 +1474,7 @@ wt_entropy.glm <- function(
     exposure_type = args$exposure_type,
     .focal_level = args$focal_level,
     .reference_level = args$reference_level,
+    call = call,
     ...
   )
 }
@@ -1423,12 +1483,14 @@ entropy_binary <- function(
   .propensity,
   .exposure,
   .focal_level = NULL,
-  .reference_level = NULL
+  .reference_level = NULL,
+  call = rlang::caller_env()
 ) {
   .exposure <- transform_exposure_binary(
     .exposure,
     .focal_level = .focal_level,
-    .reference_level = .reference_level
+    .reference_level = .reference_level,
+    call = call
   )
 
   tilted_binary_weights(.propensity, .exposure, "entropy")
@@ -1505,6 +1567,8 @@ wt_cens.numeric <- function(
   .untreated = NULL,
   call = rlang::current_env()
 ) {
+  check_call_arg(call)
+
   # Get weights using ATE formula. `call` carries the frame this method was
   # dispatched into, so a rejection raised inside the ATE machinery still names
   # `wt_cens()`.
@@ -1576,8 +1640,11 @@ wt_cens.glm <- function(
   stabilization_score = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
+
   args <- prepare_glm_weight_args(
     .propensity,
     .exposure,
@@ -1587,7 +1654,8 @@ wt_cens.glm <- function(
     .reference_level = .reference_level,
     .treated = .treated,
     .untreated = .untreated,
-    fn_name = "wt_cens"
+    fn_name = "wt_cens",
+    call = call
   )
 
   # For continuous exposures, extract sigma if not provided
@@ -1605,6 +1673,7 @@ wt_cens.glm <- function(
     .reference_level = args$reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    call = call,
     ...
   )
 }
@@ -2035,7 +2104,8 @@ calculate_categorical_weights <- function(
   if (!estimand %in% ipw_estimands) {
     abort(
       "Unknown estimand: {estimand}",
-      error_class = "propensity_unknown_estimand_error"
+      error_class = "propensity_unknown_estimand_error",
+      call = call
     )
   }
 
@@ -2043,7 +2113,7 @@ calculate_categorical_weights <- function(
   # treats every level alike otherwise.
   focal_idx <- NULL
   if (estimand %in% c("att", "atu")) {
-    check_focal_level_required(.focal_level, estimand)
+    check_focal_level_required(.focal_level, estimand, call = call)
     focal_idx <- which(levels_exp == .focal_level)
   }
   h_e <- ps_tilt_categorical(ps_matrix, estimand, focal_idx)
@@ -2056,7 +2126,8 @@ calculate_categorical_weights <- function(
     if (estimand != "ate") {
       abort(
         "Stabilization is only supported for ATE with categorical exposures.",
-        error_class = "propensity_stabilize_categorical_error"
+        error_class = "propensity_stabilize_categorical_error",
+        call = call
       )
     }
 

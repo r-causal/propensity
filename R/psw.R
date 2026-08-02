@@ -571,6 +571,24 @@ check_stabilization_score <- function(score, n, call = rlang::caller_env()) {
     )
   }
 
+  # A matrix or an array holds as many values as its dimensions multiply to, so
+  # the alignment rule below can read one as a value per observation and the
+  # coercion at the end would drop its shape without a word. A score scales the
+  # weights one for one, so a shape the weights do not have is refused.
+  if (!is.null(dim(score))) {
+    shape <- paste(dim(score), collapse = " x ")
+    abort(
+      c(
+        "{.arg stabilization_score} must not have dimensions.",
+        x = "It is {shape}.",
+        i = "Supply a single value to scale every weight, or one value for
+             each observation."
+      ),
+      error_class = "propensity_stabilization_score_error",
+      call = call
+    )
+  }
+
   # A score holding no values passes the alignment rule, which reads any length
   # below two as the single value that scales every weight. There is no such
   # value here, so it is refused separately.

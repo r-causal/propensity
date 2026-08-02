@@ -3,7 +3,7 @@
     Code
       expr
     Condition <propensity_categorical_levels_error>
-      Error:
+      Error in `wt_ate()`:
       ! Categorical exposure must have more than 2 levels.
       i Found 2 levels.
       i Use binary exposure methods for 2-level exposures.
@@ -13,7 +13,7 @@
     Code
       expr
     Condition <propensity_focal_category_error>
-      Error:
+      Error in `wt_att()`:
       ! Focal category must be one of the exposure levels.
       i Focal category: "D"
       i Available levels: "A", "B", and "C"
@@ -23,7 +23,7 @@
     Code
       expr
     Condition <propensity_matrix_type_error>
-      Error:
+      Error in `wt_ate()`:
       ! For categorical exposures, `.propensity` must be a matrix or data frame.
 
 ---
@@ -31,7 +31,7 @@
     Code
       expr
     Condition <propensity_matrix_dims_error>
-      Error:
+      Error in `wt_ate()`:
       ! Number of rows in propensity score matrix must match number of observations.
       i Matrix rows: 3
       i Observations: 5
@@ -41,7 +41,7 @@
     Code
       expr
     Condition <propensity_matrix_dims_error>
-      Error:
+      Error in `wt_ate()`:
       ! Number of columns in propensity score matrix must match number of exposure categories.
       i Matrix columns: 2
       i Categories: 3
@@ -51,7 +51,7 @@
     Code
       expr
     Condition <propensity_matrix_sum_error>
-      Error:
+      Error in `wt_ate()`:
       ! Propensity score matrix rows must sum to 1.
       i Problem rows: 1
 
@@ -60,7 +60,7 @@
     Code
       expr
     Condition <propensity_range_error>
-      Error:
+      Error in `wt_ate()`:
       ! All propensity scores must be between 0 and 1.
 
 # ATT weights work for categorical exposures
@@ -68,7 +68,7 @@
     Code
       expr
     Condition <propensity_focal_required_error>
-      Error in `calculate_categorical_weights()`:
+      Error in `wt_att()`:
       ! Focal category must be specified for ATT with categorical exposures.
 
 # categorical weights error on mismatched column names
@@ -76,7 +76,7 @@
     Code
       expr
     Condition <propensity_matrix_names_error>
-      Error:
+      Error in `wt_ate()`:
       ! Column names of propensity score matrix must match exposure levels.
       i Expected levels: "A", "B", and "C"
       i Found columns: "X", "Y", and "Z"
@@ -86,7 +86,7 @@
     Code
       expr
     Condition <propensity_matrix_no_names_warning>
-      Warning:
+      Warning in `wt_ate()`:
       Propensity score matrix has no column names.
       i Assuming columns are in factor level order: "A", "B", and "C"
       i This may lead to incorrect results if columns are misaligned.
@@ -106,7 +106,7 @@
     Code
       expr
     Condition <propensity_matrix_no_names_warning>
-      Warning:
+      Warning in `wt_att()`:
       Propensity score matrix has no column names.
       i Assuming columns are in factor level order: "A", "B", and "C"
       i This may lead to incorrect results if columns are misaligned.
@@ -127,7 +127,7 @@
     Code
       expr
     Condition <propensity_matrix_no_names_warning>
-      Warning:
+      Warning in `wt_atu()`:
       Propensity score matrix has no column names.
       i Assuming columns are in factor level order: "A", "B", and "C"
       i This may lead to incorrect results if columns are misaligned.
@@ -147,7 +147,7 @@
     Code
       expr
     Condition <propensity_matrix_no_names_warning>
-      Warning:
+      Warning in `wt_atm()`:
       Propensity score matrix has no column names.
       i Assuming columns are in factor level order: "A", "B", and "C"
       i This may lead to incorrect results if columns are misaligned.
@@ -168,7 +168,7 @@
     Code
       expr
     Condition <propensity_matrix_no_names_warning>
-      Warning:
+      Warning in `wt_ato()`:
       Propensity score matrix has no column names.
       i Assuming columns are in factor level order: "A", "B", and "C"
       i This may lead to incorrect results if columns are misaligned.
@@ -189,7 +189,7 @@
     Code
       expr
     Condition <propensity_matrix_no_names_warning>
-      Warning:
+      Warning in `wt_entropy()`:
       Propensity score matrix has no column names.
       i Assuming columns are in factor level order: "A", "B", and "C"
       i This may lead to incorrect results if columns are misaligned.
