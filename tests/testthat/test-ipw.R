@@ -562,6 +562,12 @@ test_that("ipw() default rejects an argument it has no name for", {
 test_that("ipw() glm accepts every argument supplied by name", {
   fx <- dots_binary_fixture()
 
+  # `ps_link` is deprecated but still accepted by name, which is all this pin
+  # is about. The deprecation itself is pinned in test-ipw-se-method.R, and
+  # silencing it here keeps this test independent of the order the suite runs
+  # in, since the default verbosity warns only on the id's first use.
+  withr::local_options(lifecycle_verbosity = "quiet")
+
   baseline <- ipw(fx$ps_mod, fx$outcome_mod)
   named <- ipw(
     fx$ps_mod,
@@ -589,6 +595,10 @@ test_that("ipw() glm accepts every argument supplied by name", {
 
 test_that("ipw() glm accepts every argument supplied by name under linearization", {
   fx <- dots_binary_fixture()
+
+  # As above: the deprecation of `ps_link` is pinned elsewhere, and this pin is
+  # only about the argument still being accepted by name.
+  withr::local_options(lifecycle_verbosity = "quiet")
 
   named <- ipw(
     fx$ps_mod,

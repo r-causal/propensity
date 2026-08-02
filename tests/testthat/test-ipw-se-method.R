@@ -1855,7 +1855,7 @@ test_that("linearization rejects stabilized weights whose score was dropped", {
   )
 })
 
-# ---- ps_link must agree with the propensity model's own link ----------------
+# ---- ps_link is deprecated, and must agree with the model's own link --------
 #
 # On the linearization path `ps_link` reaches `derive_weights`, the score factor,
 # and the correction matrix, none of which consult the fitted model. Naming a
@@ -1865,10 +1865,23 @@ test_that("linearization rejects stabilized weights whose score was dropped", {
 # weights and are unchanged to the last digit. The weight-consistency preflight
 # cannot see it either, since the weights do not depend on the link.
 #
-# The M-estimation path already refuses the same misuse, because there the link
-# inverts the coefficient block into propensity scores and the recomputed weights
-# then disagree. That boundary is pinned separately; the point here is only that
-# the linearization path currently accepts what the other rejects.
+# The M-estimation path refuses the same misuse for a different reason: there the
+# link inverts the coefficient block into propensity scores, so the recomputed
+# weights no longer reproduce the ones the outcome model was fit with and the
+# misuse surfaces as a weights mismatch. That boundary is pinned below as well,
+# so neither path drifts into the other's message.
+#
+# Since both paths accept only the model's own link, the one value `ps_link` can
+# carry without changing anything is the value the default already resolves to,
+# which leaves the argument as pure redundancy. Supplying it therefore raises a
+# lifecycle deprecation warning, the matching value included; omitting it, or
+# passing NULL, resolves the model's link silently as before. The warning is
+# advisory, so the pins below assert every number against the call that omits the
+# argument.
+#
+# The pins force `lifecycle_verbosity = "warning"` rather than relying on the
+# default once-per-session behavior, so no pin depends on being the first to
+# reach the `ipw(ps_link)` id.
 #
 # The legitimate probit path is covered by "probit linearization RD SE matches
 # the generalized score correction" and "probit linearization RD SE agrees with
@@ -1895,8 +1908,24 @@ se_link_fit <- function(dat, link) {
   list(ps_mod = ps_mod, outcome_mod = outcome_mod)
 }
 
+# Collect the deprecation warnings a call signals, without letting them escape
+# into the test's own condition record, and hand back the call's value alongside
+# them so a pin can assert on both.
+se_link_deprecations <- function(expr) {
+  messages <- character()
+  value <- withCallingHandlers(
+    expr,
+    lifecycle_warning_deprecated = function(cnd) {
+      messages <<- c(messages, conditionMessage(cnd))
+      rlang::cnd_muffle(cnd)
+    }
+  )
+  list(value = value, messages = messages)
+}
+
 test_that("linearization rejects a ps_link that differs from the model's link", {
   dat <- se_method_data()
+  withr::local_options(lifecycle_verbosity = "warning")
 
   # Both directions, so the guard cannot be written as a rule about logit.
   cases <- list(
@@ -1907,18 +1936,24 @@ test_that("linearization rejects a ps_link that differs from the model's link", 
 
   for (case in cases) {
     mods <- se_link_fit(dat, case$fit)
-    err <- expect_error(
-      ipw(
-        mods$ps_mod,
-        mods$outcome_mod,
-        ps_link = case$ps_link,
-        se_method = "linearization"
-      ),
-      class = "propensity_ipw_link_error"
+    caught <- se_link_deprecations(
+      expect_error(
+        ipw(
+          mods$ps_mod,
+          mods$outcome_mod,
+          ps_link = case$ps_link,
+          se_method = "linearization"
+        ),
+        class = "propensity_ipw_link_error"
+      )
     )
 
+    # deprecated first, then rejected: the warning does not stand in for the
+    # guard, and the guard does not swallow the warning
+    expect_length(caught$messages, 1)
+
     # the message has to name both, or it cannot say what disagrees with what
-    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(caught$value))
     expect_match(msg, case$fit, fixed = TRUE)
     expect_match(msg, case$ps_link, fixed = TRUE)
   }
@@ -1927,6 +1962,12 @@ test_that("linearization rejects a ps_link that differs from the model's link", 
 test_that("the ps_link mismatch error names both links", {
   dat <- se_method_data()
   mods <- se_link_fit(dat, "logit")
+
+  # The deprecation warning that now precedes the rejection is pinned by
+  # "linearization rejects a ps_link that differs from the model's link".
+  # Silencing it here keeps this snapshot a record of the rejection message
+  # alone, rather than one that also moves whenever the package version does.
+  withr::local_options(lifecycle_verbosity = "quiet")
 
   expect_snapshot(
     error = TRUE,
@@ -1955,33 +1996,100 @@ test_that("mestimation reports a mismatched ps_link as a weights mismatch", {
 
   expect_identical(mods$ps_mod$family$link, "logit")
 
-  expect_error(
-    ipw(
-      mods$ps_mod,
-      mods$outcome_mod,
-      ps_link = "probit",
-      se_method = "mestimation"
-    ),
-    class = "propensity_ipw_weights_mismatch_error"
+  withr::local_options(lifecycle_verbosity = "warning")
+  caught <- se_link_deprecations(
+    expect_error(
+      ipw(
+        mods$ps_mod,
+        mods$outcome_mod,
+        ps_link = "probit",
+        se_method = "mestimation"
+      ),
+      class = "propensity_ipw_weights_mismatch_error"
+    )
   )
+
+  # the deprecation reaches this path too, and the mismatch still follows it
+  expect_length(caught$messages, 1)
 })
 
-test_that("linearization accepts a ps_link equal to the model's link", {
+test_that("linearization deprecates a ps_link equal to the model's link", {
   dat <- se_method_data()
+  withr::local_options(lifecycle_verbosity = "warning")
 
-  # Passing pin, correct today. Naming the link the model was already fit with
-  # asks for the behavior the default gives, and must stay a no-op rather than
-  # become collateral damage of the guard above.
+  # Naming the link the model was already fit with asks for exactly what the
+  # default gives, so it is deprecated rather than rejected. The warning is the
+  # whole of the change: the estimates must still match the call that omits the
+  # argument, value for value.
   for (link in c("logit", "probit")) {
     mods <- se_link_fit(dat, link)
-    expect_identical(
+
+    caught <- se_link_deprecations(
       ipw(
         mods$ps_mod,
         mods$outcome_mod,
         ps_link = link,
         se_method = "linearization"
-      )$estimates,
+      )
+    )
+
+    expect_length(caught$messages, 1)
+
+    # the warning has to name the argument and the function it belongs to
+    msg <- gsub("[[:space:]]+", " ", paste(caught$messages, collapse = " "))
+    expect_match(msg, "ps_link", fixed = TRUE)
+    expect_match(msg, "ipw()", fixed = TRUE)
+    expect_match(msg, "deprecated", fixed = TRUE)
+
+    # the baseline runs at the same verbosity, so a deprecation fired for the
+    # default resolution would escape here and be recorded
+    expect_identical(
+      caught$value$estimates,
       ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")$estimates
+    )
+  }
+})
+
+test_that("mestimation deprecates a ps_link equal to the model's link", {
+  skip_if_not_installed("deli")
+  dat <- se_method_data()
+  withr::local_options(lifecycle_verbosity = "warning")
+
+  mods <- se_link_fit(dat, "logit")
+  caught <- se_link_deprecations(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      ps_link = "logit",
+      se_method = "mestimation"
+    )
+  )
+
+  expect_length(caught$messages, 1)
+  expect_identical(
+    caught$value$estimates,
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")$estimates
+  )
+})
+
+test_that("omitting ps_link deprecates nothing on either path", {
+  skip_if_not_installed("deli")
+  dat <- se_method_data()
+  withr::local_options(lifecycle_verbosity = "warning")
+
+  mods <- se_link_fit(dat, "logit")
+
+  # Resolving the model's own link is the default rather than a use of the
+  # argument, so neither the omitted form nor an explicit NULL may warn, even at
+  # the loudest verbosity.
+  for (method in c("linearization", "mestimation")) {
+    expect_no_warning(
+      ipw(mods$ps_mod, mods$outcome_mod, se_method = method),
+      class = "lifecycle_warning_deprecated"
+    )
+    expect_no_warning(
+      ipw(mods$ps_mod, mods$outcome_mod, ps_link = NULL, se_method = method),
+      class = "lifecycle_warning_deprecated"
     )
   }
 })
