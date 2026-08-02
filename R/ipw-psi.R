@@ -343,11 +343,24 @@ ipw_init_contrasts <- function(contrasts, mu_hi, mu_lo, suffix = NULL) {
   stats::setNames(vals, nm)
 }
 
+# The stabilizer to use for a binary exposure whose weights carry no
+# per-observation stabilization score: the marginal exposure probability.
+#
+# Two consumers must agree on this value. The M-estimation init seeds the
+# `stab_pi` parameter with it, and the linearization preflight rebuilds a
+# stabilized weight from it to compare against the weights that fit the outcome
+# model. If they disagreed, the preflight would reject weights the solver would
+# have accepted, or accept weights it would not. `exposure` is the 0/1 recode in
+# both cases.
+ipw_default_stab_seed <- function(exposure) {
+  mean(exposure)
+}
+
 ipw_init_binary <- function(spec, call = rlang::caller_env()) {
   ps_block <- spec$ps$coefs
 
   if (spec$stab$stabilized && is.null(spec$stab$score)) {
-    stab_block <- c(stab_pi = mean(spec$exposure))
+    stab_block <- c(stab_pi = ipw_default_stab_seed(spec$exposure))
   } else {
     stab_block <- numeric(0)
   }

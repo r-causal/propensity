@@ -571,17 +571,17 @@ ipw.glm <- function(
   #
   # The stabilizer mirrors the M-estimation init seed exactly: a per-observation
   # score is used when the weights carry one, and otherwise a stabilized weight
-  # is rebuilt from the group-constant mean(z) that ipw_init_binary() seeds. That
-  # equivalence is what lets weights whose score was dropped in a length-changing
-  # operation be caught here rather than silently rebuilt from the wrong
-  # stabilizer.
+  # is rebuilt from the group-constant default both paths share,
+  # `ipw_default_stab_seed()`. That equivalence is what lets weights whose score
+  # was dropped in a length-changing operation be caught here rather than
+  # silently rebuilt from the wrong stabilizer.
   stab_score <- stabilization_score(wts)
   recomputed_wts <- ipw_weight_fn("binary", estimand)(
     ps,
     exposure_binary,
     list(
       stab_prob = if (is_stabilized(wts) && is.null(stab_score)) {
-        mean(exposure_binary)
+        ipw_default_stab_seed(exposure_binary)
       },
       score = stab_score
     )
