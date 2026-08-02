@@ -2148,6 +2148,313 @@ test_that("all wt_* functions work with data frames", {
   expect_equal(weights_entropy, expected_entropy)
 })
 
+# ---- data frame columns resolve by focal level name ------------------------
+
+# A data frame of per-level probabilities whose columns are named for the
+# levels they hold. The column carrying P(focal) therefore depends on which
+# level is resolved as focal, not on where the column sits.
+level_named_df_fixture <- function() {
+  p_a <- c(0.9, 0.7, 0.3, 0.1)
+
+  list(
+    p_a = p_a,
+    p_b = 1 - p_a,
+    # "b" is the second level, so it is the focal level with none named
+    factor = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    double = c(0, 0, 1, 1)
+  )
+}
+
+test_that("data frame propensity resolves a named focal level by column name", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
+
+  wt_fns <- list(
+    ate = wt_ate,
+    att = wt_att,
+    atu = wt_atu,
+    atm = wt_atm,
+    ato = wt_ato,
+    entropy = wt_entropy
+  )
+
+  for (estimand_name in names(wt_fns)) {
+    wt_fn <- wt_fns[[estimand_name]]
+    expect_equal(
+      wt_fn(
+        ps_df,
+        fixture$factor,
+        exposure_type = "binary",
+        .focal_level = "a"
+      ),
+      wt_fn(
+        fixture$p_a,
+        fixture$factor,
+        exposure_type = "binary",
+        .focal_level = "a"
+      )
+    )
+  }
+})
+
+test_that("data frame propensity resolves a named reference level by column name", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
+
+  # naming "b" as reference leaves "a" as the only other level, so the "a"
+  # column carries P(focal)
+  expect_equal(
+    wt_att(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .reference_level = "b"
+    ),
+    wt_att(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .reference_level = "b"
+    )
+  )
+})
+
+test_that("data frame propensity column selection ignores column order", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
+  ps_df_reversed <- data.frame(b = fixture$p_b, a = fixture$p_a)
+
+  # with no level named the focal level is "b", so both frames must reach the
+  # "b" column
+  expected <- wt_att(fixture$p_b, fixture$factor, exposure_type = "binary")
+
+  expect_equal(
+    wt_att(ps_df, fixture$factor, exposure_type = "binary"),
+    expected
+  )
+  expect_equal(
+    wt_att(ps_df_reversed, fixture$factor, exposure_type = "binary"),
+    expected
+  )
+})
+
+test_that("data frame propensity resolves a 0/1 exposure's focal level by column name", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(
+    `0` = fixture$p_a,
+    `1` = fixture$p_b,
+    check.names = FALSE
+  )
+  ps_df_reversed <- data.frame(
+    `1` = fixture$p_b,
+    `0` = fixture$p_a,
+    check.names = FALSE
+  )
+
+  expected <- wt_att(
+    fixture$p_a,
+    fixture$double,
+    exposure_type = "binary",
+    .focal_level = 0
+  )
+
+  expect_equal(
+    wt_att(
+      ps_df,
+      fixture$double,
+      exposure_type = "binary",
+      .focal_level = 0
+    ),
+    expected
+  )
+  expect_equal(
+    wt_att(
+      ps_df_reversed,
+      fixture$double,
+      exposure_type = "binary",
+      .focal_level = 0
+    ),
+    expected
+  )
+
+  # with no level named the focal level stays 1, so the "1" column is selected
+  expect_equal(
+    wt_att(ps_df, fixture$double, exposure_type = "binary"),
+    wt_att(fixture$p_b, fixture$double, exposure_type = "binary")
+  )
+})
+
+test_that("data frame propensity warns when no column matches a named level", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(x1 = fixture$p_a, x2 = fixture$p_b)
+
+  # the fallback is today's positional default, the second column
+  expect_equal(
+    suppressWarnings(wt_att(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )),
+    wt_att(
+      fixture$p_b,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+
+  # the warning names the column the fallback landed on
+  expect_warning(
+    wt_att(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ),
+    regexp = "x2",
+    class = "propensity_df_column_warning"
+  )
+
+  expect_warning(
+    wt_att(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .reference_level = "b"
+    ),
+    class = "propensity_df_column_warning"
+  )
+})
+
+test_that("data frame propensity warns when only some levels have columns", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(a = fixture$p_a, other = fixture$p_b)
+
+  expect_warning(
+    wt_att(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ),
+    class = "propensity_df_column_warning"
+  )
+})
+
+test_that("data frame propensity falls back to position silently with no level named", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(x1 = fixture$p_a, x2 = fixture$p_b)
+
+  weights <- expect_no_warning(
+    wt_att(ps_df, fixture$factor, exposure_type = "binary")
+  )
+
+  expect_equal(
+    weights,
+    wt_att(fixture$p_b, fixture$factor, exposure_type = "binary")
+  )
+})
+
+test_that("`.propensity_col` overrides column name matching silently", {
+  fixture <- level_named_df_fixture()
+
+  # the level names would match, but the explicit column wins and is read as
+  # the probability of the resolved focal level
+  ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
+  weights_matched <- expect_no_warning(
+    wt_att(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a",
+      .propensity_col = "b"
+    )
+  )
+  expect_equal(
+    weights_matched,
+    wt_att(
+      fixture$p_b,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+
+  # names that cannot be matched do not warn either when the column is explicit
+  ps_df_unmatched <- data.frame(x1 = fixture$p_a, x2 = fixture$p_b)
+  weights_unmatched <- expect_no_warning(
+    wt_att(
+      ps_df_unmatched,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a",
+      .propensity_col = "x1"
+    )
+  )
+  expect_equal(
+    weights_unmatched,
+    wt_att(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+})
+
+test_that("a one column propensity data frame keeps the positional default", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(prob = fixture$p_b)
+
+  weights <- expect_no_warning(
+    wt_att(ps_df, fixture$factor, exposure_type = "binary")
+  )
+
+  expect_equal(
+    weights,
+    wt_att(fixture$p_b, fixture$factor, exposure_type = "binary")
+  )
+})
+
+test_that("continuous exposures keep the positional data frame default", {
+  set.seed(2024)
+  exposure <- rnorm(10)
+  ps_df <- data.frame(first = rnorm(10), second = rnorm(10))
+
+  expect_equal(
+    wt_ate(ps_df, exposure, exposure_type = "continuous", stabilize = TRUE),
+    wt_ate(
+      ps_df$second,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  )
+})
+
+test_that("data frame propensity resolves the focal column before stabilizing", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
+
+  expect_equal(
+    wt_ate(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a",
+      stabilize = TRUE
+    ),
+    wt_ate(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a",
+      stabilize = TRUE
+    )
+  )
+})
+
 test_that("wt_* functions work with parsnip output", {
   skip_if_not_installed("parsnip")
   skip_on_cran()
