@@ -1124,10 +1124,13 @@ test_that("ipw() categorical rejects a .data exposure value the model never saw"
 })
 
 # The tests above hand the exposure to ipw() through `.data`. Without `.data`
-# the exposure is read back out of the model frames instead, and a model fit on
-# a character column stores a factor there, coerced by model.frame() with its
-# levels in alphabetical order. sim_categorical() labels its levels a, b, c, so
-# that coercion reproduces the factor fit exactly: same propensity scores, same
+# the exposure is read back out of the propensity score model's frame, which
+# returns a character column as character, carrying no levels of its own.
+# ipw_categorical_exposure_factor() is what makes it a factor, and it imposes
+# ps_mod$lev rather than deriving an order from the values. The alphabetical
+# order is therefore fixed at fit time, by the as.factor() multinom applies to
+# its response before recording $lev, and sim_categorical() labels its levels
+# a, b, c, so that order matches the factor fit's: same propensity scores, same
 # weights, same reference level. The two calls must therefore agree, which pins
 # the character column as a supported way to fit the models rather than
 # something that happens to work.
