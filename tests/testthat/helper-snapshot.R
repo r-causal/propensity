@@ -6,11 +6,23 @@ expect_propensity_error <- function(expr) {
   )
 }
 
-expect_propensity_warning <- function(expr) {
-  testthat::expect_snapshot(
-    cnd_class = TRUE,
-    expr
-  )
+# Snapshot the conditions raised by `expr`. The expression is spliced into the
+# `expect_snapshot()` call rather than passed as a promise, so the recorded Code
+# section reads as the call the test made. Unless `print` is set, the value is
+# assigned inside the helper, which keeps it out of the recorded Output while
+# still handing it back, so a caller that needs the result can assign the
+# expectation itself. Evaluation happens in a child of the caller's frame, so
+# nothing the helper binds reaches the test.
+expect_propensity_warning <- function(expr, print = FALSE) {
+  quoted <- substitute(expr)
+  if (!print) {
+    quoted <- call("<-", quote(out), quoted)
+  }
+
+  env <- new.env(parent = parent.frame())
+  eval(bquote(testthat::expect_snapshot(cnd_class = TRUE, .(quoted))), env)
+
+  invisible(env$out)
 }
 
 # Replace the saturated-observation count in a separation error with a

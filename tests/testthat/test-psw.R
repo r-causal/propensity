@@ -235,26 +235,27 @@ test_that("vec_ptype2 combines psw and other types correctly", {
 
   # Different estimands should warn and return numeric
   z <- psw(c(0.5, 0.6), estimand = "att")
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    result <- vec_ptype2(x, z)
-  )
+  result <- expect_propensity_warning(vec_ptype2(x, z))
   expect_identical(result, double())
 
   # Combining with double
   expect_propensity_warning(
-    expect_equal(vec_ptype2(x, double()), double())
+    expect_equal(vec_ptype2(x, double()), double()),
+    print = TRUE
   )
   expect_propensity_warning(
-    expect_equal(vec_ptype2(double(), x), double())
+    expect_equal(vec_ptype2(double(), x), double()),
+    print = TRUE
   )
 
   # Combining with integer
   expect_propensity_warning(
-    expect_equal(vec_ptype2(x, integer()), integer())
+    expect_equal(vec_ptype2(x, integer()), integer()),
+    print = TRUE
   )
   expect_propensity_warning(
-    expect_equal(vec_ptype2(integer(), x), integer())
+    expect_equal(vec_ptype2(integer(), x), integer()),
+    print = TRUE
   )
 })
 

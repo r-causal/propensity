@@ -319,9 +319,6 @@ test_that("Combining psw objects with incompatible metadata warns", {
   psw1 <- psw(c(0.1, 0.2), estimand = "ate")
   psw2 <- psw(c(0.3, 0.4), estimand = "att")
 
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    combined <- c(psw1, psw2)
-  )
+  combined <- expect_propensity_warning(c(psw1, psw2))
   expect_type(combined, "double")
 })

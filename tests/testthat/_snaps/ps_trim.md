@@ -1,7 +1,7 @@
 # adaptive method: ignores lower/upper, warns appropriately
 
     Code
-      expr
+      out <- ps_trim(ps, method = "adaptive", lower = 0.2, upper = 0.8)
     Condition <propensity_warning>
       Warning in `ps_trim()`:
       For `method = 'adaptive'`, `lower` and `upper` are ignored.
@@ -52,7 +52,8 @@
 ---
 
     Code
-      expr
+      ps_trim(ps, .exposure = z, method = "cr", lower = 0.2, upper = 0.8,
+        .focal_level = 1)
     Condition <propensity_warning>
       Warning in `ps_trim()`:
       For `method = 'cr'`, `lower` and `upper` are ignored.
@@ -94,7 +95,7 @@
 # Combining two ps_trim with different parameters triggers warning
 
     Code
-      expr
+      out <- vec_c(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.ps_trim.ps_trim()`:
       Converting ps_trim to numeric: different trimming parameters
@@ -104,7 +105,7 @@
 # Combining ps_trim with double => double
 
     Code
-      expr
+      out <- vec_c(x, 0.7)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.ps_trim.double()`:
       Converting ps_trim to numeric
@@ -130,7 +131,7 @@
 # ps_trim warns when combining objects with different parameters
 
     Code
-      expr
+      out <- c(ps_trim1, ps_trim2)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.ps_trim.ps_trim()`:
       Converting ps_trim to numeric: different trimming parameters

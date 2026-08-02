@@ -95,9 +95,8 @@ test_that("ps_trim preserves all treatment groups", {
   colnames(ps_matrix) <- c("A", "B", "C")
 
   # Try trimming with high threshold
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    trimmed <- ps_trim(
+  trimmed <- expect_propensity_warning(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -119,9 +118,8 @@ test_that("ps_trim validates delta < 1/k", {
   colnames(ps_matrix) <- levels(exposure)
 
   # delta >= 1/3 should trigger warning
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    trimmed <- ps_trim(
+  trimmed <- expect_propensity_warning(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -187,9 +185,8 @@ test_that("is_unit_trimmed works for matrix objects", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   colnames(ps_matrix) <- levels(exposure)
 
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    trimmed <- ps_trim(
+  trimmed <- expect_propensity_warning(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -234,8 +231,7 @@ test_that("ps_trim warns when no column names provided", {
   # No column names
 
   expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    trimmed <- ps_trim(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -258,9 +254,8 @@ test_that("ps_trim.ps_trim warns about already trimmed scores", {
     lower = 0.1
   )
 
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    trimmed_twice <- ps_trim(
+  trimmed_twice <- expect_propensity_warning(
+    ps_trim(
       trimmed_once,
       .exposure = exposure,
       method = "ps",
@@ -448,9 +443,8 @@ test_that("ps_trim handles edge cases consistently with PSweight", {
     )
   })
 
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    our_trim <- ps_trim(
+  our_trim <- expect_propensity_warning(
+    ps_trim(
       ps = ps_matrix,
       .exposure = trt,
       method = "ps",
@@ -554,8 +548,7 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
 
   # Apply very strict trimming
   expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    trimmed_ps <- ps_trim(
+    ps_trim(
       ps = ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -572,9 +565,8 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
   )
   colnames(ps_matrix_extreme) <- c("A", "B", "C")
 
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    trimmed_extreme <- ps_trim(
+  trimmed_extreme <- expect_propensity_warning(
+    ps_trim(
       ps = ps_matrix_extreme,
       .exposure = exposure,
       method = "ps",
@@ -718,9 +710,8 @@ test_that("ps_refit handles minimal data for categorical exposures", {
   }
 
   # Apply aggressive trimming to leave minimal data
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    trimmed_ps <- ps_trim(
+  trimmed_ps <- expect_propensity_warning(
+    ps_trim(
       ps = ps_matrix,
       .exposure = test_data$trt,
       method = "ps",
@@ -757,10 +748,7 @@ test_that("wt_ate warns when using trimmed but not refitted categorical PS", {
   )
 
   # Using trimmed but not refitted PS should warn
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    wts <- wt_ate(trimmed_ps, .exposure = exposure)
-  )
+  expect_propensity_warning(wt_ate(trimmed_ps, .exposure = exposure))
 })
 
 test_that("print.ps_trim_matrix produces expected output", {

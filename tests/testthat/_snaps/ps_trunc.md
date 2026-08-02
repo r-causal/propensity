@@ -28,7 +28,7 @@
 # ps_trunc warns when combining objects with different parameters
 
     Code
-      expr
+      out <- c(ps_trunc1, ps_trunc2)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.ps_trunc.ps_trunc()`:
       Converting ps_trunc to numeric: different truncation parameters

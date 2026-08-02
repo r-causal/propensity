@@ -82,8 +82,7 @@ test_that("adaptive method: ignores lower/upper, warns appropriately", {
 
   # 2) If user sets lower/upper, we expect a warning
   expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    out_adapt_warn <- ps_trim(
+    ps_trim(
       ps,
       method = "adaptive",
       lower = 0.2,
@@ -199,7 +198,8 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
       lower = 0.2,
       upper = 0.8,
       .focal_level = 1
-    )
+    ),
+    print = TRUE
   )
 })
 
@@ -421,10 +421,7 @@ test_that("Combining two ps_trim with different parameters triggers warning", {
 
   # Attempt to combine with different parameters
   # This will warn about different trimming parameters and return numeric
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    result <- vec_c(x, y)
-  )
+  result <- expect_propensity_warning(vec_c(x, y))
   expect_type(result, "double")
 })
 
@@ -432,10 +429,7 @@ test_that("Combining ps_trim with double => double", {
   x <- new_trimmed_ps(c(0.2, 0.5), ps_trim_meta = list())
 
   # vctrs logic => ptype2 => double
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    combined <- vec_c(x, 0.7)
-  )
+  combined <- expect_propensity_warning(vec_c(x, 0.7))
   expect_type(combined, "double")
   expect_false(inherits(combined, "ps_trim"))
 })
@@ -617,10 +611,7 @@ test_that("ps_trim warns when combining objects with different parameters", {
   ps_trim2 <- ps_trim(ps2, method = "ps", lower = 0.3, upper = 0.7)
 
   # Should warn and return numeric
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    combined <- c(ps_trim1, ps_trim2)
-  )
+  combined <- expect_propensity_warning(c(ps_trim1, ps_trim2))
 
   expect_type(combined, "double")
   expect_false(inherits(combined, "ps_trim"))

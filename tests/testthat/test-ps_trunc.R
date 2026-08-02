@@ -430,10 +430,7 @@ test_that("ps_trunc warns when combining objects with different parameters", {
   ps_trunc2 <- ps_trunc(ps2, method = "ps", lower = 0.3, upper = 0.7)
 
   # Should warn and return numeric
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    combined <- c(ps_trunc1, ps_trunc2)
-  )
+  combined <- expect_propensity_warning(c(ps_trunc1, ps_trunc2))
 
   expect_type(combined, "double")
   expect_false(inherits(combined, "ps_trunc"))

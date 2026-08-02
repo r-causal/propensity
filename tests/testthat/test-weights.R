@@ -1454,9 +1454,8 @@ test_that("wt_ate() with ps_trim issues refit warning if not refit, no warning i
   )
 
   # not refit => expect a warning
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    w_ate_unfit <- wt_ate(
+  w_ate_unfit <- expect_propensity_warning(
+    wt_ate(
       trimmed_ps,
       .exposure = z,
       exposure_type = "binary",
@@ -1516,9 +1515,8 @@ test_that("Other estimands (att, atu, etc.) with ps_trim or ps_trunc", {
   # Trim
   trimmed_ps <- ps_trim(ps, .exposure = z, method = "ps")
   # No refit => warning
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    w_att_trim <- wt_att(
+  w_att_trim <- expect_propensity_warning(
+    wt_att(
       trimmed_ps,
       .exposure = z,
       exposure_type = "binary",
@@ -1589,9 +1587,8 @@ test_that("wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'", {
   )
 
   # Not refit => we get a warning
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    w_atu_unfit <- wt_atu(
+  w_atu_unfit <- expect_propensity_warning(
+    wt_atu(
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
@@ -1644,9 +1641,8 @@ test_that("wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'", {
   )
 
   # Not refit => warning
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    w_atm_unfit <- wt_atm(
+  w_atm_unfit <- expect_propensity_warning(
+    wt_atm(
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
@@ -1689,9 +1685,8 @@ test_that("wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'", {
   )
 
   # Not refit => warning
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    w_ato_unfit <- wt_ato(
+  w_ato_unfit <- expect_propensity_warning(
+    wt_ato(
       trimmed_obj,
       .exposure = z,
       exposure_type = "binary",
@@ -1855,9 +1850,8 @@ test_that("wt_entropy works with ps_trim objects", {
   ps <- c(0.1, 0.3, 0.4, 0.3)
   ps_trimmed <- ps_trim(ps, method = "ps", lower = 0.15, upper = 0.85)
 
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    weights <- wt_entropy(
+  weights <- expect_propensity_warning(
+    wt_entropy(
       ps_trimmed,
       .exposure = c(0, 0, 1, 0),
       exposure_type = "binary"

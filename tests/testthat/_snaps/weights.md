@@ -18,7 +18,8 @@
 # wt_ate() with ps_trim issues refit warning if not refit, no warning if refit
 
     Code
-      expr
+      out <- wt_ate(trimmed_ps, .exposure = z, exposure_type = "binary",
+        .focal_level = 1)
     Condition <propensity_no_refit_warning>
       Warning in `wt_ate()`:
       It appears you trimmed your propensity score but did not refit the model.
@@ -27,7 +28,8 @@
 # Other estimands (att, atu, etc.) with ps_trim or ps_trunc
 
     Code
-      expr
+      out <- wt_att(trimmed_ps, .exposure = z, exposure_type = "binary",
+        .focal_level = 1)
     Condition <propensity_no_refit_warning>
       Warning in `wt_att()`:
       It appears you trimmed your propensity score but did not refit the model.
@@ -36,7 +38,8 @@
 # wt_atu.ps_trim triggers refit check, sets 'atu; trimmed'
 
     Code
-      expr
+      out <- wt_atu(trimmed_obj, .exposure = z, exposure_type = "binary",
+        .focal_level = 1)
     Condition <propensity_no_refit_warning>
       Warning in `wt_atu()`:
       It appears you trimmed your propensity score but did not refit the model.
@@ -45,7 +48,8 @@
 # wt_atm.ps_trim triggers refit check, sets 'atm; trimmed'
 
     Code
-      expr
+      out <- wt_atm(trimmed_obj, .exposure = z, exposure_type = "binary",
+        .focal_level = 1)
     Condition <propensity_no_refit_warning>
       Warning in `wt_atm()`:
       It appears you trimmed your propensity score but did not refit the model.
@@ -54,7 +58,8 @@
 # wt_ato.ps_trim triggers refit check, sets 'ato; trimmed'
 
     Code
-      expr
+      out <- wt_ato(trimmed_obj, .exposure = z, exposure_type = "binary",
+        .focal_level = 1)
     Condition <propensity_no_refit_warning>
       Warning in `wt_ato()`:
       It appears you trimmed your propensity score but did not refit the model.
@@ -72,7 +77,7 @@
 # wt_entropy works with ps_trim objects
 
     Code
-      expr
+      out <- wt_entropy(ps_trimmed, .exposure = c(0, 0, 1, 0), exposure_type = "binary")
     Condition <propensity_no_refit_warning>
       Warning in `wt_entropy()`:
       It appears you trimmed your propensity score but did not refit the model.

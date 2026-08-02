@@ -221,8 +221,7 @@ test_that("ps_trunc warns when no column names provided", {
   # No column names
 
   expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    truncated <- ps_trunc(
+    ps_trunc(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -245,9 +244,8 @@ test_that("ps_trunc.ps_trunc warns about already truncated scores", {
     lower = 0.05
   )
 
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    truncated_twice <- ps_trunc(
+  truncated_twice <- expect_propensity_warning(
+    ps_trunc(
       truncated_once,
       .exposure = exposure,
       method = "ps",

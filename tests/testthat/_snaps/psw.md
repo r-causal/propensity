@@ -10,7 +10,7 @@
 # vec_ptype2 combines psw and other types correctly
 
     Code
-      expr
+      out <- vec_ptype2(x, z)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -20,7 +20,7 @@
 ---
 
     Code
-      expr
+      expect_equal(vec_ptype2(x, double()), double())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.double()`:
       Converting psw to numeric
@@ -30,7 +30,7 @@
 ---
 
     Code
-      expr
+      expect_equal(vec_ptype2(double(), x), double())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.double.psw()`:
       Converting psw to numeric
@@ -40,7 +40,7 @@
 ---
 
     Code
-      expr
+      expect_equal(vec_ptype2(x, integer()), integer())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.integer()`:
       Converting psw to integer
@@ -50,7 +50,7 @@
 ---
 
     Code
-      expr
+      expect_equal(vec_ptype2(integer(), x), integer())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.integer.psw()`:
       Converting psw to integer

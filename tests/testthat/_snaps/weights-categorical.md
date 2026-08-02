@@ -84,7 +84,7 @@
 # categorical weights warn on unnamed columns
 
     Code
-      expr
+      wt_ate(ps_matrix, trt, exposure_type = "categorical")
     Condition <propensity_matrix_no_names_warning>
       Warning in `wt_ate()`:
       Propensity score matrix has no column names.
@@ -104,7 +104,7 @@
 ---
 
     Code
-      expr
+      wt_att(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A")
     Condition <propensity_matrix_no_names_warning>
       Warning in `wt_att()`:
       Propensity score matrix has no column names.
@@ -125,7 +125,7 @@
 ---
 
     Code
-      expr
+      wt_atu(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A")
     Condition <propensity_matrix_no_names_warning>
       Warning in `wt_atu()`:
       Propensity score matrix has no column names.
@@ -145,7 +145,7 @@
 ---
 
     Code
-      expr
+      wt_atm(ps_matrix, trt, exposure_type = "categorical")
     Condition <propensity_matrix_no_names_warning>
       Warning in `wt_atm()`:
       Propensity score matrix has no column names.
@@ -166,7 +166,7 @@
 ---
 
     Code
-      expr
+      wt_ato(ps_matrix, trt, exposure_type = "categorical")
     Condition <propensity_matrix_no_names_warning>
       Warning in `wt_ato()`:
       Propensity score matrix has no column names.
@@ -187,7 +187,7 @@
 ---
 
     Code
-      expr
+      wt_entropy(ps_matrix, trt, exposure_type = "categorical")
     Condition <propensity_matrix_no_names_warning>
       Warning in `wt_entropy()`:
       Propensity score matrix has no column names.

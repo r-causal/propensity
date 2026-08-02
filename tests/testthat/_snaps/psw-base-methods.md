@@ -1,7 +1,7 @@
 # Combining psw objects with incompatible metadata warns
 
     Code
-      expr
+      out <- c(psw1, psw2)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'

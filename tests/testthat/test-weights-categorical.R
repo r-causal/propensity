@@ -650,26 +650,32 @@ test_that("categorical weights warn on unnamed columns", {
 
   # Test warning for all weight functions
   expect_propensity_warning(
-    wt_ate(ps_matrix, trt, exposure_type = "categorical")
+    wt_ate(ps_matrix, trt, exposure_type = "categorical"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_att(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A")
+    wt_att(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_atu(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A")
+    wt_atu(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_atm(ps_matrix, trt, exposure_type = "categorical")
+    wt_atm(ps_matrix, trt, exposure_type = "categorical"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_ato(ps_matrix, trt, exposure_type = "categorical")
+    wt_ato(ps_matrix, trt, exposure_type = "categorical"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_entropy(ps_matrix, trt, exposure_type = "categorical")
+    wt_entropy(ps_matrix, trt, exposure_type = "categorical"),
+    print = TRUE
   )
 })

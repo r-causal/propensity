@@ -10,9 +10,8 @@ test_that("tidyr::pivot_longer works with propensity classes", {
   )
 
   # Pivot longer should work but with warning
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    result <- tidyr::pivot_longer(
+  result <- expect_propensity_warning(
+    tidyr::pivot_longer(
       df,
       cols = c(ate_wts, att_wts),
       names_to = "weight_type",
@@ -38,10 +37,9 @@ test_that("tidyr::pivot_longer works with mixed propensity classes", {
     trunc_col = ps_trunc(c(0.3, 0.5, 0.4, 0.7), lower = 0.1, upper = 0.9)
   )
 
-  expect_propensity_warning(
+  result <- expect_propensity_warning(
     expect_propensity_warning(
-      # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-      result <- tidyr::pivot_longer(
+      tidyr::pivot_longer(
         df,
         cols = c(psw_col, trim_col, trunc_col),
         names_to = "type",
@@ -100,18 +98,12 @@ test_that("c() works as expected with warnings", {
   z <- 0.6
 
   # Different estimands
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    result <- c(x, y)
-  )
+  result <- expect_propensity_warning(c(x, y))
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.3, 0.8))
 
   # Mixed with numeric
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    result <- c(x, z)
-  )
+  result <- expect_propensity_warning(c(x, z))
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.6))
 })
@@ -135,10 +127,7 @@ test_that("rbind and data frame operations work", {
   expect_equal(as.numeric(result$wt), c(0.5, 0.7, 0.3, 0.8))
 
   # But vec_rbind does trigger the warning
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    result2 <- vctrs::vec_rbind(df1, df2)
-  )
+  result2 <- expect_propensity_warning(vctrs::vec_rbind(df1, df2))
   expect_equal(nrow(result2), 4)
   expect_type(result2$wt, "double")
   expect_equal(result2$wt, c(0.5, 0.7, 0.3, 0.8))
@@ -299,9 +288,8 @@ test_that("tidyr works with stabilized weights", {
   )
 
   # Pivot should warn about different stabilization
-  expect_propensity_warning(
-    # jarl-ignore implicit_assignment: assignment keeps the return value out of the snapshot while the warning is captured
-    long <- tidyr::pivot_longer(
+  long <- expect_propensity_warning(
+    tidyr::pivot_longer(
       df,
       cols = c(wt_stab, wt_unstab),
       names_to = "stab_type",

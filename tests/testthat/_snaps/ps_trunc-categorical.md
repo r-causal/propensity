@@ -25,7 +25,7 @@
 # ps_trunc warns when no column names provided
 
     Code
-      expr
+      out <- ps_trunc(ps_matrix, .exposure = exposure, method = "ps", lower = 0.05)
     Condition <propensity_matrix_no_names_warning>
       Warning in `ps_trunc()`:
       Propensity score matrix has no column names.
@@ -35,7 +35,7 @@
 # ps_trunc.ps_trunc warns about already truncated scores
 
     Code
-      expr
+      out <- ps_trunc(truncated_once, .exposure = exposure, method = "ps", lower = 0.1)
     Condition <propensity_already_modified_warning>
       Warning in `ps_trunc()`:
       Propensity scores have already been truncated. Returning original object.
