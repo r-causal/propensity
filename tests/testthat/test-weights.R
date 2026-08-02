@@ -2906,6 +2906,133 @@ test_that("wt_* functions error appropriately on invalid inputs", {
   )
 })
 
+# ---- `exposure_type` rejections name the function the user called -----------
+
+# Every weight function routes `exposure_type` through the internal
+# `match_exposure_type()` helper, so an unrecognized string is rejected several
+# frames below the surface. The rejection still has to name the weight function
+# the user called, the way every other guard in the package does. cli wraps the
+# message at the console width, so the assertions collapse whitespace before
+# matching the valid set.
+
+exposure_type_fixture <- function() {
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+  exposure <- c(0, 1, 1, 0)
+  list(
+    ps = ps,
+    exposure = exposure,
+    ps_df = data.frame(untreated = 1 - ps, treated = ps)
+  )
+}
+
+unwrap_condition_message <- function(cnd) {
+  gsub("\\s+", " ", conditionMessage(cnd))
+}
+
+test_that("an invalid exposure_type on the numeric method names wt_ate()", {
+  fixture <- exposure_type_fixture()
+
+  cnd <- rlang::catch_cnd(
+    wt_ate(fixture$ps, fixture$exposure, exposure_type = "wrong")
+  )
+  expect_s3_class(cnd, "error")
+
+  # Without the call threaded through, the condition reports
+  # `match_exposure_type()` and this assertion fails.
+  expect_identical(as.character(cnd$call[[1]]), "wt_ate")
+
+  # `wt_ate()` is the one weight function that accepts continuous exposures, so
+  # its valid set has four entries.
+  expect_match(
+    unwrap_condition_message(cnd),
+    paste(
+      "`exposure_type` must be one of \"auto\", \"binary\",",
+      "\"categorical\", or \"continuous\", not \"wrong\"."
+    ),
+    fixed = TRUE
+  )
+
+  expect_propensity_error(
+    wt_ate(fixture$ps, fixture$exposure, exposure_type = "wrong")
+  )
+})
+
+test_that("an invalid exposure_type on the data frame method names wt_att()", {
+  fixture <- exposure_type_fixture()
+
+  cnd <- rlang::catch_cnd(
+    wt_att(fixture$ps_df, fixture$exposure, exposure_type = "wrong")
+  )
+  expect_s3_class(cnd, "error")
+
+  expect_identical(as.character(cnd$call[[1]]), "wt_att")
+
+  # `wt_att()` does not support continuous exposures, so the restricted valid
+  # set has to survive the trip through the data frame helper.
+  expect_match(
+    unwrap_condition_message(cnd),
+    paste(
+      "`exposure_type` must be one of \"auto\", \"binary\",",
+      "or \"categorical\", not \"wrong\"."
+    ),
+    fixed = TRUE
+  )
+
+  expect_propensity_error(
+    wt_att(fixture$ps_df, fixture$exposure, exposure_type = "wrong")
+  )
+})
+
+test_that("an invalid exposure_type on the numeric method names wt_ato()", {
+  fixture <- exposure_type_fixture()
+
+  cnd <- rlang::catch_cnd(
+    wt_ato(fixture$ps, fixture$exposure, exposure_type = "wrong")
+  )
+  expect_s3_class(cnd, "error")
+
+  expect_identical(as.character(cnd$call[[1]]), "wt_ato")
+
+  expect_match(
+    unwrap_condition_message(cnd),
+    paste(
+      "`exposure_type` must be one of \"auto\", \"binary\",",
+      "or \"categorical\", not \"wrong\"."
+    ),
+    fixed = TRUE
+  )
+
+  expect_propensity_error(
+    wt_ato(fixture$ps, fixture$exposure, exposure_type = "wrong")
+  )
+})
+
+test_that("a valid exposure_type still dispatches to the weight formula", {
+  fixture <- exposure_type_fixture()
+  ps <- fixture$ps
+  exposure <- fixture$exposure
+
+  ate <- wt_ate(ps, exposure, exposure_type = "binary")
+  expect_equal(
+    as.numeric(ate),
+    exposure / ps + (1 - exposure) / (1 - ps)
+  )
+  expect_identical(estimand(ate), "ate")
+
+  ato <- wt_ato(ps, exposure, exposure_type = "binary")
+  expect_equal(
+    as.numeric(ato),
+    exposure * (1 - ps) + (1 - exposure) * ps
+  )
+  expect_identical(estimand(ato), "ato")
+
+  # the data frame method reaches the same numeric method
+  expect_equal(
+    wt_att(fixture$ps_df, exposure, exposure_type = "binary"),
+    wt_att(ps, exposure, exposure_type = "binary")
+  )
+})
+
 test_that("data frame methods error appropriately", {
   # Empty data frame
   expect_propensity_error(

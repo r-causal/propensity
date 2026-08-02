@@ -178,6 +178,30 @@
       Error:
       ! For categorical exposures, `.propensity` must be a matrix or data frame.
 
+# an invalid exposure_type on the numeric method names wt_ate()
+
+    Code
+      expr
+    Condition <rlang_error>
+      Error in `match_exposure_type()`:
+      ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "wrong".
+
+# an invalid exposure_type on the data frame method names wt_att()
+
+    Code
+      expr
+    Condition <rlang_error>
+      Error in `match_exposure_type()`:
+      ! `exposure_type` must be one of "auto", "binary", or "categorical", not "wrong".
+
+# an invalid exposure_type on the numeric method names wt_ato()
+
+    Code
+      expr
+    Condition <rlang_error>
+      Error in `match_exposure_type()`:
+      ! `exposure_type` must be one of "auto", "binary", or "categorical", not "wrong".
+
 # data frame methods error appropriately
 
     Code
