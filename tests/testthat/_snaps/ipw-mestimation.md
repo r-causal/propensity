@@ -44,10 +44,11 @@
     Code
       ipw(ps_mod, out, .data = dat_num, se_method = "mestimation")
     Condition
-      Warning in `model.frame.default()`:
-      variable 'cov' is not a factor
-      Error in `contrasts<-`:
-      ! contrasts apply only to factors
+      Error in `ipw()`:
+      ! `.data` must supply "cov" as the factor the models were fit with.
+      x `.data` has "cov" as a numeric vector.
+      x `wt_mod` recorded "cov" as a factor with the levels "a", "b", and "c", and the designs rebuilt from `.data` use that coding.
+      i Supply "cov" as that factor, or refit the models on the numeric column.
 
 # the separation error names the count and points at the model
 

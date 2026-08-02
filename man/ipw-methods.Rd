@@ -73,7 +73,9 @@ transformations that prevent extraction of the exposure variable from
 its design (for example, fit with \code{model = FALSE} with the fitting data no
 longer available); \code{ipw()} then rebuilds the propensity design from \code{.data}.
 \code{.data} must have one row per observation the models were fit to; a row
-count that disagrees with the fitted models errors.
+count that disagrees with the fitted models errors. A column either model
+fit as a factor must be supplied as a factor or as character; supplying it
+as numeric errors.
 
 Supplying \code{.data} also decides how a term that transforms the exposure is
 handled. The counterfactual designs are built by setting the exposure column

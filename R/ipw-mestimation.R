@@ -371,6 +371,14 @@ ipw_extract_ps_design <- function(
       )
     }
 
+    check_ipw_fitted_factors(
+      .data,
+      ps_mod,
+      outcome_mod,
+      exposure_name,
+      call = call
+    )
+
     exposure <- .data[[exposure_name]]
     outcome <- .data[[outcome_name]]
     mm_data <- .data
@@ -444,6 +452,84 @@ check_ipw_ps_design_width <- function(
   }
 
   invisible(TRUE)
+}
+
+# Reject a `.data` column supplied as numeric where either model recorded it as
+# a factor. A fit with a factor covariate records that covariate's levels and its
+# contrast coding, and every design rebuilt from `.data` is rebuilt under that
+# coding, so a numeric column reaches `model.matrix()` with a contrast
+# specification that cannot be applied to it. That combination dies inside base
+# R, as an unclassed warning that the variable is not a factor followed by
+# "contrasts apply only to factors", neither of which mentions `.data` or says
+# what to supply instead.
+#
+# The mirror direction, a numeric-fit column supplied as a factor, is caught by
+# the design-width check: a factor takes one column per non-reference level where
+# a numeric takes one. This direction has no width signature, because a two-level
+# factor supplied as numeric rebuilds to exactly the same width.
+#
+# Both models are swept here. This runs before the propensity design is rebuilt,
+# and it is reached before the outcome model's counterfactual designs are built
+# on every path, so an outcome-only factor covariate is caught on its way to the
+# same failure.
+#
+# The exposure is excluded, and the exclusion is load bearing. It is the
+# propensity model's response, so it never appears in that fit's `xlevels`, but a
+# factor exposure does appear in the outcome model's, and the counterfactual
+# rebuild overwrites that column before `model.matrix()` sees it. Sweeping
+# `xlevels` without the exclusion would reject a factor-exposure call whose
+# design is never rebuilt from the supplied column.
+#
+# Only numeric columns are rejected. A character column is re-leveled against the
+# recorded levels by `model.frame()` and rebuilds the fitted design, so it is a
+# working input rather than a mistake, and this is not general type validation.
+#
+# Only the first offending column is reported: the fix is a recoding of that
+# column, after which the guard runs again over the rest.
+check_ipw_fitted_factors <- function(
+  .data,
+  ps_mod,
+  outcome_mod,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  xlev <- c(ps_mod$xlevels, outcome_mod$xlevels)
+  xlev <- xlev[!duplicated(names(xlev))]
+  xlev <- xlev[setdiff(names(xlev), exposure_name)]
+
+  # A term recorded under a name that is not a column, `log(x)` say, reads back
+  # as NULL and is not numeric, so it falls through to the rebuild as before.
+  supplied_numeric <- vapply(
+    names(xlev),
+    function(nm) is.numeric(.data[[nm]]),
+    logical(1)
+  )
+
+  if (!any(supplied_numeric)) {
+    return(invisible(TRUE))
+  }
+
+  column <- names(xlev)[which(supplied_numeric)[[1]]]
+  fit_levels <- xlev[[column]]
+  fit_args <- c(
+    if (column %in% names(ps_mod$xlevels)) "wt_mod",
+    if (column %in% names(outcome_mod$xlevels)) "outcome_mod"
+  )
+
+  abort(
+    c(
+      "{.arg .data} must supply {.val {column}} as the factor the models were \\
+      fit with.",
+      x = "{.arg .data} has {.val {column}} as a numeric vector.",
+      x = "{.arg {fit_args}} recorded {.val {column}} as a factor with the \\
+      levels {.val {fit_levels}}, and the designs rebuilt from {.arg .data} \\
+      use that coding.",
+      i = "Supply {.val {column}} as that factor, or refit the models on the \\
+      numeric column."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
 }
 
 # Clear the contrasts attribute from the named columns of a data frame. Only for

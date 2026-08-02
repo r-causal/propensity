@@ -1,5 +1,19 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now rejects a `.data` column supplied as numeric where either model
+  recorded it as a factor, with an error of class `propensity_ipw_data_error`
+  naming the column, the levels the fit recorded for it, and what to supply
+  instead. Designs rebuilt from `.data` are rebuilt under the coding the fit
+  recorded, so such a column previously reached `stats::model.matrix()` with a
+  contrast specification that could not be applied to it and failed inside base
+  R, as an unclassed warning that the variable is not a factor followed by an
+  error that contrasts apply only to factors. Neither mentioned `.data`, and
+  neither said what to supply. Both the propensity score model and the outcome
+  model are checked, on both standard error methods. The exposure is exempt,
+  since the counterfactual designs set that column themselves, and a character
+  column is still accepted: `stats::model.frame()` re-levels it against the
+  recorded levels and rebuilds the design the model was fit to.
+
 * `ipw(se_method = "linearization")` now rejects a propensity score model that
   separates the exposure, as the M-estimation path already did, with the same
   error of class `propensity_ipw_separation_error` naming how many observations
