@@ -515,11 +515,18 @@ ipw.glm <- function(
   # right either way, but it re-levels against `xlevels` first and warns that
   # doing so dropped a contrasts attribute the column happened to carry. That
   # attribute is redundant to the one predict is about to apply, so clear it.
-  ps <- predict(
+  #
+  # The linear predictors are taken and the scores derived from them, rather than
+  # both being predicted, because the saturation guard below needs the same
+  # linear predictors and predicting twice invites the two to be computed from
+  # different data. This is what `predict(type = "response")` does: it puts the
+  # linear predictors through the family's own inverse link, and the two forms
+  # agree to the bit.
+  eta <- predict(
     wt_mod,
-    type = "response",
     newdata = drop_contrasts_attrs(.data, names(wt_mod$contrasts))
   )
+  ps <- wt_mod$family$linkinv(eta)
 
   # The score factor, the weight derivatives, and the correction matrix are all
   # derived from `ps_link` and none of them consults the fitted model, so naming
@@ -547,8 +554,11 @@ ipw.glm <- function(
 
   # Runs before the weight-consistency preflight and before the estimand is
   # resolved, so a fit with no overlap at all is diagnosed as what it is rather
-  # than as whatever the weights or the estimand happen to trip over first.
-  check_ipw_ps_saturation(wt_mod, .data = .data)
+  # than as whatever the weights or the estimand happen to trip over first. The
+  # estimand restriction below is the one worth naming: an estimand this path
+  # has no influence functions for is refused with a pointer to the M-estimation
+  # path, which on a separated fit would only meet the same separation there.
+  check_ipw_ps_saturation(eta, link = wt_mod$family$link)
 
   if (!identical(length(exposure), length(outcome))) {
     abort(
@@ -815,31 +825,33 @@ check_ipw_weights <- function(wts, call = rlang::caller_env()) {
 # true inverse is what makes it visible, and it is the same quantity the
 # M-estimation guard counts, so the two paths refuse the same fits.
 #
-# The link is read from `wt_mod` rather than from `ps_link`, because saturation
-# is a property of the fit and not of an argument.
+# `eta` is the fitted linear predictors the analysis itself runs on, so the guard
+# covers the model-frame and the `.data` routes alike and cannot measure a
+# different fit than the one being analyzed. `link` is the link `wt_mod` was fit
+# with rather than the caller's `ps_link`, because saturation is a property of
+# the fit and not of an argument.
 #
 # A fit with a link outside `ipw_inv_links`, cauchit for instance, has no
 # unclamped inverse to recompute through, so the guard steps aside rather than
 # aborting: it must never be the thing that stops an analysis it cannot measure.
 # An `NA` score is missing rather than saturated and is likewise not this guard's
-# business.
+# business; leaving it in the count would put an `NA` into the comparison below
+# and stop the call with base R's report about a missing value instead. No route
+# through `ipw()` produces one today: a `.data` carrying a missing covariate is
+# refused before the scores are predicted, and the model-frame route predicts
+# over the design the fit kept, which has the incomplete rows already dropped.
+# The exclusion is held against a change to either.
 check_ipw_ps_saturation <- function(
-  wt_mod,
-  .data = NULL,
+  eta,
+  link,
   call = rlang::caller_env()
 ) {
-  link <- wt_mod$family$link
-  if (is.null(ipw_inv_links[[link]])) {
+  inv_link <- ipw_inv_links[[link]]
+  if (is.null(inv_link)) {
     return(invisible(TRUE))
   }
 
-  # The same data the response-scale scores are predicted from, so the guard
-  # covers the model-frame and the `.data` routes alike.
-  eta <- predict(
-    wt_mod,
-    newdata = drop_contrasts_attrs(.data, names(wt_mod$contrasts))
-  )
-  ps <- ipw_inv_link(link)(as.vector(eta))
+  ps <- inv_link(as.vector(eta))
   n_saturated <- sum(ps == 0 | ps == 1, na.rm = TRUE)
 
   if (n_saturated > 0) {

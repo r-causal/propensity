@@ -119,7 +119,11 @@ combine without conflict.
 A zero-length \code{psw} is a prototype: it records what a result built from it
 will carry rather than describing observations of its own, so a
 per-observation score on one is recorded as given and checked for length when
-the observations arrive.
+the observations arrive. A cast whose data arrives at a length the score does
+not match drops the score rather than refusing the cast, since the score
+describes the prototype's observations and says nothing about the data being
+cast. A cast to no observations keeps it, having brought no observations for
+it to contradict.
 
 \code{psw} objects also inherit the broader \code{causal_wts} class. The accessors that
 class carries, \code{\link[causalgenerics:is_causal_wt]{causalgenerics::is_causal_wt()}},
@@ -141,11 +145,10 @@ left by a modified propensity score, and the attributes describing a
 categorical exposure, are carried by agreement: one only a single operand
 records carries, and one both record with the same value carries. One they
 record differently is dropped, since neither value describes the result, and
-a single warning of class
-\code{propensity_metadata_conflict_warning} names every attribute dropped that
-way. The rule is applied per operation, so an attribute one operation drops
-for a disagreement can be carried again by a later operation whose operands
-agree.
+a warning of class \code{propensity_metadata_conflict_warning} names it, once for
+each attribute dropped that way and whatever order the inputs were given in.
+The rule is applied per operation, so an attribute one operation drops for a
+disagreement can be carried again by a later operation whose operands agree.
 
 A \code{stabilization_score} is carried only when the result is stabilized, which
 takes both operands. A result that is not stabilized drops the score without

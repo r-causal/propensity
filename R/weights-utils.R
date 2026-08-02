@@ -665,6 +665,19 @@ binary_exposure_levels <- function(.exposure) {
   }
 }
 
+# Levels a factor exposure declares and never takes. These join the levels the
+# column names are checked against, so a frame named for every level the
+# exposure actually holds still fails to cover it and the selection falls to
+# position. Dropping them is what makes the match work, and nothing else the
+# caller can do to the data frame will.
+unused_exposure_levels <- function(.exposure) {
+  if (!is.factor(.exposure)) {
+    return(character())
+  }
+
+  setdiff(levels(.exposure), levels(droplevels(.exposure)))
+}
+
 # Position of the column holding the probability of the resolved focal level,
 # or NULL when the column names cannot answer the question. The names must
 # cover every exposure level before any of them is trusted, so that a lone
@@ -675,7 +688,8 @@ match_focal_level_column <- function(
   .propensity,
   .exposure,
   .focal_level = NULL,
-  .reference_level = NULL
+  .reference_level = NULL,
+  call = rlang::caller_env()
 ) {
   exposure_levels <- as.character(binary_exposure_levels(.exposure))
   if (!all(exposure_levels %in% names(.propensity))) {
@@ -692,7 +706,77 @@ match_focal_level_column <- function(
   }
 
   col_pos <- match(as.character(focal_level), names(.propensity))
-  if (is.na(col_pos)) NULL else col_pos
+  if (is.na(col_pos)) {
+    return(NULL)
+  }
+
+  warn_ambiguous_focal_column(
+    .propensity,
+    focal_level = focal_level,
+    col_pos = col_pos,
+    call = call
+  )
+
+  col_pos
+}
+
+# `match()` takes the first column of a given name, and a data frame is allowed
+# more than one column of the same name. The selection is then made on nothing
+# the caller expressed, between columns that may hold different numbers, and the
+# one it lands on is as likely to be the wrong one. That the columns might also
+# be copies of each other is not worth checking for: the ambiguity is in the
+# names, and a caller who meant one of two identically named columns is owed the
+# same report as one whose columns differ. Only the selected name is at issue: a
+# name repeated elsewhere in the frame leaves this column unambiguous.
+warn_ambiguous_focal_column <- function(
+  .propensity,
+  focal_level,
+  col_pos,
+  call = rlang::caller_env()
+) {
+  focal_name <- as.character(focal_level)
+  # A data frame is allowed a missing column name, which compares to the focal
+  # name as `NA` rather than as no match. Left in, that `NA` reaches the
+  # comparison below and stops the call on a frame this function has nothing to
+  # say about.
+  n_matching <- sum(names(.propensity) == focal_name, na.rm = TRUE)
+  if (n_matching < 2) {
+    return(invisible(FALSE))
+  }
+
+  warn(
+    c(
+      "{.arg .propensity} has {n_matching} columns named {.val {focal_name}}, \\
+      the level resolved as focal.",
+      i = "Read column {col_pos}, the first of them.",
+      i = "Give the columns distinct names, or set {.arg .propensity_col}, to \\
+      select the column you mean."
+    ),
+    warning_class = "propensity_df_duplicate_column_warning",
+    call = call
+  )
+
+  invisible(TRUE)
+}
+
+# The declared levels standing between the frame's names and a match, or none
+# when they are not what stands there. Answered only when the frame covers every
+# level the exposure actually takes and fails on declared ones it never takes:
+# that is the case where the names the user can see do answer the question and
+# the answer is refused anyway. Any other name mismatch is about the names
+# themselves, and pointing at the levels there would misdirect.
+blocking_unused_levels <- function(.propensity, .exposure) {
+  unused <- unused_exposure_levels(.exposure)
+  if (length(unused) == 0) {
+    return(character())
+  }
+
+  used <- levels(droplevels(.exposure))
+  if (!all(used %in% names(.propensity))) {
+    return(character())
+  }
+
+  unused
 }
 
 # Helper function to extract propensity scores from data frames
@@ -747,7 +831,8 @@ extract_propensity_from_df <- function(
       .propensity,
       .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
     if (!is.null(col_pos)) {
       return(.propensity[[col_pos]])
@@ -761,11 +846,21 @@ extract_propensity_from_df <- function(
   # directly, so there is nothing to choose between and nothing to report.
   level_named <- !is.null(.focal_level) || !is.null(.reference_level)
   if (is_binary_exposure && level_named && ncol(.propensity) > 1) {
+    unused <- blocking_unused_levels(.propensity, .exposure)
+    droplevels_hint <- if (length(unused) > 0) {
+      c(
+        i = "{.arg .exposure} declares the level{?s} {.val {unused}} that it \\
+        never takes, so its levels cannot all be matched to columns. Call \\
+        {.fun droplevels} on it to match by name."
+      )
+    }
+
     warn(
       c(
         "Can't tell which column of {.arg .propensity} holds the probability of the focal level.",
         i = "Selected {.val {names(.propensity)[[col_pos]]}} by position.",
-        i = "Name the columns after the levels of {.arg .exposure}, or set {.arg .propensity_col}, to select the column by name."
+        i = "Name the columns after the levels of {.arg .exposure}, or set {.arg .propensity_col}, to select the column by name.",
+        droplevels_hint
       ),
       warning_class = "propensity_df_column_warning",
       call = call
@@ -922,9 +1017,19 @@ fmla_extract_left_vars <- function(mod) {
 # Evaluate a model's left-hand side against a data frame. A response written as a
 # transformation has to be computed rather than looked up by name, and the
 # functions and constants it reads resolve from the formula's environment, the
-# same way they did when the model was fit. `scale()` and friends return a
-# one-column matrix; drop that dimension so the result matches what
-# stats::model.response() hands back on the model-frame route.
+# same way they did when the model was fit.
+#
+# The formula's environment is the enclosure, so a column absent from `data` is
+# taken from there instead of reported. Every caller asserts the columns the
+# response reads are present before reaching this, which is what keeps a
+# `.data` missing the response from being answered out of the enclosure. That
+# ordering is the whole protection and is pinned as such.
+#
+# `scale()` and friends return a one-column matrix; drop that dimension so the
+# result is an ordinary vector. The model-frame route reads its response through
+# `fmla_extract_left_vctr()` and keeps the matrix, so the two shapes are not the
+# same here; they converge at `ipw_outcome_numeric()`, whose `as.double()`
+# flattens either.
 fmla_eval_left <- function(mod, data) {
   fmla <- formula(mod)
   left <- eval(fmla[[2]], data, environment(fmla))

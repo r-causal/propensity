@@ -89,14 +89,16 @@ categorical_weights <- function(
 # binomial outcome uses a tightened IRLS tolerance so the fitted coefficients
 # sit at the weighted MLE to well below the point-estimate tolerance.
 #
-# The gaussian arm, `yc ~ a + x1`, is standardization-invariant and must not be
-# reused for a tilted parity test. Its counterfactual predictions differ by a
-# constant across exposure levels, so every contrast of marginal means is that
-# constant whatever population the means are standardized to: measured against
-# this fixture, the tilted contrasts and the flat ones agree to about 2e-15 for
-# every tilted estimand. A test that reuses it cannot tell a tilted marginal
-# mean from an untilted one and would pass on an engine that ignored the tilt.
-# Fitting the interaction, `yc ~ a * x1`, separates them by about 0.08.
+# The gaussian arm, `yc ~ a + x1`, is standardization-invariant in its contrasts
+# and must not be reused for a tilted parity test. Its counterfactual
+# predictions differ by a constant across exposure levels, so while the marginal
+# means themselves move with the tilt, by up to 0.24 on this fixture, every
+# contrast between them is that same constant whatever population they are
+# standardized to. Measured across the tilted estimands here, a tilted contrast
+# and the corresponding flat one differ by at most 2e-15, which is floating
+# point noise. A test that reuses this model cannot tell a tilted contrast from
+# an untilted one and would pass on an engine that ignored the tilt. Fitting the
+# interaction, `yc ~ a * x1`, separates the same contrasts by 0.003 to 0.08.
 fit_outcome <- function(
   dat,
   wts,

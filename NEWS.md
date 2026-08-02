@@ -1,5 +1,31 @@
 # propensity 0.1.0.9000 (development version)
 
+* The weight functions now warn when the column of a `.propensity` data frame
+  chosen for the focal level is one of several carrying that name, naming the
+  count and the column read. A data frame is allowed repeated names, through
+  `check.names = FALSE` or a later assignment, and the match took the first of
+  them: the choice was made on nothing the caller had expressed, between
+  columns that may hold different numbers, and the column it landed on was as
+  likely to be the wrong one. The warning has class
+  `propensity_df_duplicate_column_warning`, and the column read is unchanged.
+  Setting `.propensity_col` answers the question the warning asks and is silent.
+
+* The warning raised when no column of a `.propensity` data frame can be matched
+  to a named level now names an unused declared level of a factor `.exposure`
+  as the reason, when it is the reason, and points at `droplevels()`. A factor
+  answers for the levels it declares rather than the ones it takes, so a frame
+  named for every level the exposure actually holds still failed to cover it,
+  and the selection fell to position and read the wrong column. The frame's
+  names gave the reader nothing to go on, since by them the match should have
+  succeeded.
+
+* `ps_calibrate()` documents the focal level contract its `.exposure` coding
+  actually follows, matching the weight functions: every binary coding honors
+  `.focal_level`, an exposure with no level named defaults to its higher level,
+  and naming the other level reverses the coding, so `ps` must then hold the
+  probability of the named level. The documentation said only that coding was
+  determined automatically. Behavior is unchanged.
+
 * Errors and warnings from the weight functions now name the function you
   called on every route into them. A rejection from `wt_ate()` and friends
   previously reported an internal frame, or no call at all, whenever the
@@ -614,9 +640,11 @@
   and the stabilization score were dropped, so such a cast returned weights that
   described themselves as neither stabilized nor modified whatever the prototype
   said, with nothing signaled. A per-observation stabilization score transfers
-  only when its length matches the data being cast, since it describes the
-  prototype's observations rather than the incoming data; at any other length it
-  is dropped silently and the result stays marked as stabilized.
+  when its length matches the data being cast, since it describes the
+  prototype's observations rather than the incoming data; at any other nonzero
+  length it is dropped silently and the result stays marked as stabilized. A
+  cast to no observations keeps it, having brought no observations for it to
+  contradict, and the result is itself a prototype.
 
 * `ipw(se_method = "linearization")` now rejects a `ps_link` naming a link other
   than the one the propensity score model was fit with, naming both. The score

@@ -42,7 +42,11 @@
 #' A zero-length `psw` is a prototype: it records what a result built from it
 #' will carry rather than describing observations of its own, so a
 #' per-observation score on one is recorded as given and checked for length when
-#' the observations arrive.
+#' the observations arrive. A cast whose data arrives at a length the score does
+#' not match drops the score rather than refusing the cast, since the score
+#' describes the prototype's observations and says nothing about the data being
+#' cast. A cast to no observations keeps it, having brought no observations for
+#' it to contradict.
 #'
 #' `psw` objects also inherit the broader `causal_wts` class. The accessors that
 #' class carries, [causalgenerics::is_causal_wt()],
@@ -63,11 +67,10 @@
 #' categorical exposure, are carried by agreement: one only a single operand
 #' records carries, and one both record with the same value carries. One they
 #' record differently is dropped, since neither value describes the result, and
-#' a single warning of class
-#' `propensity_metadata_conflict_warning` names every attribute dropped that
-#' way. The rule is applied per operation, so an attribute one operation drops
-#' for a disagreement can be carried again by a later operation whose operands
-#' agree.
+#' a warning of class `propensity_metadata_conflict_warning` names it, once for
+#' each attribute dropped that way and whatever order the inputs were given in.
+#' The rule is applied per operation, so an attribute one operation drops for a
+#' disagreement can be carried again by a later operation whose operands agree.
 #'
 #' A `stabilization_score` is carried only when the result is stabilized, which
 #' takes both operands. A result that is not stabilized drops the score without
@@ -680,8 +683,18 @@ psw_carried_attrs <- c(
 # and answers for it once.
 #
 # The record belongs to a prototype in the middle of a fold and reaches no
-# further: the only route that copies it is the one below, which stops at the
-# first vector holding observations.
+# further along any route this package controls: the only one that copies it is
+# the one below, which stops at the first vector holding observations.
+#
+# One route outside that control carries it further, the same mechanism by which
+# a modification record travels out of `model.frame()`. Base R's `[<-` grows a
+# zero-length vector and re-attaches its attributes to the grown result, so a
+# prototype that carries the record and is then subassigned into arrives at
+# observations still carrying it. The only thing that reads the record is a
+# later combine, which then drops an attribute the inputs agreed on and would
+# otherwise have carried, silently. That is the same silent drop the design
+# already accepts in exchange for reporting each disagreement once, so it is
+# recorded here rather than guarded against.
 psw_conflicted_attr <- "psw_conflicted_attrs"
 
 conflicted_psw_attrs <- function(x) {

@@ -2411,8 +2411,8 @@ test_that("data frame propensity warns when the focal level names two columns", 
 
   # Two columns can carry one name, through `check.names = FALSE` or through an
   # assignment like the one above, and the match takes the first of them. That
-  # is a choice between columns holding different numbers, made on nothing the
-  # caller expressed, so it is announced.
+  # is a choice made on nothing the caller expressed, between columns that may
+  # hold different numbers, so it is announced.
   warning <- expect_warning(
     wt_att(
       duplicated_names,
@@ -2434,6 +2434,72 @@ test_that("data frame propensity warns when the focal level names two columns", 
       exposure_type = "binary",
       .focal_level = "a"
     ))),
+    as.double(wt_att(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ))
+  )
+})
+
+test_that("a missing column name is not an ambiguity", {
+  fixture <- level_named_df_fixture()
+  na_named <- data.frame(fixture$p_a, fixture$p_b, fixture$p_b)
+  names(na_named) <- c("a", "b", NA)
+
+  # A data frame is allowed a column with no name, and such a name compares to
+  # the focal level's as `NA` rather than as no match. Counting those matches
+  # has to say that none of them matched, since a column with no name is not a
+  # column named for the focal level.
+  weights <- expect_no_warning(
+    wt_att(
+      na_named,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+  expect_equal(
+    as.double(weights),
+    as.double(wt_att(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ))
+  )
+})
+
+test_that("a missing column name does not mask a real ambiguity", {
+  fixture <- level_named_df_fixture()
+  na_named <- data.frame(
+    fixture$p_a,
+    fixture$p_b,
+    fixture$p_b,
+    fixture$p_a
+  )
+  names(na_named) <- c("a", "a", "b", NA)
+
+  # The unnamed column sits in the same comparison as the two that are named for
+  # the focal level, so leaving it out of the count must not take them with it.
+  warnings <- 0L
+  weights <- withCallingHandlers(
+    wt_att(
+      na_named,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ),
+    propensity_df_duplicate_column_warning = function(cnd) {
+      warnings <<- warnings + 1L
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_identical(warnings, 1L)
+  expect_equal(
+    as.double(weights),
     as.double(wt_att(
       fixture$p_a,
       fixture$factor,

@@ -101,11 +101,16 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   `ps` via [mgcv::gam()]; if `FALSE`, fits a simple logistic regression
 #'   via [stats::glm()]. Ignored when `method = "isoreg"`.
 #' @param .focal_level The value of `.exposure` representing the focal group
-#'   (typically the treated group). If `NULL` (default), coding is determined
-#'   automatically.
+#'   (typically the treated group). Every binary coding honors it: 0/1 numeric,
+#'   logical, two-level factor, and two-level character exposures are all coded
+#'   with the named level as focal. With no level named, the exposure defaults
+#'   to its higher level, which is `1` for a 0/1 exposure and `TRUE` for a
+#'   logical one. Naming any other level reverses the coding, so `ps` must then
+#'   hold the probability of the named level.
 #' @param .reference_level The value of `.exposure` representing the reference
-#'   group (typically the control group). If `NULL` (default), coding is
-#'   determined automatically.
+#'   group (typically the control group). Naming it makes the exposure's other
+#'   level focal, with the same consequence for `ps`. Automatically detected if
+#'   not supplied.
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
 #'
