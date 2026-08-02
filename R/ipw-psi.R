@@ -81,36 +81,16 @@ ipw_weight_fn <- function(exposure_type, estimand, call = rlang::caller_env()) {
   )
 }
 
-# Binary tilt function h(e). Shared by the binary weight registry and the
-# marginal-mean rows so the two never drift: a binary weight is h(e) divided by
-# the exposure-specific propensity e^z (1 - e)^(1 - z), and the marginal means
-# standardize the counterfactual predictions to the same h-tilted population.
-ipw_binary_tilt <- function(e, estimand) {
-  switch(
-    estimand,
-    ate = rep(1, length(e)),
-    att = e,
-    atu = 1 - e,
-    atm = pmin(e, 1 - e),
-    ato = e * (1 - e),
-    entropy = {
-      # The inverse link saturates to exactly 0 or 1 for extreme linear
-      # predictors, where the tilt would evaluate 0 * log(0). Nudge the
-      # saturated scores off the boundary as the categorical tilt does.
-      e_safe <- e
-      e_safe[e == 0] <- .Machine$double.eps
-      e_safe[e == 1] <- 1 - .Machine$double.eps
-      -e_safe * log(e_safe) - (1 - e_safe) * log(1 - e_safe)
-    }
-  )
-}
-
 # Binary weight registry. `ps` is the vector of propensity scores e_i,
 # `exposure` is the 0/1 exposure z, and `extras` carries the stabilization
-# probability and the fixed stabilization score. Formulas mirror the binary
-# helpers in R/weights.R exactly. Every estimand is h(e) over the exposure
-# denominator z e + (1 - z)(1 - e); ate additionally carries the stabilization
-# branches.
+# probability, the fixed stabilization score, and optionally a tilt already
+# evaluated at `ps`. Formulas mirror the binary helpers in R/weights.R exactly.
+# Every estimand is the tilt h(e) from R/ps_tilt.R over the exposure denominator
+# z e + (1 - z)(1 - e); ate additionally carries the stabilization branches.
+#
+# A psi evaluation needs the tilt for the marginal-mean rows as well, so it
+# passes the one it already holds through `extras$tilt`. Callers with no tilt in
+# hand leave it out and the registry evaluates its own.
 ipw_binary_weight_fn <- function(estimand) {
   if (identical(estimand, "ate")) {
     return(function(ps, exposure, extras) {
@@ -132,53 +112,49 @@ ipw_binary_weight_fn <- function(estimand) {
   function(ps, exposure, extras) {
     z <- exposure
     e <- ps
-    ipw_binary_tilt(e, estimand) / (z * e + (1 - z) * (1 - e))
-  }
-}
-
-# Categorical tilt function h(e). Shared by the categorical weight registry and
-# the marginal-mean rows. `ps` is the n-by-K propensity score matrix and
-# `focal_idx` the focal column for att and atu. Mirrors the tilts in
-# calculate_categorical_weights() in R/weights.R.
-ipw_categorical_tilt <- function(ps, estimand, focal_idx = NULL) {
-  switch(
-    estimand,
-    ate = rep(1, nrow(ps)),
-    att = ps[, focal_idx],
-    atu = 1 - ps[, focal_idx],
-    ato = 1 / rowSums(1 / ps),
-    atm = do.call(pmin, lapply(seq_len(ncol(ps)), function(j) ps[, j])),
-    entropy = {
-      ps_safe <- ps
-      ps_safe[ps == 0] <- .Machine$double.eps
-      -rowSums(ps_safe * log(ps_safe))
+    h_e <- if (is.null(extras$tilt)) {
+      ps_tilt_binary(e, estimand)
+    } else {
+      extras$tilt
     }
-  )
+    h_e / (z * e + (1 - z) * (1 - e))
+  }
 }
 
 # Categorical weight registry. `ps` is the n-by-K propensity score matrix,
 # `exposure` the n-by-K reference-first indicator, and `extras` carries the
 # focal column index, the length-K stabilization probabilities (column order),
-# and the fixed stabilization score. Formulas mirror
+# the fixed stabilization score, and optionally a tilt already evaluated at
+# `ps`, on the same terms as the binary registry. Formulas mirror
 # calculate_categorical_weights() in R/weights.R.
 ipw_categorical_weight_fn <- function(estimand) {
+  is_ate <- identical(estimand, "ate")
+
   function(ps, exposure, extras) {
     e_actual <- rowSums(exposure * ps)
-    h_e <- ipw_categorical_tilt(ps, estimand, extras$focal_idx)
-    weights <- h_e / e_actual
 
-    if (estimand == "ate") {
-      if (!is.null(extras$score)) {
-        weights <- weights * extras$score
-      } else if (!is.null(extras$stab_probs)) {
-        stab_row <- matrix(
-          extras$stab_probs,
-          nrow = nrow(ps),
-          ncol = ncol(ps),
-          byrow = TRUE
-        )
-        weights <- weights * rowSums(exposure * stab_row)
+    # The ate tilt is the constant 1, which divides out of the weight.
+    if (!is_ate) {
+      h_e <- if (is.null(extras$tilt)) {
+        ps_tilt_categorical(ps, estimand, extras$focal_idx)
+      } else {
+        extras$tilt
       }
+      return(h_e / e_actual)
+    }
+
+    weights <- 1 / e_actual
+
+    if (!is.null(extras$score)) {
+      weights <- weights * extras$score
+    } else if (!is.null(extras$stab_probs)) {
+      stab_row <- matrix(
+        extras$stab_probs,
+        nrow = nrow(ps),
+        ncol = ncol(ps),
+        byrow = TRUE
+      )
+      weights <- weights * rowSums(exposure * stab_row)
     }
 
     weights
@@ -385,7 +361,7 @@ ipw_init_binary <- function(spec, call = rlang::caller_env()) {
     e_fit <- ipw_inv_link(spec$ps$link, call = call)(as.vector(
       spec$ps$X %*% spec$ps$coefs
     ))
-    h <- ipw_binary_tilt(e_fit, spec$estimand)
+    h <- ps_tilt_binary(e_fit, spec$estimand)
     mu1 <- stats::weighted.mean(pred1, h)
     mu0 <- stats::weighted.mean(pred0, h)
   }
@@ -443,7 +419,7 @@ ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
     } else {
       NULL
     }
-    h <- ipw_categorical_tilt(ps_fit, spec$estimand, focal_idx)
+    h <- ps_tilt_categorical(ps_fit, spec$estimand, focal_idx)
     weight_mu <- function(pred) stats::weighted.mean(pred, h)
   }
   mu_vals <- vapply(
@@ -578,6 +554,9 @@ ipw_psi_binary <- function(
   score <- spec$stab$score
   contrasts <- spec$contrasts
   estimand <- spec$estimand
+  # The ate tilt is the constant 1: no tilt is evaluated and none is multiplied
+  # into the marginal-mean rows.
+  tilted <- !identical(estimand, "ate")
   n <- spec$n
   # Built once for the fit, not once per evaluation, so the report survives the
   # solver's repeated visits to the same undefined means.
@@ -600,7 +579,11 @@ ipw_psi_binary <- function(
     e <- inv_ps(as.vector(x_ps %*% th_ps))
 
     stab_prob <- if (length(th_stab)) th_stab[[1]] else NULL
-    w <- weight_fn(e, z, list(stab_prob = stab_prob, score = score))
+    # The tilt enters an evaluation twice, as the numerator of the weights and
+    # as the standardization of the marginal-mean rows below. It is evaluated
+    # here and handed to both.
+    h <- if (tilted) ps_tilt_binary(e, estimand) else NULL
+    w <- weight_fn(e, z, list(stab_prob = stab_prob, score = score, tilt = h))
 
     out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
 
@@ -616,12 +599,14 @@ ipw_psi_binary <- function(
     # tilt is recomputed from the ps block of theta on every evaluation, so the
     # sandwich variance accounts for propensity score estimation. The root of
     # sum_i h(e_i)(pred_a(x_i) - mu_a) = 0 is mu_a = weighted.mean(pred_a, h),
-    # and h = 1 for ate reproduces the unweighted marginal means exactly.
-    h <- ipw_binary_tilt(e, estimand)
-    mu_rows <- rbind(
-      h * (inv_out(as.vector(x1 %*% th_out)) - mu1),
-      h * (inv_out(as.vector(x0 %*% th_out)) - mu0)
-    )
+    # and h = 1 for ate leaves the unweighted marginal means.
+    resid1 <- inv_out(as.vector(x1 %*% th_out)) - mu1
+    resid0 <- inv_out(as.vector(x0 %*% th_out)) - mu0
+    mu_rows <- if (tilted) {
+      rbind(h * resid1, h * resid0)
+    } else {
+      rbind(resid1, resid0)
+    }
 
     con_rows <- ipw_contrast_rows(
       contrasts,
@@ -682,6 +667,7 @@ ipw_psi_categorical <- function(
   }
   contrasts <- spec$contrasts
   estimand <- spec$estimand
+  tilted <- !identical(estimand, "ate")
   n <- spec$n
   # One reporter per comparison, built once for the fit rather than once per
   # evaluation, so each undefined effect reports once however often the solver
@@ -703,10 +689,21 @@ ipw_psi_categorical <- function(
     } else {
       NULL
     }
+    # Evaluated once and handed to both the weights and the marginal-mean rows.
+    h <- if (tilted) {
+      ps_tilt_categorical(ps_mat, estimand, focal_idx)
+    } else {
+      NULL
+    }
     w <- weight_fn(
       ps_mat,
       z_ind,
-      list(focal_idx = focal_idx, stab_probs = stab_probs, score = score)
+      list(
+        focal_idx = focal_idx,
+        stab_probs = stab_probs,
+        score = score,
+        tilt = h
+      )
     )
 
     out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
@@ -722,17 +719,19 @@ ipw_psi_categorical <- function(
       NULL
     }
 
-    mu_pred <- vapply(
+    # Standardize each level's marginal mean to the estimand's tilted
+    # population, recomputing the tilt from the ps block on every evaluation.
+    # Row j of the block is h_i (pred_j(x_i) - mu_j) across the n columns, which
+    # makes the root mu_j = weighted.mean(pred_j, h). Each row is built at its
+    # own length n, so the tilt is never expanded to the full k-by-n matrix.
+    mu_rows <- t(vapply(
       seq_len(k),
-      function(j) inv_out(as.vector(x_cf[[j]] %*% th_out)),
+      function(j) {
+        resid <- inv_out(as.vector(x_cf[[j]] %*% th_out)) - th_mu[[j]]
+        if (tilted) h * resid else resid
+      },
       numeric(n)
-    )
-    # Standardize each level's marginal mean to the estimand's tilted population,
-    # recomputing the tilt from the ps block on every evaluation. Row j of the
-    # residual t(mu_pred) - th_mu is pred_j(x_i) - mu_j across the n columns;
-    # scaling column i by h_i makes the root mu_j = weighted.mean(pred_j, h).
-    h <- ipw_categorical_tilt(ps_mat, estimand, focal_idx)
-    mu_rows <- (t(mu_pred) - th_mu) * rep(h, each = k)
+    ))
 
     con_rows <- if (!is.null(contrasts) && length(contrasts)) {
       mu_ref <- th_mu[[1]]

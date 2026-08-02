@@ -270,6 +270,9 @@
 #' * [ps_trim()], [ps_trunc()], [ps_refit()], and [ps_calibrate()] for
 #'   modifying propensity scores before weighting.
 #' * [ipw()] for inverse-probability-weighted estimation of causal effects.
+#' * [ps_tilt()] for the tilting function each weight divides by the propensity
+#'   score of the received exposure level, which also standardizes a
+#'   g-computation estimate to the same target population.
 #'
 #' @export
 wt_ate <- function(
@@ -735,8 +738,7 @@ att_binary <- function(
     .reference_level = .reference_level
   )
 
-  ((.propensity * .exposure) / .propensity) +
-    ((.propensity * (1 - .exposure)) / (1 - .propensity))
+  tilted_binary_weights(.propensity, .exposure, "att")
 }
 
 #' @export
@@ -915,10 +917,7 @@ atu_binary <- function(
     .reference_level = .reference_level
   )
 
-  wt <- (((1 - .propensity) * .exposure) / .propensity) +
-    (((1 - .propensity) * (1 - .exposure)) / (1 - .propensity))
-
-  wt
+  tilted_binary_weights(.propensity, .exposure, "atu")
 }
 
 #' @export
@@ -1089,8 +1088,7 @@ atm_binary <- function(
     .reference_level = .reference_level
   )
 
-  pmin(.propensity, 1 - .propensity) /
-    (.exposure * .propensity + (1 - .exposure) * (1 - .propensity))
+  tilted_binary_weights(.propensity, .exposure, "atm")
 }
 
 
@@ -1262,7 +1260,7 @@ ato_binary <- function(
     .reference_level = .reference_level
   )
 
-  (1 - .propensity) * .exposure + .propensity * (1 - .exposure)
+  tilted_binary_weights(.propensity, .exposure, "ato")
 }
 
 #' @export
@@ -1433,17 +1431,16 @@ entropy_binary <- function(
     .reference_level = .reference_level
   )
 
-  # Entropy tilting function: h(e) = -[e*log(e) + (1-e)*log(1-e)]
-  h_e <- -.propensity *
-    log(.propensity) -
-    (1 - .propensity) * log(1 - .propensity)
+  tilted_binary_weights(.propensity, .exposure, "entropy")
+}
 
-  # Calculate weights using equation approach
-  # w = h(e)/e for treated (exposure=1), w = h(e)/(1-e) for control (exposure=0)
-  weights <- h_e /
+# Every binary weight but the ate's is the estimand's tilt h(e) divided by the
+# propensity score of the exposure level the unit received: h(e)/e for the focal
+# level, h(e)/(1 - e) for the reference level. The ate's tilt is the constant 1,
+# and its formula carries the stabilization arms instead.
+tilted_binary_weights <- function(.propensity, .exposure, estimand) {
+  ps_tilt_binary(.propensity, estimand) /
     (.exposure * .propensity + (1 - .exposure) * (1 - .propensity))
-
-  weights
 }
 
 # --------------------------------------------------------------------
@@ -2035,53 +2032,21 @@ calculate_categorical_weights <- function(
   # e_{i,Z_i} = sum over j of Z_{ij} * e_{ij}
   e_actual <- rowSums(Z * ps_matrix)
 
-  # Calculate tilting function h(e_i) based on estimand
-  h_e <- switch(
-    estimand,
-    "ate" = rep(1, n), # h(e) = 1 for ATE
-    "att" = {
-      if (is.null(.focal_level)) {
-        abort(
-          "Focal category must be specified for ATT with categorical exposures.",
-          error_class = "propensity_focal_required_error"
-        )
-      }
-      # h(e) = e_focal
-      focal_idx <- which(levels_exp == .focal_level)
-      ps_matrix[, focal_idx]
-    },
-    "atu" = {
-      if (is.null(.focal_level)) {
-        abort(
-          "Focal category must be specified for ATU with categorical exposures.",
-          error_class = "propensity_focal_required_error"
-        )
-      }
-      # For ATU, we want weights for all non-focal categories
-      # h(e) = 1 - e_focal
-      focal_idx <- which(levels_exp == .focal_level)
-      1 - ps_matrix[, focal_idx]
-    },
-    "ato" = {
-      # h(e) = 1 / sum(1/e_k) - harmonic mean denominator
-      1 / rowSums(1 / ps_matrix)
-    },
-    "atm" = {
-      # h(e) = min(e_1, ..., e_K)
-      apply(ps_matrix, 1, min)
-    },
-    "entropy" = {
-      # h(e) = -sum(e_k * log(e_k)) - entropy
-      # Need to handle e_k = 0 case to avoid -Inf
-      ps_safe <- ps_matrix
-      ps_safe[ps_matrix == 0] <- .Machine$double.eps
-      -rowSums(ps_safe * log(ps_safe))
-    },
+  if (!estimand %in% ipw_estimands) {
     abort(
       "Unknown estimand: {estimand}",
       error_class = "propensity_unknown_estimand_error"
     )
-  )
+  }
+
+  # The tilting function h(e_i) reads the focal column for ATT and ATU and
+  # treats every level alike otherwise.
+  focal_idx <- NULL
+  if (estimand %in% c("att", "atu")) {
+    check_focal_level_required(.focal_level, estimand)
+    focal_idx <- which(levels_exp == .focal_level)
+  }
+  h_e <- ps_tilt_categorical(ps_matrix, estimand, focal_idx)
 
   # Calculate weights: w_i = h(e_i) / e_{i,Z_i}
   weights <- h_e / e_actual

@@ -454,35 +454,8 @@ check_ps_matrix <- function(
     )
   }
 
-  # Check that rows sum to 1 (within tolerance)
-  # Only check non-NA rows
-  row_sums <- rowSums(ps_matrix, na.rm = FALSE)
-  ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
-  non_na_rows <- !is.na(row_sums)
-
-  if (any(non_na_rows)) {
-    # Check only the rows that don't have NA values
-    if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
-      bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE & non_na_rows)
-      abort(
-        c(
-          "Propensity score matrix rows must sum to 1.",
-          i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
-        ),
-        call = call,
-        error_class = "propensity_matrix_sum_error"
-      )
-    }
-  }
-
-  # Check for valid probabilities
-  if (any(ps_matrix < 0 | ps_matrix > 1, na.rm = TRUE)) {
-    abort(
-      "All propensity scores must be between 0 and 1.",
-      call = call,
-      error_class = "propensity_range_error"
-    )
-  }
+  check_ps_matrix_rowsums(ps_matrix, call = call)
+  check_ps_matrix_range(ps_matrix, call = call)
 
   # Ensure columns are in the same order as factor levels
   # This is critical for correct weight calculation
@@ -533,6 +506,45 @@ check_ps_matrix <- function(
   }
 
   ps_matrix
+}
+
+# Each row of a categorical propensity score matrix is a probability vector.
+# Shared with ps_tilt(), which reads a matrix with no exposure beside it and so
+# cannot run the rest of check_ps_matrix().
+check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
+  # Only check non-NA rows
+  row_sums <- rowSums(ps_matrix, na.rm = FALSE)
+  ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
+  non_na_rows <- !is.na(row_sums)
+
+  if (any(non_na_rows)) {
+    # Check only the rows that don't have NA values
+    if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
+      bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE & non_na_rows)
+      abort(
+        c(
+          "Propensity score matrix rows must sum to 1.",
+          i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
+        ),
+        call = call,
+        error_class = "propensity_matrix_sum_error"
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+check_ps_matrix_range <- function(ps_matrix, call = rlang::caller_env()) {
+  if (any(ps_matrix < 0 | ps_matrix > 1, na.rm = TRUE)) {
+    abort(
+      "All propensity scores must be between 0 and 1.",
+      call = call,
+      error_class = "propensity_range_error"
+    )
+  }
+
+  invisible(TRUE)
 }
 
 # Helper for ps_trim and ps_trunc methods

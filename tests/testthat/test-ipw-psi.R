@@ -461,7 +461,7 @@ test_that("binary entropy tilt stays finite at saturated propensity scores", {
   expect_identical(stats::plogis(40), 1)
 
   e <- c(0, 1e-3, 0.5, 1 - 1e-3, 1)
-  tilt <- ipw_binary_tilt(e, "entropy")
+  tilt <- ps_tilt_binary(e, "entropy")
 
   expect_true(all(is.finite(tilt)))
 
@@ -476,7 +476,7 @@ test_that("binary entropy tilt stays finite at saturated propensity scores", {
   # substitutes .Machine$double.eps for a zero probability. The binary form
   # carries an extra -(1 - e) log(1 - e) term worth one machine epsilon at the
   # clamp, so the two agree on an absolute scale rather than exactly.
-  degenerate <- ipw_categorical_tilt(cbind(c(0, 1), c(1, 0)), "entropy")
+  degenerate <- ps_tilt_categorical(cbind(c(0, 1), c(1, 0)), "entropy")
   expect_lt(max(abs(tilt[c(1, 5)] - degenerate)), 1e-15)
   expect_identical(tilt[[1]], tilt[[5]])
 })
@@ -503,15 +503,15 @@ test_that("binary tilts other than entropy pass boundary scores through unclampe
   e <- c(0, 1)
 
   # Each is the limit, reached by the ordinary arithmetic.
-  expect_identical(ipw_binary_tilt(e, "att"), c(0, 1))
-  expect_identical(ipw_binary_tilt(e, "atu"), c(1, 0))
-  expect_identical(ipw_binary_tilt(e, "atm"), c(0, 0))
-  expect_identical(ipw_binary_tilt(e, "ato"), c(0, 0))
-  expect_identical(ipw_binary_tilt(e, "ate"), c(1, 1))
+  expect_identical(ps_tilt_binary(e, "att"), c(0, 1))
+  expect_identical(ps_tilt_binary(e, "atu"), c(1, 0))
+  expect_identical(ps_tilt_binary(e, "atm"), c(0, 0))
+  expect_identical(ps_tilt_binary(e, "ato"), c(0, 0))
+  expect_identical(ps_tilt_binary(e, "ate"), c(1, 1))
 
   # entropy is the exception: clamped, so strictly positive rather than the 0
   # the other tilts return, and finite rather than the NaN the raw form gives.
-  entropy <- ipw_binary_tilt(e, "entropy")
+  entropy <- ps_tilt_binary(e, "entropy")
   expect_true(all(is.finite(entropy)))
   expect_true(all(entropy > 0))
   expect_true(is.nan(-0 * log(0) - 1 * log(1)))
@@ -523,25 +523,25 @@ test_that("categorical tilts other than entropy pass degenerate rows through unc
 
   # ato reaches exactly zero through an infinite row sum rather than by a guard.
   expect_identical(sum(1 / ps[1, ]), Inf)
-  ato <- ipw_categorical_tilt(ps, "ato")
+  ato <- ps_tilt_categorical(ps, "ato")
   expect_identical(ato[c(1, 3)], c(0, 0))
   expect_gt(ato[[2]], 0)
 
-  expect_identical(ipw_categorical_tilt(ps, "atm")[c(1, 3)], c(0, 0))
+  expect_identical(ps_tilt_categorical(ps, "atm")[c(1, 3)], c(0, 0))
 
   # att and atu read the focal column as it stands, boundary values included.
   expect_identical(
-    ipw_categorical_tilt(ps, "att", focal_idx = 2),
+    ps_tilt_categorical(ps, "att", focal_idx = 2),
     c(1, 0.3, 0)
   )
   expect_identical(
-    ipw_categorical_tilt(ps, "atu", focal_idx = 2),
+    ps_tilt_categorical(ps, "atu", focal_idx = 2),
     c(0, 0.7, 1)
   )
 
   # entropy again the exception: clamped to a small positive number where the
   # unclamped tilts give exactly zero.
-  entropy <- ipw_categorical_tilt(ps, "entropy")
+  entropy <- ps_tilt_categorical(ps, "entropy")
   expect_true(all(is.finite(entropy)))
   expect_true(all(entropy > 0))
 })

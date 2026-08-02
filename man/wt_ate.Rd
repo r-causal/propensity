@@ -503,5 +503,8 @@ Medicine}, 34(28), 3661--3679.
 \item \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}}, \code{\link[=ps_refit]{ps_refit()}}, and \code{\link[=ps_calibrate]{ps_calibrate()}} for
 modifying propensity scores before weighting.
 \item \code{\link[=ipw]{ipw()}} for inverse-probability-weighted estimation of causal effects.
+\item \code{\link[=ps_tilt]{ps_tilt()}} for the tilting function each weight divides by the propensity
+score of the received exposure level, which also standardizes a
+g-computation estimate to the same target population.
 }
 }

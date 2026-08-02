@@ -1,5 +1,17 @@
 # propensity 0.1.0.9000 (development version)
 
+* New `ps_tilt()` returns the tilting function h of the propensity score that
+  defines an estimand's target population, with methods for a numeric
+  propensity score (binary exposure) and for a matrix or data frame of
+  per-level probabilities (categorical exposure). A weight is h divided by the
+  propensity score of the exposure level a unit received, and an h-weighted mean
+  standardizes counterfactual predictions to the same population, which for the
+  `"atm"`, `"ato"`, and `"entropy"` estimands is the only route to the target:
+  those populations are not subsets of the rows and cannot be reached by
+  filtering. The weight functions and the `ipw()` estimating equations now read
+  their tilt from `ps_tilt()` rather than each carrying their own copy. Weights,
+  estimates, and standard errors are unchanged.
+
 * `ipw()` now requires the propensity score model's response to be the exposure
   column itself for a continuous exposure, as it already did for a binary one,
   and rejects anything else with an error of class

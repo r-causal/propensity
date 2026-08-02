@@ -5,7 +5,7 @@
 # the tilt had no single source, so a shared implementation is measured against
 # the formulas it replaced rather than against itself. The ipw() pins are the
 # estimates and standard errors those same formulas produced from the fixtures
-# in this file, recorded to full precision and compared at 1e-12.
+# in this file, recorded to 17 significant digits and compared at 1e-12.
 
 tilt_estimands <- c("ate", "att", "atu", "atm", "ato", "entropy")
 
@@ -70,6 +70,14 @@ oracle_categorical_weights <- function(
 }
 
 # ---- fixtures ---------------------------------------------------------------
+
+tilt_ps_matrix <- function() {
+  matrix(
+    c(0.2, 0.5, 0.3, 0.25, 0.5, 0.25),
+    nrow = 2,
+    dimnames = list(NULL, c("a", "b", "c"))
+  )
+}
 
 tilt_grid_binary <- function() {
   withr::local_seed(20240817)
@@ -376,19 +384,40 @@ test_that("ps_tilt() returns a plain double the length of the propensity score",
 })
 
 test_that("ps_tilt() passes missing propensity scores through", {
+  for (estimand in tilt_estimands) {
+    expect_equal(ps_tilt(c(0.2, NA), estimand)[[2]], NA_real_)
+  }
+
   expect_equal(ps_tilt(c(0.2, NA), "att"), c(0.2, NA))
   expect_equal(ps_tilt(c(0.2, NA), "ato"), c(0.16, NA))
+  # ate has a constant tilt and would otherwise report 1 for an observation
+  # whose propensity score is unknown.
+  expect_equal(ps_tilt(c(0.2, NA), "ate"), c(1, NA))
+})
+
+test_that("ps_tilt() returns a plain double from named input", {
+  named_ps <- c(a = 0.2, b = 0.5, c = 0.8)
+
+  rownamed <- tilt_ps_matrix()
+  rownames(rownamed) <- c("r1", "r2")
+
+  one_row <- rownamed[1, , drop = FALSE]
+
+  for (estimand in tilt_estimands) {
+    focal <- if (estimand %in% c("att", "atu")) "b" else NULL
+
+    expect_null(names(ps_tilt(named_ps, estimand)))
+    expect_null(names(ps_tilt(rownamed, estimand, .focal_level = focal)))
+    expect_null(names(ps_tilt(one_row, estimand, .focal_level = focal)))
+    expect_null(names(ps_tilt(
+      as.data.frame(rownamed),
+      estimand,
+      .focal_level = focal
+    )))
+  }
 })
 
 # ---- ps_tilt(): the categorical tilt ----------------------------------------
-
-tilt_ps_matrix <- function() {
-  matrix(
-    c(0.2, 0.5, 0.3, 0.25, 0.5, 0.25),
-    nrow = 2,
-    dimnames = list(NULL, c("a", "b", "c"))
-  )
-}
 
 test_that("ps_tilt() returns the categorical tilt of every estimand", {
   ps <- tilt_ps_matrix()
@@ -417,6 +446,20 @@ test_that("ps_tilt() gives a data frame the same tilt as the matrix", {
   }
 })
 
+test_that("ps_tilt() gives a missing tilt for a row with a missing score", {
+  ps <- tilt_ps_matrix()
+  ps[1, "c"] <- NA
+
+  for (estimand in tilt_estimands) {
+    focal <- if (estimand %in% c("att", "atu")) "b" else NULL
+    tilt <- ps_tilt(ps, estimand, .focal_level = focal)
+    # The focal column of row one is known, but the row is no longer a
+    # probability vector, so no estimand reports a tilt for it.
+    expect_equal(tilt[[1]], NA_real_)
+    expect_false(is.na(tilt[[2]]))
+  }
+})
+
 test_that("ps_tilt() resolves .focal_level against the column names", {
   ps <- tilt_ps_matrix()
   expect_equal(ps_tilt(ps, "att", .focal_level = "c"), c(0.5, 0.25))
@@ -429,6 +472,41 @@ test_that("ps_tilt() resolves .focal_level against the column names", {
   prefixed <- ps
   colnames(prefixed) <- paste0(".pred_", colnames(ps))
   expect_equal(ps_tilt(prefixed, "att", .focal_level = "c"), c(0.5, 0.25))
+})
+
+test_that("ps_tilt() prefers an exact column name over a prefix-stripped one", {
+  ps <- matrix(
+    c(0.5, 0.25, 0.3, 0.25, 0.2, 0.5),
+    nrow = 2,
+    dimnames = list(NULL, c(".pred_a", "b", "a"))
+  )
+
+  # Both `.pred_a` and `a` match the level `a` once the prefix comes off. The
+  # exact name wins rather than whichever column sits first.
+  expect_equal(ps_tilt(ps, "att", .focal_level = "a"), c(0.2, 0.5))
+  expect_equal(ps_tilt(ps, "atu", .focal_level = "a"), c(0.8, 0.5))
+})
+
+test_that("ps_tilt() rejects a focal level two columns tie for", {
+  duplicated_exact <- matrix(
+    c(0.2, 0.5, 0.3, 0.25, 0.5, 0.25),
+    nrow = 2,
+    dimnames = list(NULL, c("a", "b", "a"))
+  )
+  expect_error(
+    ps_tilt(duplicated_exact, "att", .focal_level = "a"),
+    class = "propensity_tilt_focal_error"
+  )
+
+  duplicated_prefix <- matrix(
+    c(0.2, 0.5, 0.3, 0.25, 0.5, 0.25),
+    nrow = 2,
+    dimnames = list(NULL, c(".pred_a", "b", ".pred_a"))
+  )
+  expect_error(
+    ps_tilt(duplicated_prefix, "att", .focal_level = "a"),
+    class = "propensity_tilt_focal_error"
+  )
 })
 
 # ---- ps_tilt(): focal level errors ------------------------------------------
@@ -501,8 +579,34 @@ test_that("ps_tilt() rejects extra arguments", {
   )
 })
 
+test_that("ps_tilt() requires an estimand", {
+  expect_error(
+    ps_tilt(c(0.2, 0.5)),
+    class = "propensity_missing_arg_error"
+  )
+  expect_error(
+    ps_tilt(tilt_ps_matrix()),
+    class = "propensity_missing_arg_error"
+  )
+})
+
 test_that("ps_tilt() has no method for a propensity score it cannot read", {
   expect_error(ps_tilt("0.5", "ate"), class = "propensity_method_error")
+})
+
+test_that("ps_tilt() sends a modified propensity score to its plain scores", {
+  withr::local_options(propensity.quiet = TRUE)
+  trimmed <- ps_trim(c(0.05, 0.4, 0.6, 0.95), method = "ps", lower = 0.1)
+
+  expect_error(ps_tilt(trimmed, "att"), class = "propensity_method_error")
+  expect_snapshot(error = TRUE, ps_tilt(trimmed, "att"))
+
+  # The route the message names works, and the units trimming set to NA keep an
+  # NA tilt through it.
+  expect_equal(
+    ps_tilt(as.numeric(trimmed), "att"),
+    c(NA, 0.4, 0.6, NA)
+  )
 })
 
 # ---- ps_tilt(): the range contract ------------------------------------------
@@ -552,6 +656,26 @@ test_that("ps_tilt() rejects a matrix whose rows are not probability vectors", {
 })
 
 # ---- ps_tilt(): the weight identity -----------------------------------------
+
+test_that("the documented weight identity holds as the example writes it", {
+  # The identity the `ps_tilt()` example prints. It compares a plain numeric
+  # against a quotient, so it holds only when neither side carries names.
+  withr::local_options(propensity.quiet = TRUE)
+  set.seed(1)
+  n <- 500
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.6 * x))
+  sim <- data.frame(x = x, z = z)
+  ps <- unname(
+    predict(glm(z ~ x, data = sim, family = binomial()), type = "response")
+  )
+
+  received <- z * ps + (1 - z) * (1 - ps)
+  expect_true(isTRUE(all.equal(
+    as.numeric(wt_ato(ps, z, exposure_type = "binary")),
+    ps_tilt(ps, "ato") / received
+  )))
+})
 
 test_that("ps_tilt() divided by the received propensity score gives the binary weights", {
   withr::local_options(propensity.quiet = TRUE)

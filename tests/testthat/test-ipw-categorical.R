@@ -148,7 +148,7 @@ fit_categorical_models <- function(
 # Categorical estimand tilt h(e) for the standardized g-computation plug-in. ate
 # is the flat tilt; the tilted estimands weight each unit's counterfactual
 # predictions by h of the propensity score matrix (columns in level order).
-# Mirrors ipw_categorical_tilt() in R/ipw-psi.R.
+# Mirrors ps_tilt_categorical() in R/ps_tilt.R.
 categorical_plugin_tilt <- function(ps, estimand, lev, focal, n) {
   if (estimand == "ate") {
     return(rep(1, n))
