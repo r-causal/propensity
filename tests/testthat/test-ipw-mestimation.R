@@ -470,6 +470,123 @@ test_that("the weight-consistency error names a focal level as a possible cause"
   )
 })
 
+# ---- the weight-consistency message states a comparison, not a verdict ------
+#
+# The guard knows one thing: the weights it recomputed from `wt_mod` are not the
+# weights `outcome_mod` was fit with. Several situations produce that, and only
+# one of them is weights that are wrong. A `.data` whose values differ from the
+# data the models were fit to moves the recomputed weights while the supplied
+# ones stay exactly right, and so does a weight vector trimmed, truncated, or
+# normalized after the fit. So the message reports the comparison, offers the
+# causes as possibilities, and keeps the refit as the remedy for the cause it
+# fits rather than presenting it as the diagnosis.
+
+# Doubling is the simplest divergence that still leaves an estimand for the spec
+# constructor to detect: psw arithmetic keeps the class and its attributes, so
+# the values are the only thing wrong.
+fit_mismatched_binary_models <- function(dat) {
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts + wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod)
+}
+
+# The condition holds the headline and the bullets in separate fields, each one
+# still unwrapped, so reading them there keeps these assertions independent of
+# the console width cli would otherwise wrap to. The stored strings carry cli's
+# backslash line continuations, which collapse to single spaces here.
+mismatch_message_parts <- function(err) {
+  collapse <- function(x) {
+    trimws(gsub("[[:space:]]+", " ", gsub("\\\\", "", x)))
+  }
+  list(
+    headline = collapse(paste(err$message, collapse = " ")),
+    bullets = setNames(collapse(unname(err$body)), names(err$body))
+  )
+}
+
+# Raise the error on the binary M-estimation route and hand back the condition.
+weight_mismatch_error <- function() {
+  mods <- fit_mismatched_binary_models(sim_binary())
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation"),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+}
+
+test_that("the weight-consistency error opens with the comparison it made", {
+  skip_if_not_installed("deli")
+  parts <- mismatch_message_parts(weight_mismatch_error())
+
+  # The first line names both sides of the comparison and the fact that they
+  # disagree. Which side is at fault is not settled here and must not be stated
+  # as though it were.
+  expect_match(parts$headline, "recomputed from `wt_mod`", fixed = TRUE)
+  expect_match(parts$headline, "differ", fixed = TRUE)
+  expect_match(parts$headline, "`outcome_mod`", fixed = TRUE)
+
+  # Weights that are exactly right reach this error too, so the first line must
+  # not open by declaring them wrong or by demanding something of them.
+  expect_false(grepl("not consistent", parts$headline, fixed = TRUE))
+  expect_false(grepl("inconsistent", parts$headline, fixed = TRUE))
+  expect_false(grepl("\\bmust\\b", parts$headline))
+
+  # The tolerance qualifies the claim: a divergence below it is not reported at
+  # all, so the comparison is only meaningful with the number attached.
+  full <- paste(c(parts$headline, parts$bullets), collapse = " ")
+  expect_match(full, "relative tolerance 1e-6", fixed = TRUE)
+})
+
+test_that("the weight-consistency error lists the causes of a divergence", {
+  skip_if_not_installed("deli")
+  parts <- mismatch_message_parts(weight_mismatch_error())
+  info <- parts$bullets[names(parts$bullets) == "i"]
+  expect_gt(length(info), 0)
+
+  # One informational bullet raises the estimand and the focal level together:
+  # weights built under either one differ from the weights `ipw()` resolved, and
+  # neither difference is visible in the comparison itself.
+  expect_true(any(grepl("estimand", info) & grepl("focal", info)))
+
+  # Another raises `.data`, the cause that leaves the weights correct. Values
+  # that differ from the data the models were fit to move the recomputed weights
+  # on their own, and no amount of refitting addresses that.
+  expect_true(any(grepl("`.data`", info, fixed = TRUE)))
+})
+
+test_that("the weight-consistency error hedges the refit remedy", {
+  skip_if_not_installed("deli")
+  parts <- mismatch_message_parts(weight_mismatch_error())
+  refit <- parts$bullets[grepl("Refit", parts$bullets, fixed = TRUE)]
+  expect_length(refit, 1)
+
+  # Refitting is the fix when the weights are the cause and the wrong advice
+  # when they are not, so the sentence has to carry that condition rather than
+  # read as the single next step.
+  expect_match(refit, "\\b(if|when)\\b")
+})
+
+test_that("the weight-consistency error message is stable on the binary mestimation route", {
+  skip_if_not_installed("deli")
+  mods <- fit_mismatched_binary_models(sim_binary())
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation"),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+  expect_snapshot(
+    error = TRUE,
+    cnd_class = TRUE,
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  )
+})
+
 test_that("ipw_spec_binary errors when the estimand cannot be determined", {
   skip_if_not_installed("deli")
   dat <- sim_binary()

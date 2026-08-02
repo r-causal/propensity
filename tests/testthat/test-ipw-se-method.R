@@ -1978,12 +1978,10 @@ test_that("linearization rejects a .data whose covariates disagree with the fitt
     class = "propensity_ipw_weights_mismatch_error"
   )
 
+  # The comparison this route reports is the shared one, phrased the same way as
+  # on the M-estimation route; its wording is pinned in test-ipw-mestimation.R.
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
-  expect_match(
-    msg,
-    "not consistent with the propensity score model",
-    fixed = TRUE
-  )
+  expect_match(msg, "recomputed from `wt_mod`", fixed = TRUE)
 })
 
 test_that("linearization rejects stabilized weights whose score was dropped", {
@@ -2047,12 +2045,10 @@ test_that("linearization rejects stabilized weights whose score was dropped", {
     class = "propensity_ipw_weights_mismatch_error"
   )
 
+  # The comparison this route reports is the shared one, phrased the same way as
+  # on the M-estimation route; its wording is pinned in test-ipw-mestimation.R.
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
-  expect_match(
-    msg,
-    "not consistent with the propensity score model",
-    fixed = TRUE
-  )
+  expect_match(msg, "recomputed from `wt_mod`", fixed = TRUE)
 })
 
 # ---- ps_link is deprecated, and must agree with the model's own link --------

@@ -1,3 +1,14 @@
+# the weight-consistency error message is stable on the binary mestimation route
+
+    Code
+      ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+    Condition <propensity_ipw_weights_mismatch_error>
+      Error in `ipw()`:
+      ! The weights used to fit `outcome_mod` are not consistent with the propensity score model and estimand.
+      i The "ate" weights recomputed from `wt_mod` differ from the weights supplied to `outcome_mod` (compared at relative tolerance 1e-6).
+      i Refit `outcome_mod` with weights from this propensity score model and estimand.
+      i A non-default `.focal_level` or `.reference_level` in the weights is one cause: `ipw()` treats the second sorted level of a binary exposure as focal.
+
 # ipw_spec_binary error names the unsupported outcome family
 
     Code
