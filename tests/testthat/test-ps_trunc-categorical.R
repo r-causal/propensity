@@ -450,3 +450,82 @@ test_that("print.ps_trunc_matrix produces expected output", {
   # Should not have column header
   expect_false(any(grepl("High\\s+Low\\s+Med", output_no_names)))
 })
+
+# ---- the matrix method names ps_trunc, whoever called it -------------------
+
+# `ps_trunc.matrix` validates the propensity score matrix from inside a
+# dispatched method, so the frame it hands the validator decides what the error
+# reports. A frame taken from the method's caller is the user's own function
+# when `ps_trunc()` is called from one, and nothing at all when it is called at
+# the top level.
+
+condition_call_name <- function(expr) {
+  cnd <- rlang::catch_cnd(expr, classes = "error")
+  if (is.null(cnd) || is.null(conditionCall(cnd))) {
+    return(NA_character_)
+  }
+
+  paste(deparse(conditionCall(cnd)[[1]]), collapse = " ")
+}
+
+categorical_trunc_fixture <- function() {
+  list(
+    exposure = factor(c("a", "b", "c", "a")),
+    # the first row sums to 1.4, which the matrix method refuses
+    bad_matrix = matrix(
+      c(0.7, 0.3, 0.2, 0.5, 0.4, 0.4, 0.3, 0.2, 0.3, 0.3, 0.5, 0.3),
+      nrow = 4,
+      ncol = 3
+    )
+  )
+}
+
+test_that("a refused propensity score matrix names ps_trunc", {
+  fixture <- categorical_trunc_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trunc(fixture$bad_matrix, method = "ps", .exposure = fixture$exposure),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "propensity_matrix_sum_error")
+
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$bad_matrix, method = "ps", .exposure = fixture$exposure)
+    ),
+    "ps_trunc"
+  )
+})
+
+test_that("a refused propensity score matrix names ps_trunc, not the caller", {
+  fixture <- categorical_trunc_fixture()
+
+  wrapping_trunc_fn <- function(ps, .exposure) {
+    ps_trunc(ps, method = "ps", .exposure = .exposure)
+  }
+
+  expect_identical(
+    condition_call_name(
+      wrapping_trunc_fn(fixture$bad_matrix, fixture$exposure)
+    ),
+    "ps_trunc"
+  )
+})
+
+test_that("a matrix with the wrong number of columns names ps_trunc", {
+  fixture <- categorical_trunc_fixture()
+
+  wrapping_trunc_fn <- function(ps, .exposure) {
+    ps_trunc(ps, method = "ps", .exposure = .exposure)
+  }
+
+  expect_identical(
+    condition_call_name(
+      wrapping_trunc_fn(
+        fixture$bad_matrix[, 1:2, drop = FALSE],
+        fixture$exposure
+      )
+    ),
+    "ps_trunc"
+  )
+})

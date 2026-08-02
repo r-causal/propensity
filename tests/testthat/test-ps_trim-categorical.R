@@ -858,3 +858,82 @@ test_that("print methods respect n parameter", {
   expect_true(any(grepl("# \\.\\.\\. with 15 more rows", output_10)))
   expect_false(any(grepl("# \\.\\.\\. with", output_inf)))
 })
+
+# ---- the matrix method names ps_trim, whoever called it --------------------
+
+# `ps_trim.matrix` validates the propensity score matrix from inside a
+# dispatched method, so the frame it hands the validator decides what the error
+# reports. A frame taken from the method's caller is the user's own function
+# when `ps_trim()` is called from one, and nothing at all when it is called at
+# the top level.
+
+condition_call_name <- function(expr) {
+  cnd <- rlang::catch_cnd(expr, classes = "error")
+  if (is.null(cnd) || is.null(conditionCall(cnd))) {
+    return(NA_character_)
+  }
+
+  paste(deparse(conditionCall(cnd)[[1]]), collapse = " ")
+}
+
+categorical_trim_fixture <- function() {
+  list(
+    exposure = factor(c("a", "b", "c", "a")),
+    # the first row sums to 1.4, which the matrix method refuses
+    bad_matrix = matrix(
+      c(0.7, 0.3, 0.2, 0.5, 0.4, 0.4, 0.3, 0.2, 0.3, 0.3, 0.5, 0.3),
+      nrow = 4,
+      ncol = 3
+    )
+  )
+}
+
+test_that("a refused propensity score matrix names ps_trim", {
+  fixture <- categorical_trim_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trim(fixture$bad_matrix, method = "ps", .exposure = fixture$exposure),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "propensity_matrix_sum_error")
+
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$bad_matrix, method = "ps", .exposure = fixture$exposure)
+    ),
+    "ps_trim"
+  )
+})
+
+test_that("a refused propensity score matrix names ps_trim, not the caller", {
+  fixture <- categorical_trim_fixture()
+
+  wrapping_trim_fn <- function(ps, .exposure) {
+    ps_trim(ps, method = "ps", .exposure = .exposure)
+  }
+
+  expect_identical(
+    condition_call_name(
+      wrapping_trim_fn(fixture$bad_matrix, fixture$exposure)
+    ),
+    "ps_trim"
+  )
+})
+
+test_that("a matrix with the wrong number of columns names ps_trim", {
+  fixture <- categorical_trim_fixture()
+
+  wrapping_trim_fn <- function(ps, .exposure) {
+    ps_trim(ps, method = "ps", .exposure = .exposure)
+  }
+
+  expect_identical(
+    condition_call_name(
+      wrapping_trim_fn(
+        fixture$bad_matrix[, 1:2, drop = FALSE],
+        fixture$exposure
+      )
+    ),
+    "ps_trim"
+  )
+})

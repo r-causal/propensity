@@ -3716,6 +3716,57 @@ test_that("an exposure that cannot be coded 0/1 names the weight function", {
   }
 })
 
+# A matrix or data frame of the right total length passes the length check,
+# because `length()` counts cells rather than observations. Nothing downstream
+# of the transformation reduces it back to one value per observation, so the
+# refusal has to happen where the exposure is coded.
+
+test_that("an exposure with dimensions names the weight function", {
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+  dimensioned <- matrix(c(1, 0, 1, 0), nrow = 2, ncol = 2)
+  routes <- uncodable_binary_routes()
+
+  for (fn_name in names(routes)) {
+    route <- routes[[fn_name]]
+
+    cnd <- rlang::catch_cnd(route(ps, dimensioned), classes = "error")
+    expect_s3_class(cnd, "propensity_binary_transform_error")
+
+    expect_identical(weight_error_call_name(route(ps, dimensioned)), fn_name)
+  }
+})
+
+test_that("an exposure with dimensions is refused whatever the levels named", {
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+  dimensioned <- matrix(c(1, 0, 1, 0), nrow = 2, ncol = 2)
+
+  expect_error(
+    wt_ate(ps, dimensioned, exposure_type = "binary", .focal_level = 1),
+    class = "propensity_binary_transform_error"
+  )
+  expect_error(
+    wt_ate(ps, dimensioned, exposure_type = "binary", .reference_level = 0),
+    class = "propensity_binary_transform_error"
+  )
+  expect_error(
+    wt_ate(ps, matrix(c(1, 0, 1, 0), ncol = 1), exposure_type = "binary"),
+    class = "propensity_binary_transform_error"
+  )
+})
+
+test_that("an exposure with dimensions reports what it was given", {
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+  dimensioned <- matrix(c(1, 0, 1, 0), nrow = 2, ncol = 2)
+
+  message <- weight_error_message(
+    wt_ate(ps, dimensioned, exposure_type = "binary")
+  )
+
+  expect_match(message, "`.exposure` must be a vector", fixed = TRUE)
+  expect_match(message, "matrix", fixed = TRUE)
+  expect_match(message, "one value per observation", fixed = TRUE)
+})
+
 test_that("an exposure that cannot be coded 0/1 names the weight function on every route", {
   ps <- c(0.2, 0.5, 0.8, 0.4)
   uncodable <- c(1, 2, 3, 4)
