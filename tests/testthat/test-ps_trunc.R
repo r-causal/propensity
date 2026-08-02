@@ -516,3 +516,179 @@ test_that("ps_trunc handles multiple combines correctly", {
       truncated_values == combined_meta$upper_bound
   ))
 })
+
+# Truncation record integrity ----------------------------------------------
+
+# The record a `ps_trunc` carries names positions among the observations it was
+# written for. An operation that changes how many observations there are is not
+# handed the subscript, so it cannot re-index the record onto the result and
+# drops it rather than leave positions describing units they were never about.
+
+trunc_record_fixture <- function() {
+  # Position 1 is pinned up to the lower bound. Position 4 already sits on the
+  # upper bound and was left alone, so bound equality does not mark a unit.
+  ps_trunc(
+    c(0.05, 0.3, 0.5, 0.9, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+}
+
+test_that("ps_trunc() records how many observations its positions describe", {
+  meta <- ps_trunc_meta(trunc_record_fixture())
+
+  expect_equal(meta$truncated_idx, 1L)
+  expect_equal(meta$n_obs, 5L)
+})
+
+test_that("slicing a ps_trunc shorter drops the truncation record with a warning", {
+  x <- trunc_record_fixture()
+
+  cnd <- expect_warning(
+    sliced <- vec_slice(x, 2:3),
+    class = "propensity_trunc_record_warning"
+  )
+  expect_s3_class(cnd, "propensity_warning")
+
+  expect_s3_class(sliced, "ps_trunc")
+  expect_equal(as.numeric(sliced), c(0.3, 0.5))
+
+  meta <- ps_trunc_meta(sliced)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+
+  # Nothing that is not indexed by observation is touched by the drop.
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, 0.1)
+  expect_equal(meta$upper_bound, 0.9)
+  expect_true(is_ps_truncated(sliced))
+
+  expect_error(
+    is_unit_truncated(sliced),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("filtering a ps_trunc column drops the truncation record with a warning", {
+  skip_if_not_installed("dplyr")
+
+  df <- data.frame(id = 1:5)
+  df$ps <- trunc_record_fixture()
+
+  expect_warning(
+    filtered <- dplyr::filter(df, id %in% 2:3),
+    class = "propensity_trunc_record_warning"
+  )
+
+  expect_s3_class(filtered$ps, "ps_trunc")
+  expect_equal(as.numeric(filtered$ps), c(0.3, 0.5))
+  expect_null(ps_trunc_meta(filtered$ps)$truncated_idx)
+  expect_error(
+    is_unit_truncated(filtered$ps),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("a length-preserving ps_trunc restore keeps the truncation record", {
+  x <- trunc_record_fixture()
+  meta <- ps_trunc_meta(x)
+  truncated_units <- c(TRUE, FALSE, FALSE, FALSE, FALSE)
+
+  whole <- expect_silent(vec_slice(x, seq_along(x)))
+  expect_identical(ps_trunc_meta(whole), meta)
+  expect_identical(is_unit_truncated(whole), truncated_units)
+
+  empty_subscript <- expect_silent(x[])
+  expect_identical(ps_trunc_meta(empty_subscript), meta)
+
+  expect_silent({
+    x[2] <- 0.4
+  })
+  expect_identical(ps_trunc_meta(x), meta)
+  expect_identical(is_unit_truncated(x), truncated_units)
+})
+
+test_that("a zero-length ps_trunc slice keeps the record and answers nothing", {
+  x <- trunc_record_fixture()
+
+  proto <- expect_silent(vec_ptype(x))
+  expect_length(proto, 0)
+  expect_identical(ps_trunc_meta(proto), ps_trunc_meta(x))
+
+  expect_identical(is_unit_truncated(proto), logical(0))
+  expect_identical(is_unit_truncated(x[integer(0)]), logical(0))
+})
+
+test_that("a truncation record that no longer covers the scores refuses to answer", {
+  x <- trunc_record_fixture()
+  expect_silent({
+    x[7] <- 0.5
+  })
+
+  expect_length(x, 7)
+  expect_identical(ps_trunc_meta(x), ps_trunc_meta(trunc_record_fixture()))
+  expect_true(is_ps_truncated(x))
+  expect_error(
+    is_unit_truncated(x),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("combining ps_trunc objects drops the truncation record", {
+  x <- trunc_record_fixture()
+
+  combined <- expect_silent(c(x, x))
+  expect_s3_class(combined, "ps_trunc")
+  expect_length(combined, 10)
+  expect_equal(as.numeric(combined), rep(as.numeric(x), 2))
+
+  meta <- ps_trunc_meta(combined)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+  expect_equal(meta$method, "ps")
+
+  expect_true(is_ps_truncated(combined))
+  expect_error(
+    is_unit_truncated(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("combining ps_trunc objects does not read truncated units off the bounds", {
+  # Position 4 holds a score that arrived equal to the upper bound and was left
+  # alone. Reading membership back from bound equality would report it, and the
+  # copy of it in the second half, as units this package winsorized.
+  x <- trunc_record_fixture()
+  expect_identical(
+    is_unit_truncated(x),
+    c(TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+
+  combined <- expect_silent(c(x, x))
+  expect_null(ps_trunc_meta(combined)$truncated_idx)
+  expect_error(
+    is_unit_truncated(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("casting to ps_trunc records positions and a length", {
+  x <- trunc_record_fixture()
+
+  empty <- vec_cast(double(), to = x)
+  expect_s3_class(empty, "ps_trunc")
+  expect_true("truncated_idx" %in% names(ps_trunc_meta(empty)))
+  expect_equal(ps_trunc_meta(empty)$truncated_idx, integer(0))
+  expect_equal(ps_trunc_meta(empty)$n_obs, 0L)
+
+  values <- vec_cast(c(0.3, 0.4), to = x)
+  expect_s3_class(values, "ps_trunc")
+  expect_equal(ps_trunc_meta(values)$truncated_idx, integer(0))
+  expect_equal(ps_trunc_meta(values)$n_obs, 2L)
+  expect_identical(is_unit_truncated(values), c(FALSE, FALSE))
+
+  from_integer <- vec_cast(c(0L, 1L), to = x)
+  expect_equal(ps_trunc_meta(from_integer)$truncated_idx, integer(0))
+  expect_equal(ps_trunc_meta(from_integer)$n_obs, 2L)
+})

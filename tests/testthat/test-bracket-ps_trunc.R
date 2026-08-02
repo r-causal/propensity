@@ -192,3 +192,72 @@ test_that("subsetting handles complex index patterns for ps_trunc", {
   subset_rep <- ps_truncated[indices_rep]
   expect_length(subset_rep, length(indices_rep))
 })
+
+test_that("[.ps_trunc maps every occurrence of a repeated subscript", {
+  # Position 1 is the only winsorized unit.
+  x <- ps_trunc(
+    c(0.05, 0.3, 0.5, 0.9, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  repeated <- expect_silent(x[c(1, 1, 2)])
+  meta <- ps_trunc_meta(repeated)
+
+  expect_equal(as.numeric(repeated), c(0.1, 0.1, 0.3))
+  expect_equal(meta$truncated_idx, c(1L, 2L))
+  expect_equal(meta$n_obs, 3L)
+  expect_identical(is_unit_truncated(repeated), c(TRUE, TRUE, FALSE))
+})
+
+test_that("[.ps_trunc maps a repeated untruncated position", {
+  x <- ps_trunc(
+    c(0.05, 0.3, 0.5, 0.9, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  repeated <- expect_silent(x[c(2, 2, 1, 3)])
+  meta <- ps_trunc_meta(repeated)
+
+  expect_equal(as.numeric(repeated), c(0.3, 0.3, 0.1, 0.5))
+  expect_equal(meta$truncated_idx, 3L)
+  expect_equal(meta$n_obs, 4L)
+  expect_identical(is_unit_truncated(repeated), c(FALSE, FALSE, TRUE, FALSE))
+})
+
+test_that("[.ps_trunc remaps an ordinary subscript without comment", {
+  x <- ps_trunc(
+    c(0.05, 0.3, 0.5, 0.9, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  subset <- expect_silent(x[1:3])
+  meta <- ps_trunc_meta(subset)
+
+  expect_equal(as.numeric(subset), c(0.1, 0.3, 0.5))
+  expect_equal(meta$truncated_idx, 1L)
+  expect_equal(meta$n_obs, 3L)
+  expect_identical(is_unit_truncated(subset), c(TRUE, FALSE, FALSE))
+})
+
+test_that("[.ps_trunc_matrix records how many rows the result describes", {
+  set.seed(123)
+  n <- 12
+  k <- 3
+  ps_mat <- matrix(runif(n * k, 0.001, 0.999), ncol = k)
+  ps_mat <- ps_mat / rowSums(ps_mat)
+  colnames(ps_mat) <- LETTERS[1:k]
+  exposure <- factor(rep(LETTERS[1:k], length.out = n))
+
+  x <- ps_trunc(ps_mat, method = "ps", lower = 0.1, .exposure = exposure)
+  full <- is_unit_truncated(x)
+
+  rows <- x[3:8, ]
+  expect_equal(ps_trunc_meta(rows)$n_obs, 6L)
+  expect_identical(is_unit_truncated(rows), full[3:8])
+})

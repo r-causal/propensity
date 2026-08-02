@@ -178,3 +178,75 @@ test_that("subsetting handles complex index patterns", {
   subset_rep <- ps_trimmed[indices_rep]
   expect_length(subset_rep, length(indices_rep))
 })
+
+test_that("[.ps_trim maps every occurrence of a repeated subscript", {
+  # Positions 1 and 4 are trimmed, positions 2, 3, and 5 retained.
+  x <- ps_trim(
+    c(0.05, 0.3, 0.5, 0.95, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  repeated <- expect_silent(x[c(1, 1, 2)])
+  meta <- ps_trim_meta(repeated)
+
+  expect_equal(as.numeric(repeated), c(NA, NA, 0.3))
+  expect_equal(meta$trimmed_idx, c(1L, 2L))
+  expect_equal(meta$keep_idx, 3L)
+  expect_equal(meta$n_obs, 3L)
+  expect_identical(is_unit_trimmed(repeated), c(TRUE, TRUE, FALSE))
+})
+
+test_that("[.ps_trim maps a repeated retained position", {
+  x <- ps_trim(
+    c(0.05, 0.3, 0.5, 0.95, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  repeated <- expect_silent(x[c(2, 2, 1, 3)])
+  meta <- ps_trim_meta(repeated)
+
+  expect_equal(as.numeric(repeated), c(0.3, 0.3, NA, 0.5))
+  expect_equal(meta$trimmed_idx, 3L)
+  expect_equal(meta$keep_idx, c(1L, 2L, 4L))
+  expect_equal(meta$n_obs, 4L)
+  expect_identical(is_unit_trimmed(repeated), c(FALSE, FALSE, TRUE, FALSE))
+})
+
+test_that("[.ps_trim remaps an ordinary subscript without comment", {
+  x <- ps_trim(
+    c(0.05, 0.3, 0.5, 0.95, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  subset <- expect_silent(x[2:4])
+  meta <- ps_trim_meta(subset)
+
+  expect_equal(as.numeric(subset), c(0.3, 0.5, NA))
+  expect_equal(meta$trimmed_idx, 3L)
+  expect_equal(meta$keep_idx, c(1L, 2L))
+  expect_equal(meta$n_obs, 3L)
+  expect_identical(is_unit_trimmed(subset), c(FALSE, FALSE, TRUE))
+})
+
+test_that("[.ps_trim_matrix records how many rows the result describes", {
+  set.seed(123)
+  n <- 12
+  k <- 3
+  ps_mat <- matrix(runif(n * k), ncol = k)
+  ps_mat <- ps_mat / rowSums(ps_mat)
+  colnames(ps_mat) <- LETTERS[1:k]
+  exposure <- factor(rep(LETTERS[1:k], length.out = n))
+
+  x <- ps_trim(ps_mat, method = "ps", lower = 0.2, .exposure = exposure)
+  full <- is_unit_trimmed(x)
+
+  rows <- x[3:8, ]
+  expect_equal(ps_trim_meta(rows)$n_obs, 6L)
+  expect_identical(is_unit_trimmed(rows), full[3:8])
+})
