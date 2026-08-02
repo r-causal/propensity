@@ -2340,6 +2340,49 @@ test_that("linearization rejects a separated propensity model", {
   expect_false(inherits(err, "propensity_ipw_weights_mismatch_error"))
 })
 
+test_that("linearization rejects a separated propensity model given .data", {
+  dat <- se_separation_data()
+  mods <- se_separation_models(dat)
+  n_saturated <- se_n_saturated(mods$ps_mod)
+
+  # The scores are predicted from `.data` when it is supplied and from the
+  # model frame when it is not, so the guard has to cover both routes.
+  err <- expect_error(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      .data = dat,
+      se_method = "linearization"
+    ),
+    class = "propensity_ipw_separation_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, as.character(n_saturated), fixed = TRUE)
+
+  # And that the supplied `.data` is what the guard reads, rather than the model
+  # frame standing in for it: this fit converges and saturates nowhere on its own
+  # frame, but the scores it gives on a `.data` whose covariate is doubled do
+  # saturate, and the guard reaches that before the weight comparison does.
+  near <- se_near_separation_data()
+  near_mods <- se_separation_models(near)
+  expect_identical(se_n_saturated(near_mods$ps_mod), 0L)
+
+  doubled <- near
+  doubled$x1 <- 2 * doubled$x1
+  e_doubled <- stats::plogis(predict(near_mods$ps_mod, newdata = doubled))
+  expect_gt(sum(e_doubled == 0 | e_doubled == 1), 0)
+
+  expect_error(
+    ipw(
+      near_mods$ps_mod,
+      near_mods$outcome_mod,
+      .data = doubled,
+      se_method = "linearization"
+    ),
+    class = "propensity_ipw_separation_error"
+  )
+})
+
 test_that("both SE methods reject a separated propensity model alike", {
   skip_if_not_installed("deli")
   dat <- se_separation_data()
@@ -2401,6 +2444,28 @@ test_that("linearization rejects a separated probit propensity model", {
 
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "separation", ignore.case = TRUE)
+})
+
+test_that("linearization leaves a separated cauchit fit to the link rejection", {
+  dat <- se_separation_data()
+  mods <- se_separation_models(dat, link = "cauchit")
+
+  # Separated exactly as the logit and probit fixtures are, so the guard would
+  # have something to say if it applied here.
+  expect_gt(max(abs(predict(mods$ps_mod))), 100)
+
+  # It does not apply. The guard measures saturation through the link's
+  # unclamped inverse, and there is none for cauchit, so it steps aside rather
+  # than aborting. What speaks instead is the rejection this path already made
+  # of a link its influence functions are not derived for, unchanged and
+  # carrying none of the package's own error classes.
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization"),
+    class = "rlang_error"
+  )
+  expect_match(conditionMessage(err), "cauchit", fixed = TRUE)
+  expect_false(inherits(err, "propensity_ipw_separation_error"))
+  expect_false(inherits(err, "propensity_error"))
 })
 
 test_that("the linearization separation error names the count and the model", {

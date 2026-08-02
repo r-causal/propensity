@@ -256,15 +256,34 @@
 #' has no counterfactual designs, since `ipw()` reports the marginal structural
 #' model's own exposure coefficient, and is unaffected.
 #'
-#' Two further requirements apply to the weights and the propensity score model.
-#' The outcome model weights must match the values implied by the propensity
-#' score model; a mismatch errors, on both standard error methods. The propensity
-#' score model must be fit without case weights, since the stacked propensity
-#' score equations are unweighted and a weighted fit would not sit at the score
-#' root; that requirement applies to `se_method = "mestimation"` alone, because
-#' the linearization path does not restack the propensity score model. It still
-#' corrects for the uncertainty of estimating the propensity scores; it does so
-#' through the influence functions rather than through a stacked score.
+#' Three further requirements apply to the weights and the propensity score
+#' model. The outcome model weights must match the values implied by the
+#' propensity score model; a mismatch errors, on both standard error methods.
+#'
+#' The propensity score model must not separate the exposure. A model whose
+#' covariates predict the exposure without error has no finite maximum likelihood
+#' estimate, and the propensity scores its coefficients imply reach exactly zero
+#' or one, leaving the corresponding weights undefined. For a binary exposure,
+#' whose propensity score model is a binomial `glm()`, both standard error
+#' methods reject such a fit at the same threshold: the fitted linear predictors,
+#' put through the link's inverse, saturate for at least one observation. Nothing
+#' short of saturation is rejected. A fitted model's `predict()` cannot show this
+#' on its own, because the inverse link `glm` uses is bounded away from zero and
+#' one, so a separated fit otherwise yields finite weights and a standard error
+#' that looks ordinary. For a categorical exposure, which runs on the
+#' M-estimation path alone, the threshold is narrower: only a probability of
+#' exactly zero at the level a unit was actually assigned is rejected, since that
+#' alone leaves the unit's own weight undefined, and a softmax column for a level
+#' the unit was not assigned may reach zero without the fit being refused. A
+#' continuous exposure has no saturating inverse link and is not checked.
+#'
+#' The propensity score model must also be fit without case weights, since the
+#' stacked propensity score equations are unweighted and a weighted fit would not
+#' sit at the score root; that requirement applies to `se_method = "mestimation"`
+#' alone, because the linearization path does not restack the propensity score
+#' model. It still corrects for the uncertainty of estimating the propensity
+#' scores; it does so through the influence functions rather than through a
+#' stacked score.
 #'
 #' @references
 #' Stefanski LA, Boos DD. The calculus of M-estimation. *The American
@@ -505,6 +524,11 @@ ipw.glm <- function(
     )
   }
 
+  # Runs before the weight-consistency preflight and before the estimand is
+  # resolved, so a fit with no overlap at all is diagnosed as what it is rather
+  # than as whatever the weights or the estimand happen to trip over first.
+  check_ipw_ps_saturation(wt_mod, .data = .data)
+
   if (!identical(length(exposure), length(outcome))) {
     abort(c(
       "{.arg exposure} and {.arg outcome} must be the same length.",
@@ -743,6 +767,54 @@ check_ipw_weights <- function(wts, call = rlang::caller_env()) {
   }
 
   invisible(wts)
+}
+
+# Reject a propensity fit whose scores have saturated, at the same threshold the
+# M-estimation path applies. Nothing on the linearization path breaks on such a
+# fit, which is exactly the problem: `predict(type = "response")` goes through
+# the family's inverse link, a clamped C routine that never returns an exact 0 or
+# 1, so a model with no finite maximum likelihood estimate hands back interior
+# scores, finite weights, and a confident standard error beside an estimate that
+# no data support. Recomputing the fitted linear predictors through the link's
+# true inverse is what makes it visible, and it is the same quantity the
+# M-estimation guard counts, so the two paths refuse the same fits.
+#
+# The link is read from `wt_mod` rather than from `ps_link`, because saturation
+# is a property of the fit and not of an argument.
+#
+# A fit with a link outside `ipw_inv_links`, cauchit for instance, has no
+# unclamped inverse to recompute through, so the guard steps aside rather than
+# aborting: it must never be the thing that stops an analysis it cannot measure.
+# An `NA` score is missing rather than saturated and is likewise not this guard's
+# business.
+check_ipw_ps_saturation <- function(
+  wt_mod,
+  .data = NULL,
+  call = rlang::caller_env()
+) {
+  link <- wt_mod$family$link
+  if (is.null(ipw_inv_links[[link]])) {
+    return(invisible(TRUE))
+  }
+
+  # The same data the response-scale scores are predicted from, so the guard
+  # covers the model-frame and the `.data` routes alike.
+  eta <- predict(
+    wt_mod,
+    newdata = drop_contrasts_attrs(.data, names(wt_mod$contrasts))
+  )
+  ps <- ipw_inv_link(link)(as.vector(eta))
+  n_saturated <- sum(ps == 0 | ps == 1, na.rm = TRUE)
+
+  if (n_saturated > 0) {
+    abort_ipw_ps_separation(
+      n_saturated,
+      lead = "Putting the fitted linear predictors through the link's inverse",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
 }
 
 # Reject att or atu weights built with a focal level other than the one the

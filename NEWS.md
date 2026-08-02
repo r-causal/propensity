@@ -1,5 +1,20 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw(se_method = "linearization")` now rejects a propensity score model that
+  separates the exposure, as the M-estimation path already did, with the same
+  error of class `propensity_ipw_separation_error` naming how many observations
+  are affected. Both paths now refuse a fit at the same threshold: the fitted
+  linear predictors, put through the link's inverse, give a probability of
+  exactly zero or one for at least one observation, whose weight is then
+  undefined. The linearization path previously accepted such a fit and returned
+  an estimate with a small standard error beside it, because its propensity
+  scores come from `predict()`, whose inverse link is bounded away from zero and
+  one; every weight was therefore finite and nothing downstream failed. Fits
+  short of saturation are unaffected. A propensity score model fit with a link
+  the estimating equations cannot invert, such as `cauchit`, is not checked for
+  saturation at all; such a model is still rejected for its link, on both
+  standard error methods and with the same error as before.
+
 * The `ps_link` argument of `ipw()` is deprecated. Both standard error methods
   accept only the link the propensity score model was fit with, so the argument
   can only restate what `wt_mod` already supplies, and supplying it now warns.
@@ -143,8 +158,7 @@
   weights undefined. Previously this surfaced as an error about the outcome
   model's weights and the focal level for the `"ate"` estimand, and as an error
   from the solver for the others, neither of which pointed at the propensity
-  model. `se_method = "linearization"` is unaffected: it takes its propensity
-  scores from `predict()`, whose inverse link cannot return exactly zero or one.
+  model. `se_method = "linearization"` refuses the same fits, described above.
 
 * `ipw(se_method = "linearization")` now checks the outcome model's weights
   against the propensity score model, as the M-estimation path already did. The

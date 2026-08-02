@@ -873,26 +873,45 @@ ipw_spec_continuous <- function(
 # A continuous exposure has no saturating inverse link and needs no such check.
 check_ipw_ps_separation <- function(n_saturated, call = rlang::caller_env()) {
   if (n_saturated > 0) {
-    abort(
-      c(
-        "{.arg wt_mod} must not separate the exposure.",
-        x = "Rebuilding the propensity scores gives a probability of exactly \\
-        0 or 1 for {n_saturated} observation{?s}, whose weight{?s} {?is/are} \\
-        then undefined.",
-        i = "This is usually separation: some covariate pattern predicts the \\
-        exposure without error, so the fit has no finite maximum likelihood \\
-        estimate. An extreme covariate pattern can saturate the scores even \\
-        where the estimate is finite.",
-        i = "Check overlap in {.arg wt_mod} rather than the weights. Dropping \\
-        or combining the covariate that separates, or penalizing the fit, \\
-        gives a model with finite coefficients."
-      ),
-      error_class = "propensity_ipw_separation_error",
+    abort_ipw_ps_separation(
+      n_saturated,
+      lead = "Rebuilding the propensity scores",
       call = call
     )
   }
 
   invisible(TRUE)
+}
+
+# Both standard error methods refuse a saturated propensity fit at the same
+# threshold, so both raise this error and only `lead` differs: the M-estimation
+# path rebuilds the scores from a parameter vector, while the linearization path
+# puts the fitted linear predictors back through the link's inverse. The
+# diagnosis and the remedy are the same either way, and keeping the two messages
+# one function apart is what keeps them the same shape. `lead` opens the sentence
+# the `x` bullet completes, and the pluralization keys off `n_saturated` because
+# it is the last quantity substituted before it.
+abort_ipw_ps_separation <- function(
+  n_saturated,
+  lead,
+  call = rlang::caller_env()
+) {
+  abort(
+    c(
+      "{.arg wt_mod} must not separate the exposure.",
+      x = "{lead} gives a probability of exactly 0 or 1 for {n_saturated} \\
+      observation{?s}, whose weight{?s} {?is/are} then undefined.",
+      i = "This is usually separation: some covariate pattern predicts the \\
+      exposure without error, so the fit has no finite maximum likelihood \\
+      estimate. An extreme covariate pattern can saturate the scores even \\
+      where the estimate is finite.",
+      i = "Check overlap in {.arg wt_mod} rather than the weights. Dropping \\
+      or combining the covariate that separates, or penalizing the fit, \\
+      gives a model with finite coefficients."
+    ),
+    error_class = "propensity_ipw_separation_error",
+    call = call
+  )
 }
 
 # Recompute the weights implied by the spec at its seeded init, mirroring the

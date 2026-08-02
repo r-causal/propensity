@@ -347,15 +347,34 @@ from that covariate and runs on the M-estimation path. A continuous exposure
 has no counterfactual designs, since \code{ipw()} reports the marginal structural
 model's own exposure coefficient, and is unaffected.
 
-Two further requirements apply to the weights and the propensity score model.
-The outcome model weights must match the values implied by the propensity
-score model; a mismatch errors, on both standard error methods. The propensity
-score model must be fit without case weights, since the stacked propensity
-score equations are unweighted and a weighted fit would not sit at the score
-root; that requirement applies to \code{se_method = "mestimation"} alone, because
-the linearization path does not restack the propensity score model. It still
-corrects for the uncertainty of estimating the propensity scores; it does so
-through the influence functions rather than through a stacked score.
+Three further requirements apply to the weights and the propensity score
+model. The outcome model weights must match the values implied by the
+propensity score model; a mismatch errors, on both standard error methods.
+
+The propensity score model must not separate the exposure. A model whose
+covariates predict the exposure without error has no finite maximum likelihood
+estimate, and the propensity scores its coefficients imply reach exactly zero
+or one, leaving the corresponding weights undefined. For a binary exposure,
+whose propensity score model is a binomial \code{glm()}, both standard error
+methods reject such a fit at the same threshold: the fitted linear predictors,
+put through the link's inverse, saturate for at least one observation. Nothing
+short of saturation is rejected. A fitted model's \code{predict()} cannot show this
+on its own, because the inverse link \code{glm} uses is bounded away from zero and
+one, so a separated fit otherwise yields finite weights and a standard error
+that looks ordinary. For a categorical exposure, which runs on the
+M-estimation path alone, the threshold is narrower: only a probability of
+exactly zero at the level a unit was actually assigned is rejected, since that
+alone leaves the unit's own weight undefined, and a softmax column for a level
+the unit was not assigned may reach zero without the fit being refused. A
+continuous exposure has no saturating inverse link and is not checked.
+
+The propensity score model must also be fit without case weights, since the
+stacked propensity score equations are unweighted and a weighted fit would not
+sit at the score root; that requirement applies to \code{se_method = "mestimation"}
+alone, because the linearization path does not restack the propensity score
+model. It still corrects for the uncertainty of estimating the propensity
+scores; it does so through the influence functions rather than through a
+stacked score.
 }
 
 \examples{

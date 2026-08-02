@@ -10,21 +10,33 @@
 
 # Inverse link functions. Covers the propensity score links (logit, probit,
 # cloglog) and the outcome links (logit, identity, log) used when reconstructing
-# fitted values from a coefficient block.
+# fitted values from a coefficient block. These are the mathematical inverses,
+# not the family's clamped C routines, so a linear predictor extreme enough to
+# saturate one of them returns an exact 0 or 1 here where `linkinv` would not.
+#
+# The registry is a list rather than a `switch()` so that a caller can ask
+# whether a link is covered without triggering the error for one that is not.
+# The saturation guard on the linearization path needs exactly that.
+ipw_inv_links <- list(
+  logit = stats::plogis,
+  probit = stats::pnorm,
+  cloglog = function(x) 1 - exp(-exp(x)),
+  identity = function(x) x,
+  log = exp
+)
+
 ipw_inv_link <- function(link, call = rlang::caller_env()) {
-  switch(
-    link,
-    logit = stats::plogis,
-    probit = stats::pnorm,
-    cloglog = function(x) 1 - exp(-exp(x)),
-    identity = function(x) x,
-    log = exp,
+  inv_link <- ipw_inv_links[[link]]
+
+  if (is.null(inv_link)) {
     abort(
       "Unsupported link {.val {link}}.",
       error_class = "propensity_ipw_link_error",
       call = call
     )
-  )
+  }
+
+  inv_link
 }
 
 # ---- weight registry --------------------------------------------------------

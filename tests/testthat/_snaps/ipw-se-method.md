@@ -102,3 +102,14 @@
       x The weights record "control" as the focal level, but `ipw()` treats "treat" as focal: it takes the second sorted level of a binary exposure as the exposed group.
       i Relevel `zf` so that "control" sorts second, then refit both `wt_mod` and `outcome_mod`.
 
+# the linearization separation error names the count and the model
+
+    Code
+      ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+    Condition
+      Error in `ipw()`:
+      ! `wt_mod` must not separate the exposure.
+      x Putting the fitted linear predictors through the link's inverse gives a probability of exactly 0 or 1 for 389 observations, whose weights are then undefined.
+      i This is usually separation: some covariate pattern predicts the exposure without error, so the fit has no finite maximum likelihood estimate. An extreme covariate pattern can saturate the scores even where the estimate is finite.
+      i Check overlap in `wt_mod` rather than the weights. Dropping or combining the covariate that separates, or penalizing the fit, gives a model with finite coefficients.
+
