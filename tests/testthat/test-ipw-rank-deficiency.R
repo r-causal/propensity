@@ -402,7 +402,12 @@ test_that("the unsolved-equations warning reads in the user's terms", {
   skip_if_not_installed("deli")
   mods <- zero_event_fit()
 
-  expect_snapshot(ipw(mods$ps_mod, mods$out, se_method = "mestimation"))
+  # The collapsed standard errors and the statistics built from them are masked;
+  # see `mask_degenerate_magnitudes()`.
+  expect_snapshot(
+    ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
+    transform = mask_degenerate_magnitudes
+  )
 })
 
 # ---- a solve that produced no variance at all -------------------------------
@@ -710,7 +715,12 @@ test_that("the collapsed standard error report reads in the user's terms", {
   skip_if_not_installed("deli")
   mods <- constant_outcome_fit()
 
-  expect_snapshot(ipw(mods$ps_mod, mods$out, se_method = "mestimation"))
+  # The collapsed standard error and the statistics built from it are masked;
+  # see `mask_degenerate_magnitudes()`.
+  expect_snapshot(
+    ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
+    transform = mask_degenerate_magnitudes
+  )
 })
 
 # ---- a healthy fit of an outcome measured in small units --------------------

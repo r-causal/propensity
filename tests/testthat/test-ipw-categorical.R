@@ -608,6 +608,11 @@ test_that("ipw() categorical print output is stable", {
   mods <- fit_categorical_models(dat, "ate")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
+  # `print()` formats the table against the `digits` option. At the default the
+  # p-value column reaches seven significant digits, far enough into the fit's
+  # arithmetic that its last digit differs between platforms; four leaves the
+  # whole table well inside what every platform agrees on.
+  withr::local_options(digits = 4)
   expect_snapshot(print(res))
 })
 

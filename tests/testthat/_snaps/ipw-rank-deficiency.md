@@ -46,9 +46,9 @@
       
       Estimates:
                 estimate    std.err          z ci.lower ci.upper conf.level   p.value
-      rd      6.5625e-01 1.5156e-44 4.3301e+43  0.65625  0.65625       0.95 < 2.2e-16
-      log(rr) 1.9344e+01 6.1282e-36 3.1565e+36 19.34407 19.34407       0.95 < 2.2e-16
-      log(or) 2.0412e+01 6.1282e-36 3.3308e+36 20.41190 20.41190       0.95 < 2.2e-16
+      rd      6.5625e-01 <degenerate> <degenerate>  0.65625  0.65625       0.95 < 2.2e-16
+      log(rr) 1.9344e+01 <degenerate> <degenerate> 19.34407 19.34407       0.95 < 2.2e-16
+      log(or) 2.0412e+01 <degenerate> <degenerate> 20.41190 20.41190       0.95 < 2.2e-16
                  
       rd      ***
       log(rr) ***
@@ -111,7 +111,7 @@
       
       Estimates:
              estimate    std.err          z ci.lower ci.upper conf.level   p.value
-      diff 1.0000e+00 2.2253e-17 4.4937e+16        1        1       0.95 < 2.2e-16
+      diff 1.0000e+00 <degenerate> <degenerate>        1        1       0.95 < 2.2e-16
               
       diff ***
       ---

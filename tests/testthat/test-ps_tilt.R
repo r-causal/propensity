@@ -185,9 +185,15 @@ tilt_grid_continuous_models <- function(dat) {
   list(ps_mod = ps_mod, outcome_mod = outcome_mod)
 }
 
+# The pins below are recorded values, so the tolerance is set by what varies
+# between the platforms that record them and the platforms that read them: the
+# standard errors move in their eighth significant digit with the BLAS the
+# sandwich is solved through. A change to the tilt itself moves these numbers by
+# orders of magnitude more than that, so 1e-6 still catches what the pins exist
+# to catch.
 expect_ipw_pin <- function(result, pin) {
-  expect_equal(result$estimates$estimate, pin$estimate, tolerance = 1e-12)
-  expect_equal(result$estimates$std.err, pin$std.err, tolerance = 1e-12)
+  expect_equal(result$estimates$estimate, pin$estimate, tolerance = 1e-6)
+  expect_equal(result$estimates$std.err, pin$std.err, tolerance = 1e-6)
 }
 
 # ---- recorded ipw() estimates and standard errors ---------------------------
