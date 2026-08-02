@@ -171,6 +171,26 @@ test_that("ipw() accepts an exposure factored on levels the call fixes", {
   expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
 })
 
+test_that("an exposure factored on levels the call fixes still asks for .data", {
+  skip_if_not_installed("deli")
+  # The levels rebuild, so the levels check passes it on to the check that asks
+  # whether the variable is a column at all. The model frame holds the fitted
+  # `cut()` values and no `z` column to set, so without `.data` the term is
+  # reported as the term it is. It used to be reported as a missing column.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out_cut <- design_outcome(y ~ cut(z, c(-1, 0.5, 2)) + x1, dat, wts)
+
+  err <- expect_error(
+    ipw(ps_mod, out_cut),
+    class = "propensity_ipw_exposure_error"
+  )
+  msg <- design_msg(err)
+  expect_match(msg, "cut(z, c(-1, 0.5, 2))", fixed = TRUE)
+  expect_match(msg, ".data", fixed = TRUE)
+})
+
 test_that("ipw() accepts a factored covariate that is not the exposure", {
   skip_if_not_installed("deli")
   dat <- design_data()
@@ -1105,11 +1125,14 @@ test_that("the factored exposure term keeps its rejection without .data", {
 # written and then ignored for that column alone. The interaction is dropped
 # from the marginal means with nothing signaled, and the estimates move.
 #
-# A plain `*` or `:` interaction is a different construction: it is recorded as
-# an interaction of two model variables and rebuilt from the frame's own
-# columns, including the one being set, so it survives the counterfactual write
-# on both routes. Both are pinned here, since a guard keyed on "the term reads
-# the exposure" without the interaction exemption would reject working models.
+# A plain `*` or `:` interaction is a different construction: its model
+# variables are the two plain columns, and the product is formed at design time
+# from the column being set, so it survives the counterfactual write on both
+# routes. What separates the two is the model frame's variables rather than the
+# formula's term labels, so an exposure-reading call is caught wherever its
+# terms sit while a plain interaction of the same order is accepted. Both are
+# pinned here, since a guard keyed on the term label instead would either reject
+# working models or let the call through inside an interaction.
 
 test_that("ipw() rejects a call term mixing the exposure with a covariate without .data", {
   skip_if_not_installed("deli")
@@ -1186,6 +1209,84 @@ test_that("the exposure-mixing rejection reads in the user's terms", {
   out <- design_outcome(y ~ z + x1 + I(z * x1), dat, wts)
 
   expect_snapshot(error = TRUE, ipw(ps_mod, out))
+})
+
+test_that("ipw() rejects an exposure call inside an interaction without .data", {
+  skip_if_not_installed("deli")
+  # The term is `num:I(z * x1)`, an interaction, but the variable the frame
+  # holds is `I(z * x1)`, which is as frozen at its fitted values as it is when
+  # it stands alone. This ran silently and reported a risk difference the model
+  # as written does not give.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + num + I(z * x1):num, dat, wts)
+
+  err <- expect_error(
+    ipw(ps_mod, out),
+    class = "propensity_ipw_exposure_error"
+  )
+  msg <- design_msg(err)
+  expect_match(msg, "I(z * x1)", fixed = TRUE)
+  expect_match(msg, ".data", fixed = TRUE)
+})
+
+test_that("the interacted exposure call rebuilds from .data", {
+  skip_if_not_installed("deli")
+  # The route that recomputes the variable at each counterfactual value gives
+  # what the same interaction written over plain columns gives.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out_call <- design_outcome(y ~ z + num + I(z * x1):num, dat, wts)
+  out_plain <- design_outcome(y ~ z + num + z:x1:num, dat, wts)
+
+  res <- expect_no_warning(ipw(ps_mod, out_call, .data = dat))
+  ref <- ipw(ps_mod, out_plain, .data = dat)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+test_that("ipw() rejects an identity call on the exposure inside an interaction", {
+  skip_if_not_installed("deli")
+  # `I(z)` computes nothing at all, and the rejection is not of what the call
+  # computes but of the frame column no counterfactual write reaches.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1 + I(z):x1, dat, wts)
+
+  err <- expect_error(
+    ipw(ps_mod, out),
+    class = "propensity_ipw_exposure_error"
+  )
+  expect_match(design_msg(err), "I(z)", fixed = TRUE)
+})
+
+test_that("the identity call on the exposure matches the plain interaction with .data", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out_call <- design_outcome(y ~ z + x1 + I(z):x1, dat, wts)
+  out_star <- design_outcome(y ~ z * x1, dat, wts)
+
+  res <- expect_no_warning(ipw(ps_mod, out_call, .data = dat))
+  ref <- ipw(ps_mod, out_star, .data = dat)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+test_that("a call over other covariates inside an interaction is left alone", {
+  skip_if_not_installed("deli")
+  # The question is whether the variable reads the exposure, not whether it is a
+  # call, so a basis over another covariate is untouched at any order.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + poly(x1, 2):num, dat, wts)
+
+  with_data <- expect_no_warning(ipw(ps_mod, out, .data = dat))
+  without_data <- expect_no_warning(ipw(ps_mod, out))
+  expect_equal(with_data$estimates, without_data$estimates, tolerance = 1e-8)
 })
 
 # ---- a logical column where the fit recorded levels -------------------------
@@ -1306,6 +1407,95 @@ test_that("a logical column the models were fit on is still accepted", {
   res <- expect_no_warning(ipw(ps_mod, out, .data = dat))
   ref <- ipw(ps_mod, out)
   expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+# ---- a column the fit recorded as a logical ---------------------------------
+#
+# The mirror of the rejection above. A fit that recorded a logical column
+# recorded no levels for it either, so it took `FALSE` as the reference and the
+# rebuilt design has to arrive on that coding. A factor, an ordered factor, and
+# a character vector each bring a reference of their own: the widths agree, and
+# which level the fitted coefficient is paired with is decided by whatever the
+# column declares or sorts to. It is right by coincidence and wrong with nothing
+# signaled, so all three are rejected on the type.
+
+test_that("ipw() rejects an aligned factor where the models fit a logical", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + flag, dat, wts)
+
+  dat_fac <- dat
+  dat_fac$flag <- factor(dat$flag)
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_fac),
+    class = "propensity_ipw_data_error"
+  ))
+  msg <- design_msg(err)
+  expect_match(msg, "\\bflag\\b")
+  expect_match(msg, "logical", fixed = TRUE)
+  expect_match(msg, "factor", fixed = TRUE)
+})
+
+test_that("ipw() rejects a reversed factor where the models fit a logical", {
+  skip_if_not_installed("deli")
+  # The measured harm: this completed and reported estimates that differ from
+  # the ones the logical column gives.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + flag, dat, wts)
+
+  dat_rev <- dat
+  dat_rev$flag <- factor(dat$flag, levels = c("TRUE", "FALSE"))
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_rev),
+    class = "propensity_ipw_data_error"
+  ))
+  expect_match(design_msg(err), "\\bflag\\b")
+})
+
+test_that("ipw() rejects a character column where the models fit a logical", {
+  skip_if_not_installed("deli")
+  # `"FALSE"` sorts before `"TRUE"`, so this one reproduces the fitted design.
+  # It is accepted only for as long as the values keep sorting that way, which
+  # is nothing the column promises.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + flag, dat, wts)
+
+  dat_chr <- dat
+  dat_chr$flag <- as.character(dat$flag)
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_chr),
+    class = "propensity_ipw_data_error"
+  ))
+  msg <- design_msg(err)
+  expect_match(msg, "\\bflag\\b")
+  expect_match(msg, "character vector", fixed = TRUE)
+  expect_match(msg, "logical", fixed = TRUE)
+})
+
+test_that("ipw() rejects a factor where the propensity model fit a logical", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1 + flag, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z, dat, wts)
+
+  dat_fac <- dat
+  dat_fac$flag <- factor(dat$flag)
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_fac),
+    class = "propensity_ipw_data_error"
+  ))
+  expect_match(design_msg(err), "wt_mod", fixed = TRUE)
 })
 
 # ---- a response column with no levels ---------------------------------------

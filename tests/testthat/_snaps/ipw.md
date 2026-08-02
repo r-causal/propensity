@@ -115,11 +115,13 @@
 
     Code
       expr
-    Condition <propensity_columns_exist_error>
+    Condition <propensity_ipw_exposure_error>
       Error in `ipw()`:
-      ! "z" not found in `model.frame(outcome_mod)`.
-      i The outcome model may have transformations in the formula.
-      i Please specify `.data`
+      ! `outcome_mod` must read the exposure from a column `ipw()` can set to counterfactual values.
+      x `outcome_mod` reads "z" through the term `I(z^2)`.
+      x Without `.data` the designs come from `outcome_mod`'s own model frame, which holds `I(z^2)` at the values it was fit on, so the counterfactual value `ipw()` sets never reaches it and the term contributes its fitted values to every level's design.
+      i Supply `.data`, which recomputes `I(z^2)` at each value `ipw()` sets, or refit `outcome_mod` on the plain "z" column.
+      i An interaction written with `*` or `:` is formed from the frame's own columns and is rebuilt on either route, so it needs no `.data`.
 
 # the cannot-determine-estimand error is attributed to ipw()
 

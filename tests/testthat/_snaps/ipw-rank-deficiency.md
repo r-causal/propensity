@@ -1,0 +1,91 @@
+# the rank-deficient design errors read in the user's terms
+
+    Code
+      ipw(ps_mod, out, se_method = "mestimation")
+    Condition
+      Error in `ipw()`:
+      ! `outcome_mod` must have a coefficient for every column of its design.
+      x `outcome_mod` has no fitted coefficient for "x1_copy".
+      i A model reports that for a column its design cannot separate from the others: the column is a linear combination of them, exactly or to within the tolerance the fit pivots at, so the fit has no unique solution for it and drops it.
+      i `ipw()` estimates the marginal means by multiplying the fitted coefficients against that design, so a column with no coefficient leaves every predicted outcome undefined.
+      i Refit `outcome_mod` without the redundant column, or combine it with the column it duplicates.
+
+# the propensity rank error reads in the user's terms
+
+    Code
+      ipw(ps_mod, out, se_method = "mestimation")
+    Condition
+      Error in `ipw()`:
+      ! `wt_mod` must have a coefficient for every column of its design.
+      x `wt_mod` has no fitted coefficient for "x1_copy".
+      i A model reports that for a column its design cannot separate from the others: the column is a linear combination of them, exactly or to within the tolerance the fit pivots at, so the fit has no unique solution for it and drops it.
+      i `ipw()` rebuilds the propensity scores by multiplying the fitted coefficients against that design, so a column with no coefficient leaves every score undefined.
+      i Refit `wt_mod` without the redundant column, or combine it with the column it duplicates.
+
+# the unsolved-equations warning reads in the user's terms
+
+    Code
+      ipw(mods$ps_mod, mods$out, se_method = "mestimation")
+    Condition
+      Warning in `ipw()`:
+      The estimating equations behind these estimates have no unique root at the values the solver returned.
+      x The standard errors reported for "rd", "log(rr)", and "log(or)" are not meaningful: they collapsed to essentially zero, which makes the test statistics and the intervals built from them meaningless too.
+      i At least one direction in the parameter space leaves the equations unchanged, so the sandwich variance along it is not identified.
+      i An exposure level in which every outcome is an event, or none is, is one cause: the outcome model has no finite fit within it. Check the outcome within each level of the exposure, and both designs for columns that duplicate one another.
+      i The estimates are reported as the solver returned them.
+    Output
+      Inverse Probability Weight Estimator
+      Estimand: ATE 
+      
+      Weight Estimator:
+        Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
+      
+      Outcome Model:
+        Call: glm(formula = y0 ~ z + x1, family = quasibinomial(), data = dat, 
+          weights = wts) 
+      
+      Estimates:
+                estimate    std.err          z ci.lower ci.upper conf.level   p.value
+      rd      6.5625e-01 1.5156e-44 4.3301e+43  0.65625  0.65625       0.95 < 2.2e-16
+      log(rr) 1.9344e+01 6.1282e-36 3.1565e+36 19.34407 19.34407       0.95 < 2.2e-16
+      log(or) 2.0412e+01 6.1282e-36 3.3308e+36 20.41190 20.41190       0.95 < 2.2e-16
+                 
+      rd      ***
+      log(rr) ***
+      log(or) ***
+      ---
+      Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+# the no-variance error reads in the user's terms
+
+    Code
+      ipw(mods$ps_mod, mods$out, se_method = "mestimation")
+    Condition
+      Warning:
+      The "log(rr)" effect for "c vs a" is undefined at the marginal means the solver reached.
+      i "log(rr)" needs a positive marginal mean on each side of the comparison, and at least one side is outside that range.
+      i An exposure level whose fitted outcomes are all events, or all non-events, drives its marginal mean to the boundary. Check the outcome within each level of the exposure.
+      i Estimates and standard errors from this fit are not reliable.
+      Warning:
+      The "log(or)" effect for "c vs a" is undefined at the marginal means the solver reached.
+      i "log(or)" needs a marginal mean strictly between 0 and 1 on each side of the comparison, and at least one side is outside that range.
+      i An exposure level whose fitted outcomes are all events, or all non-events, drives its marginal mean to the boundary. Check the outcome within each level of the exposure.
+      i Estimates and standard errors from this fit are not reliable.
+      Error in `ipw()`:
+      ! Can't compute a variance for this fit.
+      x The outcome does not vary within the c level, which holds no events.
+      i The outcome model has no finite fit within an arm whose outcome never varies, so the stacked estimating equations have no finite derivative at the values the solver returned and there is no variance to build from them.
+      i Drop that arm and estimate the effect among the ones that are left, or model an outcome that varies within every arm.
+      i `ipw()` reports estimates with inference or not at all, so no estimates are returned.
+
+# the undiagnosable no-variance error reads in the user's terms
+
+    Code
+      ipw(mods$ps_mod, mods$out, se_method = "mestimation")
+    Condition
+      Error in `ipw()`:
+      ! Can't compute a variance for this fit.
+      i The stacked estimating equations have no finite derivative at the values the solver returned, so there is no variance to build from them.
+      i Check the outcome within each level of the exposure, and both designs for columns that all but duplicate one another: a column the fit kept a coefficient for can still leave the equations flat enough here that their derivatives are not finite.
+      i `ipw()` reports estimates with inference or not at all, so no estimates are returned.
+

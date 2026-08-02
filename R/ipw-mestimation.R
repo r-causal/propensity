@@ -403,6 +403,12 @@ ipw_extract_ps_design <- function(
   check_exposure_levels = FALSE,
   call = rlang::caller_env()
 ) {
+  # First, and independent of `.data`: the propensity model has to have a
+  # coefficient for every column of the design that follows. Both routes below
+  # produce the full design, and everything downstream multiplies the two
+  # positionally.
+  check_ipw_model_rank(stats::coef(ps_mod), "wt_mod", call = call)
+
   if (is.null(.data)) {
     ps_extract <- tryCatch(
       list(
@@ -451,28 +457,18 @@ ipw_extract_ps_design <- function(
         rebuilt = FALSE,
         call = call
       )
+      # Runs second so a term the fit recorded levels for keeps the more
+      # specific report above, which names the levels it was fit with.
+      check_ipw_exposure_call_terms(outcome_mod, exposure_name, call = call)
     }
     check_exposure(mm_data, exposure_name, call = call)
   } else {
-    # Both models' covariates are needed, not just the exposure and the outcome:
-    # the designs below are rebuilt from `.data`, and a covariate missing from it
-    # otherwise surfaces as a raw object-not-found from `model.matrix` rather
-    # than as the missing column it is.
-    #
-    # The outcome model's response contributes the variables it reads rather than
-    # the deparsed expression: a transformed response such as `log(y)` is
-    # computed from a column named `y`, and asking for one named `log` reports a
-    # column that could not exist under any correct `.data`.
-    assert_columns_exist(
-      .data,
-      unique(c(
-        exposure_name,
-        fmla_extract_left_vars(outcome_mod),
-        ipw_model_covariates(ps_mod),
-        ipw_model_covariates(outcome_mod)
-      )),
-      call = call
-    )
+    # Every column the rebuilds read has to be there before any of them runs: a
+    # covariate missing from `.data` otherwise surfaces as a raw
+    # object-not-found from `model.matrix` rather than as the missing column it
+    # is.
+    required <- ipw_required_columns(ps_mod, outcome_mod, exposure_name)
+    assert_columns_exist(.data, required, call = call)
 
     # Everything downstream is sized to `.data` while the weights come from the
     # outcome model fit, so a row count that disagrees leaves the two to be
@@ -541,6 +537,15 @@ ipw_extract_ps_design <- function(
       call = call
     )
     mm_data <- .data
+
+    # Last of the `.data` guards, and immediately before the first rebuild:
+    # every design below is built with `model.frame()`, which drops a row
+    # holding a missing value in any column it reads, while the weights, the
+    # exposure, and the outcome values keep every row of `.data`. Each guard
+    # above diagnoses one column on its own terms and is unaffected by missing
+    # values in it, so they keep their place and this one covers what is left.
+    check_ipw_data_complete(.data, required, call = call)
+
     ps_X <- ipw_rebuild_design(
       ps_mod,
       stats::delete.response(stats::terms(ps_mod)),
@@ -567,6 +572,147 @@ ipw_ps_terms_per_equation <- function(ps_mod) {
 # be told which columns it needs before it goes looking for them.
 ipw_model_covariates <- function(mod) {
   all.vars(stats::delete.response(stats::terms(mod)))
+}
+
+# The columns of `.data` the rebuilds read. Both models' covariates are needed,
+# not just the exposure and the outcome: the designs are rebuilt from `.data`,
+# and a covariate missing from it otherwise surfaces as a raw object-not-found
+# from `model.matrix` rather than as the missing column it is.
+#
+# The outcome model's response contributes the variables it reads rather than
+# the deparsed expression: a transformed response such as `log(y)` is computed
+# from a column named `y`, and asking for one named `log` would report a column
+# that could not exist under any correct `.data`.
+ipw_required_columns <- function(ps_mod, outcome_mod, exposure_name) {
+  unique(c(
+    exposure_name,
+    fmla_extract_left_vars(outcome_mod),
+    ipw_model_covariates(ps_mod),
+    ipw_model_covariates(outcome_mod)
+  ))
+}
+
+# Reject a `.data` that is missing values in a column the rebuilds read. Every
+# design is rebuilt with `model.frame()`, which drops a row holding a missing
+# value in any column it reads, while the weights come from the outcome model
+# fit and the exposure and outcome values are read from `.data` itself, each
+# keeping every row. The design and the vectors it multiplies then differ in
+# length and are recycled against each other: base R warned twice that one
+# object was not a multiple of the other, and the mismatch surfaced as weights
+# that failed their consistency check, which reports how the weights were built
+# when what was wrong was the frame that was passed.
+#
+# Only the columns the rebuilds read are swept. A column `.data` happens to
+# carry and neither model consults is never in a model frame and cannot drop a
+# row.
+#
+# A model fit on data with missing values dropped those rows itself, so its
+# frame is shorter than the frame it was fit from and the row-count check above
+# reports that first. This guard is for the `.data` that has the right number of
+# rows and holes in it.
+check_ipw_data_complete <- function(
+  .data,
+  columns,
+  call = rlang::caller_env()
+) {
+  present <- intersect(columns, names(.data))
+  missing_by_column <- vapply(
+    present,
+    function(nm) sum(is.na(.data[[nm]])),
+    integer(1)
+  )
+  incomplete <- missing_by_column[missing_by_column > 0]
+
+  if (length(incomplete) == 0) {
+    return(invisible(TRUE))
+  }
+
+  cols <- names(incomplete)
+  n_rows <- sum(Reduce(`|`, lapply(.data[cols], is.na)))
+
+  abort(
+    c(
+      "{.arg .data} must have no missing values in the columns the models \\
+      read.",
+      x = "{.val {cols}} {?has/have} missing values in {.arg .data}.",
+      x = "{n_rows} row{?s} of {.arg .data} {?is/are} incomplete, and the \\
+      rebuilds drop {?it/them}.",
+      i = "Every design {.fun ipw} rebuilds from {.arg .data} drops a row that \\
+      is missing a value, while the weights, the exposure, and the outcome \\
+      values keep every row, so the two are then recycled against each other.",
+      i = "Supply the data the models were fit to, or drop the incomplete rows \\
+      and refit both models on what is left."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# Reject a model whose design has columns it could not separate. `lm` and `glm`
+# pivot such a column out of the fit and record `NA` for its coefficient, while
+# `model.matrix()` keeps returning the column, so the coefficient vector and the
+# design disagree in a way only the `NA` shows.
+#
+# The `NA` is what reaches `ipw()`, and it is the whole signal: nothing here
+# measures the design's rank or its conditioning, because a fit that kept a
+# coefficient for every column carries no `NA` however badly conditioned it is,
+# and one that dropped a column carries one however the dependence arose. An
+# exact duplicate and a copy perturbed below the pivot tolerance are both
+# dropped, so both are caught.
+#
+# Untreated, the `NA` propagated differently per model and per path, and none of
+# the reports named a model or a column. From the propensity model it reached
+# the rebuilt propensity scores, and from there the count of saturated scores
+# and an `if`, which stopped with "missing value where TRUE/FALSE needed"; on
+# the linearization path it reached a solve, which reported an exactly singular
+# system from LAPACK; for a continuous exposure it reached the recomputed
+# weights, which disagreed with the supplied ones and were reported as a
+# disagreement about the estimand. From the outcome model it reached the seeded
+# starting values, and the M-estimator reported that `stacked_equations`
+# returned non-finite values at `init`.
+#
+# `nnet::multinom` optimizes rather than pivots, so it returns finite
+# coefficients for a dependent column and is passed here. Its design and its
+# coefficient matrix still agree, which is what this guard is about.
+#
+# The coefficients are taken rather than the model, because the outcome model's
+# are already read into the spec by the time this runs on that side.
+check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
+  if (is.matrix(coefs)) {
+    dropped <- colnames(coefs)[apply(!is.finite(coefs), 2, any)]
+  } else {
+    dropped <- names(coefs)[!is.finite(coefs)]
+  }
+
+  if (length(dropped) == 0) {
+    return(invisible(TRUE))
+  }
+
+  consequence <- if (identical(arg, "wt_mod")) {
+    "{.fun ipw} rebuilds the propensity scores by multiplying the fitted \\
+    coefficients against that design, so a column with no coefficient leaves \\
+    every score undefined."
+  } else {
+    "{.fun ipw} estimates the marginal means by multiplying the fitted \\
+    coefficients against that design, so a column with no coefficient leaves \\
+    every predicted outcome undefined."
+  }
+
+  abort(
+    c(
+      "{.arg {arg}} must have a coefficient for every column of its design.",
+      x = "{.arg {arg}} has no fitted coefficient for {.val {dropped}}.",
+      i = "A model reports that for a column its design cannot separate from \\
+      the others: the column is a linear combination of them, exactly or to \\
+      within the tolerance the fit pivots at, so the fit has no unique \\
+      solution for it and drops it.",
+      i = consequence,
+      i = "Refit {.arg {arg}} without the redundant column{?s}, or combine \\
+      {?it/them} with the column{?s} {?it duplicates/they duplicate}."
+    ),
+    error_class = "propensity_ipw_rank_error",
+    call = call
+  )
 }
 
 # Require the design rebuilt from `.data` to be as wide as the one the propensity
@@ -662,7 +808,7 @@ check_ipw_data_types <- function(
       ) ||
         !supplied %in% c("factor", "ordered", "numeric", "logical")
     } else {
-      !identical(ipw_design_coding(fit_class), ipw_design_coding(supplied))
+      !ipw_types_interchangeable(fit_class, supplied)
     }
 
     if (mismatch) {
@@ -694,6 +840,50 @@ ipw_fitted_classes <- function(ps_mod, outcome_mod) {
   classes <- classes[!duplicated(names(classes))]
 
   classes[classes %in% names(ipw_class_nouns)]
+}
+
+# Whether a `.data` column of class `supplied` rebuilds the design the fit
+# recorded under `fit_class`.
+#
+# A fit that recorded levels for a column rebuilds it by re-leveling the values
+# it is handed against the levels it recorded, so what a supplied column has to
+# carry is values that name those levels. A factor, an ordered factor, and a
+# character vector all do, and are interchangeable.
+#
+# A logical column does not, and it is rejected however its values line up. It
+# has no levels to re-level, so `model.matrix()` codes it on its own terms,
+# `FALSE` first, and the design lands on whichever mapping that gives. Against a
+# two-level fitted factor the widths agree and nothing further notices: an
+# aligned logical reproduces the fitted design by coincidence, while one whose
+# `TRUE` marks the fit's first level silently swaps the two levels'
+# coefficients and moves the estimates. The rejection is keyed on the type
+# rather than on the values, because a logical column carries nothing that says
+# which level its `TRUE` was meant to name.
+#
+# The same rejection runs the other way. A fit that recorded a logical column
+# recorded no levels either, so it took `FALSE` as its reference and the design
+# rebuilt from `.data` has to arrive on that same coding. A factor, an ordered
+# factor, and a character vector all bring their own reference: the widths
+# agree, and the design lands on whichever level sorts or declares first, which
+# is the fitted coding only by coincidence. A factor declaring `TRUE` before
+# `FALSE` reproduces the fitted design reversed and moves the estimates with
+# nothing signaled, and a character column matches only when its values happen
+# to sort the way `FALSE` and `TRUE` do.
+#
+# Everything else is compared by the coding its class implies, which is what
+# decides how many design columns it takes.
+ipw_types_interchangeable <- function(fit_class, supplied) {
+  leveled <- c("factor", "ordered", "character")
+
+  if (fit_class %in% leveled) {
+    return(supplied %in% leveled)
+  }
+
+  if (identical(fit_class, "logical")) {
+    return(identical(supplied, "logical"))
+  }
+
+  identical(ipw_design_coding(fit_class), ipw_design_coding(supplied))
 }
 
 # The design coding a class implies: one column, or one column per non-reference
@@ -823,8 +1013,10 @@ drop_contrasts_attrs <- function(data, cols) {
 # own vocabulary: a value the fit never saw stops it with a message naming
 # neither `.data` nor `ipw()`, and a column that is neither a factor nor a
 # character vector makes it warn that a variable is not a factor, when what is
-# wrong there is the column's type, which the type check and the design widths
-# already report on their own terms.
+# wrong there is the column's type. A column the fit recorded levels for reaches
+# this as a factor, an ordered factor, or a character vector, because
+# check_ipw_data_types() rejects every other type for such a column and names
+# both types when it does.
 ipw_rebuild_design <- function(
   mod,
   mod_terms,
@@ -949,6 +1141,25 @@ check_ipw_response_levels <- function(
   }
 
   supplied <- levels(outcome)
+
+  # A factor that declares no levels holds nothing but missing values, so it has
+  # no first level to compare and codes no observation at all. Left to the
+  # comparison below it stopped as a subscript out of bounds.
+  if (length(supplied) == 0) {
+    abort(
+      c(
+        "{.arg .data} must supply the outcome {.val {response_name}} on the \\
+        levels {.arg outcome_mod} was fit with.",
+        x = "{.arg .data} has {.val {response_name}} as a factor that declares \\
+        no levels, so every observation's outcome is missing.",
+        i = "{.arg outcome_mod} was fit with {.val {fit_levels}}.",
+        i = "Supply {.val {response_name}} as a factor on those levels, or \\
+        supply the data the models were fit to."
+      ),
+      error_class = "propensity_ipw_data_error",
+      call = call
+    )
+  }
 
   if (identical(supplied[[1L]], fit_levels[[1L]])) {
     return(invisible(TRUE))
@@ -1668,6 +1879,14 @@ ipw_mestimation <- function(
   conf_level = 0.95,
   call = rlang::caller_env()
 ) {
+  # The outcome model's turn at the rank guard the propensity model gets during
+  # design extraction. It runs here rather than in the spec constructors so it
+  # follows the checks those constructors make on the counterfactual designs
+  # themselves: a term that is constant across the exposure levels leaves the
+  # designs identical *and* leaves the fit without a coefficient for it, and
+  # naming the identical designs is the more specific diagnosis of the two.
+  check_ipw_model_rank(spec$outcome$coefs, "outcome_mod", call = call)
+
   layout <- ipw_theta_layout(spec, call = call)
   psi <- build_ipw_psi(spec, layout, call = call)
 
@@ -1676,17 +1895,240 @@ ipw_mestimation <- function(
   }
 
   m <- deli::MEstimator(stacked_equations = psi, init = layout$init)
-  m <- deli::estimate(m)
+  solved <- ipw_solve(m)
+
+  # Before the estimates are read, because reading them is where a fit with no
+  # variance dies: the standard errors come from the variance the solve did not
+  # build.
+  if (solved$no_variance) {
+    abort_ipw_no_variance(spec, call = call)
+  }
 
   estimates <- ipw_mestimation_estimates(
     spec,
-    m,
+    solved$fit,
     layout,
     conf_level,
     call = call
   )
 
-  list(estimates = estimates, fit = m)
+  if (solved$unsolved) {
+    warn_ipw_unsolved(estimates, call = call)
+  }
+
+  list(estimates = estimates, fit = solved$fit)
+}
+
+# Run the solve, holding back the two reports deli makes about it in its own
+# vocabulary. The first is that it could not pin the solution down, signaled as
+# a `deli_solver_not_converged` warning whose text talks about
+# `stacked_equations`, redundant parameters, and rank deficiency in the
+# estimating equations, none of which the user wrote. The second is that the
+# matrix of derivatives it differentiates those equations into came back holding
+# values that are not finite, signaled as a `deli_bread_na` warning about a
+# bread matrix that cannot be inverted. Both are muffled here and re-raised in
+# `ipw()`'s terms: the first once the estimates exist, which is what it takes to
+# say which of them the report applies to, and the second immediately, since a
+# fit with no variance has no inference to report and the estimates are never
+# built. This follows the treatment `ipw_contrast_reporter()` already gives base
+# R's unclassed "NaNs produced" from the contrast transforms: the foreign
+# condition is replaced rather than chained, so the user reads one message in
+# one vocabulary.
+#
+# Each flag records only that the condition was raised. Neither carries data
+# beyond its message, so nothing more can be read off them.
+#
+# A `deli_bread_na` and a variance that was not built are the same event: deli
+# raises the warning exactly where it abandons the sandwich, so the flag stands
+# in for the missing variance and nothing here reaches into the fit to ask.
+ipw_solve <- function(m) {
+  unsolved <- FALSE
+  no_variance <- FALSE
+
+  fit <- withCallingHandlers(
+    deli::estimate(m),
+    deli_solver_not_converged = function(cnd) {
+      unsolved <<- TRUE
+      rlang::cnd_muffle(cnd)
+    },
+    deli_bread_na = function(cnd) {
+      no_variance <<- TRUE
+      rlang::cnd_muffle(cnd)
+    }
+  )
+
+  list(fit = fit, unsolved = unsolved, no_variance = no_variance)
+}
+
+# A standard error the solve did not really produce. When the estimating
+# equations have no unique root, the sandwich variance along the unidentified
+# direction collapses instead of growing: the zero-events fixture reports a risk
+# difference of 0.66 with a standard error of 1.5e-44, a z of 4.3e+43, a p-value
+# of zero, and an interval of no width. The threshold is the square root of
+# machine epsilon against the estimate's own scale, which those rows clear by
+# thirty orders of magnitude while a healthy fit's standard errors sit within an
+# order of magnitude or two of the estimates they accompany.
+ipw_degenerate_se <- function(estimate, std.err) {
+  scale <- pmax(1, abs(estimate))
+
+  !is.na(std.err) & std.err <= sqrt(.Machine$double.eps) * scale
+}
+
+# Report a solve the equations do not pin down, naming the rows whose standard
+# errors came back degenerate. The estimates stay in the output: they are the
+# values the solver returned and remain the g-computation point estimates, and
+# it is the inference around them that is empty.
+#
+# The row labels come from the estimates table rather than from the spec, so a
+# categorical exposure names the effect and the comparison together and the
+# other exposure types name the effect alone.
+warn_ipw_unsolved <- function(estimates, call = rlang::caller_env()) {
+  degenerate <- ipw_degenerate_se(estimates$estimate, estimates$std.err)
+
+  labels <- if (is.null(estimates$comparison)) {
+    estimates$effect
+  } else {
+    paste(estimates$effect, "for", estimates$comparison)
+  }
+  affected <- labels[degenerate]
+
+  degenerate_bullet <- if (length(affected) > 0) {
+    c(
+      x = "The standard error{?s} reported for {.val {affected}} {?is/are} not \\
+      meaningful: {?it collapsed/they collapsed} to essentially zero, which \\
+      makes the test statistic{?s} and the interval{?s} built from {?it/them} \\
+      meaningless too."
+    )
+  } else {
+    NULL
+  }
+
+  warn(
+    c(
+      "The estimating equations behind these estimates have no unique root at \\
+      the values the solver returned.",
+      degenerate_bullet,
+      i = "At least one direction in the parameter space leaves the equations \\
+      unchanged, so the sandwich variance along it is not identified.",
+      i = "An exposure level in which every outcome is an event, or none is, \\
+      is one cause: the outcome model has no finite fit within it. Check the \\
+      outcome within each level of the exposure, and both designs for columns \\
+      that duplicate one another.",
+      i = "The estimates are reported as the solver returned them."
+    ),
+    warning_class = "propensity_ipw_solver_warning",
+    call = call
+  )
+}
+
+# The exposure arms the outcome can be looked at within, as a named list of the
+# outcome values in each. A binary exposure has the two the contrasts compare, a
+# categorical exposure has one per level, and a continuous exposure has none:
+# its dose is not a grouping, so there is nothing to look within and this
+# derives nothing.
+ipw_exposure_arms <- function(spec) {
+  y <- spec$outcome$y
+
+  switch(
+    spec$exposure_type,
+    binary = list(
+      "the unexposed group" = y[spec$exposure == 0],
+      "the exposed group" = y[spec$exposure == 1]
+    ),
+    categorical = stats::setNames(
+      lapply(
+        seq_len(ncol(spec$exposure)),
+        function(i) y[spec$exposure[, i] == 1]
+      ),
+      paste("the", colnames(spec$exposure), "level")
+    ),
+    NULL
+  )
+}
+
+# How the outcome is degenerate within an arm, phrased for the coding it is
+# read under. A binomial outcome is an indicator, so a constant one is every
+# observation an event or none, and any other outcome is described by the single
+# value it takes. An arm with no observations in it is degenerate for the same
+# reason and is described as the empty arm it is.
+ipw_degenerate_arm_label <- function(values, family) {
+  if (length(values) == 0) {
+    return("holds no observations")
+  }
+
+  value <- values[[1]]
+
+  if (identical(family, "binomial") && value %in% c(0, 1)) {
+    if (value == 0) {
+      return("holds no events")
+    }
+
+    return("holds nothing but events")
+  }
+
+  paste0("holds the single outcome value ", format(value))
+}
+
+# Report a fit whose variance could not be built, in the terms of the fit the
+# user handed over rather than of the matrix deli could not invert. Two things
+# arrive here. One is an outcome that never varies within an exposure arm, which
+# leaves the outcome model with no finite fit inside that arm and the equations
+# without a finite derivative at the solution; the fit carries that structure
+# and it is read off and named. The other is a design the fits kept every
+# coefficient for but that all but repeats itself, whose derivatives are not
+# finite at the solution without any arm being degenerate; nothing in the fit
+# names that, so the report says what is true of both and where to look.
+#
+# Only the first degenerate arm is named: the fix is to drop it or to remodel
+# the outcome, after which the fit runs again and finds the next.
+#
+# This is an error rather than a warning because there is nothing to return: the
+# standard errors, the intervals, and the p-values all come from the variance,
+# and `ipw()` reports estimates with inference or not at all.
+abort_ipw_no_variance <- function(spec, call = rlang::caller_env()) {
+  arms <- ipw_exposure_arms(spec)
+  degenerate <- vapply(
+    arms,
+    function(values) length(unique(values)) <= 1,
+    logical(1)
+  )
+
+  if (any(degenerate)) {
+    arm <- names(arms)[degenerate][[1]]
+    described <- ipw_degenerate_arm_label(
+      arms[degenerate][[1]],
+      spec$outcome$family
+    )
+    diagnosis <- c(
+      x = "The outcome does not vary within {arm}, which {described}.",
+      i = "The outcome model has no finite fit within an arm whose outcome \\
+      never varies, so the stacked estimating equations have no finite \\
+      derivative at the values the solver returned and there is no variance to \\
+      build from them.",
+      i = "Drop that arm and estimate the effect among the ones that are left, \\
+      or model an outcome that varies within every arm."
+    )
+  } else {
+    diagnosis <- c(
+      i = "The stacked estimating equations have no finite derivative at the \\
+      values the solver returned, so there is no variance to build from them.",
+      i = "Check the outcome within each level of the exposure, and both \\
+      designs for columns that all but duplicate one another: a column the fit \\
+      kept a coefficient for can still leave the equations flat enough here \\
+      that their derivatives are not finite."
+    )
+  }
+
+  abort(
+    c(
+      "Can't compute a variance for this fit.",
+      diagnosis,
+      i = "{.fun ipw} reports estimates with inference or not at all, so no \\
+      estimates are returned."
+    ),
+    error_class = "propensity_ipw_variance_error",
+    call = call
+  )
 }
 
 # Build the estimates table from the solved contrast rows of theta, mirroring

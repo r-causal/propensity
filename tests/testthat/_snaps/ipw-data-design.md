@@ -53,3 +53,38 @@
       x `ipw()` codes a factor outcome as an indicator for its non-first levels, following `glm()`, so the two orders describe opposite outcomes and every estimate reverses.
       i Re-level "yf" so "no" comes first, or supply the data the models were fit to.
 
+# the exposure-mixing rejection reads in the user's terms
+
+    Code
+      ipw(ps_mod, out)
+    Condition
+      Error in `ipw()`:
+      ! `outcome_mod` must read the exposure from a column `ipw()` can set to counterfactual values.
+      x `outcome_mod` reads "z" through the term `I(z * x1)`.
+      x Without `.data` the designs come from `outcome_mod`'s own model frame, which holds `I(z * x1)` at the values it was fit on, so the counterfactual value `ipw()` sets never reaches it and the term contributes its fitted values to every level's design.
+      i Supply `.data`, which recomputes `I(z * x1)` at each value `ipw()` sets, or refit `outcome_mod` on the plain "z" column.
+      i An interaction written with `*` or `:` is formed from the frame's own columns and is rebuilt on either route, so it needs no `.data`.
+
+# the logical-for-factor error names the column and both types
+
+    Code
+      ipw(ps_mod, out, .data = dat_lgl)
+    Condition
+      Error in `ipw()`:
+      ! `.data` must supply "grp" as the factor the models were fit with.
+      x `.data` has "grp" as a logical vector.
+      x `outcome_mod` recorded "grp" as a factor with the levels "low" and "high", and the designs rebuilt from `.data` use that coding.
+      i Supply "grp" as that factor, or refit the models on the logical vector.
+
+# the missing-value report names the columns and their counts
+
+    Code
+      ipw(ps_mod, out, .data = dat_na)
+    Condition
+      Error in `ipw()`:
+      ! `.data` must have no missing values in the columns the models read.
+      x "x1" and "num" have missing values in `.data`.
+      x 4 rows of `.data` are incomplete, and the rebuilds drop them.
+      i Every design `ipw()` rebuilds from `.data` drops a row that is missing a value, while the weights, the exposure, and the outcome values keep every row, so the two are then recycled against each other.
+      i Supply the data the models were fit to, or drop the incomplete rows and refit both models on what is left.
+

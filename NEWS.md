@@ -1,5 +1,122 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now rejects a propensity score model or an outcome model whose design
+  has columns the fit could not tell apart, with an error of class
+  `propensity_ipw_rank_error` naming the model and the columns it has no
+  coefficient for. `lm()` and `glm()` drop such a column from the fit and record
+  `NA` for its coefficient rather than failing, while the design keeps the
+  column, and `ipw()` multiplies the two together position by position. The `NA`
+  then propagated: from the propensity score model it reached the rebuilt
+  propensity scores and stopped the call with base R's "missing value where
+  TRUE/FALSE needed" under `se_method = "mestimation"` and with an exactly
+  singular system from LAPACK under `se_method = "linearization"`, and for a
+  continuous exposure it was reported as a disagreement about the estimand the
+  weights were built for. From the outcome model it reached the M-estimator's
+  starting values, which reported that `stacked_equations` returned non-finite
+  values at `init`. A column duplicated exactly and a column duplicated to
+  within the tolerance the fit pivots at are both dropped by the fit and both
+  reported here; a merely correlated column that the fit kept a coefficient for
+  is untouched. The `NA` is the whole signal, so the rejection covers the models
+  that record one, which are those fit with `lm()` and `glm()`. A categorical
+  propensity score model fit with `nnet::multinom()` optimizes rather than
+  pivots and returns finite coefficients for a dependent column, so its design
+  and its coefficient matrix still agree and it is not rejected; a duplicated
+  column there surfaces through the solver warning below, which asks you to
+  check both designs for columns that duplicate one another.
+
+* `ipw()` now warns, with a warning of class `propensity_ipw_solver_warning`,
+  when the estimating equations behind the estimates have no unique root at the
+  values the solver returned, naming the effects whose standard errors came back
+  degenerate and saying that those standard errors are not meaningful. A
+  binomial outcome with no events in one exposure arm, for instance, reported a
+  log odds ratio of 20.4 with a standard error of 6e-36, a p-value of zero, and
+  an interval of no width, and the only signal was a warning from the solver
+  about rank deficiency in the estimating equations, in vocabulary from neither
+  `ipw()` nor the models you fit. That warning is now replaced by this one. The
+  estimates themselves are unchanged and stay in the output: they are the
+  g-computation point estimates, and it is the inference around them that is
+  empty.
+
+* `ipw()` now reports a fit whose variance could not be built at all, with an
+  error of class `propensity_ipw_variance_error`. When the derivatives of the
+  stacked estimating equations come back non-finite there is nothing to invert,
+  and this was said twice in vocabulary from neither `ipw()` nor the models you
+  fit: a warning that a bread matrix contained `NA` values, raised as the
+  variance was abandoned, and then, as the standard errors were read, an error
+  that the fit had no variance to compute inference from, which discarded the
+  estimates on the way past. Both are now replaced by one report, once per fit.
+  Where the fit carries a structure that explains it, the report names it: an
+  exposure arm or level in which the outcome never varies, which leaves the
+  outcome model with no finite fit inside it, is named along with what the
+  outcome does there. A binomial outcome that is an event for every exposed
+  observation, and a categorical exposure with no events in one level, are both
+  reported this way. Where no arm is degenerate, as for a design the fits kept
+  every coefficient for but that all but repeats itself, the report says that
+  the equations have no finite derivative at the solution and where to look.
+  This is an error rather than a warning, as it was before: the standard errors,
+  the intervals, and the p-values all come from the variance, so there is
+  nothing to return.
+
+* `ipw()` now rejects an outcome model that reads the exposure through a call
+  alongside anything else, such as `y ~ z + x1 + I(z * x1)`, when `.data` is not
+  supplied, with an error of class `propensity_ipw_exposure_error` naming the
+  term and directing you to supply `.data`. Without `.data` the counterfactual
+  designs come from the outcome model's own model frame, and a term recorded
+  under a call keeps its fitted values whatever exposure value is written beside
+  it, so the interaction was dropped from the marginal means with nothing
+  signaled and the estimates moved away from the ones the same model gives with
+  `.data`, which are also the ones `y ~ z * x1` gives on either route. What
+  decides this is the variable the model frame holds rather than the term it
+  builds, so a call reading the exposure is rejected wherever it sits, including
+  inside an interaction such as `y ~ z + x2 + I(z * x1):x2`, which was the same
+  silent movement. An interaction written with `*` or `:` over plain columns,
+  such as `y ~ z * x1`, holds those columns in the frame and forms the product
+  from the one being set, and is unaffected on both routes.
+
+* `ipw()` now rejects a `.data` column supplied as a logical vector where the
+  model recorded a factor, an ordered factor, or a character vector, with the
+  same `propensity_ipw_data_error` the other type mismatches raise, naming the
+  column and both types. A logical column carries no levels for the rebuild to
+  re-level against the fit, so `model.matrix()` codes it on its own terms,
+  `FALSE` first. Against a two-level fitted factor the widths agreed and nothing
+  noticed: a logical whose `TRUE` marked the fit's second level reproduced the
+  fitted design by coincidence, and one whose `TRUE` marked its first level
+  silently swapped the two levels' coefficients and moved the estimates. The
+  rejection is keyed on the type rather than on the values, because a logical
+  column carries nothing that says which level its `TRUE` was meant to name. A
+  column fit as a factor may still be supplied as character or as an ordered
+  factor.
+
+* `ipw()` now rejects a `.data` column supplied as a factor, an ordered factor,
+  or a character vector where the model recorded a logical vector, with the same
+  `propensity_ipw_data_error` and the same reasoning read the other way. A fit
+  that recorded a logical column recorded no levels for it either, so it took
+  `FALSE` as the reference, while each of those three brings a reference of its
+  own: the widths agree, and which level the fitted coefficient is paired with
+  is then decided by whatever the column declares or sorts to. A factor
+  declaring `TRUE` before `FALSE` reproduced the fitted design reversed and
+  moved the estimates with nothing signaled, and a character column matched only
+  because `"FALSE"` sorts before `"TRUE"`. Supply the column as the logical
+  vector the models were fit on, or refit them on the factor.
+
+* `ipw()` now reports missing values in the `.data` columns the models read,
+  with an error of class `propensity_ipw_data_error` naming the columns and the
+  number of incomplete rows. Every design is rebuilt with `model.frame()`, which
+  drops a row missing a value in any column it reads, while the weights, the
+  exposure, and the outcome values keep every row of `.data`. The two were then
+  recycled against each other: base R warned twice that one object was not a
+  multiple of the other, and the mismatch surfaced as weights that failed their
+  consistency check, whose message is about how the weights were built rather
+  than about the data that was passed. Models fit on data with missing values
+  dropped those rows themselves, so calling `ipw()` without `.data` is
+  unaffected.
+
+* `ipw()` now reports a `.data` outcome column supplied as a factor that
+  declares no levels, with an error of class `propensity_ipw_data_error`. Such a
+  column holds nothing but missing values and has no first level for the check
+  that compares it against the level the outcome model was fit to treat as the
+  failure, which stopped as a subscript out of bounds.
+
 * `ipw()` now rebuilds an outcome model that reads the exposure through a term
   that has to work its levels out from the values it sees, such as
   `y ~ factor(z) + x1` fit on a numerically coded exposure, when `.data` is
@@ -15,9 +132,10 @@
   design and every contrast between them would be zero; that route now raises an
   error of class `propensity_ipw_exposure_error` naming the term and directing
   you to supply `.data`, where it previously reported that the exposure was
-  missing from the model frame. A term that recomputes cleanly at the value
-  being set, such as `I(z^2)` or `cut(z, breaks)`, is unaffected and keeps
-  working.
+  missing from the model frame. With `.data`, a term that recomputes at the
+  value being set, such as `I(z^2)` or `cut(z, breaks)`, is unaffected and keeps
+  working. Without `.data` nothing recomputes at all, so such a term is now
+  rejected on that route as well.
 
 * Every design `ipw()` rebuilds from `.data` now uses the levels the model
   recorded rather than the levels the supplied column declares. The propensity

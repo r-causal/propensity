@@ -1256,9 +1256,70 @@ check_ipw_exposure_rebuild <- function(
   invisible(TRUE)
 }
 
-# The two halves of the rebuild rejection. The diagnosis is the same on both
-# routes, a term that reads the exposure and cannot be put back the way it was
-# fit, and what differs is why the rebuild cannot do it and what fixes it.
+# Reject a model variable recorded under a call that reads the exposure, on the
+# route that cannot recompute it. The check above settles every variable that
+# carries levels, by evaluating it and comparing what comes back. One with no
+# levels has nothing to compare, and without `.data` it does not need comparing:
+# the design comes from the outcome model's own model frame, `model.matrix()`
+# reads the column already sitting there, and the counterfactual value is
+# written into a column the term never consults again. `y ~ z + x1 + I(z * x1)`
+# fit on a numerically coded exposure then contributes its fitted interaction to
+# both counterfactual designs, and the marginal means come back as if the
+# interaction were not in the model. It is a movement in the estimates rather
+# than an error, and only on this route: with `.data` the term is recomputed at
+# each value and gives what `y ~ z * x1` gives.
+#
+# What decides this is the model frame's variables rather than the formula's
+# terms. A frame column is what the counterfactual write can reach, and a
+# variable that is a bare name is such a column: `model.matrix()` reads it back
+# at whatever value the write left there. A variable recorded under a call is
+# not, whatever term it goes on to build. `z * x1` and `z:x1` contribute the
+# variables `z` and `x1`, both plain columns, and their product is formed at
+# design time from the column being set, so both routes agree on them and the
+# ordinary way of writing an effect modification is left alone. `I(z * x1):x2`
+# contributes the variable `I(z * x1)`, which is frozen in the frame at the
+# values it was fit on however deep in an interaction its term sits.
+#
+# So every variable that parses to a call reading the exposure is rejected,
+# whatever the call computes and whatever order the terms built from it carry,
+# because nothing on this route recomputes it. The response is skipped: it is
+# not a design column, and the outcome values are read once from the fit rather
+# than rebuilt at each counterfactual value, so the write never reaches it.
+check_ipw_exposure_call_terms <- function(
+  outcome_mod,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  mod_terms <- stats::terms(outcome_mod)
+  variables <- as.list(attr(mod_terms, "variables"))[-1]
+  response <- attr(mod_terms, "response")
+
+  if (isTRUE(response > 0)) {
+    variables <- variables[-response]
+  }
+
+  for (variable in variables) {
+    if (is.name(variable) || !exposure_name %in% all.vars(variable)) {
+      next
+    }
+
+    abort_ipw_exposure_rebuild(
+      exposure_name,
+      deparse1(variable),
+      fit_levels = NULL,
+      rebuilt = FALSE,
+      call = call
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# The halves of the rebuild rejection. The diagnosis is the same throughout, a
+# term that reads the exposure and cannot be put back the way it was fit, and
+# what differs is why the rebuild cannot do it and what fixes it. `fit_levels`
+# is NULL for a term the fit recorded no levels for, which only the no-`.data`
+# route rejects.
 abort_ipw_exposure_rebuild <- function(
   exposure_name,
   term,
@@ -1276,7 +1337,7 @@ abort_ipw_exposure_rebuild <- function(
       column, converting it to a factor in the data first if you want a factor \\
       coding."
     )
-  } else {
+  } else if (!is.null(fit_levels)) {
     c(
       x = "Without {.arg .data} the designs come from {.arg outcome_mod}'s own \\
       model frame, which holds {.code {term}} at the values it was fit on, so \\
@@ -1285,6 +1346,19 @@ abort_ipw_exposure_rebuild <- function(
       i = "Supply {.arg .data}, which rebuilds {.code {term}} at each value \\
       under the levels {.val {fit_levels}} it was fit with, or refit \\
       {.arg outcome_mod} on the plain {.val {exposure_name}} column."
+    )
+  } else {
+    c(
+      x = "Without {.arg .data} the designs come from {.arg outcome_mod}'s own \\
+      model frame, which holds {.code {term}} at the values it was fit on, so \\
+      the counterfactual value {.fun ipw} sets never reaches it and the term \\
+      contributes its fitted values to every level's design.",
+      i = "Supply {.arg .data}, which recomputes {.code {term}} at each value \\
+      {.fun ipw} sets, or refit {.arg outcome_mod} on the plain \\
+      {.val {exposure_name}} column.",
+      i = "An interaction written with {.code *} or {.code :} is formed from \\
+      the frame's own columns and is rebuilt on either route, so it needs no \\
+      {.arg .data}."
     )
   }
 

@@ -568,8 +568,9 @@ test_that("a transformed exposure without .data errors and asks for it", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   # The other half of the contract. The exposure is present in the formula, so
-  # the guard requiring it is satisfied; what fails is reading its values back
-  # out of a model frame that only holds the transformed term.
+  # the guard requiring it is satisfied; what fails is that the model frame
+  # holds only the transformed terms, which nothing on this route recomputes.
+  # It used to be reported as the exposure column missing from that frame.
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   transformed <- glm(
@@ -585,11 +586,12 @@ test_that("a transformed exposure without .data errors and asks for it", {
 
   err <- expect_error(
     ipw(mods$ps_mod, transformed),
-    class = "propensity_columns_exist_error"
+    class = "propensity_ipw_exposure_error"
   )
 
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "\"a\"", fixed = TRUE)
+  expect_match(msg, "as.numeric(a == \"b\")", fixed = TRUE)
   expect_match(msg, ".data", fixed = TRUE)
 })
 
