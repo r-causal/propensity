@@ -2499,3 +2499,230 @@ test_that("mestimation accepts a no-intercept outcome model adjusted for a covar
   expect_true(all(is.finite(res$estimates$estimate)))
   expect_true(all(res$estimates$std.err > 0))
 })
+
+# ---- degenerate contrast diagnostics ----------------------------------------
+#
+# A contrast row of the stacked equations evaluates log() or qlogis() of a
+# marginal mean held in theta. Those means are free parameters, so the solver
+# reaches values outside the range the contrast is defined on: a risk pushed a
+# hair past 1 has no logit and a risk pushed a hair below 0 has no logarithm.
+# Both cases signal base's unclassed "NaNs produced", which names neither the
+# contrast that degenerated nor the comparison it belongs to, and which no
+# handler can select on.
+#
+# Measured at the two emission sites. A binary exposure whose exposed arm is
+# entirely made up of events reaches `stats::qlogis(mu_hi)` with the exposed
+# marginal mean just above 1, degenerating log(or). A categorical exposure with
+# a level that has no events reaches `log(mu_hi)` with that level's marginal
+# mean just below 0, degenerating log(rr) for that level against the reference.
+# The binary fit then completes and reports contrasts whose standard errors are
+# on the order of 1e-35; the categorical fit ends in a bread-matrix error from
+# the solver. The contract is the same either way: whatever propensity signals
+# about a degenerate contrast has to carry a class and say which contrast it
+# concerns, and the unclassed warning must not reach the user alongside it.
+
+# Every warning raised while evaluating `expr`, muffled so none reaches the
+# reporter, alongside the value or the error the expression ended with. A
+# degenerate fit can warn and then error, and the warning contract holds either
+# way.
+collect_ipw_warnings <- function(expr) {
+  warnings <- list()
+  value <- tryCatch(
+    withCallingHandlers(
+      expr,
+      warning = function(cnd) {
+        warnings[[length(warnings) + 1L]] <<- cnd
+        invokeRestart("muffleWarning")
+      }
+    ),
+    error = function(cnd) cnd
+  )
+
+  list(value = value, warnings = warnings)
+}
+
+# TRUE for a warning carrying no class of its own. This is what base `warning()`
+# raises, and it is the shape of the "NaNs produced" the contrast rows signal
+# today.
+is_bare_warning <- function(cnd) {
+  identical(class(cnd), c("simpleWarning", "warning", "condition"))
+}
+
+# Whether any collected warning inherits `class`.
+any_warning_class <- function(warnings, class) {
+  any(vapply(warnings, inherits, logical(1), class))
+}
+
+# Messages of the collected warnings inheriting `class`, whitespace normalized
+# because cli wraps its bullets.
+warning_messages <- function(warnings, class) {
+  matched <- Filter(function(cnd) inherits(cnd, class), warnings)
+  gsub(
+    "[[:space:]]+",
+    " ",
+    vapply(matched, conditionMessage, character(1))
+  )
+}
+
+# A binary fixture with no finite log odds ratio: every exposed unit has the
+# event and almost no unexposed unit does, so the exposed marginal mean sits
+# against 1 and the solver steps past it.
+sim_degenerate_binary <- function() {
+  withr::local_seed(6)
+  x1 <- rnorm(60)
+  z <- rbinom(60, 1, plogis(0.4 * x1))
+  y <- rbinom(60, 1, ifelse(z == 1, 1, 0.01))
+  data.frame(x1, z, y)
+}
+
+fit_degenerate_binary_models <- function(dat) {
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    y ~ z + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+# A three-level exposure whose "c" arm has event probability `p_c`. At p_c = 0
+# the marginal mean at "c" sits against 0 and its log risk ratio against the
+# reference level "a" has no finite value; at an ordinary p_c the same fixture
+# is healthy and is the silence guard.
+sim_categorical_arms <- function(p_c) {
+  withr::local_seed(15)
+  x1 <- rnorm(120)
+  a <- factor(
+    sample(c("a", "b", "c"), 120, replace = TRUE),
+    levels = c("a", "b", "c")
+  )
+  p <- ifelse(a == "a", 0.4, ifelse(a == "b", 0.6, p_c))
+  y <- rbinom(120, 1, p)
+
+  data.frame(x1, a, y)
+}
+
+fit_categorical_arm_models <- function(dat) {
+  ps_mod <- nnet::multinom(a ~ x1, data = dat, trace = FALSE)
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- levels(dat$a)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$a, exposure_type = "categorical")
+  )
+  outcome_mod <- glm(
+    y ~ a + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+test_that("a degenerate binary contrast warns with a propensity class", {
+  skip_if_not_installed("deli")
+  dat <- sim_degenerate_binary()
+  mods <- fit_degenerate_binary_models(dat)
+
+  out <- collect_ipw_warnings(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  )
+
+  expect_true(any_warning_class(
+    out$warnings,
+    "propensity_ipw_contrast_warning"
+  ))
+  expect_true(any_warning_class(out$warnings, "propensity_warning"))
+})
+
+test_that("the degenerate binary contrast warning names the effect it concerns", {
+  skip_if_not_installed("deli")
+  # The degeneracy is in the logit of the exposed marginal mean, so the warning
+  # has to name log(or) rather than report an undefined number in the abstract.
+  dat <- sim_degenerate_binary()
+  mods <- fit_degenerate_binary_models(dat)
+
+  out <- collect_ipw_warnings(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  )
+  msgs <- warning_messages(out$warnings, "propensity_ipw_contrast_warning")
+
+  expect_true(any(grepl("log(or)", msgs, fixed = TRUE)))
+})
+
+test_that("no bare base warning escapes a degenerate binary contrast", {
+  skip_if_not_installed("deli")
+  dat <- sim_degenerate_binary()
+  mods <- fit_degenerate_binary_models(dat)
+
+  out <- collect_ipw_warnings(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  )
+
+  expect_false(any(vapply(out$warnings, is_bare_warning, logical(1))))
+})
+
+test_that("a degenerate categorical contrast warning names its effect and comparison", {
+  skip_if_not_installed("deli")
+  skip_if_not_installed("nnet")
+  # One contrast of several degenerates here, so naming the effect alone would
+  # leave the user reading three comparisons to find it.
+  dat <- sim_categorical_arms(0)
+  mods <- fit_categorical_arm_models(dat)
+
+  out <- collect_ipw_warnings(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat, se_method = "mestimation")
+  )
+  msgs <- warning_messages(out$warnings, "propensity_ipw_contrast_warning")
+
+  expect_true(any(grepl("log(rr)", msgs, fixed = TRUE)))
+  expect_true(any(grepl("c vs a", msgs, fixed = TRUE)))
+})
+
+test_that("no bare base warning escapes a degenerate categorical contrast", {
+  skip_if_not_installed("deli")
+  skip_if_not_installed("nnet")
+  # This fit ends in an error from the solver rather than returning estimates.
+  # The unclassed warning is signalled before that and reaches the user anyway,
+  # so the contract has to hold on the erroring route too.
+  dat <- sim_categorical_arms(0)
+  mods <- fit_categorical_arm_models(dat)
+
+  out <- collect_ipw_warnings(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat, se_method = "mestimation")
+  )
+
+  expect_false(any(vapply(out$warnings, is_bare_warning, logical(1))))
+})
+
+test_that("a healthy binary mestimation fit raises no warning", {
+  skip_if_not_installed("deli")
+  # The guard against a diagnostic that fires on working fits.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+
+  out <- collect_ipw_warnings(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  )
+
+  expect_length(out$warnings, 0)
+  expect_s3_class(out$value, "ipw")
+})
+
+test_that("a healthy categorical mestimation fit raises no warning", {
+  skip_if_not_installed("deli")
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical_arms(0.35)
+  mods <- fit_categorical_arm_models(dat)
+
+  out <- collect_ipw_warnings(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat, se_method = "mestimation")
+  )
+
+  expect_length(out$warnings, 0)
+  expect_s3_class(out$value, "ipw")
+})
