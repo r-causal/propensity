@@ -810,6 +810,233 @@ test_that("binary weights are unchanged when the default focal level is named", 
   }
 })
 
+# ---- 0/1 and logical exposures honor the named levels ----------------------
+#
+# A 0/1 exposure is the same two-level exposure whether it is stored as double
+# or as integer, and a logical exposure is the same exposure as its 0/1 recode.
+# Naming a level has to reach the same weights in all of those codings, and the
+# same weights the equivalent factor coding reaches. As everywhere else on the
+# binary path, `.propensity` is the probability of the level named as focal, so
+# the expectations below are written out from the definitions with e taken as
+# that probability.
+
+zero_one_fixture <- function() {
+  exposure <- c(0, 1, 0, 1)
+
+  list(
+    ps = c(0.8, 0.6, 0.4, 0.2),
+    double = exposure,
+    integer = as.integer(exposure),
+    logical = exposure == 1,
+    # "zero" is the second level, so naming it focal names the level this
+    # factor already resolves as focal by default
+    factor = factor(
+      ifelse(exposure == 1, "one", "zero"),
+      levels = c("one", "zero")
+    )
+  )
+}
+
+test_that("binary wt_att() honors a named focal level on a 0/1 double exposure", {
+  fixture <- zero_one_fixture()
+  ps <- fixture$ps
+  is_focal <- as.numeric(fixture$double == 0)
+
+  weights <- wt_att(
+    ps,
+    fixture$double,
+    exposure_type = "binary",
+    .focal_level = 0
+  )
+
+  # att: 1 for the focal units, e / (1 - e) for the rest
+  expect_equal(as.numeric(weights), is_focal + ps * (1 - is_focal) / (1 - ps))
+
+  expect_equal(
+    as.numeric(weights),
+    as.numeric(wt_att(
+      ps,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "zero"
+    ))
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    as.numeric(wt_att(
+      ps,
+      fixture$integer,
+      exposure_type = "binary",
+      .focal_level = 0
+    ))
+  )
+})
+
+test_that("binary weights agree across 0/1 double and integer storage", {
+  fixture <- zero_one_fixture()
+  ps <- fixture$ps
+
+  wt_fns <- list(ate = wt_ate, att = wt_att)
+
+  for (estimand_name in names(wt_fns)) {
+    wt_fn <- wt_fns[[estimand_name]]
+    for (focal in list(0, 1)) {
+      expect_equal(
+        wt_fn(
+          ps,
+          fixture$double,
+          exposure_type = "binary",
+          .focal_level = focal
+        ),
+        wt_fn(
+          ps,
+          fixture$integer,
+          exposure_type = "binary",
+          .focal_level = focal
+        )
+      )
+    }
+  }
+})
+
+test_that("binary weights resolve a named reference level on a 0/1 double exposure", {
+  fixture <- zero_one_fixture()
+  ps <- fixture$ps
+  is_focal <- as.numeric(fixture$double == 0)
+
+  wt_fns <- list(ate = wt_ate, att = wt_att, atu = wt_atu)
+
+  # naming 1 as reference leaves 0 as the only other level, so it must reach the
+  # same weights as naming 0 as focal
+  for (estimand_name in names(wt_fns)) {
+    wt_fn <- wt_fns[[estimand_name]]
+    expect_equal(
+      wt_fn(ps, fixture$double, exposure_type = "binary", .reference_level = 1),
+      wt_fn(ps, fixture$double, exposure_type = "binary", .focal_level = 0)
+    )
+  }
+
+  att_ref <- wt_att(
+    ps,
+    fixture$double,
+    exposure_type = "binary",
+    .reference_level = 1
+  )
+
+  expect_equal(as.numeric(att_ref), is_focal + ps * (1 - is_focal) / (1 - ps))
+  expect_identical(attr(att_ref, "focal_category"), 0)
+})
+
+test_that("binary wt_att() honors a named focal level on a logical exposure", {
+  fixture <- zero_one_fixture()
+  ps <- fixture$ps
+  is_focal <- as.numeric(!fixture$logical)
+
+  weights <- wt_att(
+    ps,
+    fixture$logical,
+    exposure_type = "binary",
+    .focal_level = FALSE
+  )
+
+  expect_equal(as.numeric(weights), is_focal + ps * (1 - is_focal) / (1 - ps))
+
+  expect_equal(
+    as.numeric(weights),
+    as.numeric(wt_att(
+      ps,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "zero"
+    ))
+  )
+
+  expect_identical(attr(weights, "focal_category"), FALSE)
+})
+
+test_that("binary att and atu record a named focal level on a 0/1 double exposure", {
+  fixture <- zero_one_fixture()
+
+  att_zero <- wt_att(
+    fixture$ps,
+    fixture$double,
+    exposure_type = "binary",
+    .focal_level = 0
+  )
+  atu_zero <- wt_atu(
+    fixture$ps,
+    fixture$double,
+    exposure_type = "binary",
+    .focal_level = 0
+  )
+
+  expect_identical(attr(att_zero, "focal_category"), 0)
+  expect_identical(attr(atu_zero, "focal_category"), 0)
+})
+
+test_that("binary weights resolve the deprecated `.treated` on a 0/1 double exposure", {
+  fixture <- zero_one_fixture()
+  ps <- fixture$ps
+  is_focal <- as.numeric(fixture$double == 0)
+
+  withr::with_options(
+    list(lifecycle_verbosity = "warning"),
+    expect_warning(
+      wt_att(ps, fixture$double, exposure_type = "binary", .treated = 0),
+      class = "lifecycle_warning_deprecated"
+    )
+  )
+
+  # the deprecation is asserted above; take the value without re-raising it
+  withr::local_options(lifecycle_verbosity = "quiet")
+  att_treated <- wt_att(
+    ps,
+    fixture$double,
+    exposure_type = "binary",
+    .treated = 0
+  )
+
+  expect_equal(
+    att_treated,
+    wt_att(ps, fixture$double, exposure_type = "binary", .focal_level = 0)
+  )
+  expect_equal(
+    as.numeric(att_treated),
+    is_focal + ps * (1 - is_focal) / (1 - ps)
+  )
+})
+
+test_that("binary weights with no named level keep the 0/1 and logical coding", {
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- zero_one_fixture()
+  ps <- fixture$ps
+
+  # with no level named the focal level stays where it is today: 1 for a 0/1
+  # exposure, TRUE for a logical one
+  is_focal <- fixture$double
+  expected_ate <- is_focal / ps + (1 - is_focal) / (1 - ps)
+  expected_att <- is_focal + ps * (1 - is_focal) / (1 - ps)
+
+  codings <- list(
+    double = fixture$double,
+    integer = fixture$integer,
+    logical = fixture$logical
+  )
+
+  for (coding_name in names(codings)) {
+    exposure <- codings[[coding_name]]
+    weights_att <- wt_att(ps, exposure, exposure_type = "binary")
+
+    expect_equal(
+      as.numeric(wt_ate(ps, exposure, exposure_type = "binary")),
+      expected_ate
+    )
+    expect_equal(as.numeric(weights_att), expected_att)
+    expect_null(attr(weights_att, "focal_category"))
+  }
+})
+
 # ---- glm methods must supply the resolved focal level's probability --------
 #
 # `fitted()` on a binomial glm is the probability of the response's second
@@ -1017,36 +1244,72 @@ test_that("glm weights pass fitted values through when the default focal level i
   }
 })
 
-test_that("glm weights on a 0/1 response ignore a named focal level", {
-  withr::local_options(propensity.quiet = TRUE)
+zero_one_glm_fixture <- function() {
   set.seed(311)
   n <- 40
   x <- rnorm(n)
-  # a double 0/1 response is passed through untouched by the binary transform,
-  # which never consults the named levels, so the resolved focal is always 1
   z <- as.numeric(rbinom(n, 1, plogis(0.4 * x)))
-  ps_mod <- glm(z ~ x, family = binomial)
 
+  list(
+    model = glm(z ~ x, family = binomial),
+    exposure = z
+  )
+}
+
+test_that("glm weights on a 0/1 response honor a named focal level", {
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- zero_one_glm_fixture()
+  # 0 is not the response's success level, so the numeric method is owed
+  # P(0) = 1 - fitted()
+  e <- 1 - unname(fitted(fixture$model))
+  is_focal <- fixture$exposure == 0
+
+  weights <- wt_att(fixture$model, exposure_type = "binary", .focal_level = 0)
+
+  expect_equal(as.numeric(weights), ifelse(is_focal, 1, e / (1 - e)))
   expect_equal(
-    as.numeric(wt_att(ps_mod, exposure_type = "binary", .focal_level = 0)),
-    as.numeric(wt_att(ps_mod, exposure_type = "binary"))
+    as.numeric(weights),
+    as.numeric(wt_att(
+      e,
+      fixture$exposure,
+      exposure_type = "binary",
+      .focal_level = 0
+    ))
   )
 })
 
-test_that("glm weights on a logical response ignore a named focal level", {
+test_that("glm weights on a 0/1 response pass fitted values through by default", {
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- zero_one_glm_fixture()
+
+  # 1 is the response's success level, so naming it focal resolves to the level
+  # `fitted()` already reports and nothing may be inverted
+  expect_equal(
+    as.numeric(wt_att(
+      fixture$model,
+      exposure_type = "binary",
+      .focal_level = 1
+    )),
+    as.numeric(wt_att(fixture$model, exposure_type = "binary"))
+  )
+})
+
+test_that("glm weights on a logical response honor a named focal level", {
   withr::local_options(propensity.quiet = TRUE)
   set.seed(412)
   n <- 40
   x <- rnorm(n)
-  # a logical response is coded by `as.numeric()` without consulting the named
-  # levels, so the resolved focal is always TRUE
   z <- rbinom(n, 1, plogis(0.4 * x)) == 1
   ps_mod <- glm(z ~ x, family = binomial)
 
-  expect_equal(
-    as.numeric(wt_att(ps_mod, exposure_type = "binary", .focal_level = FALSE)),
-    as.numeric(wt_att(ps_mod, exposure_type = "binary"))
-  )
+  # FALSE is not the response's success level, so the numeric method is owed
+  # P(FALSE) = 1 - fitted()
+  e <- 1 - unname(fitted(ps_mod))
+  is_focal <- !z
+
+  weights <- wt_att(ps_mod, exposure_type = "binary", .focal_level = FALSE)
+
+  expect_equal(as.numeric(weights), ifelse(is_focal, 1, e / (1 - e)))
 })
 
 test_that("glm wt_cens() uses the named focal level's fitted probability", {
