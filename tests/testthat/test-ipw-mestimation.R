@@ -1452,6 +1452,192 @@ test_that("mestimation rejects a .data whose covariate types skew the design", {
   expect_match(msg, ".data", fixed = TRUE)
 })
 
+# ---- a .data column contradicting a fitted factor coding --------------------
+#
+# A model fit with a factor covariate records that covariate's levels and its
+# contrast coding, and every design rebuilt from `.data` is rebuilt under that
+# coding. A column supplied as numeric therefore reaches `model.matrix()` with a
+# contrast specification that cannot be applied to it, and the rebuild dies
+# inside base R: an unclassed "variable 'cov' is not a factor" warning followed
+# by "contrasts apply only to factors". Neither names `.data`, and neither says
+# what to supply instead.
+#
+# The mirror direction, a numeric-fit column supplied as a factor, is caught by
+# the design-width check above, because a factor takes more design columns than
+# a numeric does. This direction has no width signature to catch it: a two-level
+# factor supplied as numeric rebuilds to exactly the same width, so it needs a
+# guard of its own, raised before the rebuild.
+#
+# What the models recorded is the trigger, not the supplied column's type in
+# general. Both models count. The propensity design is rebuilt from `.data`
+# here, and the outcome model's counterfactual designs are rebuilt from the same
+# frame, so an outcome-only factor covariate reaches the same failure by a
+# different route.
+
+test_that("mestimation rejects a numeric .data column where the ps model fit a factor", {
+  skip_if_not_installed("deli")
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  # the fit records cov as a three-level factor; .data hands back its codes
+  expect_identical(ps_mod$xlevels$cov, c("a", "b", "c"))
+  dat_num <- dat
+  dat_num$cov <- as.numeric(dat$cov)
+  expect_true(is.numeric(dat_num$cov))
+
+  err <- expect_no_warning(
+    expect_error(
+      ipw(ps_mod, out, .data = dat_num, se_method = "mestimation"),
+      class = "propensity_ipw_data_error"
+    )
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  # word-bounded: "covariate" must not satisfy the column-name assertion
+  expect_match(msg, "\\bcov\\b")
+  expect_match(msg, "factor", fixed = TRUE)
+  # the message is about the column and the fit, not about model.matrix internals
+  expect_false(grepl("contrasts apply only to factors", msg, fixed = TRUE))
+})
+
+test_that("mestimation rejects a numeric .data column where the outcome model fit a factor", {
+  skip_if_not_installed("deli")
+  # The propensity model never reads cov, so the ps design rebuild is untroubled
+  # by it and the mismatch first reaches the counterfactual designs.
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  out <- glm(
+    y ~ z + cov,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_null(ps_mod$contrasts)
+  expect_identical(out$xlevels$cov, c("a", "b", "c"))
+  dat_num <- dat
+  dat_num$cov <- as.numeric(dat$cov)
+
+  err <- expect_no_warning(
+    expect_error(
+      ipw(ps_mod, out, .data = dat_num, se_method = "mestimation"),
+      class = "propensity_ipw_data_error"
+    )
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  # word-bounded: "covariate" must not satisfy the column-name assertion
+  expect_match(msg, "\\bcov\\b")
+  expect_match(msg, "factor", fixed = TRUE)
+  expect_false(grepl("contrasts apply only to factors", msg, fixed = TRUE))
+})
+
+test_that("the fitted-factor .data error names the column and how the fit recorded it", {
+  skip_if_not_installed("deli")
+  # Snapshots are reported as skips under `--as-cran`, so the classed assertion
+  # below carries the contract and the snapshot records the wording.
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  dat_num <- dat
+  dat_num$cov <- as.numeric(dat$cov)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(ps_mod, out, .data = dat_num, se_method = "mestimation")
+  )
+
+  expect_no_warning(
+    expect_error(
+      ipw(ps_mod, out, .data = dat_num, se_method = "mestimation"),
+      class = "propensity_ipw_data_error"
+    )
+  )
+})
+
+test_that("mestimation accepts a character .data column where the ps model fit a factor", {
+  skip_if_not_installed("deli")
+  # Character is not the rejected case, and the guard must not widen into one.
+  # `model.frame()` re-levels a character column against the recorded levels, so
+  # the rebuilt design is the fitted one and the estimates match the factor
+  # `.data` call, which is the working control for this seam.
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  out <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  dat_chr <- dat
+  dat_chr$cov <- as.character(dat$cov)
+  expect_true(is.character(dat_chr$cov))
+
+  chr <- expect_no_warning(
+    ipw(ps_mod, out, .data = dat_chr, se_method = "mestimation")
+  )$estimates
+  fac <- ipw(ps_mod, out, .data = dat, se_method = "mestimation")$estimates
+  expect_equal(chr, fac, tolerance = 1e-12)
+})
+
+test_that("mestimation accepts a character .data column where the outcome model fit a factor", {
+  skip_if_not_installed("deli")
+  dat <- ps_design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  out <- glm(
+    y ~ z + cov,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  dat_chr <- dat
+  dat_chr$cov <- as.character(dat$cov)
+
+  chr <- expect_no_warning(
+    ipw(ps_mod, out, .data = dat_chr, se_method = "mestimation")
+  )$estimates
+  fac <- ipw(ps_mod, out, .data = dat, se_method = "mestimation")$estimates
+  expect_equal(chr, fac, tolerance = 1e-12)
+})
+
 # ---- a wrong-sized .data is a data problem ----------------------------------
 #
 # The linearization path already rejects a `.data` whose row count disagrees

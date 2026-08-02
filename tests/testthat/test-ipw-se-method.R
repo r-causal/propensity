@@ -1739,6 +1739,91 @@ test_that("linearization errors when .data has fewer rows than the fitted models
   )
 })
 
+# A `.data` column whose type contradicts the propensity fit's recorded factor
+# coding is rejected here for the same reason it is on the M-estimation path,
+# and by the same shared extraction: the design is rebuilt under the coding the
+# fit recorded, so a numeric column reaches `model.matrix()` with a contrast
+# specification that cannot be applied to it. The M-estimation companions are
+# "mestimation rejects a numeric .data column where the ps model fit a factor"
+# and its character control in test-ipw-mestimation.R.
+#
+# The outcome model's factor covariates cannot be reached from here: an outcome
+# model adjusted for anything beyond the exposure is refused on this path
+# before any design is built, so that direction is pinned on the M-estimation
+# path alone.
+
+# A binary ps fit adjusted for a three-level factor covariate, with the
+# exposure-only outcome model this path requires. Local to this file, as
+# test-ipw-mestimation.R's equivalent fixture is not reachable here.
+se_method_ps_factor_models <- function(dat) {
+  dat$grp <- factor(
+    ifelse(dat$x1 < -0.5, "lo", ifelse(dat$x1 < 0.5, "mid", "hi")),
+    levels = c("lo", "mid", "hi")
+  )
+  ps_mod <- glm(z ~ x1 + grp, data = dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, dat = dat)
+}
+
+test_that("linearization rejects a numeric .data column where the ps model fit a factor", {
+  mods <- se_method_ps_factor_models(se_method_data())
+  expect_identical(mods$ps_mod$xlevels$grp, c("lo", "mid", "hi"))
+
+  dat_num <- mods$dat
+  dat_num$grp <- as.numeric(mods$dat$grp)
+
+  err <- expect_no_warning(
+    expect_error(
+      ipw(
+        mods$ps_mod,
+        mods$outcome_mod,
+        .data = dat_num,
+        se_method = "linearization"
+      ),
+      class = "propensity_ipw_data_error"
+    )
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "\\bgrp\\b")
+  expect_match(msg, "factor", fixed = TRUE)
+  expect_false(grepl("contrasts apply only to factors", msg, fixed = TRUE))
+})
+
+test_that("linearization accepts a character .data column where the ps model fit a factor", {
+  # The guard must not widen to every column whose type differs from the fit's.
+  # `model.frame()` re-levels a character column against the recorded levels, so
+  # the rebuilt design is the fitted one and the estimates match the factor
+  # `.data` call, which is the working control for this seam.
+  mods <- se_method_ps_factor_models(se_method_data())
+
+  dat_chr <- mods$dat
+  dat_chr$grp <- as.character(mods$dat$grp)
+
+  chr <- expect_no_warning(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      .data = dat_chr,
+      se_method = "linearization"
+    )
+  )$estimates
+  fac <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    .data = mods$dat,
+    se_method = "linearization"
+  )$estimates
+  expect_equal(chr, fac, tolerance = 1e-12)
+})
+
 # ---- the weights must be consistent with the propensity model ---------------
 #
 # The linearization path predicts the propensity scores from `wt_mod` and takes

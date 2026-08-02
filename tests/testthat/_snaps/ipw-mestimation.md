@@ -39,6 +39,16 @@
       i Refit `outcome_mod` where its data is available, or fit it with `model = TRUE` so the model frame is kept.
       i `.data` cannot stand in here: the weights are read from `outcome_mod`'s own model frame.
 
+# the fitted-factor .data error names the column and how the fit recorded it
+
+    Code
+      ipw(ps_mod, out, .data = dat_num, se_method = "mestimation")
+    Condition
+      Warning in `model.frame.default()`:
+      variable 'cov' is not a factor
+      Error in `contrasts<-`:
+      ! contrasts apply only to factors
+
 # the separation error names the count and points at the model
 
     Code
