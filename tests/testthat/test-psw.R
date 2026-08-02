@@ -443,7 +443,7 @@ calibrated_psw <- function() {
   wt_ate(ps, exposure, exposure_type = "binary", .focal_level = 1)
 }
 
-categorical_psw <- function() {
+categorical_psw <- function(.focal_level = "A") {
   exposure <- factor(c("A", "B", "C", "A", "B", "C"))
   ps_matrix <- matrix(
     c(
@@ -474,7 +474,7 @@ categorical_psw <- function() {
   wt_att(
     ps_matrix,
     exposure,
-    .focal_level = "A",
+    .focal_level = .focal_level,
     exposure_type = "categorical"
   )
 }
@@ -788,4 +788,349 @@ test_that("growing a psw by subassignment leaves a record that no longer covers 
   expect_true(is_ps_trimmed(w))
   expect_error(is_unit_trimmed(w), class = "propensity_missing_meta_error")
   expect_false(expect_silent(is_refit(w)))
+})
+
+# An operation between two psw objects has two sets of metadata to answer for
+# rather than one. The six fields describing the weights as a whole merge:
+# estimands are pasted when they differ, the result is stabilized only when both
+# operands are, and it is marked as trimmed, truncated, or calibrated when either
+# operand is. Everything else is carried by agreement. An attribute only one
+# operand records has nothing to disagree with, which is what a psw times a plain
+# number does through the single-operand route; one both record identically
+# describes the result either way; and one they record differently describes
+# neither, so it is dropped and named in a warning.
+#
+# The per-observation length rules are unchanged. A carried record still has to
+# cover the number of observations the result arrives at, and one dropped for
+# length goes without comment, for the reasons the single-operand routes drop one
+# without comment.
+#
+# Combining with `c()` keeps its own rule. It appends one set of observations to
+# another, so the positions a record names would describe units from the other
+# input, and nothing rebuilding the combined vector is handed the offsets to
+# re-index by. Concatenation therefore drops the modification records whether or
+# not the inputs agree on them. The categorical attributes name exposure levels
+# rather than positions, so they mean the same thing at the combined length and
+# carry when the inputs agree.
+
+# A second trimming record over the same five observations, written at bounds
+# that retain a different set, so a merge that kept either record where the two
+# disagree would report visibly different units.
+alt_trimmed_psw <- function() {
+  ps <- ps_trim(
+    c(0.05, 0.3, 0.5, 0.7, 0.95),
+    method = "ps",
+    lower = 0.35,
+    upper = 0.65
+  )
+
+  without_refit_warning(wt_ate(
+    ps,
+    c(0, 0, 1, 1, 1),
+    exposure_type = "binary",
+    .focal_level = 1
+  ))
+}
+
+categorical_attrs_of <- function(x) {
+  list(
+    n_categories = attr(x, "n_categories"),
+    category_names = attr(x, "category_names"),
+    focal_category = attr(x, "focal_category")
+  )
+}
+
+test_that("a psw product carries a modification record only one operand has", {
+  # The workflow the inconsistency showed up in: weights against confounding
+  # built on a trimmed propensity score, multiplied by weights against
+  # censoring, with the product handed to the outcome model.
+  w <- trimmed_psw()
+  meta <- ps_trim_meta(w)
+  cens <- wt_cens(c(0.8, 0.7, 0.9, 0.6, 0.75), c(1, 1, 0, 1, 1))
+  trimmed_units <- c(TRUE, FALSE, FALSE, FALSE, TRUE)
+
+  out <- expect_silent(w * cens)
+  expect_s3_class(out, "psw")
+  expect_identical(ps_trim_meta(out), meta)
+  expect_true(is_ps_trimmed(out))
+  expect_identical(is_unit_trimmed(out), trimmed_units)
+
+  # The record travels from whichever operand holds it.
+  reversed <- expect_silent(cens * w)
+  expect_identical(ps_trim_meta(reversed), meta)
+  expect_identical(is_unit_trimmed(reversed), trimmed_units)
+
+  # A psw of ones is the two-operand form of `w * 1`, which keeps the record.
+  ones <- expect_silent(w * psw(rep(1, 5), estimand = "ate"))
+  expect_identical(ps_trim_meta(ones), meta)
+  expect_identical(is_unit_trimmed(ones), trimmed_units)
+})
+
+test_that("a psw product carries truncation and calibration records one operand has", {
+  truncated <- truncated_psw()
+  trunc_meta <- ps_trunc_meta(truncated)
+  out <- expect_silent(truncated * psw(rep(1, 5), estimand = "cens"))
+  expect_identical(ps_trunc_meta(out), trunc_meta)
+  expect_true(is_ps_truncated(out))
+
+  calibrated <- calibrated_psw()
+  calib_meta <- ps_calib_meta(calibrated)
+  out <- expect_silent(calibrated * psw(rep(1, 10), estimand = "cens"))
+  expect_identical(ps_calib_meta(out), calib_meta)
+  expect_true(is_ps_calibrated(out))
+})
+
+test_that("a psw product carries a modification record both operands share", {
+  w <- trimmed_psw()
+  meta <- ps_trim_meta(w)
+
+  out <- expect_silent(w * w)
+  expect_s3_class(out, "psw")
+  expect_identical(ps_trim_meta(out), meta)
+  expect_identical(is_unit_trimmed(out), c(TRUE, FALSE, FALSE, FALSE, TRUE))
+
+  # Two separately built objects recording the same thing agree just as well.
+  twin <- expect_silent(w * trimmed_psw())
+  expect_identical(ps_trim_meta(twin), meta)
+})
+
+test_that("a psw product drops conflicting trimming records with one warning", {
+  w <- trimmed_psw()
+  alt <- alt_trimmed_psw()
+  expect_false(identical(ps_trim_meta(w), ps_trim_meta(alt)))
+
+  out <- collect_warning_classes(w * alt)
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+
+  expect_s3_class(out$value, "psw")
+  expect_null(ps_trim_meta(out$value))
+  expect_true(is_ps_trimmed(out$value))
+
+  # Neither record describes the product, so the positional query has nothing to
+  # answer from and refuses rather than naming units from one of them.
+  expect_error(
+    is_unit_trimmed(out$value),
+    class = "propensity_missing_meta_error"
+  )
+
+  cnd <- expect_warning(
+    w * alt,
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_true(grepl("ps_trim_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("a psw product carries a stabilization score both operands record", {
+  x <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.4
+  )
+  y <- psw(
+    c(2, 2, 2),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.4
+  )
+
+  # A result marked as stabilized with the score gone reads as one stabilized by
+  # the default score rather than by the one the user supplied.
+  out <- expect_silent(x * y)
+  expect_identical(stabilization_score(out), 0.4)
+  expect_true(is_stabilized(out))
+
+  score <- c(0.51, 0.52, 0.53)
+  a <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = score
+  )
+  b <- psw(
+    c(2, 2, 2),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = score
+  )
+  per_observation <- expect_silent(a * b)
+  expect_identical(stabilization_score(per_observation), score)
+
+  # One operand recording a score has nothing to disagree with.
+  alone <- expect_silent(x * psw(c(2, 2, 2), estimand = "cens"))
+  expect_identical(stabilization_score(alone), 0.4)
+})
+
+test_that("a psw product drops conflicting stabilization scores with one warning", {
+  x <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.4
+  )
+  y <- psw(
+    c(2, 2, 2),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.5
+  )
+
+  out <- collect_warning_classes(x * y)
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+  expect_null(stabilization_score(out$value))
+  expect_true(is_stabilized(out$value))
+
+  # A score recorded per observation is a different score from a single one.
+  per_observation <- psw(
+    c(2, 2, 2),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = c(0.4, 0.4, 0.4)
+  )
+  lengths <- collect_warning_classes(x * per_observation)
+  expect_identical(lengths$classes, "propensity_metadata_conflict_warning")
+  expect_null(stabilization_score(lengths$value))
+
+  cnd <- expect_warning(x * y, class = "propensity_metadata_conflict_warning")
+  expect_true(
+    grepl("stabilization_score", conditionMessage(cnd), fixed = TRUE)
+  )
+})
+
+test_that("a psw product carries categorical attributes the operands share", {
+  w <- categorical_psw()
+  expected <- list(
+    n_categories = 3L,
+    category_names = c("A", "B", "C"),
+    focal_category = "A"
+  )
+
+  expect_identical(categorical_attrs_of(expect_silent(w * w)), expected)
+  expect_identical(
+    categorical_attrs_of(expect_silent(w * categorical_psw())),
+    expected
+  )
+
+  # Only one operand describing the exposure is enough to describe the product.
+  plain <- psw(rep(1, 6), estimand = "cens")
+  expect_identical(categorical_attrs_of(expect_silent(w * plain)), expected)
+  expect_identical(categorical_attrs_of(expect_silent(plain * w)), expected)
+})
+
+test_that("a psw product drops a conflicting focal category and keeps the rest", {
+  a <- categorical_psw()
+  b <- categorical_psw(.focal_level = "B")
+
+  out <- collect_warning_classes(a * b)
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
+
+  # The two describe the same exposure and disagree only on which level the
+  # weights target, so only that attribute is dropped.
+  expect_identical(
+    categorical_attrs_of(out$value),
+    list(
+      n_categories = 3L,
+      category_names = c("A", "B", "C"),
+      focal_category = NULL
+    )
+  )
+
+  cnd <- expect_warning(a * b, class = "propensity_metadata_conflict_warning")
+  message <- conditionMessage(cnd)
+  expect_true(grepl("focal_category", message, fixed = TRUE))
+  expect_false(grepl("category_names", message, fixed = TRUE))
+})
+
+test_that("the six core psw fields merge unchanged through a product", {
+  x <- psw(c(1, 2), estimand = "ate", stabilized = TRUE, trimmed = TRUE)
+  y <- psw(
+    c(3, 4),
+    estimand = "cens",
+    stabilized = TRUE,
+    truncated = TRUE,
+    calibrated = TRUE
+  )
+
+  out <- expect_silent(x * y)
+  expect_identical(estimand(out), "ate, cens")
+  expect_true(is_stabilized(out))
+  expect_true(is_ps_trimmed(out))
+  expect_true(is_ps_truncated(out))
+  expect_true(is_ps_calibrated(out))
+
+  # A shared estimand is not pasted to itself.
+  matched <- expect_silent(psw(c(1, 2), estimand = "ate") * y)
+  expect_identical(estimand(matched), "ate, cens")
+  same <- expect_silent(
+    psw(c(1, 2), estimand = "ate") * psw(c(3, 4), estimand = "ate")
+  )
+  expect_identical(estimand(same), "ate")
+
+  # Stabilization holds only when both operands are stabilized; where the
+  # propensity scores came from holds when either operand records it.
+  mixed <- expect_silent(x * psw(c(3, 4), estimand = "ate"))
+  expect_false(is_stabilized(mixed))
+  expect_true(is_ps_trimmed(mixed))
+  expect_false(is_ps_truncated(mixed))
+})
+
+test_that("combining psw objects drops the modification records", {
+  w <- trimmed_psw()
+
+  out <- expect_silent(c(w, w))
+  expect_s3_class(out, "psw")
+  expect_length(out, 10)
+  expect_null(ps_trim_meta(out))
+
+  # Everything that is not indexed by observation survives the concatenation.
+  expect_true(is_ps_trimmed(out))
+  expect_identical(estimand(out), "ate; trimmed")
+
+  expect_error(is_unit_trimmed(out), class = "propensity_missing_meta_error")
+
+  truncated <- truncated_psw()
+  combined <- expect_silent(c(truncated, truncated))
+  expect_null(ps_trunc_meta(combined))
+  expect_true(is_ps_truncated(combined))
+
+  calibrated <- calibrated_psw()
+  combined <- expect_silent(c(calibrated, calibrated))
+  expect_null(ps_calib_meta(combined))
+  expect_true(is_ps_calibrated(combined))
+})
+
+test_that("combining psw objects carries categorical attributes the inputs share", {
+  w <- categorical_psw()
+  expected <- list(
+    n_categories = 3L,
+    category_names = c("A", "B", "C"),
+    focal_category = "A"
+  )
+
+  out <- expect_silent(c(w, w))
+  expect_s3_class(out, "psw")
+  expect_length(out, 12)
+  expect_identical(categorical_attrs_of(out), expected)
+
+  separate <- expect_silent(c(w, categorical_psw()))
+  expect_identical(categorical_attrs_of(separate), expected)
+})
+
+test_that("combining psw objects drops a conflicting focal category", {
+  a <- categorical_psw()
+  b <- categorical_psw(.focal_level = "B")
+
+  out <- collect_warning_classes(c(a, b))
+  expect_identical(unique(out$classes), "propensity_metadata_conflict_warning")
+
+  expect_s3_class(out$value, "psw")
+  expect_length(out$value, 12)
+  expect_identical(
+    categorical_attrs_of(out$value),
+    list(
+      n_categories = 3L,
+      category_names = c("A", "B", "C"),
+      focal_category = NULL
+    )
+  )
 })
