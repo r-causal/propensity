@@ -96,13 +96,17 @@ If \code{NULL}, the estimand is inferred from the weights in \code{outcome_mod},
 requires weights created with a propensity weight function such as
 \code{\link[=wt_ate]{wt_ate()}}.}
 
-\item{ps_link}{A character string specifying the link function used in the
-propensity score model: \code{"logit"}, \code{"probit"}, or \code{"cloglog"}. Defaults to
-the link used by \code{wt_mod}. This applies only to a binomial \code{\link[stats:glm]{stats::glm()}}
-propensity score model on the binary path. A multinomial or continuous
-propensity score model has no link for \code{ps_link} to override, so a
-non-\code{NULL} value errors on both of those paths; leave it \code{NULL} there.
-\code{ps_link} cannot name a link other than the one \code{wt_mod} was fit with:
+\item{ps_link}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} A character string
+specifying the link function used in the propensity score model: \code{"logit"},
+\code{"probit"}, or \code{"cloglog"}. The link is always read from \code{wt_mod}, so
+\code{ps_link} can only restate what the fitted model already supplies and can
+simply be dropped. Supplying it warns.
+
+The argument applies only to a binomial \code{\link[stats:glm]{stats::glm()}} propensity score
+model on the binary path. A multinomial or continuous propensity score
+model has no link for \code{ps_link} to override, so a non-\code{NULL} value errors
+on both of those paths; leave it \code{NULL} there. \code{ps_link} cannot name a link
+other than the one \code{wt_mod} was fit with:
 \code{se_method = "linearization"} errors, and \code{se_method = "mestimation"}
 reports the resulting weights as inconsistent with the propensity score
 model.}

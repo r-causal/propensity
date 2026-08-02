@@ -908,6 +908,11 @@ test_that("the ps_link argument is validated against the supported set", {
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate", ps_link = "logit")
 
+  # Every call below supplies `ps_link`, which is deprecated. The deprecation is
+  # pinned in test-ipw-se-method.R; silencing it here keeps this test about the
+  # validation of the resolved link alone.
+  withr::local_options(lifecycle_verbosity = "quiet")
+
   # A supported override is still accepted.
   expect_s3_class(ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit"), "ipw")
 

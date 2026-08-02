@@ -1,5 +1,14 @@
 # propensity 0.1.0.9000 (development version)
 
+* The `ps_link` argument of `ipw()` is deprecated. Both standard error methods
+  accept only the link the propensity score model was fit with, so the argument
+  can only restate what `wt_mod` already supplies, and supplying it now warns.
+  The warning is advisory and nothing else changes: the matching value is still
+  accepted and gives the same result as omitting the argument, and a value that
+  names a different link is still rejected. A multinomial or continuous
+  propensity score model, which has no link to override, still rejects the
+  argument outright rather than deprecating it.
+
 * A data frame of propensity scores now resolves the column holding the
   probability of the focal level by name. When the frame has a column named for
   every level of a binary `.exposure`, the weight functions read the column

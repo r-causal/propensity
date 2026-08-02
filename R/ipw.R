@@ -61,13 +61,17 @@
 #'   If `NULL`, the estimand is inferred from the weights in `outcome_mod`, which
 #'   requires weights created with a propensity weight function such as
 #'   [wt_ate()].
-#' @param ps_link A character string specifying the link function used in the
-#'   propensity score model: `"logit"`, `"probit"`, or `"cloglog"`. Defaults to
-#'   the link used by `wt_mod`. This applies only to a binomial [stats::glm()]
-#'   propensity score model on the binary path. A multinomial or continuous
-#'   propensity score model has no link for `ps_link` to override, so a
-#'   non-`NULL` value errors on both of those paths; leave it `NULL` there.
-#'   `ps_link` cannot name a link other than the one `wt_mod` was fit with:
+#' @param ps_link `r lifecycle::badge("deprecated")` A character string
+#'   specifying the link function used in the propensity score model: `"logit"`,
+#'   `"probit"`, or `"cloglog"`. The link is always read from `wt_mod`, so
+#'   `ps_link` can only restate what the fitted model already supplies and can
+#'   simply be dropped. Supplying it warns.
+#'
+#'   The argument applies only to a binomial [stats::glm()] propensity score
+#'   model on the binary path. A multinomial or continuous propensity score
+#'   model has no link for `ps_link` to override, so a non-`NULL` value errors
+#'   on both of those paths; leave it `NULL` there. `ps_link` cannot name a link
+#'   other than the one `wt_mod` was fit with:
 #'   `se_method = "linearization"` errors, and `se_method = "mestimation"`
 #'   reports the resulting weights as inconsistent with the propensity score
 #'   model.
@@ -388,6 +392,21 @@ ipw.glm <- function(
       conf_level = conf_level,
       se_method = se_method
     ))
+  }
+
+  # Both standard error methods accept only the link `wt_mod` was fit with, so
+  # the one value `ps_link` can carry without changing the result is the value
+  # the default already resolves to. That leaves the argument as pure
+  # redundancy. The warning comes after the continuous route above, so a
+  # propensity model with no link to override is rejected outright rather than
+  # deprecated and then rejected.
+  if (!is.null(ps_link)) {
+    lifecycle::deprecate_warn(
+      "0.1.0",
+      "ipw(ps_link)",
+      details = "The link is always read from `wt_mod`, so `ps_link` can be \\
+      dropped."
+    )
   }
 
   # Guards first, on the weights that fit the outcome model. These carry the

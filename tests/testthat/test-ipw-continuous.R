@@ -532,6 +532,34 @@ test_that("ipw() rejects ps_link for a gaussian glm propensity model", {
   )
 })
 
+test_that("the gaussian glm ps_link rejection deprecates nothing", {
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat, ps_type = "glm")
+
+  # `ps_link` is deprecated on the binary path, and the gaussian branch of
+  # ipw.glm returns before that warning is reached. A model with no link to
+  # override must be rejected outright rather than told to drop the argument
+  # and to correct it in the same breath.
+  withr::local_options(lifecycle_verbosity = "warning")
+
+  deprecations <- character()
+  err <- withCallingHandlers(
+    expect_error(
+      ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit"),
+      class = "propensity_ipw_link_error"
+    ),
+    lifecycle_warning_deprecated = function(cnd) {
+      deprecations <<- c(deprecations, conditionMessage(cnd))
+      rlang::cnd_muffle(cnd)
+    }
+  )
+
+  expect_length(deprecations, 0)
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "continuous propensity score model", fixed = TRUE)
+})
+
 test_that("the continuous ps_link error explains why the argument does not apply", {
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
