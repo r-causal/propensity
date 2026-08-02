@@ -540,18 +540,22 @@ test_that("the gaussian glm ps_link rejection deprecates nothing", {
   # ipw.glm returns before that warning is reached. A model with no link to
   # override must be rejected outright rather than told to drop the argument
   # and to correct it in the same breath.
-  withr::local_options(lifecycle_verbosity = "warning")
-
+  #
+  # The signal is forced unconditionally, so the empty record below is evidence
+  # that this path raises nothing rather than that something else reached the
+  # `ipw(ps_link)` id first.
   deprecations <- character()
-  err <- withCallingHandlers(
-    expect_error(
-      ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit"),
-      class = "propensity_ipw_link_error"
-    ),
-    lifecycle_warning_deprecated = function(cnd) {
-      deprecations <<- c(deprecations, conditionMessage(cnd))
-      rlang::cnd_muffle(cnd)
-    }
+  err <- with_always_deprecated(
+    withCallingHandlers(
+      expect_error(
+        ipw(mods$ps_mod, mods$outcome_mod, ps_link = "logit"),
+        class = "propensity_ipw_link_error"
+      ),
+      lifecycle_warning_deprecated = function(cnd) {
+        deprecations <<- c(deprecations, conditionMessage(cnd))
+        rlang::cnd_muffle(cnd)
+      }
+    )
   )
 
   expect_length(deprecations, 0)
