@@ -90,14 +90,6 @@ transform_exposure_binary <- function(
   .reference_level = NULL,
   call = rlang::caller_env()
 ) {
-  if (is_binary(.exposure)) {
-    return(.exposure)
-  }
-
-  if (is.logical(.exposure)) {
-    return(as.numeric(.exposure))
-  }
-
   if (!is.null(.focal_level)) {
     return(ifelse(.exposure == .focal_level, 1, 0))
   }
@@ -106,11 +98,17 @@ transform_exposure_binary <- function(
     return(ifelse(.exposure != .reference_level, 1, 0))
   }
 
-  if (
-    is.null(.focal_level) &&
-      is.null(.reference_level) &&
-      has_two_levels(.exposure)
-  ) {
+  # With no level named, an exposure that already carries the 0/1 coding, or a
+  # logical one, is taken at face value and needs no announcement.
+  if (is_binary(.exposure)) {
+    return(.exposure)
+  }
+
+  if (is.logical(.exposure)) {
+    return(as.numeric(.exposure))
+  }
+
+  if (has_two_levels(.exposure)) {
     levels <- if (is.factor(.exposure)) {
       levels(.exposure)
     } else {
@@ -130,23 +128,15 @@ transform_exposure_binary <- function(
   }
 }
 
-# The exposure level `transform_exposure_binary()` actually codes as 1, which is
-# not always the level the caller named: an exposure that is already 0/1, or
-# logical, is returned untouched and the supplied levels are never consulted.
-# Mirrors that function's branching in the same order.
+# The exposure level `transform_exposure_binary()` actually codes as 1. A named
+# level always wins; only when neither is named does the coding fall back to the
+# exposure's own ordering, which is 1 for a 0/1 exposure and `TRUE` for a
+# logical one. Mirrors that function's branching in the same order.
 effective_binary_focal_level <- function(
   .exposure,
   .focal_level = NULL,
   .reference_level = NULL
 ) {
-  if (is_binary(.exposure)) {
-    return(1)
-  }
-
-  if (is.logical(.exposure)) {
-    return(TRUE)
-  }
-
   if (!is.null(.focal_level)) {
     return(.focal_level)
   }
@@ -163,6 +153,14 @@ effective_binary_focal_level <- function(
       return(NULL)
     }
     return(as_focal_label(remaining))
+  }
+
+  if (is_binary(.exposure)) {
+    return(1)
+  }
+
+  if (is.logical(.exposure)) {
+    return(TRUE)
   }
 
   if (!has_two_levels(.exposure)) {
@@ -184,12 +182,11 @@ as_focal_label <- function(x) {
 
 # Whether the named levels leave the focal level where the default coding puts
 # it. Both sides come from `effective_binary_focal_level()`, so this agrees with
-# `transform_exposure_binary()` by construction, including for exposures that
-# ignore the named levels entirely. A level that cannot be resolved counts as
-# the default, leaving the exposure to be handled downstream as it is today.
-# Note that an NA-bearing exposure short-circuits this to TRUE regardless of
-# the argument: `has_two_levels()` counts NA as a level, so the default focal
-# level is NULL and the comparison below never runs.
+# `transform_exposure_binary()` by construction. A level that cannot be resolved
+# counts as the default, leaving the exposure to be handled downstream as it is
+# today. Note that an NA-bearing factor or character exposure short-circuits
+# this to TRUE regardless of the argument: `has_two_levels()` counts NA as a
+# level, so the default focal level is NULL and the comparison below never runs.
 resolved_focal_is_default <- function(
   .exposure,
   .focal_level = NULL,
@@ -238,7 +235,8 @@ record_binary_focal_level <- function(
 }
 
 is_binary <- function(.exposure) {
-  identical(sort(unique(.exposure)), c(0, 1))
+  is.numeric(.exposure) &&
+    identical(sort(unique(as.double(.exposure))), c(0, 1))
 }
 
 is_categorical <- function(.exposure) {

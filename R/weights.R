@@ -132,10 +132,17 @@
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
 #' @param .focal_level The value of `.exposure` representing the focal
-#'   (treated) group. For binary exposures, defaults to the higher value.
-#'   Required for `wt_att()` and `wt_atu()` with categorical exposures.
+#'   (treated) group. Every binary coding honors it: 0/1 numeric, logical,
+#'   two-level factor, and two-level character exposures are all coded with the
+#'   named level as focal. With no level named, a binary exposure defaults to
+#'   its higher level, which is `1` for a 0/1 exposure and `TRUE` for a logical
+#'   one. Naming any other level reverses the coding, so `.propensity` must
+#'   then hold the probability of the named level. Required for `wt_att()` and
+#'   `wt_atu()` with categorical exposures.
 #' @param .reference_level The value of `.exposure` representing the reference
-#'   (control) group. Automatically detected if not supplied.
+#'   (control) group. For a binary exposure, naming it makes the exposure's
+#'   other level focal, with the same consequence for `.propensity`.
+#'   Automatically detected if not supplied.
 #' @param ... These dots are for future extensions and must be empty.
 #' @param stabilize If `TRUE`, multiply weights by an estimate of the marginal
 #'   treatment probability (binary) or density (continuous). Only supported by

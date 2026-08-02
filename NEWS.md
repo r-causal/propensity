@@ -1,5 +1,28 @@
 # propensity 0.1.0.9000 (development version)
 
+* `.focal_level` and `.reference_level` are now honored for 0/1 numeric and
+  logical exposures, which previously ignored them. A caller who named `0` as
+  the focal level of a 0/1 exposure, or `FALSE` for a logical one, silently
+  received weights built with the opposite level as focal: for `wt_att()` and
+  `wt_atu()` those are the weights for the other estimand, and for the
+  remaining estimands they are the weights of a model fit the other way round.
+  These codings now behave as a two-level factor already does, so `.propensity`
+  must hold the probability of whichever level is named. The `glm` methods
+  derive that probability themselves, subtracting the fitted values from one
+  when the named level is not the response's success level. Calls that name no
+  level are unchanged: the higher level, `1` or `TRUE`, is still focal. As a
+  consequence, `ipw()` now rejects `"att"` or `"atu"` weights built on a 0/1 or
+  logical exposure with the lower level named as focal, since its own binary
+  path always treats the higher level as focal. Those weights previously
+  recorded the higher level and passed the check, because they were in fact
+  built for it.
+
+* A 0/1 exposure now reaches the same weights whether it is stored as double or
+  as integer. Integer storage was not recognized as a 0/1 coding, so it took the
+  two-level fallback path, which announced the focal level it chose. The weights
+  agreed, but the messages did not, and only the double form ignored the named
+  levels.
+
 * Arithmetic and subsetting on a `psw` vector now carry the record left by a
   modified propensity score (`ps_trim_meta`, `ps_trunc_meta`, and
   `ps_calib_meta`) whenever the result comes back at the length the record was

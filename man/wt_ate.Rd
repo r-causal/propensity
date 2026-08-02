@@ -235,11 +235,18 @@ automatically when \code{.propensity} is a \code{glm} object.}
 \code{.exposure}.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal
-(treated) group. For binary exposures, defaults to the higher value.
-Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
+(treated) group. Every binary coding honors it: 0/1 numeric, logical,
+two-level factor, and two-level character exposures are all coded with the
+named level as focal. With no level named, a binary exposure defaults to
+its higher level, which is \code{1} for a 0/1 exposure and \code{TRUE} for a logical
+one. Naming any other level reverses the coding, so \code{.propensity} must
+then hold the probability of the named level. Required for \code{wt_att()} and
+\code{wt_atu()} with categorical exposures.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
-(control) group. Automatically detected if not supplied.}
+(control) group. For a binary exposure, naming it makes the exposure's
+other level focal, with the same consequence for \code{.propensity}.
+Automatically detected if not supplied.}
 
 \item{stabilize}{If \code{TRUE}, multiply weights by an estimate of the marginal
 treatment probability (binary) or density (continuous). Only supported by
