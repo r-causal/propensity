@@ -441,6 +441,113 @@ test_that("ipw() categorical atm and entropy return finite, ordered intervals", 
   }
 })
 
+# Finiteness says nothing about where the estimates sit. The atm and entropy
+# target populations are not subsets of the rows, so tilted standardization is
+# the only route to them: a flat mean of the counterfactual predictions would
+# report the ate contrast under either name. Both fixtures adjust the outcome
+# model for x1, which is also what the propensity score model reads, so the tilt
+# genuinely moves the answer. The flat standardization sits 1.2e-2 away from the
+# tilted one for atm and 3.4e-3 for entropy, and the ato tilt in place of the
+# atm one moves the contrasts by 5.5e-3, all far outside the 1e-8 tolerance the
+# pins below are compared at.
+
+test_that("ipw() categorical atm and entropy marginal means are the tilt-standardized predictions", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  for (estimand in c("atm", "entropy")) {
+    dat <- sim_categorical()
+    mods <- fit_categorical_models(dat, estimand)
+    res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+    ps <- ps_matrix_named(mods$ps_mod, dat)
+    h <- ps_tilt(ps, estimand)
+
+    # The tilt is the one piece of arithmetic the reference reads from the
+    # package, so it is checked against its definition rather than taken on
+    # trust: the smallest level probability, and the entropy of the probability
+    # vector.
+    h_hand <- if (estimand == "atm") {
+      pmin(ps[, 1], ps[, 2], ps[, 3])
+    } else {
+      -rowSums(ps * log(ps))
+    }
+    expect_equal(h, unname(h_hand), tolerance = 1e-12)
+
+    # The marginal means are free parameters of the stacked system, reported
+    # under mu_<level> in the solved theta, so they can be pinned directly
+    # rather than through the contrasts they feed.
+    mu_ref <- vapply(
+      mods$lev,
+      function(l) {
+        d <- dat
+        d$a <- factor(l, levels = mods$lev)
+        weighted.mean(
+          predict(mods$outcome_mod, newdata = d, type = "response"),
+          h
+        )
+      },
+      numeric(1)
+    )
+    mu_got <- coef(res$fit)[paste0("mu_", mods$lev)]
+
+    expect_equal(unname(mu_got), unname(mu_ref), tolerance = 1e-8)
+  }
+})
+
+test_that("ipw() categorical atm and entropy point estimates match the tilt-standardized plug-in", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  for (estimand in c("atm", "entropy")) {
+    dat <- sim_categorical()
+    mods <- fit_categorical_models(dat, estimand)
+    res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+    expect_equal(res$estimand, estimand)
+    ref <- plugin_categorical(
+      mods$outcome_mod,
+      dat,
+      mods$lev,
+      "binomial",
+      estimand = estimand,
+      ps = ps_matrix_named(mods$ps_mod, dat)
+    )
+    expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
+  }
+})
+
+test_that("ipw() categorical atm and entropy match the tilt-standardized plug-in for a gaussian outcome", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # The gaussian companion, which reports a single difference per comparison
+  # rather than the three binomial effects. The outcome model carries an
+  # exposure-by-covariate interaction, and that is what makes this arm sensitive
+  # to the standardization: a linear model without one predicts a difference
+  # that is the exposure coefficient at every unit, so its marginal contrast is
+  # that coefficient whichever population it is standardized to, and the tilt
+  # cannot be observed in it at all. The fixture's `yc ~ a + x1` was measured
+  # agreeing with the flat standardization to 2e-15.
+  for (estimand in c("atm", "entropy")) {
+    dat <- sim_categorical()
+    ps_mod <- fit_ps_multinom(dat)
+    ps <- ps_matrix_named(ps_mod, dat)
+    wts <- categorical_weights(ps, dat$a, estimand)
+    outcome_mod <- lm(yc ~ a * x1, data = dat, weights = wts)
+
+    res <- ipw(ps_mod, outcome_mod)
+
+    expect_equal(res$estimand, estimand)
+    ref <- plugin_categorical(
+      outcome_mod,
+      dat,
+      levels(dat$a),
+      "gaussian",
+      estimand = estimand,
+      ps = ps
+    )
+    expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
+  }
+})
+
 # ---- stabilized ate ---------------------------------------------------------
 
 test_that("ipw() runs stabilized categorical ate and matches the plug-in", {
