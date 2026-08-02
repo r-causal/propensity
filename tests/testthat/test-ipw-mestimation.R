@@ -2309,14 +2309,16 @@ test_that("mestimation reports separation for every estimand", {
   }
 })
 
-test_that("the separation error names the count and points at the model", {
+test_that("the separation error reads in the user's terms and points at the model", {
   skip_if_not_installed("deli")
   dat <- separation_data()
   mods <- separation_models(dat)
 
+  # The count is masked and pinned separately; see `mask_saturated_count()`.
   expect_snapshot(
     error = TRUE,
-    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation"),
+    transform = mask_saturated_count
   )
 })
 

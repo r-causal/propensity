@@ -196,6 +196,22 @@ test_that("vec_cast drops a per-observation stabilization score at a different l
   expect_equal(estimand(out), "ate")
 })
 
+test_that("vec_cast to no observations keeps a per-observation stabilization score", {
+  score <- c(0.51, 0.52, 0.53)
+  to <- psw_cast_prototype(stabilization_score = score)
+
+  # Zero-length data is the one length exempt from the check above. It lines up
+  # with nothing and so contradicts nothing, and the result is itself a
+  # prototype: keeping the score is what lets a later restore carry it on to
+  # the observations, exactly as `psw(double(), stabilization_score = )` does.
+  out <- expect_silent(vec_cast(double(), to = to))
+
+  expect_s3_class(out, "psw")
+  expect_length(out, 0)
+  expect_identical(stabilization_score(out), score)
+  expect_true(is_stabilized(out))
+})
+
 test_that("vec_cast from psw to double returns the bare data", {
   x <- psw(
     c(1, 2, 3),
@@ -623,6 +639,14 @@ test_that("casting to a psw keeps a length-matched trimming record and drops a s
   expect_s3_class(shorter, "psw")
   expect_length(shorter, 2)
   expect_null(ps_trim_meta(shorter))
+
+  # Zero-length data takes the same exemption a per-observation score takes: it
+  # lines up with nothing and so contradicts nothing, and the result is itself a
+  # prototype whose record describes the observations a later restore brings.
+  empty <- expect_silent(vec_cast(double(), to = w))
+  expect_s3_class(empty, "psw")
+  expect_length(empty, 0)
+  expect_identical(ps_trim_meta(empty), meta)
 })
 
 test_that("subassigning into a decorated psw is silent and keeps its metadata", {

@@ -1421,6 +1421,29 @@ test_that("a transformed single-column outcome response is not a matrix response
   }
 })
 
+test_that("a scale-transformed outcome response matches its precomputed column", {
+  skip_if_not_installed("deli")
+  # The log and sqrt pair above leaves a plain vector in the model frame.
+  # `scale()` leaves a one-column matrix there instead, so it is the shape the
+  # precomputed cross-check has nothing to say about yet, and it is excluded
+  # from that loop because it fails the matrix premise asserted there. Same
+  # model written two ways, so the same estimates.
+  m <- transformed_response_models()
+  transformed <- transformed_response_outcome("scale(y)", m$dat, m$wts)
+  precomputed <- transformed_response_outcome("scale_y", m$dat, m$wts)
+
+  expect_true(is.matrix(stats::model.frame(transformed)[[1]]))
+  expect_false(is.matrix(stats::model.frame(precomputed)[[1]]))
+
+  for (se in c("mestimation", "linearization")) {
+    expect_equal(
+      ipw(m$ps_mod, transformed, se_method = se)$estimates$estimate,
+      ipw(m$ps_mod, precomputed, se_method = se)$estimates$estimate,
+      tolerance = 1e-10
+    )
+  }
+})
+
 test_that("the matrix-response outcome model error names the outcome model", {
   skip_if_not_installed("deli")
   m <- matrix_outcome_models()
@@ -1548,6 +1571,47 @@ test_that("a .data missing the outcome column names the response, not its transf
     msg <- conditionMessage(err)
     expect_match(msg, "\"y\"", fixed = TRUE)
     expect_no_match(msg, "log", fixed = TRUE)
+  }
+})
+
+test_that("a response the formula's environment holds is still a missing column", {
+  skip_if_not_installed("deli")
+  # The response is evaluated rather than looked up, with the formula's own
+  # environment as the enclosure, so a `.data` missing the column reaches
+  # whatever that environment happens to bind and estimates on it with nothing
+  # signaled. What prevents that is the assert that runs first in the same
+  # branch, over a required set the response's own variables are part of. The
+  # pins above cannot see that: their formula environments hold nothing to find,
+  # so dropping the response from the required set leaves them reporting a
+  # missing object instead of a missing column and still failing. Only an
+  # enclosure that answers shows the silent case, so one is stocked here.
+  m <- transformed_response_models()
+
+  # The response is bound in the formula's environment and nowhere the fit
+  # reads: `model.frame()` finds `y` in `data` first, so the model is fit on the
+  # real column and only the enclosure holds the decoy.
+  env <- new.env(parent = environment())
+  env$y <- rev(m$dat$y)
+  fmla <- y ~ z
+  environment(fmla) <- env
+  outcome_mod <- lm(fmla, data = m$dat, weights = m$wts)
+
+  without_y <- m$dat[setdiff(names(m$dat), "y")]
+
+  # The premise: the enclosure really does answer for the response, and with
+  # values the fit never saw, so an extraction that ran before the assert would
+  # give an answer rather than fail.
+  expect_identical(
+    fmla_eval_left(outcome_mod, without_y),
+    rev(m$dat$y)
+  )
+
+  for (se in c("mestimation", "linearization")) {
+    err <- expect_error(
+      ipw(m$ps_mod, outcome_mod, .data = without_y, se_method = se),
+      class = "propensity_columns_exist_error"
+    )
+    expect_match(conditionMessage(err), "\"y\"", fixed = TRUE)
   }
 })
 
@@ -2411,6 +2475,96 @@ test_that("mestimation rejects atu weights focal on the first exposure level", {
   )
 })
 
+# The same weights against the codings a user is likelier to hold than a named
+# factor. The guard compares levels as characters, so a recorded focal of `0`
+# against a 0/1 column and one of `FALSE` against a logical column are the
+# lower-level cases the factor fixture states in words: neither is the second
+# sorted level, and both must be refused.
+se_method_outcome_focal_lower <- function(dat, ps_mod, exposure_name, wt_fun) {
+  exposure <- dat[[exposure_name]]
+  lower <- sort(unique(exposure))[[1]]
+  e_upper <- predict(ps_mod, type = "response")
+  wts <- wt_fun(
+    1 - e_upper,
+    exposure,
+    exposure_type = "binary",
+    .focal_level = lower
+  )
+  glm(
+    stats::reformulate(exposure_name, response = "y"),
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+}
+
+test_that("both paths reject att weights focal on 0 for a 0/1 exposure", {
+  skip_if_not_installed("deli")
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_focal_lower(dat, ps_mod, "z", wt_att)
+
+  expect_identical(
+    attr(
+      stats::model.weights(stats::model.frame(outcome_mod)),
+      "focal_category"
+    ),
+    0L
+  )
+
+  for (method in c("linearization", "mestimation")) {
+    err <- expect_error(
+      ipw(ps_mod, outcome_mod, .data = dat, se_method = method),
+      class = "propensity_focal_level_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "\"0\"", fixed = TRUE)
+    expect_match(msg, "\"1\"", fixed = TRUE)
+  }
+})
+
+test_that("both paths reject atu weights focal on FALSE for a logical exposure", {
+  skip_if_not_installed("deli")
+  dat <- se_method_data()
+  dat$zl <- as.logical(dat$z)
+  ps_mod <- glm(zl ~ x1 + x2, data = dat, family = binomial())
+  outcome_mod <- se_method_outcome_focal_lower(dat, ps_mod, "zl", wt_atu)
+
+  expect_identical(
+    attr(
+      stats::model.weights(stats::model.frame(outcome_mod)),
+      "focal_category"
+    ),
+    FALSE
+  )
+
+  for (method in c("linearization", "mestimation")) {
+    err <- expect_error(
+      ipw(ps_mod, outcome_mod, .data = dat, se_method = method),
+      class = "propensity_focal_level_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "\"FALSE\"", fixed = TRUE)
+    expect_match(msg, "\"TRUE\"", fixed = TRUE)
+  }
+})
+
+test_that("both paths reject a lower focal level without .data", {
+  skip_if_not_installed("deli")
+  # The exposure comes from the propensity model's own frame when `.data` is
+  # absent, so the guard has to reach the same values by that route.
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_focal_lower(dat, ps_mod, "z", wt_att)
+
+  for (method in c("linearization", "mestimation")) {
+    expect_error(
+      ipw(ps_mod, outcome_mod, se_method = method),
+      class = "propensity_focal_level_error"
+    )
+  }
+})
+
 test_that("the focal level rejection names both the recorded and coded levels", {
   dat <- se_method_data_factor()
   ps_mod <- se_method_ps_mod_factor(dat)
@@ -2640,6 +2794,63 @@ test_that("both SE methods reject a separated propensity model alike", {
   }
 })
 
+test_that("linearization reports separation ahead of its estimand restriction", {
+  dat <- se_separation_data()
+  ps_mod <- suppressWarnings(glm(
+    z ~ x1,
+    data = dat,
+    family = binomial(),
+    control = glm.control(maxit = 200, epsilon = 1e-14)
+  ))
+
+  # atu and entropy have no linearization influence functions and are refused
+  # for that. On a separated fit that refusal is the lesser truth: the model has
+  # no finite maximum likelihood estimate, so no standard error method would
+  # help, and a user told to switch to mestimation would only meet the same
+  # separation there. The guard therefore runs first.
+  for (est in c("atu", "entropy")) {
+    wt_fun <- if (est == "atu") wt_atu else wt_entropy
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_fun(ps_mod)
+    )
+    outcome_mod <- suppressWarnings(glm(
+      y ~ z,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    ))
+
+    expect_error(
+      ipw(ps_mod, outcome_mod, se_method = "linearization"),
+      class = "propensity_ipw_separation_error"
+    )
+  }
+})
+
+test_that("the saturation guard leaves a missing score out of its count", {
+  # A missing propensity score is missing rather than saturated, so it is left
+  # out of the count. Counting it in would put an `NA` into the comparison the
+  # guard branches on and stop the call with base R's report about a missing
+  # value, on a fit whose scores never reached the boundary at all.
+  #
+  # No route through `ipw()` reaches this today. On the `.data` route a missing
+  # covariate is refused by the completeness guard well before the scores are
+  # predicted, and on the model-frame route the prediction is made over the
+  # design the fit kept, which has the incomplete rows already dropped. The
+  # exclusion is held against a change to either, so it is pinned where it is
+  # rather than through a call that cannot produce it.
+  expect_true(check_ipw_ps_saturation(c(2, NA, -2), link = "logit"))
+
+  err <- expect_error(
+    check_ipw_ps_saturation(c(50, NA, -2), link = "logit"),
+    class = "propensity_ipw_separation_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "for 1 observation,", fixed = TRUE)
+})
+
 test_that("linearization still runs on a near-separated propensity model", {
   dat <- se_near_separation_data()
   mods <- se_separation_models(dat)
@@ -2704,13 +2915,14 @@ test_that("linearization leaves a separated cauchit fit to the link rejection", 
   expect_false(inherits(err, "propensity_error"))
 })
 
-test_that("the linearization separation error names the count and the model", {
+test_that("the linearization separation error reads in the user's terms", {
   dat <- se_separation_data()
   mods <- se_separation_models(dat)
 
   expect_snapshot(
     error = TRUE,
-    ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization"),
+    transform = mask_saturated_count
   )
 })
 

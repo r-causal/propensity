@@ -2189,7 +2189,9 @@ test_that("data frame propensity resolves a named focal level by column name", {
         fixture$factor,
         exposure_type = "binary",
         .focal_level = "a"
-      )
+      ),
+      label = paste0("wt_", estimand_name, "(ps_df)"),
+      expected.label = paste0("wt_", estimand_name, "(p_a)")
     )
   }
 })
@@ -2336,6 +2338,154 @@ test_that("data frame propensity warns when only some levels have columns", {
       .focal_level = "a"
     ),
     class = "propensity_df_column_warning"
+  )
+})
+
+test_that("the fallback warning names a declared level the exposure never takes", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
+  with_unused <- factor(c("a", "a", "b", "b"), levels = c("a", "b", "c"))
+
+  # The frame is named for every level the exposure holds, so by the names the
+  # user can see the match should succeed. It does not: a factor answers for its
+  # declared levels, `"c"` among them, and one of those has no column, so the
+  # names are judged not to cover the exposure and the selection falls to
+  # position. The wrong column is then read, guarded by this warning alone, so
+  # the warning has to name the level that is in the way.
+  warning <- expect_warning(
+    wt_att(
+      ps_df,
+      with_unused,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ),
+    class = "propensity_df_column_warning"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(warning))
+  expect_match(msg, "\"c\"", fixed = TRUE)
+  expect_match(msg, "droplevels", fixed = TRUE)
+
+  # And that the remedy it names is the remedy: dropping the unused level makes
+  # the match succeed and the warning go away.
+  weights <- expect_no_warning(
+    wt_att(
+      ps_df,
+      droplevels(with_unused),
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+  expect_equal(
+    as.double(weights),
+    as.double(wt_att(
+      fixture$p_a,
+      droplevels(with_unused),
+      exposure_type = "binary",
+      .focal_level = "a"
+    ))
+  )
+})
+
+test_that("the fallback warning stays quiet about levels when every one is declared", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(x1 = fixture$p_a, x2 = fixture$p_b)
+
+  # The names here cover no level at all, which the unused level has nothing to
+  # do with, so the hint about it must not appear.
+  warning <- expect_warning(
+    wt_att(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ),
+    class = "propensity_df_column_warning"
+  )
+  expect_no_match(conditionMessage(warning), "droplevels", fixed = TRUE)
+})
+
+test_that("data frame propensity warns when the focal level names two columns", {
+  fixture <- level_named_df_fixture()
+  duplicated_names <- data.frame(fixture$p_a, fixture$p_b, fixture$p_b)
+  names(duplicated_names) <- c("a", "a", "b")
+
+  # Two columns can carry one name, through `check.names = FALSE` or through an
+  # assignment like the one above, and the match takes the first of them. That
+  # is a choice between columns holding different numbers, made on nothing the
+  # caller expressed, so it is announced.
+  warning <- expect_warning(
+    wt_att(
+      duplicated_names,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ),
+    class = "propensity_df_duplicate_column_warning"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(warning))
+  expect_match(msg, "\"a\"", fixed = TRUE)
+
+  # The column read is still the first of them, so the announcement changes
+  # nothing about the answer.
+  expect_equal(
+    as.double(suppressWarnings(wt_att(
+      duplicated_names,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ))),
+    as.double(wt_att(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ))
+  )
+})
+
+test_that("a duplicated name away from the focal level is not an ambiguity", {
+  fixture <- level_named_df_fixture()
+  duplicated_names <- data.frame(fixture$p_a, fixture$p_b, fixture$p_a)
+  names(duplicated_names) <- c("a", "b", "b")
+
+  # Only the column the selection lands on is chosen between. A repeat of the
+  # other level's name leaves the focal column unambiguous and is not this
+  # warning's business.
+  expect_no_warning(
+    wt_att(
+      duplicated_names,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ),
+    class = "propensity_df_duplicate_column_warning"
+  )
+})
+
+test_that("an explicit .propensity_col is not an ambiguity either", {
+  fixture <- level_named_df_fixture()
+  duplicated_names <- data.frame(fixture$p_a, fixture$p_b)
+  names(duplicated_names) <- c("a", "a")
+
+  # Naming the column by position is the caller answering the question the
+  # warning asks, so it must not be asked.
+  weights <- expect_no_warning(
+    wt_att(
+      duplicated_names,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a",
+      .propensity_col = 2
+    )
+  )
+  expect_equal(
+    as.double(weights),
+    as.double(wt_att(
+      fixture$p_b,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    ))
   )
 })
 

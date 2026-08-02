@@ -38,8 +38,16 @@ rank_weights <- function(ps_mod) {
 # deliberately rank deficient, and a tightened tolerance leaves the fit unable
 # to reach it and warning about that at fitting time, which is not the condition
 # under test.
+#
+# The weights are carried in as a column of the data rather than passed straight
+# through. `glm()` resolves a `weights` symbol in `data` first and then in the
+# formula's environment, never in this frame, so a bare `weights = wts` here
+# reaches the caller's own frame and works only for as long as every caller
+# names its variable `wts`. One that named it anything else would silently be
+# fit on whatever that name found instead.
 rank_outcome <- function(formula, data, wts) {
-  glm(formula, data = data, family = quasibinomial(), weights = wts)
+  data[["rank_wts"]] <- wts
+  glm(formula, data = data, family = quasibinomial(), weights = rank_wts)
 }
 
 rank_msg <- function(cnd) {

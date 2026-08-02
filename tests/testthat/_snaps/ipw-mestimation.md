@@ -63,14 +63,14 @@
       x `wt_mod` recorded "cov" as a factor with the levels "a", "b", and "c", and the designs rebuilt from `.data` use that coding.
       i Supply "cov" as that factor, or refit the models on the numeric column.
 
-# the separation error names the count and points at the model
+# the separation error reads in the user's terms and points at the model
 
     Code
       ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
     Condition
       Error in `ipw()`:
       ! `wt_mod` must not separate the exposure.
-      x Rebuilding the propensity scores gives a probability of exactly 0 or 1 for 389 observations, whose weights are then undefined.
+      x Rebuilding the propensity scores gives a probability of exactly 0 or 1 for <n> observations, whose weights are then undefined.
       i This is usually separation: some covariate pattern predicts the exposure without error, so the fit has no finite maximum likelihood estimate. An extreme covariate pattern can saturate the scores even where the estimate is finite.
       i Check overlap in `wt_mod` rather than the weights. Dropping or combining the covariate that separates, or penalizing the fit, gives a model with finite coefficients.
 

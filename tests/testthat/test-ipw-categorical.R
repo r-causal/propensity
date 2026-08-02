@@ -88,6 +88,15 @@ categorical_weights <- function(
 # group means, the estimator PSweight reports without an outcome model. The
 # binomial outcome uses a tightened IRLS tolerance so the fitted coefficients
 # sit at the weighted MLE to well below the point-estimate tolerance.
+#
+# The gaussian arm, `yc ~ a + x1`, is standardization-invariant and must not be
+# reused for a tilted parity test. Its counterfactual predictions differ by a
+# constant across exposure levels, so every contrast of marginal means is that
+# constant whatever population the means are standardized to: measured against
+# this fixture, the tilted contrasts and the flat ones agree to about 2e-15 for
+# every tilted estimand. A test that reuses it cannot tell a tilted marginal
+# mean from an untilted one and would pass on an engine that ignored the tilt.
+# Fitting the interaction, `yc ~ a * x1`, separates them by about 0.08.
 fit_outcome <- function(
   dat,
   wts,
@@ -151,6 +160,14 @@ fit_categorical_models <- function(
 # is the flat tilt; the tilted estimands weight each unit's counterfactual
 # predictions by h of the propensity score matrix (columns in level order).
 # Mirrors ps_tilt_categorical() in R/ps_tilt.R.
+#
+# The entropy tilt is written without the engine's nudge of an exactly zero
+# probability off the boundary, deliberately. That nudge exists so 0 log(0) does
+# not arise where a score has saturated, and copying it here would make the
+# oracle agree with the engine by construction rather than by computing the same
+# quantity. Nothing is lost: a fitted multinomial probability is a softmax value
+# and is never exactly zero, and the smallest one this fixture produces is about
+# 0.05.
 categorical_plugin_tilt <- function(ps, estimand, lev, focal, n) {
   if (estimand == "ate") {
     return(rep(1, n))
