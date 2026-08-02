@@ -44,9 +44,11 @@ fit_ps_multinom <- function(dat) {
 }
 
 # Propensity score matrix in factor-level order, column names set to the levels.
-ps_matrix_named <- function(ps_mod, dat) {
+# The levels come from the fitted model, which is the authority on the order its
+# own columns arrive in and is what the package reads everywhere else.
+ps_matrix_named <- function(ps_mod) {
   ps <- unname(predict(ps_mod, type = "probs"))
-  colnames(ps) <- levels(dat$a)
+  colnames(ps) <- ps_mod$lev
   ps
 }
 
@@ -120,7 +122,7 @@ fit_categorical_models <- function(
   strip_weights = FALSE
 ) {
   ps_mod <- fit_ps_multinom(dat)
-  ps_named <- ps_matrix_named(ps_mod, dat)
+  ps_named <- ps_matrix_named(ps_mod)
   wts <- categorical_weights(
     ps_named,
     dat$a,
@@ -378,7 +380,7 @@ test_that("ipw() categorical att detects the focal level from the psw attribute"
     mods$lev,
     "binomial",
     estimand = "att",
-    ps = ps_matrix_named(mods$ps_mod, dat),
+    ps = ps_matrix_named(mods$ps_mod),
     focal = "b"
   )
   expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
@@ -399,7 +401,7 @@ test_that("ipw() categorical atu accepts an explicit focal level argument", {
     mods$lev,
     "binomial",
     estimand = "atu",
-    ps = ps_matrix_named(mods$ps_mod, dat),
+    ps = ps_matrix_named(mods$ps_mod),
     focal = "c"
   )
   expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
@@ -459,7 +461,7 @@ test_that("ipw() categorical atm and entropy marginal means are the tilt-standar
     mods <- fit_categorical_models(dat, estimand)
     res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-    ps <- ps_matrix_named(mods$ps_mod, dat)
+    ps <- ps_matrix_named(mods$ps_mod)
     h <- ps_tilt(ps, estimand)
 
     # The tilt is the one piece of arithmetic the reference reads from the
@@ -509,7 +511,7 @@ test_that("ipw() categorical atm and entropy point estimates match the tilt-stan
       mods$lev,
       "binomial",
       estimand = estimand,
-      ps = ps_matrix_named(mods$ps_mod, dat)
+      ps = ps_matrix_named(mods$ps_mod)
     )
     expect_categorical_estimate_match(res$estimates, ref, tolerance = 1e-8)
   }
@@ -529,7 +531,7 @@ test_that("ipw() categorical atm and entropy match the tilt-standardized plug-in
   for (estimand in c("atm", "entropy")) {
     dat <- sim_categorical()
     ps_mod <- fit_ps_multinom(dat)
-    ps <- ps_matrix_named(ps_mod, dat)
+    ps <- ps_matrix_named(ps_mod)
     wts <- categorical_weights(ps, dat$a, estimand)
     outcome_mod <- lm(yc ~ a * x1, data = dat, weights = wts)
 
@@ -716,7 +718,7 @@ test_that("ipw() categorical rejects a matrix-response outcome model", {
   dat$y1 <- rbinom(nrow(dat), 5, 0.4)
   dat$y0 <- 5 - dat$y1
   ps_mod <- fit_ps_multinom(dat)
-  ps <- ps_matrix_named(ps_mod, dat)
+  ps <- ps_matrix_named(ps_mod)
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
     wt_ate(ps, dat$a, exposure_type = "categorical")
@@ -862,7 +864,7 @@ test_that("a log-transformed categorical outcome response through .data matches 
   dat <- sim_categorical()
   dat$yp <- exp(dat$yc)
   ps_mod <- fit_ps_multinom(dat)
-  wts <- categorical_weights(ps_matrix_named(ps_mod, dat), dat$a, "ate")
+  wts <- categorical_weights(ps_matrix_named(ps_mod), dat$a, "ate")
   outcome_mod <- lm(log(yp) ~ a + x1, data = dat, weights = wts)
 
   expect_equal(
@@ -915,7 +917,7 @@ test_that("ipw() categorical uses .data when the ps model frame is gone", {
     reltol = 1e-14,
     maxit = 2000
   )
-  ps_named <- ps_matrix_named(ps_mod, dat)
+  ps_named <- ps_matrix_named(ps_mod)
   wts <- categorical_weights(ps_named, dat$a, "ate")
   outcome_mod <- glm(
     y ~ a + x1,
@@ -1010,7 +1012,7 @@ test_that("ipw_spec_categorical rejects an unsupported outcome family", {
   skip_if_not_installed("nnet")
   dat <- sim_categorical()
   ps_mod <- fit_ps_multinom(dat)
-  ps_named <- ps_matrix_named(ps_mod, dat)
+  ps_named <- ps_matrix_named(ps_mod)
   wts <- categorical_weights(ps_named, dat$a, "ate")
 
   withr::local_seed(1)
@@ -1035,7 +1037,7 @@ test_that("categorical mestimation matches a factor outcome response to the nume
   dat <- sim_categorical()
   dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
   ps_mod <- fit_ps_multinom(dat)
-  wts <- categorical_weights(ps_matrix_named(ps_mod, dat), dat$a, "ate")
+  wts <- categorical_weights(ps_matrix_named(ps_mod), dat$a, "ate")
   ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
 
   num <- glm(
