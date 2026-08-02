@@ -2228,3 +2228,187 @@ test_that("att weights focal on the second exposure level estimate unchanged", {
     expect_equal(res_focal$estimates, res_plain$estimates, tolerance = 1e-8)
   }
 })
+
+# ---- separation in the propensity model on the linearization path -----------
+#
+# A propensity model whose covariates predict the exposure without error has no
+# finite maximum likelihood estimate, and the weights it implies are undefined
+# wherever a fitted probability reaches the boundary. The M-estimation path
+# refuses such a fit outright.
+#
+# The linearization path has nothing that breaks. Its scores come from
+# `predict(type = "response")`, which goes through the fitted family's inverse
+# link, and that link clamps: it cannot return an exact 0 or 1. Every weight is
+# then finite, no influence value divides by zero, and a design with no overlap
+# at all yields an estimate with a small standard error beside it.
+#
+# Both paths refuse the same fit at the same threshold: the fitted linear
+# predictors, put through the link's unclamped inverse, reach exactly 0 or
+# exactly 1 for at least one observation. Anything short of saturation still
+# runs. Graded overlap diagnostics are not this package's business, and the
+# near-separated fixture below is here to keep them out of it.
+
+se_separation_data <- function(seed = 2024, n = 400) {
+  set.seed(seed)
+  x1 <- rnorm(n)
+  # x1 predicts z with no error, so the fit has no finite optimum
+  z <- as.integer(x1 > 0)
+  y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.4 * x1))
+  data.frame(x1, z, y)
+}
+
+# A fit that is near separation but whose maximum likelihood estimate is finite.
+# The linear predictors reach about 25 in absolute value, so the fitted
+# probabilities come within 1e-11 of the boundary without touching it.
+se_near_separation_data <- function(seed = 11, n = 400) {
+  set.seed(seed)
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(8 * x1))
+  y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.4 * x1))
+  data.frame(x1, z, y)
+}
+
+# The propensity fit warns that fitted probabilities of zero or one occurred,
+# and on the separated fixture it also exhausts its iterations; both are the
+# fixture working as intended rather than anything under test. The iteration
+# limit is raised so the linear predictor reaches the range where the unclamped
+# inverse link saturates. The weights are built from the fitted model the way a
+# user would, so they are exactly the ones this propensity model implies and
+# the weight-consistency preflight has nothing to object to.
+se_separation_models <- function(dat, link = "logit") {
+  ps_mod <- suppressWarnings(glm(
+    z ~ x1,
+    data = dat,
+    family = binomial(link),
+    control = glm.control(maxit = 200, epsilon = 1e-14)
+  ))
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  outcome_mod <- suppressWarnings(glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  ))
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+# Count the fitted scores that saturate under the link's unclamped inverse,
+# which is what the threshold is stated in terms of. Neither
+# `binomial()$linkinv` nor `stats::make.link()$linkinv` can measure this: they
+# are the same clamped function, and it never reaches the boundary.
+se_n_saturated <- function(ps_mod) {
+  inv <- switch(
+    ps_mod$family$link,
+    logit = stats::plogis,
+    probit = stats::pnorm
+  )
+  e <- inv(predict(ps_mod))
+  sum(e == 0 | e == 1)
+}
+
+test_that("linearization rejects a separated propensity model", {
+  dat <- se_separation_data()
+  mods <- se_separation_models(dat)
+
+  # The premise. The fit is separated, `predict()` still hands back interior
+  # scores because the family's inverse link clamps, and the weights the user
+  # holds are finite and agree with the model. Nothing here breaks on its own.
+  expect_gt(max(abs(predict(mods$ps_mod))), 100)
+  ps <- as.double(predict(mods$ps_mod, type = "response"))
+  expect_false(any(ps == 0 | ps == 1))
+  expect_true(all(is.finite(as.double(mods$wts))))
+
+  n_saturated <- se_n_saturated(mods$ps_mod)
+  expect_gt(n_saturated, 0)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization"),
+    class = "propensity_ipw_separation_error"
+  )
+
+  # The guard's own message, naming the count of saturated scores, rather than
+  # a downstream failure that happens to arrive first. The weights are the ones
+  # this model implies, so the weight-consistency preflight is not the thing
+  # speaking here and must not be.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "separation", ignore.case = TRUE)
+  expect_match(msg, as.character(n_saturated), fixed = TRUE)
+  expect_false(inherits(err, "propensity_ipw_weights_mismatch_error"))
+})
+
+test_that("both SE methods reject a separated propensity model alike", {
+  skip_if_not_installed("deli")
+  dat <- se_separation_data()
+  mods <- se_separation_models(dat)
+
+  errs <- lapply(c("linearization", "mestimation"), function(method) {
+    expect_error(
+      ipw(mods$ps_mod, mods$outcome_mod, se_method = method),
+      class = "propensity_ipw_separation_error"
+    )
+  })
+
+  # Same case and same threshold, so both paths count the same observations.
+  n_saturated <- se_n_saturated(mods$ps_mod)
+  for (err in errs) {
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "separation", ignore.case = TRUE)
+    expect_match(msg, as.character(n_saturated), fixed = TRUE)
+  }
+})
+
+test_that("linearization still runs on a near-separated propensity model", {
+  dat <- se_near_separation_data()
+  mods <- se_separation_models(dat)
+
+  # The fixture's premise, asserted here so it cannot drift into saturation and
+  # turn this test vacuous: the estimate is finite, the scores sit within 1e-9
+  # of both boundaries, and not one of them reaches either.
+  expect_true(mods$ps_mod$converged)
+  e <- stats::plogis(predict(mods$ps_mod))
+  expect_identical(se_n_saturated(mods$ps_mod), 0L)
+  expect_lt(min(e), 1e-9)
+  expect_lt(1 - max(e), 1e-9)
+
+  # No overlap diagnostic fires short of saturation, so this returns.
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+test_that("linearization rejects a separated probit propensity model", {
+  dat <- se_separation_data()
+  mods <- se_separation_models(dat, link = "probit")
+
+  # `pnorm` saturates around 8.3, far below the 36.7 `plogis` needs, so the same
+  # fixture separates a probit fit at least as hard. The clamped inverse link
+  # still returns interior scores, so the path has as little to break on here.
+  ps <- as.double(predict(mods$ps_mod, type = "response"))
+  expect_false(any(ps == 0 | ps == 1))
+  expect_gt(se_n_saturated(mods$ps_mod), 0)
+  expect_true(all(is.finite(as.double(mods$wts))))
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization"),
+    class = "propensity_ipw_separation_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "separation", ignore.case = TRUE)
+})
+
+test_that("the linearization separation error names the count and the model", {
+  dat <- se_separation_data()
+  mods <- se_separation_models(dat)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+  )
+})

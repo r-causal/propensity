@@ -1959,27 +1959,9 @@ test_that("the separation error names the count and points at the model", {
   )
 })
 
-test_that("linearization still runs on a separated propensity model", {
-  # The documented boundary of the guard. The linearization path takes its
-  # propensity scores from predict(), which goes through the fitted family's
-  # inverse link, and that link clamps: it cannot return an exact 0 or 1, so
-  # nothing saturates and no weight is undefined. The M-estimation rebuild uses
-  # plogis instead, deliberately, because the clamp would flatten the psi
-  # derivatives and corrupt the sandwich variance.
-  #
-  # This is not an endorsement of the answer. A separated model has no overlap
-  # and the estimate below means little; whether this path should refuse it is a
-  # separate design question. The pin is here so that turning it into an error
-  # is a decision someone makes rather than a side effect of touching the guard.
-  dat <- separation_data()
-  mods <- separation_models(dat)
-
-  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
-
-  expect_s3_class(res, "ipw")
-  expect_true(all(is.finite(res$estimates$estimate)))
-  expect_true(all(is.finite(res$estimates$std.err)))
-})
+# The linearization path refuses the same fit at the same threshold, keyed on
+# the same unclamped inverse link. Those pins live beside the rest of the
+# linearization coverage, in test-ipw-se-method.R.
 
 # ---- the outcome model must contain the exposure -----------------------------
 #
