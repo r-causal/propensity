@@ -117,7 +117,9 @@
 #'   level `.focal_level` or `.reference_level` resolves to. The `glm` methods
 #'   derive it from the fitted values, which give the probability of the
 #'   response's second level, and subtract them from one when the resolved
-#'   focal level is the first level instead.
+#'   focal level is the first level instead. The data frame methods reduce to a
+#'   single column and read it on the same scale; see `.propensity_col` for how
+#'   that column is chosen.
 #' @param .exposure The exposure (treatment) variable. For binary exposures, a
 #'   numeric 0/1 vector, logical, or two-level factor. For categorical
 #'   exposures, a factor or character vector. For continuous exposures, a
@@ -156,8 +158,19 @@
 #'   when `stabilize = FALSE`.
 #' @param .propensity_col Column to use when `.propensity` is a data frame
 #'   with a binary exposure. Accepts a column name (quoted or unquoted) or
-#'   numeric index. Defaults to the second column. Ignored for categorical
-#'   exposures, where all columns are used.
+#'   numeric index. Whichever column is selected is read as the probability of
+#'   the resolved focal level.
+#'
+#'   With no column named, the exposure's levels drive the choice. When the
+#'   data frame has a column named for every level of `.exposure`, the column
+#'   named for the resolved focal level is used, wherever it sits in the frame.
+#'   Otherwise the second column is used, or the only column when the frame has
+#'   just one. Falling back to position after `.focal_level` or
+#'   `.reference_level` was supplied warns and reports the column used, since
+#'   the named level could not be matched to a column; the fallback is silent
+#'   when no level was named and when the frame has a single column.
+#'
+#'   Ignored for categorical exposures, where all columns are used.
 #'
 #' @return A [`psw`] vector (a double vector with class `psw`) carrying
 #'   these attributes:
@@ -388,6 +401,7 @@ wt_ate.data.frame <- function(
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
     weight_fn_numeric = wt_ate.numeric,
+    fn_name = "wt_ate",
     .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
@@ -637,6 +651,7 @@ wt_att.data.frame <- function(
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
     weight_fn_numeric = wt_att.numeric,
+    fn_name = "wt_att",
     .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
@@ -814,6 +829,7 @@ wt_atu.data.frame <- function(
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
     weight_fn_numeric = wt_atu.numeric,
+    fn_name = "wt_atu",
     .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
@@ -985,6 +1001,7 @@ wt_atm.data.frame <- function(
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
     weight_fn_numeric = wt_atm.numeric,
+    fn_name = "wt_atm",
     .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
@@ -1155,6 +1172,7 @@ wt_ato.data.frame <- function(
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
     weight_fn_numeric = wt_ato.numeric,
+    fn_name = "wt_ato",
     .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
@@ -1323,6 +1341,7 @@ wt_entropy.data.frame <- function(
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
     weight_fn_numeric = wt_entropy.numeric,
+    fn_name = "wt_entropy",
     .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
@@ -1495,6 +1514,7 @@ wt_cens.data.frame <- function(
   col_quo <- rlang::enquo(.propensity_col)
   handle_data_frame_weight_calculation(
     weight_fn_numeric = wt_cens.numeric,
+    fn_name = "wt_cens",
     .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,

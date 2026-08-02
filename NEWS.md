@@ -1,5 +1,18 @@
 # propensity 0.1.0.9000 (development version)
 
+* A data frame of propensity scores now resolves the column holding the
+  probability of the focal level by name. When the frame has a column named for
+  every level of a binary `.exposure`, the weight functions read the column
+  named for the level that `.focal_level` or `.reference_level` resolves to,
+  wherever that column sits. Selection previously fixed on the second column, so
+  a caller who named the level whose column came first, or who arranged the
+  columns the other way round, silently received weights built on the
+  probability of the wrong level. A frame whose names do not cover the levels
+  still falls back to the second column, now with a warning of class
+  `propensity_df_column_warning` naming the column used when a level was named
+  and could not be matched. Supplying `.propensity_col` overrides all of this
+  and never warns, and calls that name no level are unchanged.
+
 * `.focal_level` and `.reference_level` are now honored for 0/1 numeric and
   logical exposures, which previously ignored them. A caller who named `0` as
   the focal level of a 0/1 exposure, or `FALSE` for a logical one, silently

@@ -2417,6 +2417,100 @@ test_that("a one column propensity data frame keeps the positional default", {
   )
 })
 
+test_that("a one column propensity data frame reads silently with a named level", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(prob = fixture$p_a)
+
+  # a single column is the caller supplying P(focal) directly, so there is
+  # nothing to choose between and no fallback to report
+  weights <- expect_no_warning(
+    wt_att(
+      ps_df,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+
+  expect_equal(
+    weights,
+    wt_att(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+})
+
+test_that("data frame propensity fires the deprecated `.treated` exactly once", {
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
+
+  deprecations <- 0L
+  weights <- withr::with_options(
+    list(lifecycle_verbosity = "warning"),
+    withCallingHandlers(
+      wt_att(ps_df, fixture$factor, exposure_type = "binary", .treated = "a"),
+      lifecycle_warning_deprecated = function(cnd) {
+        deprecations <<- deprecations + 1L
+        rlang::cnd_muffle(cnd)
+      }
+    )
+  )
+
+  expect_identical(deprecations, 1L)
+
+  # the mapped level drives the column choice, so the "a" column is read
+  expect_equal(
+    weights,
+    wt_att(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+})
+
+test_that("`wt_cens()` resolves a data frame column and its deprecation once", {
+  # wt_cens() routes through the same data frame helper as the other weight
+  # functions, so its exposure is read as a two-level indicator like any other
+  # binary exposure, and "a" is the level whose probability is modeled
+  fixture <- level_named_df_fixture()
+  ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
+
+  deprecations <- character()
+  weights <- withr::with_options(
+    list(lifecycle_verbosity = "warning"),
+    withCallingHandlers(
+      wt_cens(ps_df, fixture$factor, exposure_type = "binary", .treated = "a"),
+      lifecycle_warning_deprecated = function(cnd) {
+        deprecations <<- c(deprecations, conditionMessage(cnd))
+        rlang::cnd_muffle(cnd)
+      }
+    )
+  )
+
+  expect_length(deprecations, 1)
+  # the deprecation is attributed to the function the user called, not to the
+  # `wt_ate()` machinery wt_cens() delegates to
+  expect_match(deprecations[[1]], "wt_cens()", fixed = TRUE)
+  expect_no_match(deprecations[[1]], "wt_ate()", fixed = TRUE)
+
+  # the mapped level drives the column choice, so the "a" column is read
+  expect_equal(
+    weights,
+    wt_cens(
+      fixture$p_a,
+      fixture$factor,
+      exposure_type = "binary",
+      .focal_level = "a"
+    )
+  )
+  expect_identical(estimand(weights), "uncensored")
+})
+
 test_that("continuous exposures keep the positional data frame default", {
   set.seed(2024)
   exposure <- rnorm(10)

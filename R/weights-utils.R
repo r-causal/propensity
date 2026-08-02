@@ -604,11 +604,56 @@ preserve_categorical_attrs <- function(psw_obj, wts, exposure_type) {
   psw_obj
 }
 
+# The exposure levels `transform_exposure_binary()` reads, derived the same way
+# it derives them so that a column named for a level is named for the level the
+# coding actually uses.
+binary_exposure_levels <- function(.exposure) {
+  if (is.factor(.exposure)) {
+    levels(.exposure)
+  } else {
+    sort(unique(.exposure))
+  }
+}
+
+# Position of the column holding the probability of the resolved focal level,
+# or NULL when the column names cannot answer the question. The names must
+# cover every exposure level before any of them is trusted, so that a lone
+# coincidental match cannot redirect the selection. A reference level that
+# leaves more than one candidate resolves to no focal level at all, which is
+# likewise unanswerable.
+match_focal_level_column <- function(
+  .propensity,
+  .exposure,
+  .focal_level = NULL,
+  .reference_level = NULL
+) {
+  exposure_levels <- as.character(binary_exposure_levels(.exposure))
+  if (!all(exposure_levels %in% names(.propensity))) {
+    return(NULL)
+  }
+
+  focal_level <- effective_binary_focal_level(
+    .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
+  )
+  if (is.null(focal_level)) {
+    return(NULL)
+  }
+
+  col_pos <- match(as.character(focal_level), names(.propensity))
+  if (is.na(col_pos)) NULL else col_pos
+}
+
 # Helper function to extract propensity scores from data frames
 # This consolidates the logic used across multiple weight functions
 extract_propensity_from_df <- function(
   .propensity,
   .propensity_col_quo = NULL,
+  .exposure = NULL,
+  exposure_type = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   call = rlang::caller_env()
 ) {
   if (!rlang::quo_is_null(.propensity_col_quo)) {
@@ -634,23 +679,50 @@ extract_propensity_from_df <- function(
       )
     }
 
-    ps_vec <- .propensity[[col_pos]]
-  } else {
-    # Default behavior: use second column if available, otherwise first
-    if (ncol(.propensity) >= 2) {
-      ps_vec <- .propensity[[2]]
-    } else if (ncol(.propensity) == 1) {
-      ps_vec <- .propensity[[1]]
-    } else {
-      abort(
-        "`.propensity` data frame must have at least one column.",
-        call = call,
-        error_class = "propensity_df_ncol_error"
-      )
+    return(.propensity[[col_pos]])
+  }
+
+  if (ncol(.propensity) == 0) {
+    abort(
+      "`.propensity` data frame must have at least one column.",
+      call = call,
+      error_class = "propensity_df_ncol_error"
+    )
+  }
+
+  is_binary_exposure <- identical(exposure_type, "binary")
+
+  if (is_binary_exposure) {
+    col_pos <- match_focal_level_column(
+      .propensity,
+      .exposure,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level
+    )
+    if (!is.null(col_pos)) {
+      return(.propensity[[col_pos]])
     }
   }
 
-  ps_vec
+  # Default behavior: use second column if available, otherwise first
+  col_pos <- if (ncol(.propensity) >= 2) 2L else 1L
+
+  # A single column is the caller supplying the probability of the focal level
+  # directly, so there is nothing to choose between and nothing to report.
+  level_named <- !is.null(.focal_level) || !is.null(.reference_level)
+  if (is_binary_exposure && level_named && ncol(.propensity) > 1) {
+    warn(
+      c(
+        "Can't tell which column of {.arg .propensity} holds the probability of the focal level.",
+        i = "Selected {.val {names(.propensity)[[col_pos]]}} by position.",
+        i = "Name the columns after the levels of {.arg .exposure}, or set {.arg .propensity_col}, to select the column by name."
+      ),
+      warning_class = "propensity_df_column_warning",
+      call = call
+    )
+  }
+
+  .propensity[[col_pos]]
 }
 
 # Helper function to extract propensity scores from GLM objects
@@ -684,6 +756,12 @@ extract_propensity_from_glm <- function(
 
 # Helper function to handle common data frame method pattern
 # This encapsulates the logic used across all weight function data.frame methods
+#
+# The deprecated arguments are resolved here rather than downstream, for the
+# same reason as in `prepare_glm_weight_args()`: the resolved focal level
+# decides which column carries `.propensity`, and mapping it twice would emit
+# the deprecation warning twice, so the numeric method receives the mapped
+# levels and no deprecated arguments.
 handle_data_frame_weight_calculation <- function(
   weight_fn_numeric,
   .propensity,
@@ -691,6 +769,11 @@ handle_data_frame_weight_calculation <- function(
   exposure_type,
   valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
   .propensity_col_quo,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  fn_name,
   ...
 ) {
   # Validate inputs
@@ -709,12 +792,22 @@ handle_data_frame_weight_calculation <- function(
     valid_exposure_types
   )
 
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    fn_name
+  )
+
   if (exposure_type_check == "categorical") {
     # For categorical exposures, pass the whole data frame
     return(weight_fn_numeric(
       .propensity = .propensity,
       .exposure = .exposure,
       exposure_type = exposure_type,
+      .focal_level = focal_params$.focal_level,
+      .reference_level = focal_params$.reference_level,
       ...
     ))
   }
@@ -723,6 +816,10 @@ handle_data_frame_weight_calculation <- function(
   ps_vec <- extract_propensity_from_df(
     .propensity,
     .propensity_col_quo,
+    .exposure = .exposure,
+    exposure_type = exposure_type_check,
+    .focal_level = focal_params$.focal_level,
+    .reference_level = focal_params$.reference_level,
     call = rlang::caller_env(2)
   )
 
@@ -731,6 +828,8 @@ handle_data_frame_weight_calculation <- function(
     .propensity = ps_vec,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    .focal_level = focal_params$.focal_level,
+    .reference_level = focal_params$.reference_level,
     ...
   )
 }

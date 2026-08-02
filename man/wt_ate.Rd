@@ -218,7 +218,9 @@ level, so a numeric vector must be supplied on the scale of whichever
 level \code{.focal_level} or \code{.reference_level} resolves to. The \code{glm} methods
 derive it from the fitted values, which give the probability of the
 response's second level, and subtract them from one when the resolved
-focal level is the first level instead.}
+focal level is the first level instead. The data frame methods reduce to a
+single column and read it on the same scale; see \code{.propensity_col} for how
+that column is chosen.}
 
 \item{.exposure}{The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
@@ -268,8 +270,19 @@ when \code{stabilize = FALSE}.}
 
 \item{.propensity_col}{Column to use when \code{.propensity} is a data frame
 with a binary exposure. Accepts a column name (quoted or unquoted) or
-numeric index. Defaults to the second column. Ignored for categorical
-exposures, where all columns are used.}
+numeric index. Whichever column is selected is read as the probability of
+the resolved focal level.
+
+With no column named, the exposure's levels drive the choice. When the
+data frame has a column named for every level of \code{.exposure}, the column
+named for the resolved focal level is used, wherever it sits in the frame.
+Otherwise the second column is used, or the only column when the frame has
+just one. Falling back to position after \code{.focal_level} or
+\code{.reference_level} was supplied warns and reports the column used, since
+the named level could not be matched to a column; the fallback is silent
+when no level was named and when the frame has a single column.
+
+Ignored for categorical exposures, where all columns are used.}
 }
 \value{
 A \code{\link{psw}} vector (a double vector with class \code{psw}) carrying
