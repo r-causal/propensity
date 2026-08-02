@@ -1653,3 +1653,38 @@ test_that("models fit on data with missing values still work without .data", {
   res <- expect_no_warning(ipw(ps_mod, out))
   expect_true(all(is.finite(res$estimates$std.err)))
 })
+
+# ---- the interaction hint belongs only where an interaction is involved ------
+#
+# The rebuild rejection closes with a note that a `*` or `:` interaction needs
+# no `.data`. That is the right thing to say about `I(z * x1)`, which is an
+# interaction the user wrote the long way. It is noise beside `I(z^2)`, which
+# mixes in no covariate at all and leaves the reader looking for the
+# interaction the message says they have.
+
+test_that("the exposure-mixing rejection keeps the interaction hint", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1 + I(z * x1), dat, wts)
+
+  err <- expect_error(ipw(ps_mod, out), class = "propensity_ipw_exposure_error")
+  expect_match(design_msg(err), "An interaction written with", fixed = TRUE)
+})
+
+test_that("the single-variable transformation rejection drops the interaction hint", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out_sq <- design_outcome(y ~ I(z^2) + x1, dat, wts)
+
+  err <- expect_error(
+    ipw(ps_mod, out_sq),
+    class = "propensity_ipw_exposure_error"
+  )
+  msg <- design_msg(err)
+  expect_match(msg, "I(z^2)", fixed = TRUE)
+  expect_false(grepl("interaction", msg, fixed = TRUE))
+})

@@ -854,3 +854,138 @@ test_that("ipw() lm accepts every argument supplied by name", {
 
   expect_equal(named$estimates, baseline$estimates)
 })
+
+# ---- the propensity model's response has to be a column ---------------------
+#
+# The continuous path derives the exposure's name by deparsing the propensity
+# model's left-hand side, so a left-hand side that is not a bare symbol gives
+# back a vector of several names and everything downstream is indexed by it. A
+# matrix response and a transformed response both do this, and neither was
+# guarded here: without `.data` the call died on an internal length assertion
+# about `.exposure_name`, and with `.data` it asked for a column named after the
+# transforming function, which cannot exist. The binary path already rejects
+# both shapes, and the contract is the same one for a continuous exposure: the
+# propensity model's response is the exposure column itself.
+
+continuous_lhs_data <- function() {
+  dat <- sim_continuous()
+  # a strictly positive copy of the exposure, so log() of it is defined, and a
+  # precomputed column holding that transformation
+  dat$Apos <- exp(dat$A)
+  dat$A1 <- round(pmax(dat$A, 0.1) * 10)
+  dat$A2 <- round(pmax(-dat$A, 0.1) * 10)
+  dat
+}
+
+# Continuous ATE weights and an MSM to carry them, built from whatever exposure
+# vector the propensity model models. The models are only ever rejected here, so
+# the weights need to be well formed rather than matched to the fit.
+continuous_lhs_outcome <- function(dat, ps_mod, exposure) {
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod))[seq_along(exposure)],
+    exposure
+  )
+  lm(yc ~ A, data = dat, weights = wts)
+}
+
+test_that("a matrix-response continuous propensity model is rejected on its shape", {
+  dat <- continuous_lhs_data()
+  ps_mod <- lm(cbind(A1, A2) ~ x1 + x2, data = dat)
+  ps_ok <- lm(A ~ x1 + x2, data = dat)
+  outcome_mod <- continuous_lhs_outcome(dat, ps_ok, dat$A)
+
+  # the fixture is the shape it claims to be
+  expect_true(is.matrix(stats::model.response(stats::model.frame(ps_mod))))
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat),
+    class = "propensity_ipw_response_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "matrix response", fixed = TRUE)
+
+  # and the spec constructor, which callers can reach directly, rejects it the
+  # same way rather than on the internal length assertion it used to
+  err_spec <- expect_error(
+    ipw_spec_continuous(ps_mod, outcome_mod, .data = dat),
+    class = "propensity_ipw_response_error"
+  )
+  expect_false(grepl(
+    ".exposure_name",
+    conditionMessage(err_spec),
+    fixed = TRUE
+  ))
+})
+
+test_that("a transformed continuous propensity response is rejected on both routes", {
+  dat <- continuous_lhs_data()
+  ps_mod <- lm(log(Apos) ~ x1 + x2, data = dat)
+  outcome_mod <- continuous_lhs_outcome(dat, ps_mod, log(dat$Apos))
+
+  for (data_arg in list(NULL, dat)) {
+    err <- expect_error(
+      ipw(ps_mod, outcome_mod, .data = data_arg),
+      class = "propensity_ipw_response_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "log(Apos)", fixed = TRUE)
+    # the two errors it used to raise, one per route
+    expect_false(grepl(".exposure_name", msg, fixed = TRUE))
+    expect_false(grepl("\"log\" column", msg, fixed = TRUE))
+  }
+})
+
+test_that("a transformed continuous propensity response is rejected in the spec", {
+  dat <- continuous_lhs_data()
+  ps_mod <- lm(log(Apos) ~ x1 + x2, data = dat)
+  outcome_mod <- continuous_lhs_outcome(dat, ps_mod, log(dat$Apos))
+
+  expect_error(
+    ipw_spec_continuous(ps_mod, outcome_mod, .data = dat),
+    class = "propensity_ipw_response_error"
+  )
+})
+
+test_that("the lm and gaussian glm propensity routes reject a transformed response alike", {
+  dat <- continuous_lhs_data()
+  ps_lm <- lm(log(Apos) ~ x1 + x2, data = dat)
+  ps_glm <- glm(log(Apos) ~ x1 + x2, data = dat, family = gaussian())
+  outcome_mod <- continuous_lhs_outcome(dat, ps_lm, log(dat$Apos))
+
+  # The two propensity models share fitted values, so they have to reject the
+  # same shape with the same message. The gaussian glm reached the binary
+  # guard's cbind wording, which named a matrix this model does not have.
+  messages <- vapply(
+    list(ps_lm, ps_glm),
+    function(ps_mod) {
+      err <- expect_error(
+        ipw(ps_mod, outcome_mod, .data = dat),
+        class = "propensity_ipw_response_error"
+      )
+      gsub("[[:space:]]+", " ", conditionMessage(err))
+    },
+    character(1)
+  )
+
+  expect_equal(messages[[1]], messages[[2]])
+  expect_false(grepl("cbind", messages[[1]], fixed = TRUE))
+})
+
+test_that("the transformed continuous propensity response error reads in the user's terms", {
+  dat <- continuous_lhs_data()
+  ps_mod <- lm(log(Apos) ~ x1 + x2, data = dat)
+  outcome_mod <- continuous_lhs_outcome(dat, ps_mod, log(dat$Apos))
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(ps_mod, outcome_mod, .data = dat)
+  )
+})
+
+test_that("a plain continuous propensity response is still accepted", {
+  skip_if_not_installed("deli")
+  dat <- continuous_lhs_data()
+  mods <- fit_continuous_models(dat)
+
+  expect_s3_class(ipw(mods$ps_mod, mods$outcome_mod, .data = dat), "ipw")
+})

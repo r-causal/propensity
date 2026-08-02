@@ -470,6 +470,7 @@ test_that("ipw() reports a fit whose variance could not be built", {
 test_that("the no-variance report replaces the ones deli makes", {
   skip_if_not_installed("deli")
   mods <- ill_conditioned_fit()
+  expect_false(anyNA(coef(mods$ps_mod)))
 
   seen <- character()
   withCallingHandlers(
@@ -529,6 +530,7 @@ test_that("the no-variance error reads in the user's terms", {
 test_that("the undiagnosable no-variance error reads in the user's terms", {
   skip_if_not_installed("deli")
   mods <- ill_conditioned_fit()
+  expect_false(anyNA(coef(mods$ps_mod)))
 
   expect_snapshot(
     error = TRUE,
@@ -602,4 +604,159 @@ test_that("a healthy continuous fit raises no solver warning", {
   out <- lm(yc ~ a, data = dat, weights = wts)
 
   expect_no_warning(ipw(ps_mod, out, se_method = "mestimation"))
+})
+
+# ---- a solve that succeeded and still reports a certainty --------------------
+#
+# The degenerate-standard-error signature was consulted only when the solver
+# said it had not converged. A fit whose equations solve cleanly can still land
+# on a standard error many orders of magnitude below the estimate it accompanies,
+# and that fit said nothing at all: an outcome constant within each exposure arm
+# returns its contrast with an interval of no width and a p-value of zero.
+
+constant_outcome_fit <- function() {
+  dat <- rank_data()
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- rank_weights(ps_mod)
+  # the outcome is the exposure, so it never varies within an arm and the
+  # contrast is a fixed 1 rather than an estimate with any spread
+  dat$yconst <- dat$z
+  out <- lm(yconst ~ z, data = dat, weights = wts)
+  list(ps_mod = ps_mod, out = out, dat = dat)
+}
+
+test_that("a solved fit with a collapsed standard error is reported", {
+  skip_if_not_installed("deli")
+  mods <- constant_outcome_fit()
+
+  w <- expect_warning(
+    ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
+    class = "propensity_ipw_degenerate_se_warning"
+  )
+  msg <- rank_msg(w)
+  expect_match(msg, "diff", fixed = TRUE)
+})
+
+test_that("the linearization path reports a collapsed standard error too", {
+  mods <- constant_outcome_fit()
+
+  w <- expect_warning(
+    ipw(mods$ps_mod, mods$out, se_method = "linearization"),
+    class = "propensity_ipw_degenerate_se_warning"
+  )
+  expect_match(rank_msg(w), "diff", fixed = TRUE)
+})
+
+test_that("the collapsed standard error is reported once per fit", {
+  skip_if_not_installed("deli")
+  mods <- constant_outcome_fit()
+
+  seen <- character()
+  withCallingHandlers(
+    ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
+    warning = function(w) {
+      seen <<- c(seen, class(w)[[1]])
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(seen, "propensity_ipw_degenerate_se_warning")
+})
+
+test_that("a fit the solver could not pin down reports that rather than the collapse", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- rank_data()
+  dat$g <- factor(
+    ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
+    levels = c("a", "b", "c")
+  )
+  ps_mod <- nnet::multinom(g ~ x2, data = dat, trace = FALSE)
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- levels(dat$g)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$g, exposure_type = "categorical")
+  )
+  # a degenerate arm the solver notices, so the unsolved report owns the fit
+  dat$y0 <- dat$y
+  dat$y0[dat$g == "c"] <- 0L
+  out <- rank_outcome(y0 ~ g, dat, wts)
+
+  seen <- character()
+  withCallingHandlers(
+    tryCatch(
+      ipw(ps_mod, out, se_method = "mestimation"),
+      error = function(e) NULL
+    ),
+    warning = function(w) {
+      seen <<- c(seen, class(w)[[1]])
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_false("propensity_ipw_degenerate_se_warning" %in% seen)
+})
+
+test_that("the collapsed standard error report reads in the user's terms", {
+  skip_if_not_installed("deli")
+  mods <- constant_outcome_fit()
+
+  expect_snapshot(ipw(mods$ps_mod, mods$out, se_method = "mestimation"))
+})
+
+# The margin the threshold rests on. A healthy fit's standard errors sit within
+# an order of magnitude or two of the estimates they accompany, and the
+# threshold is the square root of machine epsilon against that same scale, so
+# the two are separated by about seven orders of magnitude. Measured across the
+# exposure types and both standard error paths, since the threshold is shared.
+
+degenerate_se_margin <- function(res) {
+  est <- as.data.frame(res)
+  min(est$std.err / pmax(1, abs(est$estimate)))
+}
+
+test_that("healthy fits clear the degenerate-standard-error threshold by orders", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  threshold <- sqrt(.Machine$double.eps)
+  fits <- list()
+
+  dat <- rank_data()
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- rank_weights(ps_mod)
+  binary_outcome <- rank_outcome(y ~ z, dat, wts)
+  fits$binary_mest <- ipw(ps_mod, binary_outcome)
+  fits$binary_mest_gaussian <- ipw(
+    ps_mod,
+    lm(yc ~ z, data = dat, weights = wts)
+  )
+  fits$binary_lin <- ipw(ps_mod, binary_outcome, se_method = "linearization")
+
+  dat$g <- factor(
+    ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
+    levels = c("a", "b", "c")
+  )
+  ps_cat <- nnet::multinom(g ~ x2, data = dat, trace = FALSE)
+  ps <- unname(predict(ps_cat, type = "probs"))
+  colnames(ps) <- levels(dat$g)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$g, exposure_type = "categorical")
+  )
+  fits$categorical_mest <- ipw(ps_cat, rank_outcome(y ~ g, dat, wts))
+
+  withr::local_seed(12)
+  dat$a <- 0.5 + 0.8 * dat$x1 - 0.4 * dat$x2 + rnorm(nrow(dat))
+  ps_cont <- lm(a ~ x1 + x2, data = dat)
+  wts <- wt_ate(
+    fitted(ps_cont),
+    dat$a,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  fits$continuous_mest <- ipw(ps_cont, lm(yc ~ a, data = dat, weights = wts))
+
+  margins <- vapply(fits, degenerate_se_margin, numeric(1))
+  expect_true(all(margins > 1e6 * threshold))
 })

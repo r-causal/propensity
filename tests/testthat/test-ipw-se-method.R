@@ -2761,3 +2761,128 @@ test_that("mestimation uses a per-observation stabilization score", {
     unstabilized_mest
   expect_equal(scored_gap, unstabilized_gap, tolerance = 1e-2)
 })
+
+# ---- the shapes the propensity response guard rejects ------------------------
+#
+# The guard has two prongs and they describe two different models. A matrix
+# response is the `cbind(successes, failures)` shape covered above. A left-hand
+# side that is a call but evaluates to one column, `factor(z)` say, is not a
+# matrix at all, and the cbind wording sent that user looking for a matrix they
+# never wrote.
+
+se_method_call_lhs_models <- function() {
+  dat <- se_method_data()
+  ps_mod <- glm(factor(z) ~ x1 + x2, data = dat, family = binomial())
+  wts <- se_method_ate_wts(dat, se_method_ps_mod(dat))
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, dat = dat)
+}
+
+test_that("a call-form propensity response is rejected as an expression", {
+  m <- se_method_call_lhs_models()
+
+  # the fixture is the shape it claims to be: a call, and not a matrix
+  expect_gt(length(as.character(formula(m$ps_mod)[[2]])), 1L)
+  expect_false(is.matrix(stats::model.response(stats::model.frame(m$ps_mod))))
+
+  for (se in c("mestimation", "linearization")) {
+    err <- expect_error(
+      ipw(m$ps_mod, m$outcome_mod, .data = m$dat, se_method = se),
+      class = "propensity_ipw_response_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "factor(z)", fixed = TRUE)
+    expect_false(grepl("matrix", msg, fixed = TRUE))
+    expect_false(grepl("cbind", msg, fixed = TRUE))
+  }
+})
+
+test_that("the call-form propensity response error reads in the user's terms", {
+  m <- se_method_call_lhs_models()
+  expect_snapshot(
+    error = TRUE,
+    ipw(m$ps_mod, m$outcome_mod, .data = m$dat)
+  )
+})
+
+# ---- the outcome model the linearization path has nothing to compare ---------
+#
+# The first linearization outcome guard rejects any model whose terms are not
+# the exposure alone. Two shapes reach it and they are opposites: a model that
+# carries the exposure and more, and a model that carries the exposure not at
+# all. `y ~ 1` has no terms whatever, and reporting it as "adjusted for terms
+# beyond z" described a model the user did not fit.
+
+se_method_outcome_intercept_only <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  glm(y ~ 1, data = dat, family = quasibinomial(), weights = wts)
+}
+
+# Adjusted for a covariate and missing the exposure at the same time. The
+# missing exposure is the defect that has to be reported.
+se_method_outcome_covariate_only <- function(dat, ps_mod) {
+  wts <- se_method_ate_wts(dat, ps_mod)
+  glm(y ~ x1, data = dat, family = quasibinomial(), weights = wts)
+}
+
+test_that("an intercept-only outcome model is reported as missing the exposure", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_intercept_only(dat, ps_mod)
+
+  # the fixture is the shape it claims to be: no terms at all
+  expect_length(attr(stats::terms(outcome_mod), "term.labels"), 0L)
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "does not include the exposure", fixed = TRUE)
+  expect_false(grepl("adjusted for terms beyond", msg, fixed = TRUE))
+  expect_match(msg, "mestimation", fixed = TRUE)
+})
+
+test_that("an outcome model of the covariates alone is reported as missing the exposure", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_covariate_only(dat, ps_mod)
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "does not include the exposure", fixed = TRUE)
+  expect_false(grepl("adjusted for terms beyond", msg, fixed = TRUE))
+})
+
+test_that("a genuinely adjusted outcome model keeps the adjusted wording", {
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_adjusted_lm(dat, ps_mod)
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"),
+    class = "propensity_method_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "adjusted for terms beyond", fixed = TRUE)
+  expect_false(grepl("does not include the exposure", msg, fixed = TRUE))
+})
+
+test_that("the intercept-only outcome rejection reads in the user's terms", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_intercept_only(dat, ps_mod)
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+  )
+})

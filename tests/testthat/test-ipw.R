@@ -623,3 +623,232 @@ test_that("ipw() glm accepts every argument supplied by name under linearization
     tolerance = 1e-6
   )
 })
+
+# ---- the estimand has to be one ipw() knows ---------------------------------
+#
+# check_estimand() compared the argument against the estimand the weights
+# recorded and never against the set of estimands that exist, so a typo was
+# reported as whatever the comparison happened to notice. With psw weights it
+# came back as a mismatch, which sent the user to reconcile two estimands when
+# only one of them was real; with plain numeric weights nothing compared it at
+# all and it reached the weighted means, where base R reported that `x` and `w`
+# had different lengths.
+
+estimand_fixture <- function() {
+  set.seed(2024)
+  n <- 300
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y <- rbinom(n, 1, plogis(-0.4 + z))
+  dat <- data.frame(x1, z, y)
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- wt_ate(
+    predict(ps_mod, type = "response"),
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  dat$plain_wts <- as.numeric(wts)
+  outcome_psw <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+  outcome_plain <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = plain_wts
+  )
+  list(
+    dat = dat,
+    ps_mod = ps_mod,
+    outcome_psw = outcome_psw,
+    outcome_plain = outcome_plain
+  )
+}
+
+test_that("an unknown estimand is rejected when the weights record one", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+
+  err <- expect_error(
+    ipw(fx$ps_mod, fx$outcome_psw, .data = fx$dat, estimand = "banana"),
+    class = "propensity_ipw_estimand_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "banana", fixed = TRUE)
+  expect_match(msg, "\"ate\"", fixed = TRUE)
+  expect_match(msg, "\"entropy\"", fixed = TRUE)
+  # not the mismatch redirect, which described a disagreement between two
+  # estimands when only one of the two exists
+  expect_false(grepl("Estimand in weights different", msg, fixed = TRUE))
+})
+
+test_that("an unknown estimand is rejected when the weights record none", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+
+  for (se in c("mestimation", "linearization")) {
+    err <- expect_error(
+      ipw(
+        fx$ps_mod,
+        fx$outcome_plain,
+        .data = fx$dat,
+        estimand = "banana",
+        se_method = se
+      ),
+      class = "propensity_ipw_estimand_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "banana", fixed = TRUE)
+    expect_false(grepl("must have the same length", msg, fixed = TRUE))
+  }
+})
+
+# A small continuous fixture, local to this file.
+sim_continuous_estimand <- function() {
+  set.seed(2024)
+  n <- 300
+  x1 <- rnorm(n)
+  A <- 0.5 + 0.8 * x1 + rnorm(n)
+  yc <- 1 + 0.6 * A + 0.5 * x1 + rnorm(n)
+  data.frame(x1, A, yc)
+}
+
+test_that("an unknown estimand is rejected on the continuous path", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_estimand()
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(ps_mod)),
+      dat$A,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  )
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, estimand = "banana"),
+    class = "propensity_ipw_estimand_error"
+  )
+})
+
+test_that("a known estimand that disagrees with the weights still redirects", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+
+  err <- expect_error(
+    ipw(fx$ps_mod, fx$outcome_psw, .data = fx$dat, estimand = "att"),
+    class = "propensity_ipw_estimand_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "Estimand in weights different", fixed = TRUE)
+  expect_match(msg, "\"ate\" vs. \"att\"", fixed = TRUE)
+})
+
+test_that("the undeterminable estimand error carries the estimand class", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_plain, .data = fx$dat),
+    class = "propensity_ipw_estimand_error"
+  )
+})
+
+test_that("every estimand ipw() supports passes the membership check", {
+  for (estimand in ipw_estimands) {
+    expect_identical(check_estimand(NULL, estimand), estimand)
+  }
+})
+
+# ---- the exposure guards carry the exposure class ---------------------------
+#
+# Two guards report an exposure that is not binary, one per standard error
+# path, and neither carried an error class: both arrived as the bare
+# propensity_error every guard in the package shares, so a caller could not tell
+# them from an offset, a link, or a response.
+
+three_value_exposure_fixture <- function() {
+  set.seed(9)
+  n <- 300
+  x1 <- rnorm(n)
+  # a proportion response, which a binomial fit accepts and which takes three
+  # distinct values rather than two
+  p3 <- c(0, 0.5, 1)[cut(plogis(0.4 * x1), 3, labels = FALSE)]
+  y <- rbinom(n, 1, 0.4)
+  dat <- data.frame(x1, p3, y)
+  ps_mod <- suppressWarnings(glm(p3 ~ x1, data = dat, family = binomial()))
+  wts <- psw(rep(1, n), estimand = "ate")
+  outcome_mod <- glm(
+    y ~ p3,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+  list(dat = dat, ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+test_that("the mestimation binary-exposure guard carries the exposure class", {
+  fx <- three_value_exposure_fixture()
+
+  # the fixture is the shape it claims to be
+  expect_length(
+    unique(stats::model.response(stats::model.frame(fx$ps_mod))),
+    3L
+  )
+
+  err <- expect_error(
+    ipw_spec_binary(fx$ps_mod, fx$outcome_mod, .data = fx$dat),
+    class = "propensity_ipw_exposure_error"
+  )
+  expect_match(conditionMessage(err), "binary exposures", fixed = TRUE)
+})
+
+test_that("the linearization binary-exposure guard carries the exposure class", {
+  fx <- three_value_exposure_fixture()
+
+  err <- expect_error(
+    estimate_marginal_means(
+      outcome_mod = fx$outcome_mod,
+      wts = fx$wts,
+      exposure = fx$dat$p3,
+      exposure_name = "p3",
+      .data = fx$dat
+    ),
+    class = "propensity_ipw_exposure_error"
+  )
+  expect_match(conditionMessage(err), "binary exposures", fixed = TRUE)
+})
+
+test_that("the exposure and outcome length guard carries the length class", {
+  set.seed(3003)
+  n <- 400
+  x3 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x3))
+  y <- rbinom(n, 1, plogis(-1 + 1.5 * z + 0.8 * x3))
+  dat <- data.frame(x3, z, y)
+  ps_mod <- glm(z ~ x3, data = dat, family = binomial())
+  wts <- wt_ate(
+    predict(ps_mod, type = "response"),
+    z,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat[1:100, ],
+    family = quasibinomial(),
+    weights = wts[1:100]
+  )
+
+  expect_error(
+    ipw(ps_mod, outcome_mod, estimand = "ate", se_method = "linearization"),
+    class = "propensity_length_error"
+  )
+})
