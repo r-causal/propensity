@@ -975,13 +975,29 @@ test_that("binary att and atu record a named focal level on a 0/1 double exposur
   expect_identical(attr(atu_zero, "focal_category"), 0)
 })
 
+# lifecycle signals a given deprecation once per session and then goes quiet,
+# unless it judges the call "direct". Setting `lifecycle_verbosity` to "warning"
+# only forces the signal for calls it already judged direct, and for a
+# deprecation raised inside a package it makes that judgment from the
+# `TESTTHAT_PKG` environment variable, which testthat sets to the package under
+# test when it knows it and leaves empty otherwise. Under a bare
+# `testthat::test_file()` the variable is empty, so the second test to reach a
+# deprecation id sees nothing at all. Forcing the option and the variable
+# together makes every signal unconditional, which is what lets the assertions
+# below hold whatever reached the deprecation first and whichever runner drove
+# the file.
+with_always_deprecated <- function(code) {
+  withr::local_options(lifecycle_verbosity = "warning")
+  withr::local_envvar(TESTTHAT_PKG = "propensity")
+  code
+}
+
 test_that("binary weights resolve the deprecated `.treated` on a 0/1 double exposure", {
   fixture <- zero_one_fixture()
   ps <- fixture$ps
   is_focal <- as.numeric(fixture$double == 0)
 
-  withr::with_options(
-    list(lifecycle_verbosity = "warning"),
+  with_always_deprecated(
     expect_warning(
       wt_att(ps, fixture$double, exposure_type = "binary", .treated = 0),
       class = "lifecycle_warning_deprecated"
@@ -1181,8 +1197,7 @@ test_that("glm weights resolve the deprecated `.treated` to the same focal level
   e <- 1 - unname(fitted(fixture$model))
   is_focal <- fixture$exposure == "a"
 
-  withr::with_options(
-    list(lifecycle_verbosity = "warning"),
+  with_always_deprecated(
     expect_warning(
       wt_att(fixture$model, exposure_type = "binary", .treated = "a"),
       class = "lifecycle_warning_deprecated"
@@ -1341,8 +1356,7 @@ test_that("glm weights resolve the deprecated `.untreated` to the same reference
   e <- 1 - unname(fitted(fixture$model))
   is_focal <- fixture$exposure == "a"
 
-  withr::with_options(
-    list(lifecycle_verbosity = "warning"),
+  with_always_deprecated(
     expect_warning(
       wt_att(fixture$model, exposure_type = "binary", .untreated = "b"),
       class = "lifecycle_warning_deprecated"
@@ -2448,8 +2462,7 @@ test_that("data frame propensity fires the deprecated `.treated` exactly once", 
   ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
 
   deprecations <- 0L
-  weights <- withr::with_options(
-    list(lifecycle_verbosity = "warning"),
+  weights <- with_always_deprecated(
     withCallingHandlers(
       wt_att(ps_df, fixture$factor, exposure_type = "binary", .treated = "a"),
       lifecycle_warning_deprecated = function(cnd) {
@@ -2481,8 +2494,7 @@ test_that("`wt_cens()` resolves a data frame column and its deprecation once", {
   ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
 
   deprecations <- character()
-  weights <- withr::with_options(
-    list(lifecycle_verbosity = "warning"),
+  weights <- with_always_deprecated(
     withCallingHandlers(
       wt_cens(ps_df, fixture$factor, exposure_type = "binary", .treated = "a"),
       lifecycle_warning_deprecated = function(cnd) {
