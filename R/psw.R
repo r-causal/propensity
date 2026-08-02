@@ -22,13 +22,15 @@
 #' ## Queries
 #'
 #' * `is_psw()` tests whether an object is a `psw` vector.
-#' * `is_causal_wt()` tests whether an object inherits from the broader
-#'   `causal_wts` class (which includes `psw` objects).
-#' * `estimand()` and `estimand<-` get and set the estimand attribute.
 #' * `is_stabilized()` returns `TRUE` if the weights are stabilized.
 #' * `stabilization_score()` returns the user-supplied stabilization score, or
 #'   `NULL` when none was recorded or when a per-observation score was dropped
 #'   because an operation changed the length of the weights.
+#'
+#' `psw` objects also inherit the broader `causal_wts` class. The accessors that
+#' class carries, [causalgenerics::is_causal_wt()],
+#' [causalgenerics::estimand()], and `estimand<-`, are re-exported by propensity
+#' and documented at [causalgenerics::estimand()].
 #'
 #' ## Arithmetic and combining
 #'
@@ -84,8 +86,8 @@
 #' @export
 #'
 #' @param x For `psw()` and `new_psw()`: a numeric vector of weights
-#'   (default: `double()`). For `is_psw()`, `is_causal_wt()`, and `as_psw()`:
-#'   an object to test or coerce.
+#'   (default: `double()`). For `is_psw()` and `as_psw()`: an object to test or
+#'   coerce.
 #' @param estimand A character string identifying the target estimand (e.g.,
 #'   `"ate"`, `"att"`, `"ato"`). Defaults to `NULL`.
 #' @param stabilized Logical. Were the weights stabilized? Defaults to `FALSE`.
@@ -103,9 +105,7 @@
 #'
 #' @return
 #' * `new_psw()`, `psw()`, `as_psw()`: A `psw` vector.
-#' * `is_psw()`, `is_causal_wt()`, `is_stabilized()`: A single logical value.
-#' * `estimand()`: A character string, or `NULL` if no estimand is set.
-#' * `estimand<-`: The modified `psw` object (called for its side effect).
+#' * `is_psw()`, `is_stabilized()`: A single logical value.
 #' * `stabilization_score()`: A numeric value or vector, or `NULL` if none was
 #'   recorded or a per-observation score was dropped.
 #'

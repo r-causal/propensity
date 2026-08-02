@@ -40,8 +40,8 @@ as_psw(x, estimand = NULL)
 }
 \arguments{
 \item{x}{For \code{psw()} and \code{new_psw()}: a numeric vector of weights
-(default: \code{double()}). For \code{is_psw()}, \code{is_causal_wt()}, and \code{as_psw()}:
-an object to test or coerce.}
+(default: \code{double()}). For \code{is_psw()} and \code{as_psw()}: an object to test or
+coerce.}
 
 \item{estimand}{A character string identifying the target estimand (e.g.,
 \code{"ate"}, \code{"att"}, \code{"ato"}). Defaults to \code{NULL}.}
@@ -68,9 +68,7 @@ the object, either a single value or one value per observation. Defaults to
 \value{
 \itemize{
 \item \code{new_psw()}, \code{psw()}, \code{as_psw()}: A \code{psw} vector.
-\item \code{is_psw()}, \code{is_causal_wt()}, \code{is_stabilized()}: A single logical value.
-\item \code{estimand()}: A character string, or \code{NULL} if no estimand is set.
-\item \verb{estimand<-}: The modified \code{psw} object (called for its side effect).
+\item \code{is_psw()}, \code{is_stabilized()}: A single logical value.
 \item \code{stabilization_score()}: A numeric value or vector, or \code{NULL} if none was
 recorded or a per-observation score was dropped.
 }
@@ -98,14 +96,16 @@ assumes \code{x} is already a double vector and performs minimal validation.
 \subsection{Queries}{
 \itemize{
 \item \code{is_psw()} tests whether an object is a \code{psw} vector.
-\item \code{is_causal_wt()} tests whether an object inherits from the broader
-\code{causal_wts} class (which includes \code{psw} objects).
-\item \code{estimand()} and \verb{estimand<-} get and set the estimand attribute.
 \item \code{is_stabilized()} returns \code{TRUE} if the weights are stabilized.
 \item \code{stabilization_score()} returns the user-supplied stabilization score, or
 \code{NULL} when none was recorded or when a per-observation score was dropped
 because an operation changed the length of the weights.
 }
+
+\code{psw} objects also inherit the broader \code{causal_wts} class. The accessors that
+class carries, \code{\link[causalgenerics:is_causal_wt]{causalgenerics::is_causal_wt()}},
+\code{\link[causalgenerics:estimand]{causalgenerics::estimand()}}, and \verb{estimand<-}, are re-exported by propensity
+and documented at \code{\link[causalgenerics:estimand]{causalgenerics::estimand()}}.
 }
 
 \subsection{Arithmetic and combining}{
