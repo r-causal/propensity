@@ -234,6 +234,77 @@ test_that("[.ps_trim remaps an ordinary subscript without comment", {
   expect_identical(is_unit_trimmed(subset), c(FALSE, FALSE, TRUE))
 })
 
+# Rows 2 and 7 hold a column under the threshold and are the trimmed units, so
+# a row mapping that loses or shifts a position reports something visibly
+# different from the rows it was handed.
+trim_matrix_fixture <- function() {
+  ps_mat <- matrix(0.3, nrow = 12, ncol = 3)
+  ps_mat[, 2] <- 0.35
+  ps_mat[2, 1] <- 0.02
+  ps_mat[7, 3] <- 0.02
+  ps_mat <- ps_mat / rowSums(ps_mat)
+  colnames(ps_mat) <- c("A", "B", "C")
+  rownames(ps_mat) <- letters[1:12]
+
+  ps_trim(
+    ps_mat,
+    method = "ps",
+    lower = 0.1,
+    .exposure = factor(rep(c("A", "B", "C"), length.out = 12))
+  )
+}
+
+test_that("[.ps_trim_matrix maps a subscript naming rows by name", {
+  x <- trim_matrix_fixture()
+  full <- is_unit_trimmed(x)
+
+  named <- expect_silent(x[c("a", "b", "g", "h"), ])
+  meta <- ps_trim_meta(named)
+
+  expect_equal(meta$n_obs, 4L)
+  expect_equal(meta$trimmed_idx, c(2L, 3L))
+  expect_equal(meta$keep_idx, c(1L, 4L))
+  expect_identical(is_unit_trimmed(named), full[c(1, 2, 7, 8)])
+})
+
+test_that("[.ps_trim_matrix maps a logical subscript holding NA", {
+  # An `NA` in a logical row subscript returns a row of `NA` rather than
+  # dropping one, so the rows the record is mapped onto have to hold a place
+  # for it or every position after it is off by one.
+  x <- trim_matrix_fixture()
+  full <- is_unit_trimmed(x)
+
+  i <- rep(FALSE, 12)
+  i[c(1, 2, 7)] <- TRUE
+  i[4] <- NA
+
+  rows <- expect_silent(x[i, ])
+  meta <- ps_trim_meta(rows)
+
+  expect_equal(nrow(rows), 4L)
+  expect_equal(meta$n_obs, 4L)
+
+  # The row taken by the `NA` names no observation, so it falls in neither set,
+  # which is what a vector subscript holding `NA` already did.
+  expect_equal(meta$trimmed_idx, c(2L, 4L))
+  expect_equal(meta$keep_idx, 1L)
+  expect_identical(
+    is_unit_trimmed(rows),
+    c(full[[1]], full[[2]], FALSE, full[[7]])
+  )
+})
+
+test_that("[.ps_trim_matrix maps an integer subscript holding NA", {
+  x <- trim_matrix_fixture()
+  full <- is_unit_trimmed(x)
+
+  rows <- expect_silent(x[c(2L, NA, 7L), ])
+
+  expect_equal(nrow(rows), 3L)
+  expect_equal(ps_trim_meta(rows)$n_obs, 3L)
+  expect_identical(is_unit_trimmed(rows), c(full[[2]], FALSE, full[[7]]))
+})
+
 test_that("[.ps_trim_matrix records how many rows the result describes", {
   set.seed(123)
   n <- 12

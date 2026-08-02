@@ -1,5 +1,72 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_trim()` and `ps_trunc()` objects no longer carry a record of which units
+  were modified onto a result holding a different number of observations. An
+  operation that changed the number of observations without going through `[`
+  kept the original positions, so `vctrs::vec_slice()`, and with it
+  `dplyr::filter()`, joins, and group-wise summaries, returned a short column
+  whose record still described the rows before the filter: `is_unit_trimmed()`
+  on a two-element result answered with a four-element vector naming rows that
+  were no longer there. The record is now dropped when it cannot be re-indexed,
+  with a warning of class `propensity_trim_record_warning` or
+  `propensity_trunc_record_warning`, and `is_unit_trimmed()`,
+  `is_unit_truncated()`, and `ps_refit()` raise an error of class
+  `propensity_missing_meta_error` on an object whose record is absent or was
+  written for a different number of observations, rather than answer from stale
+  positions. The values, the class, and the method and its cutoffs or bounds are
+  untouched by the drop, and a record that covers the object it is on is carried
+  exactly as before, so arithmetic, renaming, and subassignment at the same
+  length are unaffected.
+
+  A record is checked against the object it is on by counting observations, so
+  an operation that keeps the count and reorders them is neither re-indexed nor
+  refused. `vctrs::vec_slice(x, 5:1)` and `dplyr::arrange()` return a column
+  whose positions still name the order the observations arrived in, and
+  `is_unit_trimmed()`, `is_unit_truncated()`, and `ps_refit()` answer from
+  those positions: the first two name the wrong units and the third refits on
+  the wrong rows. Subsetting with `[` is handed the subscript and re-indexes, so
+  reorder with `[`, or order the propensity scores before trimming or
+  truncating them.
+
+* Combining `ps_trim()` or `ps_trunc()` objects with `c()` now drops the record
+  of which units were modified. Concatenation appends one set of observations to
+  another, so the positions either record names would describe units from the
+  other input. The combined result previously worked its record out from the
+  values, which reported a propensity score that arrived missing as one
+  `ps_trim()` had removed, and a score that arrived equal to a bound as one
+  `ps_trunc()` had winsorized.
+
+* Subsetting a `ps_trim()` or `ps_trunc()` object with a subscript that names a
+  position more than once now reports that unit at every place it holds.
+  `x[c(1, 1, 2)]` recorded only the first copy of position 1 and left position 2
+  in neither the trimmed nor the retained set.
+
+* `unique()` and `rep()` on `ps_trim()` and `ps_trunc()` objects now return a
+  record written for the result. Both previously carried the record from the
+  object they were called on, so `is_unit_trimmed()` on the three unique values
+  of a five-element vector answered with five elements naming positions the
+  result does not hold. Each knows which position every value it returns came
+  from, and now re-indexes the record onto it. `unique()` also rejects a
+  non-default `incomparables` with an error of class
+  `propensity_unsupported_arg_error` rather than compare the values it names
+  along with the rest.
+
+* Subsetting a `ps_trim()` or `ps_trunc()` matrix by row name, or by a logical
+  subscript holding `NA`, now maps the record onto the rows the subset returns.
+  Row names were compared against integer positions and matched nothing, so
+  every row of the result was recorded as neither trimmed nor retained and
+  `is_unit_trimmed()` reported all of them as retained. A logical subscript
+  holding `NA` left that row out of the record while base R returned it as a row
+  of `NA`, shifting every position after it, and an integer subscript holding
+  `NA` failed with base R's message about a missing value where `TRUE`/`FALSE`
+  is needed. A row taken by an `NA` subscript names no observation and so is
+  reported as neither trimmed nor retained, which is what `[` on a vector
+  already did.
+
+* `vctrs::vec_cast()` to a `ps_trunc()` object now returns the documented
+  metadata structure. The result carried the method and bounds but no
+  `truncated_idx`, unlike the `ps_trim()` equivalents.
+
 * An arithmetic operation between two `psw` objects now keeps the metadata the
   two operands agree on. Multiplying weights by weights, as in combining weights
   against confounding with weights against censoring, previously rebuilt the
@@ -188,6 +255,15 @@
   been retained. `is_refit()` reads a single flag rather than a position, so it
   answers from any record present and refuses only when the record is absent
   entirely. Weights that were never trimmed are unaffected.
+
+  Whether a record covers the weights is decided by the number of observations
+  the record was written for, which is the test a `ps_trim` applies to itself,
+  so weights and the propensity scores they were built from answer alike. It
+  was previously decided by adding the retained and the trimmed positions
+  together, which falls short of the observations whenever a position belongs to
+  neither: `x[c(1, NA, 2)]` gives three observations and two recorded positions,
+  and `is_unit_trimmed()` answered on the `ps_trim` while refusing on weights
+  built from it.
 
 * `is_unit_trimmed()` on an empty `psw` now returns an empty logical vector.
   Where the weights were empty but still carried a trimming record, indexing by

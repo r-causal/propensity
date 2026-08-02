@@ -20,17 +20,27 @@ observations were removed by trimming. This is a per-unit query, as opposed
 to \code{\link[=is_ps_trimmed]{is_ps_trimmed()}}, which tests whether the object has been trimmed at
 all.
 
-On a \link{psw} vector built from trimmed propensity scores, the answer comes
-from the trimming record carried on the weights. That record is written for
-a fixed set of observations, and it can both be lost and outlive them: a
-subset drops it, while \code{model.frame()} re-attaches it to the shortened
-weights column of an outcome model fit on these weights, and subassignment
-that grows the vector carries it across the length change.
-\code{is_unit_trimmed()} therefore checks that the record covers the vector it
+The answer comes from the trimming record, which is written for a fixed set
+of observations and can both be lost and outlive them. On a \code{ps_trim},
+\code{\link[vctrs:vec_slice]{vctrs::vec_slice()}} and \code{\link[=c]{c()}} drop it, and subassignment that grows the
+vector carries it across a length change; see \code{\link[=ps_trim]{ps_trim()}} for the whole
+contract. On a \link{psw} vector built from trimmed propensity scores, a subset
+drops it, while \code{model.frame()} re-attaches it to the shortened weights
+column of an outcome model fit on these weights.
+
+\code{is_unit_trimmed()} therefore checks that the record covers the object it
 is given, and raises an error of class \code{propensity_missing_meta_error} when
-it does not, or when weights marked as trimmed carry no record at all,
+it does not, or when an object marked as trimmed carries no record at all,
 rather than name trimmed units at stale positions. Query the \code{ps_trim}
-object the weights were built from instead.
+object the record was written for instead.
+
+That check counts observations, which a reordering does not change, so it
+does not catch one. A \code{ps_trim} reordered through vctrs rather than through
+\code{[}, by \code{vctrs::vec_slice(x, 5:1)} or \code{dplyr::arrange()}, keeps a record
+written for the old order, and a \code{psw} keeps one through any same-length
+operation, a reordering included. \code{is_unit_trimmed()} answers from those
+positions and names the wrong units. See \code{\link[=ps_trim]{ps_trim()}} and \link{psw} for the
+whole contract.
 }
 \examples{
 ps <- c(0.05, 0.3, 0.6, 0.95)

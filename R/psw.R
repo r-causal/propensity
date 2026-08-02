@@ -254,14 +254,8 @@ is_ps_trimmed.psw <- function(x) {
   isTRUE(attr(x, "trimmed"))
 }
 
-# The number of observations a trimming record was written for. `keep_idx` and
-# `trimmed_idx` partition those observations in every `ps_trim()` method, so
-# their total is the length the record is entitled to speak for.
-recorded_trim_length <- function(meta) {
-  length(meta$keep_idx) + length(meta$trimmed_idx)
-}
-
-# `recorded` is the length the record covers, or NULL when there is no record.
+# `recorded` is the number of observations the record covers, or NULL when
+# there is nothing to read that number from.
 abort_trim_meta <- function(fn, recorded, n, call) {
   problem <- if (is.null(recorded)) {
     "These weights are marked as built from trimmed propensity scores but
@@ -304,20 +298,21 @@ check_trim_meta <- function(x, fn, call = rlang::caller_env()) {
 # still carrying a record written for rows that are no longer there. Growing a
 # psw by subassignment crosses a length change the same way. Answering from
 # either would name trimmed units at positions holding retained ones.
+#
+# Coverage is the same question here as on a `ps_trim`, and it is asked of the
+# same field: the record writes down how many observations its positions were
+# written for. A record that does not write that number down, which nothing in
+# this package produces, has positions with no sample to place them against and
+# is refused like an absent one.
 check_trim_meta_covers <- function(x, fn, call = rlang::caller_env()) {
   check_trim_meta(x, fn, call = call)
 
   meta <- ps_trim_meta(x)
-  if (is.null(meta) || recorded_trim_length(meta) == length(x)) {
+  if (is.null(meta) || record_covers(meta, length(x))) {
     return(invisible(x))
   }
 
-  abort_trim_meta(
-    fn,
-    recorded = recorded_trim_length(meta),
-    n = length(x),
-    call = call
-  )
+  abort_trim_meta(fn, recorded = meta$n_obs, n = length(x), call = call)
 }
 
 #' @export

@@ -774,6 +774,32 @@ test_that("weights read out of an outcome model's frame refuse the positional qu
   expect_true(is_ps_trimmed(model_wts))
 })
 
+test_that("a psw answers a positional query wherever its ps_trim does", {
+  # A subscript holding `NA` takes a position that names no observation, so the
+  # record it leaves holds one position fewer than the observations it
+  # describes. Coverage is the number of observations the record was written
+  # for rather than the total of its positions, which is the test the `ps_trim`
+  # applies to itself, so both answer.
+  ps <- ps_trim(
+    c(0.05, 0.3, 0.5, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+  holed <- ps[c(1, NA, 2)]
+
+  meta <- ps_trim_meta(holed)
+  expect_equal(meta$n_obs, 3L)
+  expect_equal(length(meta$keep_idx) + length(meta$trimmed_idx), 2L)
+  expect_identical(is_unit_trimmed(holed), c(TRUE, FALSE, FALSE))
+
+  w <- without_refit_warning(
+    wt_ate(holed, c(1, 0, 1), exposure_type = "binary", .focal_level = 1)
+  )
+  expect_identical(ps_trim_meta(w), meta)
+  expect_identical(is_unit_trimmed(w), c(TRUE, FALSE, FALSE))
+})
+
 test_that("growing a psw by subassignment leaves a record that no longer covers it", {
   # `[<-` casts the replacement and then leaves base R to preserve the target's
   # attributes, so the record crosses a length change no restore ever sees. It

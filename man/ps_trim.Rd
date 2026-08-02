@@ -91,6 +91,7 @@ with \code{\link[=ps_trim_meta]{ps_trim_meta()}}. Key fields include:
 \item \code{method}: the trimming method used
 \item \code{keep_idx}: integer indices of retained observations
 \item \code{trimmed_idx}: integer indices of trimmed (NA) observations
+\item \code{n_obs}: the number of observations those indices describe
 \item Method-specific fields such as \code{cutoff} (adaptive), \code{q_lower}/\code{q_upper}
 (pctl), \code{cr_lower}/\code{cr_upper} (cr), \code{delta} (categorical ps),
 or \code{lambda} (optimal)
@@ -150,6 +151,47 @@ Mismatched parameters trigger a warning and return a numeric vector.
 
 Use \code{\link[=ps_trim_meta]{ps_trim_meta()}} to inspect the trimming metadata, including the method,
 cutoffs, and which observations were retained or trimmed.
+}
+
+\subsection{The trimming record}{
+
+A \code{ps_trim} records which units were trimmed as positions among the
+observations it was written for, along with how many observations that was.
+Operations that hand this package the subscript re-index those positions onto
+the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, \code{\link[=unique]{unique()}}, \code{\link[=rep]{rep()}}, and
+\code{\link[=na.omit]{na.omit()}} all return a record written for what they return, and a subscript
+naming a position more than once reports that unit at every place it now
+holds.
+
+Operations that change how many observations there are without supplying a
+subscript cannot re-index the record, and it is dropped rather than worked
+out from the values, since reading membership back from the \code{NA} pattern
+would report a propensity score that arrived missing as one this package
+removed. \code{\link[vctrs:vec_slice]{vctrs::vec_slice()}}, which is how filtering, joining, and grouped
+summaries in dplyr reach a column, is the usual route, and dropping the
+record there raises a warning of class \code{propensity_trim_record_warning}.
+Combining with \code{\link[=c]{c()}} drops it without comment, because concatenation appends
+one set of observations to another and the prototype it builds the result
+from holds no positions to lose. The values, the class, and the method and
+its cutoffs are untouched either way.
+
+A record can also outlive the observations it describes, because it travels
+by routes vctrs does not see: growing a \code{ps_trim} by subassignment carries it
+across the length change. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} and \code{\link[=ps_refit]{ps_refit()}} therefore
+check that the record covers the object they are given and raise an error of
+class \code{propensity_missing_meta_error} when it does not, rather than name
+trimmed units at stale positions.
+
+That check compares how many observations the record was written for against
+how many the object holds, which a reordering does not change. An operation
+that reorders the observations through vctrs, rather than through \code{[},
+therefore keeps a record written for the order they used to be in:
+\code{vctrs::vec_slice(x, 5:1)} and \code{dplyr::arrange()} both return the values in
+a new order under positions still naming the old one. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}}
+answers from those positions and names the wrong units, and \code{\link[=ps_refit]{ps_refit()}}
+refits on the wrong rows. Subsetting with \code{[} is handed the subscript and
+re-indexes, so reorder with \code{[}, or put the propensity scores in the order
+you want before trimming them.
 }
 }
 \examples{

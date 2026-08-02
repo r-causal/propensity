@@ -514,10 +514,17 @@ test_that("ps_trim works with summarize(mean = mean(ps))", {
     ps_trim(method = "ps", lower = 0.3, upper = 0.7) |>
     ps_refit(fit)
 
-  out <- tibble(x, z, ps) |>
-    group_by(trimmed = is_unit_trimmed(ps)) |>
-    summarize(mean = mean(ps), .groups = "drop")
+  # A grouped summary slices the column once per group, and each slice holds
+  # scores the trimming record was not written for, so the record is dropped and
+  # says so. The summary itself reads values rather than positions.
+  summarized <- count_record_drops(
+    tibble(x, z, ps) |>
+      group_by(trimmed = is_unit_trimmed(ps)) |>
+      summarize(mean = mean(ps), .groups = "drop")
+  )
+  expect_gt(summarized$drops, 0)
 
+  out <- summarized$value
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("trimmed", "mean"))
   expect_type(out$mean, "double")
@@ -578,32 +585,27 @@ test_that("ps_trim index tracking works when combining objects", {
   ps_trim1 <- ps_trim(ps1, method = "ps", lower = 0.2, upper = 0.8)
   ps_trim2 <- ps_trim(ps2, method = "ps", lower = 0.2, upper = 0.8)
 
-  # Get original trimmed indices
-  meta1 <- ps_trim_meta(ps_trim1)
-  meta2 <- ps_trim_meta(ps_trim2)
-  n_trimmed1 <- length(meta1$trimmed_idx)
-  n_trimmed2 <- length(meta2$trimmed_idx)
-
   # Combine the objects
   combined <- c(ps_trim1, ps_trim2)
 
-  # Should be a ps_trim object
+  # Should be a ps_trim object holding every value in order
   expect_s3_class(combined, "ps_trim")
-
-  # Check that indices are properly tracked
-  combined_meta <- ps_trim_meta(combined)
   expect_equal(length(combined), 20)
-
-  # The total number of trimmed should be the sum
   expect_equal(
-    length(combined_meta$trimmed_idx),
-    n_trimmed1 + n_trimmed2
+    vec_data(combined),
+    c(vec_data(ps_trim1), vec_data(ps_trim2))
   )
 
-  # Check that NA values are at the correct positions
-  combined_data <- vec_data(combined)
-  expect_true(all(is.na(combined_data[combined_meta$trimmed_idx])))
-  expect_true(!anyNA(combined_data[combined_meta$keep_idx]))
+  # Concatenation appends one set of observations to another, so the positions
+  # either record names would describe units from the other input.
+  combined_meta <- ps_trim_meta(combined)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$keep_idx)
+  expect_equal(combined_meta$method, "ps")
+  expect_error(
+    is_unit_trimmed(combined),
+    class = "propensity_missing_meta_error"
+  )
 })
 
 test_that("ps_trim warns when combining objects with different parameters", {
@@ -642,9 +644,10 @@ test_that("ps_trim index tracking works with subsetting and combining", {
   # Should maintain ps_trim class
   expect_s3_class(recombined, "ps_trim")
 
-  # Check indices are properly tracked
-  recombined_meta <- ps_trim_meta(recombined)
-  expect_equal(length(recombined_meta$trimmed_idx), length(meta$trimmed_idx))
+  # Each half kept a record written for itself, and the recombination has none:
+  # the halves were subset with a subscript in hand and appended without one.
+  expect_equal(length(ps_trim_meta(subset1)$trimmed_idx), sum(is.na(subset1)))
+  expect_null(ps_trim_meta(recombined)$trimmed_idx)
 
   # Check that NA values are preserved at correct positions
   recombined_data <- vec_data(recombined)
@@ -667,19 +670,20 @@ test_that("ps_trim handles multiple combines correctly", {
   # Combine all three
   combined <- c(ps_trim1, ps_trim2, ps_trim3)
 
-  # Should maintain ps_trim class
+  # Should maintain ps_trim class and every value
   expect_s3_class(combined, "ps_trim")
   expect_equal(length(combined), 15)
+  expect_equal(
+    vec_data(combined),
+    c(vec_data(ps_trim1), vec_data(ps_trim2), vec_data(ps_trim3))
+  )
 
-  # Check indices
-  combined_meta <- ps_trim_meta(combined)
-  combined_data <- vec_data(combined)
-
-  # All trimmed indices should have NA values
-  expect_true(all(is.na(combined_data[combined_meta$trimmed_idx])))
-
-  # All kept indices should have non-NA values
-  expect_true(!anyNA(combined_data[combined_meta$keep_idx]))
+  # Folding three inputs together drops the record just as folding two does.
+  expect_null(ps_trim_meta(combined)$trimmed_idx)
+  expect_error(
+    is_unit_trimmed(combined),
+    class = "propensity_missing_meta_error"
+  )
 })
 
 # Trimming record integrity ------------------------------------------------
@@ -891,4 +895,27 @@ test_that("a ps_trim that lost its record says so instead of reporting none", {
 
   expect_match(vec_ptype_full(x), "trimmed 2 of", fixed = TRUE)
   expect_match(vec_ptype_full(sliced), "record dropped", fixed = TRUE)
+})
+
+test_that("a ps_trim reordered through vctrs keeps the record for the old order", {
+  # The documented limit of the coverage check, which counts observations and so
+  # sees nothing in a reordering. No subscript reaches the restore, so the
+  # record survives naming where the observations used to be.
+  x <- trim_record_fixture()
+
+  reordered <- expect_silent(vec_slice(x, 5:1))
+  expect_equal(as.numeric(reordered), c(0.6, NA, 0.5, 0.3, NA))
+  expect_identical(ps_trim_meta(reordered), ps_trim_meta(x))
+
+  # The trimmed units now hold positions 2 and 5, and the record still names 1
+  # and 4, so the answer is the one the record gives rather than the one the
+  # values show.
+  expect_identical(
+    is_unit_trimmed(reordered),
+    c(TRUE, FALSE, FALSE, TRUE, FALSE)
+  )
+
+  # `[` is handed the subscript and re-indexes, so the same reordering through
+  # `[` reports the units that hold those positions.
+  expect_identical(is_unit_trimmed(x[5:1]), c(FALSE, TRUE, FALSE, FALSE, TRUE))
 })
