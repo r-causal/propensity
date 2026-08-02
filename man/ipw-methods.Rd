@@ -72,21 +72,24 @@ transformations that prevent extraction of the exposure variable from
 \code{\link[stats:model.frame]{stats::model.frame()}}, or if the propensity score model cannot reconstruct
 its design (for example, fit with \code{model = FALSE} with the fitting data no
 longer available); \code{ipw()} then rebuilds the propensity design from \code{.data}.
-\code{.data} must have one row per observation the models were fit to; a row
-count that disagrees with the fitted models errors. A column either model
-fit as a factor must be supplied as a factor or as character; supplying it
-as numeric errors.
+\code{.data} must be the data the models were fit to. It must have one row per
+observation the models were fit to, and each column must carry the type its
+model was fit on: a column fit as a factor may also be supplied as character
+or as an ordered factor, since those rebuild the same design, but a factor
+supplied as numeric, or a numeric supplied as a factor or a logical, errors.
+A row count or a column type that disagrees with the fitted models errors
+rather than rebuilding a design the models were not fit to.
 
 Supplying \code{.data} also decides how a term that transforms the exposure is
 handled. The counterfactual designs are built by setting the exposure column
 to each level in turn and rebuilding the outcome design from \code{.data}, so a
 term such as \code{as.numeric(a == "c")} or \code{I(z^2)} is re-evaluated at the level
 being set rather than held at its observed value, so such a model is
-g-computation on the model as specified. This covers transformations that
-re-evaluate cleanly at a reassigned exposure; a term that rebuilds the
-exposure's own type, such as \code{factor(a)}, errors instead. Without \code{.data}
-the exposure cannot be read back through the transformation and the call
-errors, naming the exposure and directing you here.}
+g-computation on the model as specified. A term that has to derive the
+exposure's levels from the values it sees, such as \code{factor(a)}, has only the
+one level once the column is set and errors, with or without \code{.data}; fit
+the outcome model on the plain exposure column instead, converting it in the
+data first if you want a factor coding.}
 
 \item{estimand}{A character string specifying the causal estimand: one of
 \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or \code{"entropy"}. The available

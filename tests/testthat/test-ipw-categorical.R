@@ -638,9 +638,13 @@ test_that("ipw() categorical rejects a matrix-response outcome model", {
 # about a names attribute, which says nothing about `.data` or about the column
 # that changed.
 #
-# Only a change in the number of columns matters. A covariate that changes type
-# without changing the design's width is a reparameterization of the same
-# numbers, and the pin below keeps a guard from rejecting one.
+# A change in the number of columns is not the only thing that matters, and the
+# pin below records the measurement that settled it. A two-level factor supplied
+# where the fit saw a numeric column gives one dummy column, the same width the
+# numeric took, but the dummy is zero and one whatever the numeric held. It is
+# the same numbers only when the fitted column was itself coded zero and one,
+# which the rebuild cannot see and the width cannot decide, so the column's type
+# is what the guard reads.
 
 test_that("ipw() categorical rejects a .data whose covariate types skew the design", {
   skip_if_not_installed("nnet")
@@ -668,7 +672,7 @@ test_that("ipw() categorical rejects a .data whose covariate types skew the desi
   expect_match(msg, ".data", fixed = TRUE)
 })
 
-test_that("the design-width error names both widths", {
+test_that("the skewed-design error names the column and both types", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_categorical()
@@ -705,14 +709,15 @@ test_that("ipw() categorical reports a .data missing a model covariate", {
   expect_match(msg, "x2", fixed = TRUE)
 })
 
-test_that("ipw() categorical accepts a .data covariate recoded to the same width", {
+test_that("ipw() categorical rejects a .data covariate recoded to the same width", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
-  # Passing pin, correct today. A two-level factor in place of the 0/1 numeric
-  # gives one dummy column carrying the same values, so the design is the same
-  # numbers and the analysis is the same analysis. A guard that keyed on the
-  # column's type, or on the design's column names, rather than on the count
-  # would reject this.
+  # The design keeps its width here, so nothing about its shape can decide the
+  # case. The two-level factor gives one dummy column of zeros and ones, which
+  # reproduces the fitted numbers only because this fixture's x2 is itself coded
+  # zero and one; the same recoding of a covariate coded one and two rebuilds a
+  # design the model was never fit on and moves the estimates with nothing
+  # signaled. The rebuild cannot tell the two apart, so the type decides.
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -723,11 +728,14 @@ test_that("ipw() categorical accepts a .data covariate recoded to the same width
   )
   expect_equal(ncol(model.matrix(~ x1 + x2, data = dat_recoded)), 3)
 
-  expect_equal(
-    ipw(mods$ps_mod, mods$outcome_mod, .data = dat_recoded)$estimates$estimate,
-    ipw(mods$ps_mod, mods$outcome_mod, .data = dat)$estimates$estimate,
-    tolerance = 1e-10
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat_recoded),
+    class = "propensity_ipw_data_error"
   )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "\\bx2\\b")
+  expect_match(msg, "factor", fixed = TRUE)
 })
 
 test_that("a log-transformed categorical outcome response through .data matches the model-frame route", {

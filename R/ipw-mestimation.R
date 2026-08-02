@@ -89,6 +89,100 @@ check_ipw_counterfactual_designs <- function(
   invisible(TRUE)
 }
 
+# Require the counterfactual designs to be as wide as the design the outcome
+# model was fit to. The marginal mean at each level is `X %*% beta`, a positional
+# multiply that consults no names, so a design of the wrong width either fails to
+# multiply at all or pairs each column with a coefficient that belongs to
+# another. The width only ever moves when the designs are rebuilt from `.data`,
+# because the model frame reproduces the fit exactly, which is the mirror of the
+# check the propensity design gets in check_ipw_ps_design_width().
+#
+# A column type that disagrees with the fit is rejected before this, so what
+# reaches here is a categorical column whose observed levels differ from the ones
+# the fit recorded: a level that `.data` collapses away, or one it declares that
+# the fit never saw. Only the count is checked, for the same reason it is there:
+# a covariate recoded to the same width carries the same numbers.
+check_ipw_outcome_design_width <- function(
+  designs,
+  outcome_mod,
+  call = rlang::caller_env()
+) {
+  n_fitted <- length(stats::coef(outcome_mod))
+  widths <- vapply(designs, ncol, integer(1))
+  bad <- which(widths != n_fitted)
+
+  if (length(bad) == 0) {
+    return(invisible(TRUE))
+  }
+
+  n_rebuilt <- widths[[bad[[1]]]]
+
+  abort(
+    c(
+      "{.arg .data} must rebuild the design {.arg outcome_mod} was fit to.",
+      x = "The counterfactual design rebuilt from {.arg .data} has \\
+      {n_rebuilt} column{?s}.",
+      x = "{.arg outcome_mod} was fit with {n_fitted} coefficient{?s}.",
+      i = "A column whose levels differ from the fitting data is the usual \\
+      cause: a factor contributes one design column per non-reference level."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# Require the values the binary counterfactual rebuild writes to carry the coding
+# the outcome model holds the exposure under. The rebuild assigns one value to
+# the whole exposure column, so a factor or logical column hands the rebuild a
+# value that still knows every level while a character column hands it one
+# string, which `model.frame()` levels on its own and reduces to a single level.
+# That died inside `model.matrix()` as "contrasts can be applied only to factors
+# with 2 or more levels".
+#
+# The check is on the value written rather than on the column supplied, which is
+# why the type check cannot stand in for it: a character column and a factor
+# column are the same design coding and differ only in what survives the
+# assignment. It cannot arise without `.data`, where the exposure comes out of the
+# propensity model's own frame.
+#
+# The categorical path has no counterpart because it resolves the exposure to a
+# factor of the fitted levels before it writes anything.
+check_ipw_binary_exposure_coding <- function(
+  outcome_mod,
+  exposure_name,
+  exposure_values,
+  call = rlang::caller_env()
+) {
+  data_classes <- attr(stats::terms(outcome_mod), "dataClasses")
+  fit_class <- data_classes[exposure_name]
+  categorical <- !is.na(fit_class) &&
+    identical(ipw_design_coding(fit_class[[1]]), "categorical")
+
+  if (
+    !categorical || is.factor(exposure_values) || is.logical(exposure_values)
+  ) {
+    return(invisible(TRUE))
+  }
+
+  fit_levels <- outcome_mod$xlevels[[exposure_name]]
+  supplied_article <- ipw_class_articles[[stats::.MFclass(exposure_values)]]
+
+  abort(
+    c(
+      "{.arg .data} must supply {.val {exposure_name}} as a column that \\
+      carries its own levels.",
+      x = "{.arg .data} has {.val {exposure_name}} as {supplied_article}.",
+      x = "{.fun ipw} rebuilds the outcome design with {.val {exposure_name}} \\
+      set to one value at a time, and that leaves {supplied_article} holding \\
+      the single level it was set to rather than the levels \\
+      {.val {fit_levels}} {.arg outcome_mod} was fit on.",
+      i = "Supply {.val {exposure_name}} as a factor with those levels."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
 # Index pair of the first two designs that agree in every entry, or NULL if all
 # of them differ. Pairs are visited in level order, so the pair reported is
 # stable across calls.
@@ -209,6 +303,13 @@ ipw_spec_binary <- function(
 
   z <- ipw_recode_binary_exposure(exposure)
 
+  check_ipw_binary_exposure_coding(
+    outcome_mod,
+    exposure_name,
+    exposure_values,
+    call = call
+  )
+
   # The rebuilt design multiplies the outcome model's coefficients positionally,
   # so it has to reproduce the coding those coefficients were fit under.
   # `contrasts.arg` carries it: setting the exposure column drops any contrasts
@@ -222,6 +323,7 @@ ipw_spec_binary <- function(
   x1 <- counterfactual_mm(exposure_values[[2]])
   x0 <- counterfactual_mm(exposure_values[[1]])
 
+  check_ipw_outcome_design_width(list(x0, x1), outcome_mod, call = call)
   check_ipw_counterfactual_designs(
     list(x0, x1),
     as.character(exposure_values),
@@ -275,12 +377,18 @@ ipw_spec_binary <- function(
 # be fit in an environment that is later gone), so model.matrix(ps_mod) is wrapped
 # and the user is directed to supply .data on failure. When .data is supplied the
 # design is rebuilt from the model terms so no re-evaluation is needed.
+#
+# `counterfactual` says whether the caller goes on to rebuild the outcome design
+# at each exposure value. The continuous path does not: it reports a coefficient
+# from the fitted marginal structural model, so it writes no counterfactual
+# column and the rebuild check would probe every distinct dose for nothing.
 ipw_extract_ps_design <- function(
   ps_mod,
   outcome_mod,
   .data,
   exposure_name,
   xlev = NULL,
+  counterfactual = TRUE,
   call = rlang::caller_env()
 ) {
   if (is.null(.data)) {
@@ -322,6 +430,15 @@ ipw_extract_ps_design <- function(
     }
     outcome <- outcome_extract$outcome
     mm_data <- outcome_extract$mm_data
+    if (counterfactual) {
+      check_ipw_exposure_rebuild(
+        outcome_mod,
+        exposure_name,
+        exposure,
+        mm_data,
+        call = call
+      )
+    }
     check_exposure(mm_data, exposure_name, call = call)
   } else {
     # Both models' covariates are needed, not just the exposure and the outcome:
@@ -373,7 +490,7 @@ ipw_extract_ps_design <- function(
       )
     }
 
-    check_ipw_fitted_factors(
+    check_ipw_data_types(
       .data,
       ps_mod,
       outcome_mod,
@@ -382,6 +499,17 @@ ipw_extract_ps_design <- function(
     )
 
     exposure <- .data[[exposure_name]]
+
+    if (counterfactual) {
+      check_ipw_exposure_rebuild(
+        outcome_mod,
+        exposure_name,
+        exposure,
+        .data,
+        call = call
+      )
+    }
+
     # Evaluated rather than looked up, for the same reason the assert above reads
     # the response's variables: the response may be a transformation of a column
     # rather than a column itself, and it has to be computed the way the fit
@@ -430,10 +558,11 @@ ipw_model_covariates <- function(mod) {
 # each design column. A width that disagrees produced a raw error about a names
 # attribute or a non-conformable multiply, neither of which mentions `.data`.
 #
-# The usual cause is a column whose type differs between the fitting data and
-# `.data`, since a factor expands to one column per non-reference level where a
-# numeric takes one. Only the count is checked: a covariate recoded to the same
-# width carries the same numbers and is the same design.
+# A column whose type differs between the fitting data and `.data` is rejected
+# before this by check_ipw_data_types(), which names the column and both types
+# and is the more specific diagnosis. What is left for a count to catch is a term
+# recorded under a call rather than a variable, which the type check has no
+# column to compare and which can still rebuild to a different width.
 check_ipw_ps_design_width <- function(
   ps_X,
   ps_mod,
@@ -460,78 +589,189 @@ check_ipw_ps_design_width <- function(
   invisible(TRUE)
 }
 
-# Reject a `.data` column supplied as numeric where either model recorded it as
-# a factor. A fit with a factor covariate records that covariate's levels and its
-# contrast coding, and every design rebuilt from `.data` is rebuilt under that
-# coding, so a numeric column reaches `model.matrix()` with a contrast
-# specification that cannot be applied to it. That combination dies inside base
-# R, as an unclassed warning that the variable is not a factor followed by
-# "contrasts apply only to factors", neither of which mentions `.data` or says
-# what to supply instead.
+# Reject a `.data` column whose type contradicts the type either model was fit
+# on. A fit records each variable's class, and every design rebuilt from `.data`
+# is rebuilt under the coding that class implies: a numeric column takes one
+# design column, while a factor, ordered factor, character, or logical column
+# expands into one column per non-reference level and carries the fit's contrast
+# coding. Supplying the other kind therefore either fails to multiply the
+# coefficients at all or, when the two happen to be the same width, multiplies
+# them by different numbers with nothing signaled. Both directions died raw: a
+# factor-fit column supplied as numeric as "contrasts apply only to factors", a
+# numeric-fit column supplied as a factor as a non-conformable multiply, and a
+# numeric-fit column supplied as a two-level factor or as a logical not at all.
 #
-# The mirror direction, a numeric-fit column supplied as a factor, is caught by
-# the design-width check: a factor takes one column per non-reference level where
-# a numeric takes one. This direction has no width signature, because a two-level
-# factor supplied as numeric rebuilds to exactly the same width.
+# Both models are swept, and the outcome model's response with them. This runs
+# before the propensity design is rebuilt and before the outcome model's
+# counterfactual designs are built on every path, so an outcome-only covariate is
+# caught on its way to the same failure.
 #
-# Both models are swept here. This runs before the propensity design is rebuilt,
-# and it is reached before the outcome model's counterfactual designs are built
-# on every path, so an outcome-only factor covariate is caught on its way to the
-# same failure.
+# A name that is not a column of `.data`, `factor(x)` say, is skipped: it is a
+# term recorded under a call rather than a variable this can compare, and the
+# rebuild reaches it with the column it reads untouched.
 #
-# The exposure is excluded, and the exclusion is load bearing. It is the
-# propensity model's response, so it never appears in that fit's `xlevels`, but a
-# factor exposure does appear in the outcome model's, and the counterfactual
-# rebuild overwrites that column before `model.matrix()` sees it. Sweeping
-# `xlevels` without the exclusion would reject a factor-exposure call whose
-# design is never rebuilt from the supplied column.
-#
-# Only numeric columns are rejected. A character column is re-leveled against the
-# recorded levels by `model.frame()` and rebuilds the fitted design, so it is a
-# working input rather than a mistake, and this is not general type validation.
+# The exposure is swept too. Its fitted type comes from the propensity model,
+# whose response it is, and the counterfactual rebuild overwrites the supplied
+# column, so a type that disagrees is a mistake there for the same reason it is
+# anywhere else. What the written value has to carry beyond its type is the
+# binary path's own check.
 #
 # Only the first offending column is reported: the fix is a recoding of that
 # column, after which the guard runs again over the rest.
-check_ipw_fitted_factors <- function(
+check_ipw_data_types <- function(
   .data,
   ps_mod,
   outcome_mod,
   exposure_name,
   call = rlang::caller_env()
 ) {
-  xlev <- c(ps_mod$xlevels, outcome_mod$xlevels)
-  xlev <- xlev[!duplicated(names(xlev))]
-  xlev <- xlev[setdiff(names(xlev), exposure_name)]
+  fitted <- ipw_fitted_classes(ps_mod, outcome_mod)
+  fitted <- fitted[names(fitted) %in% names(.data)]
+  response <- fmla_extract_left_chr(outcome_mod)
 
-  # A term recorded under a name that is not a column, `log(x)` say, reads back
-  # as NULL and is not numeric, so it falls through to the rebuild as before.
-  supplied_numeric <- vapply(
-    names(xlev),
-    function(nm) is.numeric(.data[[nm]]),
-    logical(1)
-  )
+  for (column in names(fitted)) {
+    fit_class <- fitted[[column]]
+    supplied <- stats::.MFclass(.data[[column]])
 
-  if (!any(supplied_numeric)) {
-    return(invisible(TRUE))
+    mismatch <- if (identical(column, response)) {
+      # The response is not a design column. It is converted by
+      # ipw_outcome_numeric(), which indicator-codes a factor against its first
+      # level and uses the values themselves otherwise, so what has to agree is
+      # which of those two conversions applies.
+      !identical(
+        fit_class %in% c("factor", "ordered"),
+        supplied %in% c("factor", "ordered")
+      ) ||
+        !supplied %in% c("factor", "ordered", "numeric", "logical")
+    } else {
+      !identical(ipw_design_coding(fit_class), ipw_design_coding(supplied))
+    }
+
+    if (mismatch) {
+      abort_ipw_type_mismatch(
+        column = column,
+        fit_class = fit_class,
+        supplied = .data[[column]],
+        supplied_class = supplied,
+        ps_mod = ps_mod,
+        outcome_mod = outcome_mod,
+        response = identical(column, response),
+        call = call
+      )
+    }
   }
 
-  column <- names(xlev)[which(supplied_numeric)[[1]]]
-  fit_levels <- xlev[[column]]
-  fit_args <- c(
-    if (column %in% names(ps_mod$xlevels)) "wt_mod",
-    if (column %in% names(outcome_mod$xlevels)) "outcome_mod"
+  invisible(TRUE)
+}
+
+# The class each model recorded for every variable it reads, keyed by variable
+# name. The propensity model is taken first so the exposure, which is its
+# response, is described by the fit that owns it. Classes a design has no coding
+# for are dropped rather than compared.
+ipw_fitted_classes <- function(ps_mod, outcome_mod) {
+  classes <- c(
+    attr(stats::terms(ps_mod), "dataClasses"),
+    attr(stats::terms(outcome_mod), "dataClasses")
   )
+  classes <- classes[!duplicated(names(classes))]
+
+  classes[classes %in% names(ipw_class_nouns)]
+}
+
+# The design coding a class implies: one column, or one column per non-reference
+# level.
+ipw_design_coding <- function(class) {
+  if (class %in% c("factor", "ordered", "character", "logical")) {
+    "categorical"
+  } else if (identical(class, "numeric")) {
+    "numeric"
+  } else {
+    class
+  }
+}
+
+ipw_class_nouns <- c(
+  numeric = "numeric column",
+  factor = "factor",
+  ordered = "ordered factor",
+  character = "character vector",
+  logical = "logical vector"
+)
+
+ipw_class_articles <- c(
+  numeric = "a numeric vector",
+  factor = "a factor",
+  ordered = "an ordered factor",
+  character = "a character vector",
+  logical = "a logical vector"
+)
+
+abort_ipw_type_mismatch <- function(
+  column,
+  fit_class,
+  supplied,
+  supplied_class,
+  ps_mod,
+  outcome_mod,
+  response,
+  call = rlang::caller_env()
+) {
+  fit_noun <- ipw_class_nouns[[fit_class]]
+  fit_article <- ipw_class_articles[[fit_class]]
+  supplied_article <- if (supplied_class %in% names(ipw_class_articles)) {
+    ipw_class_articles[[supplied_class]]
+  } else {
+    paste("a", class(supplied)[[1]], "vector")
+  }
+  supplied_noun <- if (supplied_class %in% names(ipw_class_nouns)) {
+    ipw_class_nouns[[supplied_class]]
+  } else {
+    paste(class(supplied)[[1]], "vector")
+  }
+
+  if (response) {
+    abort(
+      c(
+        "{.arg .data} must supply the outcome {.val {column}} as the \\
+        {fit_noun} {.arg outcome_mod} was fit on.",
+        x = "{.arg .data} has {.val {column}} as {supplied_article}.",
+        x = "{.fun ipw} reads the outcome values from {.arg .data}: a factor \\
+        response becomes an indicator for its non-first levels and any other \\
+        response is used as its own values, so the two are not \\
+        interchangeable.",
+        i = "Supply {.val {column}} as that {fit_noun}, or refit \\
+        {.arg outcome_mod} on the {supplied_noun}."
+      ),
+      error_class = "propensity_ipw_data_error",
+      call = call
+    )
+  }
+
+  fit_args <- c(
+    if (column %in% names(attr(stats::terms(ps_mod), "dataClasses"))) "wt_mod",
+    if (column %in% names(attr(stats::terms(outcome_mod), "dataClasses"))) {
+      "outcome_mod"
+    }
+  )
+  fit_levels <- c(ps_mod$xlevels, outcome_mod$xlevels)[[column]]
+
+  recorded <- if (is.null(fit_levels)) {
+    "{.arg {fit_args}} recorded {.val {column}} as {fit_article}, and the \\
+    designs rebuilt from {.arg .data} use that coding."
+  } else {
+    "{.arg {fit_args}} recorded {.val {column}} as {fit_article} with the \\
+    levels {.val {fit_levels}}, and the designs rebuilt from {.arg .data} use \\
+    that coding."
+  }
 
   abort(
     c(
-      "{.arg .data} must supply {.val {column}} as the factor the models were \\
-      fit with.",
-      x = "{.arg .data} has {.val {column}} as a numeric vector.",
-      x = "{.arg {fit_args}} recorded {.val {column}} as a factor with the \\
-      levels {.val {fit_levels}}, and the designs rebuilt from {.arg .data} \\
-      use that coding.",
-      i = "Supply {.val {column}} as that factor, or refit the models on the \\
-      numeric column."
+      "{.arg .data} must supply {.val {column}} as the {fit_noun} the models \\
+      were fit with.",
+      x = "{.arg .data} has {.val {column}} as {supplied_article}.",
+      x = recorded,
+      i = "Supply {.val {column}} as that {fit_noun}, or refit the models on \\
+      the {supplied_noun}."
     ),
     error_class = "propensity_ipw_data_error",
     call = call
@@ -744,6 +984,7 @@ ipw_spec_categorical <- function(
   })
   names(x_cf) <- levs
 
+  check_ipw_outcome_design_width(x_cf, outcome_mod, call = call)
   check_ipw_counterfactual_designs(x_cf, levs, exposure_name, call = call)
 
   if (is_linear_regression(outcome_mod)) {
@@ -831,6 +1072,7 @@ ipw_spec_continuous <- function(
     .data = .data,
     exposure_name = exposure_name,
     xlev = ps_mod$xlevels,
+    counterfactual = FALSE,
     call = call
   )
   exposure <- as.double(extracted$exposure)

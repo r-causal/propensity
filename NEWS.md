@@ -1,5 +1,50 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now rejects an outcome model that reads the exposure through a term
+  that has to work its levels out from the values it sees, such as
+  `y ~ factor(z) + x1` fit on a numerically coded exposure. `ipw()` estimates
+  the marginal means by setting the exposure column to one value at a time and
+  rebuilding the outcome design, and such a term has only the one level there,
+  which failed inside base R as "contrasts can be applied only to factors with 2
+  or more levels" when `.data` was supplied and as a report that the exposure
+  was missing from the model frame when it was not, whose remedy was to supply
+  `.data` and meet the first error. Both routes now raise an error of class
+  `propensity_ipw_exposure_error` naming the term and directing you to fit the
+  outcome model on the plain exposure column, converting it to a factor in the
+  data first if you want a factor coding. A term that recomputes cleanly at the
+  value being set, such as `I(z^2)` or `cut(z, breaks)`, is unaffected and keeps
+  working.
+
+* `ipw()` now checks every `.data` column against the type its model was fit on,
+  in both directions, and raises an error of class `propensity_ipw_data_error`
+  naming the column and both types. Only a column fit as a factor and supplied
+  as numeric was checked before. A numeric column supplied as a factor or as a
+  logical failed as a non-conformable multiply, or, when the two codings took
+  the same number of design columns, rebuilt a design of zeros and ones the
+  model was never fit on and moved the estimates with nothing signaled. A column
+  fit as a factor may still be supplied as character or as an ordered factor,
+  which rebuild the fitted design.
+
+* `ipw()` now rejects a character column supplied under the outcome model's
+  response name, and a response supplied as a factor where the model was fit on
+  a numeric or logical column, with an error of class
+  `propensity_ipw_data_error`. A model can never be fit on a character response,
+  so such a column is always a `.data` mismatch: it previously reached the value
+  conversion, which coerced it with an unclassed "NAs introduced by coercion"
+  warning and then failed inside the M-estimator's own vocabulary, or, on the
+  linearization path, left the standard errors non-finite.
+
+* `ipw()` now rejects a binary exposure column supplied as character where the
+  outcome model holds the exposure as a factor. The counterfactual rebuild sets
+  the column to one value at a time, and a character column carries no levels of
+  its own, so it held the single level it was set to and failed inside base R.
+
+* `ipw()` now checks that the counterfactual outcome designs rebuilt from
+  `.data` are as wide as the design the outcome model was fit to, the mirror of
+  the check the propensity design already gets. A `.data` column whose levels
+  differ from the fitting data previously reached the marginal means as a raw
+  non-conformable multiply.
+
 * `psw()` and the weight functions that take a `stabilization_score` now check
   it where it is recorded. A score must be numeric, positive, and finite, and
   must hold either a single value, which scales every weight, or one value per
