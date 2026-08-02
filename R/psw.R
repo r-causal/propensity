@@ -36,9 +36,33 @@
 #'
 #' Arithmetic operations on `psw` objects preserve the class and attributes,
 #' so operations like normalization (`weights / sum(weights)`) retain metadata.
+#'
+#' An operation between two `psw` objects merges what each of them records. Two
+#' different estimands are pasted together, and an estimand only one operand
+#' names stands for the result; the result is stabilized only when both operands
+#' are, and it is marked as trimmed, truncated, or calibrated when either
+#' operand is. The remaining attributes, the `stabilization_score`, the records
+#' left by a modified propensity score, and the attributes describing a
+#' categorical exposure, are carried by agreement: one only a single operand
+#' records carries, and one both record with the same value carries. One they
+#' record differently is dropped, since neither value describes the result, and
+#' a single warning of class
+#' `propensity_metadata_conflict_warning` names every attribute dropped that
+#' way. The rule is applied per operation, so an attribute one operation drops
+#' for a disagreement can be carried again by a later operation whose operands
+#' agree.
+#'
+#' A `stabilization_score` is carried only when the result is stabilized, which
+#' takes both operands. A result that is not stabilized drops the score without
+#' comment.
+#'
 #' Combining `psw` objects with [c()] preserves the class only when all
 #' metadata matches; mismatched metadata produces a warning and falls back to a
-#' plain numeric vector.
+#' plain numeric vector. Concatenation appends one set of observations to
+#' another, so the positions a modification record names would describe units
+#' from the other input; those records are dropped from the result whether or
+#' not the inputs agree on them. The categorical attributes name exposure levels
+#' rather than positions and carry when the inputs agree.
 #'
 #' Subsetting with `[` preserves class and attributes for vector subscripts.
 #' Two kinds of attribute hold one value per observation and so cannot be
@@ -379,13 +403,7 @@ vec_arith.psw.default <- function(op, x, y, ...) {
 #' @export
 #' @method vec_arith.psw psw
 vec_arith.psw.psw <- function(op, x, y, ...) {
-  estimand_x <- estimand(x)
-  estimand_y <- estimand(y)
-  if (!identical(estimand_x, estimand_y)) {
-    estimand <- paste0(estimand_x, ", ", estimand_y)
-  } else {
-    estimand <- estimand_x
-  }
+  estimand <- merge_psw_estimands(estimand(x), estimand(y))
 
   # Determine stabilized status: both must be stabilized for result to be stabilized
   stabilized <- is_stabilized(x) && is_stabilized(y)
@@ -395,14 +413,37 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
   truncated <- is_ps_truncated(x) || is_ps_truncated(y)
   calibrated <- is_ps_calibrated(x) || is_ps_calibrated(y)
 
-  rslts <- vec_arith_base(op, x, y)
-  psw(
+  rslts <- vec_cast(vec_arith_base(op, x, y), to = double())
+  attributes(rslts) <- NULL
+
+  merged <- merge_psw_attrs(x, y, length(rslts))
+  attrs <- merged$attrs
+  conflicts <- merged$conflicts
+
+  # A score is the value the weights were stabilized on, so a result the merge
+  # leaves unstabilized has nothing for it to describe and drops it with the
+  # status. That is the same kind of reduction as a drop for length rather than
+  # a disagreement between the operands, so it goes without comment and takes
+  # any disagreement about the score with it.
+  if (!stabilized) {
+    attrs["stabilization_score"] <- list(NULL)
+    conflicts <- setdiff(conflicts, "stabilization_score")
+  }
+
+  if (length(conflicts) > 0) {
+    # Arithmetic reaches this method through vctrs' dispatch, whose call would be
+    # reported here and names nothing the caller wrote.
+    warn_conflicting_psw_attrs(conflicts, call = NULL)
+  }
+
+  build_psw(
     rslts,
     estimand = estimand,
     stabilized = stabilized,
     trimmed = trimmed,
     truncated = truncated,
-    calibrated = calibrated
+    calibrated = calibrated,
+    attrs = attrs
   )
 }
 
@@ -460,12 +501,13 @@ psw_modification_meta <- c("ps_trim_meta", "ps_trunc_meta", "ps_calib_meta")
 # rather than the units, so they carry no length of their own.
 psw_categorical_attrs <- c("n_categories", "category_names", "focal_category")
 
-# A modification record is judged against `to`, the object supplying the type:
-# the record was written for `to`'s observations, so data arriving at `to`'s
-# length is the only data those indices describe. Zero-length data is exempt for
-# the reason a stabilization score is: it lines up with nothing and so
-# contradicts nothing, and a prototype that keeps the record lets the restore
-# building the real result carry it on to the observations.
+# A modification record is judged against `to`, the object supplying it: the
+# record was written for `to`'s observations, so data arriving at `to`'s length
+# is the only data those indices describe. `n` is the number of observations the
+# data arrives at. Zero-length data is exempt for the reason a stabilization
+# score is: it lines up with nothing and so contradicts nothing, and a prototype
+# that keeps the record lets the restore building the real result carry it on to
+# the observations.
 #
 # Any same-length operation keeps indices that may no longer point where they
 # did, a reordering or a subscript with duplicates included. Nothing rebuilding
@@ -474,42 +516,182 @@ psw_categorical_attrs <- c("n_categories", "category_names", "focal_category")
 # given, which catches a length change from any route, but a same-length
 # rearrangement is beyond what either can see and is documented rather than
 # guarded.
-modification_meta_aligns <- function(x, to) {
-  length(x) == 0 || length(x) == length(to)
+modification_meta_aligns <- function(n, to) {
+  n == 0 || n == length(to)
+}
+
+# Everything a psw carries beyond the six fields describing the weights as a
+# whole. The score and the modification records are indexed by observation; the
+# categorical attributes name exposure levels and so hold at any length.
+psw_carried_attrs <- c(
+  "stabilization_score",
+  psw_modification_meta,
+  psw_categorical_attrs
+)
+
+# The attributes a disagreement has already dropped from a prototype under
+# construction. vctrs folds `vec_ptype2()` over the inputs two at a time, so a
+# prototype meets the third input carrying no trace of the second: without this
+# record, an attribute the first pair dropped is carried back by a later pair
+# that happens to agree, the result depends on the order the inputs were written
+# in, and the warning naming the attribute as dropped is untrue of the result
+# the caller gets. An attribute named here is dropped by every remaining pair
+# and reported by none of them, so one operation reports each disagreement once
+# and answers for it once.
+#
+# The record belongs to a prototype in the middle of a fold and reaches no
+# further: the only route that copies it is the one below, which stops at the
+# first vector holding observations.
+psw_conflicted_attr <- "psw_conflicted_attrs"
+
+conflicted_psw_attrs <- function(x) {
+  out <- attr(x, psw_conflicted_attr)
+  if (is.null(out)) character() else out
+}
+
+# The carried attributes `to` can still speak for once data has arrived at `n`
+# observations. One indexed by observation that does not describe `n` of them is
+# reported as absent, so a later read sees nothing rather than a record silently
+# misaligned with the weights.
+aligned_psw_attrs <- function(to, n) {
+  attrs <- lapply(psw_carried_attrs, function(attribute) attr(to, attribute))
+  names(attrs) <- psw_carried_attrs
+
+  if (!stabilization_score_aligns(attrs$stabilization_score, n)) {
+    attrs["stabilization_score"] <- list(NULL)
+  }
+
+  if (!modification_meta_aligns(n, to)) {
+    attrs[psw_modification_meta] <- list(NULL)
+  }
+
+  # The record of what a fold has already dropped belongs to the prototype being
+  # folded and goes no further. Data arriving at observations is the result the
+  # caller holds, and the fold that settled its type is over by then. A combined
+  # result that holds no observations is the one thing vctrs cannot tell apart
+  # from the prototype it was built from, so it keeps the record; it names
+  # nothing about observations there are none of.
+  if (n == 0) {
+    attrs[psw_conflicted_attr] <- list(attr(to, psw_conflicted_attr))
+  }
+
+  attrs
 }
 
 # The psw type is every attribute the object carries, so anything that rebuilds
-# a psw around another vector's data owes all of them to the object supplying
-# the type. The attributes indexed by observation are the exception, and are
-# dropped when the data arrives at a length they do not describe: a later read
-# sees an absent record rather than one silently misaligned with the weights.
-carry_psw_metadata <- function(x, to) {
-  score <- stabilization_score(to)
-  if (!stabilization_score_aligns(score, length(x))) {
-    score <- NULL
+# a psw around another vector's data owes all of them: the six fields describing
+# the weights as a whole, then the carried attributes, which the caller has
+# already reduced to what the result is entitled to.
+build_psw <- function(
+  x,
+  estimand,
+  stabilized,
+  trimmed,
+  truncated,
+  calibrated,
+  attrs
+) {
+  out <- new_psw(
+    x,
+    estimand = estimand,
+    stabilized = stabilized,
+    trimmed = trimmed,
+    truncated = truncated,
+    calibrated = calibrated,
+    stabilization_score = attrs$stabilization_score
+  )
+
+  for (attribute in setdiff(names(attrs), "stabilization_score")) {
+    attr(out, attribute) <- attrs[[attribute]]
   }
 
-  out <- new_psw(
+  out
+}
+
+carry_psw_metadata <- function(x, to) {
+  build_psw(
     x,
     estimand = estimand(to),
     stabilized = is_stabilized(to),
     trimmed = is_ps_trimmed(to),
     truncated = is_ps_truncated(to),
     calibrated = is_ps_calibrated(to),
-    stabilization_score = score
+    attrs = aligned_psw_attrs(to, length(x))
   )
+}
 
-  if (modification_meta_aligns(x, to)) {
-    for (meta in psw_modification_meta) {
-      attr(out, meta) <- attr(to, meta)
+# Two operands naming different estimands describe a result that targets both,
+# which is what the pasted label says. An operand naming none has nothing to add
+# to the other's label, so the label the one operand supplies stands for the
+# result rather than being pasted against an empty half.
+merge_psw_estimands <- function(x, y) {
+  if (identical(x, y) || is.null(y)) {
+    return(x)
+  }
+
+  if (is.null(x)) {
+    return(y)
+  }
+
+  paste0(x, ", ", y)
+}
+
+# An operation on two psw objects has two sets of carried attributes to answer
+# for, each already reduced to what it can still speak for at the result's
+# length. One only a single operand records has nothing to disagree with, which
+# is what the single-operand route carries through `w * 1`. One both record
+# identically describes the result either way. One they record differently
+# describes neither, so it is dropped and named in `conflicts` for the caller to
+# report. One an earlier pair of the same operation already dropped stays
+# dropped, and is named in `conflicted` rather than `conflicts` so it is not
+# reported a second time.
+merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
+  x_attrs <- aligned_psw_attrs(x, n)
+  y_attrs <- aligned_psw_attrs(y, n)
+  dropped <- union(conflicted_psw_attrs(x), conflicted_psw_attrs(y))
+
+  attrs <- list()
+  conflicts <- character()
+
+  for (field in fields) {
+    x_value <- x_attrs[[field]]
+    y_value <- y_attrs[[field]]
+
+    value <- if (field %in% dropped) {
+      NULL
+    } else if (is.null(x_value) || identical(x_value, y_value)) {
+      y_value
+    } else if (is.null(y_value)) {
+      x_value
+    } else {
+      conflicts <- c(conflicts, field)
+      NULL
     }
+
+    attrs[field] <- list(value)
   }
 
-  for (attribute in psw_categorical_attrs) {
-    attr(out, attribute) <- attr(to, attribute)
-  }
+  list(
+    attrs = attrs,
+    conflicts = conflicts,
+    conflicted = union(dropped, conflicts)
+  )
+}
 
-  out
+# Unlike a drop for length, which happens to records that also travel by routes
+# vctrs does not see, a disagreement is about the two objects the caller named
+# and is reported once for the operation.
+warn_conflicting_psw_attrs <- function(fields, call = rlang::caller_env()) {
+  warn(
+    c(
+      "Dropping the {.field {fields}} attribute{?s} from the result.",
+      i = "The two sets of weights record {cli::qty(fields)}{?it/them}
+           differently, so neither value describes the result.",
+      i = "Every attribute the two agree on is carried through."
+    ),
+    warning_class = "propensity_metadata_conflict_warning",
+    call = call
+  )
 }
 
 #' @export
@@ -595,15 +777,35 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
     return(double())
   }
 
-  # If all metadata matches, return psw with all attributes preserved
-  new_psw(
+  # The prototype is shared by inputs whose observations are appended one after
+  # another, so the positions a modification record names would describe units
+  # from the other input. Nothing rebuilding the combined vector is handed the
+  # offsets, so the records are left off the prototype whether or not the inputs
+  # agree on them. The categorical attributes name exposure levels rather than
+  # positions and so mean the same thing at the combined length.
+  merged <- merge_psw_attrs(x, y, 0, fields = psw_categorical_attrs)
+  if (length(merged$conflicts) > 0) {
+    warn_conflicting_psw_attrs(merged$conflicts)
+  }
+
+  out <- build_psw(
+    double(),
     estimand = estimand(x),
     stabilized = is_stabilized(x),
     trimmed = is_ps_trimmed(x),
     truncated = is_ps_truncated(x),
     calibrated = is_ps_calibrated(x),
-    stabilization_score = stabilization_score(x)
+    attrs = c(
+      list(stabilization_score = stabilization_score(x)),
+      merged$attrs
+    )
   )
+
+  if (length(merged$conflicted) > 0) {
+    attr(out, psw_conflicted_attr) <- merged$conflicted
+  }
+
+  out
 }
 
 #' @export

@@ -112,9 +112,33 @@ and documented at \code{\link[causalgenerics:estimand]{causalgenerics::estimand(
 
 Arithmetic operations on \code{psw} objects preserve the class and attributes,
 so operations like normalization (\code{weights / sum(weights)}) retain metadata.
+
+An operation between two \code{psw} objects merges what each of them records. Two
+different estimands are pasted together, and an estimand only one operand
+names stands for the result; the result is stabilized only when both operands
+are, and it is marked as trimmed, truncated, or calibrated when either
+operand is. The remaining attributes, the \code{stabilization_score}, the records
+left by a modified propensity score, and the attributes describing a
+categorical exposure, are carried by agreement: one only a single operand
+records carries, and one both record with the same value carries. One they
+record differently is dropped, since neither value describes the result, and
+a single warning of class
+\code{propensity_metadata_conflict_warning} names every attribute dropped that
+way. The rule is applied per operation, so an attribute one operation drops
+for a disagreement can be carried again by a later operation whose operands
+agree.
+
+A \code{stabilization_score} is carried only when the result is stabilized, which
+takes both operands. A result that is not stabilized drops the score without
+comment.
+
 Combining \code{psw} objects with \code{\link[=c]{c()}} preserves the class only when all
 metadata matches; mismatched metadata produces a warning and falls back to a
-plain numeric vector.
+plain numeric vector. Concatenation appends one set of observations to
+another, so the positions a modification record names would describe units
+from the other input; those records are dropped from the result whether or
+not the inputs agree on them. The categorical attributes name exposure levels
+rather than positions and carry when the inputs agree.
 
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
 Two kinds of attribute hold one value per observation and so cannot be

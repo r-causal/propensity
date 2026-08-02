@@ -957,8 +957,38 @@ test_that("a psw product carries a stabilization score both operands record", {
   expect_identical(stabilization_score(per_observation), score)
 
   # One operand recording a score has nothing to disagree with.
-  alone <- expect_silent(x * psw(c(2, 2, 2), estimand = "cens"))
+  alone <- expect_silent(
+    x * psw(c(2, 2, 2), estimand = "cens", stabilized = TRUE)
+  )
   expect_identical(stabilization_score(alone), 0.4)
+})
+
+test_that("a psw product carries a stabilization score only when it is stabilized", {
+  x <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.4
+  )
+
+  # Stabilization takes both operands, and the score is the value the weights
+  # were stabilized on, so a result that is not stabilized has nothing for it to
+  # describe. Carrying it would report weights as stabilized on a score by the
+  # side of a flag saying they are not stabilized at all.
+  out <- expect_silent(x * psw(c(2, 2, 2), estimand = "cens"))
+  expect_false(is_stabilized(out))
+  expect_null(stabilization_score(out))
+
+  reversed <- expect_silent(psw(c(2, 2, 2), estimand = "cens") * x)
+  expect_false(is_stabilized(reversed))
+  expect_null(stabilization_score(reversed))
+
+  # Two scores that disagree are not reported as a disagreement when the result
+  # drops the score for its status either way.
+  other <- psw(c(2, 2, 2), estimand = "ate", stabilization_score = 0.5)
+  both <- expect_silent(x * other)
+  expect_false(is_stabilized(both))
+  expect_null(stabilization_score(both))
 })
 
 test_that("a psw product drops conflicting stabilization scores with one warning", {
@@ -1074,6 +1104,19 @@ test_that("the six core psw fields merge unchanged through a product", {
   expect_false(is_ps_truncated(mixed))
 })
 
+test_that("a psw product records an estimand only one operand names", {
+  named <- psw(c(1, 2), estimand = "ate")
+  unnamed <- psw(c(1, 1))
+
+  # Only two estimands are pasted together. An operand naming none contributes
+  # no half to paste, so the label the other supplies stands for the result
+  # rather than trailing a separator with nothing after it.
+  expect_identical(estimand(expect_silent(named * unnamed)), "ate")
+  expect_identical(estimand(expect_silent(unnamed * named)), "ate")
+
+  expect_null(estimand(expect_silent(unnamed * unnamed)))
+})
+
 test_that("combining psw objects drops the modification records", {
   w <- trimmed_psw()
 
@@ -1099,6 +1142,22 @@ test_that("combining psw objects drops the modification records", {
   expect_true(is_ps_calibrated(combined))
 })
 
+test_that("combining psw objects drops modification records that disagree without comment", {
+  w <- trimmed_psw()
+  alt <- alt_trimmed_psw()
+  expect_false(identical(ps_trim_meta(w), ps_trim_meta(alt)))
+
+  # Concatenation drops every modification record for a reason that has nothing
+  # to do with whether the inputs agree, so two that disagree leave nothing to
+  # report. A warning here would name a record the result would have lost had
+  # the two been identical.
+  out <- expect_silent(c(w, alt))
+  expect_s3_class(out, "psw")
+  expect_length(out, 10)
+  expect_null(ps_trim_meta(out))
+  expect_true(is_ps_trimmed(out))
+})
+
 test_that("combining psw objects carries categorical attributes the inputs share", {
   w <- categorical_psw()
   expected <- list(
@@ -1121,7 +1180,7 @@ test_that("combining psw objects drops a conflicting focal category", {
   b <- categorical_psw(.focal_level = "B")
 
   out <- collect_warning_classes(c(a, b))
-  expect_identical(unique(out$classes), "propensity_metadata_conflict_warning")
+  expect_identical(out$classes, "propensity_metadata_conflict_warning")
 
   expect_s3_class(out$value, "psw")
   expect_length(out$value, 12)
@@ -1132,5 +1191,94 @@ test_that("combining psw objects drops a conflicting focal category", {
       category_names = c("A", "B", "C"),
       focal_category = NULL
     )
+  )
+})
+
+test_that("a conflicting attribute stays dropped however the inputs are ordered", {
+  a <- categorical_psw()
+  b <- categorical_psw(.focal_level = "B")
+  dropped <- list(
+    n_categories = 3L,
+    category_names = c("A", "B", "C"),
+    focal_category = NULL
+  )
+
+  # vctrs settles the common type two inputs at a time, so a third input meets a
+  # prototype the earlier pair has already taken the attribute off. Carrying it
+  # back from an input that has nothing to disagree with by then would make the
+  # result depend on the order the inputs were written in and would leave the
+  # warning naming an attribute the result still has.
+  forward <- collect_warning_classes(c(a, b, b))
+  backward <- collect_warning_classes(c(b, b, a))
+
+  expect_identical(forward$classes, "propensity_metadata_conflict_warning")
+  expect_identical(backward$classes, "propensity_metadata_conflict_warning")
+  expect_identical(categorical_attrs_of(forward$value), dropped)
+  expect_identical(categorical_attrs_of(backward$value), dropped)
+  expect_length(forward$value, 18)
+  expect_length(backward$value, 18)
+
+  # A disagreement the operation has already reported is not reported again.
+  repeated <- collect_warning_classes(c(a, b, a, b))
+  expect_identical(repeated$classes, "propensity_metadata_conflict_warning")
+  expect_identical(categorical_attrs_of(repeated$value), dropped)
+})
+
+test_that("the record of what an operation dropped stays off its result", {
+  a <- categorical_psw()
+  b <- categorical_psw(.focal_level = "B")
+
+  # The record rides the prototype from one pair of inputs to the next. A result
+  # carrying it would answer for a merge it took no part in, and would name an
+  # attribute in nothing a reader of the weights can interpret.
+  results <- list(
+    suppressWarnings(c(a, b)),
+    suppressWarnings(c(a, b, b)),
+    suppressWarnings(c(b, b, a)),
+    suppressWarnings(a * b),
+    c(a, a),
+    a * a
+  )
+
+  for (out in results) {
+    expect_false(psw_conflicted_attr %in% names(attributes(out)))
+  }
+
+  expect_setequal(
+    names(attributes(suppressWarnings(c(a, b)))),
+    c(
+      "estimand",
+      "stabilized",
+      "trimmed",
+      "truncated",
+      "calibrated",
+      "class",
+      "n_categories",
+      "category_names"
+    )
+  )
+})
+
+test_that("a conflict warning is attributed to the operation the caller wrote", {
+  a <- categorical_psw()
+  b <- categorical_psw(.focal_level = "B")
+
+  # Arithmetic reaches its method through vctrs' dispatch, whose call names
+  # nothing the caller wrote, so the warning reports no call at all.
+  product <- expect_warning(
+    a * b,
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(conditionCall(product))
+
+  # Combining reports the method, which is where the coercion warnings this
+  # class already raises on the same route report from.
+  combined <- expect_warning(
+    c(a, b),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_identical(
+    as.character(conditionCall(combined)[[1]]),
+    "vec_ptype2.psw.psw"
   )
 })

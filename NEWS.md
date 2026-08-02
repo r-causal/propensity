@@ -1,5 +1,43 @@
 # propensity 0.1.0.9000 (development version)
 
+* An arithmetic operation between two `psw` objects now keeps the metadata the
+  two operands agree on. Multiplying weights by weights, as in combining weights
+  against confounding with weights against censoring, previously rebuilt the
+  result from six fields alone and discarded the record of which units a
+  modified propensity score trimmed, truncated, or calibrated, the attributes
+  describing a categorical exposure, and the stabilization score. The result was
+  visibly inconsistent: `w * 1` kept the trimming record and `w * psw(1)` did
+  not, so `is_unit_trimmed()` answered for the first and refused for the second.
+  Each of those attributes now carries when only one operand records it and when
+  both record the same value, so weights marked as stabilized keep the score
+  they were stabilized on rather than reading as stabilized by the default. A
+  score is carried only when the result is stabilized, which takes both
+  operands; a result that is not stabilized drops the score without comment,
+  since the score describes weights it no longer stands for. Operands that
+  record an attribute differently drop it, since neither value describes the
+  result, and a single warning of class
+  `propensity_metadata_conflict_warning` names every attribute dropped that way.
+  The rule is applied per operation, so an attribute one operation drops for a
+  disagreement can be carried again by a later operation whose operands agree.
+  The six fields merge as before: two different estimands are pasted together,
+  the result is stabilized only when both operands are, and it is marked as
+  trimmed, truncated, or calibrated when either operand is.
+
+* An arithmetic operation between a `psw` that names an estimand and one that
+  names none now records the estimand the one operand names. The two labels were
+  pasted together as though both named something, so
+  `psw(w, estimand = "ate") * psw(v)` reported an estimand of `"ate, "`.
+
+* Combining `psw` objects with `c()` now keeps the attributes describing a
+  categorical exposure when the inputs agree on them. These name the exposure
+  levels rather than the units, so they mean the same thing at the combined
+  length; inputs that name different levels drop them with the same warning
+  arithmetic raises, once for each attribute dropped, whatever order the inputs
+  were given in. The records left by a modified propensity score are still
+  dropped by `c()`, whether or not the inputs agree on them: concatenation
+  appends one set of observations to another, so the positions a record names
+  would describe units from the other input.
+
 * An unrecognized `exposure_type` given to any of the weight functions is now
   attributed to the function the caller named rather than to the internal helper
   that validates the argument. `wt_ate(ps, z, exposure_type = "wrong")`
