@@ -1308,3 +1308,186 @@ test_that("a conflict warning is attributed to the operation the caller wrote", 
     "vec_ptype2.psw.psw"
   )
 })
+
+# ---- validating a stabilization score ---------------------------------------
+
+test_that("psw() rejects a stabilization score of the wrong length", {
+  expect_error(
+    psw(c(1, 2, 3, 4), estimand = "ate", stabilization_score = c(1, 2)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(
+    psw(c(1, 2, 3, 4), estimand = "ate", stabilization_score = c(1, 2, 3)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(
+    psw(c(1, 2, 3, 4), estimand = "ate", stabilization_score = numeric(0)),
+    class = "propensity_stabilization_score_error"
+  )
+
+  cnd <- expect_error(
+    psw(c(1, 2, 3, 4), estimand = "ate", stabilization_score = c(1, 2))
+  )
+  message <- conditionMessage(cnd)
+  expect_true(grepl("stabilization_score", message, fixed = TRUE))
+  expect_true(grepl("2 values", message, fixed = TRUE))
+  expect_true(grepl("4 observations", message, fixed = TRUE))
+})
+
+test_that("psw() rejects a stabilization score that is not positive and finite", {
+  scored <- function(score) {
+    psw(c(1, 2, 3), estimand = "ate", stabilization_score = score)
+  }
+
+  expect_error(scored(0), class = "propensity_stabilization_score_error")
+  expect_error(scored(-1), class = "propensity_stabilization_score_error")
+  expect_error(
+    scored(NA_real_),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(scored(NaN), class = "propensity_stabilization_score_error")
+  expect_error(scored(Inf), class = "propensity_stabilization_score_error")
+  expect_error(scored(-Inf), class = "propensity_stabilization_score_error")
+  expect_error(
+    scored(c(0.5, -0.5, 0.5)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(
+    scored(c(0.5, 0.5, NA_real_)),
+    class = "propensity_stabilization_score_error"
+  )
+
+  cnd <- expect_error(scored(c(0.5, -0.5, 0.5)))
+  message <- conditionMessage(cnd)
+  expect_true(grepl("stabilization_score", message, fixed = TRUE))
+  expect_true(grepl("position 2", message, fixed = TRUE))
+})
+
+test_that("psw() rejects a non-numeric stabilization score", {
+  scored <- function(score) {
+    psw(c(1, 2, 3), estimand = "ate", stabilization_score = score)
+  }
+
+  expect_error(scored("0.5"), class = "propensity_stabilization_score_error")
+  expect_error(
+    scored(list(0.5)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(scored(TRUE), class = "propensity_stabilization_score_error")
+
+  cnd <- expect_error(scored("0.5"))
+  expect_true(
+    grepl("stabilization_score", conditionMessage(cnd), fixed = TRUE)
+  )
+})
+
+test_that("psw() accepts a scalar and a per-observation stabilization score", {
+  scalar <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.4
+  )
+  expect_identical(stabilization_score(scalar), 0.4)
+
+  score <- c(0.4, 0.5, 0.6)
+  per_observation <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = score
+  )
+  expect_identical(stabilization_score(per_observation), score)
+})
+
+test_that("psw() stores an integer stabilization score as a double", {
+  scalar <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 1L
+  )
+  expect_identical(stabilization_score(scalar), 1)
+  expect_type(stabilization_score(scalar), "double")
+
+  per_observation <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = c(1L, 2L, 3L)
+  )
+  expect_identical(stabilization_score(per_observation), c(1, 2, 3))
+
+  # Names would reintroduce the difference the storage type no longer makes,
+  # and nothing reads them, so a score is recorded as a plain double vector.
+  named <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = c(a = 1, b = 2, c = 3)
+  )
+  expect_identical(stabilization_score(named), c(1, 2, 3))
+})
+
+test_that("an integer and a double stabilization score are the same score", {
+  # The metadata merge compares scores with `identical()`, which reads a
+  # difference in storage type as a difference in the score.
+  from_integer <- psw(
+    c(1, 2, 3),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 1L
+  )
+  from_double <- psw(
+    c(2, 2, 2),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 1
+  )
+
+  product <- expect_silent(from_integer * from_double)
+  expect_s3_class(product, "psw")
+  expect_identical(stabilization_score(product), 1)
+
+  combined <- expect_silent(c(from_integer, from_double))
+  expect_s3_class(combined, "psw")
+  expect_identical(stabilization_score(combined), 1)
+})
+
+test_that("a psw prototype records a score for observations it does not hold", {
+  # A zero-length psw carries metadata for observations that have not arrived,
+  # so there is no length for a per-observation score to be checked against.
+  # `vec_cast()` checks it against the length the data does arrive at.
+  score <- c(0.51, 0.52, 0.53)
+  proto <- expect_silent(psw(
+    double(),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = score
+  ))
+
+  expect_identical(stabilization_score(proto), score)
+  expect_identical(stabilization_score(vec_cast(c(1, 2, 3), to = proto)), score)
+  expect_null(stabilization_score(vec_cast(c(1, 2), to = proto)))
+
+  # The value checks apply to a prototype like anything else.
+  expect_error(
+    psw(double(), estimand = "ate", stabilization_score = c(0.5, -0.5)),
+    class = "propensity_stabilization_score_error"
+  )
+})
+
+test_that("the stabilization score rejections read clearly", {
+  expect_propensity_error(
+    psw(c(1, 2, 3, 4), estimand = "ate", stabilization_score = c(1, 2))
+  )
+  expect_propensity_error(
+    psw(c(1, 2, 3), estimand = "ate", stabilization_score = c(0.5, -0.5, 0.5))
+  )
+  expect_propensity_error(
+    psw(c(1, 2, 3), estimand = "ate", stabilization_score = 0)
+  )
+  expect_propensity_error(
+    psw(c(1, 2, 3), estimand = "ate", stabilization_score = "0.5")
+  )
+})

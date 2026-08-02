@@ -4179,3 +4179,226 @@ test_that("GLM methods produce same results as PSweight", {
   entropy_ratio <- as.numeric(our_entropy_glm) / psw_entropy_raw
   expect_true(sd(entropy_ratio) / mean(entropy_ratio) < 0.01)
 })
+
+# ---- validating a stabilization score at the weight functions ---------------
+
+test_that("wt_ate() rejects an invalid stabilization score for a binary exposure", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c(0, 1, 0, 1)
+  scored <- function(score) {
+    wt_ate(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      stabilize = TRUE,
+      stabilization_score = score
+    )
+  }
+
+  expect_error(
+    scored(c(1, 2)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(
+    scored(c(1, 2, 3)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(scored(0), class = "propensity_stabilization_score_error")
+  expect_error(scored(-1), class = "propensity_stabilization_score_error")
+  expect_error(
+    scored(NA_real_),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(scored(NaN), class = "propensity_stabilization_score_error")
+  expect_error(scored(Inf), class = "propensity_stabilization_score_error")
+  expect_error(scored("0.5"), class = "propensity_stabilization_score_error")
+
+  # A length that neither matches nor divides the weights recycles under a base
+  # R warning, so the rejection has to arrive before the multiplication.
+  expect_no_warning(expect_error(
+    scored(c(1, 2, 3)),
+    class = "propensity_stabilization_score_error"
+  ))
+})
+
+test_that("wt_cens() rejects an invalid stabilization score", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c(0, 1, 0, 1)
+
+  expect_error(
+    wt_cens(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      stabilize = TRUE,
+      stabilization_score = c(1, 2)
+    ),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(
+    wt_cens(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      stabilize = TRUE,
+      stabilization_score = -1
+    ),
+    class = "propensity_stabilization_score_error"
+  )
+})
+
+test_that("wt_ate() rejects an invalid stabilization score for a continuous exposure", {
+  denom_model <- lm(mpg ~ gear + am + carb, data = mtcars)
+  scored <- function(score) {
+    wt_ate(
+      predict(denom_model),
+      .exposure = mtcars$mpg,
+      .sigma = influence(denom_model)$sigma,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      stabilization_score = score
+    )
+  }
+
+  expect_error(
+    scored(c(1, 2)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(scored(0), class = "propensity_stabilization_score_error")
+  expect_error(scored(-1), class = "propensity_stabilization_score_error")
+  expect_error(
+    scored(NA_real_),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(scored(Inf), class = "propensity_stabilization_score_error")
+  expect_error(scored("0.5"), class = "propensity_stabilization_score_error")
+})
+
+test_that("wt_ate() rejects an invalid stabilization score for a categorical exposure", {
+  exposure <- factor(c("A", "B", "C", "A", "B", "C"))
+  ps_matrix <- matrix(
+    c(
+      0.5,
+      0.3,
+      0.2,
+      0.2,
+      0.5,
+      0.3,
+      0.1,
+      0.2,
+      0.7,
+      0.6,
+      0.3,
+      0.1,
+      0.3,
+      0.4,
+      0.3,
+      0.2,
+      0.2,
+      0.6
+    ),
+    ncol = 3,
+    byrow = TRUE
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  scored <- function(score) {
+    wt_ate(
+      ps_matrix,
+      exposure,
+      exposure_type = "categorical",
+      stabilize = TRUE,
+      stabilization_score = score
+    )
+  }
+
+  expect_error(
+    scored(c(1, 2)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(
+    scored(c(1, 2, 3, 4)),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(scored(0), class = "propensity_stabilization_score_error")
+  expect_error(scored(-1), class = "propensity_stabilization_score_error")
+  expect_error(
+    scored(NA_real_),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_error(scored(Inf), class = "propensity_stabilization_score_error")
+  expect_error(scored("0.5"), class = "propensity_stabilization_score_error")
+
+  expect_no_warning(expect_error(
+    scored(c(1, 2, 3, 4)),
+    class = "propensity_stabilization_score_error"
+  ))
+})
+
+test_that("wt_ate() multiplies a per-observation stabilization score into the weights", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c(0, 1, 0, 1)
+  score <- c(0.4, 0.5, 0.6, 0.7)
+
+  unstabilized <- wt_ate(ps, exposure, exposure_type = "binary")
+  scored <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+
+  expect_equal(as.double(scored), as.double(unstabilized) * score)
+  expect_identical(stabilization_score(scored), score)
+  expect_true(is_stabilized(scored))
+
+  # A single value applies to every weight.
+  scalar <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE,
+    stabilization_score = 0.5
+  )
+  expect_equal(as.double(scalar), as.double(unstabilized) * 0.5)
+  expect_identical(stabilization_score(scalar), 0.5)
+})
+
+test_that("wt_ate() records an integer stabilization score as a double", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c(0, 1, 0, 1)
+
+  scored <- wt_ate(
+    ps,
+    exposure,
+    exposure_type = "binary",
+    stabilize = TRUE,
+    stabilization_score = 2L
+  )
+
+  expect_identical(stabilization_score(scored), 2)
+  expect_type(stabilization_score(scored), "double")
+})
+
+test_that("wt_ate() rejects an invalid stabilization score built on trimmed scores", {
+  ps <- ps_trim(
+    c(0.05, 0.3, 0.5, 0.7, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+  exposure <- c(0, 0, 1, 1, 1)
+
+  expect_error(
+    suppressWarnings(wt_ate(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .focal_level = 1,
+      stabilize = TRUE,
+      stabilization_score = c(1, 2)
+    )),
+    class = "propensity_stabilization_score_error"
+  )
+})

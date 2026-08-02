@@ -2673,3 +2673,91 @@ test_that("the linearization separation error names the count and the model", {
     ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
   )
 })
+
+# ---- stabilization scores on the M-estimation path --------------------------
+
+# RD standard error from the M-estimation path for the supplied weights.
+se_score_mest_rd <- function(dat, ps_mod, wts) {
+  res <- ipw(
+    ps_mod,
+    se_score_outcome(dat, wts),
+    .data = dat,
+    se_method = "mestimation"
+  )
+  res$estimates$std.err[res$estimates$effect == "rd"]
+}
+
+test_that("mestimation accepts a scalar stabilization score and reproduces the unstabilized estimates", {
+  skip_if_not_installed("deli")
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  ps <- as.double(predict(ps_mod, type = "response"))
+
+  unstabilized <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+  scored <- wt_ate(
+    ps,
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1,
+    stabilize = TRUE,
+    stabilization_score = 2.5
+  )
+
+  mest_estimates <- function(wts) {
+    ipw(
+      ps_mod,
+      se_score_outcome(dat, wts),
+      .data = dat,
+      se_method = "mestimation"
+    )$estimates
+  }
+
+  # The weight-consistency comparator rebuilds the weights the propensity scores
+  # imply from the recorded score, so a scalar score passes it rather than being
+  # read as a mismatch with the default stabilizer.
+  scored_estimates <- expect_silent(mest_estimates(scored))
+
+  # One constant scales every weight and every weight total identically, so it
+  # cancels from the Hajek means the stacked system solves. The tolerance is the
+  # root solver's, not a modelling difference: the standard errors agree to
+  # eight figures, and the p-values, which amplify that difference, to five.
+  expect_equal(scored_estimates, mest_estimates(unstabilized), tolerance = 1e-5)
+})
+
+test_that("mestimation uses a per-observation stabilization score", {
+  skip_if_not_installed("deli")
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  ps <- as.double(predict(ps_mod, type = "response"))
+
+  # A score correlated with a propensity score covariate does not cancel from
+  # the Hajek means, so it has to move the standard error rather than wash out.
+  score <- exp(0.5 * dat$x1)
+  scored <- wt_ate(
+    ps,
+    dat$z,
+    exposure_type = "binary",
+    .focal_level = 1,
+    stabilize = TRUE,
+    stabilization_score = score
+  )
+  unstabilized <- wt_ate(ps, dat$z, exposure_type = "binary", .focal_level = 1)
+
+  scored_mest <- expect_silent(se_score_mest_rd(dat, ps_mod, scored))
+  unstabilized_mest <- se_score_mest_rd(dat, ps_mod, unstabilized)
+  expect_gt(
+    abs(scored_mest - unstabilized_mest) / unstabilized_mest,
+    0.05
+  )
+
+  # The two standard error paths differ by their finite-sample corrections
+  # rather than by what they make of the score, so they have to sit as close
+  # together for the scored analysis as they do without a score at all.
+  scored_gap <- abs(scored_mest - se_score_lin_rd(dat, ps_mod, scored)) /
+    scored_mest
+  unstabilized_gap <- abs(
+    unstabilized_mest - se_score_lin_rd(dat, ps_mod, unstabilized)
+  ) /
+    unstabilized_mest
+  expect_equal(scored_gap, unstabilized_gap, tolerance = 1e-2)
+})
