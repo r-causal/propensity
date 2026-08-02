@@ -3716,10 +3716,10 @@ test_that("an exposure that cannot be coded 0/1 names the weight function", {
   }
 })
 
-# A matrix or data frame of the right total length passes the length check,
-# because `length()` counts cells rather than observations. Nothing downstream
-# of the transformation reduces it back to one value per observation, so the
-# refusal has to happen where the exposure is coded.
+# A shaped exposure can pass the length check, because `length()` counts cells
+# for a matrix and columns for a data frame rather than observations. Nothing
+# downstream of the transformation reduces it back to one value per
+# observation, so the refusal has to happen where the exposure is coded.
 
 test_that("an exposure with dimensions names the weight function", {
   ps <- c(0.2, 0.5, 0.8, 0.4)

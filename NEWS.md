@@ -2,12 +2,13 @@
 
 * An `.exposure` with dimensions is now refused on the binary path, with an
   error of class `propensity_binary_transform_error` that names the shape it
-  was given. A matrix or data frame holding the right number of cells passed
-  the length rule and survived the 0 and 1 coding unchanged, because comparison
-  and coercion are elementwise, and then failed where the weights are given
-  their class, reporting a dimensionality error against an argument the caller
-  never named. `ps_trim()`, `ps_trunc()`, and `ps_calibrate()` took the same
-  exposure without complaint and read its cells in storage order.
+  was given. The length rule reads `length()`, which counts cells for a matrix
+  and columns for a data frame, so a shape of either kind could match the
+  propensity scores and survive the 0 and 1 coding unchanged, because
+  comparison and coercion are elementwise, and then fail where the weights are
+  given their class, reporting a dimensionality error against an argument the
+  caller never named. `ps_trim()`, `ps_trunc()`, and `ps_calibrate()` took the
+  same exposure without complaint and read a matrix in storage order.
 
 * `ps_trim()` and `ps_trunc()` now name the function you called when they
   refuse a propensity score matrix. The refusal was attributed to the frame the

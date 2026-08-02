@@ -103,7 +103,8 @@ transform_exposure_binary <- function(
     abort(
       c(
         "{.arg .exposure} must be a vector.",
-        x = "It is {.cls {class(.exposure)[[1]]}} with {length(dim(.exposure))} dimensions.",
+        x = "It is {.cls {class(.exposure)[[1]]}} with \\
+        {length(dim(.exposure))} dimension{?s}.",
         i = "Supply one value per observation."
       ),
       call = call,
