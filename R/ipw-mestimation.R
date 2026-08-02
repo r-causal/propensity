@@ -1790,13 +1790,15 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
   )
 }
 
+# `layout` defaults to the layout the spec implies, so a caller holding one
+# already passes it rather than paying for a second identical partition of the
+# same spec.
 ipw_check_weight_consistency <- function(
   spec,
   observed_wts,
+  layout = ipw_theta_layout(spec, call = call),
   call = rlang::caller_env()
 ) {
-  layout <- ipw_theta_layout(spec, call = call)
-
   ipw_compare_weights(
     ipw_weights_at_init(spec, layout, call = call),
     observed_wts,
@@ -1902,7 +1904,12 @@ ipw_mestimation <- function(
   psi <- build_ipw_psi(spec, layout, call = call)
 
   if (!is.null(spec$outcome$weights)) {
-    ipw_check_weight_consistency(spec, spec$outcome$weights, call = call)
+    ipw_check_weight_consistency(
+      spec,
+      spec$outcome$weights,
+      layout = layout,
+      call = call
+    )
   }
 
   m <- deli::MEstimator(stacked_equations = psi, init = layout$init)
