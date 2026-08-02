@@ -37,6 +37,7 @@ Rachet
 Rosenbaum
 SIGKDD
 Stefanski
+Subassignment
 Unstabilized
 Winsorize
 Zadrozny
@@ -63,6 +64,7 @@ misspecified
 multiclass
 pctl
 poisson
+positionally
 positivity
 ps
 quasibinomial
@@ -72,7 +74,11 @@ renormalized
 renormalizes
 reparameterization
 restack
+softmax
+subassignment
 subclassification
+unclassed
+vctrs
 winsorize
 winsorized
 winsorizing
