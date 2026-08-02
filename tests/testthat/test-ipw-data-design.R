@@ -649,3 +649,449 @@ test_that("an outcome model with no exposure term is still reported as such", {
     class = "propensity_ipw_exposure_error"
   )
 })
+
+# ---- the levels the fit recorded --------------------------------------------
+#
+# Every design rebuilt from `.data` multiplies the fitted coefficients
+# positionally, and for a categorical column the column a level lands in is
+# fixed by the order the fit recorded rather than by the order `.data` happens
+# to carry. A user who re-levels a factor for presentation after fitting, or who
+# stores it as character, hands `ipw()` the same values under a different order,
+# and the design rebuilt from them pairs each level with another level's
+# coefficient. The fits record their levels, so the rebuilds are made to honor
+# them; where honoring them is not possible, because the level order decides the
+# meaning of the numbers rather than their arrangement, the mismatch is rejected.
+
+design_level_data <- function(seed = 3025, n = 400) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  # deliberately not alphabetical: a rebuild that re-levels on its own would
+  # order these "high", "low", "mid" and pair every level with the wrong column
+  cov <- factor(
+    sample(c("low", "mid", "high"), n, replace = TRUE),
+    levels = c("low", "mid", "high")
+  )
+  num <- sample(1:3, n, replace = TRUE)
+  z <- rbinom(n, 1, plogis(0.3 * x1 - 0.4 * (cov == "mid")))
+  y <- rbinom(
+    n,
+    1,
+    plogis(-0.4 + 1.0 * z + 0.5 * x1 + 0.6 * (cov == "high") + 0.2 * num)
+  )
+  data.frame(x1, cov, num, z, y)
+}
+
+test_that("ipw() is unchanged when .data re-levels an outcome factor covariate", {
+  skip_if_not_installed("deli")
+  dat <- design_level_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + cov, dat, wts)
+
+  dat_relevel <- dat
+  dat_relevel$cov <- factor(
+    as.character(dat$cov),
+    levels = c("high", "mid", "low")
+  )
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat_relevel))
+  ref <- ipw(ps_mod, out)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-12)
+})
+
+test_that("ipw() is unchanged when .data supplies an outcome factor covariate as character", {
+  skip_if_not_installed("deli")
+  # The fitted levels are not alphabetical, so a rebuild that re-levels the
+  # character column on its own rebuilds a design the model was never fit on.
+  dat <- design_level_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + cov, dat, wts)
+
+  dat_chr <- dat
+  dat_chr$cov <- as.character(dat$cov)
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat_chr))
+  ref <- ipw(ps_mod, out)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-12)
+})
+
+test_that("ipw() is unchanged when .data supplies an outcome factor covariate as an ordered factor", {
+  skip_if_not_installed("deli")
+  dat <- design_level_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + cov, dat, wts)
+
+  dat_ord <- dat
+  dat_ord$cov <- ordered(
+    as.character(dat$cov),
+    levels = c("low", "mid", "high")
+  )
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat_ord))
+  ref <- ipw(ps_mod, out)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-12)
+})
+
+test_that("ipw() is unchanged when .data declares a level the fit never saw", {
+  skip_if_not_installed("deli")
+  # The fits drop unused levels, so a level no observation carries contributes
+  # no column to the fitted design and none to the rebuilt one either. The
+  # design is the fitted design and the analysis is unchanged.
+  dat <- design_level_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + cov, dat, wts)
+
+  dat_extra <- dat
+  dat_extra$cov <- factor(
+    as.character(dat$cov),
+    levels = c("low", "mid", "high", "unused")
+  )
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat_extra))
+  ref <- ipw(ps_mod, out)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-12)
+})
+
+test_that("ipw() rejects a .data column holding a level the fit never saw", {
+  skip_if_not_installed("deli")
+  # A declared level with no observations is the design the fit used; an
+  # observed one is not, and there is no coefficient for it. This died raw as
+  # "factor cov has new levels extra", which names neither `.data` nor `ipw()`.
+  dat <- design_level_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + cov, dat, wts)
+
+  dat_new <- dat
+  levels(dat_new$cov) <- c("low", "mid", "high", "extra")
+  dat_new$cov[1] <- "extra"
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_new),
+    class = "propensity_ipw_data_error"
+  ))
+  msg <- design_msg(err)
+  expect_match(msg, "\\bcov\\b")
+  expect_match(msg, "extra", fixed = TRUE)
+})
+
+test_that("the new-level rejection covers a column read through a call", {
+  skip_if_not_installed("deli")
+  # `factor(num)` records its levels under the call rather than under `num`, so
+  # the type check has no column to compare and the value reaches the rebuild.
+  dat <- design_level_data()
+  ps_mod <- glm(z ~ x1 + factor(num), data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + factor(num), dat, wts)
+
+  dat_new <- dat
+  dat_new$num[1] <- 4L
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_new),
+    class = "propensity_ipw_data_error"
+  ))
+  msg <- design_msg(err)
+  expect_match(msg, "factor(num)", fixed = TRUE)
+  expect_match(msg, "\\b4\\b")
+})
+
+test_that("the new-level error names the column and the values the fit never saw", {
+  skip_if_not_installed("deli")
+  dat <- design_level_data()
+  ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + cov, dat, wts)
+
+  dat_new <- dat
+  levels(dat_new$cov) <- c("low", "mid", "high", "extra")
+  dat_new$cov[1] <- "extra"
+
+  expect_snapshot(error = TRUE, ipw(ps_mod, out, .data = dat_new))
+})
+
+# ---- the outcome response's levels ------------------------------------------
+#
+# A factor response is converted to an indicator for its non-first levels, so
+# the level the fit treats as the failure has to be the first level of the
+# column `.data` supplies as well. A response re-leveled the other way is the
+# same values under the opposite coding: it silently reverses every estimate on
+# the M-estimation path, and on the linearization path it leaves the point
+# estimates alone, because they come from the outcome model's own predictions,
+# and moves the standard errors, which read the response values.
+
+design_level_response <- function(dat) {
+  dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
+  dat
+}
+
+test_that("ipw() rejects a response re-leveled against the fit under mestimation", {
+  skip_if_not_installed("deli")
+  dat <- design_level_response(design_level_data())
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(yf ~ z + x1, dat, wts)
+
+  dat_flip <- dat
+  dat_flip$yf <- factor(as.character(dat$yf), levels = c("yes", "no"))
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_flip, se_method = "mestimation"),
+    class = "propensity_ipw_data_error"
+  ))
+  msg <- design_msg(err)
+  expect_match(msg, "\\byf\\b")
+  expect_match(msg, "no", fixed = TRUE)
+})
+
+test_that("ipw() rejects a response re-leveled against the fit under linearization", {
+  dat <- design_level_response(design_level_data())
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(yf ~ z, dat, wts)
+
+  dat_flip <- dat
+  dat_flip$yf <- factor(as.character(dat$yf), levels = c("yes", "no"))
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_flip, se_method = "linearization"),
+    class = "propensity_ipw_data_error"
+  ))
+  expect_match(design_msg(err), "\\byf\\b")
+})
+
+test_that("the re-leveled response error names the column and the coding", {
+  skip_if_not_installed("deli")
+  dat <- design_level_response(design_level_data())
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(yf ~ z + x1, dat, wts)
+
+  dat_flip <- dat
+  dat_flip$yf <- factor(as.character(dat$yf), levels = c("yes", "no"))
+
+  expect_snapshot(error = TRUE, ipw(ps_mod, out, .data = dat_flip))
+})
+
+test_that("a response supplied with the levels the fit recorded still works", {
+  skip_if_not_installed("deli")
+  dat <- design_level_response(design_level_data())
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(yf ~ z + x1, dat, wts)
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat))
+  ref <- ipw(ps_mod, out)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-12)
+})
+
+# ---- the exposure column's levels -------------------------------------------
+#
+# The binary path takes the second sorted level of the exposure as the exposed
+# group, which for a factor is the second level it declares. A `.data` exposure
+# re-leveled against the fit therefore reverses the group the counterfactual
+# designs and the influence functions treat as exposed. It errored, but at the
+# weight-consistency preflight, whose message is about how the weights were
+# built. The categorical path resolves the supplied column against the fitted
+# levels instead and is unaffected.
+
+test_that("ipw() rejects a binary factor exposure re-leveled against the fit", {
+  skip_if_not_installed("deli")
+  dat <- design_level_data()
+  dat$zf <- factor(dat$z)
+  ps_mod <- glm(zf ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ zf + x1, dat, wts)
+
+  dat_flip <- dat
+  dat_flip$zf <- factor(as.character(dat$zf), levels = c("1", "0"))
+
+  err <- expect_error(
+    ipw(ps_mod, out, .data = dat_flip),
+    class = "propensity_ipw_data_error"
+  )
+  msg <- design_msg(err)
+  expect_match(msg, "\\bzf\\b")
+  expect_false(grepl("weights recomputed", msg, fixed = TRUE))
+})
+
+test_that("the re-leveled binary exposure is rejected under linearization too", {
+  dat <- design_level_data()
+  dat$zf <- factor(dat$z)
+  ps_mod <- glm(zf ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ zf, dat, wts)
+
+  dat_flip <- dat
+  dat_flip$zf <- factor(as.character(dat$zf), levels = c("1", "0"))
+
+  err <- expect_error(
+    ipw(ps_mod, out, .data = dat_flip, se_method = "linearization"),
+    class = "propensity_ipw_data_error"
+  )
+  expect_match(design_msg(err), "\\bzf\\b")
+})
+
+test_that("a binary factor exposure declaring an unused level still works", {
+  skip_if_not_installed("deli")
+  # No observation carries the extra level, so the fitted coding is untouched.
+  dat <- design_level_data()
+  dat$zf <- factor(dat$z)
+  ps_mod <- glm(zf ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ zf + x1, dat, wts)
+
+  dat_extra <- dat
+  dat_extra$zf <- factor(as.character(dat$zf), levels = c("0", "1", "2"))
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat_extra))
+  ref <- ipw(ps_mod, out)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-12)
+})
+
+design_level_categorical <- function(seed = 4127, n = 600) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  odds <- cbind(1, exp(0.5 * x1), exp(-0.4 * x1))
+  probs <- odds / rowSums(odds)
+  a <- factor(
+    vapply(
+      seq_len(n),
+      function(i) sample(c("a", "b", "c"), 1, prob = probs[i, ]),
+      character(1)
+    ),
+    levels = c("a", "b", "c")
+  )
+  y <- rbinom(
+    n,
+    1,
+    plogis(-0.3 + 0.8 * (a == "b") + 1.2 * (a == "c") + 0.4 * x1)
+  )
+  data.frame(x1, a, y)
+}
+
+test_that("a re-leveled categorical exposure is resolved rather than rejected", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # The categorical path resolves the exposure against the propensity model's
+  # own level order before anything reads it, so the supplied order says
+  # nothing and this stays an accepted input.
+  dat <- design_level_categorical()
+  ps_mod <- nnet::multinom(a ~ x1, data = dat, trace = FALSE)
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- ps_mod$lev
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$a, exposure_type = "categorical")
+  )
+  out <- design_outcome(y ~ a + x1, dat, wts)
+
+  dat_relevel <- dat
+  dat_relevel$a <- factor(as.character(dat$a), levels = c("c", "b", "a"))
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat_relevel))
+  ref <- ipw(ps_mod, out, .data = dat)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-12)
+})
+
+# ---- a factored exposure term rebuilds from .data ---------------------------
+#
+# `y ~ factor(z)` records the term's levels and contrast coding under the label
+# "factor(z)", and the rebuild from `.data` re-evaluates that label at the
+# counterfactual column and re-levels the result against the levels the fit
+# recorded. The design that comes out is the design the fit used, so the
+# marginal means are the ones the pre-converted factor model gives.
+#
+# Without `.data` there is nothing to re-evaluate: the model frame carries its
+# own terms attribute, so the design is read from the `factor(z)` column already
+# in it and the counterfactual column written beside it is dropped. Both
+# counterfactual designs are then the fitted design, and every contrast between
+# them is zero. That route keeps its rejection.
+
+test_that("ipw() accepts a factored binary exposure term with .data", {
+  skip_if_not_installed("deli")
+  dat <- design_level_data()
+  dat$zf <- factor(dat$z)
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  ps_fac <- glm(zf ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out_call <- design_outcome(y ~ factor(z) + x1, dat, wts)
+  out_column <- design_outcome(y ~ zf + x1, dat, wts)
+
+  res <- expect_no_warning(ipw(ps_mod, out_call, .data = dat))
+  ref <- ipw(ps_fac, out_column, .data = dat)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+test_that("a factored binary exposure term rebuilds under non-default contrasts", {
+  skip_if_not_installed("deli")
+  # The fit's own coding is carried into the rebuild rather than the default, so
+  # a sum-coded exposure term reproduces the same marginal means.
+  dat <- design_level_data()
+  dat$zf <- factor(dat$z)
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  ps_fac <- glm(zf ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out_call <- glm(
+    y ~ factor(z) + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    contrasts = list(`factor(z)` = "contr.sum"),
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  out_column <- glm(
+    y ~ zf + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    contrasts = list(zf = "contr.sum"),
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  res <- expect_no_warning(ipw(ps_mod, out_call, .data = dat))
+  ref <- ipw(ps_fac, out_column, .data = dat)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+test_that("ipw() accepts a factored categorical exposure term with .data", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- design_level_categorical()
+  ps_mod <- nnet::multinom(a ~ x1, data = dat, trace = FALSE)
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- ps_mod$lev
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$a, exposure_type = "categorical")
+  )
+  out_call <- design_outcome(y ~ factor(a) + x1, dat, wts)
+  out_column <- design_outcome(y ~ a + x1, dat, wts)
+
+  res <- expect_no_warning(ipw(ps_mod, out_call, .data = dat))
+  ref <- ipw(ps_mod, out_column, .data = dat)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+test_that("the factored exposure term keeps its rejection without .data", {
+  skip_if_not_installed("deli")
+  # The route asymmetry: the same models are accepted with `.data` and rejected
+  # without it, because only the `.data` route re-evaluates the term.
+  dat <- design_level_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ factor(z) + x1, dat, wts)
+
+  expect_no_error(ipw(ps_mod, out, .data = dat))
+
+  err <- expect_error(
+    ipw(ps_mod, out),
+    class = "propensity_ipw_exposure_error"
+  )
+  msg <- design_msg(err)
+  expect_match(msg, "factor(z)", fixed = TRUE)
+  expect_match(msg, ".data", fixed = TRUE)
+})

@@ -1707,10 +1707,13 @@ test_that("the fitted-factor .data error names the column and how the fit record
 test_that("mestimation accepts a character .data column where the ps model fit a factor", {
   skip_if_not_installed("deli")
   # Character is not the rejected case, and the guard must not widen into one.
-  # `model.frame()` re-levels a character column against the recorded levels, so
-  # the rebuilt design is the fitted one and the estimates match the factor
-  # `.data` call, which is the working control for this seam.
+  # The rebuild re-levels a character column against the recorded levels, so the
+  # rebuilt design is the fitted one and the estimates match the model-frame
+  # route, which is the oracle for this seam. The fitted levels are re-leveled
+  # away from alphabetical order first: a rebuild that ordered the column on its
+  # own would agree with the fit by coincidence otherwise.
   dat <- ps_design_data()
+  dat$cov <- factor(as.character(dat$cov), levels = c("c", "b", "a"))
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -1732,12 +1735,18 @@ test_that("mestimation accepts a character .data column where the ps model fit a
     ipw(ps_mod, out, .data = dat_chr, se_method = "mestimation")
   )$estimates
   fac <- ipw(ps_mod, out, .data = dat, se_method = "mestimation")$estimates
+  frame <- ipw(ps_mod, out, se_method = "mestimation")$estimates
   expect_equal(chr, fac, tolerance = 1e-12)
+  expect_equal(chr, frame, tolerance = 1e-12)
 })
 
 test_that("mestimation accepts a character .data column where the outcome model fit a factor", {
   skip_if_not_installed("deli")
+  # The same seam on the outcome model's side, and the same non-alphabetical
+  # fitted levels, so the counterfactual designs are rebuilt under the order the
+  # fit recorded rather than under the one a character column sorts into.
   dat <- ps_design_data()
+  dat$cov <- factor(as.character(dat$cov), levels = c("c", "b", "a"))
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -1758,7 +1767,9 @@ test_that("mestimation accepts a character .data column where the outcome model 
     ipw(ps_mod, out, .data = dat_chr, se_method = "mestimation")
   )$estimates
   fac <- ipw(ps_mod, out, .data = dat, se_method = "mestimation")$estimates
+  frame <- ipw(ps_mod, out, se_method = "mestimation")$estimates
   expect_equal(chr, fac, tolerance = 1e-12)
+  expect_equal(chr, frame, tolerance = 1e-12)
 })
 
 # ---- a wrong-sized .data is a data problem ----------------------------------
