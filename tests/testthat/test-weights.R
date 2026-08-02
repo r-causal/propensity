@@ -3121,6 +3121,397 @@ test_that("an invalid exposure_type on a trimmed propensity score names wt_ate()
   )
 })
 
+# ---- every route names the weight function the user called ------------------
+
+# A weight function reaches its numeric method by a different frame on every
+# route: the data frame method through a shared helper, the glm method and the
+# modified propensity score classes by calling the numeric method directly. A
+# condition raised anywhere in that machinery has to name the weight function
+# the user called, and it has to keep naming it when the call comes from inside
+# a function of the user's own, which is what separates the frame the method was
+# dispatched into from the frame that dispatched to it.
+
+weight_error_call_name <- function(expr) {
+  cnd <- rlang::catch_cnd(expr, classes = "error")
+  if (is.null(cnd)) {
+    return(NA_character_)
+  }
+
+  call <- conditionCall(cnd)
+  if (is.null(call)) {
+    return(NA_character_)
+  }
+
+  paste(deparse(call[[1]]), collapse = " ")
+}
+
+weight_error_message <- function(expr) {
+  cnd <- rlang::catch_cnd(expr, classes = "error")
+  if (is.null(cnd)) {
+    return(NA_character_)
+  }
+
+  unwrap_condition_message(cnd)
+}
+
+categorical_attribution_fixture <- function() {
+  list(
+    exposure = factor(c("a", "b", "c", "a")),
+    # the first row sums to 1.4, which every categorical route refuses
+    bad_matrix = matrix(
+      c(
+        0.2,
+        0.3,
+        0.9,
+        0.3,
+        0.3,
+        0.4,
+        0.2,
+        0.3,
+        0.5,
+        0.5,
+        0.3,
+        0.2
+      ),
+      nrow = 4,
+      byrow = TRUE
+    )
+  )
+}
+
+categorical_attribution_routes <- function() {
+  list(
+    wt_ate = function(ps, exposure) {
+      wt_ate(ps, exposure, exposure_type = "categorical")
+    },
+    wt_att = function(ps, exposure) {
+      wt_att(ps, exposure, exposure_type = "categorical", .focal_level = "a")
+    },
+    wt_atu = function(ps, exposure) {
+      wt_atu(
+        ps,
+        exposure,
+        exposure_type = "categorical",
+        .reference_level = "a"
+      )
+    },
+    wt_atm = function(ps, exposure) {
+      wt_atm(ps, exposure, exposure_type = "categorical")
+    },
+    wt_ato = function(ps, exposure) {
+      wt_ato(ps, exposure, exposure_type = "categorical")
+    },
+    wt_entropy = function(ps, exposure) {
+      wt_entropy(ps, exposure, exposure_type = "categorical")
+    },
+    wt_cens = function(ps, exposure) {
+      wt_cens(ps, exposure, exposure_type = "categorical")
+    }
+  )
+}
+
+test_that("a categorical matrix rejection names the weight function", {
+  fixture <- categorical_attribution_fixture()
+  routes <- categorical_attribution_routes()
+
+  for (fn_name in names(routes)) {
+    route <- routes[[fn_name]]
+    cnd <- rlang::catch_cnd(
+      route(fixture$bad_matrix, fixture$exposure),
+      classes = "error"
+    )
+    expect_s3_class(cnd, "propensity_matrix_sum_error")
+    expect_identical(
+      weight_error_call_name(route(fixture$bad_matrix, fixture$exposure)),
+      fn_name
+    )
+  }
+})
+
+test_that("a categorical matrix rejection names the weight function, not the caller", {
+  fixture <- categorical_attribution_fixture()
+
+  # The routes above are reached from inside a local function, so a guard that
+  # reads the frame that dispatched to the method instead of the frame it was
+  # dispatched into would name that local function here.
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(
+        fixture$bad_matrix,
+        fixture$exposure,
+        exposure_type = "categorical"
+      )
+    ),
+    "wt_ate"
+  )
+})
+
+test_that("a categorical matrix rejection on the data frame route names the weight function", {
+  fixture <- categorical_attribution_fixture()
+
+  expect_identical(
+    weight_error_call_name(
+      wt_ato(
+        as.data.frame(fixture$bad_matrix),
+        fixture$exposure,
+        exposure_type = "categorical"
+      )
+    ),
+    "wt_ato"
+  )
+})
+
+test_that("data frame column selection failures name the weight function", {
+  fixture <- exposure_type_fixture()
+
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(
+        fixture$ps_df,
+        fixture$exposure,
+        exposure_type = "binary",
+        .propensity_col = "nonexistent"
+      )
+    ),
+    "wt_ate"
+  )
+
+  expect_identical(
+    weight_error_call_name(
+      wt_att(data.frame(), fixture$exposure, exposure_type = "binary")
+    ),
+    "wt_att"
+  )
+
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(fixture$ps_df, c(0, 1), exposure_type = "binary")
+    ),
+    "wt_ate"
+  )
+})
+
+test_that("a propensity score out of range on the data frame route names the weight function", {
+  out_of_range <- data.frame(
+    low = c(-1, 2, 0.5, 0.5),
+    high = c(2, -1, 0.5, 0.5)
+  )
+  fixture <- exposure_type_fixture()
+
+  cnd <- rlang::catch_cnd(
+    wt_ate(
+      out_of_range,
+      fixture$exposure,
+      exposure_type = "binary",
+      .propensity_col = 1
+    ),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "propensity_range_error")
+
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(
+        out_of_range,
+        fixture$exposure,
+        exposure_type = "binary",
+        .propensity_col = 1
+      )
+    ),
+    "wt_ate"
+  )
+})
+
+test_that("guards on the glm route name the weight function", {
+  fixture <- zero_one_glm_fixture()
+
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(fixture$model, .exposure = c(0, 1), exposure_type = "binary")
+    ),
+    "wt_ate"
+  )
+
+  expect_identical(
+    weight_error_call_name(
+      wt_att(fixture$model, .exposure = fixture$exposure, bogus = 1)
+    ),
+    "wt_att"
+  )
+})
+
+test_that("guards on the modified propensity score routes name the weight function", {
+  fixture <- exposure_type_fixture()
+
+  expect_identical(
+    weight_error_call_name(
+      suppressWarnings(wt_ate(
+        fixture$ps_trimmed,
+        fixture$exposure,
+        exposure_type = "binary",
+        bogus = 1
+      ))
+    ),
+    "wt_ate"
+  )
+
+  truncated <- ps_trunc(fixture$ps, method = "ps", lower = 0.25, upper = 0.75)
+  expect_identical(
+    weight_error_call_name(
+      wt_ato(truncated, c(0, 1), exposure_type = "binary")
+    ),
+    "wt_ato"
+  )
+})
+
+test_that("an unsupported exposure type names the weight function on every route", {
+  continuous <- c(1.5, 2.5, 3.5, 4.5)
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+
+  withr::local_options(propensity.quiet = TRUE)
+
+  expect_identical(
+    weight_error_call_name(wt_att(ps, continuous)),
+    "wt_att"
+  )
+
+  expect_identical(
+    weight_error_call_name(
+      wt_att(data.frame(treated = ps), continuous, .propensity_col = 1)
+    ),
+    "wt_att"
+  )
+})
+
+# ---- the `call` argument is plumbing, and is checked as such ----------------
+
+# The weight generics pass their dots on to their methods, so the `call`
+# argument the numeric methods carry is reachable from user code. A value the
+# condition system cannot read as a call is refused where it arrives, rather
+# than left to turn the next guard that fires into a report of rlang's
+# internals.
+
+test_that("a `call` that is not a call or an environment is rejected", {
+  fixture <- exposure_type_fixture()
+
+  expect_error(
+    wt_ate(
+      fixture$ps,
+      fixture$exposure,
+      exposure_type = "binary",
+      call = "bogus"
+    ),
+    class = "propensity_call_arg_error"
+  )
+  expect_error(
+    wt_ate(
+      fixture$ps,
+      fixture$exposure,
+      exposure_type = "binary",
+      call = "bogus"
+    ),
+    class = "propensity_error"
+  )
+  expect_match(
+    weight_error_message(
+      wt_ate(
+        fixture$ps,
+        fixture$exposure,
+        exposure_type = "binary",
+        call = "bogus"
+      )
+    ),
+    "`call`",
+    fixed = TRUE
+  )
+
+  expect_error(
+    wt_att(fixture$ps, fixture$exposure, exposure_type = "binary", call = 42),
+    class = "propensity_call_arg_error"
+  )
+
+  expect_error(
+    wt_ato(fixture$ps, fixture$exposure, exposure_type = "binary", call = 42),
+    class = "propensity_call_arg_error"
+  )
+})
+
+test_that("a `call` rejection names the weight function on every route", {
+  fixture <- exposure_type_fixture()
+
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(fixture$ps, fixture$exposure, exposure_type = "binary", call = 42)
+    ),
+    "wt_ate"
+  )
+
+  expect_identical(
+    weight_error_call_name(
+      wt_att(
+        fixture$ps_df,
+        fixture$exposure,
+        exposure_type = "binary",
+        .propensity_col = 2,
+        call = 42
+      )
+    ),
+    "wt_att"
+  )
+
+  expect_identical(
+    weight_error_call_name(
+      suppressWarnings(wt_ato(
+        fixture$ps_trimmed,
+        fixture$exposure,
+        exposure_type = "binary",
+        call = 42
+      ))
+    ),
+    "wt_ato"
+  )
+
+  glm_fixture <- zero_one_glm_fixture()
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(
+        glm_fixture$model,
+        .exposure = glm_fixture$exposure,
+        exposure_type = "binary",
+        call = 42
+      )
+    ),
+    "wt_ate"
+  )
+})
+
+test_that("a `call` the caller supplies is used to attribute conditions", {
+  ps <- c(0.5, 1.5)
+  exposure <- c(0, 1)
+
+  wrapping_weight_fn <- function() {
+    wt_ate(ps, exposure, exposure_type = "binary", call = rlang::current_env())
+  }
+
+  expect_identical(
+    weight_error_call_name(wrapping_weight_fn()),
+    "wrapping_weight_fn"
+  )
+
+  # a call object is the other value the condition system reads
+  expect_identical(
+    weight_error_call_name(
+      wt_ate(
+        ps,
+        exposure,
+        exposure_type = "binary",
+        call = quote(my_wrapper(x))
+      )
+    ),
+    "my_wrapper"
+  )
+})
+
 test_that("a valid exposure_type still dispatches to the weight formula", {
   fixture <- exposure_type_fixture()
   ps <- fixture$ps
@@ -4219,6 +4610,86 @@ test_that("wt_ate() rejects an invalid stabilization score for a binary exposure
     scored(c(1, 2, 3)),
     class = "propensity_stabilization_score_error"
   ))
+})
+
+test_that("wt_ate() rejects a stabilization score with dimensions", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c(0, 1, 0, 1)
+  score <- matrix(c(0.4, 0.5, 0.6, 0.7), nrow = 2)
+
+  # A matrix holds as many values as the weights have observations, so the
+  # length rule reads it as one value per observation and the coercion that
+  # follows silently flattens it.
+  expect_error(
+    wt_ate(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      stabilize = TRUE,
+      stabilization_score = score
+    ),
+    class = "propensity_stabilization_score_error"
+  )
+  expect_match(
+    weight_error_message(
+      wt_ate(
+        ps,
+        exposure,
+        exposure_type = "binary",
+        stabilize = TRUE,
+        stabilization_score = score
+      )
+    ),
+    "2 x 2",
+    fixed = TRUE
+  )
+
+  expect_error(
+    psw(ps, "ate", stabilized = TRUE, stabilization_score = score),
+    class = "propensity_stabilization_score_error"
+  )
+
+  expect_error(
+    wt_ate(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      stabilize = TRUE,
+      stabilization_score = array(0.5, dim = c(2, 2, 1))
+    ),
+    class = "propensity_stabilization_score_error"
+  )
+})
+
+test_that("wt_ate() reports a length mismatch before the stabilization score", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c(0, 1, 0)
+
+  # The score matches `.propensity`, so a score checked against the exposure's
+  # length reports the score rather than the mismatch that caused it.
+  cnd <- rlang::catch_cnd(
+    wt_ate(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      stabilize = TRUE,
+      stabilization_score = ps
+    ),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "propensity_length_error")
+
+  cnd_continuous <- rlang::catch_cnd(
+    wt_ate(
+      ps,
+      c(1.5, 2.5, 3.5),
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      stabilization_score = ps
+    ),
+    classes = "error"
+  )
+  expect_s3_class(cnd_continuous, "propensity_length_error")
 })
 
 test_that("wt_cens() rejects an invalid stabilization score", {
