@@ -230,6 +230,16 @@
       Error in `wt_ate()`:
       ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "wrong".
 
+# a one-dimensional exposure counts its dimension in the singular
+
+    Code
+      expr
+    Condition <propensity_binary_transform_error>
+      Error in `wt_ate()`:
+      ! `.exposure` must be a vector.
+      x It is <array> with 1 dimension.
+      i Supply one value per observation.
+
 # data frame methods error appropriately
 
     Code

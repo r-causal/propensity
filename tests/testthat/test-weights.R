@@ -3767,6 +3767,15 @@ test_that("an exposure with dimensions reports what it was given", {
   expect_match(message, "one value per observation", fixed = TRUE)
 })
 
+test_that("a one-dimensional exposure counts its dimension in the singular", {
+  ps <- c(0.2, 0.5, 0.8, 0.4)
+  one_dimensional <- array(c(1, 0, 1, 0), dim = 4)
+
+  expect_propensity_error(
+    wt_ate(ps, one_dimensional, exposure_type = "binary")
+  )
+})
+
 test_that("an exposure that cannot be coded 0/1 names the weight function on every route", {
   ps <- c(0.2, 0.5, 0.8, 0.4)
   uncodable <- c(1, 2, 3, 4)
