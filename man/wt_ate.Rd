@@ -257,10 +257,13 @@ treatment probability (binary) or density (continuous). Only supported by
 \item{stabilization_score}{Optional stabilization multiplier to use instead
 of the default (the marginal mean of \code{.exposure}). Either a single value
 applied to every weight or a numeric vector holding one value per
-observation. A per-observation score is recorded on the result and is
-dropped, with a warning, by any operation that changes the length of the
-weight vector, since it cannot be re-indexed for the new length. Ignored
-when \code{stabilize = FALSE}.}
+observation, which is multiplied into the weights observation by
+observation. Every value must be positive and finite, and any other length
+or value is refused with an error of class
+\code{propensity_stabilization_score_error}. A per-observation score is recorded
+on the result and is dropped, with a warning, by any operation that changes
+the length of the weight vector, since it cannot be re-indexed for the new
+length. Ignored when \code{stabilize = FALSE}.}
 
 \item{...}{These dots are for future extensions and must be empty.}
 
@@ -290,7 +293,7 @@ these attributes:
 \itemize{
 \item \code{estimand}: character, e.g. \code{"ate"}, \code{"att"}, \code{"uncensored"}.
 \item \code{stabilized}: logical, whether stabilization was applied.
-\item \code{stabilization_score}: numeric, the user-supplied stabilization score
+\item \code{stabilization_score}: double, the user-supplied stabilization score
 (one value, or one per observation), or \code{NULL} if none was supplied.
 \item \code{trimmed}: logical, whether the propensity scores were trimmed.
 \item \code{truncated}: logical, whether the propensity scores were truncated.

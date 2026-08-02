@@ -152,10 +152,13 @@
 #' @param stabilization_score Optional stabilization multiplier to use instead
 #'   of the default (the marginal mean of `.exposure`). Either a single value
 #'   applied to every weight or a numeric vector holding one value per
-#'   observation. A per-observation score is recorded on the result and is
-#'   dropped, with a warning, by any operation that changes the length of the
-#'   weight vector, since it cannot be re-indexed for the new length. Ignored
-#'   when `stabilize = FALSE`.
+#'   observation, which is multiplied into the weights observation by
+#'   observation. Every value must be positive and finite, and any other length
+#'   or value is refused with an error of class
+#'   `propensity_stabilization_score_error`. A per-observation score is recorded
+#'   on the result and is dropped, with a warning, by any operation that changes
+#'   the length of the weight vector, since it cannot be re-indexed for the new
+#'   length. Ignored when `stabilize = FALSE`.
 #' @param .propensity_col Column to use when `.propensity` is a data frame
 #'   with a binary exposure. Accepts a column name (quoted or unquoted) or
 #'   numeric index. Whichever column is selected is read as the probability of
@@ -176,7 +179,7 @@
 #'   these attributes:
 #'   - `estimand`: character, e.g. `"ate"`, `"att"`, `"uncensored"`.
 #'   - `stabilized`: logical, whether stabilization was applied.
-#'   - `stabilization_score`: numeric, the user-supplied stabilization score
+#'   - `stabilization_score`: double, the user-supplied stabilization score
 #'     (one value, or one per observation), or `NULL` if none was supplied.
 #'   - `trimmed`: logical, whether the propensity scores were trimmed.
 #'   - `truncated`: logical, whether the propensity scores were truncated.
@@ -335,6 +338,20 @@ wt_ate.numeric <- function(
     .exposure,
     call = call
   )
+
+  # The score is checked again by `psw()`, which is the choke point for every
+  # route that records one. It is checked here as well because the formulas
+  # below multiply it into the weights first, and a length that neither matches
+  # nor divides them recycles under a base R warning before the constructor is
+  # reached. A score is only checked when it is used; `stabilize = FALSE`
+  # ignores it, as documented.
+  if (isTRUE(stabilize)) {
+    stabilization_score <- check_stabilization_score(
+      stabilization_score,
+      length(.exposure),
+      call = call
+    )
+  }
 
   if (exposure_type == "binary") {
     check_lengths_match(.propensity, .exposure)

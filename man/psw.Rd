@@ -58,8 +58,9 @@ scores? Defaults to \code{FALSE}.}
 propensity scores? Defaults to \code{FALSE}.}
 
 \item{stabilization_score}{Optional numeric stabilization score to record on
-the object, either a single value or one value per observation. Defaults to
-\code{NULL}, meaning no fixed score was supplied.}
+the object, either a single value or one value per observation. Every value
+must be positive and finite. Defaults to \code{NULL}, meaning no fixed score was
+supplied.}
 
 \item{...}{Additional attributes stored on the object (developer use only).}
 
@@ -101,6 +102,24 @@ assumes \code{x} is already a double vector and performs minimal validation.
 \code{NULL} when none was recorded or when a per-observation score was dropped
 because an operation changed the length of the weights.
 }
+}
+
+\subsection{The stabilization score}{
+
+A \code{stabilization_score} is the multiplier the weights were stabilized on. It
+holds either a single value, which scales every weight, or one value per
+observation, which scales each weight by its own. Both forms are checked
+where the score is recorded: a score must be numeric, positive, and finite,
+and hold a length the weights can use, and one that does not is refused with
+an error of class \code{propensity_stabilization_score_error}. A score is recorded
+as a plain double vector, with its storage type normalized and any names
+dropped, so a score written \code{1L} and one written \code{1} are the same score and
+combine without conflict.
+
+A zero-length \code{psw} is a prototype: it records what a result built from it
+will carry rather than describing observations of its own, so a
+per-observation score on one is recorded as given and checked for length when
+the observations arrive.
 
 \code{psw} objects also inherit the broader \code{causal_wts} class. The accessors that
 class carries, \code{\link[causalgenerics:is_causal_wt]{causalgenerics::is_causal_wt()}},

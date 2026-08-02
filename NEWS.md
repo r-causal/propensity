@@ -1,5 +1,22 @@
 # propensity 0.1.0.9000 (development version)
 
+* `psw()` and the weight functions that take a `stabilization_score` now check
+  it where it is recorded. A score must be numeric, positive, and finite, and
+  must hold either a single value, which scales every weight, or one value per
+  observation, which scales each weight by its own; anything else raises an
+  error of class `propensity_stabilization_score_error`. A score of the wrong
+  length was previously recycled into the weights without comment, so two values
+  supplied for four observations stabilized half the weights on the wrong
+  multiplier, and a zero, negative, or missing score produced weights that were
+  zero, negative, or missing.
+
+* A `stabilization_score` is now stored as a double whatever numeric type it
+  arrives as. The metadata two sets of weights carry is compared for identity,
+  so a score written `1L` and a score written `1` read as two different scores:
+  combining the weights or operating on them warned about a conflict and dropped
+  the score from the result. They now describe the same stabilization and carry
+  through.
+
 * `ps_trim()` and `ps_trunc()` objects no longer carry a record of which units
   were modified onto a result holding a different number of observations. An
   operation that changed the number of observations without going through `[`

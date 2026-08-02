@@ -27,6 +27,23 @@
 #'   `NULL` when none was recorded or when a per-observation score was dropped
 #'   because an operation changed the length of the weights.
 #'
+#' ## The stabilization score
+#'
+#' A `stabilization_score` is the multiplier the weights were stabilized on. It
+#' holds either a single value, which scales every weight, or one value per
+#' observation, which scales each weight by its own. Both forms are checked
+#' where the score is recorded: a score must be numeric, positive, and finite,
+#' and hold a length the weights can use, and one that does not is refused with
+#' an error of class `propensity_stabilization_score_error`. A score is recorded
+#' as a plain double vector, with its storage type normalized and any names
+#' dropped, so a score written `1L` and one written `1` are the same score and
+#' combine without conflict.
+#'
+#' A zero-length `psw` is a prototype: it records what a result built from it
+#' will carry rather than describing observations of its own, so a
+#' per-observation score on one is recorded as given and checked for length when
+#' the observations arrive.
+#'
 #' `psw` objects also inherit the broader `causal_wts` class. The accessors that
 #' class carries, [causalgenerics::is_causal_wt()],
 #' [causalgenerics::estimand()], and `estimand<-`, are re-exported by propensity
@@ -122,8 +139,9 @@
 #' @param calibrated Logical. Were the weights derived from calibrated
 #'   propensity scores? Defaults to `FALSE`.
 #' @param stabilization_score Optional numeric stabilization score to record on
-#'   the object, either a single value or one value per observation. Defaults to
-#'   `NULL`, meaning no fixed score was supplied.
+#'   the object, either a single value or one value per observation. Every value
+#'   must be positive and finite. Defaults to `NULL`, meaning no fixed score was
+#'   supplied.
 #' @param wt A `psw` or `causal_wts` object.
 #' @param ... Additional attributes stored on the object (developer use only).
 #'
@@ -213,6 +231,10 @@ psw <- function(
 ) {
   x <- vec_cast(x, to = double())
   attributes(x) <- NULL
+  stabilization_score <- check_stabilization_score(
+    stabilization_score,
+    length(x)
+  )
   new_psw(
     x,
     estimand = estimand,
@@ -485,6 +507,80 @@ vec_arith.psw.integer <- function(op, x, y, ...) {
 # against the length that observations actually arrive at.
 stabilization_score_aligns <- function(score, n) {
   n == 0 || length(score) <= 1 || length(score) == n
+}
+
+# The score a caller supplies, checked where it is recorded. It multiplies the
+# weights, so a value that is not a positive finite number produces something
+# that is not a set of weights, and a length that is neither one nor one per
+# observation recycles into weights nobody asked for. Both are caught here
+# rather than left to surface as a strange number much later.
+#
+# Zero-length data is exempt from the length rule for the reason
+# `stabilization_score_aligns()` gives: a prototype carries metadata for
+# observations that have not arrived, so there is no length to check against,
+# and the restore that builds the real result checks the score there instead.
+#
+# Returns the score as a double. The metadata merge compares scores with
+# `identical()`, which reads a difference in storage type as a difference in the
+# score, so normalizing here is what lets a score written `1L` and one written
+# `1` describe the same stabilization.
+check_stabilization_score <- function(score, n, call = rlang::caller_env()) {
+  if (is.null(score)) {
+    return(NULL)
+  }
+
+  if (!is.numeric(score)) {
+    abort(
+      c(
+        "{.arg stabilization_score} must be numeric.",
+        x = "It has class {.cls {class(score)}}."
+      ),
+      error_class = "propensity_stabilization_score_error",
+      call = call
+    )
+  }
+
+  # A score holding no values passes the alignment rule, which reads any length
+  # below two as the single value that scales every weight. There is no such
+  # value here, so it is refused separately.
+  if (length(score) == 0 || !stabilization_score_aligns(score, n)) {
+    abort(
+      c(
+        "{.arg stabilization_score} must hold one value or one value per
+         observation.",
+        x = "It holds {length(score)} value{?s}.",
+        x = "The weights have {n} observation{?s}.",
+        i = "Supply a single value to scale every weight, or one value for
+             each observation."
+      ),
+      error_class = "propensity_stabilization_score_error",
+      call = call
+    )
+  }
+
+  invalid <- !is.finite(score) | score <= 0
+  if (any(invalid)) {
+    first <- which(invalid)[[1]]
+    detail <- if (length(score) == 1) {
+      "It is {.val {score}}."
+    } else {
+      "{sum(invalid)} of its values {?is/are} not, the first at
+       position {first}: {.val {score[[first]]}}."
+    }
+
+    abort(
+      c(
+        "{.arg stabilization_score} must be positive and finite.",
+        x = detail,
+        i = "The score multiplies the weights, so a value that is not positive
+             and finite leaves them unusable."
+      ),
+      error_class = "propensity_stabilization_score_error",
+      call = call
+    )
+  }
+
+  as.double(score)
 }
 
 # The records a modified propensity score leaves on the weights built from it.
