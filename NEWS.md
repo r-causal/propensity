@@ -1,5 +1,17 @@
 # propensity 0.1.0.9000 (development version)
 
+* The error `ipw()` raises when the weights it recomputes from `wt_mod` disagree
+  with the ones `outcome_mod` was fit with now reports that comparison rather
+  than declaring the weights inconsistent, and lists the causes as
+  possibilities. Weights that are exactly right reach this error: a `.data` whose
+  values differ from the data the models were fit to moves the recomputed
+  weights on its own, and so does trimming, truncating, or normalizing the
+  weights after `wt_mod` was fit. The message now names those two causes
+  alongside a mismatched estimand or focal level, and the refit remedy is
+  offered for the case where the weights are at fault instead of reading as the
+  single next step. The error class, the tolerance the comparison uses, and the
+  per-exposure-type focal hints are unchanged.
+
 * `ipw()` now accepts an outcome model whose response is a transformation of a
   column, such as `log(y)` or `scale(y)`, when `.data` is supplied. The response
   is evaluated against `.data` rather than looked up by name, so it is computed

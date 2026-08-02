@@ -558,6 +558,12 @@ test_that("the weight-consistency error lists the causes of a divergence", {
   # that differ from the data the models were fit to move the recomputed weights
   # on their own, and no amount of refitting addresses that.
   expect_true(any(grepl("`.data`", info, fixed = TRUE)))
+
+  # A third raises weights modified after the propensity score model was fit.
+  # The recomputation rebuilds them from that model alone, so trimming,
+  # truncation, or normalization applied afterwards shows up here as a
+  # divergence even though nothing about the analysis is wrong.
+  expect_true(any(grepl("trimm", info) & grepl("normaliz", info)))
 })
 
 test_that("the weight-consistency error hedges the refit remedy", {

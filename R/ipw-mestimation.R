@@ -1102,19 +1102,24 @@ ipw_compare_weights <- function(
     isTRUE(all.equal(recomputed, observed, tolerance = 1e-6))
 
   if (!consistent) {
-    msg <- c(
-      "The weights used to fit {.arg outcome_mod} are not consistent with \\
-      the propensity score model and estimand.",
-      i = "The {.val {estimand}} weights recomputed from {.arg wt_mod} \\
-      differ from the weights supplied to {.arg outcome_mod} (compared at \\
-      relative tolerance 1e-6).",
-      i = "Refit {.arg outcome_mod} with weights from this propensity score \\
-      model and estimand."
-    )
+    # All this comparison establishes is that two vectors disagree. Weights that
+    # are exactly right reach it, so the message reports the comparison and
+    # offers the causes as possibilities rather than naming the weights as the
+    # fault.
+    #
+    # A continuous exposure has no focal level, so its causes bullet names only
+    # the estimand.
+    resolved_cause <- if (exposure_type == "continuous") {
+      "The estimand the weights were built for may differ from the one \\
+      {.fun ipw} resolved."
+    } else {
+      "The estimand or the focal level the weights were built for may differ \\
+      from the ones {.fun ipw} resolved."
+    }
     # The focal level is a common cause of a mismatch, but for different reasons
-    # per exposure type, so the hint is only offered where it applies: a binary
-    # exposure has a fixed focal convention the weights can disagree with, a
-    # categorical exposure takes its focal level from the weights or the
+    # per exposure type, so the specific hint is only offered where it applies: a
+    # binary exposure has a fixed focal convention the weights can disagree with,
+    # a categorical exposure takes its focal level from the weights or the
     # argument, and a continuous exposure has no focal level at all.
     focal_hint <- switch(
       exposure_type,
@@ -1125,9 +1130,26 @@ ipw_compare_weights <- function(
       the one {.fun ipw} resolved are one cause.",
       NULL
     )
+    msg <- c(
+      "The {.val {estimand}} weights recomputed from {.arg wt_mod} differ \\
+      from the weights supplied to {.arg outcome_mod} (compared at relative \\
+      tolerance 1e-6).",
+      i = resolved_cause
+    )
     if (!is.null(focal_hint)) {
       msg <- c(msg, i = focal_hint)
     }
+    msg <- c(
+      msg,
+      i = "Weights trimmed, truncated, or normalized after {.arg wt_mod} was \\
+      fit differ from the ones rebuilt here, which come from that model \\
+      alone.",
+      i = "{.arg .data} values that differ from the data the models were fit \\
+      to move the recomputed weights on their own and leave the supplied \\
+      weights exactly right.",
+      i = "Refit {.arg outcome_mod} with weights from this propensity score \\
+      model and estimand if the weights are the cause."
+    )
     abort(
       msg,
       error_class = "propensity_ipw_weights_mismatch_error",
