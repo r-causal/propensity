@@ -1123,6 +1123,44 @@ test_that("ipw() categorical rejects a .data exposure value the model never saw"
   )
 })
 
+# The tests above hand the exposure to ipw() through `.data`. Without `.data`
+# the exposure is read back out of the model frames instead, and a model fit on
+# a character column stores a factor there, coerced by model.frame() with its
+# levels in alphabetical order. sim_categorical() labels its levels a, b, c, so
+# that coercion reproduces the factor fit exactly: same propensity scores, same
+# weights, same reference level. The two calls must therefore agree, which pins
+# the character column as a supported way to fit the models rather than
+# something that happens to work.
+
+test_that("ipw() categorical accepts models fit on a character exposure column", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  dat_chr <- dat
+  dat_chr$a <- as.character(dat$a)
+  expect_type(dat_chr$a, "character")
+
+  fit_both_models <- function(d) {
+    ps_mod <- fit_ps_multinom(d)
+    ps_named <- unname(predict(ps_mod, type = "probs"))
+    # the fitted model's own level order, which is the only order available
+    # when the source column carries no levels of its own
+    colnames(ps_named) <- ps_mod$lev
+    wts <- categorical_weights(ps_named, d$a, "ate")
+    list(ps_mod = ps_mod, outcome_mod = fit_outcome(d, wts))
+  }
+
+  mods_fac <- fit_both_models(dat)
+  mods_chr <- fit_both_models(dat_chr)
+  expect_equal(mods_chr$ps_mod$lev, mods_fac$ps_mod$lev)
+
+  res_fac <- ipw(mods_fac$ps_mod, mods_fac$outcome_mod)
+  res_chr <- ipw(mods_chr$ps_mod, mods_chr$outcome_mod)
+
+  expect_equal(res_chr$estimates, res_fac$estimates, tolerance = 1e-8)
+  expect_equal(unique(res_chr$estimates$comparison), c("b vs a", "c vs a"))
+})
+
 # ---- weight-consistency hint wording ----------------------------------------
 
 test_that("the categorical weight-consistency error omits the binary focal convention", {
