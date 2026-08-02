@@ -1,5 +1,21 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw(se_method = "mestimation")` now warns with a class of its own when a
+  reported effect is undefined at the marginal means the solver reached. The
+  means are free parameters of the estimating equations, so a fit whose exposure
+  arm is all events, or all non-events, sends one past the range its log risk
+  ratio or log odds ratio is defined on. Such a fit previously emitted base R's
+  unclassed `NaNs produced`, which named neither the effect nor the comparison
+  and which no handler could select on. The warning now carries class
+  `propensity_ipw_contrast_warning`, names the effect and, for a categorical
+  exposure, the comparison it belongs to, and reports once per effect per
+  comparison however often the solver revisits those means. The estimates, the
+  standard errors, and the convergence behavior of every fit are unchanged. The
+  warning follows the solver rather than the reported estimates, so it is raised
+  whenever the path taken to the root leaves the range, finite differences for
+  the bread included; an effect defined at the root but within a finite
+  difference of the boundary is reported too.
+
 * The error `ipw()` raises when the weights it recomputes from `wt_mod` disagree
   with the ones `outcome_mod` was fit with now reports that comparison rather
   than declaring the weights inconsistent, and lists the causes as

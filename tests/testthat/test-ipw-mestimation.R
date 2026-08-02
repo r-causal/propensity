@@ -2726,3 +2726,60 @@ test_that("a healthy categorical mestimation fit raises no warning", {
   expect_length(out$warnings, 0)
   expect_s3_class(out$value, "ipw")
 })
+
+# A theta whose exposed marginal mean sits above 1. The odds ratio has no logit
+# there and degenerates; the risk ratio still has a logarithm and stays quiet,
+# so a report from this theta is one warning and not two.
+degenerate_mu_theta <- function(layout) {
+  theta <- layout$init
+  theta[[layout$idx$mu[[1]]]] <- 1.5
+  theta
+}
+
+test_that("a degenerate contrast reports once however often psi is evaluated", {
+  skip_if_not_installed("deli")
+  # The solver evaluates psi at the same undefined marginal means many times
+  # over a fit, once per step and again per column of the bread, so the report
+  # is held for the life of the built psi rather than raised per evaluation.
+  # Driving psi directly pins that without depending on a solver trajectory.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  theta <- degenerate_mu_theta(layout)
+
+  psi <- build_ipw_psi(spec, layout)
+  out <- collect_ipw_warnings({
+    psi(theta)
+    psi(theta)
+    invisible(NULL)
+  })
+
+  msgs <- warning_messages(out$warnings, "propensity_ipw_contrast_warning")
+  expect_length(msgs, 1)
+  expect_true(grepl("log(or)", msgs, fixed = TRUE))
+  expect_length(out$warnings, 1)
+})
+
+test_that("a freshly built psi reports a degenerate contrast again", {
+  skip_if_not_installed("deli")
+  # The report is held per built psi, not for the session: a second fit of the
+  # same models has to hear about the same degenerate effect.
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  theta <- degenerate_mu_theta(layout)
+
+  first <- collect_ipw_warnings(build_ipw_psi(spec, layout)(theta))
+  second <- collect_ipw_warnings(build_ipw_psi(spec, layout)(theta))
+
+  expect_length(
+    warning_messages(first$warnings, "propensity_ipw_contrast_warning"),
+    1
+  )
+  expect_length(
+    warning_messages(second$warnings, "propensity_ipw_contrast_warning"),
+    1
+  )
+})

@@ -227,8 +227,17 @@ ipw_theta_layout <- function(spec, call = rlang::caller_env()) {
   list(idx = idx, init = init)
 }
 
-# Value of a single contrast form from a pair of marginal means.
-ipw_contrast_value <- function(form, mu_hi, mu_lo) {
+# Labels for the contrast blocks a categorical exposure carries, one per
+# non-reference level in counterfactual order. The estimates table reports these
+# in its comparison column and the contrast diagnostics name the comparison they
+# concern, so both read them from here rather than rebuilding the pairs.
+ipw_comparison_labels <- function(spec) {
+  nonref <- names(spec$outcome$X_counterfactual)[-1]
+  paste(nonref, "vs", spec$reference_level)
+}
+
+# The transform a contrast form applies to a pair of marginal means.
+ipw_contrast_transform <- function(form, mu_hi, mu_lo) {
   switch(
     form,
     rd = mu_hi - mu_lo,
@@ -236,6 +245,87 @@ ipw_contrast_value <- function(form, mu_hi, mu_lo) {
     "log(rr)" = log(mu_hi) - log(mu_lo),
     "log(or)" = stats::qlogis(mu_hi) - stats::qlogis(mu_lo)
   )
+}
+
+# Whether a marginal mean lies where the form's transform is defined. A
+# difference is defined everywhere, a log risk ratio needs a positive mean, and
+# a log odds ratio needs a mean strictly inside (0, 1). A mean that is already
+# NA carries no information about the domain and is left to the transform.
+ipw_contrast_defined <- function(form, mu) {
+  switch(
+    form,
+    rd = TRUE,
+    diff = TRUE,
+    "log(rr)" = is.na(mu) || mu > 0,
+    "log(or)" = is.na(mu) || (mu > 0 && mu < 1)
+  )
+}
+
+# The marginal means are free parameters of theta, so the solver moves them
+# through values where the transform has nothing to return: a risk pushed past 1
+# has no logit and a risk pushed below 0 has no logarithm. Base signals an
+# unclassed "NaNs produced" there, naming neither the effect nor the comparison
+# it belongs to. `reporter` replaces that with a classed warning that names
+# both. The transform still runs on the same values and returns the same result,
+# so the numbers the solver sees are unchanged.
+ipw_contrast_value <- function(form, mu_hi, mu_lo, reporter = NULL) {
+  if (ipw_contrast_defined(form, mu_hi) && ipw_contrast_defined(form, mu_lo)) {
+    return(ipw_contrast_transform(form, mu_hi, mu_lo))
+  }
+
+  if (!is.null(reporter)) {
+    reporter(form)
+  }
+
+  suppressWarnings(ipw_contrast_transform(form, mu_hi, mu_lo))
+}
+
+# A reporter for the contrast block of one comparison, or of the single binary
+# comparison when `comparison` is NULL. The solver revisits the same
+# out-of-domain marginal means on every step and again on every column of the
+# bread, so each effect reports once for the fit the reporter was built for.
+#
+# The init path builds no reporter. It seeds theta from the fitted models and
+# the solver evaluates psi at that seed, so anything undefined there is reported
+# from the psi block instead of twice.
+ipw_contrast_reporter <- function(comparison = NULL) {
+  reported <- new.env(parent = emptyenv())
+
+  function(form) {
+    if (isTRUE(reported[[form]])) {
+      return(invisible(NULL))
+    }
+    reported[[form]] <- TRUE
+
+    headline <- if (is.null(comparison)) {
+      "The {.val {form}} effect is undefined at the marginal means the solver \\
+      reached."
+    } else {
+      "The {.val {form}} effect for {.val {comparison}} is undefined at the \\
+      marginal means the solver reached."
+    }
+    domain <- switch(
+      form,
+      "log(rr)" = "a positive marginal mean",
+      "log(or)" = "a marginal mean strictly between 0 and 1"
+    )
+
+    warn(
+      c(
+        headline,
+        i = "{.val {form}} needs {domain} on each side of the comparison, and \\
+        at least one side is outside that range.",
+        i = "An exposure level whose fitted outcomes are all events, or all \\
+        non-events, drives its marginal mean to the boundary. Check the \\
+        outcome within each level of the exposure.",
+        i = "Estimates and standard errors from this fit are not reliable."
+      ),
+      warning_class = "propensity_ipw_contrast_warning",
+      # The reporter runs inside the estimating function, which the solver
+      # calls; the call reported here would name nothing the caller wrote.
+      call = NULL
+    )
+  }
 }
 
 # Plug-in contrast init values, named by form (with an optional level suffix for
@@ -402,12 +492,19 @@ build_ipw_psi <- function(spec, layout, call = rlang::caller_env()) {
 
 # Deterministic contrast rows: each form's residual repeated across the n
 # observation columns so the stacked matrix stays rectangular.
-ipw_contrast_rows <- function(contrasts, mu_hi, mu_lo, th_con, n) {
+ipw_contrast_rows <- function(
+  contrasts,
+  mu_hi,
+  mu_lo,
+  th_con,
+  n,
+  reporter = NULL
+) {
   if (is.null(contrasts) || !length(contrasts)) {
     return(NULL)
   }
   rows <- lapply(seq_along(contrasts), function(i) {
-    val <- ipw_contrast_value(contrasts[[i]], mu_hi, mu_lo)
+    val <- ipw_contrast_value(contrasts[[i]], mu_hi, mu_lo, reporter = reporter)
     matrix(val - th_con[[i]], nrow = 1, ncol = n)
   })
   do.call(rbind, rows)
@@ -463,6 +560,9 @@ ipw_psi_binary <- function(
   contrasts <- spec$contrasts
   estimand <- spec$estimand
   n <- spec$n
+  # Built once for the fit, not once per evaluation, so the report survives the
+  # solver's repeated visits to the same undefined means.
+  reporter <- ipw_contrast_reporter()
 
   function(theta) {
     th_ps <- theta[idx$ps]
@@ -504,7 +604,14 @@ ipw_psi_binary <- function(
       h * (inv_out(as.vector(x0 %*% th_out)) - mu0)
     )
 
-    con_rows <- ipw_contrast_rows(contrasts, mu1, mu0, th_con, n)
+    con_rows <- ipw_contrast_rows(
+      contrasts,
+      mu1,
+      mu0,
+      th_con,
+      n,
+      reporter = reporter
+    )
 
     ipw_stack(list(ps_rows, stab_rows, out_rows, mu_rows, con_rows))
   }
@@ -557,6 +664,10 @@ ipw_psi_categorical <- function(
   contrasts <- spec$contrasts
   estimand <- spec$estimand
   n <- spec$n
+  # One reporter per comparison, built once for the fit rather than once per
+  # evaluation, so each undefined effect reports once however often the solver
+  # revisits it. The labels are the ones the estimates table reports.
+  reporters <- lapply(ipw_comparison_labels(spec), ipw_contrast_reporter)
 
   function(theta) {
     th_ps <- theta[idx$ps]
@@ -610,9 +721,10 @@ ipw_psi_categorical <- function(
       row_list <- list()
       for (j in seq_len(k)[-1]) {
         mu_j <- th_mu[[j]]
+        reporter <- reporters[[j - 1L]]
         for (form in contrasts) {
           con_index <- con_index + 1L
-          val <- ipw_contrast_value(form, mu_j, mu_ref)
+          val <- ipw_contrast_value(form, mu_j, mu_ref, reporter = reporter)
           row_list[[con_index]] <- matrix(
             val - th_con[[con_index]],
             nrow = 1,

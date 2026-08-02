@@ -1257,9 +1257,8 @@ ipw_mestimation_estimates <- function(
   # names each contrast. Binary and continuous exposures keep the eight-column
   # contract with no comparison column.
   if (identical(spec$exposure_type, "categorical")) {
-    nonref <- names(spec$outcome$X_counterfactual)[-1]
     comparison <- rep(
-      paste(nonref, "vs", spec$reference_level),
+      ipw_comparison_labels(spec),
       each = length(spec$contrasts)
     )
     out <- cbind(
