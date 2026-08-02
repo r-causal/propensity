@@ -145,11 +145,15 @@ test_that("a numeric transformation of the exposure still asks for .data", {
   out_sq <- design_outcome(y ~ I(z^2) + x1, dat, wts)
 
   # The model frame holds `I(z^2)` and no `z` column to set, so the rebuild has
-  # nowhere to write. That is the missing-column report, not the guard above.
-  expect_error(
+  # nowhere to write. It used to be reported as the missing column; the term is
+  # now read off the formula and reported as the term it is.
+  err <- expect_error(
     ipw(ps_mod, out_sq),
-    class = "propensity_columns_exist_error"
+    class = "propensity_ipw_exposure_error"
   )
+  msg <- design_msg(err)
+  expect_match(msg, "I(z^2)", fixed = TRUE)
+  expect_match(msg, ".data", fixed = TRUE)
 })
 
 test_that("ipw() accepts an exposure factored on levels the call fixes", {
@@ -323,9 +327,10 @@ test_that("the mirrored type error names the column and both types", {
 
 test_that("ipw() rejects a logical .data column where the models fit a factor", {
   skip_if_not_installed("deli")
-  # Both are categorical codings, so the type check passes them and the rebuilt
-  # counterfactual design is one column short of the coefficients it multiplies.
-  # The outcome design has its own width check for exactly that.
+  # A logical column carries no levels for the rebuild to re-level against the
+  # fit, so the type check rejects it whatever its width. Against a three-level
+  # factor the rebuilt design is also one column short of the coefficients it
+  # multiplies, which is what used to report it.
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1087,4 +1092,374 @@ test_that("the factored exposure term keeps its rejection without .data", {
   msg <- design_msg(err)
   expect_match(msg, "factor(z)", fixed = TRUE)
   expect_match(msg, ".data", fixed = TRUE)
+})
+
+# ---- a term that mixes the exposure with a covariate ------------------------
+#
+# The rejection above is keyed on what a term evaluates to, which settles every
+# term that carries levels. A term with no levels needs a different question,
+# because the route decides it just as much: `y ~ z + x1 + I(z * x1)` fit on a
+# numerically coded exposure rebuilds correctly from `.data` and gives the
+# estimates `y ~ z * x1` gives, and without `.data` it reads `I(z * x1)` out of
+# the model frame at the values it was fit on, so the counterfactual column is
+# written and then ignored for that column alone. The interaction is dropped
+# from the marginal means with nothing signaled, and the estimates move.
+#
+# A plain `*` or `:` interaction is a different construction: it is recorded as
+# an interaction of two model variables and rebuilt from the frame's own
+# columns, including the one being set, so it survives the counterfactual write
+# on both routes. Both are pinned here, since a guard keyed on "the term reads
+# the exposure" without the interaction exemption would reject working models.
+
+test_that("ipw() rejects a call term mixing the exposure with a covariate without .data", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1 + I(z * x1), dat, wts)
+
+  err <- expect_error(
+    ipw(ps_mod, out),
+    class = "propensity_ipw_exposure_error"
+  )
+  msg <- design_msg(err)
+  expect_match(msg, "I(z * x1)", fixed = TRUE)
+  expect_match(msg, ".data", fixed = TRUE)
+})
+
+test_that("the exposure-mixing term is accepted with .data and matches the interaction", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out_call <- design_outcome(y ~ z + x1 + I(z * x1), dat, wts)
+  out_star <- design_outcome(y ~ z * x1, dat, wts)
+
+  res <- expect_no_warning(ipw(ps_mod, out_call, .data = dat))
+  ref <- ipw(ps_mod, out_star, .data = dat)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+test_that("a star interaction with the exposure gives the same estimates on both routes", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z * x1, dat, wts)
+
+  with_data <- expect_no_warning(ipw(ps_mod, out, .data = dat))
+  without_data <- expect_no_warning(ipw(ps_mod, out))
+  expect_equal(with_data$estimates, without_data$estimates, tolerance = 1e-8)
+})
+
+test_that("a colon interaction with the exposure gives the same estimates on both routes", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1 + z:x1, dat, wts)
+
+  with_data <- expect_no_warning(ipw(ps_mod, out, .data = dat))
+  without_data <- expect_no_warning(ipw(ps_mod, out))
+  expect_equal(with_data$estimates, without_data$estimates, tolerance = 1e-8)
+})
+
+test_that("an interaction with a covariate that is not the exposure is left alone", {
+  skip_if_not_installed("deli")
+  # The guard asks whether a term reads the exposure, so a call term over other
+  # covariates is untouched on either route.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + I(x1 * num), dat, wts)
+
+  with_data <- expect_no_warning(ipw(ps_mod, out, .data = dat))
+  without_data <- expect_no_warning(ipw(ps_mod, out))
+  expect_equal(with_data$estimates, without_data$estimates, tolerance = 1e-8)
+})
+
+test_that("the exposure-mixing rejection reads in the user's terms", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1 + I(z * x1), dat, wts)
+
+  expect_snapshot(error = TRUE, ipw(ps_mod, out))
+})
+
+# ---- a logical column where the fit recorded levels -------------------------
+#
+# A fit that recorded levels for a column rebuilds it by re-leveling the values
+# against the ones it recorded. A logical column carries no levels to re-level,
+# so it is coded by `model.matrix()` on its own terms, `FALSE` first, and the
+# design lands on whichever mapping that happens to give. When the fitted factor
+# has two levels the widths agree and nothing further notices: an aligned
+# logical reproduces the fitted design by coincidence and a flipped one silently
+# swaps the two levels' coefficients. The rejection is keyed on the type rather
+# than on the values, because the values that would make it right are exactly
+# the ones no check can recover once the levels are gone.
+
+design_flag_data <- function() {
+  dat <- design_data()
+  dat$grp <- factor(
+    ifelse(dat$num > 1, "high", "low"),
+    levels = c("low", "high")
+  )
+  dat
+}
+
+test_that("ipw() rejects an aligned logical where the outcome model fit a two-level factor", {
+  skip_if_not_installed("deli")
+  dat <- design_flag_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + grp, dat, wts)
+
+  dat_lgl <- dat
+  dat_lgl$grp <- dat$grp == "high"
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_lgl),
+    class = "propensity_ipw_data_error"
+  ))
+  msg <- design_msg(err)
+  expect_match(msg, "\\bgrp\\b")
+  expect_match(msg, "logical", fixed = TRUE)
+  expect_match(msg, "factor", fixed = TRUE)
+})
+
+test_that("ipw() rejects a flipped logical where the outcome model fit a two-level factor", {
+  skip_if_not_installed("deli")
+  # The measured harm: this completed and reported estimates that differ from
+  # the ones the factor column gives.
+  dat <- design_flag_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + grp, dat, wts)
+
+  dat_lgl <- dat
+  dat_lgl$grp <- dat$grp == "low"
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_lgl),
+    class = "propensity_ipw_data_error"
+  ))
+  expect_match(design_msg(err), "\\bgrp\\b")
+})
+
+test_that("ipw() rejects a logical where the propensity model fit a two-level factor", {
+  skip_if_not_installed("deli")
+  dat <- design_flag_data()
+  ps_mod <- glm(z ~ x1 + grp, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z, dat, wts)
+
+  dat_lgl <- dat
+  dat_lgl$grp <- dat$grp == "high"
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_lgl),
+    class = "propensity_ipw_data_error"
+  ))
+  expect_match(design_msg(err), "wt_mod", fixed = TRUE)
+})
+
+test_that("the logical-for-factor error names the column and both types", {
+  skip_if_not_installed("deli")
+  dat <- design_flag_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + grp, dat, wts)
+
+  dat_lgl <- dat
+  dat_lgl$grp <- dat$grp == "high"
+
+  expect_snapshot(error = TRUE, ipw(ps_mod, out, .data = dat_lgl))
+})
+
+test_that("a factor column supplied as character is still accepted", {
+  skip_if_not_installed("deli")
+  # The control for the rejection above: a character vector carries its values,
+  # which the rebuild re-levels against the fit, so it rebuilds the fitted
+  # design and stays accepted.
+  dat <- design_flag_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + grp, dat, wts)
+
+  dat_chr <- dat
+  dat_chr$grp <- as.character(dat$grp)
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat_chr))
+  ref <- ipw(ps_mod, out, .data = dat)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-12)
+})
+
+test_that("a logical column the models were fit on is still accepted", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + flag, dat, wts)
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat))
+  ref <- ipw(ps_mod, out)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+# ---- a response column with no levels ---------------------------------------
+
+test_that("ipw() reports a factor outcome column that declares no levels", {
+  skip_if_not_installed("deli")
+  # A factor with no levels holds nothing but missing values, so the comparison
+  # against the level the fit treats as the failure has no first level to read.
+  # It reached that comparison and failed as a subscript out of bounds.
+  dat <- design_data()
+  dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(yf ~ z + x1, dat, wts)
+
+  dat_empty <- dat
+  dat_empty$yf <- factor(rep(NA_character_, nrow(dat)), levels = character(0))
+
+  err <- expect_error(
+    ipw(ps_mod, out, .data = dat_empty),
+    class = "propensity_ipw_data_error"
+  )
+  msg <- design_msg(err)
+  expect_match(msg, "\\byf\\b")
+  expect_false(grepl("subscript out of bounds", msg, fixed = TRUE))
+})
+
+# ---- missing values in `.data` ----------------------------------------------
+#
+# Every design is rebuilt with `model.frame()`, which drops a row holding a
+# missing value in any column it reads, while the weights, the exposure, and the
+# outcome values keep every row of `.data`. The two are then recycled against
+# each other: base R warns twice that one object is not a multiple of the other,
+# and the mismatch surfaces as weights that fail their consistency check, which
+# reports how the weights were built when the mistake was the frame that was
+# passed.
+
+test_that("ipw() reports missing values in a .data covariate", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1 + num, dat, wts)
+
+  dat_na <- dat
+  dat_na$num[c(3, 17, 88)] <- NA
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_na),
+    class = "propensity_ipw_data_error"
+  ))
+  msg <- design_msg(err)
+  expect_match(msg, "\\bnum\\b")
+  expect_match(msg, "3", fixed = TRUE)
+  expect_false(grepl("weights recomputed", msg, fixed = TRUE))
+})
+
+test_that("ipw() reports missing values in the .data exposure", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1, dat, wts)
+
+  dat_na <- dat
+  dat_na$z[c(1, 2)] <- NA
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_na),
+    class = "propensity_ipw_data_error"
+  ))
+  expect_match(design_msg(err), "\\bz\\b")
+})
+
+test_that("ipw() reports missing values in the .data outcome", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1, dat, wts)
+
+  dat_na <- dat
+  dat_na$y[5] <- NA
+
+  err <- expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_na),
+    class = "propensity_ipw_data_error"
+  ))
+  expect_match(design_msg(err), "\\by\\b")
+})
+
+test_that("ipw() reports missing values under linearization too", {
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z, dat, wts)
+
+  dat_na <- dat
+  dat_na$x1[c(4, 9)] <- NA
+
+  expect_no_warning(expect_error(
+    ipw(ps_mod, out, .data = dat_na, se_method = "linearization"),
+    class = "propensity_ipw_data_error"
+  ))
+})
+
+test_that("the missing-value report names the columns and their counts", {
+  skip_if_not_installed("deli")
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1 + num, dat, wts)
+
+  dat_na <- dat
+  dat_na$num[c(3, 17, 88)] <- NA
+  dat_na$x1[c(3, 40)] <- NA
+
+  expect_snapshot(error = TRUE, ipw(ps_mod, out, .data = dat_na))
+})
+
+test_that("a column .data holds but no model reads may still be missing", {
+  skip_if_not_installed("deli")
+  # The guard covers the columns the designs are rebuilt from, which is what
+  # `model.frame()` drops rows on. A column neither model reads is never
+  # consulted and is left alone.
+  dat <- design_data()
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- design_outcome(y ~ z + x1, dat, wts)
+
+  dat_na <- dat
+  dat_na$flag[c(2, 6)] <- NA
+
+  res <- expect_no_warning(ipw(ps_mod, out, .data = dat_na))
+  ref <- ipw(ps_mod, out)
+  expect_equal(res$estimates, ref$estimates, tolerance = 1e-8)
+})
+
+test_that("models fit on data with missing values still work without .data", {
+  skip_if_not_installed("deli")
+  # The model-frame route is unaffected: the fits dropped the incomplete rows
+  # themselves, so every frame `ipw()` reads is already complete and aligned.
+  dat <- design_data()
+  dat$x1[c(3, 17, 88)] <- NA
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  wts <- design_weights(ps_mod)
+  out <- glm(
+    y ~ z + x1,
+    data = dat[!is.na(dat$x1), ],
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  res <- expect_no_warning(ipw(ps_mod, out))
+  expect_true(all(is.finite(res$estimates$std.err)))
 })
