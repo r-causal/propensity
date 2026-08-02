@@ -47,31 +47,24 @@ design_msg <- function(err) {
 #
 # `y ~ factor(z)` records the term under the label "factor(z)", so the fitted
 # levels and the contrast coding belong to that label rather than to the column.
-# The rebuild sets the column to one value and re-evaluates the label, which
-# leaves `factor(z)` with a single level and no applicable contrasts. On the
-# `.data` route that died inside `model.matrix()` as "contrasts can be applied
-# only to factors with 2 or more levels"; without `.data` it died as a report
-# that the exposure column is missing from the model frame, whose remedy is to
-# supply `.data`, which walks into the first error. The guard reads the model
-# alone, so both routes reach it and the diagnosis is the same on each.
+# Whether the counterfactual designs can be built from it depends on which route
+# builds them.
+#
+# Without `.data` they come from the outcome model's own model frame, which
+# carries its terms attribute, so `model.matrix()` reads the `factor(z)` column
+# already in it and evaluates nothing. The counterfactual column written beside
+# it is dropped, both designs are the fitted design, and every contrast between
+# them is zero. That route is rejected, and the remedy is to supply `.data`. It
+# used to be rejected as a report that the exposure column was missing from the
+# model frame, whose remedy was to supply `.data`, which then met an error of
+# its own.
+#
+# With `.data` the design is rebuilt from the supplied frame, which re-evaluates
+# the term at the counterfactual column and re-levels the result against the
+# levels the fit recorded under the label. That route is accepted and is pinned,
+# against the pre-converted factor model, at the end of this file.
 
-test_that("ipw() rejects an outcome model that factors the exposure in the formula", {
-  skip_if_not_installed("deli")
-  dat <- design_data()
-  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
-  wts <- design_weights(ps_mod)
-  out <- design_outcome(y ~ factor(z) + x1, dat, wts)
-
-  err <- expect_error(
-    ipw(ps_mod, out, .data = dat),
-    class = "propensity_ipw_exposure_error"
-  )
-  msg <- design_msg(err)
-  expect_match(msg, "factor(z)", fixed = TRUE)
-  expect_false(grepl("contrasts can be applied", msg, fixed = TRUE))
-})
-
-test_that("the factored-exposure rejection is the same without .data", {
+test_that("ipw() rejects an outcome model that factors the exposure without .data", {
   skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
@@ -82,17 +75,19 @@ test_that("the factored-exposure rejection is the same without .data", {
     ipw(ps_mod, out),
     class = "propensity_ipw_exposure_error"
   )
-  expect_match(design_msg(err), "factor(z)", fixed = TRUE)
+  msg <- design_msg(err)
+  expect_match(msg, "factor(z)", fixed = TRUE)
+  expect_false(grepl("contrasts can be applied", msg, fixed = TRUE))
 })
 
-test_that("the factored-exposure error names the term and the rebuild it blocks", {
+test_that("the factored-exposure error names the term and the route that rebuilds it", {
   skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
   out <- design_outcome(y ~ factor(z) + x1, dat, wts)
 
-  expect_snapshot(error = TRUE, ipw(ps_mod, out, .data = dat))
+  expect_snapshot(error = TRUE, ipw(ps_mod, out))
 })
 
 test_that("ipw() rejects a factored exposure in a categorical outcome model", {
@@ -112,13 +107,11 @@ test_that("ipw() rejects a factored exposure in a categorical outcome model", {
   )
   out <- design_outcome(y ~ factor(a) + x1, dat, wts)
 
-  for (supplied in list(NULL, dat)) {
-    err <- expect_error(
-      ipw(ps_mod, out, .data = supplied),
-      class = "propensity_ipw_exposure_error"
-    )
-    expect_match(design_msg(err), "factor(a)", fixed = TRUE)
-  }
+  err <- expect_error(
+    ipw(ps_mod, out),
+    class = "propensity_ipw_exposure_error"
+  )
+  expect_match(design_msg(err), "factor(a)", fixed = TRUE)
 })
 
 # ---- exposure calls that do rebuild -----------------------------------------

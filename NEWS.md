@@ -1,19 +1,35 @@
 # propensity 0.1.0.9000 (development version)
 
-* `ipw()` now rejects an outcome model that reads the exposure through a term
+* `ipw()` now rebuilds an outcome model that reads the exposure through a term
   that has to work its levels out from the values it sees, such as
-  `y ~ factor(z) + x1` fit on a numerically coded exposure. `ipw()` estimates
-  the marginal means by setting the exposure column to one value at a time and
-  rebuilding the outcome design, and such a term has only the one level there,
-  which failed inside base R as "contrasts can be applied only to factors with 2
-  or more levels" when `.data` was supplied and as a report that the exposure
-  was missing from the model frame when it was not, whose remedy was to supply
-  `.data` and meet the first error. Both routes now raise an error of class
-  `propensity_ipw_exposure_error` naming the term and directing you to fit the
-  outcome model on the plain exposure column, converting it to a factor in the
-  data first if you want a factor coding. A term that recomputes cleanly at the
-  value being set, such as `I(z^2)` or `cut(z, breaks)`, is unaffected and keeps
+  `y ~ factor(z) + x1` fit on a numerically coded exposure, when `.data` is
+  supplied, and rejects it when it is not. `ipw()` estimates the marginal means
+  by setting the exposure column to one value at a time and rebuilding the
+  outcome design. With `.data` the term is re-evaluated at each value and put
+  back on the levels the model was fit with, which gives the estimates a model
+  fit on a column converted to a factor beforehand gives; it previously failed
+  inside base R as "contrasts can be applied only to factors with 2 or more
+  levels". Without `.data` the design comes from the outcome model's own model
+  frame, where the term is held at the values it was fit on and the
+  counterfactual value is ignored, so every level would be given the fitted
+  design and every contrast between them would be zero; that route now raises an
+  error of class `propensity_ipw_exposure_error` naming the term and directing
+  you to supply `.data`, where it previously reported that the exposure was
+  missing from the model frame. A term that recomputes cleanly at the value
+  being set, such as `I(z^2)` or `cut(z, breaks)`, is unaffected and keeps
   working.
+
+* Every design `ipw()` rebuilds from `.data` now uses the levels the model
+  recorded rather than the levels the supplied column declares. The propensity
+  score design already did, but the counterfactual outcome designs did not, so a
+  factor covariate re-leveled after fitting, or stored as a character vector
+  whose fitted levels were not in alphabetical order, paired each level with
+  another level's coefficient and moved the estimates with nothing signaled. A
+  column that declares a level no observation carries is accepted and rebuilds
+  the fitted design, since the fits drop unused levels themselves; a column
+  holding a value the fit never saw now raises an error of class
+  `propensity_ipw_data_error` naming the column and the value, where it
+  previously failed inside base R as a report that a factor had new levels.
 
 * `ipw()` now checks every `.data` column against the type its model was fit on,
   in both directions, and raises an error of class `propensity_ipw_data_error`
@@ -32,12 +48,29 @@
   so such a column is always a `.data` mismatch: it previously reached the value
   conversion, which coerced it with an unclassed "NAs introduced by coercion"
   warning and then failed inside the M-estimator's own vocabulary, or, on the
-  linearization path, left the standard errors non-finite.
+  linearization path, left the standard errors non-finite. A factor response
+  whose first level is not the level the model was fit to treat as the failure
+  is rejected with the same class: `ipw()` codes a factor outcome as an
+  indicator for its non-first levels, so a response re-leveled the other way
+  described the opposite outcome. It reversed the sign of every estimate on the
+  M-estimation path, and left the point estimates alone and moved the standard
+  errors on the linearization path.
 
 * `ipw()` now rejects a binary exposure column supplied as character where the
   outcome model holds the exposure as a factor. The counterfactual rebuild sets
   the column to one value at a time, and a character column carries no levels of
   its own, so it held the single level it was set to and failed inside base R.
+
+* `ipw()` now rejects a binary factor exposure supplied in `.data` on the fitted
+  levels in a different order, with an error of class
+  `propensity_ipw_data_error` naming the column. `ipw()` treats the second level
+  of a binary exposure as the exposed group, so a re-leveled column contrasts
+  the levels the other way round. This did error, at the check that recomputes
+  the weights from the propensity score model, whose message is about how the
+  weights were built rather than about the data that was passed. A level no observation carries is accepted wherever
+  it sits, as it is for a covariate. A categorical exposure is unaffected: it is
+  resolved against the propensity score model's own level order before anything
+  reads it.
 
 * `ipw()` now checks that the counterfactual outcome designs rebuilt from
   `.data` are as wide as the design the outcome model was fit to, the mirror of

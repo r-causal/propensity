@@ -716,8 +716,12 @@ test_that("ipw() categorical rejects a .data covariate recoded to the same width
   # case. The two-level factor gives one dummy column of zeros and ones, which
   # reproduces the fitted numbers only because this fixture's x2 is itself coded
   # zero and one; the same recoding of a covariate coded one and two rebuilds a
-  # design the model was never fit on and moves the estimates with nothing
-  # signaled. The rebuild cannot tell the two apart, so the type decides.
+  # design the model was never fit on. Where that lands depends on which model
+  # reads the covariate: an outcome-model covariate moves the estimates with
+  # nothing signaled, while a propensity-model covariate moves the recomputed
+  # weights and used to surface at the weight-consistency preflight, whose
+  # message is about how the weights were built. The rebuild cannot tell the two
+  # recodings apart, so the type decides.
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 

@@ -240,7 +240,7 @@ ipw_spec_binary <- function(
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
-    xlev = ps_mod$xlevels,
+    check_exposure_levels = TRUE,
     call = call
   )
   exposure <- extracted$exposure
@@ -318,7 +318,13 @@ ipw_spec_binary <- function(
   counterfactual_mm <- function(value) {
     d <- mm_data
     d[[exposure_name]] <- value
-    model.matrix(out_terms, data = d, contrasts.arg = outcome_mod$contrasts)
+    ipw_counterfactual_design(
+      outcome_mod,
+      out_terms,
+      d,
+      rebuilt = !is.null(.data),
+      call = call
+    )
   }
   x1 <- counterfactual_mm(exposure_values[[2]])
   x0 <- counterfactual_mm(exposure_values[[1]])
@@ -382,13 +388,19 @@ ipw_spec_binary <- function(
 # at each exposure value. The continuous path does not: it reports a coefficient
 # from the fitted marginal structural model, so it writes no counterfactual
 # column and the rebuild check would probe every distinct dose for nothing.
+#
+# `check_exposure_levels` says whether the exposure column supplied in `.data`
+# has to carry the level order the propensity model was fit under. The binary
+# path recodes on the order the column declares and so requires it; the
+# categorical path resolves the column against `ps_mod$lev` instead and passes
+# `FALSE`, as does the continuous path, whose exposure has no levels.
 ipw_extract_ps_design <- function(
   ps_mod,
   outcome_mod,
   .data,
   exposure_name,
-  xlev = NULL,
   counterfactual = TRUE,
+  check_exposure_levels = FALSE,
   call = rlang::caller_env()
 ) {
   if (is.null(.data)) {
@@ -436,6 +448,7 @@ ipw_extract_ps_design <- function(
         exposure_name,
         exposure,
         mm_data,
+        rebuilt = FALSE,
         call = call
       )
     }
@@ -474,7 +487,8 @@ ipw_extract_ps_design <- function(
     # fit that has any. The frame is already built before this point on every
     # path, by the weight extraction each `ipw()` method runs first, so asking
     # for it here cannot fail on its own.
-    n_fitted <- nrow(stats::model.frame(outcome_mod))
+    outcome_frame <- stats::model.frame(outcome_mod)
+    n_fitted <- nrow(outcome_frame)
 
     if (!identical(nrow(.data), n_fitted)) {
       abort(
@@ -500,12 +514,17 @@ ipw_extract_ps_design <- function(
 
     exposure <- .data[[exposure_name]]
 
+    if (check_exposure_levels) {
+      check_ipw_exposure_levels(exposure, ps_mod, exposure_name, call = call)
+    }
+
     if (counterfactual) {
       check_ipw_exposure_rebuild(
         outcome_mod,
         exposure_name,
         exposure,
         .data,
+        rebuilt = TRUE,
         call = call
       )
     }
@@ -515,19 +534,18 @@ ipw_extract_ps_design <- function(
     # rather than a column itself, and it has to be computed the way the fit
     # computed it.
     outcome <- fmla_eval_left(outcome_mod, .data)
+    check_ipw_response_levels(
+      outcome,
+      levels(stats::model.response(outcome_frame)),
+      fmla_extract_left_chr(outcome_mod),
+      call = call
+    )
     mm_data <- .data
-    # Rebuilding a factor against `xlev` drops its contrasts attribute, so the
-    # fit's own coding has to be supplied here or the design no longer matches
-    # the coefficients it is multiplied by. NULL, for a factor-free fit, is the
-    # default. Carrying the coding in `contrasts.arg` also makes the attribute
-    # on the column redundant, so drop it first: `model.frame()` would otherwise
-    # warn that re-leveling lost it, which says nothing about this rebuild. The
-    # design is the same either way.
-    ps_X <- model.matrix(
+    ps_X <- ipw_rebuild_design(
+      ps_mod,
       stats::delete.response(stats::terms(ps_mod)),
-      data = drop_contrasts_attrs(.data, names(ps_mod$contrasts)),
-      xlev = xlev,
-      contrasts.arg = ps_mod$contrasts
+      .data,
+      call = call
     )
     check_ipw_ps_design_width(ps_X, ps_mod, call = call)
   }
@@ -739,8 +757,7 @@ abort_ipw_type_mismatch <- function(
         response becomes an indicator for its non-first levels and any other \\
         response is used as its own values, so the two are not \\
         interchangeable.",
-        i = "Supply {.val {column}} as that {fit_noun}, or refit \\
-        {.arg outcome_mod} on the {supplied_noun}."
+        i = "Supply {.val {column}} as that {fit_noun}."
       ),
       error_class = "propensity_ipw_data_error",
       call = call
@@ -789,6 +806,244 @@ drop_contrasts_attrs <- function(data, cols) {
   }
 
   data
+}
+
+# Rebuild a fitted model's design from a supplied data frame, under the levels
+# the fit recorded. Left to itself, `model.matrix()` takes each categorical
+# column's levels from the values in front of it: a character column is ordered
+# alphabetically and a factor is taken at whatever order it declares. Either one
+# pairs each level with another level's coefficient, which the multiply cannot
+# see, so the fit's own `xlevels` decide instead. Its contrast coding is passed
+# separately, because re-leveling a column drops the attribute that carries it,
+# and the attribute on the supplied column is dropped first so the two cannot
+# disagree. NULL, for a factor-free fit, is `contrasts.arg`'s default.
+#
+# The frame is built first and re-leveled afterwards rather than handing `xlev`
+# to `model.frame()`, which does the same work but reports two situations in its
+# own vocabulary: a value the fit never saw stops it with a message naming
+# neither `.data` nor `ipw()`, and a column that is neither a factor nor a
+# character vector makes it warn that a variable is not a factor, when what is
+# wrong there is the column's type, which the type check and the design widths
+# already report on their own terms.
+ipw_rebuild_design <- function(
+  mod,
+  mod_terms,
+  data,
+  call = rlang::caller_env()
+) {
+  frame <- stats::model.frame(
+    mod_terms,
+    data = drop_contrasts_attrs(data, names(mod$contrasts))
+  )
+  frame <- ipw_relevel_frame(frame, mod$xlevels, call = call)
+
+  model.matrix(mod_terms, data = frame, contrasts.arg = mod$contrasts)
+}
+
+# Re-level the categorical columns of a rebuilt model frame to the levels the
+# fit recorded, rejecting a value the fit never saw. A column the fit recorded
+# levels for arrives as a factor, an ordered factor, or a character vector;
+# anything else is left alone, because its type is the disagreement rather than
+# its levels.
+#
+# A level the supplied column declares but no observation carries is dropped
+# here, which is what the fits themselves do, so a column that declares one
+# rebuilds the design the model was fit to. A level an observation does carry
+# has no coefficient to multiply and is rejected.
+#
+# The frame is keyed by the fit's own variable names, which are the deparsed
+# model variables, so a term recorded under a call rather than a column, such as
+# `factor(x)`, is re-leveled here too: the call has been evaluated by the time
+# the frame exists.
+ipw_relevel_frame <- function(frame, xlev, call = rlang::caller_env()) {
+  for (nm in intersect(names(xlev), names(frame))) {
+    column <- frame[[nm]]
+
+    if (!is.factor(column) && !is.character(column)) {
+      next
+    }
+
+    levs <- xlev[[nm]]
+    values <- as.character(column)
+    unseen <- unique(values[!is.na(values) & !values %in% levs])
+
+    if (length(unseen) > 0) {
+      abort_ipw_new_levels(nm, unseen, levs, call = call)
+    }
+
+    frame[[nm]] <- factor(values, levels = levs, ordered = is.ordered(column))
+  }
+
+  frame
+}
+
+abort_ipw_new_levels <- function(
+  term,
+  unseen,
+  levs,
+  call = rlang::caller_env()
+) {
+  abort(
+    c(
+      "{.arg .data} must hold only the levels the models were fit on.",
+      x = "{.code {term}} takes the value{?s} {.val {unseen}} in {.arg .data}.",
+      x = "The models were fit with {.code {term}} at {.val {levs}}, and the \\
+      designs rebuilt from {.arg .data} carry one column per non-reference \\
+      level of that set, so a value outside it has no coefficient to multiply.",
+      i = "Supply the data the models were fit to, or refit them on data that \\
+      holds every level you want represented."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# Build one counterfactual outcome design. On the `.data` route the design is
+# rebuilt from the supplied frame, so every term is re-evaluated at the exposure
+# value written into it and re-leveled against the fit. Without `.data` the
+# design comes from the outcome model's own model frame, which carries its terms
+# attribute: `model.matrix()` then reads the columns already in it and evaluates
+# nothing, so a term recorded under a call keeps its fitted values whatever is
+# written beside them. check_ipw_exposure_rebuild() rejects such a term on that
+# route for exactly that reason.
+ipw_counterfactual_design <- function(
+  outcome_mod,
+  mod_terms,
+  data,
+  rebuilt,
+  call = rlang::caller_env()
+) {
+  if (rebuilt) {
+    return(ipw_rebuild_design(outcome_mod, mod_terms, data, call = call))
+  }
+
+  model.matrix(mod_terms, data = data, contrasts.arg = outcome_mod$contrasts)
+}
+
+# Require the response column supplied in `.data` to induce the coding the
+# outcome model was fit under. ipw_outcome_numeric() indicator-codes a factor
+# response against its first level, following `glm`, so the level the fit treats
+# as the failure has to come first here as well. A response re-leveled the other
+# way is the same values under the opposite coding: on the M-estimation path
+# every estimate comes back with its sign reversed, and on the linearization
+# path the point estimates stay, because they are the outcome model's own
+# predictions, while the standard errors move with the response values that feed
+# the influence functions.
+#
+# Only the first level decides the conversion, so only the first level is
+# compared. A column that declares further levels the fit never saw, or that
+# orders the rest differently, codes every observation the way the fit did.
+#
+# Silent for a fit whose response carries no levels, which covers a numeric or
+# logical response and a response written as a transformation, and silent for a
+# supplied response that is not a factor, whose type contradicts the fit and is
+# rejected before this by check_ipw_data_types().
+check_ipw_response_levels <- function(
+  outcome,
+  fit_levels,
+  response_name,
+  call = rlang::caller_env()
+) {
+  if (is.null(fit_levels) || !is.factor(outcome)) {
+    return(invisible(TRUE))
+  }
+
+  supplied <- levels(outcome)
+
+  if (identical(supplied[[1L]], fit_levels[[1L]])) {
+    return(invisible(TRUE))
+  }
+
+  fit_first <- fit_levels[[1L]]
+  supplied_first <- supplied[[1L]]
+
+  abort(
+    c(
+      "{.arg .data} must supply the outcome {.val {response_name}} with the \\
+      level {.arg outcome_mod} was fit to treat as the failure first.",
+      x = "{.arg .data} declares {.val {supplied_first}} first; \\
+      {.arg outcome_mod} was fit with {.val {fit_first}} first.",
+      x = "{.fun ipw} codes a factor outcome as an indicator for its non-first \\
+      levels, following {.fun glm}, so the two orders describe opposite \\
+      outcomes and every estimate reverses.",
+      i = "Re-level {.val {response_name}} so {.val {fit_first}} comes first, \\
+      or supply the data the models were fit to."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# Require the exposure column supplied in `.data` to carry the level order the
+# propensity score model was fit under. The binary path takes the second sorted
+# value of the exposure as the exposed group, which for a factor is the second
+# level it declares, and the counterfactual designs, the recoded exposure, and
+# the influence functions all read that coding. A column re-leveled the other
+# way therefore contrasts the levels in the opposite direction. It did error,
+# at the weight-consistency preflight, because weights recomputed under the
+# reversed coding no longer match the ones that fit the outcome model, but that
+# message is about how the weights were built rather than about `.data`.
+#
+# Levels the fit never saw are tolerated wherever they sit, since no observation
+# carries them and `sort(unique())` cannot reach them. What has to hold is that
+# the fitted levels keep their fitted order.
+#
+# The exposure is the propensity model's response, so `xlevels` never records
+# it and the fitted frame is the only place its levels are kept; a model that
+# cannot rebuild that frame leaves nothing to compare and is passed. A supplied
+# column that is not a factor carries no order of its own: a numeric one is
+# rejected by check_ipw_data_types() and a character one by
+# check_ipw_binary_exposure_coding().
+#
+# The categorical path has no counterpart. It resolves the supplied column
+# against `ps_mod$lev` before anything reads it, so the order it declares says
+# nothing there.
+check_ipw_exposure_levels <- function(
+  exposure,
+  ps_mod,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  fit_levels <- ipw_fitted_response_levels(ps_mod)
+
+  if (is.null(fit_levels) || !is.factor(exposure)) {
+    return(invisible(TRUE))
+  }
+
+  supplied <- levels(exposure)
+
+  if (identical(intersect(supplied, fit_levels), fit_levels)) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.arg .data} must supply {.val {exposure_name}} on the levels \\
+      {.arg wt_mod} was fit with, in that order.",
+      x = "{.arg .data} declares {.val {supplied}}; {.arg wt_mod} was fit on \\
+      {.val {fit_levels}}.",
+      x = "{.fun ipw} treats the second level of a binary exposure as the \\
+      exposed group, so a different order contrasts the levels the other way \\
+      round.",
+      i = "Re-level {.val {exposure_name}} to the order {.arg wt_mod} was fit \\
+      with, or supply the data the models were fit to."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# The levels a fitted model recorded for its response, or NULL if it has none or
+# if the frame that holds them cannot be rebuilt. A response is not a design
+# column, so `xlevels` never carries it.
+ipw_fitted_response_levels <- function(mod) {
+  frame <- tryCatch(stats::model.frame(mod), error = function(e) NULL)
+
+  if (is.null(frame)) {
+    return(NULL)
+  }
+
+  levels(stats::model.response(frame))
 }
 
 # Resolve the exposure to a factor whose levels are ordered the way the fitted
@@ -891,7 +1146,6 @@ ipw_spec_categorical <- function(
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
-    xlev = ps_mod$xlevels,
     call = call
   )
   exposure <- extracted$exposure
@@ -980,7 +1234,13 @@ ipw_spec_categorical <- function(
   x_cf <- lapply(levs, function(l) {
     d <- mm_data
     d[[exposure_name]] <- factor(l, levels = levs)
-    model.matrix(out_terms, data = d, contrasts.arg = outcome_mod$contrasts)
+    ipw_counterfactual_design(
+      outcome_mod,
+      out_terms,
+      d,
+      rebuilt = !is.null(.data),
+      call = call
+    )
   })
   names(x_cf) <- levs
 
@@ -1071,7 +1331,6 @@ ipw_spec_continuous <- function(
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
-    xlev = ps_mod$xlevels,
     counterfactual = FALSE,
     call = call
   )

@@ -42,21 +42,34 @@
 #'   `.data` must be the data the models were fit to. It must have one row per
 #'   observation the models were fit to, and each column must carry the type its
 #'   model was fit on: a column fit as a factor may also be supplied as character
-#'   or as an ordered factor, since those rebuild the same design, but a factor
-#'   supplied as numeric, or a numeric supplied as a factor or a logical, errors.
-#'   A row count or a column type that disagrees with the fitted models errors
-#'   rather than rebuilding a design the models were not fit to.
+#'   or as an ordered factor, since every design rebuilt from `.data` is rebuilt
+#'   under the levels the fit recorded, but a factor supplied as numeric, or a
+#'   numeric supplied as a factor or a logical, errors. A row count or a column
+#'   type that disagrees with the fitted models errors rather than rebuilding a
+#'   design the models were not fit to.
+#'
+#'   The levels a categorical column declares are its fit's to decide, so a
+#'   column re-leveled after fitting is rebuilt in the fitted order, and one that
+#'   declares a level no observation carries rebuilds the fitted design, since
+#'   the fits drop unused levels themselves. A value the fit never saw has no
+#'   coefficient to multiply and errors. The exposure column and the outcome
+#'   model's response are read rather than rebuilt, and both are rejected when
+#'   the order they declare contradicts the fit: `ipw()` treats the second level
+#'   of a binary exposure as the exposed group, and codes a factor response as an
+#'   indicator for its non-first levels, so either one re-leveled the other way
+#'   describes the opposite contrast.
 #'
 #'   Supplying `.data` also decides how a term that transforms the exposure is
 #'   handled. The counterfactual designs are built by setting the exposure column
 #'   to each level in turn and rebuilding the outcome design from `.data`, so a
-#'   term such as `as.numeric(a == "c")` or `I(z^2)` is re-evaluated at the level
-#'   being set rather than held at its observed value, so such a model is
-#'   g-computation on the model as specified. A term that has to derive the
-#'   exposure's levels from the values it sees, such as `factor(a)`, has only the
-#'   one level once the column is set and errors, with or without `.data`; fit
-#'   the outcome model on the plain exposure column instead, converting it in the
-#'   data first if you want a factor coding.
+#'   term such as `as.numeric(a == "c")`, `I(z^2)`, or `factor(z)` is
+#'   re-evaluated at the level being set rather than held at its observed value,
+#'   and such a model is g-computation on the model as specified. Without
+#'   `.data` there is nothing to re-evaluate: the designs come from the outcome
+#'   model's own model frame, which holds each such term at the values it was fit
+#'   on. A term that has to derive the exposure's levels from the values it sees,
+#'   such as `factor(a)`, is therefore rejected on that route, with `.data` named
+#'   as the remedy.
 #' @param estimand A character string specifying the causal estimand: one of
 #'   `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or `"entropy"`. The available
 #'   estimands depend on the exposure type: a binary or categorical exposure
@@ -482,7 +495,7 @@ ipw.glm <- function(
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
-    xlev = wt_mod$xlevels
+    check_exposure_levels = TRUE
   )
   exposure <- extracted$exposure
   outcome <- extracted$outcome
@@ -1104,9 +1117,11 @@ check_ipw_outcome_exposure <- function(
 # rejects a two-level categorical exposure before `ipw()` is ever called.
 #
 # The guard is silent when the exposure name is absent from `dataClasses`, which
-# happens when the formula transforms it, as in `y ~ factor(z) + x1`. There the
-# term label is the call rather than the name, and those paths fail their own
-# way.
+# happens when the formula transforms it, as in `y ~ factor(a) + x1`. The term
+# label is the call rather than the name there, and the levels and the coding
+# belong to the label, which the counterfactual rebuild reproduces by level
+# rather than by position. check_ipw_exposure_rebuild() decides that case: it is
+# rebuilt from `.data` and rejected without it.
 check_ipw_outcome_exposure_class <- function(
   outcome_mod,
   exposure_name,
@@ -1138,33 +1153,41 @@ check_ipw_outcome_exposure_class <- function(
 # Reject an outcome model whose exposure term cannot be rebuilt at a
 # counterfactual value. The marginal means are estimated by setting the exposure
 # column to one value at a time and rebuilding the outcome design, so a term that
-# reads the exposure through a call is re-evaluated at that constant column. A
-# term such as `factor(z)` derived its levels and its contrast coding from the
-# observed values, and at a constant column it has one level and no applicable
-# contrasts, which died inside `model.matrix()` as "contrasts can be applied only
-# to factors with 2 or more levels". Without `.data` the same model died as a
-# report that the exposure is missing from the model frame, whose remedy is to
-# supply `.data`, which walks straight into the first error.
+# reads the exposure through a call has to be re-evaluated at that constant
+# column and land on the coding the fit recorded.
+#
+# What that takes depends on the route, so `rebuilt` says which one is in play.
+#
+# With `.data` the design is rebuilt from the supplied frame, which evaluates
+# every term afresh and re-levels the result against the fit. A term such as
+# `factor(z)` has only the one level at a constant column, but the fitted levels
+# are recorded under the term's own label and put back, so the design is the
+# fitted design and the marginal means are the ones the pre-converted factor
+# model gives. What is left to reject there is a term that cannot be evaluated
+# at the value being set, or that evaluates to something outside the levels it
+# was fit with, neither of which any re-leveling can repair.
+#
+# Without `.data` the design comes from the outcome model's own model frame,
+# which carries its terms attribute. `model.matrix()` then reads the columns
+# already in that frame and evaluates nothing, so the counterfactual column
+# written beside them is dropped and every level's design is the fitted one:
+# each contrast is zero with nothing signaled. Any term whose levels the fit had
+# to work out from the values it saw is rejected there, and the remedy is to
+# supply `.data`.
 #
 # The check evaluates rather than reads the spelling, because the spelling does
 # not decide it. `cut(z, breaks)` takes its levels from the call and carries all
-# of them at a constant column, so it rebuilds the fitted design and is honest
-# g-computation on the model as specified; `factor(z)` does not. A numeric
-# transformation such as `I(z^2)` is not considered at all: it recomputes from
-# the counterfactual column and has no levels to lose.
+# of them at a constant column; `factor(z)` does not. A numeric transformation
+# such as `I(z^2)` is not considered at all: it has no levels to lose.
 #
-# The evaluation needs only the term's expression and the exposure values, both
-# of which are available on either extraction route, so the diagnosis is the same
-# with and without `.data`. It repeats work `model.matrix()` would do moments
-# later and adds no other effect.
-#
-# Only the first offending term is reported: the fix is a refit, after which the
-# guard runs again over the rest.
+# Only the first offending term is reported: the fix is a refit or a `.data`,
+# after which the guard runs again over the rest.
 check_ipw_exposure_rebuild <- function(
   outcome_mod,
   exposure_name,
   exposure,
   data,
+  rebuilt,
   call = rlang::caller_env()
 ) {
   xlevels <- outcome_mod$xlevels
@@ -1207,24 +1230,23 @@ check_ipw_exposure_rebuild <- function(
         ),
         error = function(e) e
       )
-      got <- if (inherits(probe, "error")) NULL else levels(as.factor(probe))
+      rebuilds <- if (inherits(probe, "error")) {
+        FALSE
+      } else if (rebuilt) {
+        # Carrying some of the fitted levels is enough here, and a constant
+        # column carries exactly one: the rebuild re-levels the term's value
+        # against the whole set, so the design it lands on is the fitted one.
+        all(levels(as.factor(probe)) %in% fit_levels)
+      } else {
+        identical(levels(as.factor(probe)), fit_levels)
+      }
 
-      if (!identical(got, fit_levels)) {
-        abort(
-          c(
-            "{.arg outcome_mod} must read the exposure from a column \\
-            {.fun ipw} can set to counterfactual values.",
-            x = "{.arg outcome_mod} reads {.val {exposure_name}} through the \\
-            term {.code {term}}.",
-            x = "{.fun ipw} estimates the marginal means by setting \\
-            {.val {exposure_name}} to one value at a time and rebuilding the \\
-            outcome design, and {.code {term}} does not carry the levels \\
-            {.val {fit_levels}} it was fit with once the column is constant.",
-            i = "Refit {.arg outcome_mod} on the plain {.val {exposure_name}} \\
-            column, converting it to a factor in the data first if you want a \\
-            factor coding."
-          ),
-          error_class = "propensity_ipw_exposure_error",
+      if (!rebuilds) {
+        abort_ipw_exposure_rebuild(
+          exposure_name,
+          term,
+          fit_levels,
+          rebuilt = rebuilt,
           call = call
         )
       }
@@ -1232,6 +1254,51 @@ check_ipw_exposure_rebuild <- function(
   }
 
   invisible(TRUE)
+}
+
+# The two halves of the rebuild rejection. The diagnosis is the same on both
+# routes, a term that reads the exposure and cannot be put back the way it was
+# fit, and what differs is why the rebuild cannot do it and what fixes it.
+abort_ipw_exposure_rebuild <- function(
+  exposure_name,
+  term,
+  fit_levels,
+  rebuilt,
+  call = rlang::caller_env()
+) {
+  route <- if (rebuilt) {
+    c(
+      x = "{.fun ipw} estimates the marginal means by setting \\
+      {.val {exposure_name}} to one value at a time and rebuilding the outcome \\
+      design from {.arg .data}, and {.code {term}} does not evaluate to the \\
+      levels {.val {fit_levels}} it was fit with once the column is constant.",
+      i = "Refit {.arg outcome_mod} on the plain {.val {exposure_name}} \\
+      column, converting it to a factor in the data first if you want a factor \\
+      coding."
+    )
+  } else {
+    c(
+      x = "Without {.arg .data} the designs come from {.arg outcome_mod}'s own \\
+      model frame, which holds {.code {term}} at the values it was fit on, so \\
+      the counterfactual value {.fun ipw} sets is ignored and every level is \\
+      given the fitted design.",
+      i = "Supply {.arg .data}, which rebuilds {.code {term}} at each value \\
+      under the levels {.val {fit_levels}} it was fit with, or refit \\
+      {.arg outcome_mod} on the plain {.val {exposure_name}} column."
+    )
+  }
+
+  abort(
+    c(
+      "{.arg outcome_mod} must read the exposure from a column {.fun ipw} can \\
+      set to counterfactual values.",
+      x = "{.arg outcome_mod} reads {.val {exposure_name}} through the term \\
+      {.code {term}}.",
+      route
+    ),
+    error_class = "propensity_ipw_exposure_error",
+    call = call
+  )
 }
 
 # Whether a `dataClasses` name, which is a deparsed model variable, reads the

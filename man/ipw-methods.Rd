@@ -75,21 +75,34 @@ longer available); \code{ipw()} then rebuilds the propensity design from \code{.
 \code{.data} must be the data the models were fit to. It must have one row per
 observation the models were fit to, and each column must carry the type its
 model was fit on: a column fit as a factor may also be supplied as character
-or as an ordered factor, since those rebuild the same design, but a factor
-supplied as numeric, or a numeric supplied as a factor or a logical, errors.
-A row count or a column type that disagrees with the fitted models errors
-rather than rebuilding a design the models were not fit to.
+or as an ordered factor, since every design rebuilt from \code{.data} is rebuilt
+under the levels the fit recorded, but a factor supplied as numeric, or a
+numeric supplied as a factor or a logical, errors. A row count or a column
+type that disagrees with the fitted models errors rather than rebuilding a
+design the models were not fit to.
+
+The levels a categorical column declares are its fit's to decide, so a
+column re-leveled after fitting is rebuilt in the fitted order, and one that
+declares a level no observation carries rebuilds the fitted design, since
+the fits drop unused levels themselves. A value the fit never saw has no
+coefficient to multiply and errors. The exposure column and the outcome
+model's response are read rather than rebuilt, and both are rejected when
+the order they declare contradicts the fit: \code{ipw()} treats the second level
+of a binary exposure as the exposed group, and codes a factor response as an
+indicator for its non-first levels, so either one re-leveled the other way
+describes the opposite contrast.
 
 Supplying \code{.data} also decides how a term that transforms the exposure is
 handled. The counterfactual designs are built by setting the exposure column
 to each level in turn and rebuilding the outcome design from \code{.data}, so a
-term such as \code{as.numeric(a == "c")} or \code{I(z^2)} is re-evaluated at the level
-being set rather than held at its observed value, so such a model is
-g-computation on the model as specified. A term that has to derive the
-exposure's levels from the values it sees, such as \code{factor(a)}, has only the
-one level once the column is set and errors, with or without \code{.data}; fit
-the outcome model on the plain exposure column instead, converting it in the
-data first if you want a factor coding.}
+term such as \code{as.numeric(a == "c")}, \code{I(z^2)}, or \code{factor(z)} is
+re-evaluated at the level being set rather than held at its observed value,
+and such a model is g-computation on the model as specified. Without
+\code{.data} there is nothing to re-evaluate: the designs come from the outcome
+model's own model frame, which holds each such term at the values it was fit
+on. A term that has to derive the exposure's levels from the values it sees,
+such as \code{factor(a)}, is therefore rejected on that route, with \code{.data} named
+as the remedy.}
 
 \item{estimand}{A character string specifying the causal estimand: one of
 \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or \code{"entropy"}. The available
