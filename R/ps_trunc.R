@@ -31,6 +31,16 @@
 #'     categorical defaults: 0.01 and 0.99).
 #'   * `method = "cr"`: Ignored; bounds are determined by the data.
 #' @inheritParams wt_ate
+#' @param .focal_level The value of `.exposure` representing the focal
+#'   (treated) group, used by `"cr"`. Every binary coding honors it: 0/1
+#'   numeric, logical, two-level factor, and two-level character exposures are
+#'   all coded with the named level as focal. With no level named, a binary
+#'   exposure defaults to its higher level, which is `1` for a 0/1 exposure and
+#'   `TRUE` for a logical one. Naming any other level reverses the coding, so
+#'   `ps` must then hold the probability of the named level.
+#' @param .reference_level The value of `.exposure` representing the reference
+#'   (control) group. Naming it makes the exposure's other level focal, with
+#'   the same consequence for `ps`. Automatically detected if not supplied.
 #' @param ... Additional arguments passed to methods.
 #'
 #' @details
@@ -261,7 +271,7 @@ ps_trunc.matrix <- function(
   .exposure <- transform_exposure_categorical(.exposure)
 
   # Validate matrix
-  ps <- check_ps_matrix(ps, .exposure, call = rlang::caller_env())
+  ps <- check_ps_matrix(ps, .exposure, call = rlang::current_env())
 
   n <- nrow(ps)
   k <- ncol(ps)

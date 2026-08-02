@@ -919,3 +919,21 @@ test_that("a ps_trim reordered through vctrs keeps the record for the old order"
   # `[` reports the units that hold those positions.
   expect_identical(is_unit_trimmed(x[5:1]), c(FALSE, TRUE, FALSE, FALSE, TRUE))
 })
+
+# An exposure with dimensions reaches the same coding the weight functions use,
+# where its cells were read in storage order rather than one value per
+# observation.
+
+test_that("ps_trim refuses an exposure with dimensions", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  dimensioned <- matrix(c(1, 0, 1, 0), nrow = 2, ncol = 2)
+
+  expect_error(
+    ps_trim(ps, method = "pref", .exposure = dimensioned),
+    class = "propensity_binary_transform_error"
+  )
+  expect_error(
+    ps_trim(ps, method = "cr", .exposure = dimensioned),
+    class = "propensity_binary_transform_error"
+  )
+})

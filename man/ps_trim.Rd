@@ -63,18 +63,16 @@ vector), and \code{"optimal"} (factor or character). Not required for other
 methods.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal
-(treated) group. Every binary coding honors it: 0/1 numeric, logical,
-two-level factor, and two-level character exposures are all coded with the
-named level as focal. With no level named, a binary exposure defaults to
-its higher level, which is \code{1} for a 0/1 exposure and \code{TRUE} for a logical
-one. Naming any other level reverses the coding, so \code{.propensity} must
-then hold the probability of the named level. Required for \code{wt_att()} and
-\code{wt_atu()} with categorical exposures.}
+(treated) group, used by \code{"pref"} and \code{"cr"}. Every binary coding honors
+it: 0/1 numeric, logical, two-level factor, and two-level character
+exposures are all coded with the named level as focal. With no level
+named, a binary exposure defaults to its higher level, which is \code{1} for a
+0/1 exposure and \code{TRUE} for a logical one. Naming any other level reverses
+the coding, so \code{ps} must then hold the probability of the named level.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
-(control) group. For a binary exposure, naming it makes the exposure's
-other level focal, with the same consequence for \code{.propensity}.
-Automatically detected if not supplied.}
+(control) group. Naming it makes the exposure's other level focal, with
+the same consequence for \code{ps}. Automatically detected if not supplied.}
 
 \item{...}{Additional arguments passed to methods.}
 

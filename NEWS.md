@@ -1,5 +1,30 @@
 # propensity 0.1.0.9000 (development version)
 
+* An `.exposure` with dimensions is now refused on the binary path, with an
+  error of class `propensity_binary_transform_error` that names the shape it
+  was given. A matrix or data frame holding the right number of cells passed
+  the length rule and survived the 0 and 1 coding unchanged, because comparison
+  and coercion are elementwise, and then failed where the weights are given
+  their class, reporting a dimensionality error against an argument the caller
+  never named. `ps_trim()`, `ps_trunc()`, and `ps_calibrate()` took the same
+  exposure without complaint and read its cells in storage order.
+
+* `ps_trim()` and `ps_trunc()` now name the function you called when they
+  refuse a propensity score matrix. The refusal was attributed to the frame the
+  matrix method was dispatched from, which is your own function when either is
+  called from one and no call at all when either is called at the top level.
+  The messages themselves are unchanged.
+
+* `ps_trim()` and `ps_trunc()` document the focal level contract against the
+  argument they take. The text was inherited from the weight functions and
+  named `.propensity`, which neither function has, and it carried a requirement
+  that belongs to `wt_att()` and `wt_atu()`. Behavior is unchanged.
+
+* The getting started example in `README.Rmd` fits its weighted outcome model
+  with `quasibinomial()`, matching the documentation examples. A weighted
+  `binomial()` fit warns about non-integer successes, and the warning was
+  suppressed rather than avoided.
+
 * The weight functions now warn when the column of a `.propensity` data frame
   chosen for the focal level is one of several carrying that name, naming the
   count and the column read. A data frame is allowed repeated names, through

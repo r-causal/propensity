@@ -750,3 +750,17 @@ test_that("pava_weighted preserves original order", {
   # So result should be the same as input
   expect_equal(result, y)
 })
+
+# An exposure with dimensions reaches the same coding the weight functions use,
+# where its cells were read in storage order rather than one value per
+# observation.
+
+test_that("ps_calibrate refuses an exposure with dimensions", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  dimensioned <- matrix(c(1, 0, 1, 0), nrow = 2, ncol = 2)
+
+  expect_error(
+    ps_calibrate(ps, dimensioned),
+    class = "propensity_binary_transform_error"
+  )
+})

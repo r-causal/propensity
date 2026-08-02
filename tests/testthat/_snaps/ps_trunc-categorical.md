@@ -27,7 +27,7 @@
     Code
       expr
     Condition <propensity_matrix_no_names_warning>
-      Warning:
+      Warning in `ps_trunc()`:
       Propensity score matrix has no column names.
       i Assuming columns are in factor level order: "A", "B", and "C"
       i This may lead to incorrect results if columns are misaligned.

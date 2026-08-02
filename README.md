@@ -58,7 +58,7 @@ ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 
 # Step 2: Calculate ATE weights and fit a weighted outcome model
 wts <- wt_ate(ps_mod)
-outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
+outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
 # Step 3: Estimate causal effects with correct standard errors
 ipw(ps_mod, outcome_mod)
@@ -69,7 +69,7 @@ ipw(ps_mod, outcome_mod)
 #>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) 
 #> 
 #> Outcome Model:
-#>   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) 
+#>   Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) 
 #> 
 #> Estimates:
 #>         estimate  std.err      z  ci.lower ci.upper conf.level p.value  

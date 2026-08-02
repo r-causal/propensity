@@ -95,6 +95,22 @@ transform_exposure_binary <- function(
   .reference_level = NULL,
   call = rlang::caller_env()
 ) {
+  # A matrix or data frame survives every branch below unchanged, because
+  # comparison and coercion are elementwise, and only fails much later where the
+  # weights are given their class. Refuse it here, where the shape is still
+  # attached to the argument that carries it.
+  if (!is.null(dim(.exposure))) {
+    abort(
+      c(
+        "{.arg .exposure} must be a vector.",
+        x = "It is {.cls {class(.exposure)[[1]]}} with {length(dim(.exposure))} dimensions.",
+        i = "Supply one value per observation."
+      ),
+      call = call,
+      error_class = "propensity_binary_transform_error"
+    )
+  }
+
   if (!is.null(.focal_level)) {
     return(ifelse(.exposure == .focal_level, 1, 0))
   }
