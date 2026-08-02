@@ -730,6 +730,27 @@ test_that("ipw() categorical accepts a .data covariate recoded to the same width
   )
 })
 
+test_that("a log-transformed categorical outcome response through .data matches the model-frame route", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  # The categorical companion to the binary pins in test-ipw-se-method.R. The
+  # response is read out of `.data` by the shared extraction, so a transformation
+  # of a column has to be computed rather than looked up under the name of the
+  # function wrapping it. The exponentiated outcome keeps `log()` defined on
+  # every observation.
+  dat <- sim_categorical()
+  dat$yp <- exp(dat$yc)
+  ps_mod <- fit_ps_multinom(dat)
+  wts <- categorical_weights(ps_matrix_named(ps_mod, dat), dat$a, "ate")
+  outcome_mod <- lm(log(yp) ~ a + x1, data = dat, weights = wts)
+
+  expect_equal(
+    ipw(ps_mod, outcome_mod, .data = dat)$estimates,
+    ipw(ps_mod, outcome_mod)$estimates,
+    tolerance = 1e-10
+  )
+})
+
 # ---- a wrong-sized .data is a data problem -----------------------------------
 #
 # The categorical path sizes the exposure, the outcome, and the designs to

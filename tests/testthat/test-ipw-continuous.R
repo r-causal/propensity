@@ -678,6 +678,26 @@ test_that("continuous rejects a .data whose covariate types skew the design", {
   expect_match(msg, ".data", fixed = TRUE)
 })
 
+test_that("a log-transformed continuous outcome response through .data matches the model-frame route", {
+  skip_if_not_installed("deli")
+  # The continuous companion to the binary pins in test-ipw-se-method.R. Same
+  # rationale as the pins above: the response is read out of `.data` by the
+  # shared extraction, so a transformation of a column has to be computed rather
+  # than looked up under the name of the function wrapping it. The exponentiated
+  # outcome keeps `log()` defined on every observation.
+  dat <- sim_continuous()
+  dat$yp <- exp(dat$yc)
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  wts <- continuous_weights(fitted(ps_mod), dat$A)
+  outcome_mod <- lm(log(yp) ~ A, data = dat, weights = wts)
+
+  expect_equal(
+    ipw(ps_mod, outcome_mod, .data = dat)$estimates,
+    ipw(ps_mod, outcome_mod)$estimates,
+    tolerance = 1e-10
+  )
+})
+
 # ---- a wrong-sized .data is a data problem -----------------------------------
 #
 # As on the binary and categorical paths, a `.data` whose row count disagrees

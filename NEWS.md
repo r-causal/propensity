@@ -1,5 +1,16 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now accepts an outcome model whose response is a transformation of a
+  column, such as `log(y)` or `scale(y)`, when `.data` is supplied. The response
+  is evaluated against `.data` rather than looked up by name, so it is computed
+  the way the fit computed it, and the transformed and untransformed routes give
+  the same estimates. Such a call previously asked for a column named after the
+  function wrapping the response, which no correct `.data` could supply. The
+  column report is fixed along with it: a `.data` missing the response now names
+  the variable the response reads, on the binary, categorical, and continuous
+  paths and on both standard error methods. A matrix response such as
+  `cbind(successes, failures)` is still rejected for its shape.
+
 * `ipw()` now rejects a `.data` column supplied as numeric where either model
   recorded it as a factor, with an error of class `propensity_ipw_data_error`
   naming the column, the levels the fit recorded for it, and what to supply

@@ -847,6 +847,32 @@ fmla_extract_left_chr <- function(mod) {
   as.character(formula(mod)[[2]])
 }
 
+# Variables a model's left-hand side reads. `fmla_extract_left_chr()` deparses
+# the whole expression, so a transformed response such as `log(y)` gives back the
+# function name alongside its argument; a rebuild from a supplied data frame needs
+# the columns the response is computed from, which is what `all.vars()` gives and
+# what the user can actually supply.
+fmla_extract_left_vars <- function(mod) {
+  all.vars(formula(mod)[[2]])
+}
+
+# Evaluate a model's left-hand side against a data frame. A response written as a
+# transformation has to be computed rather than looked up by name, and the
+# functions and constants it reads resolve from the formula's environment, the
+# same way they did when the model was fit. `scale()` and friends return a
+# one-column matrix; drop that dimension so the result matches what
+# stats::model.response() hands back on the model-frame route.
+fmla_eval_left <- function(mod, data) {
+  fmla <- formula(mod)
+  left <- eval(fmla[[2]], data, environment(fmla))
+
+  if (is.matrix(left) && ncol(left) == 1L) {
+    left <- drop(left)
+  }
+
+  left
+}
+
 # Helper function to handle optional exposure in GLM methods
 extract_exposure_from_glm <- function(
   glm_obj,

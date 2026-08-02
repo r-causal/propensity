@@ -964,10 +964,10 @@ test_that("linearization matches a factor outcome response with finite SEs", {
 
   # Y - mu must be computed on the 0/1 coding: on a raw factor it gives NA
   # std.err with "'-' not meaningful for factors" warnings. The linearization
-  # branch extracts the outcome two ways that would fail identically:
-  # `.data[[outcome_name]]` when .data is supplied, and fmla_extract_left_vctr
-  # when it is not. Both return finite std.err equal to the numeric fit with no
-  # warnings.
+  # branch extracts the outcome two ways that would fail identically: the
+  # response evaluated against `.data` when it is supplied, and
+  # fmla_extract_left_vctr when it is not. Both return finite std.err equal to
+  # the numeric fit with no warnings.
   res_data <- expect_no_warning(
     ipw(ps_mod, fac, .data = dat, se_method = "linearization")$estimates
   )

@@ -138,7 +138,6 @@ ipw_spec_binary <- function(
   }
 
   exposure_name <- fmla_extract_left_chr(ps_mod)
-  outcome_name <- fmla_extract_left_chr(outcome_mod)
 
   check_ipw_outcome_exposure(outcome_mod, exposure_name, call = call)
 
@@ -147,7 +146,6 @@ ipw_spec_binary <- function(
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
-    outcome_name = outcome_name,
     xlev = ps_mod$xlevels,
     call = call
   )
@@ -282,7 +280,6 @@ ipw_extract_ps_design <- function(
   outcome_mod,
   .data,
   exposure_name,
-  outcome_name,
   xlev = NULL,
   call = rlang::caller_env()
 ) {
@@ -331,11 +328,16 @@ ipw_extract_ps_design <- function(
     # the designs below are rebuilt from `.data`, and a covariate missing from it
     # otherwise surfaces as a raw object-not-found from `model.matrix` rather
     # than as the missing column it is.
+    #
+    # The outcome model's response contributes the variables it reads rather than
+    # the deparsed expression: a transformed response such as `log(y)` is
+    # computed from a column named `y`, and asking for one named `log` reports a
+    # column that could not exist under any correct `.data`.
     assert_columns_exist(
       .data,
       unique(c(
         exposure_name,
-        outcome_name,
+        fmla_extract_left_vars(outcome_mod),
         ipw_model_covariates(ps_mod),
         ipw_model_covariates(outcome_mod)
       )),
@@ -380,7 +382,11 @@ ipw_extract_ps_design <- function(
     )
 
     exposure <- .data[[exposure_name]]
-    outcome <- .data[[outcome_name]]
+    # Evaluated rather than looked up, for the same reason the assert above reads
+    # the response's variables: the response may be a transformation of a column
+    # rather than a column itself, and it has to be computed the way the fit
+    # computed it.
+    outcome <- fmla_eval_left(outcome_mod, .data)
     mm_data <- .data
     # Rebuilding a factor against `xlev` drops its contrasts attribute, so the
     # fit's own coding has to be supplied here or the design no longer matches
@@ -630,7 +636,6 @@ ipw_spec_categorical <- function(
   }
 
   exposure_name <- fmla_extract_left_chr(ps_mod)
-  outcome_name <- fmla_extract_left_chr(outcome_mod)
 
   check_ipw_outcome_exposure(outcome_mod, exposure_name, call = call)
   check_ipw_outcome_exposure_class(outcome_mod, exposure_name, call = call)
@@ -646,7 +651,6 @@ ipw_spec_categorical <- function(
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
-    outcome_name = outcome_name,
     xlev = ps_mod$xlevels,
     call = call
   )
@@ -820,14 +824,12 @@ ipw_spec_continuous <- function(
   }
 
   exposure_name <- fmla_extract_left_chr(ps_mod)
-  outcome_name <- fmla_extract_left_chr(outcome_mod)
 
   extracted <- ipw_extract_ps_design(
     ps_mod,
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
-    outcome_name = outcome_name,
     xlev = ps_mod$xlevels,
     call = call
   )

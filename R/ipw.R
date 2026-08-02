@@ -458,7 +458,6 @@ ipw.glm <- function(
   }
 
   exposure_name <- fmla_extract_left_chr(wt_mod)
-  outcome_name <- fmla_extract_left_chr(outcome_mod)
 
   # Guards on the model structure run before the data is reconstructed, so a
   # model this path cannot support is rejected on its own terms rather than
@@ -480,7 +479,6 @@ ipw.glm <- function(
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
-    outcome_name = outcome_name,
     xlev = wt_mod$xlevels
   )
   exposure <- extracted$exposure
