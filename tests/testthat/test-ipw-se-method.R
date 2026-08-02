@@ -1331,20 +1331,23 @@ test_that("a matrix-response outcome model errors on its shape without .data", {
   }
 })
 
-test_that("a transformed single-column outcome response is not a matrix response", {
-  skip_if_not_installed("deli")
-  # `log(y)` and friends make the formula's left-hand side a call rather than a
-  # symbol, which is what the propensity guard rejects and what an early version
-  # of this guard rejected too. They are ordinary single-column responses and
-  # the analysis is correct, so the only honest check is the built frame. The
-  # reference fits the same model on a precomputed column, which is the same
-  # model written differently and must give the same answer.
+# A lognormal outcome, the propensity model whose weights it carries, and a
+# precomputed column for each transformation, so every transformed fit has a
+# reference written on a bare symbol. Shared with the `.data` route pins below.
+transformed_response_models <- function() {
   set.seed(2024)
   n <- 300
   x1 <- rnorm(n)
   z <- rbinom(n, 1, plogis(0.3 * x1))
   y <- rlnorm(n, -0.4 + z + 0.3 * x1)
-  dat <- data.frame(x1, z, y, log_y = log(y), sqrt_y = sqrt(y))
+  dat <- data.frame(
+    x1,
+    z,
+    y,
+    log_y = log(y),
+    sqrt_y = sqrt(y),
+    scale_y = as.vector(scale(y))
+  )
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -1355,26 +1358,34 @@ test_that("a transformed single-column outcome response is not a matrix response
       .focal_level = 1
     )
   )
+  list(ps_mod = ps_mod, dat = dat, wts = wts)
+}
+
+transformed_response_outcome <- function(response, dat, wts) {
+  lm(stats::reformulate("z", response = response), data = dat, weights = wts)
+}
+
+test_that("a transformed single-column outcome response is not a matrix response", {
+  skip_if_not_installed("deli")
+  # `log(y)` and friends make the formula's left-hand side a call rather than a
+  # symbol, which is what the propensity guard rejects and what an early version
+  # of this guard rejected too. They are ordinary single-column responses and
+  # the analysis is correct, so the only honest check is the built frame. The
+  # reference fits the same model on a precomputed column, which is the same
+  # model written differently and must give the same answer.
+  m <- transformed_response_models()
 
   for (se in c("mestimation", "linearization")) {
     for (pair in list(c("log(y)", "log_y"), c("sqrt(y)", "sqrt_y"))) {
-      transformed <- lm(
-        stats::reformulate("z", response = pair[[1]]),
-        data = dat,
-        weights = wts
-      )
-      precomputed <- lm(
-        stats::reformulate("z", response = pair[[2]]),
-        data = dat,
-        weights = wts
-      )
+      transformed <- transformed_response_outcome(pair[[1]], m$dat, m$wts)
+      precomputed <- transformed_response_outcome(pair[[2]], m$dat, m$wts)
 
       expect_false(
         is.matrix(stats::model.response(stats::model.frame(transformed)))
       )
       expect_equal(
-        ipw(ps_mod, transformed, se_method = se)$estimates$estimate,
-        ipw(ps_mod, precomputed, se_method = se)$estimates$estimate,
+        ipw(m$ps_mod, transformed, se_method = se)$estimates$estimate,
+        ipw(m$ps_mod, precomputed, se_method = se)$estimates$estimate,
         tolerance = 1e-10
       )
     }
@@ -1404,6 +1415,110 @@ test_that("a matrix-response outcome model errors on its shape with .data", {
     )
     msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
     expect_match(msg, "matrix response", fixed = TRUE)
+  }
+})
+
+# ---- transformed outcome responses on the .data route -----------------------
+#
+# A transformed left-hand side such as `log(y)` is an ordinary single-column
+# response, and the tests above pin that it estimates correctly when the models
+# carry their own frames. The `.data` route reads the response by name instead,
+# so the name it asks for has to be the column the transformation reads rather
+# than the function wrapping it. These pin the two routes against each other,
+# and pin that a missing-column report only ever names a column the user could
+# supply. The second contract has no test of its own: with a complete `.data`
+# the transformed calls simply run, which is what the parity pin asserts.
+#
+# A binomial outcome with a transformed response is deliberately absent. The
+# no-`.data` pins above cover only gaussian fits, so there is no pinned
+# reference to compare a binomial one against.
+
+test_that("a log-transformed outcome response through .data matches the model-frame route", {
+  skip_if_not_installed("deli")
+  m <- transformed_response_models()
+  outcome_mod <- transformed_response_outcome("log(y)", m$dat, m$wts)
+
+  for (se in c("mestimation", "linearization")) {
+    expect_equal(
+      ipw(m$ps_mod, outcome_mod, .data = m$dat, se_method = se)$estimates,
+      ipw(m$ps_mod, outcome_mod, se_method = se)$estimates,
+      tolerance = 1e-10
+    )
+  }
+})
+
+test_that("a sqrt-transformed outcome response through .data matches the model-frame route", {
+  skip_if_not_installed("deli")
+  m <- transformed_response_models()
+  outcome_mod <- transformed_response_outcome("sqrt(y)", m$dat, m$wts)
+
+  expect_equal(
+    ipw(
+      m$ps_mod,
+      outcome_mod,
+      .data = m$dat,
+      se_method = "linearization"
+    )$estimates,
+    ipw(m$ps_mod, outcome_mod, se_method = "linearization")$estimates,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a scale-transformed outcome response through .data matches the model-frame route", {
+  skip_if_not_installed("deli")
+  m <- transformed_response_models()
+  outcome_mod <- transformed_response_outcome("scale(y)", m$dat, m$wts)
+
+  # `scale()` is the mestimation case on purpose: it leaves a one-column matrix
+  # in the model frame, so the psi rebuild sees a shape the other transformations
+  # never produce. Pin that premise, since the case is pointless without it.
+  expect_true(is.matrix(stats::model.frame(outcome_mod)[[1]]))
+
+  expect_equal(
+    ipw(
+      m$ps_mod,
+      outcome_mod,
+      .data = m$dat,
+      se_method = "mestimation"
+    )$estimates,
+    ipw(m$ps_mod, outcome_mod, se_method = "mestimation")$estimates,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a covariate missing from .data is reported as the missing column", {
+  skip_if_not_installed("deli")
+  # Guard for the pins above: the report has to keep working for a column that
+  # really is absent, not go quiet along with the spurious ones.
+  m <- transformed_response_models()
+  outcome_mod <- transformed_response_outcome("log_y", m$dat, m$wts)
+
+  err <- expect_error(
+    ipw(
+      m$ps_mod,
+      outcome_mod,
+      .data = m$dat[setdiff(names(m$dat), "x1")],
+      se_method = "mestimation"
+    ),
+    class = "propensity_columns_exist_error"
+  )
+  expect_match(conditionMessage(err), "x1", fixed = TRUE)
+})
+
+test_that("a .data missing the outcome column names the response, not its transformation", {
+  skip_if_not_installed("deli")
+  m <- transformed_response_models()
+  outcome_mod <- transformed_response_outcome("log(y)", m$dat, m$wts)
+  without_y <- m$dat[setdiff(names(m$dat), "y")]
+
+  for (se in c("mestimation", "linearization")) {
+    err <- expect_error(
+      ipw(m$ps_mod, outcome_mod, .data = without_y, se_method = se),
+      class = "propensity_columns_exist_error"
+    )
+    msg <- conditionMessage(err)
+    expect_match(msg, "\"y\"", fixed = TRUE)
+    expect_no_match(msg, "log", fixed = TRUE)
   }
 })
 
