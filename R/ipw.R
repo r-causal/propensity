@@ -2146,12 +2146,13 @@ derive_score_factor <- function(ps_link = c("logit", "probit", "cloglog")) {
 # `stabilization_score` is recorded on the weights and used as recorded; a scalar
 # recycles. The default stabilizer records no score and instead scales the
 # treated weights by the sample exposure mean and the untreated weights by its
-# complement, exactly as ate_binary() builds them, so it is reconstructed from
-# the same recoded exposure. Treating that sample mean as fixed is exact rather
-# than an approximation: each group constant scales that group's weights and that
-# group's weight total identically, so it cancels from the Hajek ratio and
-# contributes no influence term of its own. Weights carrying neither form take
-# the identity factor, which covers every unstabilized analysis.
+# complement, so it is reconstructed from the same recoded exposure through
+# `ipw_default_stab_seed()`, the seed `ate_binary()` builds those weights with.
+# Treating that sample mean as fixed is exact rather than an approximation: each
+# group constant scales that group's weights and that group's weight total
+# identically, so it cancels from the Hajek ratio and contributes no influence
+# term of its own. Weights carrying neither form take the identity factor, which
+# covers every unstabilized analysis.
 effective_stabilizer <- function(wts, exposure, estimand) {
   score <- stabilization_score(wts)
   if (!is.null(score)) {
@@ -2159,7 +2160,7 @@ effective_stabilizer <- function(wts, exposure, estimand) {
   }
 
   if (is_stabilized(wts) && identical(estimand, "ate")) {
-    p1 <- mean(exposure)
+    p1 <- ipw_default_stab_seed(exposure)
     return(ifelse(exposure == 1, p1, 1 - p1))
   }
 

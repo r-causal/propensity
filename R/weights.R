@@ -521,7 +521,7 @@ ate_binary <- function(
   )
 
   if (isTRUE(stabilize) && is.null(stabilization_score)) {
-    p1 <- mean(.exposure, na.rm = TRUE)
+    p1 <- ipw_default_stab_seed(.exposure)
     p0 <- 1 - p1
 
     wt <- (.exposure * p1 / .propensity) +

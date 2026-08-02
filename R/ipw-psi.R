@@ -328,14 +328,21 @@ ipw_init_contrasts <- function(contrasts, mu_hi, mu_lo, suffix = NULL) {
 # The stabilizer to use for a binary exposure whose weights carry no
 # per-observation stabilization score: the marginal exposure probability.
 #
-# Two consumers must agree on this value. The M-estimation init seeds the
-# `stab_pi` parameter with it, and the linearization preflight rebuilds a
-# stabilized weight from it to compare against the weights that fit the outcome
-# model. If they disagreed, the preflight would reject weights the solver would
-# have accepted, or accept weights it would not. `exposure` is the 0/1 recode in
-# both cases.
+# Four consumers must agree on this value, and they read it from here rather
+# than rebuilding it so that changing the convention changes all four at once.
+# `ate_binary()` is the origin: it scales the default stabilized ATE weights by
+# this probability and its complement, so the value is already baked into the
+# weights a user hands to `ipw()`. The M-estimation init seeds the `stab_pi`
+# parameter with it. The linearization preflight rebuilds a stabilized weight
+# from it to compare against the weights that fit the outcome model, and
+# `effective_stabilizer()` recovers the same factor to scale the linearization
+# weight derivatives. A disagreement among them is silent in different ways: the
+# preflight would reject weights the solver would have accepted, or accept
+# weights it would not, while `effective_stabilizer()` would move only the
+# standard errors. `exposure` is the 0/1 recode everywhere but `ate_binary()`,
+# which passes the same recode under its own name.
 ipw_default_stab_seed <- function(exposure) {
-  mean(exposure)
+  mean(exposure, na.rm = TRUE)
 }
 
 ipw_init_binary <- function(spec, call = rlang::caller_env()) {
