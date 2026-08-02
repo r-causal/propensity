@@ -2914,6 +2914,12 @@ test_that("wt_* functions error appropriately on invalid inputs", {
 # the user called, the way every other guard in the package does. cli wraps the
 # message at the console width, so the assertions collapse whitespace before
 # matching the valid set.
+#
+# The routes differ in how they reach the numeric method, and only some of them
+# get there through `UseMethod()`. `wt_cens()` and the modified propensity score
+# classes call a numeric method by value instead, which puts a name no caller
+# typed at the head of the frame's call, so those two routes are pinned
+# alongside the dispatched ones.
 
 exposure_type_fixture <- function() {
   ps <- c(0.2, 0.5, 0.8, 0.4)
@@ -2921,7 +2927,14 @@ exposure_type_fixture <- function() {
   list(
     ps = ps,
     exposure = exposure,
-    ps_df = data.frame(untreated = 1 - ps, treated = ps)
+    ps_df = data.frame(untreated = 1 - ps, treated = ps),
+    ps_trimmed = ps_trim(
+      ps,
+      .exposure = exposure,
+      method = "ps",
+      lower = 0.25,
+      upper = 0.75
+    )
   )
 }
 
@@ -2933,7 +2946,8 @@ test_that("an invalid exposure_type on the numeric method names wt_ate()", {
   fixture <- exposure_type_fixture()
 
   cnd <- rlang::catch_cnd(
-    wt_ate(fixture$ps, fixture$exposure, exposure_type = "wrong")
+    wt_ate(fixture$ps, fixture$exposure, exposure_type = "wrong"),
+    classes = "error"
   )
   expect_s3_class(cnd, "error")
 
@@ -2961,7 +2975,8 @@ test_that("an invalid exposure_type on the data frame method names wt_att()", {
   fixture <- exposure_type_fixture()
 
   cnd <- rlang::catch_cnd(
-    wt_att(fixture$ps_df, fixture$exposure, exposure_type = "wrong")
+    wt_att(fixture$ps_df, fixture$exposure, exposure_type = "wrong"),
+    classes = "error"
   )
   expect_s3_class(cnd, "error")
 
@@ -2987,7 +3002,8 @@ test_that("an invalid exposure_type on the numeric method names wt_ato()", {
   fixture <- exposure_type_fixture()
 
   cnd <- rlang::catch_cnd(
-    wt_ato(fixture$ps, fixture$exposure, exposure_type = "wrong")
+    wt_ato(fixture$ps, fixture$exposure, exposure_type = "wrong"),
+    classes = "error"
   )
   expect_s3_class(cnd, "error")
 
@@ -3004,6 +3020,92 @@ test_that("an invalid exposure_type on the numeric method names wt_ato()", {
 
   expect_propensity_error(
     wt_ato(fixture$ps, fixture$exposure, exposure_type = "wrong")
+  )
+})
+
+test_that("an invalid exposure_type on the glm method names wt_ate()", {
+  fixture <- zero_one_glm_fixture()
+
+  cnd <- rlang::catch_cnd(
+    wt_ate(
+      fixture$model,
+      .exposure = fixture$exposure,
+      exposure_type = "wrong"
+    ),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "error")
+
+  expect_identical(as.character(cnd$call[[1]]), "wt_ate")
+
+  expect_match(
+    unwrap_condition_message(cnd),
+    paste(
+      "`exposure_type` must be one of \"auto\", \"binary\",",
+      "\"categorical\", or \"continuous\", not \"wrong\"."
+    ),
+    fixed = TRUE
+  )
+
+  expect_propensity_error(
+    wt_ate(fixture$model, .exposure = fixture$exposure, exposure_type = "wrong")
+  )
+})
+
+test_that("an invalid exposure_type on the wt_cens route names wt_cens()", {
+  fixture <- exposure_type_fixture()
+
+  # `wt_cens.numeric()` delegates to `wt_ate.numeric()` by calling it rather
+  # than by dispatch, so the frame it errors in belongs to the ATE machinery.
+  # The rejection still has to name the function the user called.
+  cnd <- rlang::catch_cnd(
+    wt_cens(fixture$ps, fixture$exposure, exposure_type = "wrong"),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "error")
+
+  expect_identical(as.character(cnd$call[[1]]), "wt_cens")
+
+  expect_match(
+    unwrap_condition_message(cnd),
+    paste(
+      "`exposure_type` must be one of \"auto\", \"binary\",",
+      "\"categorical\", or \"continuous\", not \"wrong\"."
+    ),
+    fixed = TRUE
+  )
+
+  expect_propensity_error(
+    wt_cens(fixture$ps, fixture$exposure, exposure_type = "wrong")
+  )
+})
+
+test_that("an invalid exposure_type on a trimmed propensity score names wt_ate()", {
+  fixture <- exposure_type_fixture()
+
+  # The modified propensity score methods reach the numeric method through a
+  # local `weight_fn` argument, so the frame's call is a name no caller typed.
+  # The refit warning arrives first, which is why only errors are caught here.
+  cnd <- suppressWarnings(rlang::catch_cnd(
+    wt_ate(fixture$ps_trimmed, fixture$exposure, exposure_type = "wrong"),
+    classes = "error"
+  ))
+  expect_s3_class(cnd, "error")
+
+  expect_identical(as.character(cnd$call[[1]]), "wt_ate")
+
+  expect_match(
+    unwrap_condition_message(cnd),
+    paste(
+      "`exposure_type` must be one of \"auto\", \"binary\",",
+      "\"categorical\", or \"continuous\", not \"wrong\"."
+    ),
+    fixed = TRUE
+  )
+
+  # the refit warning that precedes the error is attributed the same way
+  expect_propensity_error(
+    wt_ate(fixture$ps_trimmed, fixture$exposure, exposure_type = "wrong")
   )
 })
 

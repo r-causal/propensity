@@ -159,7 +159,7 @@
     Code
       expr
     Condition <rlang_error>
-      Error in `match_exposure_type()`:
+      Error in `wt_ate()`:
       ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "invalid".
 
 ---
@@ -183,7 +183,7 @@
     Code
       expr
     Condition <rlang_error>
-      Error in `match_exposure_type()`:
+      Error in `wt_ate()`:
       ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "wrong".
 
 # an invalid exposure_type on the data frame method names wt_att()
@@ -191,7 +191,7 @@
     Code
       expr
     Condition <rlang_error>
-      Error in `match_exposure_type()`:
+      Error in `wt_att()`:
       ! `exposure_type` must be one of "auto", "binary", or "categorical", not "wrong".
 
 # an invalid exposure_type on the numeric method names wt_ato()
@@ -199,8 +199,36 @@
     Code
       expr
     Condition <rlang_error>
-      Error in `match_exposure_type()`:
+      Error in `wt_ato()`:
       ! `exposure_type` must be one of "auto", "binary", or "categorical", not "wrong".
+
+# an invalid exposure_type on the glm method names wt_ate()
+
+    Code
+      expr
+    Condition <rlang_error>
+      Error in `wt_ate()`:
+      ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "wrong".
+
+# an invalid exposure_type on the wt_cens route names wt_cens()
+
+    Code
+      expr
+    Condition <rlang_error>
+      Error in `wt_cens()`:
+      ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "wrong".
+
+# an invalid exposure_type on a trimmed propensity score names wt_ate()
+
+    Code
+      expr
+    Condition <propensity_no_refit_warning>
+      Warning in `wt_ate()`:
+      It appears you trimmed your propensity score but did not refit the model.
+      i Use `ps_refit()` for more accurate re-estimation.
+    Condition <rlang_error>
+      Error in `wt_ate()`:
+      ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "wrong".
 
 # data frame methods error appropriately
 
@@ -317,7 +345,7 @@
     Code
       expr
     Condition <rlang_error>
-      Error in `match_exposure_type()`:
+      Error in `wt_att()`:
       ! `exposure_type` must be one of "auto", "binary", or "categorical", not "continuous".
 
 # all methods handle NAs appropriately

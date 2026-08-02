@@ -20,9 +20,14 @@ abort_no_method <- function(.propensity, call = rlang::caller_env()) {
 match_exposure_type <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .exposure,
-  valid_types = c("auto", "binary", "categorical", "continuous")
+  valid_types = c("auto", "binary", "categorical", "continuous"),
+  call = rlang::caller_env()
 ) {
-  .exposure_type <- rlang::arg_match(exposure_type, valid_types)
+  .exposure_type <- rlang::arg_match(
+    exposure_type,
+    valid_types,
+    error_call = call
+  )
   if (.exposure_type == "auto") {
     detect_exposure_type(.exposure)
   } else {
@@ -540,9 +545,15 @@ calculate_weight_from_modified_ps <- function(
 ) {
   modification_type <- rlang::arg_match(modification_type)
 
+  # `weight_fn` is a numeric method invoked through a local symbol, so its own
+  # frame deparses as `weight_fn()`. Bind the dispatching method's frame here
+  # and hand it down, so conditions raised inside the weight machinery name the
+  # weight function the user called.
+  call <- rlang::caller_env()
+
   # Only check refit for trim
   if (modification_type == "trim") {
-    check_refit(.propensity, call = rlang::caller_env())
+    check_refit(.propensity, call = call)
   }
 
   # Handle matrix or vector propensity scores
@@ -557,6 +568,7 @@ calculate_weight_from_modified_ps <- function(
     base_wt <- weight_fn(
       .propensity,
       .exposure = .exposure,
+      call = call,
       ...
     )
   } else {
@@ -567,6 +579,7 @@ calculate_weight_from_modified_ps <- function(
     base_wt <- weight_fn(
       numeric_ps,
       .exposure = .exposure,
+      call = call,
       ...
     )
   }
@@ -789,7 +802,8 @@ handle_data_frame_weight_calculation <- function(
   exposure_type_check <- match_exposure_type(
     exposure_type,
     .exposure,
-    valid_exposure_types
+    valid_exposure_types,
+    call = rlang::caller_env()
   )
 
   focal_params <- handle_focal_deprecation(
@@ -915,7 +929,8 @@ prepare_glm_weight_args <- function(
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
-    valid_exposure_types
+    valid_exposure_types,
+    call = call
   )
 
   focal_params <- handle_focal_deprecation(

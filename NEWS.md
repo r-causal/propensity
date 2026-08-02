@@ -1,5 +1,17 @@
 # propensity 0.1.0.9000 (development version)
 
+* An unrecognized `exposure_type` given to any of the weight functions is now
+  attributed to the function the caller named rather than to the internal helper
+  that validates the argument. `wt_ate(ps, z, exposure_type = "wrong")`
+  previously raised its error under `match_exposure_type()`, an unexported name
+  that appears in no documentation and that gives no hint of which call in a
+  pipeline was at fault. The rejection now reports `wt_ate()`, `wt_att()`,
+  `wt_cens()`, and the rest, on every route into them: a numeric vector, a data
+  frame of propensity scores, a fitted model, and a trimmed, truncated, or
+  calibrated propensity score alike. The message is unchanged, and the valid set
+  each function reports still reflects the exposure types that function
+  supports.
+
 * `ipw(se_method = "mestimation")` now warns with a class of its own when a
   reported effect is undefined at the marginal means the solver reached. The
   means are free parameters of the estimating equations, so a fit whose exposure

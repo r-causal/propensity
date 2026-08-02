@@ -314,7 +314,8 @@ wt_ate.numeric <- function(
   stabilization_score = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
   rlang::check_dots_empty()
 
@@ -329,7 +330,11 @@ wt_ate.numeric <- function(
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
 
-  exposure_type <- match_exposure_type(exposure_type, .exposure)
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    call = call
+  )
 
   if (exposure_type == "binary") {
     check_lengths_match(.propensity, .exposure)
@@ -575,7 +580,8 @@ wt_att.numeric <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
   rlang::check_dots_empty()
 
@@ -593,7 +599,8 @@ wt_att.numeric <- function(
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
-    c("auto", "binary", "categorical")
+    c("auto", "binary", "categorical"),
+    call = call
   )
 
   if (exposure_type == "binary") {
@@ -753,7 +760,8 @@ wt_atu.numeric <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
   rlang::check_dots_empty()
 
@@ -771,7 +779,8 @@ wt_atu.numeric <- function(
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
-    c("auto", "binary", "categorical")
+    c("auto", "binary", "categorical"),
+    call = call
   )
 
   if (exposure_type == "binary") {
@@ -933,7 +942,8 @@ wt_atm.numeric <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
   rlang::check_dots_empty()
 
@@ -951,7 +961,8 @@ wt_atm.numeric <- function(
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
-    c("auto", "binary", "categorical")
+    c("auto", "binary", "categorical"),
+    call = call
   )
 
   if (exposure_type == "binary") {
@@ -1104,7 +1115,8 @@ wt_ato.numeric <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
   rlang::check_dots_empty()
 
@@ -1122,7 +1134,8 @@ wt_ato.numeric <- function(
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
-    c("auto", "binary", "categorical")
+    c("auto", "binary", "categorical"),
+    call = call
   )
 
   if (exposure_type == "binary") {
@@ -1273,7 +1286,8 @@ wt_entropy.numeric <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
   rlang::check_dots_empty()
 
@@ -1291,7 +1305,8 @@ wt_entropy.numeric <- function(
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
-    c("auto", "binary", "categorical")
+    c("auto", "binary", "categorical"),
+    call = call
   )
 
   if (exposure_type == "binary") {
@@ -1473,9 +1488,12 @@ wt_cens.numeric <- function(
   stabilization_score = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  call = rlang::current_env()
 ) {
-  # Get weights using ATE formula
+  # Get weights using ATE formula. `call` carries the frame this method was
+  # dispatched into, so a rejection raised inside the ATE machinery still names
+  # `wt_cens()`.
   wts <- wt_ate.numeric(
     .propensity = .propensity,
     .exposure = .exposure,
@@ -1487,6 +1505,7 @@ wt_cens.numeric <- function(
     .untreated = .untreated,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    call = call,
     ...
   )
 
