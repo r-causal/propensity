@@ -231,6 +231,7 @@ psw <- function(
 ) {
   x <- vec_cast(x, to = double())
   attributes(x) <- NULL
+  check_estimand_type(estimand)
   stabilization_score <- check_stabilization_score(
     stabilization_score,
     length(x)
@@ -494,6 +495,36 @@ vec_arith.numeric.psw <- function(op, x, y, ...) {
 vec_arith.psw.integer <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
   vec_restore(result, x)
+}
+
+# The estimand a caller records, checked where it is recorded. It names the
+# quantity the weights estimate and is read back as a name by everything that
+# consumes them, so a value of another type is a label nothing can read: it
+# compares against a set of names through `as.character()` and passes, then
+# reaches a `switch()` in its own type, where a factor is its integer level code
+# and selects a branch by position. Which name it prints as is not checked here.
+# The set of valid names belongs to whatever consumes the weights, and `ipw()`
+# checks its own set against the estimand it resolves.
+#
+# `new_psw()` is deliberately left permissive: it is the constructor the restore
+# and merge paths rebuild through, and those carry an attribute that already
+# exists rather than accept a new one.
+check_estimand_type <- function(estimand, call = rlang::caller_env()) {
+  if (is.null(estimand) || (is.character(estimand) && length(estimand) == 1L)) {
+    return(invisible(estimand))
+  }
+
+  abort(
+    c(
+      "{.arg estimand} must be a single string.",
+      x = "It has class {.cls {class(estimand)}} and length \\
+      {length(estimand)}.",
+      i = "The estimand names what the weights estimate, such as \\
+      {.val ate} or {.val att}."
+    ),
+    error_class = "propensity_estimand_type_error",
+    call = call
+  )
 }
 
 # A stabilization score of length > 1 is indexed by observation, so it is only

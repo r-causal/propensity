@@ -45,7 +45,12 @@
 \item{wt_mod}{The weighting object: a fitted propensity score model that
 produced the weights, typically a logistic regression of class
 \code{\link[stats:glm]{stats::glm()}} with the exposure as the left-hand side of the formula.
-\code{ipw()} is an S3 generic that dispatches on this object.}
+\code{ipw()} is an S3 generic that dispatches on this object. The left-hand side
+must be the exposure column itself, for every exposure type: a matrix
+response such as \code{cbind(successes, failures)} and a transformed response
+such as \code{log(a)} or \code{factor(z)} both error, because \code{ipw()} reads the
+exposure's name from that expression. Compute a transformed exposure into
+its own column and fit \code{wt_mod} on that column.}
 
 \item{outcome_mod}{A fitted weighted outcome model of class \code{\link[stats:glm]{stats::glm()}}
 or \code{\link[stats:lm]{stats::lm()}}, with the outcome as the dependent variable and

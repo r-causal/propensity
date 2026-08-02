@@ -1,5 +1,82 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now requires the propensity score model's response to be the exposure
+  column itself for a continuous exposure, as it already did for a binary one,
+  and rejects anything else with an error of class
+  `propensity_ipw_response_error`. `ipw()` names the exposure by reading that
+  left-hand side, so a response written as `cbind(a1, a2)` or as a
+  transformation such as `log(a)` gives back several names where one was
+  expected. Neither was caught: without `.data` the call stopped on an internal
+  assertion about `.exposure_name` having length 2, and with `.data` it asked
+  for a column named `"log"`, which cannot exist. A propensity score model
+  written the same way but fit with `glm(family = gaussian())` reached the
+  binary guard instead and was told it had a matrix response it does not have.
+  Compute the transformation into its own column and fit the propensity score
+  model on that column.
+
+* The propensity score response error now describes the shape it found.
+  A `cbind(successes, failures)` response keeps the matrix wording, whether the
+  shape is read from the model frame or, for a fit made with `model = FALSE`
+  whose data are gone, from the formula; a left-hand side that is a call but not
+  a matrix, `factor(z) ~ x` for instance, is now reported as an expression
+  rather than a single column, naming the expression. It previously described
+  every such model as having a matrix response, which sent the writer of
+  `factor(z) ~ x` looking for a matrix they had not written.
+
+* The `se_method = "linearization"` outcome model rejection now distinguishes an
+  outcome model that carries the exposure and more from one that does not carry
+  the exposure at all. An intercept-only outcome model, `y ~ 1`, is adjusted for
+  nothing and was nevertheless reported as "adjusted for terms beyond" the
+  exposure; it now reads that the model does not include the exposure. The error
+  class and the redirect to `se_method = "mestimation"` are unchanged.
+
+* `ipw()` now rejects an estimand that names no estimand at all, whether it
+  arrives as the `estimand` argument or as the estimand the weights record, with
+  an error of class `propensity_ipw_estimand_error` listing the estimands it
+  accepts. Neither source was checked against that list, and each was reported
+  by whatever noticed it first: an argument checked against weights carrying an
+  estimand came back as a disagreement between two estimands when only one of
+  them exists, and one checked against plain numeric weights was not compared at
+  all and reached the weighted means, where base R reported that `x` and `w` had
+  different lengths. Weights built by hand with `psw()`, which records the
+  estimand it is given, reached the same report on every path. A valid estimand
+  that disagrees with the weights still reports the disagreement, and a valid
+  estimand that the exposure type does not support still reports that.
+
+* `ipw()` and `psw()` now require the estimand to be a single string. Membership
+  was tested with `%in%`, which reads its left side through `as.character()`, so
+  a value of another type matched the name it prints as and carried on in its
+  own type: `estimand = list("ate")`, which is what single-bracket indexing of an
+  options list returns, reached the weighted means as a list and stopped there in
+  base R's terms, and `estimand = factor("att")` reached the tilt, which selects
+  a branch with `switch()` and reads a factor as its integer level code, so a
+  fit could complete under an estimand nobody asked for with nothing but base R's
+  note about the coercion to say so. `psw()` reports the type with an error of
+  class `propensity_estimand_type_error`; `ipw()` reports it with
+  `propensity_ipw_estimand_error`, whichever of the two sources it came from.
+
+* `ipw()` now warns whenever a fit reports standard errors that collapsed to
+  essentially zero, with a warning of class
+  `propensity_ipw_degenerate_se_warning` naming the affected effects. This was
+  reported only where the solver had also said it could not pin the solution
+  down, so a fit whose numbers came back cleanly and were still a false
+  certainty said nothing: an outcome that does not vary within an exposure arm
+  returned its contrast with a standard error of 1e-17, a p-value of zero, and
+  an interval of no width. What is reported is a standard error of exactly zero,
+  or one so small beside the estimate that the test statistic the two make is
+  larger than double precision can carry any information at; the units the
+  outcome is measured in do not enter, so a healthy fit of an outcome recorded
+  on a scale a thousand million times finer is not reported. Both standard error
+  methods now report it, once per fit. The estimates are unchanged and stay in
+  the output.
+
+* Two errors about exposures that are not binary, one per standard error method,
+  now carry the `propensity_ipw_exposure_error` class the other exposure guards
+  use; the mismatched-length and estimand errors from `ipw()` now carry
+  `propensity_length_error` and `propensity_ipw_estimand_error`. All four
+  previously arrived as the bare `propensity_error` every condition in the
+  package shares and could not be caught apart from one another.
+
 * `ipw()` now rejects a propensity score model or an outcome model whose design
   has columns the fit could not tell apart, with an error of class
   `propensity_ipw_rank_error` naming the model and the columns it has no

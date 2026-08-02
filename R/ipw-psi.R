@@ -41,11 +41,17 @@ ipw_inv_link <- function(link, call = rlang::caller_env()) {
 
 # ---- weight registry --------------------------------------------------------
 
+# Every estimand `ipw()` knows a weight for. Which of them a particular fit
+# supports is narrower and depends on the exposure type, which `ipw_weight_fn()`
+# resolves below; this is the set an estimand has to belong to before that
+# question is worth asking, and `check_estimand()` reads it for that.
+ipw_estimands <- c("ate", "att", "atu", "atm", "ato", "entropy")
+
 ipw_weight_fn <- function(exposure_type, estimand, call = rlang::caller_env()) {
   supported <- switch(
     exposure_type,
-    binary = c("ate", "att", "atu", "atm", "ato", "entropy"),
-    categorical = c("ate", "att", "atu", "atm", "ato", "entropy"),
+    binary = ipw_estimands,
+    categorical = ipw_estimands,
     continuous = "ate",
     abort(
       "Unsupported exposure type {.val {exposure_type}}.",

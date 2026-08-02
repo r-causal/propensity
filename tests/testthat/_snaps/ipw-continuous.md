@@ -38,3 +38,13 @@
       x A continuous propensity score model has no link for `ps_link` to override.
       i Omit `ps_link`; it applies only to a binomial glm propensity score model.
 
+# the transformed continuous propensity response error reads in the user's terms
+
+    Code
+      ipw(ps_mod, outcome_mod, .data = dat)
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` does not support a transformed response in the propensity score model.
+      x `wt_mod` reads the exposure through `log(Apos)`, an expression rather than a single column.
+      i Fit `wt_mod` with the exposure itself as the response, adding it to the data as its own column first if it has to be computed.
+

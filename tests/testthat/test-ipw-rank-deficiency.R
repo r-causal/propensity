@@ -705,24 +705,121 @@ test_that("the collapsed standard error report reads in the user's terms", {
   expect_snapshot(ipw(mods$ps_mod, mods$out, se_method = "mestimation"))
 })
 
-# The margin the threshold rests on. A healthy fit's standard errors sit within
-# an order of magnitude or two of the estimates they accompany, and the
-# threshold is the square root of machine epsilon against that same scale, so
-# the two are separated by about seven orders of magnitude. Measured across the
-# exposure types and both standard error paths, since the threshold is shared.
+# ---- a healthy fit of an outcome measured in small units --------------------
+#
+# The signature was an absolute floor on the standard error, the square root of
+# machine epsilon against `pmax(1, abs(estimate))`, which is no floor at all
+# once the estimate is smaller than one: a healthy weighted fit of an outcome in
+# nanomolar units reports an estimate of 6e-10 and a standard error of 1e-10,
+# and was told that its standard error sat many orders of magnitude below the
+# scale of the estimate, of which every clause was false. The test statistic the
+# two make is the same 6 whatever the units, and it is what the signature reads.
 
-degenerate_se_margin <- function(res) {
+small_scale_outcome_fit <- function() {
+  dat <- rank_data()
+  # the same gaussian outcome, rescaled to units a thousand million times finer
+  dat$yc_nm <- dat$yc * 1e-9
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- rank_weights(ps_mod)
+  out <- lm(yc_nm ~ z, data = dat, weights = wts)
+  list(ps_mod = ps_mod, out = out, dat = dat)
+}
+
+test_that("a healthy fit of a small-unit outcome reports no collapse", {
+  skip_if_not_installed("deli")
+  mods <- small_scale_outcome_fit()
+
+  for (se in c("mestimation", "linearization")) {
+    expect_no_warning(ipw(mods$ps_mod, mods$out, se_method = se))
+  }
+})
+
+test_that("a small-unit outcome keeps an informative test statistic", {
+  skip_if_not_installed("deli")
+  mods <- small_scale_outcome_fit()
+  est <- as.data.frame(ipw(mods$ps_mod, mods$out, se_method = "mestimation"))
+
+  # the fit the report would have to be about: every number in the table near
+  # machine precision, and an interval that excludes zero
+  expect_lt(abs(est$estimate), 1e-8)
+  expect_lt(est$std.err, 1e-8)
+  expect_gt(abs(est$z), 3)
+  expect_gt(est$ci.lower, 0)
+})
+
+# ---- a standard error of exactly zero ---------------------------------------
+
+test_that("a standard error of exactly zero is reported whatever the estimate", {
+  skip_if_not_installed("deli")
+  dat <- rank_data()
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- rank_weights(ps_mod)
+  # an outcome that is constant at zero everywhere, so the contrast and its
+  # standard error are both exactly zero and their ratio says nothing
+  dat$yzero <- 0
+  out <- lm(yzero ~ z, data = dat, weights = wts)
+
+  for (se in c("mestimation", "linearization")) {
+    w <- expect_warning(
+      ipw(ps_mod, out, se_method = se),
+      class = "propensity_ipw_degenerate_se_warning"
+    )
+    expect_match(rank_msg(w), "diff", fixed = TRUE)
+  }
+})
+
+test_that("the degenerate signature reads the test statistic, not the scale", {
+  threshold <- 1 / sqrt(.Machine$double.eps)
+
+  # a standard error of exactly zero, whatever the estimate beside it
+  expect_true(ipw_degenerate_se(1, 0))
+  expect_true(ipw_degenerate_se(0, 0))
+  # an estimate of exactly zero beside an honest standard error is a null
+  # result, not a collapse
+  expect_false(ipw_degenerate_se(0, 0.05))
+  expect_false(ipw_degenerate_se(0, 1e-30))
+  # the scale of the pair does not enter
+  expect_false(ipw_degenerate_se(6.1e-10, 1.01e-10))
+  expect_false(ipw_degenerate_se(6.1e10, 1.01e10))
+  # either side of the threshold
+  expect_false(ipw_degenerate_se(1, 2 / threshold))
+  expect_true(ipw_degenerate_se(1, 1 / (2 * threshold)))
+  # a standard error that is not reported at all
+  expect_false(ipw_degenerate_se(1, NA_real_))
+  expect_false(ipw_degenerate_se(NA_real_, 1e-40))
+  # vectorized over the rows of an estimates table
+  expect_identical(
+    ipw_degenerate_se(c(1, 1, 0), c(0.5, 1e-30, 0)),
+    c(FALSE, TRUE, TRUE)
+  )
+})
+
+# The margin the threshold rests on. A healthy fit reports an estimate and a
+# standard error of the same order whatever the units the outcome is measured
+# in, so its test statistic is an ordinary one; a degenerate fit reports a
+# standard error many orders below its estimate. Measured across the exposure
+# types and both standard error paths, since the threshold is shared, and
+# including outcomes rescaled to units where every number in the table sits near
+# machine precision.
+
+degenerate_se_z <- function(res) {
   est <- as.data.frame(res)
-  min(est$std.err / pmax(1, abs(est$estimate)))
+  max(abs(est$estimate) / est$std.err)
+}
+
+degenerate_se_min_z <- function(res) {
+  est <- as.data.frame(res)
+  min(abs(est$estimate) / est$std.err)
 }
 
 test_that("healthy fits clear the degenerate-standard-error threshold by orders", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
-  threshold <- sqrt(.Machine$double.eps)
+  threshold <- 1 / sqrt(.Machine$double.eps)
   fits <- list()
 
   dat <- rank_data()
+  dat$yc_nm <- dat$yc * 1e-9
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
   binary_outcome <- rank_outcome(y ~ z, dat, wts)
@@ -732,6 +829,13 @@ test_that("healthy fits clear the degenerate-standard-error threshold by orders"
     lm(yc ~ z, data = dat, weights = wts)
   )
   fits$binary_lin <- ipw(ps_mod, binary_outcome, se_method = "linearization")
+  small_outcome <- lm(yc_nm ~ z, data = dat, weights = wts)
+  fits$binary_small_mest <- ipw(ps_mod, small_outcome)
+  fits$binary_small_lin <- ipw(
+    ps_mod,
+    small_outcome,
+    se_method = "linearization"
+  )
 
   dat$g <- factor(
     ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
@@ -745,6 +849,10 @@ test_that("healthy fits clear the degenerate-standard-error threshold by orders"
     wt_ate(ps, dat$g, exposure_type = "categorical")
   )
   fits$categorical_mest <- ipw(ps_cat, rank_outcome(y ~ g, dat, wts))
+  fits$categorical_small <- ipw(
+    ps_cat,
+    lm(yc_nm ~ g, data = dat, weights = wts)
+  )
 
   withr::local_seed(12)
   dat$a <- 0.5 + 0.8 * dat$x1 - 0.4 * dat$x2 + rnorm(nrow(dat))
@@ -756,7 +864,39 @@ test_that("healthy fits clear the degenerate-standard-error threshold by orders"
     stabilize = TRUE
   )
   fits$continuous_mest <- ipw(ps_cont, lm(yc ~ a, data = dat, weights = wts))
+  fits$continuous_small <- ipw(
+    ps_cont,
+    lm(yc_nm ~ a, data = dat, weights = wts)
+  )
 
-  margins <- vapply(fits, degenerate_se_margin, numeric(1))
-  expect_true(all(margins > 1e6 * threshold))
+  statistics <- vapply(fits, degenerate_se_z, numeric(1))
+  expect_true(all(statistics < threshold / 1e6))
+})
+
+test_that("degenerate fits clear the threshold by orders in the other direction", {
+  skip_if_not_installed("deli")
+  threshold <- 1 / sqrt(.Machine$double.eps)
+  fits <- list()
+
+  mods <- constant_outcome_fit()
+  fits$constant_mest <- suppressWarnings(ipw(
+    mods$ps_mod,
+    mods$out,
+    se_method = "mestimation"
+  ))
+  fits$constant_lin <- suppressWarnings(ipw(
+    mods$ps_mod,
+    mods$out,
+    se_method = "linearization"
+  ))
+
+  unsolved <- zero_event_fit()
+  fits$zero_event <- suppressWarnings(ipw(
+    unsolved$ps_mod,
+    unsolved$out,
+    se_method = "mestimation"
+  ))
+
+  statistics <- vapply(fits, degenerate_se_min_z, numeric(1))
+  expect_true(all(statistics > 1e6 * threshold))
 })

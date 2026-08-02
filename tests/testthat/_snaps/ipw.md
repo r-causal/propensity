@@ -88,7 +88,7 @@
 
     Code
       expr
-    Condition <propensity_error>
+    Condition <propensity_ipw_estimand_error>
       Error in `ipw()`:
       ! Can't determine the estimand from weights.
       i Please specify `estimand`.
@@ -97,7 +97,7 @@
 
     Code
       expr
-    Condition <propensity_error>
+    Condition <propensity_ipw_estimand_error>
       Error in `ipw()`:
       ! Estimand in weights different from `estimand`: "ate" vs. "att"
 
@@ -105,7 +105,7 @@
 
     Code
       expr
-    Condition <propensity_error>
+    Condition <propensity_length_error>
       Error in `ipw()`:
       ! `exposure` and `outcome` must be the same length.
       x `exposure` is length 400
@@ -121,7 +121,6 @@
       x `outcome_mod` reads "z" through the term `I(z^2)`.
       x Without `.data` the designs come from `outcome_mod`'s own model frame, which holds `I(z^2)` at the values it was fit on, so the counterfactual value `ipw()` sets never reaches it and the term contributes its fitted values to every level's design.
       i Supply `.data`, which recomputes `I(z^2)` at each value `ipw()` sets, or refit `outcome_mod` on the plain "z" column.
-      i An interaction written with `*` or `:` is formed from the frame's own columns and is rebuilt on either route, so it needs no `.data`.
 
 # the cannot-determine-estimand error is attributed to ipw()
 
@@ -131,4 +130,15 @@
       Error in `ipw()`:
       ! Can't determine the estimand from weights.
       i Please specify `estimand`.
+
+# the unknown-estimand report names the weights as the source
+
+    Code
+      ipw(fx$ps_mod, fx$outcome_banana, .data = fx$dat)
+    Condition
+      Error in `ipw()`:
+      ! The weights supplied to `outcome_mod` record an estimand `ipw()` does not know.
+      x Their estimand is "banana".
+      i Valid estimands: "ate", "att", "atu", "atm", "ato", and "entropy".
+      i Rebuild the weights with a weight function such as `wt_ate()`, or record one of those estimands in `psw()`.
 

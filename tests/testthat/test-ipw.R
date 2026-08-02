@@ -633,6 +633,11 @@ test_that("ipw() glm accepts every argument supplied by name under linearization
 # only one of them was real; with plain numeric weights nothing compared it at
 # all and it reached the weighted means, where base R reported that `x` and `w`
 # had different lengths.
+#
+# The estimand the weights themselves record is the other source and was checked
+# against nothing at all. `psw()` is exported and records the estimand it is
+# given, so weights built by hand carry whatever string they were built with
+# straight past the argument check and into the same base R report.
 
 estimand_fixture <- function() {
   set.seed(2024)
@@ -661,11 +666,20 @@ estimand_fixture <- function() {
     family = quasibinomial(),
     weights = plain_wts
   )
+  # weights whose recorded estimand is not one at all, which `psw()` accepts
+  banana_wts <- psw(as.numeric(wts), estimand = "banana")
+  outcome_banana <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = banana_wts
+  )
   list(
     dat = dat,
     ps_mod = ps_mod,
     outcome_psw = outcome_psw,
-    outcome_plain = outcome_plain
+    outcome_plain = outcome_plain,
+    outcome_banana = outcome_banana
   )
 }
 
@@ -707,6 +721,122 @@ test_that("an unknown estimand is rejected when the weights record none", {
   }
 })
 
+test_that("weights recording an unknown estimand are rejected on both paths", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+
+  for (se in c("mestimation", "linearization")) {
+    err <- expect_error(
+      ipw(fx$ps_mod, fx$outcome_banana, .data = fx$dat, se_method = se),
+      class = "propensity_ipw_estimand_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, "banana", fixed = TRUE)
+    expect_match(msg, "\"entropy\"", fixed = TRUE)
+    # neither of the two reports this route used to reach: base R's, from the
+    # weighted means the unmatched tilt returned nothing to, and the redirect
+    # to the other standard error method, which named the value as an estimand
+    # that method supports
+    expect_false(grepl("must have the same length", msg, fixed = TRUE))
+    expect_false(grepl("mestimation", msg, fixed = TRUE))
+  }
+})
+
+test_that("the unknown-estimand report names the weights as the source", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+
+  expect_snapshot(
+    error = TRUE,
+    ipw(fx$ps_mod, fx$outcome_banana, .data = fx$dat)
+  )
+})
+
+# Membership is a set of names, and `%in%` reads its left side through
+# `as.character()`, so a value of another type matched the name it prints as and
+# passed. `list("ate")`, which is what single-bracket indexing of an options list
+# returns, then reached the marginal means as a list and died in base R's terms;
+# `factor("att")` reached the tilt, which is a `switch()`, where a factor is its
+# integer level code, so a branch was selected by position, base R noted the
+# coercion four times, and the fit either completed under an estimand nobody
+# asked for or was reported as a weights mismatch.
+
+test_that("an estimand argument of the wrong type is rejected on both paths", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+  wrong_type <- list(list("ate"), factor("att"), factor("ate"))
+
+  for (se in c("mestimation", "linearization")) {
+    for (estimand in wrong_type) {
+      err <- expect_error(
+        ipw(
+          fx$ps_mod,
+          fx$outcome_plain,
+          .data = fx$dat,
+          estimand = estimand,
+          se_method = se
+        ),
+        class = "propensity_ipw_estimand_error"
+      )
+      msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+      expect_match(msg, "single string", fixed = TRUE)
+      expect_false(grepl("must have the same length", msg, fixed = TRUE))
+    }
+  }
+})
+
+test_that("an estimand argument of the wrong type leaks no base conditions", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+
+  # `factor("ate")` spells an estimand that exists, so it passed membership and
+  # ran to completion, reporting nothing but base R's note about the coercion
+  for (se in c("mestimation", "linearization")) {
+    seen <- character()
+    withCallingHandlers(
+      expect_error(
+        ipw(
+          fx$ps_mod,
+          fx$outcome_plain,
+          .data = fx$dat,
+          estimand = factor("ate"),
+          se_method = se
+        ),
+        class = "propensity_ipw_estimand_error"
+      ),
+      warning = function(w) {
+        seen <<- c(seen, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    expect_identical(seen, character())
+  }
+})
+
+test_that("weights recording an estimand of the wrong type are rejected", {
+  skip_if_not_installed("deli")
+  fx <- estimand_fixture()
+  # `psw()` rejects this at construction, so the attribute is set past it: the
+  # weights-side check is what stands between a psw built some other way and the
+  # tilt
+  wts <- psw(as.numeric(fx$dat$plain_wts), estimand = "ate")
+  attr(wts, "estimand") <- factor("att")
+  outcome_mod <- glm(
+    y ~ z,
+    data = fx$dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+
+  err <- expect_error(
+    ipw(fx$ps_mod, outcome_mod, .data = fx$dat),
+    class = "propensity_ipw_estimand_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "Their estimand has class", fixed = TRUE)
+  expect_match(msg, "single string", fixed = TRUE)
+})
+
 # A small continuous fixture, local to this file.
 sim_continuous_estimand <- function() {
   set.seed(2024)
@@ -735,6 +865,70 @@ test_that("an unknown estimand is rejected on the continuous path", {
   expect_error(
     ipw(ps_mod, outcome_mod, estimand = "banana"),
     class = "propensity_ipw_estimand_error"
+  )
+})
+
+test_that("the continuous path reports an unknown estimand as unknown", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_estimand()
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(ps_mod)),
+      dat$A,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  )
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_mod, estimand = "banana"),
+    class = "propensity_ipw_estimand_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "must name an estimand", fixed = TRUE)
+  # the ate-only restriction read as though the value were an estimand that
+  # some other exposure type supports
+  expect_false(grepl("not available for a continuous", msg, fixed = TRUE))
+
+  # a real estimand this exposure type does not support still reads that way
+  att <- expect_error(
+    ipw(ps_mod, outcome_mod, estimand = "att"),
+    class = "propensity_ipw_estimand_error"
+  )
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(att)),
+    "not available for a continuous",
+    fixed = TRUE
+  )
+})
+
+test_that("weights recording an unknown estimand are rejected on the continuous path", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_estimand()
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(ps_mod)),
+      dat$A,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  )
+  banana_wts <- psw(as.numeric(wts), estimand = "banana")
+  outcome_mod <- lm(yc ~ A, data = dat, weights = banana_wts)
+
+  err <- expect_error(
+    ipw(ps_mod, outcome_mod),
+    class = "propensity_ipw_estimand_error"
+  )
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(err)),
+    "banana",
+    fixed = TRUE
   )
 })
 

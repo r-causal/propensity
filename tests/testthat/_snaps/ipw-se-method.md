@@ -69,8 +69,8 @@
     Condition
       Error in `ipw()`:
       ! `ipw()` does not support a matrix response in the propensity score model.
-      x `wt_mod` has a matrix response, such as `cbind(successes, failures)`; a binary exposure must be a single-column response.
-      i Fit `wt_mod` with a single binary response column.
+      x `wt_mod` has a matrix response, such as `cbind(successes, failures)`; the exposure must be a single-column response.
+      i Fit `wt_mod` with the exposure itself as the response, adding it to the data as its own column first if it has to be computed.
 
 # the matrix-response outcome model error names the outcome model
 
@@ -112,4 +112,24 @@
       x Putting the fitted linear predictors through the link's inverse gives a probability of exactly 0 or 1 for 389 observations, whose weights are then undefined.
       i This is usually separation: some covariate pattern predicts the exposure without error, so the fit has no finite maximum likelihood estimate. An extreme covariate pattern can saturate the scores even where the estimate is finite.
       i Check overlap in `wt_mod` rather than the weights. Dropping or combining the covariate that separates, or penalizing the fit, gives a model with finite coefficients.
+
+# the call-form propensity response error reads in the user's terms
+
+    Code
+      ipw(m$ps_mod, m$outcome_mod, .data = m$dat)
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` does not support a transformed response in the propensity score model.
+      x `wt_mod` reads the exposure through `factor(z)`, an expression rather than a single column.
+      i Fit `wt_mod` with the exposure itself as the response, adding it to the data as its own column first if it has to be computed.
+
+# the intercept-only outcome rejection reads in the user's terms
+
+    Code
+      ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+    Condition
+      Error in `ipw()`:
+      ! `ipw()` supports "linearization" standard errors only for an outcome model of the exposure alone.
+      x `outcome_mod` does not include the exposure "z".
+      i Use `se_method = "mestimation"` for a covariate-adjusted outcome model.
 

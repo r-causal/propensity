@@ -19,7 +19,12 @@
 #' @param wt_mod The weighting object: a fitted propensity score model that
 #'   produced the weights, typically a logistic regression of class
 #'   [stats::glm()] with the exposure as the left-hand side of the formula.
-#'   `ipw()` is an S3 generic that dispatches on this object.
+#'   `ipw()` is an S3 generic that dispatches on this object. The left-hand side
+#'   must be the exposure column itself, for every exposure type: a matrix
+#'   response such as `cbind(successes, failures)` and a transformed response
+#'   such as `log(a)` or `factor(z)` both error, because `ipw()` reads the
+#'   exposure's name from that expression. Compute a transformed exposure into
+#'   its own column and fit `wt_mod` on that column.
 #' @param outcome_mod A fitted weighted outcome model of class [stats::glm()]
 #'   or [stats::lm()], with the outcome as the dependent variable and
 #'   propensity score weights supplied via the `weights` argument. The weights
@@ -546,11 +551,14 @@ ipw.glm <- function(
   check_ipw_ps_saturation(wt_mod, .data = .data)
 
   if (!identical(length(exposure), length(outcome))) {
-    abort(c(
-      "{.arg exposure} and {.arg outcome} must be the same length.",
-      x = "{.arg exposure} is length {length(exposure)}",
-      x = "{.arg outcome} is length {length(outcome)}"
-    ))
+    abort(
+      c(
+        "{.arg exposure} and {.arg outcome} must be the same length.",
+        x = "{.arg exposure} is length {length(exposure)}",
+        x = "{.arg outcome} is length {length(outcome)}"
+      ),
+      error_class = "propensity_length_error"
+    )
   }
 
   estimand <- check_estimand(wts, estimand)
@@ -639,6 +647,13 @@ ipw.glm <- function(
     conf_level = conf_level
   )
 
+  # The same collapse the M-estimation path reports, from the seam this path
+  # finishes its estimates at. A degenerate fit is a property of the data and
+  # the models rather than of how the variance was computed, and this path
+  # produces the same shape: an outcome constant within each exposure arm
+  # returns its contrast with an interval of no width.
+  warn_ipw_degenerate_se(estimates)
+
   new_ipw(
     estimand = estimand,
     wt_mod = wt_mod,
@@ -663,6 +678,11 @@ ipw_continuous_estimate <- function(
   se_method = "mestimation",
   call = rlang::caller_env()
 ) {
+  # Before the class guard below, which reports a matrix-response fit as the
+  # `mlm` its class vector says it is and sends the user to refit with the
+  # `lm()` they already used. The response guard names the response instead.
+  check_ipw_ps_response(wt_mod, call = call)
+
   # The stacked system carries an ordinary least-squares score block for the
   # propensity model and rebuilds its design from the model formula, so only a
   # plain lm or a gaussian glm is safe here. A subclass whose coefficients are
@@ -938,14 +958,29 @@ check_ipw_ps_link_absent <- function(
   invisible(TRUE)
 }
 
-# Reject a propensity score model with a matrix response. A binary exposure must
-# be a single-column response; a cbind(successes, failures) binomial response is
-# not one, and its two columns otherwise surface obliquely and inconsistently
-# across the SE paths (as case weights on the mestimation path, and as a mangled
-# multi-element exposure name on the linearization path). Detect it two ways: the
-# model frame's response is a matrix, and, as a frame-independent fallback for a
-# model fit without a stored frame, the formula's left-hand side is not a single
-# symbol. Shared by ipw.glm entry and ipw_spec_binary.
+# Require the propensity score model's response to be the exposure column
+# itself. Everything downstream names the exposure by deparsing that left-hand
+# side, so a left-hand side that is not a single symbol yields a vector of names
+# and is then indexed as though it were one. Two shapes do this and the guard
+# rejects both: a matrix response, `cbind(successes, failures)`, which is not one
+# exposure at all, and a transformed or otherwise call-form response, `log(a)` or
+# `factor(z)`, which is one column but not one the data holds under that name.
+#
+# The matrix case is detected two ways: the model frame's response is a matrix,
+# and, as a frame-independent fallback for a model fit without a stored frame,
+# the left-hand side deparses to more than one element. Which of the two shapes
+# a rejected model has is read from the frame where there is one and from the
+# left-hand side where there is not, since a model fit with `model = FALSE`
+# whose data are gone can still be seen to write `cbind()`. Any other way of
+# building a matrix response, a variable that already holds one for instance,
+# reads as call-form once the frame is unavailable. The call-form case is what
+# remains once neither says matrix.
+#
+# Shared by the ipw.glm entry, ipw_spec_binary, and the continuous route, whose
+# lm and gaussian glm propensity models share fitted values and therefore have to
+# reject the same shapes with the same message. Left unguarded, the continuous
+# route died on an internal length assertion about `.exposure_name` without
+# `.data` and asked for a column named after the transforming function with it.
 #
 # The error class says what is wrong with the model rather than which model it
 # is: `propensity_ipw_response_error` belongs to this guard and to the outcome
@@ -956,28 +991,49 @@ check_ipw_ps_link_absent <- function(
 # levels are ordered against the propensity model's, the counterfactual design
 # guards, and an exposure value the propensity model never saw.
 check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
+  lhs <- formula(ps_mod)[[2]]
   lhs_not_single <- length(fmla_extract_left_chr(ps_mod)) != 1L
-  response_is_matrix <- tryCatch(
+  frame_response_is_matrix <- tryCatch(
     is.matrix(stats::model.response(stats::model.frame(ps_mod))),
     error = function(e) FALSE
   )
+  response_is_matrix <- frame_response_is_matrix ||
+    (is.call(lhs) && identical(lhs[[1]], quote(cbind)))
 
-  if (lhs_not_single || response_is_matrix) {
-    abort(
-      c(
-        "{.fun ipw} does not support a matrix response in the propensity score \\
-        model.",
-        x = "{.arg wt_mod} has a matrix response, such as \\
-        {.code cbind(successes, failures)}; a binary exposure must be a \\
-        single-column response.",
-        i = "Fit {.arg wt_mod} with a single binary response column."
-      ),
-      error_class = "propensity_ipw_response_error",
-      call = call
+  if (!lhs_not_single && !response_is_matrix) {
+    return(invisible(TRUE))
+  }
+
+  # A matrix response and a call-form response are different mistakes, and the
+  # cbind wording sent the writer of `factor(z) ~ x` looking for a matrix they
+  # never wrote.
+  problem <- if (response_is_matrix) {
+    c(
+      "{.fun ipw} does not support a matrix response in the propensity score \\
+      model.",
+      x = "{.arg wt_mod} has a matrix response, such as \\
+      {.code cbind(successes, failures)}; the exposure must be a \\
+      single-column response."
+    )
+  } else {
+    lhs_text <- deparse1(lhs)
+    c(
+      "{.fun ipw} does not support a transformed response in the propensity \\
+      score model.",
+      x = "{.arg wt_mod} reads the exposure through {.code {lhs_text}}, an \\
+      expression rather than a single column."
     )
   }
 
-  invisible(TRUE)
+  abort(
+    c(
+      problem,
+      i = "Fit {.arg wt_mod} with the exposure itself as the response, adding \\
+      it to the data as its own column first if it has to be computed."
+    ),
+    error_class = "propensity_ipw_response_error",
+    call = call
+  )
 }
 
 # Reject an outcome model with a matrix response, the counterpart of the guard
@@ -1348,6 +1404,23 @@ abort_ipw_exposure_rebuild <- function(
       {.arg outcome_mod} on the plain {.val {exposure_name}} column."
     )
   } else {
+    # The note about `*` and `:` is for a term that mixes the exposure with
+    # something else, `I(z * x1)`, which is an interaction written the long way
+    # and has a short way that needs no `.data`. Beside a term of the exposure
+    # alone, `I(z^2)`, there is no interaction to write either way, and the note
+    # left the reader looking for one they had not written.
+    covariates <- setdiff(ipw_term_vars(term), exposure_name)
+
+    interaction_hint <- if (length(covariates) > 0) {
+      c(
+        i = "An interaction written with {.code *} or {.code :} is formed from \\
+        the frame's own columns and is rebuilt on either route, so it needs no \\
+        {.arg .data}."
+      )
+    } else {
+      NULL
+    }
+
     c(
       x = "Without {.arg .data} the designs come from {.arg outcome_mod}'s own \\
       model frame, which holds {.code {term}} at the values it was fit on, so \\
@@ -1356,9 +1429,7 @@ abort_ipw_exposure_rebuild <- function(
       i = "Supply {.arg .data}, which recomputes {.code {term}} at each value \\
       {.fun ipw} sets, or refit {.arg outcome_mod} on the plain \\
       {.val {exposure_name}} column.",
-      i = "An interaction written with {.code *} or {.code :} is formed from \\
-      the frame's own columns and is rebuilt on either route, so it needs no \\
-      {.arg .data}."
+      interaction_hint
     )
   }
 
@@ -1375,12 +1446,22 @@ abort_ipw_exposure_rebuild <- function(
   )
 }
 
+# The variables a deparsed model term reads. A term that does not parse reads
+# none this can name.
+ipw_term_vars <- function(term) {
+  parsed <- tryCatch(str2lang(term), error = function(e) NULL)
+
+  if (is.null(parsed)) {
+    return(character(0))
+  }
+
+  all.vars(parsed)
+}
+
 # Whether a `dataClasses` name, which is a deparsed model variable, reads the
 # exposure. A name that does not parse is not a term this can judge.
 ipw_term_reads <- function(term, exposure_name) {
-  parsed <- tryCatch(str2lang(term), error = function(e) NULL)
-
-  !is.null(parsed) && exposure_name %in% all.vars(parsed)
+  exposure_name %in% ipw_term_vars(term)
 }
 
 # Require both models to order the exposure's levels the same way. The
@@ -1591,12 +1672,30 @@ check_ipw_linearization_outcome <- function(
   term_labels <- attr(outcome_terms, "term.labels")
 
   if (!identical(term_labels, exposure_name)) {
+    # Two opposite models reach this guard: one that carries the exposure and
+    # more, and one that carries the exposure not at all. `y ~ 1` has no terms
+    # whatever, so reporting it as adjusted described a model the user did not
+    # fit. A term that reads the exposure without being it, `I(z^2)` say, is
+    # adjusted for the purposes of this path, since the influence functions are
+    # derived for the bare exposure alone.
+    reads_exposure <- vapply(
+      term_labels,
+      ipw_term_reads,
+      logical(1),
+      exposure_name = exposure_name
+    )
+
+    problem <- if (any(reads_exposure)) {
+      "{.arg outcome_mod} is adjusted for terms beyond {.val {exposure_name}}."
+    } else {
+      "{.arg outcome_mod} does not include the exposure {.val {exposure_name}}."
+    }
+
     abort(
       c(
         "{.fun ipw} supports {.val linearization} standard errors only for an \\
         outcome model of the exposure alone.",
-        x = "{.arg outcome_mod} is adjusted for terms beyond \\
-        {.val {exposure_name}}.",
+        x = problem,
         i = "Use {.code se_method = \"mestimation\"} for a covariate-adjusted \\
         outcome model."
       ),
@@ -1926,6 +2025,7 @@ estimate_marginal_means <- function(
         x = "There are {length(exposure_values)} unique value{?s} of the \\
         exposure."
       ),
+      error_class = "propensity_ipw_exposure_error",
       call = call
     )
   }
@@ -2130,11 +2230,25 @@ ipw_recode_binary_exposure <- function(exposure) {
 }
 
 check_estimand <- function(wts, estimand, call = rlang::caller_env()) {
+  # Membership before the comparison below, and for both sources, so that the
+  # value this returns is always one `ipw()` has a weight and a tilt for. A value
+  # that names no estimand at all was reported by whatever noticed it first, and
+  # no report said so: an argument checked against weights that record an
+  # estimand came back as a disagreement between two estimands when only one of
+  # them exists, and one checked against plain numeric weights was not compared
+  # at all and reached the weighted means, where base R reported that `x` and `w`
+  # had different lengths. An estimand read off the weights was checked against
+  # nothing whatever, since `psw()` records the estimand it is given, so the same
+  # base R report came back from a hand-built `psw()`.
+  check_estimand_known(estimand, from_weights = FALSE, call = call)
+
   if (is_causal_wt(wts)) {
     estimand_from_weights <- estimand(wts)
   } else {
     estimand_from_weights <- NULL
   }
+
+  check_estimand_known(estimand_from_weights, from_weights = TRUE, call = call)
 
   if (!is.null(estimand_from_weights) && !is.null(estimand)) {
     same_estimand <- identical(estimand_from_weights, estimand)
@@ -2144,6 +2258,7 @@ check_estimand <- function(wts, estimand, call = rlang::caller_env()) {
       abort(
         "Estimand in weights different from {.arg estimand}: \\
         {.val { .estimand_from_weights}} vs. {.val { .estimand}}",
+        error_class = "propensity_ipw_estimand_error",
         call = call
       )
     } else {
@@ -2157,6 +2272,7 @@ check_estimand <- function(wts, estimand, call = rlang::caller_env()) {
         "Can't determine the estimand from weights.",
         i = "Please specify {.arg estimand}."
       ),
+      error_class = "propensity_ipw_estimand_error",
       call = call
     )
   }
@@ -2166,6 +2282,75 @@ check_estimand <- function(wts, estimand, call = rlang::caller_env()) {
   } else {
     return(estimand)
   }
+}
+
+# Membership in the set of estimands `ipw()` knows a weight for, reported
+# against the source the value came from. The two sources are different
+# mistakes: an `estimand` argument is a typo the caller can correct in place,
+# while an estimand recorded in the weights is a property of an object built
+# earlier and is corrected where that object is built. `NULL` is not a failure
+# here; it means the source is silent and the other one is asked.
+check_estimand_known <- function(
+  estimand,
+  from_weights,
+  call = rlang::caller_env()
+) {
+  if (is.null(estimand)) {
+    return(invisible(TRUE))
+  }
+
+  # The type before the membership. `%in%` reads its left side through
+  # `as.character()`, so a value that is not a string matches the name it prints
+  # as and travels on in its own type: `list("ate")` reached the marginal means
+  # as a list, where base R reported that `x` and `w` had different lengths, and
+  # `factor("att")` reached the tilt, which is a `switch()` and reads a factor as
+  # its integer level code, selecting a branch by position and returning some
+  # other estimand's weights with only base R's note about the coercion to say
+  # so. A value of the wrong type is reported as one, since a list holding
+  # "ate" spells an estimand that exists and being told it is not one of them
+  # would be false.
+  spelled <- is.character(estimand) && length(estimand) == 1L
+
+  if (spelled && estimand %in% ipw_estimands) {
+    return(invisible(TRUE))
+  }
+
+  problem <- if (from_weights) {
+    found <- if (spelled) {
+      "Their estimand is {.val {estimand}}."
+    } else {
+      "Their estimand has class {.cls {class(estimand)}} and length \\
+      {length(estimand)}; an estimand is a single string."
+    }
+
+    c(
+      "The weights supplied to {.arg outcome_mod} record an estimand \\
+      {.fun ipw} does not know.",
+      x = found,
+      i = "Valid estimands: {.val {ipw_estimands}}.",
+      i = "Rebuild the weights with a weight function such as {.fun wt_ate}, \\
+      or record one of those estimands in {.fun psw}."
+    )
+  } else {
+    found <- if (spelled) {
+      "{.val {estimand}} is not one of them."
+    } else {
+      "{.arg estimand} has class {.cls {class(estimand)}} and length \\
+      {length(estimand)}; an estimand is a single string."
+    }
+
+    c(
+      "{.arg estimand} must name an estimand {.fun ipw} knows.",
+      x = found,
+      i = "Valid estimands: {.val {ipw_estimands}}."
+    )
+  }
+
+  abort(
+    problem,
+    error_class = "propensity_ipw_estimand_error",
+    call = call
+  )
 }
 
 check_exposure <- function(.data, .exposure_name, call = rlang::caller_env()) {

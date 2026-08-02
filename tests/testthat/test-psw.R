@@ -1309,6 +1309,48 @@ test_that("a conflict warning is attributed to the operation the caller wrote", 
   )
 })
 
+# ---- validating the estimand ------------------------------------------------
+#
+# The estimand is a name, and everything that reads it back reads it as one. A
+# value of another type was recorded as it was given and compared against sets
+# of names through `as.character()`, which matches the name it prints as, so it
+# passed every check and then arrived at a `switch()` in its own type: a factor
+# is its integer level code there, which selects a branch by position.
+
+test_that("psw() rejects an estimand that is not a single string", {
+  expect_error(
+    psw(c(0.1, 0.2), estimand = list("ate")),
+    class = "propensity_estimand_type_error"
+  )
+  expect_error(
+    psw(c(0.1, 0.2), estimand = factor("ate")),
+    class = "propensity_estimand_type_error"
+  )
+  expect_error(
+    psw(c(0.1, 0.2), estimand = c("ate", "att")),
+    class = "propensity_estimand_type_error"
+  )
+  expect_error(
+    psw(c(0.1, 0.2), estimand = 1),
+    class = "propensity_estimand_type_error"
+  )
+
+  cnd <- expect_error(psw(c(0.1, 0.2), estimand = list("ate")))
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "single string", fixed = TRUE)
+  expect_match(message, "<list>", fixed = TRUE)
+})
+
+test_that("psw() accepts the estimands weights are built with", {
+  for (estimand in ipw_estimands) {
+    expect_identical(estimand(psw(c(0.1, 0.2), estimand = estimand)), estimand)
+  }
+  # the class does not own the set of names, so a name no weight function
+  # produces is still recorded; what reads it decides whether it knows it
+  expect_identical(estimand(psw(c(0.1, 0.2), estimand = "banana")), "banana")
+  expect_null(estimand(psw(c(0.1, 0.2))))
+})
+
 # ---- validating a stabilization score ---------------------------------------
 
 test_that("psw() rejects a stabilization score of the wrong length", {

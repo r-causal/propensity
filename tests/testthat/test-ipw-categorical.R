@@ -874,6 +874,29 @@ test_that("ipw() rejects a focal level that is not an exposure level", {
   )
 })
 
+# ---- guard against an estimand the weights record that is not one ------------
+
+test_that("ipw() rejects weights recording an estimand it does not know", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  # `psw()` records the estimand it is given, so weights built by hand reach the
+  # categorical tilt with a value it has no branch for
+  banana_wts <- psw(as.double(mods$wts), estimand = "banana")
+  outcome_mod <- fit_outcome(dat, banana_wts)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, outcome_mod),
+    class = "propensity_ipw_estimand_error"
+  )
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(err)),
+    "banana",
+    fixed = TRUE
+  )
+})
+
 # ---- outcome-family validation ----------------------------------------------
 
 test_that("ipw_spec_categorical rejects an unsupported outcome family", {

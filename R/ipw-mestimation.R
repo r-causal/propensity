@@ -255,6 +255,7 @@ ipw_spec_binary <- function(
         x = "{.arg exposure} is length {length(exposure)}",
         x = "{.arg outcome} is length {length(outcome)}"
       ),
+      error_class = "propensity_length_error",
       call = call
     )
   }
@@ -297,6 +298,7 @@ ipw_spec_binary <- function(
         x = "There are {length(exposure_values)} unique value{?s} of the \\
         exposure."
       ),
+      error_class = "propensity_ipw_exposure_error",
       call = call
     )
   }
@@ -1371,6 +1373,7 @@ ipw_spec_categorical <- function(
         x = "{.arg exposure} is length {length(exposure)}",
         x = "{.arg outcome} is length {length(outcome)}"
       ),
+      error_class = "propensity_length_error",
       call = call
     )
   }
@@ -1507,6 +1510,7 @@ ipw_spec_continuous <- function(
 ) {
   assert_class(ps_mod, c("glm", "lm"))
   assert_class(outcome_mod, c("glm", "lm"))
+  check_ipw_ps_response(ps_mod, call = call)
   check_ipw_offset(outcome_mod, call = call)
   check_ipw_outcome_response(outcome_mod, call = call)
   check_ipw_outcome_family(outcome_mod, call = call)
@@ -1556,11 +1560,18 @@ ipw_spec_continuous <- function(
         x = "{.arg exposure} is length {length(exposure)}",
         x = "{.arg outcome} is length {length(outcome)}"
       ),
+      error_class = "propensity_length_error",
       call = call
     )
   }
 
   wts <- extract_weights(outcome_mod)
+
+  # Membership first, so that a value naming no estimand at all is reported as
+  # that on this path too. The restriction below says the estimand asked for is
+  # not available here, which of a value that is not an estimand anywhere read
+  # as though it were one and merely unsupported for this exposure type.
+  check_estimand_known(estimand, from_weights = FALSE, call = call)
 
   # A continuous exposure supports only the ate estimand. This guard fires before
   # check_estimand() so an unsupported request errors with its own class rather
@@ -1914,6 +1925,8 @@ ipw_mestimation <- function(
 
   if (solved$unsolved) {
     warn_ipw_unsolved(estimates, call = call)
+  } else {
+    warn_ipw_degenerate_se(estimates, call = call)
   }
 
   list(estimates = estimates, fit = solved$fit)
@@ -1963,15 +1976,87 @@ ipw_solve <- function(m) {
 # A standard error the solve did not really produce. When the estimating
 # equations have no unique root, the sandwich variance along the unidentified
 # direction collapses instead of growing: the zero-events fixture reports a risk
-# difference of 0.66 with a standard error of 1.5e-44, a z of 4.3e+43, a p-value
-# of zero, and an interval of no width. The threshold is the square root of
-# machine epsilon against the estimate's own scale, which those rows clear by
-# thirty orders of magnitude while a healthy fit's standard errors sit within an
-# order of magnitude or two of the estimates they accompany.
+# difference of 0.66 with a standard error of 1.5e-44, a p-value of zero, and an
+# interval of no width.
+#
+# The signature is the size of the test statistic the two make together, which
+# is free of the units the outcome is measured in. A floor on the standard error
+# itself is not: an outcome measured in nanomolar units gives a healthy fit an
+# estimate of 6e-10 and a standard error of 1e-10, and any absolute floor near
+# machine precision reports that fit, whose z is 6, as carrying no information.
+#
+# Measured across the exposure types and both standard error paths, healthy fits
+# reach |z| = 11, including outcomes rescaled by 1e-9; the degenerate fixtures
+# sit between 4.5e16 and 1.8e44. The threshold is the reciprocal of the square
+# root of machine epsilon, about 6.7e7, which the healthy fits clear by nearly
+# seven orders of magnitude and the degenerate ones by nearly nine.
+#
+# A standard error of exactly zero is degenerate whatever the estimate is, and
+# is taken on its own: it is what an outcome that is constant at zero in both
+# arms reports, where the ratio is 0/0 and says nothing. An estimate of exactly
+# zero beside a standard error that is not gives |z| = 0 and is an honest null.
 ipw_degenerate_se <- function(estimate, std.err) {
-  scale <- pmax(1, abs(estimate))
+  reported <- !is.na(estimate) & !is.na(std.err)
 
-  !is.na(std.err) & std.err <= sqrt(.Machine$double.eps) * scale
+  z <- rep(0, length(std.err))
+  scaled <- reported & std.err > 0
+  z[scaled] <- abs(estimate[scaled]) / std.err[scaled]
+
+  (reported & std.err == 0) | z > 1 / sqrt(.Machine$double.eps)
+}
+
+# The rows of an estimates table whose standard errors carry that signature,
+# labeled as the table labels them: a categorical exposure names the effect and
+# the comparison together, and the other exposure types name the effect alone.
+ipw_degenerate_se_rows <- function(estimates) {
+  degenerate <- ipw_degenerate_se(estimates$estimate, estimates$std.err)
+
+  labels <- if (is.null(estimates$comparison)) {
+    estimates$effect
+  } else {
+    paste(estimates$effect, "for", estimates$comparison)
+  }
+
+  labels[degenerate]
+}
+
+# Report standard errors that collapsed on a fit nothing else has anything to
+# say about. The signature was consulted only where the solver had already
+# reported a solve it could not pin down, which left the same collapse silent
+# wherever the numbers came back cleanly: an outcome that does not vary within
+# an exposure arm returns its contrast with an interval of no width and a
+# p-value of zero, and said so on both standard error paths without a word.
+#
+# Raised from the seam each path finishes its estimates at, so it fires once per
+# fit. The M-estimation path raises it only where `warn_ipw_unsolved()` does not,
+# which is the more specific report of the two and already names these rows.
+#
+# The wording is neutral about how the numbers were arrived at, because the
+# linearization path has no solver and no estimating equations to speak of.
+warn_ipw_degenerate_se <- function(estimates, call = rlang::caller_env()) {
+  affected <- ipw_degenerate_se_rows(estimates)
+
+  if (length(affected) == 0) {
+    return(invisible(FALSE))
+  }
+
+  warn(
+    c(
+      "The standard error{?s} reported for {.val {affected}} {?is/are} not \\
+      meaningful.",
+      x = "{cli::qty(affected)}{?It is/They are} zero, or so small beside the \\
+      estimate{?s} {?it accompanies/they accompany} that the test statistic{?s} \\
+      and the interval{?s} built from {?it/them} carry no information.",
+      i = "An exposure group the outcome does not vary within is one cause: \\
+      the contrast is then a fixed value rather than a quantity with any \\
+      spread. Check the outcome within each level of the exposure.",
+      i = "The estimates are reported as they were computed."
+    ),
+    warning_class = "propensity_ipw_degenerate_se_warning",
+    call = call
+  )
+
+  invisible(TRUE)
 }
 
 # Report a solve the equations do not pin down, naming the rows whose standard
@@ -1983,14 +2068,7 @@ ipw_degenerate_se <- function(estimate, std.err) {
 # categorical exposure names the effect and the comparison together and the
 # other exposure types name the effect alone.
 warn_ipw_unsolved <- function(estimates, call = rlang::caller_env()) {
-  degenerate <- ipw_degenerate_se(estimates$estimate, estimates$std.err)
-
-  labels <- if (is.null(estimates$comparison)) {
-    estimates$effect
-  } else {
-    paste(estimates$effect, "for", estimates$comparison)
-  }
-  affected <- labels[degenerate]
+  affected <- ipw_degenerate_se_rows(estimates)
 
   degenerate_bullet <- if (length(affected) > 0) {
     c(

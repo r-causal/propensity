@@ -89,3 +89,31 @@
       i Check the outcome within each level of the exposure, and both designs for columns that all but duplicate one another: a column the fit kept a coefficient for can still leave the equations flat enough here that their derivatives are not finite.
       i `ipw()` reports estimates with inference or not at all, so no estimates are returned.
 
+# the collapsed standard error report reads in the user's terms
+
+    Code
+      ipw(mods$ps_mod, mods$out, se_method = "mestimation")
+    Condition
+      Warning in `ipw()`:
+      The standard error reported for "diff" is not meaningful.
+      x It is zero, or so small beside the estimate it accompanies that the test statistic and the interval built from it carry no information.
+      i An exposure group the outcome does not vary within is one cause: the contrast is then a fixed value rather than a quantity with any spread. Check the outcome within each level of the exposure.
+      i The estimates are reported as they were computed.
+    Output
+      Inverse Probability Weight Estimator
+      Estimand: ATE 
+      
+      Weight Estimator:
+        Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
+      
+      Outcome Model:
+        Call: lm(formula = yconst ~ z, data = dat, weights = wts) 
+      
+      Estimates:
+             estimate    std.err          z ci.lower ci.upper conf.level   p.value
+      diff 1.0000e+00 2.2253e-17 4.4937e+16        1        1       0.95 < 2.2e-16
+              
+      diff ***
+      ---
+      Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+

@@ -1257,6 +1257,35 @@ test_that("the matrix-response propensity model error names the matrix response"
   )
 })
 
+test_that("a matrix response is named as one when the model frame is gone", {
+  # The shape is read from the model frame where there is one, and a fit made
+  # with model = FALSE whose data are gone has none. The formula still says
+  # cbind, so the report stays the matrix one rather than falling to the wording
+  # for a response that is one column written as an expression.
+  m <- matrix_lhs_models()
+  ps_gone <- local({
+    d_local <- m$dat
+    fit <- glm(
+      cbind(y1, y0) ~ x1,
+      data = d_local,
+      family = binomial(),
+      model = FALSE
+    )
+    rm(d_local)
+    fit
+  })
+  # the fixture is the shape it claims to be: no frame to read
+  expect_error(stats::model.frame(ps_gone))
+
+  err <- expect_error(
+    ipw(ps_gone, m$outcome_mod, .data = m$dat),
+    class = "propensity_ipw_response_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "matrix response", fixed = TRUE)
+  expect_false(grepl("an expression rather than", msg, fixed = TRUE))
+})
+
 test_that("the matrix-response propensity guard carries the response class", {
   # A matrix response is a statement about the shape of a model's left-hand
   # side, not about the semantics of the exposure. The guards that are about

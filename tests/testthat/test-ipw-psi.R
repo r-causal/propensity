@@ -395,7 +395,7 @@ test_that("ipw_weight_fn reproduces binary weight functions at fitted params", {
   z <- dat$z
 
   no_extras <- list(stab_prob = NULL, score = NULL)
-  for (estimand in c("ate", "att", "atu", "atm", "ato", "entropy")) {
+  for (estimand in ipw_estimands) {
     expect_weight_parity(
       "binary",
       estimand,
@@ -556,7 +556,7 @@ test_that("categorical weights stay finite when an off-level score is zero", {
   exposure <- rbind(c(1, 0, 0), c(1, 0, 0))
   expect_identical(rowSums(exposure * ps), c(0.6, 0.2))
 
-  for (estimand in c("ate", "att", "atu", "atm", "ato", "entropy")) {
+  for (estimand in ipw_estimands) {
     weights <- ipw_weight_fn("categorical", estimand)(
       ps,
       exposure,
