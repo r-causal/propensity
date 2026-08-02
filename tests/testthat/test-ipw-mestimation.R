@@ -416,6 +416,47 @@ test_that("ipw_check_weight_consistency passes for consistent models", {
   expect_true(ipw_check_weight_consistency(spec, observed))
 })
 
+test_that("ipw_check_weight_consistency recomputes from the layout it is given", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  observed <- as.double(model.weights(model.frame(mods$outcome_mod)))
+  layout <- ipw_theta_layout(spec)
+
+  # The engine already holds the layout by the time it reaches the preflight, so
+  # it hands that one over rather than partitioning the same spec twice. Passing
+  # the layout the default would have built reaches the same verdict.
+  expect_true(ipw_check_weight_consistency(spec, observed, layout = layout))
+
+  # and the supplied layout is what the recomputation reads: moving its
+  # propensity score block moves the weights it rebuilds, so consistent weights
+  # are rejected against it
+  moved <- layout
+  moved$init[moved$idx$ps] <- moved$init[moved$idx$ps] + 0.5
+  expect_error(
+    ipw_check_weight_consistency(spec, observed, layout = moved),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+})
+
+test_that("ipw_check_weight_consistency reads two positional arguments", {
+  skip_if_not_installed("deli")
+  dat <- sim_binary()
+  mods <- fit_binary_models(dat, "ate")
+  spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
+  observed <- as.double(model.weights(model.frame(mods$outcome_mod)))
+
+  # The layout sits between the weights and `call`, so the two-argument
+  # positional form still has to resolve to the spec and the weights, and still
+  # has to build its own layout.
+  expect_true(ipw_check_weight_consistency(spec, observed))
+  expect_error(
+    ipw_check_weight_consistency(spec, 2 * observed),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+})
+
 test_that("ipw_check_weight_consistency errors on weights from a different ps model", {
   skip_if_not_installed("deli")
   dat <- sim_binary()
