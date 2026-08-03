@@ -1,5 +1,36 @@
 # propensity 0.1.0.9000 (development version)
 
+* The line a `ps_trim` is printed under now names the number of observations
+  the trimmed count is out of, as in `ps_trim; trimmed 9 of 20`. It ended at
+  `of ` with nothing after it, and an object whose record had been dropped was
+  described with a trailing separator that introduced nothing.
+
+* The line a `ps_trunc` is printed under now reports its bounds to three
+  significant digits. A bound read off the scores is a score, and `"pctl"` and
+  `"cr"` put every digit of it in the description.
+
+* Printing a `ps_trim` or `ps_trunc` matrix of categorical propensity scores no
+  longer dumps the modification record after the scores. The record is a set of
+  index vectors as long as the data, and the header already summarizes it.
+  Read it with `ps_trim_meta()` or `ps_trunc_meta()`.
+
+* `ps_trim()` and `ps_trunc()` now announce which column they take from a data
+  frame of propensity scores given for a binary exposure. The rule is unchanged,
+  the second column of a two column data frame and the first column otherwise,
+  and is now documented. `options(propensity.quiet = TRUE)` silences the
+  announcement.
+
+* Casting a numeric vector into a `ps_trim` or a `ps_trunc` is documented as a
+  type operation rather than a trimming or a truncation: the result is described
+  by the target and can hold scores outside the target's cutoffs or bounds,
+  including 0 and 1, without being trimmed or pinned.
+
+* Two `ps_trunc` objects are compatible for combining only if they agree on the
+  percentiles their bounds were requested at, as well as on the bounds
+  themselves. Two objects truncated at the same scores from different
+  percentiles are described differently, and now warn and combine as numeric,
+  as other metadata mismatches do.
+
 * Combining `ps_trim` objects trimmed the same way, or `ps_trunc` objects
   truncated the same way, now keeps the description of that trimming or
   truncation on the result. The prototype the combination is built on carries

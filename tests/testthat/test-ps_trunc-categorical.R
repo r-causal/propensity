@@ -470,8 +470,6 @@ trunc_print_fixture <- function() {
 }
 
 test_that("print.ps_trunc_matrix() shows some rows without the record", {
-  testthat::skip("awaiting implementation")
-
   truncated <- trunc_print_fixture()
   output <- capture.output(print(truncated, n = 3))
 
@@ -485,8 +483,6 @@ test_that("print.ps_trunc_matrix() shows some rows without the record", {
 })
 
 test_that("print.ps_trunc_matrix() shows every row without the record", {
-  testthat::skip("awaiting implementation")
-
   truncated <- trunc_print_fixture()
   output <- capture.output(print(truncated, n = Inf))
 
@@ -503,8 +499,6 @@ test_that("print.ps_trunc_matrix() shows every row without the record", {
 # report as a number: what stands in for it has to read as its absence.
 
 test_that("the ps_trunc_matrix header reports a bound the method never set", {
-  testthat::skip("awaiting implementation")
-
   truncated <- trunc_print_fixture()
   header <- capture.output(print(truncated, n = 3))[1]
 

@@ -20,7 +20,12 @@ ps_trunc(
 \arguments{
 \item{ps}{A numeric vector of propensity scores between 0 and 1 (binary
 exposures), or a matrix/data.frame where each column contains propensity
-scores for one level of a categorical exposure.}
+scores for one level of a categorical exposure. A data frame truncated for
+a binary exposure is reduced to a single column: the second column of a two
+column data frame, which is the probability of the second level in the
+layout model predictions come in, and the first column otherwise. The
+column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
+announcement.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{
@@ -176,6 +181,12 @@ a new order under positions still naming the old one, and
 units. Subsetting with \code{[} is handed the subscript and re-indexes, so
 reorder with \code{[}, or put the propensity scores in the order you want before
 truncating them.
+
+Casting a numeric vector into a \code{ps_trunc} with \code{\link[vctrs:vec_cast]{vctrs::vec_cast()}} is a type
+operation and not a truncation. The result is described by the method and
+bounds of the target and records that none of the arriving values was pinned
+to a bound, so it can hold scores outside those bounds, including 0 and 1.
+Call \code{ps_trunc()} on the scores to truncate them.
 }
 }
 \examples{

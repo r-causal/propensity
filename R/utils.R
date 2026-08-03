@@ -101,6 +101,22 @@ assert_columns_exist <- function(
   invisible(TRUE)
 }
 
+# Predictions from a binary model arrive as one column per level, and the
+# binary path works on a single column of scores. The second column of a pair is
+# the probability of the second level in the layout those predictions come in,
+# and the only column otherwise. The caller did not make that choice, so it is
+# announced rather than left to be inferred from the result.
+binary_ps_column <- function(ps, fn) {
+  column <- if (ncol(ps) == 2) 2L else 1L
+  name <- names(ps)[[column]]
+
+  alert_info(
+    "Using the {.val {name}} column as the propensity score for {.fun {fn}}."
+  )
+
+  ps[[column]]
+}
+
 # `unique()` takes values to hold out of the comparison. These methods find
 # duplicates with `vctrs::vec_unique_loc()`, which has no equivalent, so an
 # `incomparables` argument would be compared like any other value and the

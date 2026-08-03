@@ -58,7 +58,7 @@
       Warning in `ps_trim()`:
       For `method = 'cr'`, `lower` and `upper` are ignored.
     Output
-      <ps_trim; trimmed 4 of [50]>
+      <ps_trim; trimmed 4 of 50[50]>
               1         2         3         4         5         6         7         8 
       0.2854244 0.4690101 0.2562434 0.3559890 0.4981327 0.3030427 0.3129802 0.3006030 
               9        10        11        12        13        14        15        16 
@@ -214,4 +214,11 @@
       Converting ps_trim to numeric
       i Class-specific attributes and metadata have been dropped
       i Use explicit casting to numeric to avoid this warning
+
+# the column ps_trim() announces is named in a full sentence
+
+    Code
+      trimmed <- ps_trim(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+    Message
+      i Using the ".pred_1" column as the propensity score for `ps_trim()`.
 

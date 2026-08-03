@@ -8,7 +8,12 @@
 #'
 #' @param ps A numeric vector of propensity scores between 0 and 1 (binary
 #'   exposures), or a matrix/data.frame where each column contains propensity
-#'   scores for one level of a categorical exposure.
+#'   scores for one level of a categorical exposure. A data frame truncated for
+#'   a binary exposure is reduced to a single column: the second column of a two
+#'   column data frame, which is the probability of the second level in the
+#'   layout model predictions come in, and the first column otherwise. The
+#'   column taken is announced; `options(propensity.quiet = TRUE)` silences the
+#'   announcement.
 #' @param .exposure An exposure vector. Required for method `"cr"` (binary
 #'   exposure vector) and for categorical exposures (factor or character vector)
 #'   with any method.
@@ -137,6 +142,12 @@
 #' units. Subsetting with `[` is handed the subscript and re-indexes, so
 #' reorder with `[`, or put the propensity scores in the order you want before
 #' truncating them.
+#'
+#' Casting a numeric vector into a `ps_trunc` with [vctrs::vec_cast()] is a type
+#' operation and not a truncation. The result is described by the method and
+#' bounds of the target and records that none of the arriving values was pinned
+#' to a bound, so it can hold scores outside those bounds, including 0 and 1.
+#' Call `ps_trunc()` on the scores to truncate them.
 #'
 #' @return A `ps_trunc` object (a numeric vector for binary exposures, or a
 #'   matrix for categorical exposures). Use [ps_trunc_meta()] to inspect
@@ -467,14 +478,7 @@ ps_trunc.data.frame <- function(
     }
   }
 
-  # For binary exposures, extract appropriate column and call default method
-  if (ncol(ps) == 2) {
-    # Use second column by default for binary
-    ps_vec <- ps[[2]]
-  } else {
-    # Use first column
-    ps_vec <- ps[[1]]
-  }
+  ps_vec <- binary_ps_column(ps, "ps_trunc")
 
   ps_trunc.default(
     ps = ps_vec,
@@ -887,14 +891,19 @@ print.ps_trunc_matrix <- function(x, ..., n = NULL) {
     n_print <- n
   }
 
+  # The header summarizes the record, and the scores are what is left to show.
+  # The record itself is a set of index vectors as long as the data, so printed
+  # after the matrix it is a second and longer object no one asked to see.
+  x_print <- unclass(x)
+  attr(x_print, "ps_trunc_meta") <- NULL
+
   # Show all rows if n is Inf or very large
   if (is.infinite(n_print) || n_print >= n_rows) {
-    print(unclass(x))
+    print(x_print)
   } else {
     # Show first n_print rows
     n_show <- min(n_print, n_rows)
-    x_sub <- x[seq_len(n_show), , drop = FALSE]
-    print(unclass(x_sub))
+    print(x_print[seq_len(n_show), , drop = FALSE])
 
     if (n_rows > n_show) {
       cat("# ... with", n_rows - n_show, "more rows\n")
@@ -914,11 +923,14 @@ vec_ptype_abbr.ps_trunc <- function(x, ...) {
 #' @export
 vec_ptype_full.ps_trunc <- function(x, ...) {
   m <- ps_trunc_meta(x)
+
+  # A bound read off the scores carries every digit of the score it came from,
+  # which is more of the line a vector is printed under than the bound is worth.
   paste0(
     "ps_trunc{[",
-    m$lower_bound,
+    signif(m$lower_bound, 3),
     ",",
-    m$upper_bound,
+    signif(m$upper_bound, 3),
     "], method=",
     m$method,
     "}"

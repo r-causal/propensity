@@ -864,8 +864,6 @@ trim_print_fixture <- function() {
 }
 
 test_that("print.ps_trim_matrix() shows some rows without the trimming record", {
-  testthat::skip("awaiting implementation")
-
   trimmed <- trim_print_fixture()
   output <- capture.output(print(trimmed, n = 3))
 
@@ -882,8 +880,6 @@ test_that("print.ps_trim_matrix() shows some rows without the trimming record", 
 })
 
 test_that("print.ps_trim_matrix() shows every row without the trimming record", {
-  testthat::skip("awaiting implementation")
-
   trimmed <- trim_print_fixture()
   output <- capture.output(print(trimmed, n = Inf))
 

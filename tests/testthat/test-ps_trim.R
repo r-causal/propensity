@@ -545,35 +545,6 @@ test_that("ps_trim errors when exposure is missing for methods that require it",
   expect_no_error(ps_trim(ps, method = "ps"))
 })
 
-test_that("ps_trim vec_ptype_full output matches expected format", {
-  set.seed(123)
-  ps <- runif(20, 0.05, 0.95)
-
-  # Create ps_trim with some values trimmed
-  ps_trim_obj <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
-  n_trimmed <- length(ps_trim_meta(ps_trim_obj)$trimmed_idx)
-
-  # Test the vec_ptype_full output
-  expect_equal(
-    vctrs::vec_ptype_full(ps_trim_obj),
-    paste("ps_trim;", "trimmed", n_trimmed, "of ")
-  )
-
-  # Test with no values trimmed
-  ps_no_trim <- ps_trim(ps, method = "ps", lower = 0, upper = 1)
-  expect_equal(
-    vctrs::vec_ptype_full(ps_no_trim),
-    "ps_trim; trimmed 0 of "
-  )
-
-  # Test with all values trimmed
-  ps_all_trim <- ps_trim(ps, method = "ps", lower = 0.99, upper = 1)
-  expect_equal(
-    vctrs::vec_ptype_full(ps_all_trim),
-    paste("ps_trim;", "trimmed", 20, "of ")
-  )
-})
-
 test_that("ps_trim index tracking works when combining objects", {
   set.seed(456)
   ps1 <- runif(10, 0.05, 0.95)
@@ -1414,8 +1385,6 @@ trim_ptype_fixture <- function() {
 }
 
 test_that("vec_ptype_full() names the size the trimmed count is out of", {
-  testthat::skip("awaiting implementation")
-
   trimmed <- trim_ptype_fixture()
   n_trimmed <- length(ps_trim_meta(trimmed)$trimmed_idx)
 
@@ -1427,8 +1396,6 @@ test_that("vec_ptype_full() names the size the trimmed count is out of", {
 })
 
 test_that("vec_ptype_full() reports the size when nothing was trimmed", {
-  testthat::skip("awaiting implementation")
-
   set.seed(123)
   untrimmed <- ps_trim(
     runif(20, 0.05, 0.95),
@@ -1442,8 +1409,6 @@ test_that("vec_ptype_full() reports the size when nothing was trimmed", {
 })
 
 test_that("vec_ptype_full() counts against the subset, not the whole vector", {
-  testthat::skip("awaiting implementation")
-
   trimmed <- trim_ptype_fixture()
   sliced <- trimmed[1:8]
   n_sliced <- length(ps_trim_meta(sliced)$trimmed_idx)
@@ -1479,8 +1444,6 @@ trim_frame_fixture <- function() {
 }
 
 test_that("ps_trim() names the column it took from a data frame of two", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = FALSE)
   fixture <- trim_frame_fixture()
 
@@ -1500,8 +1463,6 @@ test_that("ps_trim() names the column it took from a data frame of two", {
 })
 
 test_that("ps_trim() names the only column of a one column data frame", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = FALSE)
   fixture <- trim_frame_fixture()
   one_column <- fixture$ps[, ".pred_1", drop = FALSE]
@@ -1515,8 +1476,6 @@ test_that("ps_trim() names the only column of a one column data frame", {
 })
 
 test_that("ps_trim() announces no column when the messages are quieted", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = TRUE)
   fixture <- trim_frame_fixture()
 
@@ -1532,8 +1491,6 @@ test_that("ps_trim() announces no column when the messages are quieted", {
 })
 
 test_that("the column ps_trim() announces is named in a full sentence", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = FALSE)
   fixture <- trim_frame_fixture()
 
@@ -1543,8 +1500,6 @@ test_that("the column ps_trim() announces is named in a full sentence", {
 })
 
 test_that("ps_trim() takes the second column of a data frame of two", {
-  testthat::skip("awaiting implementation")
-
   fixture <- trim_frame_fixture()
 
   from_frame <- ps_trim(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)

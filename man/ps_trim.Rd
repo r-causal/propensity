@@ -20,7 +20,12 @@ ps_trim(
 \arguments{
 \item{ps}{A numeric vector of propensity scores in (0, 1) for binary
 exposures, or a matrix / data frame where each column gives the propensity
-score for one level of a categorical exposure.}
+score for one level of a categorical exposure. A data frame trimmed for a
+binary exposure is reduced to a single column: the second column of a two
+column data frame, which is the probability of the second level in the
+layout model predictions come in, and the first column otherwise. The
+column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
+announcement.}
 
 \item{method}{Trimming method. One of:
 \itemize{
@@ -229,6 +234,12 @@ answers from those positions and names the wrong units, and \code{\link[=ps_refi
 refits on the wrong rows. Subsetting with \code{[} is handed the subscript and
 re-indexes, so reorder with \code{[}, or put the propensity scores in the order
 you want before trimming them.
+
+Casting a numeric vector into a \code{ps_trim} with \code{\link[vctrs:vec_cast]{vctrs::vec_cast()}} is a type
+operation and not a trimming. The result is described by the method and
+cutoffs of the target and records that none of the arriving values was
+trimmed, so it can hold scores outside those cutoffs, including 0 and 1.
+Call \code{ps_trim()} on the scores to trim them.
 }
 }
 \examples{

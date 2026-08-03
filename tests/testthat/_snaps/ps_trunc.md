@@ -103,3 +103,10 @@
       i Class-specific attributes and metadata have been dropped
       i Use explicit casting to numeric to avoid this warning
 
+# the column ps_trunc() announces is named in a full sentence
+
+    Code
+      truncated <- ps_trunc(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+    Message
+      i Using the ".pred_1" column as the propensity score for `ps_trunc()`.
+

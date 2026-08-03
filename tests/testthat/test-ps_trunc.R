@@ -390,6 +390,27 @@ test_that("ps_trunc vec_ptype_full output matches expected format", {
   )
 })
 
+# A bound the method reads off the scores is a score, and carries every digit
+# the score it came from was worked out to. The line a truncated vector is
+# printed under reports the bound to a few significant digits instead.
+
+test_that("vec_ptype_full() rounds a bound read off the scores", {
+  set.seed(123)
+  ps <- runif(20, 0.05, 0.95)
+
+  truncated <- ps_trunc(ps, method = "pctl", lower = 0.05, upper = 0.95)
+  meta <- ps_trunc_meta(truncated)
+
+  # The quantiles the bounds came from, to the digits they were worked out to.
+  expect_equal(unname(meta$lower_bound), 0.09084348598727956)
+  expect_equal(unname(meta$upper_bound), 0.9091581205616238)
+
+  expect_identical(
+    vctrs::vec_ptype_full(truncated),
+    "ps_trunc{[0.0908,0.909], method=pctl}"
+  )
+})
+
 test_that("ps_trunc index tracking works when combining objects", {
   set.seed(456)
   ps1 <- runif(10, 0.05, 0.95)
@@ -1115,8 +1136,6 @@ trunc_frame_fixture <- function() {
 }
 
 test_that("ps_trunc() names the column it took from a data frame of two", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = FALSE)
   fixture <- trunc_frame_fixture()
 
@@ -1136,8 +1155,6 @@ test_that("ps_trunc() names the column it took from a data frame of two", {
 })
 
 test_that("ps_trunc() names the only column of a one column data frame", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = FALSE)
   fixture <- trunc_frame_fixture()
   one_column <- fixture$ps[, ".pred_1", drop = FALSE]
@@ -1151,8 +1168,6 @@ test_that("ps_trunc() names the only column of a one column data frame", {
 })
 
 test_that("ps_trunc() announces no column when the messages are quieted", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = TRUE)
   fixture <- trunc_frame_fixture()
 
@@ -1168,8 +1183,6 @@ test_that("ps_trunc() announces no column when the messages are quieted", {
 })
 
 test_that("the column ps_trunc() announces is named in a full sentence", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = FALSE)
   fixture <- trunc_frame_fixture()
 
@@ -1179,8 +1192,6 @@ test_that("the column ps_trunc() announces is named in a full sentence", {
 })
 
 test_that("ps_trunc() takes the second column of a data frame of two", {
-  testthat::skip("awaiting implementation")
-
   fixture <- trunc_frame_fixture()
 
   from_frame <- ps_trunc(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)

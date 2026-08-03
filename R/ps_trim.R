@@ -9,7 +9,12 @@
 #'
 #' @param ps A numeric vector of propensity scores in (0, 1) for binary
 #'   exposures, or a matrix / data frame where each column gives the propensity
-#'   score for one level of a categorical exposure.
+#'   score for one level of a categorical exposure. A data frame trimmed for a
+#'   binary exposure is reduced to a single column: the second column of a two
+#'   column data frame, which is the probability of the second level in the
+#'   layout model predictions come in, and the first column otherwise. The
+#'   column taken is announced; `options(propensity.quiet = TRUE)` silences the
+#'   announcement.
 #' @param method Trimming method. One of:
 #'
 #'   * **`"ps"`** (default): Fixed threshold. Observations with propensity
@@ -178,6 +183,12 @@
 #' refits on the wrong rows. Subsetting with `[` is handed the subscript and
 #' re-indexes, so reorder with `[`, or put the propensity scores in the order
 #' you want before trimming them.
+#'
+#' Casting a numeric vector into a `ps_trim` with [vctrs::vec_cast()] is a type
+#' operation and not a trimming. The result is described by the method and
+#' cutoffs of the target and records that none of the arriving values was
+#' trimmed, so it can hold scores outside those cutoffs, including 0 and 1.
+#' Call `ps_trim()` on the scores to trim them.
 #'
 #' @return A **`ps_trim`** object (a numeric vector with class `"ps_trim"`, or a
 #'   matrix with class `"ps_trim_matrix"`). Trimmed observations are `NA`.
@@ -624,16 +635,7 @@ ps_trim.data.frame <- function(
     }
   }
 
-  # For binary exposures, extract appropriate column and call default method
-  # This is a simplified version - in practice you might want to handle
-  # .propensity_col parameter like in weight functions
-  if (ncol(ps) == 2) {
-    # Use second column by default for binary
-    ps_vec <- ps[[2]]
-  } else {
-    # Use first column
-    ps_vec <- ps[[1]]
-  }
+  ps_vec <- binary_ps_column(ps, "ps_trim")
 
   ps_trim.default(
     ps = ps_vec,
@@ -982,14 +984,19 @@ print.ps_trim_matrix <- function(x, ..., n = NULL) {
     n_print <- n
   }
 
+  # The header summarizes the record, and the scores are what is left to show.
+  # The record itself is a set of index vectors as long as the data, so printed
+  # after the matrix it is a second and longer object no one asked to see.
+  x_print <- unclass(x)
+  attr(x_print, "ps_trim_meta") <- NULL
+
   # Show all rows if n is Inf or very large
   if (is.infinite(n_print) || n_print >= n_rows) {
-    print(unclass(x))
+    print(x_print)
   } else {
     # Show first n_print rows
     n_show <- min(n_print, n_rows)
-    x_sub <- x[seq_len(n_show), , drop = FALSE]
-    print(unclass(x_sub))
+    print(x_print[seq_len(n_show), , drop = FALSE])
 
     if (n_rows > n_show) {
       cat("# ... with", n_rows - n_show, "more rows\n")
@@ -1011,15 +1018,13 @@ vec_ptype_full.ps_trim <- function(x, ...) {
   # Without a record there is no count to report, and reporting none trimmed
   # would say something about the units the record no longer speaks for.
   if (is.null(meta$n_obs)) {
-    return("ps_trim; record dropped; ")
+    return("ps_trim; record dropped")
   }
 
-  paste(
-    "ps_trim;",
-    "trimmed",
-    length(meta$trimmed_idx),
-    "of "
-  )
+  # A count of trimmed units means something against the number of units there
+  # were, and both numbers are read off the record so that they describe the
+  # same set of observations.
+  paste0("ps_trim; trimmed ", length(meta$trimmed_idx), " of ", meta$n_obs)
 }
 
 #' @export
