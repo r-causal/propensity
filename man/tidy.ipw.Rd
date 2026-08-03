@@ -77,7 +77,8 @@ tidy(result, conf.int = TRUE, conf.level = 0.9, exponentiate = TRUE)
 
 }
 \seealso{
-\code{\link[=ipw]{ipw()}} for the estimator, and
-\code{\link[causalgenerics:new_ipw]{as.data.frame()}} for the result's own
-columns.
+\code{\link[=ipw]{ipw()}} for the estimator, \code{\link[=glance.ipw]{glance()}} for a one-row
+summary of the fit, \code{\link[=augment.ipw]{augment()}} for its per-observation
+columns, and \code{\link[causalgenerics:new_ipw]{as.data.frame()}} for the
+result's own columns.
 }

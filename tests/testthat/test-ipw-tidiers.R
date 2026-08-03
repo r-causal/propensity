@@ -875,6 +875,39 @@ test_that("augment() carries the weights of a non-default estimand", {
   expect_identical(rebuilt, augmented$.weights)
 })
 
+test_that("augment() differences a factor outcome on the scale it was fit on", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+
+  # The same weighted outcome model with its 0/1 response written as the factor
+  # a user is as likely to hold it in. `glm()` reads the first level as the
+  # failure, so this is the same fit, and `.resid` must be the same difference:
+  # the outcome on the 0/1 scale its fitted values are on, not the level codes
+  # a factor subtracts as.
+  dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(mods$ps_mod)
+  )
+  outcome_mod <- glm(
+    yf ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  res <- ipw(mods$ps_mod, outcome_mod, se_method = "mestimation")
+
+  augmented <- augment(res)
+  mf <- stats::model.frame(outcome_mod)
+  expect_augment_contract(augmented, mf, res)
+
+  # the response arrives as the factor the frame holds, unconverted
+  expect_identical(augmented$yf, mf$yf)
+  expect_identical(augmented$.resid, dat$y - augmented$.fitted)
+})
+
 test_that("augment() returns the same frame on both standard error methods", {
   skip_if_not_installed("deli")
   dat <- sim_tidy_binary()

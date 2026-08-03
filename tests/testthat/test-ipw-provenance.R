@@ -28,7 +28,8 @@ ipw_generic_namespaces <- c(
   as.data.frame = "base",
   ipw = "causalgenerics",
   tidy = "generics",
-  glance = "generics"
+  glance = "generics",
+  augment = "generics"
 )
 
 # Package that owns the method registered for one generic and class, or NA when
@@ -143,7 +144,7 @@ ipw_result_methods <- c(print = "ipw", as.data.frame = "ipw")
 # propensity's, and a user reaching them through `broom::tidy()` must land in
 # propensity. Each further tidier is one entry here and one in
 # `ipw_generic_namespaces`.
-ipw_tidier_methods <- c(tidy = "ipw", glance = "ipw")
+ipw_tidier_methods <- c(tidy = "ipw", glance = "ipw", augment = "ipw")
 
 # `ipw()` methods that must survive. causalgenerics has no `ipw.default` of its
 # own, so losing propensity's would replace a message that names the supported

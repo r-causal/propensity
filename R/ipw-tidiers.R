@@ -63,9 +63,10 @@
 #' # A 90% interval, with the ratio measures on their natural scale
 #' tidy(result, conf.int = TRUE, conf.level = 0.9, exponentiate = TRUE)
 #'
-#' @seealso [ipw()] for the estimator, and
-#'   [`as.data.frame()`][causalgenerics::new_ipw()] for the result's own
-#'   columns.
+#' @seealso [ipw()] for the estimator, [`glance()`][glance.ipw()] for a one-row
+#'   summary of the fit, [`augment()`][augment.ipw()] for its per-observation
+#'   columns, and [`as.data.frame()`][causalgenerics::new_ipw()] for the
+#'   result's own columns.
 #'
 #' @exportS3Method generics::tidy ipw
 tidy.ipw <- function(
@@ -210,8 +211,8 @@ check_conf_level <- function(
 #'
 #' glance(result)
 #'
-#' @seealso [ipw()] for the estimator, and [`tidy()`][tidy.ipw()] for its
-#'   estimates.
+#' @seealso [ipw()] for the estimator, [`tidy()`][tidy.ipw()] for its estimates,
+#'   and [`augment()`][augment.ipw()] for its per-observation columns.
 #'
 #' @exportS3Method generics::glance ipw
 glance.ipw <- function(x, ...) {
@@ -233,5 +234,163 @@ glance.ipw <- function(x, ...) {
     estimand = x$estimand,
     nobs = nobs,
     df.residual = df_residual
+  )
+}
+
+#' Augment an inverse probability weighted result with per-observation columns
+#'
+#' @description
+#' `augment()` works per observation rather than per estimate: the data an
+#' [ipw()] result was produced from, carried through in full, with the propensity
+#' score, the weights, the fitted values, and the residuals attached as
+#' dot-prefixed columns. Nothing is dropped and no column of the source frame is
+#' changed.
+#'
+#' The added columns are read from the two models the result holds, so they
+#' describe the fit rather than the frame they are attached to. `data` says which
+#' frame to carry them on, which is how broom uses the argument: it names the
+#' data the fit was produced from, not new data to predict on. Supplying the
+#' modeling data rather than leaving the default is how covariates the outcome
+#' formula left out arrive beside the fit's own columns.
+#'
+#' @param x An `ipw` object, as returned by [ipw()].
+#' @param data A data frame with one row for each observation the fit used, or
+#'   `NULL`, the default, to use the outcome model's own model frame. That frame
+#'   holds the response, the terms of the outcome formula, and the `(weights)`
+#'   column [stats::model.frame()] records, and all of them are kept.
+#' @param ... These dots are for future extensions and must be empty.
+#'
+#' @return A [tibble][tibble::tibble] with one row per observation, holding every
+#' column of the source frame in its own order followed by:
+#' \describe{
+#'   \item{`.propensity`}{The propensity score, as the propensity score model
+#'     predicts it: the probability of exposure for a binary exposure, and the
+#'     conditional mean of the exposure for a continuous one. This is the
+#'     propensity score the weight functions take, so feeding it back with the
+#'     exposure returns the weights the outcome model was fit with.}
+#'   \item{`.propensity_<level>`}{For a categorical exposure, which has a
+#'     probability for every level rather than a single number, one column per
+#'     level in place of `.propensity`, named for the level and ordered as the
+#'     propensity score model orders its levels.}
+#'   \item{`.weights`}{The weights the outcome model was fit with, as the
+#'     [psw()] vector they were supplied as, so the estimand they record travels
+#'     with them.}
+#'   \item{`.fitted`}{The outcome model's fitted values, on the response scale.}
+#'   \item{`.resid`}{The observed outcome less `.fitted`. Present only when the
+#'     source frame holds the outcome the model was fit on, which the default
+#'     frame always does. A factor or logical outcome is differenced on the 0/1
+#'     scale its fitted values are on.}
+#' }
+#'
+#' @examples
+#' set.seed(123)
+#' n <- 200
+#' x1 <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.5 * x1))
+#' y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.3 * x1))
+#' dat <- data.frame(x1, z, y)
+#'
+#' ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+#' wts <- wt_ate(ps_mod)
+#' outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+#' result <- ipw(ps_mod, outcome_mod)
+#'
+#' augment(result)
+#'
+#' # The modeling data carries through the covariates the outcome formula left
+#' # out
+#' augment(result, data = dat)
+#'
+#' @seealso [ipw()] for the estimator, [`tidy()`][tidy.ipw()] for its estimates,
+#'   and [`glance()`][glance.ipw()] for a one-row summary of the fit.
+#'
+#' @exportS3Method generics::augment ipw
+augment.ipw <- function(x, data = NULL, ...) {
+  rlang::check_dots_empty()
+
+  outcome_frame <- stats::model.frame(x$outcome_mod)
+
+  if (is.null(data)) {
+    data <- outcome_frame
+  } else {
+    assert_class(data, "data.frame")
+    check_augment_rows(data, nrow(outcome_frame))
+  }
+
+  fitted <- unname(stats::predict(x$outcome_mod, type = "response"))
+
+  columns <- c(
+    as.list(data),
+    augment_propensity_columns(x$wt_mod),
+    list(
+      .weights = stats::model.weights(outcome_frame),
+      .fitted = fitted
+    )
+  )
+
+  # A residual is an observed outcome less a fitted value, so it belongs to a
+  # frame that holds the outcome and to no other. The outcome goes through the
+  # conversion the estimator itself uses, which is what puts the residual of a
+  # factor or logical outcome on the 0/1 scale its fitted values are on.
+  response <- names(outcome_frame)[[
+    attr(stats::terms(x$outcome_mod), "response")
+  ]]
+  if (response %in% names(data)) {
+    columns$.resid <- ipw_outcome_numeric(data[[response]]) - fitted
+  }
+
+  # The source frame is carried verbatim, `(weights)` included, so its names are
+  # taken as they are rather than repaired into syntactic ones.
+  tibble::as_tibble(columns, .name_repair = "minimal")
+}
+
+# The propensity score of each observation, as the columns it takes to hold it.
+# A binary or continuous exposure has one number per observation and so one
+# column; a categorical exposure has a probability for every level, and each
+# level gets a column of its own.
+augment_propensity_columns <- function(wt_mod) {
+  if (!inherits(wt_mod, "multinom")) {
+    return(list(
+      .propensity = unname(stats::predict(wt_mod, type = "response"))
+    ))
+  }
+
+  levels <- wt_mod$lev
+  probs <- stats::predict(wt_mod, type = "probs")
+
+  # nnet::multinom() predicts a two-level exposure as the probability of the
+  # second level alone rather than as the matrix of level probabilities it
+  # returns for more levels.
+  if (!is.matrix(probs)) {
+    probs <- cbind(1 - probs, probs)
+    colnames(probs) <- levels
+  }
+
+  rlang::set_names(
+    lapply(levels, function(level) unname(probs[, level])),
+    paste0(".propensity_", levels)
+  )
+}
+
+check_augment_rows <- function(
+  data,
+  n_obs,
+  arg = rlang::caller_arg(data),
+  call = rlang::caller_env()
+) {
+  if (nrow(data) == n_obs) {
+    return(invisible(data))
+  }
+
+  abort(
+    c(
+      "{.arg {arg}} must have one row for each observation the fit used.",
+      x = "{.arg {arg}} has {nrow(data)} row{?s}, but the fit used \\
+      {n_obs} observation{?s}.",
+      i = "{.arg {arg}} names the data the fit was produced from. Leave it as \\
+      {.code NULL} to use the outcome model's own frame."
+    ),
+    error_class = "propensity_augment_data_error",
+    call = call
   )
 }

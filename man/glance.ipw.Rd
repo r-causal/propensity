@@ -59,6 +59,6 @@ glance(result)
 
 }
 \seealso{
-\code{\link[=ipw]{ipw()}} for the estimator, and \code{\link[=tidy.ipw]{tidy()}} for its
-estimates.
+\code{\link[=ipw]{ipw()}} for the estimator, \code{\link[=tidy.ipw]{tidy()}} for its estimates,
+and \code{\link[=augment.ipw]{augment()}} for its per-observation columns.
 }
