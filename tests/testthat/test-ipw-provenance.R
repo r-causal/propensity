@@ -3,24 +3,33 @@
 # upstream. propensity's `ipw()` methods must build their result with the
 # upstream constructor and let the result's own methods resolve upstream, and
 # the behavior a user sees must be identical whichever package supplies them.
+# Shared ownership of a class is the point of the arrangement, not a violation
+# of it: propensity registers the broom tidiers for the same class, and those
+# must resolve here.
 
 # ---- registration provenance ------------------------------------------------
 
 # The namespace whose S3 methods table records registrations for each generic.
 # `print` and `as.data.frame` are both in `.knownS3Generics`, so a method for
 # either registers into base's table whichever package declares it; `ipw` is
-# causalgenerics' own generic. Reading these tables reports which package owns a
-# method independently of what is on the search path. It does not, on its own,
-# prove a method is gone: `UseMethod()` searches the environment the generic was
-# called from as well as the registration table, so a method left in
-# `asNamespace("propensity")` but no longer registered still serves every call
-# made from inside propensity. The absence checks below therefore pair a table
-# read with a namespace read. A wrong entry in this map cannot pass silently,
-# because the same map serves the presence assertions further down.
+# causalgenerics' own generic and `tidy` is the generics package's, so a method
+# for either registers into the table of the package that defines it, again
+# whichever package declares the method. Reading these tables reports which
+# package owns a method independently of what is on the search path. It does
+# not, on its own, prove a method is gone: `UseMethod()` searches the
+# environment the generic was called from as well as the registration table, so
+# a method left in `asNamespace("propensity")` but no longer registered still
+# serves every call made from inside propensity. The absence checks below
+# therefore pair a table read with a namespace read. A wrong entry in this map
+# cannot pass silently, because the same map serves the presence assertions
+# further down.
 ipw_generic_namespaces <- c(
   print = "base",
   as.data.frame = "base",
-  ipw = "causalgenerics"
+  ipw = "causalgenerics",
+  tidy = "generics",
+  glance = "generics",
+  augment = "generics"
 )
 
 # Package that owns the method registered for one generic and class, or NA when
@@ -129,6 +138,13 @@ ipw_moved_objects <- c(
 
 # Methods of the shared result class, as classes named by their generic.
 ipw_result_methods <- c(print = "ipw", as.data.frame = "ipw")
+
+# Methods of the shared result class that propensity owns rather than inherits.
+# causalgenerics defines no tidier, so the broom methods for the class are
+# propensity's, and a user reaching them through `broom::tidy()` must land in
+# propensity. Each further tidier is one entry here and one in
+# `ipw_generic_namespaces`.
+ipw_tidier_methods <- c(tidy = "ipw", glance = "ipw", augment = "ipw")
 
 # `ipw()` methods that must survive. causalgenerics has no `ipw.default` of its
 # own, so losing propensity's would replace a message that names the supported
@@ -302,6 +318,15 @@ test_that("propensity still owns the ipw methods and helpers that stay", {
       rep(TRUE, length(ipw_retained_internals)),
       ipw_retained_internals
     )
+  )
+})
+
+test_that("propensity supplies the broom tidiers for the ipw result class", {
+  owners <- ipw_method_owners(ipw_tidier_methods)
+
+  expect_identical(
+    owners,
+    stats::setNames(rep("propensity", length(owners)), names(owners))
   )
 })
 
