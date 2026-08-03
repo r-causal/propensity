@@ -5502,3 +5502,244 @@ test_that("wt_ate() rejects an invalid stabilization score built on trimmed scor
     class = "propensity_stabilization_score_error"
   )
 })
+
+# ---- observation-level standard deviations in continuous weights -----------
+
+# A continuous ATE weight is the density ratio f_A(a_i) / f_{A|X}(a_i | x_i).
+# The conditional density is the one the propensity model estimates, so its
+# spread is that model's residual standard deviation: the observation-level
+# `.sigma` when the caller supplies one, the pooled residual standard deviation
+# otherwise. Both densities are normal densities in the exposure's own units, so
+# both carry the 1/sigma factor that makes them integrate to one. Evaluating a
+# standard normal ordinate at a z-score instead drops that factor, and pooling
+# the spread discards the per-observation standard deviations entirely, which
+# leaves the weights unable to respond to `.sigma` at all.
+
+continuous_sigma_fixture <- function() {
+  list(
+    fitted = c(1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5),
+    exposure = c(0.8, 1.9, 2.4, 2.1, 3.6, 3.1, 4.9, 4.2),
+    sigma = c(0.5, 0.8, 1, 1.2, 0.7, 0.9, 1.1, 1.3)
+  )
+}
+
+# The marginal density in the numerator of every expectation below. Its mean and
+# standard deviation are the exposure's own, both taken as population moments.
+continuous_marginal_density <- function(exposure) {
+  marginal_mean <- mean(exposure)
+  marginal_sd <- sqrt(mean((exposure - marginal_mean)^2))
+  dnorm(exposure, mean = marginal_mean, sd = marginal_sd)
+}
+
+test_that("continuous ATE weights respond to `.sigma`", {
+  testthat::skip("awaiting implementation")
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+
+  narrow <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = rep(1, n),
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  wide <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = rep(5, n),
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+
+  expect_false(identical(as.numeric(narrow), as.numeric(wide)))
+
+  f_num <- continuous_marginal_density(fixture$exposure)
+  expect_equal(
+    as.numeric(narrow),
+    f_num / dnorm(fixture$exposure, mean = fixture$fitted, sd = 1)
+  )
+  expect_equal(
+    as.numeric(wide),
+    f_num / dnorm(fixture$exposure, mean = fixture$fitted, sd = 5)
+  )
+})
+
+test_that("stabilized continuous ATE weights are the normalized density ratio at `.sigma`", {
+  testthat::skip("awaiting implementation")
+  fixture <- continuous_sigma_fixture()
+
+  f_num <- continuous_marginal_density(fixture$exposure)
+  f_den <- dnorm(
+    fixture$exposure,
+    mean = fixture$fitted,
+    sd = fixture$sigma
+  )
+
+  weights <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = fixture$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(as.numeric(weights), f_num / f_den)
+
+  # A fixed stabilization score stands in for the marginal density; the
+  # conditional density in the denominator is the same one.
+  scored <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = fixture$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    stabilization_score = 0.5
+  )
+  expect_equal(as.numeric(scored), 0.5 / f_den)
+})
+
+test_that("unstabilized continuous ATE weights invert the normalized conditional density", {
+  testthat::skip("awaiting implementation")
+  fixture <- continuous_sigma_fixture()
+
+  f_den <- dnorm(
+    fixture$exposure,
+    mean = fixture$fitted,
+    sd = fixture$sigma
+  )
+
+  withr::local_options(propensity.quiet = FALSE)
+  expect_message(
+    weights <- wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = fixture$sigma,
+      exposure_type = "continuous"
+    ),
+    "Using unstabilized weights for continuous exposures is not recommended."
+  )
+
+  expect_equal(as.numeric(weights), 1 / f_den)
+})
+
+test_that("continuous ATE weights fall back to the pooled residual standard deviation", {
+  testthat::skip("awaiting implementation")
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+
+  pooled_sd <- sqrt(mean((fixture$exposure - fixture$fitted)^2))
+  f_num <- continuous_marginal_density(fixture$exposure)
+  f_den <- dnorm(fixture$exposure, mean = fixture$fitted, sd = pooled_sd)
+
+  stabilized <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(as.numeric(stabilized), f_num / f_den)
+
+  withr::local_options(propensity.quiet = FALSE)
+  expect_message(
+    unstabilized <- wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      exposure_type = "continuous"
+    ),
+    "Using unstabilized weights for continuous exposures is not recommended."
+  )
+  expect_equal(as.numeric(unstabilized), 1 / f_den)
+
+  # Supplying the pooled standard deviation for every observation is the same
+  # calculation the fallback performs.
+  expect_equal(
+    as.numeric(stabilized),
+    as.numeric(wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = rep(pooled_sd, n),
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ))
+  )
+})
+
+test_that("wt_ate() on a gaussian model builds continuous weights on the model's sigmas", {
+  testthat::skip("awaiting implementation")
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+  model_data <- data.frame(a = fixture$exposure, x = seq_len(n))
+  model <- glm(a ~ x, data = model_data, family = gaussian())
+  model_sigma <- influence(model)$sigma
+
+  from_model <- wt_ate(model, exposure_type = "continuous", stabilize = TRUE)
+  from_numeric <- wt_ate(
+    fitted(model),
+    fixture$exposure,
+    .sigma = model_sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(as.numeric(from_model), as.numeric(from_numeric))
+
+  f_num <- continuous_marginal_density(fixture$exposure)
+  expect_equal(
+    as.numeric(from_model),
+    as.numeric(
+      f_num / dnorm(fixture$exposure, mean = fitted(model), sd = model_sigma)
+    )
+  )
+
+  # The extracted standard deviations are what the weights are built on, so
+  # substituting a different set changes them.
+  flat <- wt_ate(
+    fitted(model),
+    fixture$exposure,
+    .sigma = rep(1, n),
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_false(identical(as.numeric(from_model), as.numeric(flat)))
+})
+
+test_that("continuous `.sigma` weights record the usual psw metadata", {
+  testthat::skip("awaiting implementation")
+  fixture <- continuous_sigma_fixture()
+
+  stabilized <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = fixture$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_s3_class(stabilized, "psw")
+  expect_identical(estimand(stabilized), "ate")
+  expect_true(is_stabilized(stabilized))
+  expect_null(stabilization_score(stabilized))
+  expect_length(stabilized, length(fixture$exposure))
+
+  scored <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = fixture$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    stabilization_score = 0.5
+  )
+  expect_true(is_stabilized(scored))
+  expect_identical(stabilization_score(scored), 0.5)
+
+  withr::local_options(propensity.quiet = FALSE)
+  expect_message(
+    unstabilized <- wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = fixture$sigma,
+      exposure_type = "continuous"
+    ),
+    "Using unstabilized weights for continuous exposures is not recommended."
+  )
+  expect_identical(estimand(unstabilized), "ate")
+  expect_false(is_stabilized(unstabilized))
+  expect_null(stabilization_score(unstabilized))
+})
