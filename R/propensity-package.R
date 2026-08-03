@@ -51,5 +51,6 @@
 #' @importFrom stats qlogis
 #' @importFrom stats quantile
 #' @importFrom stats uniroot
+#' @importFrom tibble tibble
 ## usethis namespace: end
 NULL

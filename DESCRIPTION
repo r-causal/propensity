@@ -20,15 +20,16 @@ Imports:
     causalgenerics (>= 0.0.0.9000),
     cli,
     deli,
+    generics,
     lifecycle,
     rlang,
     stats,
+    tibble,
     tidyselect,
     vctrs (>= 0.6.5)
 Suggests:
     broom,
     dplyr,
-    generics,
     ggplot2,
     knitr,
     MASS,
@@ -39,8 +40,7 @@ Suggests:
     PSweight,
     rmarkdown,
     spelling,
-    testthat (>= 3.0.0),
-    tibble,
+    testthat (>= 3.1.9),
     tidyr,
     WeightIt,
     withr

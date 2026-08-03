@@ -11,8 +11,6 @@ test_that("propensity exports the tidier generics", {
 })
 
 test_that("the exported tidier generics are the ones generics owns", {
-  skip_if_not_installed("generics")
-
   expect_identical(propensity::tidy, generics::tidy)
   expect_identical(propensity::glance, generics::glance)
   expect_identical(propensity::augment, generics::augment)

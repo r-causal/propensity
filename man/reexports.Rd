@@ -7,6 +7,9 @@
 \alias{is_causal_wt}
 \alias{estimand}
 \alias{estimand<-}
+\alias{tidy}
+\alias{glance}
+\alias{augment}
 \title{Objects exported from other packages}
 \keyword{internal}
 \description{
@@ -15,5 +18,7 @@ below to see their documentation.
 
 \describe{
   \item{causalgenerics}{\code{\link[causalgenerics:estimand]{estimand()}}, \code{\link[causalgenerics:estimand<-]{estimand<-()}}, \code{\link[causalgenerics:ipw]{ipw()}}, \code{\link[causalgenerics:is_causal_wt]{is_causal_wt()}}}
+
+  \item{generics}{\code{\link[generics:augment]{augment()}}, \code{\link[generics:glance]{glance()}}, \code{\link[generics:tidy]{tidy()}}}
 }}
 
