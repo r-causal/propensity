@@ -164,10 +164,18 @@ check_conf_level <- function(
 #'
 #' @description
 #' `glance()` describes an [ipw()] result rather than its estimates: one row
-#' naming the estimand, the exposure type, the standard error method, the two
-#' models, and the number of observations the outcome model was fit on. A fit
-#' reporting several effect measures, or several comparisons of a categorical
-#' exposure, still returns exactly one row.
+#' naming the estimand and counting the observations and the residual degrees of
+#' freedom of the system the standard errors came from. A fit reporting several
+#' effect measures, or several comparisons of a categorical exposure, still
+#' returns exactly one row.
+#'
+#' Under M-estimation that system is the stacked estimating equations, which
+#' hold the propensity score model, the outcome model, and the effect measures
+#' at once. Its residual degrees of freedom are the observations it was solved
+#' on less the parameters it solves for, so a multinomial propensity score model
+#' leaves fewer of them than a binary one does on the same data. Linearization
+#' stacks nothing and records no parameter count, so the observations are the
+#' outcome model's and there is no count to subtract from them.
 #'
 #' The columns and their types are the same on every route [ipw()] takes, so the
 #' rows of several results stack into one table.
@@ -178,13 +186,13 @@ check_conf_level <- function(
 #' @return A one-row [tibble][tibble::tibble] with the columns:
 #' \describe{
 #'   \item{`estimand`}{The estimand the weights target, such as `"ate"`.}
-#'   \item{`exposure_type`}{The exposure the propensity score model describes,
-#'     one of `"binary"`, `"categorical"`, or `"continuous"`.}
-#'   \item{`se_method`}{The standard error method, `"mestimation"` or
-#'     `"linearization"`.}
-#'   \item{`wt_model`}{The class of the propensity score model.}
-#'   \item{`outcome_model`}{The class of the outcome model.}
-#'   \item{`nobs`}{The number of observations the outcome model was fit on.}
+#'   \item{`nobs`}{The number of observations the standard errors were estimated
+#'     from: the observations the stacked estimating equations were solved on
+#'     under M-estimation, and the observations the outcome model was fit on
+#'     under linearization.}
+#'   \item{`df.residual`}{The residual degrees of freedom of the stacked
+#'     estimating equations, `nobs` less the number of parameters the system
+#'     solves for. `NA` under linearization, which records no parameter count.}
 #' }
 #'
 #' @examples
@@ -209,28 +217,21 @@ check_conf_level <- function(
 glance.ipw <- function(x, ...) {
   rlang::check_dots_empty()
 
+  # The counts describe whatever produced the standard errors. That is the
+  # stacked estimating equations when the result holds a fit, and the outcome
+  # model alone otherwise, which leaves no parameter count to spend the
+  # observations against.
+  if (is.null(x$fit)) {
+    nobs <- as.integer(stats::nobs(x$outcome_mod))
+    df_residual <- NA_integer_
+  } else {
+    nobs <- as.integer(stats::nobs(x$fit))
+    df_residual <- as.integer(stats::df.residual(x$fit))
+  }
+
   tibble::tibble(
     estimand = x$estimand,
-    exposure_type = ipw_exposure_type(x$wt_mod),
-    se_method = x$se_method,
-    wt_model = class(x$wt_mod)[[1]],
-    outcome_model = class(x$outcome_mod)[[1]],
-    nobs = as.integer(stats::nobs(x$outcome_mod))
+    nobs = nobs,
+    df.residual = df_residual
   )
-}
-
-# The exposure a fitted propensity score model describes. The class of the model
-# does not settle it on its own: a gaussian glm models a continuous exposure and
-# `ipw()` routes it down the same path an lm takes, while every other family
-# models a binary one.
-ipw_exposure_type <- function(wt_mod) {
-  if (inherits(wt_mod, "multinom")) {
-    return("categorical")
-  }
-
-  if (inherits(wt_mod, "glm") && !identical(wt_mod$family$family, "gaussian")) {
-    return("binary")
-  }
-
-  "continuous"
 }

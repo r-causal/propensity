@@ -15,21 +15,29 @@
 A one-row \link[tibble:tibble]{tibble} with the columns:
 \describe{
 \item{\code{estimand}}{The estimand the weights target, such as \code{"ate"}.}
-\item{\code{exposure_type}}{The exposure the propensity score model describes,
-one of \code{"binary"}, \code{"categorical"}, or \code{"continuous"}.}
-\item{\code{se_method}}{The standard error method, \code{"mestimation"} or
-\code{"linearization"}.}
-\item{\code{wt_model}}{The class of the propensity score model.}
-\item{\code{outcome_model}}{The class of the outcome model.}
-\item{\code{nobs}}{The number of observations the outcome model was fit on.}
+\item{\code{nobs}}{The number of observations the standard errors were estimated
+from: the observations the stacked estimating equations were solved on
+under M-estimation, and the observations the outcome model was fit on
+under linearization.}
+\item{\code{df.residual}}{The residual degrees of freedom of the stacked
+estimating equations, \code{nobs} less the number of parameters the system
+solves for. \code{NA} under linearization, which records no parameter count.}
 }
 }
 \description{
 \code{glance()} describes an \code{\link[=ipw]{ipw()}} result rather than its estimates: one row
-naming the estimand, the exposure type, the standard error method, the two
-models, and the number of observations the outcome model was fit on. A fit
-reporting several effect measures, or several comparisons of a categorical
-exposure, still returns exactly one row.
+naming the estimand and counting the observations and the residual degrees of
+freedom of the system the standard errors came from. A fit reporting several
+effect measures, or several comparisons of a categorical exposure, still
+returns exactly one row.
+
+Under M-estimation that system is the stacked estimating equations, which
+hold the propensity score model, the outcome model, and the effect measures
+at once. Its residual degrees of freedom are the observations it was solved
+on less the parameters it solves for, so a multinomial propensity score model
+leaves fewer of them than a binary one does on the same data. Linearization
+stacks nothing and records no parameter count, so the observations are the
+outcome model's and there is no count to subtract from them.
 
 The columns and their types are the same on every route \code{\link[=ipw]{ipw()}} takes, so the
 rows of several results stack into one table.
