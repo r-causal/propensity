@@ -10,6 +10,12 @@
 # number of observations the outcome model saw. That row carries the same columns
 # with the same types on every route.
 #
+# `augment()` works per observation instead of per estimate: the data the fit was
+# produced from, carried through in full, with the propensity score, the weights,
+# the fitted values, and the residuals added as dot-prefixed columns. It reads the
+# two models the result holds, so the columns describe the fit and not the frame
+# they are attached to.
+#
 # Coverage spans every route that builds an `ipw` object: a binary glm exposure
 # under both standard error methods, a categorical exposure through
 # nnet::multinom, and a continuous exposure through lm.
@@ -241,6 +247,65 @@ expect_glance_contract <- function(glanced, result, exposure_type, nobs) {
   expect_identical(glanced$nobs, as.integer(stats::nobs(result$outcome_mod)))
 
   invisible(glanced)
+}
+
+# The augment column contract: every column of the source frame, in its own
+# order, followed by the dot-prefixed additions. A categorical exposure widens
+# `.propensity` into one column per level, so the propensity columns are the
+# caller's to name. `.resid` closes the frame and appears only when the source
+# holds the outcome the fit modeled.
+augment_names <- function(
+  source,
+  propensity_cols = ".propensity",
+  resid = TRUE
+) {
+  c(names(source), propensity_cols, ".weights", ".fitted", if (resid) ".resid")
+}
+
+# Assert the whole contract against the frame the columns were attached to. The
+# dot columns are checked against the two models the result holds rather than
+# against the source, because that is what they describe: `augment()` reads `x`,
+# and the source only says which frame the answers are carried on.
+expect_augment_contract <- function(
+  augmented,
+  source,
+  result,
+  propensity_cols = ".propensity",
+  resid = TRUE
+) {
+  expect_s3_class(augmented, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
+  expect_named(augmented, augment_names(source, propensity_cols, resid))
+
+  # one row per observation the outcome model was fit on, in the source order,
+  # with every source column arriving untouched
+  expect_identical(nrow(augmented), nrow(source))
+  expect_identical(nrow(augmented), as.integer(stats::nobs(result$outcome_mod)))
+  for (nm in names(source)) {
+    expect_identical(augmented[[nm]], source[[nm]])
+  }
+
+  # the weights the outcome model was actually fit with, their class and their
+  # metadata intact, rather than a numeric copy of their values
+  expect_identical(
+    augmented$.weights,
+    stats::model.weights(stats::model.frame(result$outcome_mod))
+  )
+
+  # the outcome model's own fitted values, on the response scale
+  expect_identical(
+    augmented$.fitted,
+    unname(stats::predict(result$outcome_mod, type = "response"))
+  )
+
+  # A column of a tibble is addressed by its position, so the observation names
+  # `predict()` carries over from the model frame's row names have no business
+  # here.
+  added <- c(propensity_cols, ".weights", ".fitted", if (resid) ".resid")
+  for (nm in added) {
+    expect_null(names(augmented[[nm]]))
+  }
+
+  invisible(augmented)
 }
 
 # ---- binary exposure, M-estimation ------------------------------------------
@@ -740,6 +805,261 @@ test_that("glance() rejects an argument that lands in the dots", {
   # there would otherwise be silently ignored.
   expect_error(
     glance(res, conf.int = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+# ---- augment, binary exposure ------------------------------------------------
+
+test_that("augment() adds the fit's own columns to the outcome model frame", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  augmented <- augment(res)
+
+  # With no `data`, the source is the frame the outcome model was fit from,
+  # which is the default broom's own `augment.lm` uses. That frame holds the
+  # response, the terms of the outcome formula, and the `(weights)` column
+  # `model.frame()` names, and none of the three is dropped here.
+  mf <- stats::model.frame(mods$outcome_mod)
+  expect_named(mf, c("y", "z", "(weights)"))
+  expect_augment_contract(augmented, mf, res)
+
+  expect_identical(
+    augmented$.propensity,
+    unname(stats::predict(mods$ps_mod, type = "response"))
+  )
+  expect_identical(augmented$.resid, dat$y - augmented$.fitted)
+
+  # nothing is summarized away: every observation the outcome model saw keeps
+  # its row, and the exposure column arrives in the order the data holds it
+  expect_identical(nrow(augmented), 600L)
+  expect_identical(augmented$z, dat$z)
+})
+
+test_that("augment() reports the propensity score the weight functions take", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  augmented <- augment(res)
+
+  # `.propensity` is the propensity score in the sense this package's weight
+  # functions use the word, so feeding the column back with the exposure and the
+  # estimand the weights record returns those weights exactly. That is the
+  # column's definition, and it is what makes the two columns usable together.
+  rebuilt <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(augmented$.propensity, dat$z)
+  )
+  expect_identical(rebuilt, augmented$.weights)
+})
+
+test_that("augment() carries the weights of a non-default estimand", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat, estimand = "att")
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  augmented <- augment(res)
+  expect_augment_contract(augmented, stats::model.frame(mods$outcome_mod), res)
+
+  # The weights are the ones the outcome model was fit with, so they record the
+  # estimand this fit targets rather than the ATE the other fixtures use, and
+  # the round trip goes through that estimand's weight function.
+  expect_identical(estimand(augmented$.weights), "att")
+  rebuilt <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_att(augmented$.propensity, dat$z)
+  )
+  expect_identical(rebuilt, augmented$.weights)
+})
+
+test_that("augment() returns the same frame on both standard error methods", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  mestimation <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    se_method = "mestimation"
+  )
+  linearization <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    se_method = "linearization"
+  )
+
+  # `augment()` reads the two models, and the standard error method changes
+  # neither of them, so the per-observation frame is the same one on both
+  # routes even though the linearization fit stores no deli object to read.
+  expect_null(linearization$fit)
+  expect_augment_contract(
+    augment(linearization),
+    stats::model.frame(mods$outcome_mod),
+    linearization
+  )
+  expect_identical(augment(linearization), augment(mestimation))
+})
+
+# ---- augment, categorical exposure -------------------------------------------
+
+test_that("augment() adds one propensity column per categorical level", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_categorical()
+  mods <- fit_tidy_categorical_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  augmented <- augment(res)
+
+  # A multinomial propensity model predicts a probability for every level, so
+  # there is no single column to call `.propensity`: each level gets one, named
+  # for it and ordered as the model orders its levels.
+  lvls <- mods$ps_mod$lev
+  expect_identical(lvls, c("a", "b", "c"))
+  propensity_cols <- paste0(".propensity_", lvls)
+  expect_augment_contract(
+    augmented,
+    stats::model.frame(mods$outcome_mod),
+    res,
+    propensity_cols = propensity_cols
+  )
+
+  probs <- stats::predict(mods$ps_mod, type = "probs")
+  for (level in lvls) {
+    expect_identical(
+      augmented[[paste0(".propensity_", level)]],
+      unname(probs[, level])
+    )
+  }
+
+  # Those K columns are the propensity score matrix the categorical weight
+  # functions take, so together they rebuild the weights the outcome model was
+  # fit with, exactly as the single column does for a binary exposure.
+  ps_matrix <- as.matrix(augmented[, propensity_cols])
+  colnames(ps_matrix) <- lvls
+  rebuilt <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_matrix, dat$a, exposure_type = "categorical")
+  )
+  expect_identical(rebuilt, augmented$.weights)
+  expect_identical(augmented$.resid, dat$y - augmented$.fitted)
+})
+
+# ---- augment, continuous exposure --------------------------------------------
+
+test_that("augment() reports the fitted exposure for a continuous exposure", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_continuous()
+  mods <- fit_tidy_continuous_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  augmented <- augment(res)
+  expect_augment_contract(augmented, stats::model.frame(mods$outcome_mod), res)
+
+  # For a continuous exposure the propensity model predicts the conditional mean
+  # of the exposure, and that is what this package calls the propensity score:
+  # it is the `.propensity` argument `wt_ate()` centers the conditional density
+  # on. The density itself is one step further on and is not reported here, so
+  # the column means the same thing on this route as on the binary one.
+  expect_identical(
+    augmented$.propensity,
+    unname(stats::predict(mods$ps_mod, type = "response"))
+  )
+
+  # The round trip is not exact here: the weights were built from `fitted()` and
+  # the column comes from `predict()`, which an `lm` computes from the design
+  # matrix rather than reading back, so the two agree only to rounding.
+  rebuilt <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      augmented$.propensity,
+      dat$A,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  )
+  expect_true(is_stabilized(augmented$.weights))
+  expect_equal(
+    as.double(rebuilt),
+    as.double(augmented$.weights),
+    tolerance = 1e-8
+  )
+
+  # a gaussian outcome model reports its residuals on the outcome's own scale
+  expect_identical(augmented$.resid, dat$yc - augmented$.fitted)
+})
+
+# ---- augment, the data argument ----------------------------------------------
+
+test_that("augment(data = ) returns that data with the fit's columns added", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  augmented <- augment(res, data = dat)
+
+  # broom's convention: `data` is the data the fit was produced from, carried
+  # through in full so that covariates the outcome formula left out sit beside
+  # the fit's own columns. The outcome model frame holds `y`, `z`, and the
+  # weights alone, so `x1` and `x2` arrive only this way.
+  expect_augment_contract(augmented, dat, res)
+  expect_identical(augmented$x1, dat$x1)
+  expect_identical(augmented$x2, dat$x2)
+
+  # The dot columns describe the fit, so which frame they were attached to does
+  # not change one of them.
+  default <- augment(res)
+  for (nm in c(".propensity", ".weights", ".fitted", ".resid")) {
+    expect_identical(augmented[[nm]], default[[nm]])
+  }
+})
+
+test_that("augment(data = ) drops .resid when the data omits the outcome", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  covariates <- dat[c("x1", "x2", "z")]
+  augmented <- augment(res, data = covariates)
+
+  # A residual is an observed outcome minus a fitted value, and this frame holds
+  # no outcome to subtract from, so the column is absent rather than missing.
+  expect_augment_contract(augmented, covariates, res, resid = FALSE)
+  expect_false(".resid" %in% names(augmented))
+})
+
+test_that("augment(data = ) rejects data that is not one row per observation", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # `data` names the frame the fit's own columns are carried on, so a frame of
+  # another length has no row to carry them on. Recycling or truncating would
+  # attach one observation's answers to another observation's covariates.
+  expect_error(
+    augment(res, data = dat[seq_len(100), ]),
+    class = "propensity_augment_data_error"
+  )
+})
+
+test_that("augment() rejects an argument that lands in the dots", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  # The dots exist to match the generic. `newdata` is a broom argument this
+  # method does not take, and absorbing it there would return the fit's own rows
+  # as though they were predictions for the frame supplied.
+  expect_error(
+    augment(res, newdata = dat),
     class = "rlib_error_dots_nonempty"
   )
 })
