@@ -1624,3 +1624,293 @@ test_that("casting between ps_trim objects describing the same trimming succeeds
   expect_equal(ps_trim_meta(out)$lower, 0.1)
   expect_equal(ps_trim_meta(out)$upper, 0.9)
 })
+
+# Refitting a model whose formula transforms its terms ------------------------
+
+# `ps_refit()` promises the propensity model re-estimated on the rows the
+# trimming kept, so that is what these tests compare it against: the same
+# formula fit by hand on those rows. A model frame names its columns after term
+# expressions rather than after the variables the terms are built from, so it
+# carries a column called `log(x)` and no column called `x`, and a refit that
+# hands the model frame back as data leaves the formula with nothing to
+# evaluate. The transformations below are the ones a propensity model reaches
+# for most: a pointwise transformation, a basis whose knots depend on the rows
+# it is fit on, and an interaction between two transformed terms.
+
+refit_transform_fixture <- function() {
+  set.seed(2024)
+  n <- 120
+  x <- runif(n, 0.2, 12)
+  data.frame(
+    z = rbinom(n, 1, plogis(-2.2 + 1.6 * log(x))),
+    x = x,
+    w = rnorm(n)
+  )
+}
+
+# The scores `ps_refit()` owes the caller: the model fit on the retained rows,
+# read back over the full sample with the trimmed positions left missing.
+refit_by_hand <- function(model_formula, data, keep_idx, n_obs) {
+  fit <- glm(
+    model_formula,
+    data = data[keep_idx, , drop = FALSE],
+    family = binomial
+  )
+
+  expected <- rep(NA_real_, n_obs)
+  expected[keep_idx] <- unname(predict(fit, type = "response"))
+  expected
+}
+
+test_that("ps_refit() refits a log-transformed term with no data argument", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ log(x), family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ log(x), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() refits a spline basis with no data argument", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ splines::ns(x, 2), family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  # A spline places its knots from the rows it is fit on, so refitting on the
+  # retained rows moves them. The refit owes the caller the basis the retained
+  # rows imply, not the one the trimmed-away rows helped position.
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ splines::ns(x, 2), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() refits an interaction between transformed terms", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+  w <- df$w
+
+  fit <- glm(z ~ log(x) * I(w^2), family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ log(x) * I(w^2), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() refits a transformed term fit with a data argument", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ log(x), data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ log(x), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() records the refit and keeps the record through a transform", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ log(x), family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+
+  refit <- ps_refit(trimmed, fit)
+  refit_meta <- ps_trim_meta(refit)
+
+  expect_s3_class(refit, "ps_trim")
+  expect_true(is_refit(refit))
+  expect_false(is_refit(trimmed))
+  expect_equal(refit_meta$method, meta$method)
+  expect_equal(refit_meta$lower, meta$lower)
+  expect_equal(refit_meta$upper, meta$upper)
+  expect_equal(refit_meta$keep_idx, meta$keep_idx)
+  expect_equal(refit_meta$trimmed_idx, meta$trimmed_idx)
+  expect_equal(refit_meta$n_obs, meta$n_obs)
+
+  # Refitting re-estimates the retained units and says nothing new about the
+  # trimmed ones, so the missing positions are exactly the trimmed ones.
+  expect_equal(which(is.na(as.numeric(refit))), meta$trimmed_idx)
+  expect_length(refit, nrow(df))
+})
+
+test_that("ps_refit() still refits an untransformed formula from the model alone", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ x, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ x, df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() still refits a transformed term from an explicit .data", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ log(x), data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+
+  refit <- ps_refit(trimmed, fit, .data = df)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ log(x), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() still refits a model whose rows were dropped as missing", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+  z <- df$z
+  covariate <- df$x
+  covariate[c(3, 17)] <- NA
+
+  fit <- glm(z ~ covariate, family = binomial)
+
+  # Fitting drops the incomplete rows, so the scores, and with them the
+  # trimming record, are about the rows the model kept rather than every row
+  # the variables carry.
+  analysis <- data.frame(z = z, covariate = covariate)
+  analysis <- analysis[!is.na(covariate), , drop = FALSE]
+  expect_equal(nrow(analysis), nrow(df) - 2L)
+
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_length(trimmed, nrow(analysis))
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ covariate, analysis, meta$keep_idx, nrow(analysis))
+  )
+})
+
+test_that("ps_refit() refits on the retained rows of a model fit with a subset", {
+  testthat::skip("awaiting implementation")
+
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+  in_range <- x < 9
+
+  fit <- glm(z ~ x, family = binomial, subset = in_range)
+
+  # The original subset already chose the sample the scores are about, so the
+  # trimming record indexes that sample and not the rows the variables carry.
+  # Refitting narrows that sample to the retained rows; it must not put the
+  # original subset to work a second time on rows it was never about.
+  analysis <- df[in_range, , drop = FALSE]
+
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_length(trimmed, nrow(analysis))
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ x, analysis, meta$keep_idx, nrow(analysis))
+  )
+})
