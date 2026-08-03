@@ -6,8 +6,8 @@
 # the one the fit stored.
 #
 # `glance()` describes the fit rather than its estimates: a single row naming the
-# estimand, the exposure type, the standard error method, the two models, and the
-# number of observations the outcome model saw. That row carries the same columns
+# estimand and counting the observations and the residual degrees of freedom of
+# the system the standard errors came from. That row carries the same columns
 # with the same types on every route.
 #
 # `augment()` works per observation instead of per estimate: the data the fit was
@@ -129,19 +129,9 @@ fit_tidy_categorical_models <- function(dat) {
 
 # Continuous exposure: an lm propensity score model of the exposure, stabilized
 # continuous ATE weights, and a weighted marginal structural model with the one
-# exposure term the continuous path requires. `ps_model` chooses between the two
-# propensity model classes that path accepts, an `lm` and a gaussian `glm`, which
-# agree on fitted values and so produce the same weights.
-fit_tidy_continuous_models <- function(
-  dat,
-  outcome_family = "gaussian",
-  ps_model = "lm"
-) {
-  ps_mod <- if (ps_model == "glm") {
-    glm(A ~ x1 + x2, data = dat, family = gaussian())
-  } else {
-    lm(A ~ x1 + x2, data = dat)
-  }
+# exposure term the continuous path requires.
+fit_tidy_continuous_models <- function(dat, outcome_family = "gaussian") {
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
     wt_ate(
@@ -212,24 +202,26 @@ expect_tidy_contract <- function(
 }
 
 # The glance column contract, as a named vector of the storage types the columns
-# hold. Every route reports these columns, in this order, at these types.
+# hold. Every route reports these columns, in this order, at these types. They
+# are statistics of the fit: what it targets and how much information went into
+# it. The propensity model, the outcome model, and the standard error method
+# describe how the result was built rather than what it found, and the result
+# itself already carries them under those names.
 glance_types <- function() {
   c(
     estimand = "character",
-    exposure_type = "character",
-    se_method = "character",
-    wt_model = "character",
-    outcome_model = "character",
-    nobs = "integer"
+    nobs = "integer",
+    df.residual = "integer"
   )
 }
 
 # Assert the whole contract against the result glanced at: one row of the
-# documented columns, each describing the fit rather than restating a constant.
-# `exposure_type` and `nobs` are the caller's expectations because the result
-# records neither, the first being read off the propensity model and the second
-# off the outcome model.
-expect_glance_contract <- function(glanced, result, exposure_type, nobs) {
+# documented columns. The two counts are the caller's expectations because the
+# result records neither, both being read off whichever system produced the
+# standard errors. Columns are addressed with `[[` so that a column the row does
+# not hold is reported by the expectation that wanted it rather than by the
+# warning `$` raises on a tibble.
+expect_glance_contract <- function(glanced, result, nobs, df_residual) {
   expect_s3_class(glanced, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
   expect_named(glanced, names(glance_types()))
   expect_identical(
@@ -238,13 +230,23 @@ expect_glance_contract <- function(glanced, result, exposure_type, nobs) {
   )
   expect_identical(nrow(glanced), 1L)
 
-  expect_identical(glanced$estimand, result$estimand)
-  expect_identical(glanced$exposure_type, exposure_type)
-  expect_identical(glanced$se_method, result$se_method)
-  expect_identical(glanced$wt_model, class(result$wt_mod)[[1]])
-  expect_identical(glanced$outcome_model, class(result$outcome_mod)[[1]])
-  expect_identical(glanced$nobs, nobs)
-  expect_identical(glanced$nobs, as.integer(stats::nobs(result$outcome_mod)))
+  expect_identical(glanced[["estimand"]], result$estimand)
+  expect_identical(glanced[["nobs"]], nobs)
+  expect_identical(glanced[["df.residual"]], df_residual)
+
+  invisible(glanced)
+}
+
+# The counts the M-estimation routes report, asserted against the deli fit they
+# are read from. The stacked estimating equations, not the outcome model alone,
+# are what the standard errors of those routes come from, so they are what the
+# two columns describe.
+expect_glance_matches_fit <- function(glanced, result) {
+  expect_identical(glanced[["nobs"]], as.integer(stats::nobs(result$fit)))
+  expect_identical(
+    glanced[["df.residual"]],
+    as.integer(stats::df.residual(result$fit))
+  )
 
   invisible(glanced)
 }
@@ -669,29 +671,39 @@ test_that("glance() summarizes a binary mestimation fit in one row", {
 
   glanced <- glance(res)
 
-  # A logit propensity model describes a binary exposure, and the three estimate
-  # rows the fit holds summarize to this one.
-  expect_glance_contract(glanced, res, exposure_type = "binary", nobs = 600L)
-  expect_identical(glanced$estimand, "ate")
-  expect_identical(glanced$se_method, "mestimation")
-  expect_identical(glanced$wt_model, "glm")
-  expect_identical(glanced$outcome_model, "glm")
+  # The three estimate rows the fit holds summarize to this one. Every
+  # observation of the fixture is used, and the parameters the stacked system
+  # solves for are what the observations are spent on.
+  expect_glance_contract(
+    glanced,
+    res,
+    nobs = nrow(dat),
+    df_residual = nrow(dat) - res$fit@n_params
+  )
+  expect_glance_matches_fit(glanced, res)
+  expect_identical(glanced[["estimand"]], "ate")
 })
 
-test_that("glance() reports the linearization standard error method", {
+test_that("glance() reports NA degrees of freedom without a deli fit", {
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
 
-  # The linearization path stores no deli fit, so no column may be read from
-  # one. The row is otherwise the M-estimation row.
+  # The linearization path stores no deli fit, so there is no stacked system to
+  # count parameters against and the observations are the outcome model's. The
+  # column stays present at its type so that the row still stacks with the rest.
   expect_null(res$fit)
   glanced <- glance(res)
-  expect_glance_contract(glanced, res, exposure_type = "binary", nobs = 600L)
-  expect_identical(glanced$se_method, "linearization")
+  expect_glance_contract(
+    glanced,
+    res,
+    nobs = nrow(dat),
+    df_residual = NA_integer_
+  )
+  expect_identical(glanced[["nobs"]], as.integer(stats::nobs(res$outcome_mod)))
 })
 
-test_that("glance() reports a categorical exposure for a multinom fit", {
+test_that("glance() summarizes a categorical fit in one row", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
@@ -700,18 +712,19 @@ test_that("glance() reports a categorical exposure for a multinom fit", {
 
   glanced <- glance(res)
 
-  # Three exposure levels and six estimate rows still summarize to one row.
+  # Three exposure levels and six estimate rows still summarize to one row. The
+  # multinomial propensity model puts more parameters into the stacked system
+  # than a binary exposure does, and the residual degrees of freedom follow.
   expect_glance_contract(
     glanced,
     res,
-    exposure_type = "categorical",
-    nobs = 700L
+    nobs = nrow(dat),
+    df_residual = nrow(dat) - res$fit@n_params
   )
-  expect_identical(glanced$wt_model, "multinom")
-  expect_identical(glanced$outcome_model, "glm")
+  expect_glance_matches_fit(glanced, res)
 })
 
-test_that("glance() reports a continuous exposure for an lm propensity model", {
+test_that("glance() summarizes a continuous exposure fit in one row", {
   skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat)
@@ -721,31 +734,10 @@ test_that("glance() reports a continuous exposure for an lm propensity model", {
   expect_glance_contract(
     glanced,
     res,
-    exposure_type = "continuous",
-    nobs = 600L
+    nobs = nrow(dat),
+    df_residual = nrow(dat) - res$fit@n_params
   )
-  expect_identical(glanced$wt_model, "lm")
-  expect_identical(glanced$outcome_model, "lm")
-})
-
-test_that("glance() reads the exposure type from the propensity model family", {
-  skip_if_not_installed("deli")
-  dat <- sim_tidy_continuous()
-  mods <- fit_tidy_continuous_models(dat, ps_model = "glm")
-  res <- ipw(mods$ps_mod, mods$outcome_mod)
-
-  glanced <- glance(res)
-
-  # A glm propensity model is binary or continuous depending on its family, and
-  # `ipw()` routes this gaussian one down the continuous path, so the class of
-  # the model alone cannot decide the column.
-  expect_glance_contract(
-    glanced,
-    res,
-    exposure_type = "continuous",
-    nobs = 600L
-  )
-  expect_identical(glanced$wt_model, "glm")
+  expect_glance_matches_fit(glanced, res)
 })
 
 test_that("glance() reports the estimand the fit was built for", {
@@ -758,8 +750,13 @@ test_that("glance() reports the estimand the fit was built for", {
   # column follows it rather than naming the ATE the other routes happen to use.
   expect_identical(res$estimand, "att")
   glanced <- glance(res)
-  expect_glance_contract(glanced, res, exposure_type = "binary", nobs = 600L)
-  expect_identical(glanced$estimand, "att")
+  expect_glance_contract(
+    glanced,
+    res,
+    nobs = nrow(dat),
+    df_residual = nrow(dat) - res$fit@n_params
+  )
+  expect_identical(glanced[["estimand"]], "att")
 })
 
 test_that("glance() returns the same columns and types on every build route", {
