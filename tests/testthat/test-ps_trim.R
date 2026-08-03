@@ -928,3 +928,21 @@ test_that("ps_trim refuses an exposure with dimensions", {
     class = "propensity_binary_transform_error"
   )
 })
+
+test_that("ps_trim refuses a focal level the exposure never takes", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c("a", "b", "a", "b")
+
+  # A focal level nobody holds leaves every unit in the reference group, so the
+  # bounds are computed over a split the caller did not ask for.
+  expect_error(
+    ps_trim(ps, method = "pref", .exposure = exposure, .focal_level = "absent"),
+    class = "propensity_focal_level_error"
+  )
+  expect_error(
+    ps_trim(ps, method = "cr", .exposure = exposure, .focal_level = "absent"),
+    class = "propensity_focal_level_error"
+  )
+})

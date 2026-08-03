@@ -283,11 +283,21 @@ test_that("ipw() routes a gaussian-family glm ps model identically to lm", {
   skip_if_not_installed("deli")
   dat <- sim_continuous()
 
-  mods_lm <- fit_continuous_models(dat, ps_type = "lm")
-  mods_glm <- fit_continuous_models(dat, ps_type = "glm")
+  ps_lm <- lm(A ~ x1 + x2, data = dat)
+  ps_glm <- glm(A ~ x1 + x2, data = dat, family = gaussian())
 
-  res_lm <- ipw(mods_lm$ps_mod, mods_lm$outcome_mod)
-  res_glm <- ipw(mods_glm$ps_mod, mods_glm$outcome_mod)
+  # The two propensity fits give identical coefficients but not bitwise
+  # identical fitted values. Building the weights once, from a single fitted
+  # vector, and weighting one outcome model with them keeps that difference out
+  # of everything downstream, so what the two calls are compared on is the
+  # routing of the propensity model itself rather than the last bits of two
+  # separately fitted weight vectors amplified through the sandwich.
+  fitted_ps <- as.double(fitted(ps_lm))
+  wts <- continuous_weights(fitted_ps, dat$A)
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  res_lm <- ipw(ps_lm, outcome_mod)
+  res_glm <- ipw(ps_glm, outcome_mod)
 
   expect_equal(res_glm$estimand, res_lm$estimand)
   expect_equal(
@@ -295,15 +305,10 @@ test_that("ipw() routes a gaussian-family glm ps model identically to lm", {
     res_lm$estimates$estimate,
     tolerance = 1e-8
   )
-  # The two propensity fits give identical coefficients but not bitwise
-  # identical fitted values, so the weights they build differ in their last
-  # bits. The numerically differentiated sandwich amplifies that, leaving the
-  # standard errors equal to about eight significant figures rather than
-  # exactly.
   expect_equal(
     res_glm$estimates$std.err,
     res_lm$estimates$std.err,
-    tolerance = 1e-6
+    tolerance = 1e-8
   )
 })
 

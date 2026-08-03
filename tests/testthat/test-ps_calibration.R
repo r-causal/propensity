@@ -187,6 +187,20 @@ test_that(".focal_level and .reference_level parameters work consistently with p
   expect_equal(as.numeric(calib_auto), as.numeric(calib_logical))
 })
 
+test_that("ps_calibrate refuses a focal level the exposure never takes", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c("a", "b", "a", "b")
+
+  # A focal level nobody holds leaves every unit in the reference group, so the
+  # calibration model is fit against an outcome that never varies.
+  expect_error(
+    ps_calibrate(ps, exposure, .focal_level = "absent"),
+    class = "propensity_focal_level_error"
+  )
+})
+
 test_that(".focal_level/.reference_level defaults are NULL like other package functions", {
   # Check that the defaults match the package pattern
   ps_calibrate_formals <- formals(ps_calibrate)

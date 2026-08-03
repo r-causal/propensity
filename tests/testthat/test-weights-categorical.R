@@ -185,6 +185,31 @@ test_that("categorical propensity scores at exactly 0 or 1 are rejected", {
   expect_equal(as.numeric(weights), c(1 / 0.2, 1 / 0.4))
 })
 
+test_that("the categorical range refusal names `.propensity`", {
+  testthat::skip("awaiting implementation")
+
+  exposure <- factor(c("A", "B"), levels = c("A", "B", "C"))
+  ps_zero <- data.frame(
+    A = c(0, 0.3),
+    B = c(0.5, 0.4),
+    C = c(0.5, 0.3)
+  )
+
+  cnd <- expect_error(
+    wt_ate(ps_zero, exposure, exposure_type = "categorical"),
+    class = "propensity_range_error"
+  )
+
+  # The binary route's range refusal names the argument the scores arrived in.
+  # The matrix route reports a bare range, which says nothing about which
+  # argument the caller has to correct.
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(cnd)),
+    "The range of values in `.propensity`",
+    fixed = TRUE
+  )
+})
+
 test_that("ATE weights work for categorical exposures", {
   set.seed(123)
   exposure <- factor(c("A", "B", "C", "A", "B", "C"))
@@ -810,6 +835,37 @@ test_that("stabilized categorical ATE marginals use the complete cases", {
   expect_equal(as.numeric(weights), expected_weights)
   expect_equal(which(is.na(weights)), 3L)
   expect_true(all(is.finite(as.numeric(weights)[-3])))
+})
+
+test_that("stabilized categorical weights refuse an exposure with nothing observed", {
+  testthat::skip("awaiting implementation")
+
+  exposure <- factor(rep(NA_character_, 4), levels = c("A", "B", "C"))
+  ps_matrix <- matrix(
+    1 / 3,
+    nrow = 4,
+    ncol = 3,
+    dimnames = list(NULL, levels(exposure))
+  )
+
+  # The marginal probabilities the default stabilizer builds are shares of the
+  # units with an observed level, so with none observed every share is 0 / 0.
+  # Weights that are missing everywhere are not an answer to the call that was
+  # made, so the degenerate stabilizer is reported rather than returned.
+  expect_error(
+    wt_ate(
+      ps_matrix,
+      exposure,
+      exposure_type = "categorical",
+      stabilize = TRUE
+    ),
+    class = "propensity_stabilize_categorical_error"
+  )
+
+  # Without stabilization there is no marginal to form, and a unit with no
+  # observed level has no weight, which is already the answer.
+  weights <- wt_ate(ps_matrix, exposure, exposure_type = "categorical")
+  expect_true(all(is.na(as.numeric(weights))))
 })
 
 test_that("tilted categorical weights are missing where the exposure is missing", {
