@@ -215,14 +215,11 @@ ps_calibrate <- function(
     )
   }
 
-  # Extract numeric values for comparison if ps is a causal weight object
-  ps_numeric <- if (is_causal_wt(ps)) {
-    as.numeric(ps)
-  } else if (inherits(ps, "ps_calib")) {
-    vec_data(ps)
-  } else {
-    ps
-  }
+  # Calibration reads the values the scores hold, not the class holding them,
+  # and trimmed or truncated scores reach the numeric routes through their
+  # common type with a number, which announces a conversion the caller never
+  # asked for. Reading them once here keeps the rest of the function numeric.
+  ps_numeric <- as.numeric(ps)
 
   if (any(ps_numeric < 0 | ps_numeric > 1, na.rm = TRUE)) {
     abort(
@@ -249,7 +246,7 @@ ps_calibrate <- function(
   # Only store calibration-specific metadata
 
   # Handle NA values
-  na_idx <- is.na(ps) | is.na(.exposure)
+  na_idx <- is.na(ps_numeric) | is.na(.exposure)
 
   # Perform calibration based on method
   calib_model <- NULL
@@ -264,7 +261,7 @@ ps_calibrate <- function(
       # Create data frame for GAM fitting (only non-NA values)
       calib_data <- data.frame(
         treat = .exposure[!na_idx],
-        ps = ps[!na_idx]
+        ps = ps_numeric[!na_idx]
       )
 
       # Check if we have enough unique values for smoothing (like probably does)
@@ -288,10 +285,14 @@ ps_calibrate <- function(
     }
 
     if (!smooth) {
-      # For simple logistic regression, fit on original data (not data frame)
-      # This handles the case where smooth was originally FALSE or was set to FALSE due to fallback
+      # Reached either because smoothing was never asked for or because the
+      # fallback above turned it off, in which case the model is already fit.
       if (is.null(calib_model)) {
-        calib_model <- stats::glm(.exposure ~ ps, family = stats::binomial())
+        calib_model <- stats::glm(
+          treat ~ ps,
+          data = data.frame(treat = .exposure, ps = ps_numeric),
+          family = stats::binomial()
+        )
       }
     }
 
@@ -307,7 +308,7 @@ ps_calibrate <- function(
     if (smooth) {
       # For GAM models, predict on the full ps vector (including NAs)
       # Create prediction data frame
-      pred_data <- data.frame(ps = ps)
+      pred_data <- data.frame(ps = ps_numeric)
       fitted_vals <- as.numeric(predict(
         calib_model,
         newdata = pred_data,
@@ -328,7 +329,7 @@ ps_calibrate <- function(
     # Two-step isotonic regression calibration following van der Laan et al.
     # (2024, arXiv:2411.06342): fit separately for treated and control groups,
     # then combine. This matches WeightIt::calibrate(method = "isoreg").
-    ps_valid <- ps[!na_idx]
+    ps_valid <- ps_numeric[!na_idx]
     treat_valid <- .exposure[!na_idx]
 
     # Calibrate for controls: P(treat=0|ps) via isotonic regression on 1-ps
@@ -494,6 +495,60 @@ vec_arith.numeric.ps_calib <- function(op, x, y, ...) {
   vec_arith_base(op, x, y)
 }
 
+# A comparison asks about the values a vector holds, not about the type holding
+# them, so it reads them directly instead of routing through the common type of
+# the two sides, which for a calibrated vector and a number is the numeric
+# downgrade. Recycling still goes through vctrs, so sizes with no common size
+# have no answer rather than the one base R recycling would invent.
+ps_calib_compare <- function(e1, e2) {
+  args <- vctrs::vec_recycle_common(e1, e2)
+
+  if (inherits(args[[1]], "ps_calib")) {
+    args[[1]] <- vctrs::vec_data(args[[1]])
+  }
+  if (inherits(args[[2]], "ps_calib")) {
+    args[[2]] <- vctrs::vec_data(args[[2]])
+  }
+
+  args
+}
+
+#' @export
+`<.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] < args[[2]]
+}
+
+#' @export
+`<=.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] <= args[[2]]
+}
+
+#' @export
+`==.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] == args[[2]]
+}
+
+#' @export
+`>.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] > args[[2]]
+}
+
+#' @export
+`>=.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] >= args[[2]]
+}
+
+#' @export
+`!=.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] != args[[2]]
+}
+
 #' @export
 vec_ptype2.ps_calib.ps_calib <- function(x, y, ...) {
   x_meta <- ps_calib_meta(x)
@@ -556,16 +611,39 @@ as.double.ps_calib <- function(x, ...) {
   vec_data(x)
 }
 
+# A cast returns the values it was handed in the type it was handed, and how the
+# calibration was performed is part of that type, so the description comes from
+# the target rather than being invented here.
 #' @export
 vec_cast.ps_calib.double <- function(x, to, ...) {
-  # create a default ps_calib
-  new_ps_calib(
-    x,
-    ps_calib_meta = list(
-      method = "unknown",
-      smooth = FALSE
-    )
-  )
+  new_ps_calib(vec_cast(x, double()), ps_calib_meta = ps_calib_meta(to))
+}
+
+# Calibrated propensity scores lie strictly between 0 and 1, so meeting an
+# integer in the integers would round every one of them away. The common type is
+# the one that holds both sets of values.
+#' @export
+vec_ptype2.ps_calib.integer <- function(x, y, ...) {
+  warn_class_downgrade("ps_calib")
+  double()
+}
+
+#' @export
+vec_ptype2.integer.ps_calib <- function(x, y, ...) {
+  warn_class_downgrade("ps_calib")
+  double()
+}
+
+#' @export
+vec_cast.integer.ps_calib <- function(x, to, ...) {
+  # A propensity score has no integer to be, so vctrs' own check reports the
+  # loss rather than silently rounding it away.
+  vec_cast(vec_data(x), integer(), x_arg = "ps_calib")
+}
+
+#' @export
+vec_cast.ps_calib.integer <- function(x, to, ...) {
+  new_ps_calib(as.double(x), ps_calib_meta = ps_calib_meta(to))
 }
 
 #' @export

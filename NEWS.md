@@ -1,5 +1,31 @@
 # propensity 0.1.0.9000 (development version)
 
+* Comparing a `ps_calib` with a number, with an integer, or with another
+  `ps_calib` is now silent and returns a plain logical vector. Every comparison
+  settled its type through the numeric downgrade first, so asking which scores
+  clear a threshold reported dropping metadata the answer never depended on.
+  Sizes are still recycled through vctrs, so lengths with no common size raise
+  an error rather than take base R's answer.
+
+* `ps_calibrate()` now reads the values of trimmed or truncated propensity
+  scores once, up front, so calibrating them no longer reports a class
+  conversion the caller never asked for. The range check and each of the
+  logistic, smooth, and isotonic fits compared or modeled the scores in their
+  original class, which announced the downgrade once per comparison. The
+  calibration produced is the one the same values give as a plain numeric
+  vector.
+
+* Combining a `ps_calib` with an integer vector now gives a numeric result
+  holding the calibrated scores, rather than failing to find a common type at
+  all, and casting a `ps_calib` to integer raises a lossy-cast error rather than
+  refusing outright. This is the answer `ps_trim`, `ps_trunc`, and `psw` already
+  give.
+
+* Casting a numeric or integer vector to a `ps_calib` now carries the
+  calibration of the target. It described the result as having been calibrated
+  by a method named `"unknown"`, which no argument to `ps_calibrate()` accepts,
+  without smoothing.
+
 * `is_unit_truncated()` now answers per unit for a `psw` vector built from
   truncated propensity scores, reading the positions out of the truncation
   record as it already did for a `ps_trunc`. It returned the single flag

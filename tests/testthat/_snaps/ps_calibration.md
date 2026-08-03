@@ -55,3 +55,23 @@
       Error in `ps_calibrate()`:
       ! `method` must be one of "logistic" or "isoreg", not "invalid".
 
+# combining a ps_calib with an integer keeps the calibrated scores
+
+    Code
+      out <- vec_c(cal, 1L)
+    Condition <propensity_class_downgrade_warning>
+      Warning in `vec_ptype2.ps_calib.integer()`:
+      Converting ps_calib to numeric
+      i Class-specific attributes and metadata have been dropped
+      i Use explicit casting to numeric to avoid this warning
+
+# combining an integer with a ps_calib keeps the calibrated scores
+
+    Code
+      out <- vec_c(1L, cal)
+    Condition <propensity_class_downgrade_warning>
+      Warning in `vec_ptype2.integer.ps_calib()`:
+      Converting ps_calib to numeric
+      i Class-specific attributes and metadata have been dropped
+      i Use explicit casting to numeric to avoid this warning
+

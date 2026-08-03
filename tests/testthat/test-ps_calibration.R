@@ -801,8 +801,6 @@ calib_vctrs_fixture <- function(method = "logistic", smooth = FALSE) {
 # silent; a calibrated vector owes the same.
 
 test_that("comparing a ps_calib with a number does not warn about class", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture()
   values <- as.numeric(cal)
 
@@ -820,8 +818,6 @@ test_that("comparing a ps_calib with a number does not warn about class", {
 })
 
 test_that("comparing a ps_calib yields a plain logical", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture()
 
   expect_no_warning(
@@ -841,8 +837,6 @@ test_that("comparing a ps_calib yields a plain logical", {
 })
 
 test_that("ps_calib comparisons enforce vctrs strict size semantics", {
-  testthat::skip("awaiting implementation")
-
   # The size half of this contract holds today and guards against a comparison
   # that answers directly falling back to base R recycling: anything other than
   # equal lengths, or one side of length 1, has no answer.
@@ -879,8 +873,6 @@ test_that("calibrating trimmed scores does not warn about class", {
   trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
   from_numeric <- ps_calibrate(as.numeric(trimmed), exposure, smooth = FALSE)
 
-  testthat::skip("awaiting implementation")
-
   expect_no_warning(
     {
       from_trimmed <- ps_calibrate(trimmed, exposure, smooth = FALSE)
@@ -897,8 +889,6 @@ test_that("calibrating truncated scores does not warn about class", {
   exposure <- c(0, 0, 1, 0, 1, 1, 0, 1)
   truncated <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
   from_numeric <- ps_calibrate(as.numeric(truncated), exposure, smooth = FALSE)
-
-  testthat::skip("awaiting implementation")
 
   expect_no_warning(
     {
@@ -924,8 +914,6 @@ test_that("calibrating trimmed scores by isotonic regression is also silent", {
     method = "isoreg"
   )
 
-  testthat::skip("awaiting implementation")
-
   # Isotonic calibration reaches the scores through a different fit than the
   # logistic path, so the values it reads are worth pinning on their own.
   expect_no_warning(
@@ -947,8 +935,6 @@ test_that("calibrating trimmed scores by isotonic regression is also silent", {
 # vector that has no answer at all for an integer is the odd one out.
 
 test_that("combining a ps_calib with an integer keeps the calibrated scores", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture()
   combined <- expect_propensity_warning(vec_c(cal, 1L))
 
@@ -957,8 +943,6 @@ test_that("combining a ps_calib with an integer keeps the calibrated scores", {
 })
 
 test_that("combining an integer with a ps_calib keeps the calibrated scores", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture()
   combined <- expect_propensity_warning(vec_c(1L, cal))
 
@@ -967,8 +951,6 @@ test_that("combining an integer with a ps_calib keeps the calibrated scores", {
 })
 
 test_that("casting a ps_calib to integer refuses rather than rounds", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture()
 
   expect_error(
@@ -978,8 +960,6 @@ test_that("casting a ps_calib to integer refuses rather than rounds", {
 })
 
 test_that("casting an integer to ps_calib keeps the calibration of the target", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture()
   out <- vec_cast(c(0L, 1L), to = cal)
 
@@ -989,8 +969,6 @@ test_that("casting an integer to ps_calib keeps the calibration of the target", 
 })
 
 test_that("comparing a ps_calib with an integer matches comparing a double", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture()
 
   expect_no_warning(
@@ -1010,8 +988,6 @@ test_that("comparing a ps_calib with an integer matches comparing a double", {
 # calibration nothing carried out, under a method name no argument accepts.
 
 test_that("casting a double to ps_calib keeps the method of the target", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture()
   out <- vec_cast(c(0.3, 0.4), to = cal)
 
@@ -1023,8 +999,6 @@ test_that("casting a double to ps_calib keeps the method of the target", {
 })
 
 test_that("casting a double to an isotonic ps_calib keeps that method", {
-  testthat::skip("awaiting implementation")
-
   cal <- calib_vctrs_fixture(method = "isoreg")
   out <- vec_cast(c(0.3, 0.4), to = cal)
 
@@ -1032,8 +1006,6 @@ test_that("casting a double to an isotonic ps_calib keeps that method", {
 })
 
 test_that("casting a double to ps_calib keeps the smoothing of the target", {
-  testthat::skip("awaiting implementation")
-
   # Built directly so the spline fit, and with it mgcv, stays out of a test
   # about what the cast copies.
   to <- new_ps_calib(
