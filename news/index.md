@@ -2,6 +2,55 @@
 
 ## propensity 0.1.0.9000 (development version)
 
+- New [`tidy()`](https://generics.r-lib.org/reference/tidy.html),
+  [`glance()`](https://generics.r-lib.org/reference/glance.html), and
+  [`augment()`](https://generics.r-lib.org/reference/augment.html)
+  methods describe an
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  result in the three shapes broom defines: one row per estimate, one
+  row for the fit, and one row per observation. Each is registered
+  against the generic the generics package owns, and all three generics
+  are re-exported here, so the verbs are available from propensity
+  itself without loading broom. The generics and tibble packages move
+  from Suggests to Imports and are now hard dependencies.
+
+- [`tidy()`](https://generics.r-lib.org/reference/tidy.html) returns the
+  estimates as a tibble under the column names broom conventions use,
+  `term`, `estimate`, `std.error`, `statistic`, and `p.value`, with
+  `comparison` naming the contrast on a categorical exposure. `conf.int`
+  adds the `conf.low` and `conf.high` bounds, `conf.level` reports them
+  at a level other than the one the result was fit at by rebuilding them
+  from the estimate and its standard error, and `exponentiate` puts the
+  `log(rr)` and `log(or)` rows on their natural scale exactly as the
+  result’s own
+  [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html) method
+  does. Nothing is dropped and nothing is re-estimated.
+
+- [`glance()`](https://generics.r-lib.org/reference/glance.html) returns
+  one row describing the fit rather than its estimates: the estimand the
+  weights target, the number of observations the standard errors were
+  estimated from, and the residual degrees of freedom of the stacked
+  M-estimation system, which are those observations less the parameters
+  the system solves for. A result reporting several effect measures, or
+  several comparisons of a categorical exposure, still returns exactly
+  one row. `se_method = "linearization"` stacks nothing and records no
+  parameter count, so the observations are the outcome model’s and the
+  degrees of freedom are `NA`.
+
+- [`augment()`](https://generics.r-lib.org/reference/augment.html)
+  returns the data the outcome model was fit on with the propensity
+  score, the weights, the fitted values, and the residuals attached as
+  dot-prefixed columns, one row per observation and no observation
+  dropped. A categorical exposure carries a probability for every level
+  and so gets one `.propensity_<level>` column per level in place of
+  `.propensity`. Unlike broom’s
+  [`augment()`](https://generics.r-lib.org/reference/augment.html)
+  methods, the model frame’s `(weights)` column is not carried through:
+  the weights appear once, as `.weights`, the `psw` vector the outcome
+  model was fit with, so the class and the estimand they record travel
+  with them. Pass the modeling data to `data` to carry those columns on
+  a frame that also holds the covariates the outcome formula left out.
+
 - [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   is documented as computing entropy weights, which tilt the propensity
   score by its own entropy in the sense of Zhou, Matsouaka, and Thomas

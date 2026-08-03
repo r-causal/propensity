@@ -112,6 +112,13 @@ alternative when ATE weights are highly variable.
 
 ## All functions
 
+- [`augment(`*`<ipw>`*`)`](https://r-causal.github.io/propensity/reference/augment.ipw.md)
+  : Augment an inverse probability weighted result with per-observation
+  columns
+
+- [`glance(`*`<ipw>`*`)`](https://r-causal.github.io/propensity/reference/glance.ipw.md)
+  : Glance at an inverse probability weighted result
+
 - [`ipw(`*`<multinom>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
   [`ipw(`*`<lm>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
   [`ipw(`*`<glm>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
@@ -172,6 +179,9 @@ alternative when ATE weights are highly variable.
   [`stabilization_score()`](https://r-causal.github.io/propensity/reference/psw.md)
   [`as_psw()`](https://r-causal.github.io/propensity/reference/psw.md) :
   Propensity Score Weight Vectors
+
+- [`tidy(`*`<ipw>`*`)`](https://r-causal.github.io/propensity/reference/tidy.ipw.md)
+  : Tidy an inverse probability weighted result
 
 - [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
