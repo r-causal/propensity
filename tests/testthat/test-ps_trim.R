@@ -1524,3 +1524,102 @@ test_that("ps_trim() takes the second column of a data frame of two", {
   )
   expect_false(identical(as.numeric(from_frame), as.numeric(from_first)))
 })
+
+# What a cast between trimmed vectors owes its target ------------------------
+
+# A cast returns the values it was handed in the type it was handed, and a
+# `ps_trim`'s type is the whole description of the trimming: the method, what
+# it was asked for, and the cutoffs it worked out from the scores it was given.
+# Two objects that disagree on any of that are not each other's type, so the
+# cast has no result to give and refuses, which is the comparison
+# `vec_ptype2()` already makes when it refuses to find a common type. A cast
+# that compares less than the combine does hands `x` back describing itself
+# under the target's name.
+
+test_that("casting between ps_trim objects trimmed at different cutoffs refuses", {
+  testthat::skip("awaiting implementation")
+
+  # The same percentiles asked of different scores are different cutoffs, and
+  # the record keeps both what was asked for and what came back.
+  x <- ps_trim(
+    c(0.1, 0.2, 0.5, 0.8, 0.9),
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+  to <- ps_trim(
+    c(0.05, 0.3, 0.5, 0.7, 0.95),
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  expect_false(identical(ps_trim_meta(x)$q_lower, ps_trim_meta(to)$q_lower))
+  expect_warning(
+    vec_ptype2(x, to),
+    class = "propensity_coercion_warning"
+  )
+  expect_identical(suppressWarnings(vec_ptype2(x, to)), double())
+  expect_error(
+    vec_cast(x, to = to),
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("casting between ps_trim objects with different refit status refuses", {
+  testthat::skip("awaiting implementation")
+
+  # Refitting is part of what produced these scores, so scores the model was
+  # refit on and scores it was not are different types at the same cutoffs.
+  set.seed(11)
+  n <- 60
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  model <- glm(z ~ x, family = binomial)
+
+  trimmed <- ps_trim(unname(fitted(model)), lower = 0.2, upper = 0.8)
+  refit <- ps_refit(trimmed, model)
+
+  expect_false(is_refit(trimmed))
+  expect_true(is_refit(refit))
+  expect_warning(
+    vec_ptype2(trimmed, refit),
+    class = "propensity_coercion_warning"
+  )
+  expect_identical(suppressWarnings(vec_ptype2(trimmed, refit)), double())
+  expect_error(
+    vec_cast(trimmed, to = refit),
+    class = "vctrs_error_incompatible_type"
+  )
+  expect_error(
+    vec_cast(refit, to = trimmed),
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("casting between ps_trim objects describing the same trimming succeeds", {
+  testthat::skip("awaiting implementation")
+
+  # The positional half of the record describes the values arriving rather than
+  # the type they arrive in, so two objects trimmed the same way are each
+  # other's type however many units either one kept.
+  x <- ps_trim(
+    c(0.05, 0.2, 0.5, 0.8, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+  to <- ps_trim(
+    c(0.15, 0.25, 0.55, 0.85),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  out <- expect_silent(vec_cast(x, to = to))
+
+  expect_s3_class(out, "ps_trim")
+  expect_equal(as.numeric(out), as.numeric(x))
+  expect_equal(ps_trim_meta(out)$lower, 0.1)
+  expect_equal(ps_trim_meta(out)$upper, 0.9)
+})

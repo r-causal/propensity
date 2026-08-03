@@ -1216,3 +1216,74 @@ test_that("ps_trunc() takes the second column of a data frame of two", {
   )
   expect_false(identical(as.numeric(from_frame), as.numeric(from_first)))
 })
+
+# What a cast between truncated vectors owes its target ----------------------
+
+# A cast returns the values it was handed in the type it was handed, and a
+# `ps_trunc`'s type is the whole description of the truncation: the method, the
+# bounds it pinned scores to, and the percentiles those bounds were read off
+# at. Two objects that disagree on any of that are not each other's type, so
+# the cast has no result to give and refuses, which is the comparison
+# `vec_ptype2()` already makes when it refuses to find a common type. A cast
+# that compares less than the combine does hands `x` back describing itself
+# under the target's name.
+
+test_that("casting between ps_trunc objects bounded at different percentiles refuses", {
+  testthat::skip("awaiting implementation")
+
+  # The bounds are half of what the record says; the other half is the
+  # percentile they were read off at, which is what tells a reader where they
+  # came from. Two truncations that reached the same bounds from different
+  # percentiles are described differently, and the combine says so.
+  x <- ps_trunc(
+    c(0.1, 0.2, 0.5, 0.8, 0.9),
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  to_meta <- ps_trunc_meta(x)
+  to_meta$lower_pctl <- 0.25
+  to <- new_ps_trunc(vec_data(x), meta = to_meta)
+
+  expect_identical(
+    ps_trunc_meta(x)$lower_bound,
+    ps_trunc_meta(to)$lower_bound
+  )
+  expect_warning(
+    vec_ptype2(x, to),
+    class = "propensity_coercion_warning"
+  )
+  expect_identical(suppressWarnings(vec_ptype2(x, to)), double())
+  expect_error(
+    vec_cast(x, to = to),
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("casting between ps_trunc objects describing the same truncation succeeds", {
+  testthat::skip("awaiting implementation")
+
+  # The positional half of the record describes the values arriving rather than
+  # the type they arrive in, so two objects truncated the same way are each
+  # other's type however many units either one pinned.
+  x <- ps_trunc(
+    c(0.05, 0.2, 0.5, 0.8, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+  to <- ps_trunc(
+    c(0.15, 0.25, 0.55, 0.85),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  out <- expect_silent(vec_cast(x, to = to))
+
+  expect_s3_class(out, "ps_trunc")
+  expect_equal(as.numeric(out), as.numeric(x))
+  expect_equal(ps_trunc_meta(out)$lower_bound, 0.1)
+  expect_equal(ps_trunc_meta(out)$upper_bound, 0.9)
+})
