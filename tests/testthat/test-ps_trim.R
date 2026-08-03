@@ -1537,8 +1537,6 @@ test_that("ps_trim() takes the second column of a data frame of two", {
 # under the target's name.
 
 test_that("casting between ps_trim objects trimmed at different cutoffs refuses", {
-  testthat::skip("awaiting implementation")
-
   # The same percentiles asked of different scores are different cutoffs, and
   # the record keeps both what was asked for and what came back.
   x <- ps_trim(
@@ -1560,15 +1558,18 @@ test_that("casting between ps_trim objects trimmed at different cutoffs refuses"
     class = "propensity_coercion_warning"
   )
   expect_identical(suppressWarnings(vec_ptype2(x, to)), double())
+
+  # Nothing a `ps_trim` is printed as names a cutoff, so the two types render
+  # identically and the refusal names what disagrees, as the combine does.
+  expect_identical(vec_ptype_full(x), vec_ptype_full(to))
   expect_error(
     vec_cast(x, to = to),
+    regexp = "different trimming parameters",
     class = "vctrs_error_incompatible_type"
   )
 })
 
 test_that("casting between ps_trim objects with different refit status refuses", {
-  testthat::skip("awaiting implementation")
-
   # Refitting is part of what produced these scores, so scores the model was
   # refit on and scores it was not are different types at the same cutoffs.
   set.seed(11)
@@ -1589,17 +1590,17 @@ test_that("casting between ps_trim objects with different refit status refuses",
   expect_identical(suppressWarnings(vec_ptype2(trimmed, refit)), double())
   expect_error(
     vec_cast(trimmed, to = refit),
+    regexp = "different refit status",
     class = "vctrs_error_incompatible_type"
   )
   expect_error(
     vec_cast(refit, to = trimmed),
+    regexp = "different refit status",
     class = "vctrs_error_incompatible_type"
   )
 })
 
 test_that("casting between ps_trim objects describing the same trimming succeeds", {
-  testthat::skip("awaiting implementation")
-
   # The positional half of the record describes the values arriving rather than
   # the type they arrive in, so two objects trimmed the same way are each
   # other's type however many units either one kept.

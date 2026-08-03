@@ -726,21 +726,29 @@ is_ps_truncated.ps_trunc_matrix <- function(x) {
 #'   [is_ps_truncated()] to test whether an object has been truncated at all.
 #'
 #'   The answer comes from the truncation record, which is written for a fixed
-#'   set of observations and can both be lost and outlive them:
+#'   set of observations and can both be lost and outlive them. On a `ps_trunc`,
 #'   [vctrs::vec_slice()] and [c()] drop it, and subassignment that grows the
-#'   vector carries it across a length change. `is_unit_truncated()` therefore
-#'   checks that the record covers the object it is given, and raises an error
-#'   of class `propensity_missing_meta_error` when it does not, rather than
-#'   name truncated units at stale positions.
+#'   vector carries it across a length change; see [ps_trunc()] for the whole
+#'   contract. On a [psw] vector built from truncated propensity scores, a
+#'   subset drops it, while subassignment that grows the weights carries it
+#'   across the length change.
+#'
+#'   `is_unit_truncated()` therefore checks that the record covers the object it
+#'   is given, and raises an error of class `propensity_missing_meta_error` when
+#'   it does not, or when an object marked as truncated carries no record at
+#'   all, rather than name truncated units at stale positions. Query the
+#'   `ps_trunc` object the record was written for instead.
 #'
 #'   That check counts observations, which a reordering does not change, so it
 #'   does not catch one. An operation that reorders through vctrs rather than
 #'   through `[`, such as `vctrs::vec_slice(x, 5:1)` or `dplyr::arrange()`,
-#'   keeps a record written for the old order, and `is_unit_truncated()`
-#'   answers from it and names the wrong units. See [ps_trunc()] for the whole
-#'   contract.
+#'   keeps a record written for the old order, and a `psw` keeps one through any
+#'   same-length operation, a reordering included. `is_unit_truncated()` answers
+#'   from those positions and names the wrong units. See [ps_trunc()] and [psw]
+#'   for the whole contract.
 #'
-#' @param x A `ps_trunc` object created by [ps_trunc()].
+#' @param x A `ps_trunc` object created by [ps_trunc()], or a [psw] vector built
+#'   from one.
 #' @return A logical vector the same length as `x` (or number of rows for
 #'   matrix input). `TRUE` marks observations whose values were winsorized.
 #'
@@ -1039,21 +1047,33 @@ vec_ptype2.double.ps_trunc <- function(x, y, ...) {
   double()
 }
 
+# A cast returns the values it was handed in the type it was handed, and a
+# `ps_trunc`'s type is the whole description of the truncation. That is the
+# comparison `vec_ptype2()` already makes when it refuses to find a common type,
+# so the cast makes it too: a cast comparing less than the combine does hands
+# `x` back describing itself under the target's name. The positional half of the
+# record describes the values arriving rather than the type they arrive in, so
+# it is left out of the comparison, which is also what lets a prototype built by
+# `drop_trunc_record()` be cast to.
+#
+# `vec_ptype_full()` names none of what is compared, so the two types render
+# identically and the refusal would read as a type that cannot be converted to
+# itself. What disagrees is named alongside them, the way the combine names it.
 #' @export
 vec_cast.ps_trunc.ps_trunc <- function(x, to, ...) {
-  # Check if metadata matches (excluding indices)
   x_meta <- ps_trunc_meta(x)
   to_meta <- ps_trunc_meta(to)
 
-  if (
-    !identical(x_meta$lower_bound, to_meta$lower_bound) ||
-      !identical(x_meta$upper_bound, to_meta$upper_bound) ||
-      !identical(x_meta$method, to_meta$method)
-  ) {
-    vctrs::stop_incompatible_cast(x, to, x_arg = "", to_arg = "")
+  if (!identical(trunc_parameters(x_meta), trunc_parameters(to_meta))) {
+    vctrs::stop_incompatible_cast(
+      x,
+      to,
+      x_arg = "",
+      to_arg = "",
+      details = "different truncation parameters"
+    )
   }
 
-  # Return x as-is if metadata matches
   x
 }
 

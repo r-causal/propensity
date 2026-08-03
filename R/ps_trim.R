@@ -1144,21 +1144,41 @@ vec_ptype2.double.ps_trim <- function(x, y, ...) {
   double()
 }
 
+# A cast returns the values it was handed in the type it was handed, and a
+# `ps_trim`'s type is the whole description of the trimming. That is the
+# comparison `vec_ptype2()` already makes when it refuses to find a common type,
+# so the cast makes it too: a cast comparing less than the combine does hands
+# `x` back describing itself under the target's name. The positional half of the
+# record describes the values arriving rather than the type they arrive in, so
+# it is left out of the comparison, which is also what lets a prototype built by
+# `drop_trim_record()` be cast to.
+#
+# `vec_ptype_full()` names none of what is compared, so the two types render
+# identically and the refusal would read as a type that cannot be converted to
+# itself. What disagrees is named alongside them, the way the combine names it.
 #' @export
 vec_cast.ps_trim.ps_trim <- function(x, to, ...) {
-  # Check if metadata matches (excluding indices)
   x_meta <- ps_trim_meta(x)
   to_meta <- ps_trim_meta(to)
 
-  if (
-    !identical(x_meta$lower, to_meta$lower) ||
-      !identical(x_meta$upper, to_meta$upper) ||
-      !identical(x_meta$method, to_meta$method)
+  problem <- if (
+    !identical(trim_parameters(x_meta), trim_parameters(to_meta))
   ) {
-    vctrs::stop_incompatible_cast(x, to, x_arg = "", to_arg = "")
+    "different trimming parameters"
+  } else if (!identical(x_meta$refit, to_meta$refit)) {
+    "different refit status"
   }
 
-  # Return x as-is if metadata matches
+  if (!is.null(problem)) {
+    vctrs::stop_incompatible_cast(
+      x,
+      to,
+      x_arg = "",
+      to_arg = "",
+      details = problem
+    )
+  }
+
   x
 }
 

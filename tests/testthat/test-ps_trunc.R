@@ -1229,8 +1229,6 @@ test_that("ps_trunc() takes the second column of a data frame of two", {
 # under the target's name.
 
 test_that("casting between ps_trunc objects bounded at different percentiles refuses", {
-  testthat::skip("awaiting implementation")
-
   # The bounds are half of what the record says; the other half is the
   # percentile they were read off at, which is what tells a reader where they
   # came from. Two truncations that reached the same bounds from different
@@ -1255,15 +1253,19 @@ test_that("casting between ps_trunc objects bounded at different percentiles ref
     class = "propensity_coercion_warning"
   )
   expect_identical(suppressWarnings(vec_ptype2(x, to)), double())
+
+  # A `ps_trunc` is printed with its bounds but not the percentiles they came
+  # from, so the two types render identically and the refusal names what
+  # disagrees, as the combine does.
+  expect_identical(vec_ptype_full(x), vec_ptype_full(to))
   expect_error(
     vec_cast(x, to = to),
+    regexp = "different truncation parameters",
     class = "vctrs_error_incompatible_type"
   )
 })
 
 test_that("casting between ps_trunc objects describing the same truncation succeeds", {
-  testthat::skip("awaiting implementation")
-
   # The positional half of the record describes the values arriving rather than
   # the type they arrive in, so two objects truncated the same way are each
   # other's type however many units either one pinned.

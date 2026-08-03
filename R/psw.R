@@ -107,13 +107,14 @@
 #' model fit on them still carrying a record written for rows that are no
 #' longer there.
 #'
-#' Honesty therefore lives at query time. [is_unit_trimmed()] answers by
-#' position, so it checks that the record covers the vector it is given and
-#' raises an error of class `propensity_missing_meta_error` when it does not,
-#' or when weights marked as trimmed carry no record at all, rather than name
-#' trimmed units at stale positions. [is_refit()] reads a single flag rather
-#' than a position, so it answers from any record present and refuses only when
-#' the record is absent entirely.
+#' Honesty therefore lives at query time. [is_unit_trimmed()] and
+#' [is_unit_truncated()] answer by position, so each checks that the record
+#' covers the vector it is given and raises an error of class
+#' `propensity_missing_meta_error` when it does not, or when weights marked as
+#' modified carry no record at all, rather than name modified units at stale
+#' positions. [is_refit()] reads a single flag rather than a position, so it
+#' answers from any record present and refuses only when the record is absent
+#' entirely.
 #'
 #' The result of any of these operations stays a `psw` and keeps every other
 #' attribute, including its stabilized, trimmed, truncated, and calibrated
@@ -368,9 +369,60 @@ is_ps_truncated.psw <- function(x) {
   isTRUE(attr(x, "truncated"))
 }
 
+# The truncation record travels the same routes as the trimming record and can
+# outlive the observations it describes the same way, so a positional query on
+# it owes the same refusal: weights marked as built from truncated propensity
+# scores whose record does not cover them have no answer to give, and reporting
+# every unit as untouched would be a wrong answer rather than a missing one.
+check_trunc_meta_covers <- function(x, fn, call = rlang::caller_env()) {
+  meta <- ps_trunc_meta(x)
+  n <- length(x)
+
+  if (!is_ps_truncated(x) || record_covers(meta, n)) {
+    return(invisible(x))
+  }
+
+  recorded <- meta$n_obs
+  problem <- if (is.null(recorded)) {
+    "These weights are marked as built from truncated propensity scores but
+     carry no record of which units were truncated."
+  } else {
+    "The record covers {recorded} observation{?s} and these weights have {n},
+     so its positions do not describe them."
+  }
+
+  abort(
+    c(
+      "{.code {fn}} has no usable truncation record for these weights.",
+      x = problem,
+      i = "Call {.code {fn}} on the {.cls ps_trunc} object the weights were
+           built from, or rebuild the weights from it."
+    ),
+    error_class = "propensity_missing_meta_error",
+    call = call
+  )
+}
+
 #' @export
 is_unit_truncated.psw <- function(x) {
-  isTRUE(attr(x, "truncated"))
+  # No observations, no answers. A record kept on an empty vector describes
+  # observations it does not have, and indexing an empty logical by the
+  # positions it names would grow one padded with `NA`.
+  if (length(x) == 0) {
+    return(logical(0))
+  }
+
+  out <- vector("logical", length = length(x))
+  if (!is_ps_truncated(x)) {
+    return(out)
+  }
+
+  check_trunc_meta_covers(x, "is_unit_truncated()")
+
+  meta <- ps_trunc_meta(x)
+  out[meta$truncated_idx] <- TRUE
+
+  out
 }
 
 
@@ -882,51 +934,64 @@ vec_restore.psw <- function(x, to, ...) {
   carry_psw_metadata(x, to)
 }
 
+# What a psw is, as opposed to which observations it holds: the estimand the
+# weights answer, whether they were stabilized and against what score, and which
+# modification of the propensity scores they were built from. `vec_ptype2()` and
+# `vec_cast()` read the same set, so weights that combine without complaint are
+# also each other's type.
+psw_type_fields <- function(x) {
+  list(
+    estimand = estimand(x),
+    stabilized = attr(x, "stabilized"),
+    stabilization_score = stabilization_score(x),
+    trimmed = is_ps_trimmed(x),
+    truncated = is_ps_truncated(x),
+    calibrated = is_ps_calibrated(x)
+  )
+}
+
+# How a disagreement on each field is named. The estimand is named with the two
+# values themselves and is reported separately.
+psw_type_field_problems <- c(
+  stabilized = "different stabilization status",
+  stabilization_score = "different stabilization scores",
+  trimmed = "different trimming status",
+  truncated = "different truncation status",
+  calibrated = "different calibration status"
+)
+
+# The first field the two objects describe differently, named the way the
+# coercion warning names it, or `NULL` when they agree throughout. Both the
+# combine and the cast report a disagreement, and reading it out of one place
+# keeps them describing the same one.
+psw_type_disagreement <- function(x, y) {
+  x_fields <- psw_type_fields(x)
+  y_fields <- psw_type_fields(y)
+
+  if (!identical(x_fields$estimand, y_fields$estimand)) {
+    return(paste0(
+      "incompatible estimands '",
+      x_fields$estimand,
+      "' and '",
+      y_fields$estimand,
+      "'"
+    ))
+  }
+
+  for (field in names(psw_type_field_problems)) {
+    if (!identical(x_fields[[field]], y_fields[[field]])) {
+      return(psw_type_field_problems[[field]])
+    }
+  }
+
+  NULL
+}
+
 #' @export
 vec_ptype2.psw.psw <- function(x, y, ...) {
-  # Check estimand compatibility
-  if (!identical(estimand(x), estimand(y))) {
-    warn_incompatible_metadata(
-      x,
-      y,
-      paste0(
-        "incompatible estimands '",
-        estimand(x),
-        "' and '",
-        estimand(y),
-        "'"
-      )
-    )
-    return(double())
-  }
-
-  # Check stabilization status
-  if (!identical(attr(x, "stabilized"), attr(y, "stabilized"))) {
-    warn_incompatible_metadata(x, y, "different stabilization status")
-    return(double())
-  }
-
-  # Check stabilization score
-  if (!identical(stabilization_score(x), stabilization_score(y))) {
-    warn_incompatible_metadata(x, y, "different stabilization scores")
-    return(double())
-  }
-
-  # Check trimmed status
-  if (!identical(is_ps_trimmed(x), is_ps_trimmed(y))) {
-    warn_incompatible_metadata(x, y, "different trimming status")
-    return(double())
-  }
-
-  # Check truncated status
-  if (!identical(is_ps_truncated(x), is_ps_truncated(y))) {
-    warn_incompatible_metadata(x, y, "different truncation status")
-    return(double())
-  }
-
-  # Check calibrated status
-  if (!identical(is_ps_calibrated(x), is_ps_calibrated(y))) {
-    warn_incompatible_metadata(x, y, "different calibration status")
+  problem <- psw_type_disagreement(x, y)
+  if (!is.null(problem)) {
+    warn_incompatible_metadata(x, y, problem)
     return(double())
   }
 
@@ -982,8 +1047,32 @@ cast_to_psw <- function(x, to) {
   carry_psw_metadata(x, to)
 }
 
+# A cast returns `x`'s values in `to`'s type, and a psw's type is the whole
+# description of the weights. Weights described one way are not weights
+# described another way, so a cast between them has no result to give. The
+# refusal is what `[<-` rests on: subassignment casts the replacement to the
+# target's type and then leaves base R to keep the target's attributes, so a
+# cast that hands `x` back unexamined would write weights for one estimand into
+# weights for another under the target's description.
+#
+# Most of what is compared goes unmentioned by `vec_ptype_full()`, so the two
+# types can render identically and the refusal would read as a type that cannot
+# be converted to itself. The disagreeing field is named alongside them.
 #' @export
-vec_cast.psw.psw <- function(x, to, ...) x
+vec_cast.psw.psw <- function(x, to, ...) {
+  problem <- psw_type_disagreement(x, to)
+  if (!is.null(problem)) {
+    vctrs::stop_incompatible_cast(
+      x,
+      to,
+      x_arg = "",
+      to_arg = "",
+      details = problem
+    )
+  }
+
+  x
+}
 
 #' @export
 vec_cast.psw.double <- function(x, to, ...) cast_to_psw(x, to)
@@ -1007,16 +1096,22 @@ vec_ptype2.character.psw <- function(x, y, ...) {
 vec_cast.character.psw <- function(x, to, ...) as.character(vec_data(x))
 
 
+# Weights are quantities with fractional parts, so meeting an integer in the
+# integers would round every one of them away: the combination would report the
+# class it dropped and then silently change the numbers it kept. The common type
+# is the one that holds both sets of values, which is what `ps_trim` and
+# `ps_trunc` already answer. An explicit cast to integer is a different request,
+# and vctrs' own check reports the loss there.
 #' @export
 vec_ptype2.psw.integer <- function(x, y, ...) {
-  warn_class_downgrade("psw", "integer")
-  integer()
+  warn_class_downgrade("psw")
+  double()
 }
 
 #' @export
 vec_ptype2.integer.psw <- function(x, y, ...) {
-  warn_class_downgrade("psw", "integer")
-  integer()
+  warn_class_downgrade("psw")
+  double()
 }
 
 #' @export

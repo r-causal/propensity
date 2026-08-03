@@ -1,5 +1,42 @@
 # propensity 0.1.0.9000 (development version)
 
+* `is_unit_truncated()` now answers per unit for a `psw` vector built from
+  truncated propensity scores, reading the positions out of the truncation
+  record as it already did for a `ps_trunc`. It returned the single flag
+  `is_ps_truncated()` answers, which was one value for a query asked once per
+  observation. Weights marked as truncated whose record no longer describes
+  them raise an error of class `propensity_missing_meta_error` rather than
+  report the wrong units, matching `is_unit_trimmed()`.
+
+* Casting one `psw` to another now compares the whole description of the
+  weights, the estimand, the stabilization status and score, and the trimmed,
+  truncated, and calibrated flags, and refuses with an incompatible-cast error
+  naming the field they disagree on. It returned the values unexamined. Most of
+  what is compared goes unmentioned when a `psw` is printed, so the refusal
+  names the disagreement rather than rendering two identical-looking types.
+  Subassignment rests on
+  that comparison: `w[1] <- value` casts the replacement to `w`'s type and then
+  leaves base R to keep `w`'s attributes, so weights for one estimand could be
+  written into weights for another under the target's description, and
+  `rbind()` on data frames of weights did the same. Combining is unaffected,
+  since it settles its type through `vec_ptype2()`, which still warns and
+  returns numeric.
+
+* Combining a `psw` with an integer vector now gives a numeric result holding
+  the weights, rather than an integer vector of every weight rounded away. The
+  combination reported the class it dropped and then silently changed the
+  numbers it kept. This is the answer `ps_trim` and `ps_trunc` already give.
+  Casting a `psw` to integer still raises a lossy-cast error when the weights
+  have fractional parts, since there the caller named the type.
+
+* Casting one `ps_trim` to another now compares the trimming parameters and the
+  refit flag, and casting one `ps_trunc` to another compares the truncation
+  parameters, which is the comparison the combine already made. Each refuses
+  with an incompatible-cast error naming what disagrees, instead of returning
+  the values described by the target. Neither class is printed with the
+  parameters being compared, so the refusal names them rather than rendering
+  two identical-looking types.
+
 * The line a `ps_trim` is printed under now names the number of observations
   the trimmed count is out of, as in `ps_trim; trimmed 9 of 20`. It ended at
   `of ` with nothing after it, and an object whose record had been dropped was
