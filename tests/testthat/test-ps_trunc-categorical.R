@@ -449,6 +449,72 @@ test_that("print.ps_trunc_matrix produces expected output", {
   expect_false(any(grepl("High\\s+Low\\s+Med", output_no_names)))
 })
 
+# What the matrix print method shows -----------------------------------------
+
+# The truncation record is metadata, and `ps_trunc_meta()` is how a caller reads
+# it. The print method summarizes that record in the header and then shows the
+# scores, and the scores are what it shows: the record is a set of index vectors
+# as long as the data, so printed after the matrix it is a second and longer
+# object the caller did not ask to see.
+
+trunc_print_fixture <- function() {
+  set.seed(123)
+  n <- 20
+  exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+
+  ps_matrix <- matrix(runif(n * 3, 0.05, 0.95), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  ps_trunc(ps_matrix, .exposure = exposure, method = "ps", lower = 0.1)
+}
+
+test_that("print.ps_trunc_matrix() shows some rows without the record", {
+  testthat::skip("awaiting implementation")
+
+  truncated <- trunc_print_fixture()
+  output <- capture.output(print(truncated, n = 3))
+
+  expect_false(any(grepl('attr\\(,"ps_trunc_meta"\\)', output)))
+
+  # Header, column names, the rows asked for, and the count of the rest.
+  expect_length(output, 6)
+  expect_match(output[1], "<ps_trunc_matrix\\[20 x 3\\]; truncated \\d+ of 20;")
+  expect_equal(sum(grepl("^\\s*\\[\\s*\\d+,\\]", output)), 3)
+  expect_true(any(grepl("# \\.\\.\\. with 17 more rows", output)))
+})
+
+test_that("print.ps_trunc_matrix() shows every row without the record", {
+  testthat::skip("awaiting implementation")
+
+  truncated <- trunc_print_fixture()
+  output <- capture.output(print(truncated, n = Inf))
+
+  expect_false(any(grepl('attr\\(,"ps_trunc_meta"\\)', output)))
+
+  # Header, column names, and every row.
+  expect_length(output, 22)
+  expect_equal(sum(grepl("^\\s*\\[\\s*\\d+,\\]", output)), 20)
+})
+
+# `method = "ps"` clamps the categorical scores from below and renormalizes the
+# row, so it settles on no upper bound and records none. The header reports the
+# bounds the method worked to, and a bound it did not set is not one it can
+# report as a number: what stands in for it has to read as its absence.
+
+test_that("the ps_trunc_matrix header reports a bound the method never set", {
+  testthat::skip("awaiting implementation")
+
+  truncated <- trunc_print_fixture()
+  header <- capture.output(print(truncated, n = 3))[1]
+
+  expect_true(is.na(ps_trunc_meta(truncated)$upper_bound))
+  expect_false(grepl("\\bNA\\b", header))
+  expect_false(grepl("NaN", header))
+  expect_match(header, "method=ps")
+  expect_match(header, "0.1000", fixed = TRUE)
+})
+
 # ---- the matrix method names ps_trunc, whoever called it -------------------
 
 # `ps_trunc.matrix` validates the propensity score matrix from inside a

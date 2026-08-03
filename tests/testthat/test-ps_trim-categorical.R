@@ -843,6 +843,57 @@ test_that("print methods respect n parameter", {
   expect_false(any(grepl("# \\.\\.\\. with", output_inf)))
 })
 
+# What the matrix print method shows -----------------------------------------
+
+# The trimming record is metadata, and `ps_trim_meta()` is how a caller reads
+# it. The print method summarizes that record in the header and then shows the
+# scores, and the scores are what it shows: the record is a set of index vectors
+# as long as the data, so printed after the matrix it is a second and longer
+# object the caller did not ask to see.
+
+trim_print_fixture <- function() {
+  set.seed(123)
+  n <- 20
+  exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+
+  ps_matrix <- matrix(runif(n * 3, 0.05, 0.95), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  ps_trim(ps_matrix, .exposure = exposure, method = "ps", lower = 0.2)
+}
+
+test_that("print.ps_trim_matrix() shows some rows without the trimming record", {
+  testthat::skip("awaiting implementation")
+
+  trimmed <- trim_print_fixture()
+  output <- capture.output(print(trimmed, n = 3))
+
+  expect_false(any(grepl('attr\\(,"ps_trim_meta"\\)', output)))
+
+  # Header, column names, the rows asked for, and the count of the rest.
+  expect_length(output, 6)
+  expect_match(
+    output[1],
+    "<ps_trim_matrix\\[20 x 3\\]; trimmed \\d+ of 20; method=ps>"
+  )
+  expect_equal(sum(grepl("^\\s*\\[\\s*\\d+,\\]", output)), 3)
+  expect_true(any(grepl("# \\.\\.\\. with 17 more rows", output)))
+})
+
+test_that("print.ps_trim_matrix() shows every row without the trimming record", {
+  testthat::skip("awaiting implementation")
+
+  trimmed <- trim_print_fixture()
+  output <- capture.output(print(trimmed, n = Inf))
+
+  expect_false(any(grepl('attr\\(,"ps_trim_meta"\\)', output)))
+
+  # Header, column names, and every row.
+  expect_length(output, 22)
+  expect_equal(sum(grepl("^\\s*\\[\\s*\\d+,\\]", output)), 20)
+})
+
 # ---- the matrix method names ps_trim, whoever called it --------------------
 
 # `ps_trim.matrix` validates the propensity score matrix from inside a

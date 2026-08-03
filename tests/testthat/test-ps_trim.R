@@ -1401,3 +1401,171 @@ test_that("casting a ps_trim to integer refuses rather than rounds", {
     class = "vctrs_error_cast_lossy"
   )
 })
+
+# The description a trimmed vector is printed under --------------------------
+
+# `vec_ptype_full()` writes the line a trimmed vector is printed under. It
+# reports how many observations were trimmed, which means something to a reader
+# only against the number of observations there were, so it names both.
+
+trim_ptype_fixture <- function() {
+  set.seed(123)
+  ps_trim(runif(20, 0.05, 0.95), method = "ps", lower = 0.2, upper = 0.8)
+}
+
+test_that("vec_ptype_full() names the size the trimmed count is out of", {
+  testthat::skip("awaiting implementation")
+
+  trimmed <- trim_ptype_fixture()
+  n_trimmed <- length(ps_trim_meta(trimmed)$trimmed_idx)
+
+  expect_gt(n_trimmed, 0)
+  expect_identical(
+    vec_ptype_full(trimmed),
+    sprintf("ps_trim; trimmed %d of %d", n_trimmed, length(trimmed))
+  )
+})
+
+test_that("vec_ptype_full() reports the size when nothing was trimmed", {
+  testthat::skip("awaiting implementation")
+
+  set.seed(123)
+  untrimmed <- ps_trim(
+    runif(20, 0.05, 0.95),
+    method = "ps",
+    lower = 0,
+    upper = 1
+  )
+
+  expect_length(ps_trim_meta(untrimmed)$trimmed_idx, 0)
+  expect_identical(vec_ptype_full(untrimmed), "ps_trim; trimmed 0 of 20")
+})
+
+test_that("vec_ptype_full() counts against the subset, not the whole vector", {
+  testthat::skip("awaiting implementation")
+
+  trimmed <- trim_ptype_fixture()
+  sliced <- trimmed[1:8]
+  n_sliced <- length(ps_trim_meta(sliced)$trimmed_idx)
+
+  # The record is re-indexed to the subset, so both the count and the size the
+  # description reports are the subset's own.
+  expect_gt(n_sliced, 0)
+  expect_lt(n_sliced, length(ps_trim_meta(trimmed)$trimmed_idx))
+  expect_identical(
+    vec_ptype_full(sliced),
+    sprintf("ps_trim; trimmed %d of 8", n_sliced)
+  )
+})
+
+# Choosing a column from a data frame of propensity scores -------------------
+
+# Predictions from a binary model arrive as a column per level, and trimming
+# works on one column. The convention is the second column of a pair, which is
+# the probability of the second level in the layout these predictions come in,
+# and the only column otherwise. The caller did not make that choice, so it is
+# announced rather than left to be inferred from the result.
+
+trim_frame_fixture <- function() {
+  set.seed(2)
+  n <- 40
+  x <- rnorm(n)
+  p <- plogis(x)
+
+  list(
+    ps = data.frame(.pred_0 = 1 - p, .pred_1 = p),
+    exposure = rbinom(n, 1, p)
+  )
+}
+
+test_that("ps_trim() names the column it took from a data frame of two", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trim_frame_fixture()
+
+  messages <- testthat::capture_messages(
+    ps_trim(
+      fixture$ps,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3,
+      upper = 0.7
+    )
+  )
+
+  naming <- messages[grepl(".pred_1", messages, fixed = TRUE)]
+  expect_length(naming, 1)
+  expect_false(any(grepl(".pred_0", messages, fixed = TRUE)))
+})
+
+test_that("ps_trim() names the only column of a one column data frame", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trim_frame_fixture()
+  one_column <- fixture$ps[, ".pred_1", drop = FALSE]
+
+  messages <- testthat::capture_messages(
+    ps_trim(one_column, method = "ps", lower = 0.3, upper = 0.7)
+  )
+
+  expect_length(messages, 1)
+  expect_true(grepl(".pred_1", messages, fixed = TRUE))
+})
+
+test_that("ps_trim() announces no column when the messages are quieted", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- trim_frame_fixture()
+
+  expect_silent(
+    ps_trim(
+      fixture$ps,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3,
+      upper = 0.7
+    )
+  )
+})
+
+test_that("the column ps_trim() announces is named in a full sentence", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trim_frame_fixture()
+
+  expect_snapshot(
+    trimmed <- ps_trim(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+  )
+})
+
+test_that("ps_trim() takes the second column of a data frame of two", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trim_frame_fixture()
+
+  from_frame <- ps_trim(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+  from_second <- ps_trim(
+    fixture$ps[[2]],
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+  from_first <- ps_trim(
+    fixture$ps[[1]],
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+
+  expect_gt(length(ps_trim_meta(from_second)$trimmed_idx), 0)
+  expect_equal(as.numeric(from_frame), as.numeric(from_second))
+  expect_equal(
+    ps_trim_meta(from_frame)$trimmed_idx,
+    ps_trim_meta(from_second)$trimmed_idx
+  )
+  expect_false(identical(as.numeric(from_frame), as.numeric(from_first)))
+})

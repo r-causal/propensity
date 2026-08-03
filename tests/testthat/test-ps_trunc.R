@@ -1093,3 +1093,115 @@ test_that("casting a ps_trunc to integer refuses rather than rounds", {
     class = "vctrs_error_cast_lossy"
   )
 })
+
+# Choosing a column from a data frame of propensity scores -------------------
+
+# Predictions from a binary model arrive as a column per level, and truncation
+# works on one column. The convention is the second column of a pair, which is
+# the probability of the second level in the layout these predictions come in,
+# and the only column otherwise. The caller did not make that choice, so it is
+# announced rather than left to be inferred from the result.
+
+trunc_frame_fixture <- function() {
+  set.seed(2)
+  n <- 40
+  x <- rnorm(n)
+  p <- plogis(x)
+
+  list(
+    ps = data.frame(.pred_0 = 1 - p, .pred_1 = p),
+    exposure = rbinom(n, 1, p)
+  )
+}
+
+test_that("ps_trunc() names the column it took from a data frame of two", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trunc_frame_fixture()
+
+  messages <- testthat::capture_messages(
+    ps_trunc(
+      fixture$ps,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3,
+      upper = 0.7
+    )
+  )
+
+  naming <- messages[grepl(".pred_1", messages, fixed = TRUE)]
+  expect_length(naming, 1)
+  expect_false(any(grepl(".pred_0", messages, fixed = TRUE)))
+})
+
+test_that("ps_trunc() names the only column of a one column data frame", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trunc_frame_fixture()
+  one_column <- fixture$ps[, ".pred_1", drop = FALSE]
+
+  messages <- testthat::capture_messages(
+    ps_trunc(one_column, method = "ps", lower = 0.3, upper = 0.7)
+  )
+
+  expect_length(messages, 1)
+  expect_true(grepl(".pred_1", messages, fixed = TRUE))
+})
+
+test_that("ps_trunc() announces no column when the messages are quieted", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- trunc_frame_fixture()
+
+  expect_silent(
+    ps_trunc(
+      fixture$ps,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3,
+      upper = 0.7
+    )
+  )
+})
+
+test_that("the column ps_trunc() announces is named in a full sentence", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trunc_frame_fixture()
+
+  expect_snapshot(
+    truncated <- ps_trunc(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+  )
+})
+
+test_that("ps_trunc() takes the second column of a data frame of two", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trunc_frame_fixture()
+
+  from_frame <- ps_trunc(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+  from_second <- ps_trunc(
+    fixture$ps[[2]],
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+  from_first <- ps_trunc(
+    fixture$ps[[1]],
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+
+  expect_gt(length(ps_trunc_meta(from_second)$truncated_idx), 0)
+  expect_equal(as.numeric(from_frame), as.numeric(from_second))
+  expect_equal(
+    ps_trunc_meta(from_frame)$truncated_idx,
+    ps_trunc_meta(from_second)$truncated_idx
+  )
+  expect_false(identical(as.numeric(from_frame), as.numeric(from_first)))
+})
