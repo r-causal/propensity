@@ -621,3 +621,92 @@ test_that("ps_trunc truncates a data frame with the method left at its default",
   expect_equal(ps_trunc_meta(truncated)$method, "ps")
   expect_equal(ps_trunc_meta(truncated)$lower_bound, 0.01)
 })
+
+# Missing values ------------------------------------------------------------
+
+# Truncation rewrites every cell of a row through that row's sum, which is
+# unknown when one of its scores is missing, so the whole row comes back
+# missing. It is still not a row this package pinned to a bound, so the record
+# says nothing about it, and it contributes nothing to the distribution the
+# bounds are read from.
+
+missing_cell_trunc_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a"))
+  # Row 3 has no score for level "a". Row 4 carries the extreme scores that
+  # both methods pin back to a bound.
+  ps_matrix <- rbind(
+    c(0.60, 0.20, 0.20),
+    c(0.20, 0.60, 0.20),
+    c(NA, 0.50, 0.50),
+    c(0.05, 0.90, 0.05)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trunc() leaves a row with a missing score out of the record", {
+  # Regression guard: the fixed-threshold method already reports the row as one
+  # it did not truncate, and this is the policy the percentile method is being
+  # brought to.
+  fixture <- missing_cell_trunc_fixture()
+
+  with_na <- ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps",
+    lower = 0.1
+  )
+  without_na <- ps_trunc(
+    fixture$ps_matrix[-3, ],
+    .exposure = fixture$exposure[-3],
+    method = "ps",
+    lower = 0.1
+  )
+  meta <- ps_trunc_meta(with_na)
+
+  expect_true(all(is.na(unclass(with_na)[3, ])))
+  expect_equal(meta$truncated_idx, 4)
+  expect_equal(meta$n_obs, 4)
+  expect_false(is_unit_truncated(with_na)[3])
+  expect_equal(
+    as.numeric(unclass(with_na)[-3, ]),
+    as.numeric(unclass(without_na))
+  )
+})
+
+test_that("ps_trunc() takes its percentile bounds from the complete rows", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- missing_cell_trunc_fixture()
+
+  # The bounds are quantiles of every cell in the matrix, and `quantile()`
+  # refuses a missing value unless it is told to drop it, so the percentile
+  # method is an error on any matrix with one. A row this function cannot
+  # renormalize contributes nothing to the distribution those bounds come from.
+  with_na <- ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+  without_na <- ps_trunc(
+    fixture$ps_matrix[-3, ],
+    .exposure = fixture$exposure[-3],
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trunc_meta(with_na)
+
+  expect_equal(meta$lower_bound, ps_trunc_meta(without_na)$lower_bound)
+  expect_equal(meta$upper_bound, ps_trunc_meta(without_na)$upper_bound)
+  expect_true(all(is.na(unclass(with_na)[3, ])))
+  expect_equal(meta$truncated_idx, 4)
+  expect_false(is_unit_truncated(with_na)[3])
+  expect_equal(
+    as.numeric(unclass(with_na)[-3, ]),
+    as.numeric(unclass(without_na))
+  )
+})

@@ -1020,3 +1020,101 @@ test_that("ps_trim trims a data frame with the method left at its default", {
   expect_equal(ps_trim_meta(trimmed)$method, "ps")
   expect_equal(ps_trim_meta(trimmed)$delta, 0.1)
 })
+
+# Missing values ------------------------------------------------------------
+
+# A row carrying a missing score is not one this package removed, so the record
+# says nothing about it and the row comes back as it arrived. Trimming either
+# discards a row or leaves it untouched, so unlike truncation it has no reason
+# to rewrite the scores that row does hold.
+
+missing_cell_trim_fixture <- function() {
+  exposure <- factor(c("a", "a", "a", "b", "b", "b", "c", "c", "c"))
+  # Three rows per level, so that dropping row 3 for its low score and row 7
+  # for its missing one still leaves every group represented and the
+  # group-preservation reset does not fire. Row 3 falls below the 0.1
+  # threshold; row 7 has no score for level "a".
+  ps_matrix <- rbind(
+    c(0.60, 0.20, 0.20),
+    c(0.50, 0.30, 0.20),
+    c(0.05, 0.90, 0.05),
+    c(0.20, 0.60, 0.20),
+    c(0.30, 0.50, 0.20),
+    c(0.40, 0.40, 0.20),
+    c(NA, 0.50, 0.50),
+    c(0.20, 0.20, 0.60),
+    c(0.30, 0.20, 0.50)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trim() does not record a row with a missing score as trimmed", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- missing_cell_trim_fixture()
+
+  # `min(x) > delta` is missing for row 7, which drops it from the retained
+  # positions and lands it among the trimmed ones, where it is blanked out and
+  # two observed scores are lost with it.
+  with_na <- ps_trim(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps",
+    lower = 0.1
+  )
+  without_na <- ps_trim(
+    fixture$ps_matrix[-7, ],
+    .exposure = fixture$exposure[-7],
+    method = "ps",
+    lower = 0.1
+  )
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$trimmed_idx, 3)
+  expect_equal(meta$keep_idx, c(1, 2, 4, 5, 6, 8, 9))
+  expect_equal(meta$n_obs, 9)
+  expect_false(is_unit_trimmed(with_na)[7])
+
+  # The row is neither trimmed nor rewritten, so it comes back as it arrived.
+  expect_equal(unclass(with_na)[7, ], fixture$ps_matrix[7, ])
+
+  # Every other row is decided by the same comparison against the same
+  # threshold, so the missing row changes nothing about them.
+  expect_equal(
+    as.numeric(unclass(with_na)[-7, ]),
+    as.numeric(unclass(without_na))
+  )
+})
+
+test_that("ps_trim() takes its optimal threshold from the complete rows", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- missing_cell_trim_fixture()
+
+  # The optimal threshold is a root of a function of the row sums of 1 / e,
+  # which is missing for row 7, so the comparison that decides whether to solve
+  # for it at all is an error rather than an answer.
+  with_na <- ps_trim(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "optimal"
+  )
+  without_na <- ps_trim(
+    fixture$ps_matrix[-7, ],
+    .exposure = fixture$exposure[-7],
+    method = "optimal"
+  )
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$lambda, ps_trim_meta(without_na)$lambda)
+  expect_equal(meta$trimmed_idx, 3)
+  expect_equal(meta$keep_idx, c(1, 2, 4, 5, 6, 8, 9))
+  expect_false(is_unit_trimmed(with_na)[7])
+  expect_equal(unclass(with_na)[7, ], fixture$ps_matrix[7, ])
+  expect_equal(
+    as.numeric(unclass(with_na)[-7, ]),
+    as.numeric(unclass(without_na))
+  )
+})

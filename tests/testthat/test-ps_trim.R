@@ -988,3 +988,222 @@ test_that("ps_trim names `.exposure` when the method requires one", {
 
   expect_propensity_error(ps_trim(ps, method = "cr"))
 })
+
+# Missing values ------------------------------------------------------------
+
+# A propensity score that arrives missing is not one this package removed, so
+# the record says nothing about it: it belongs to neither the retained nor the
+# trimmed positions, and it propagates as `NA` into the result. The methods
+# that read a cutoff off the scores read it off the scores they have.
+
+test_that("ps_trim() does not record a score that arrived missing as trimmed", {
+  testthat::skip("awaiting implementation")
+
+  trimmed <- ps_trim(
+    c(0.2, 0.5, NA, 0.7),
+    method = "ps",
+    lower = 0.3,
+    upper = 0.9
+  )
+  meta <- ps_trim_meta(trimmed)
+
+  expect_equal(as.numeric(trimmed), c(NA, 0.5, NA, 0.7))
+  expect_equal(meta$trimmed_idx, 1)
+  expect_equal(meta$keep_idx, c(2, 4))
+  expect_equal(meta$n_obs, 4)
+  expect_equal(is_unit_trimmed(trimmed), c(TRUE, FALSE, FALSE, FALSE))
+})
+
+test_that("ps_trim() takes its adaptive cutoff from the complete scores", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.01, 0.2, 0.5, NA, 0.7, 0.99)
+
+  # The cutoff comes from the mean and the maximum of 1 / (e (1 - e)), both of
+  # which are missing the moment one score is, and the comparison that chooses
+  # between the two branches is then an error rather than an answer.
+  with_na <- ps_trim(ps, method = "adaptive")
+  without_na <- ps_trim(ps[-4], method = "adaptive")
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$cutoff, ps_trim_meta(without_na)$cutoff)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$keep_idx, c(2, 3, 5))
+  expect_equal(meta$trimmed_idx, c(1, 6))
+  expect_false(is_unit_trimmed(with_na)[4])
+})
+
+test_that("ps_trim() takes its percentile cutoffs from the complete scores", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+
+  # `quantile()` refuses a missing value unless it is told to drop it, so the
+  # percentile method is an error on any sample with one.
+  with_na <- ps_trim(ps, method = "pctl", lower = 0.2, upper = 0.8)
+  without_na <- ps_trim(ps[-4], method = "pctl", lower = 0.2, upper = 0.8)
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$q_lower, ps_trim_meta(without_na)$q_lower)
+  expect_equal(meta$q_upper, ps_trim_meta(without_na)$q_upper)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$keep_idx, c(2, 3, 5))
+  expect_equal(meta$trimmed_idx, c(1, 6))
+  expect_false(is_unit_trimmed(with_na)[4])
+})
+
+test_that("ps_trim() takes its common range from the complete scores", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+  z <- c(0, 0, 1, 1, 1, 0)
+
+  # One missing score in the focal group makes the lower bound missing, which
+  # puts every score outside the range and trims the whole sample.
+  with_na <- ps_trim(ps, method = "cr", .exposure = z, .focal_level = 1)
+  without_na <- ps_trim(
+    ps[-4],
+    method = "cr",
+    .exposure = z[-4],
+    .focal_level = 1
+  )
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$cr_lower, ps_trim_meta(without_na)$cr_lower)
+  expect_equal(meta$cr_upper, ps_trim_meta(without_na)$cr_upper)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$keep_idx, c(3, 5, 6))
+  expect_equal(meta$trimmed_idx, c(1, 2))
+  expect_false(is_unit_trimmed(with_na)[4])
+})
+
+test_that("ps_trim() leaves a missing score out of the preference record", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+  z <- c(0, 0, 0, 1, 1, 1)
+
+  # The preference score of a missing propensity score is missing, so the unit
+  # falls outside the bounds and is recorded as one this package trimmed.
+  trimmed <- ps_trim(ps, method = "pref", .exposure = z, .focal_level = 1)
+  meta <- ps_trim_meta(trimmed)
+
+  expect_true(is.na(as.numeric(trimmed)[4]))
+  expect_equal(meta$keep_idx, c(3, 5))
+  expect_equal(meta$trimmed_idx, c(1, 2, 6))
+  expect_false(is_unit_trimmed(trimmed)[4])
+})
+
+test_that("ps_trim() refuses an exposure with missing values", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
+  z <- c(0, 0, 0, 1, 1, NA)
+  z_factor <- factor(c("a", "a", "a", "b", "b", NA))
+
+  # The proportion exposed is missing with one exposure value missing, so every
+  # preference score is missing and the whole sample is trimmed without a word.
+  # A trimming rule that cannot be computed is reported rather than applied.
+  pref_numeric <- rlang::catch_cnd(
+    ps_trim(ps, method = "pref", .exposure = z, .focal_level = 1),
+    classes = "condition"
+  )
+  expect_s3_class(pref_numeric, "error")
+  expect_s3_class(pref_numeric, "propensity_error")
+
+  pref_factor <- rlang::catch_cnd(
+    ps_trim(ps, method = "pref", .exposure = z_factor, .focal_level = "b"),
+    classes = "condition"
+  )
+  expect_s3_class(pref_factor, "error")
+  expect_s3_class(pref_factor, "propensity_error")
+
+  # The common range is bounded by the extremes of each group, both of which
+  # are missing once a unit belongs to neither, and every score then falls
+  # outside the range.
+  cr_numeric <- rlang::catch_cnd(
+    ps_trim(ps, method = "cr", .exposure = z, .focal_level = 1),
+    classes = "condition"
+  )
+  expect_s3_class(cr_numeric, "error")
+  expect_s3_class(cr_numeric, "propensity_error")
+
+  cr_factor <- rlang::catch_cnd(
+    ps_trim(ps, method = "cr", .exposure = z_factor, .focal_level = "b"),
+    classes = "condition"
+  )
+  expect_s3_class(cr_factor, "error")
+  expect_s3_class(cr_factor, "propensity_error")
+
+  expect_propensity_error(
+    ps_trim(ps, method = "pref", .exposure = z, .focal_level = 1)
+  )
+})
+
+# Bounds validation ---------------------------------------------------------
+
+test_that("ps_trim() requires lower below upper for the pctl and pref methods", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  z <- c(0, 0, 1, 1)
+
+  # Bounds the wrong way around describe an empty interval, so every unit falls
+  # outside it and the whole sample is trimmed. Method "ps" already refuses
+  # this and the other bounded methods owe the same refusal.
+  pctl <- rlang::catch_cnd(
+    ps_trim(ps, method = "pctl", lower = 0.9, upper = 0.1),
+    classes = "condition"
+  )
+  expect_s3_class(pctl, "error")
+  expect_s3_class(pctl, "propensity_range_error")
+
+  pref <- rlang::catch_cnd(
+    ps_trim(
+      ps,
+      method = "pref",
+      lower = 0.9,
+      upper = 0.1,
+      .exposure = z,
+      .focal_level = 1
+    ),
+    classes = "condition"
+  )
+  expect_s3_class(pref, "error")
+  expect_s3_class(pref, "propensity_range_error")
+
+  expect_propensity_error(ps_trim(
+    ps,
+    method = "pctl",
+    lower = 0.9,
+    upper = 0.1
+  ))
+})
+
+test_that("ps_trim() refuses percentile bounds outside the unit interval", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # For the percentile method the bounds are probabilities. `quantile()`
+  # refuses one outside [0, 1] in a bare error naming `probs`, an argument
+  # `ps_trim()` does not have.
+  low <- rlang::catch_cnd(
+    ps_trim(ps, method = "pctl", lower = -0.1),
+    classes = "condition"
+  )
+  expect_s3_class(low, "error")
+  expect_s3_class(low, "propensity_error")
+
+  high <- rlang::catch_cnd(
+    ps_trim(ps, method = "pctl", upper = 1.5),
+    classes = "condition"
+  )
+  expect_s3_class(high, "error")
+  expect_s3_class(high, "propensity_error")
+
+  expect_propensity_error(ps_trim(ps, method = "pctl", lower = -0.1))
+})

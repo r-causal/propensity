@@ -755,3 +755,186 @@ test_that("ps_trunc names `.exposure` when the common range method requires one"
 
   expect_propensity_error(ps_trunc(ps, method = "cr"))
 })
+
+# Missing values ------------------------------------------------------------
+
+# Truncation keeps every unit, so a propensity score that arrives missing stays
+# missing and is not one this package pinned to a bound. The methods that read
+# their bounds off the scores read them off the scores they have.
+
+test_that("ps_trunc() passes a score that arrived missing through unmarked", {
+  # Regression guard: this is what the fixed-bound method already does, and the
+  # policy the other methods are being brought to.
+  truncated <- ps_trunc(
+    c(0.2, 0.5, NA, 0.7),
+    method = "ps",
+    lower = 0.3,
+    upper = 0.6
+  )
+  meta <- ps_trunc_meta(truncated)
+
+  expect_equal(as.numeric(truncated), c(0.3, 0.5, NA, 0.6))
+  expect_equal(meta$truncated_idx, c(1, 4))
+  expect_equal(meta$n_obs, 4)
+  expect_equal(is_unit_truncated(truncated), c(TRUE, FALSE, FALSE, TRUE))
+})
+
+test_that("ps_trunc() takes its percentile bounds from the complete scores", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+
+  # `quantile()` refuses a missing value unless it is told to drop it, so the
+  # percentile method is an error on any sample with one.
+  with_na <- ps_trunc(ps, method = "pctl", lower = 0.2, upper = 0.8)
+  without_na <- ps_trunc(ps[-4], method = "pctl", lower = 0.2, upper = 0.8)
+  meta <- ps_trunc_meta(with_na)
+
+  expect_equal(meta$lower_bound, ps_trunc_meta(without_na)$lower_bound)
+  expect_equal(meta$upper_bound, ps_trunc_meta(without_na)$upper_bound)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$truncated_idx, c(1, 6))
+  expect_false(is_unit_truncated(with_na)[4])
+})
+
+test_that("ps_trunc() takes its common range from the complete scores", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+  z <- c(0, 0, 1, 1, 1, 0)
+
+  # One missing score in the focal group makes the lower bound missing, and no
+  # score compares below a missing bound, so nothing is pinned there.
+  with_na <- ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1)
+  without_na <- ps_trunc(
+    ps[-4],
+    method = "cr",
+    .exposure = z[-4],
+    .focal_level = 1
+  )
+  meta <- ps_trunc_meta(with_na)
+
+  expect_equal(meta$lower_bound, ps_trunc_meta(without_na)$lower_bound)
+  expect_equal(meta$upper_bound, ps_trunc_meta(without_na)$upper_bound)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$truncated_idx, c(1, 2))
+  expect_false(is_unit_truncated(with_na)[4])
+})
+
+test_that("ps_trunc() refuses an exposure with missing values", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
+  z <- c(0, 0, 0, 1, 1, NA)
+  z_factor <- factor(c("a", "a", "a", "b", "b", NA))
+
+  # The common range is bounded by the extremes of each group, both of which
+  # are missing once a unit belongs to neither. Nothing compares as outside a
+  # missing bound, so every score is returned untouched and the object reports
+  # bounds it never applied.
+  cr_numeric <- rlang::catch_cnd(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1),
+    classes = "condition"
+  )
+  expect_s3_class(cr_numeric, "error")
+  expect_s3_class(cr_numeric, "propensity_error")
+
+  cr_factor <- rlang::catch_cnd(
+    ps_trunc(ps, method = "cr", .exposure = z_factor, .focal_level = "b"),
+    classes = "condition"
+  )
+  expect_s3_class(cr_factor, "error")
+  expect_s3_class(cr_factor, "propensity_error")
+
+  expect_propensity_error(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1)
+  )
+})
+
+# Bounds validation ---------------------------------------------------------
+
+test_that("ps_trunc() requires lower below upper for the pctl method", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # Bounds the wrong way around cross, and every score is then pinned to the
+  # bound on the far side of the other one. Method "ps" already refuses this
+  # and the percentile method owes the same refusal.
+  cnd <- rlang::catch_cnd(
+    ps_trunc(ps, method = "pctl", lower = 0.95, upper = 0.05),
+    classes = "condition"
+  )
+  expect_s3_class(cnd, "error")
+  expect_s3_class(cnd, "propensity_range_error")
+
+  expect_propensity_error(
+    ps_trunc(ps, method = "pctl", lower = 0.95, upper = 0.05)
+  )
+})
+
+test_that("ps_trunc() refuses percentile bounds outside the unit interval", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # For the percentile method the bounds are probabilities. `quantile()`
+  # refuses one outside [0, 1] in a bare error naming `probs`, an argument
+  # `ps_trunc()` does not have.
+  low <- rlang::catch_cnd(
+    ps_trunc(ps, method = "pctl", lower = -0.1),
+    classes = "condition"
+  )
+  expect_s3_class(low, "error")
+  expect_s3_class(low, "propensity_error")
+
+  high <- rlang::catch_cnd(
+    ps_trunc(ps, method = "pctl", upper = 1.5),
+    classes = "condition"
+  )
+  expect_s3_class(high, "error")
+  expect_s3_class(high, "propensity_error")
+
+  expect_propensity_error(ps_trunc(ps, method = "pctl", lower = -0.1))
+})
+
+test_that("ps_trunc() refuses a common range the exposure groups do not share", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
+  z <- c(0, 0, 0, 1, 1, 1)
+
+  # The lowest score among the exposed, 0.7, is above the highest among the
+  # unexposed, 0.6, so the common range is empty. Every score is pinned to a
+  # bound on the far side of the other one, which reports a common range where
+  # the groups have none.
+  cnd <- rlang::catch_cnd(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1),
+    classes = "condition"
+  )
+  expect_s3_class(cnd, "error")
+  expect_s3_class(cnd, "propensity_error")
+  expect_match(conditionMessage(cnd), "overlap")
+
+  expect_propensity_error(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1)
+  )
+})
+
+test_that("ps_trunc() keeps every score within the common range it records", {
+  # Regression guard: where the groups do overlap, the bounds are a range and
+  # every returned score lies inside it.
+  truncated <- ps_trunc(
+    c(0.1, 0.3, 0.6, 0.2, 0.5, 0.9),
+    method = "cr",
+    .exposure = c(0, 0, 0, 1, 1, 1),
+    .focal_level = 1
+  )
+  meta <- ps_trunc_meta(truncated)
+
+  expect_lt(meta$lower_bound, meta$upper_bound)
+  expect_true(all(as.numeric(truncated) >= meta$lower_bound))
+  expect_true(all(as.numeric(truncated) <= meta$upper_bound))
+})
