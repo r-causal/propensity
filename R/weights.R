@@ -129,7 +129,9 @@
 #'   * A **numeric vector** of predicted probabilities (binary/continuous).
 #'   * A **data frame** or **matrix** with one column per exposure level. Both
 #'     shapes are read the same way, for categorical exposures and for binary
-#'     ones alike (see `.propensity_col`).
+#'     ones alike, including the default choice of column described under
+#'     `.propensity_col`. That argument is itself a formal of the data frame
+#'     methods only, so selecting a column by name means passing a data frame.
 #'   * A fitted **`glm`** object -- fitted values are extracted automatically.
 #'   * A modified propensity score created by [ps_trim()], [ps_trunc()],
 #'     [ps_refit()], or [ps_calibrate()].
@@ -141,7 +143,10 @@
 #'   response's second level, and subtract them from one when the resolved
 #'   focal level is the first level instead. A data frame or matrix reduces to
 #'   a single column, read on the same scale; see `.propensity_col` for how
-#'   that column is chosen.
+#'   that column is chosen. A matrix reduces by those same defaults, but
+#'   `.propensity_col` belongs to the data frame methods alone, so a matrix
+#'   whose column you want to name has to be converted with `as.data.frame()`
+#'   first.
 #' @param .exposure The exposure (treatment) variable. For binary exposures, a
 #'   numeric 0/1 vector, logical, or two-level factor. For categorical
 #'   exposures, a factor or character vector. For continuous exposures, a

@@ -338,20 +338,27 @@ ps_trunc.matrix <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  ps = lifecycle::deprecated()
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
   # The generic offers every method, so match against that full set and then
   # reject the ones the categorical path does not define.
-  method <- rlang::arg_match(method, values = c("ps", "pctl", "cr"))
+  method <- rlang::arg_match(
+    method,
+    values = c("ps", "pctl", "cr"),
+    error_call = call
+  )
   if (!method %in% c("ps", "pctl")) {
     abort(
       c(
         "Method {.val {method}} is not supported for categorical exposures.",
         i = "Use {.val ps} or {.val pctl}."
       ),
-      error_class = "propensity_method_error"
+      error_class = "propensity_method_error",
+      call = call
     )
   }
 
@@ -359,25 +366,27 @@ ps_trunc.matrix <- function(
     .focal_level,
     .reference_level,
     .treated,
-    .untreated
+    .untreated,
+    call = call
   )
 
   # Validate exposure for categorical
   if (is.null(.exposure)) {
     abort(
       "`.exposure` must be provided for categorical propensity score truncation.",
-      error_class = "propensity_missing_arg_error"
+      error_class = "propensity_missing_arg_error",
+      call = call
     )
   }
 
   # Transform to factor and validate
-  .exposure <- transform_exposure_categorical(.exposure)
+  .exposure <- transform_exposure_categorical(.exposure, call = call)
 
   # Validate matrix
   .propensity <- check_ps_matrix(
     .propensity,
     .exposure,
-    call = rlang::current_env()
+    call = call
   )
 
   n <- nrow(.propensity)
@@ -414,7 +423,8 @@ ps_trunc.matrix <- function(
           i = "No row summing to one can hold every score above 1/k, so a
                threshold there leaves no rule to apply."
         ),
-        error_class = "propensity_range_error"
+        error_class = "propensity_range_error",
+        call = call
       )
     }
 
@@ -444,8 +454,8 @@ ps_trunc.matrix <- function(
     if (is.null(upper)) {
       upper <- 0.99
     } # Default percentile
-    check_quantile_probs(lower, upper)
-    check_lower_upper(lower, upper)
+    check_quantile_probs(lower, upper, call = call)
+    check_lower_upper(lower, upper, call = call)
 
     # Calculate thresholds based on the distribution of all propensity scores,
     # taken from the rows this function can renormalize. `quantile()` names its
@@ -510,8 +520,10 @@ ps_trunc.data.frame <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  ps = lifecycle::deprecated()
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
   # For categorical exposures, convert to matrix and call matrix method
@@ -522,6 +534,10 @@ ps_trunc.data.frame <- function(
       # The focal arguments travel on so that the matrix method refuses them.
       # Dropping them here would leave the caller believing the truncation
       # honored a coding the categorical path never reads.
+      #
+      # The matrix method is reached here by a call rather than by dispatch, so
+      # it is handed a frame to report against. Left to its own, a refusal on
+      # this route would name the method the caller never wrote.
       return(ps_trunc.matrix(
         .propensity = ps_matrix,
         method = method,
@@ -532,7 +548,8 @@ ps_trunc.data.frame <- function(
         .reference_level = .reference_level,
         ...,
         .treated = .treated,
-        .untreated = .untreated
+        .untreated = .untreated,
+        call = call
       ))
     }
   }

@@ -485,15 +485,18 @@ ps_trim.matrix <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  ps = lifecycle::deprecated()
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
   # The generic offers every method, so match against that full set and then
   # reject the ones the categorical path does not define.
   method <- rlang::arg_match(
     method,
-    values = c("ps", "adaptive", "pctl", "pref", "cr", "optimal")
+    values = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+    error_call = call
   )
   if (!method %in% c("ps", "optimal")) {
     abort(
@@ -501,7 +504,8 @@ ps_trim.matrix <- function(
         "Method {.val {method}} is not supported for categorical exposures.",
         i = "Use {.val ps} or {.val optimal}."
       ),
-      error_class = "propensity_method_error"
+      error_class = "propensity_method_error",
+      call = call
     )
   }
 
@@ -509,25 +513,27 @@ ps_trim.matrix <- function(
     .focal_level,
     .reference_level,
     .treated,
-    .untreated
+    .untreated,
+    call = call
   )
 
   # Validate exposure for categorical
   if (is.null(.exposure)) {
     abort(
       "`.exposure` must be provided for categorical propensity score trimming.",
-      error_class = "propensity_missing_arg_error"
+      error_class = "propensity_missing_arg_error",
+      call = call
     )
   }
 
   # Transform to factor and validate
-  .exposure <- transform_exposure_categorical(.exposure)
+  .exposure <- transform_exposure_categorical(.exposure, call = call)
 
   # Validate matrix
   .propensity <- check_ps_matrix(
     .propensity,
     .exposure,
-    call = rlang::current_env()
+    call = call
   )
 
   n <- nrow(.propensity)
@@ -566,7 +572,8 @@ ps_trim.matrix <- function(
           i = "No row summing to one can hold every score above 1/k, so a
                threshold there leaves no rule to apply."
         ),
-        error_class = "propensity_range_error"
+        error_class = "propensity_range_error",
+        call = call
       )
     }
 
@@ -577,7 +584,8 @@ ps_trim.matrix <- function(
     if (length(unique(.exposure[keep_idx])) < k) {
       warn(
         "One or more groups removed after trimming; returning original data",
-        warning_class = "propensity_no_data_warning"
+        warning_class = "propensity_no_data_warning",
+        call = call
       )
       keep_idx <- complete_rows
     }
@@ -617,7 +625,8 @@ ps_trim.matrix <- function(
         error = function(e) {
           warn(
             "Could not find optimal trimming threshold; using no trimming",
-            warning_class = "propensity_convergence_warning"
+            warning_class = "propensity_convergence_warning",
+            call = call
           )
           NULL
         }
@@ -631,7 +640,8 @@ ps_trim.matrix <- function(
         if (length(unique(.exposure[keep_idx])) < k) {
           warn(
             "One or more groups removed after trimming; returning original data",
-            warning_class = "propensity_no_data_warning"
+            warning_class = "propensity_no_data_warning",
+            call = call
           )
           keep_idx <- complete_rows
           lambda <- NULL
@@ -676,8 +686,10 @@ ps_trim.data.frame <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  ps = lifecycle::deprecated()
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
   # For categorical exposures, convert to matrix and call matrix method
@@ -688,6 +700,10 @@ ps_trim.data.frame <- function(
       # The focal arguments travel on so that the matrix method refuses them.
       # Dropping them here would leave the caller believing the trimming honored
       # a coding the categorical path never reads.
+      #
+      # The matrix method is reached here by a call rather than by dispatch, so
+      # it is handed a frame to report against. Left to its own, a refusal on
+      # this route would name the method the caller never wrote.
       return(ps_trim.matrix(
         .propensity = ps_matrix,
         method = method,
@@ -698,7 +714,8 @@ ps_trim.data.frame <- function(
         .reference_level = .reference_level,
         ...,
         .treated = .treated,
-        .untreated = .untreated
+        .untreated = .untreated,
+        call = call
       ))
     }
   }

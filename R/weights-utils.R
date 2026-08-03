@@ -531,13 +531,14 @@ check_refit <- function(.propensity, call = rlang::caller_env()) {
   }
 }
 
-# `call` is plumbing. Each route into a weight function binds the frame it was
-# dispatched into and hands it down, so that a condition raised several frames
-# below the surface still names the function the user called. The generics pass
-# their dots to their methods, so the argument is reachable from user code, and
-# a value the condition system cannot read as a call would turn the next guard
-# that fires into a report of rlang's internals. Checked where the value
-# arrives, before anything is done with it.
+# `call` is plumbing. Each route into a weight function, and into the
+# categorical trimming and truncation methods, binds the frame it was dispatched
+# into and hands it down, so that a condition raised several frames below the
+# surface still names the function the user called. The generics pass their dots
+# to their methods, so the argument is reachable from user code, and a value the
+# condition system cannot read as a call would turn the next guard that fires
+# into a report of rlang's internals. Checked where the value arrives, before
+# anything is done with it.
 check_call_arg <- function(call, error_call = rlang::caller_env()) {
   if (is.null(call) || rlang::is_environment(call) || rlang::is_call(call)) {
     return(invisible(call))
@@ -548,7 +549,7 @@ check_call_arg <- function(call, error_call = rlang::caller_env()) {
       "{.arg call} must be a call or an environment.",
       x = "It has class {.cls {class(call)}}.",
       i = "{.arg call} names the frame a condition is attributed to. Leave it
-           unset unless you are wrapping a weight function."
+           unset unless you are wrapping a function from this package."
     ),
     error_class = "propensity_call_arg_error",
     call = error_call

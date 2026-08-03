@@ -858,6 +858,25 @@ test_that("ps_calib comparisons enforce vctrs strict size semantics", {
   )
 })
 
+test_that("a refused comparison names the code that wrote it", {
+  cal <- calib_vctrs_fixture()
+  short <- cal[1:3]
+
+  # The recycling the comparison operators enforce happens inside a helper the
+  # caller has no way to reach, and vctrs raises the refusal from further down
+  # still. Left to itself the refusal names that helper, which says nothing to
+  # whoever wrote the comparison, so the frame it reports against travels down
+  # with the sizes.
+  compare_in_fn <- function(x, y) x == y
+  cnd <- rlang::catch_cnd(compare_in_fn(cal, short), classes = "error")
+
+  expect_s3_class(cnd, "vctrs_error_incompatible_size")
+  expect_identical(
+    paste(deparse(conditionCall(cnd)[[1]]), collapse = " "),
+    "compare_in_fn"
+  )
+})
+
 # What calibration reads from scores that carry a record ---------------------
 
 # `ps_calibrate()` accepts propensity scores that have already been trimmed or

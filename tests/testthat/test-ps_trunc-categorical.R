@@ -33,7 +33,11 @@ test_that("ps_trunc works with matrix propensity scores", {
     lower = 0.05
   )
 
-  expect_s3_class(truncated, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_s3_class(
+    truncated,
+    c("ps_trunc_matrix", "ps_trunc", "matrix"),
+    exact = TRUE
+  )
   expect_equal(dim(truncated), dim(ps_matrix))
 
   # Check metadata
@@ -69,7 +73,11 @@ test_that("ps_trunc works with data.frame propensity scores", {
 
   truncated <- ps_trunc(ps_df, .exposure = exposure, method = "ps", lower = 0.1)
 
-  expect_s3_class(truncated, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_s3_class(
+    truncated,
+    c("ps_trunc_matrix", "ps_trunc", "matrix"),
+    exact = TRUE
+  )
   expect_equal(nrow(truncated), nrow(ps_df))
   expect_equal(ncol(truncated), ncol(ps_df))
 
@@ -226,7 +234,11 @@ test_that("ps_trunc handles parsnip-style column names", {
     )
   )
 
-  expect_s3_class(truncated, "ps_trunc_matrix")
+  expect_s3_class(
+    truncated,
+    c("ps_trunc_matrix", "ps_trunc", "matrix"),
+    exact = TRUE
+  )
 })
 
 test_that("ps_trunc warns when no column names provided", {
@@ -344,7 +356,11 @@ test_that("ps_trunc with method='pctl' works for categorical exposures", {
     upper = 0.95
   )
 
-  expect_s3_class(truncated, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_s3_class(
+    truncated,
+    c("ps_trunc_matrix", "ps_trunc", "matrix"),
+    exact = TRUE
+  )
   expect_equal(dim(truncated), dim(ps_matrix))
 
   # Check metadata
@@ -607,6 +623,84 @@ test_that("a matrix with the wrong number of columns names ps_trunc", {
   )
 })
 
+test_that("a refusal on the delegated categorical route names ps_trunc", {
+  fixture <- categorical_trunc_fixture()
+  valid <- valid_trunc_matrix_fixture()
+
+  # A data frame of categorical scores reaches the matrix method by a plain
+  # call rather than by dispatch, so the frame the refusals report against has
+  # to travel with them. Whichever guard fires, the caller wrote `ps_trunc()`.
+  expect_identical(
+    condition_call_name(
+      ps_trunc(
+        as.data.frame(fixture$bad_matrix),
+        method = "ps",
+        .exposure = fixture$exposure
+      )
+    ),
+    "ps_trunc"
+  )
+
+  expect_identical(
+    condition_call_name(
+      ps_trunc(
+        as.data.frame(valid$ps_matrix),
+        .exposure = valid$exposure,
+        method = "cr"
+      )
+    ),
+    "ps_trunc"
+  )
+
+  expect_identical(
+    condition_call_name(
+      ps_trunc(
+        as.data.frame(valid$ps_matrix),
+        .exposure = valid$exposure,
+        method = "pctl",
+        lower = 1.2
+      )
+    ),
+    "ps_trunc"
+  )
+})
+
+test_that("ps_trunc refuses a call argument that names no frame", {
+  fixture <- valid_trunc_matrix_fixture()
+
+  # The generic passes its dots to its methods, so the frame the categorical
+  # path reports against is reachable from user code, and a value the condition
+  # system cannot read as one is refused where it arrives rather than left to
+  # turn the next guard that fires into a report of rlang's internals.
+  expect_error(
+    ps_trunc(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      call = "bogus"
+    ),
+    class = "propensity_call_arg_error"
+  )
+
+  # The data frame method hands the frame on, so it is the one that reads the
+  # value and the one the refusal names.
+  delegated <- rlang::catch_cnd(
+    ps_trunc(
+      as.data.frame(fixture$ps_matrix),
+      .exposure = fixture$exposure,
+      method = "ps",
+      call = "bogus"
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(delegated, "propensity_call_arg_error")
+  expect_identical(
+    paste(deparse(conditionCall(delegated)[[1]]), collapse = " "),
+    "ps_trunc"
+  )
+})
+
 test_that("ps_trunc truncates a matrix with the method left at its default", {
   fixture <- valid_trunc_matrix_fixture()
 
@@ -685,7 +779,11 @@ test_that("ps_trunc truncates a data frame with the method left at its default",
     .exposure = fixture$exposure
   )
 
-  expect_s3_class(truncated, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_s3_class(
+    truncated,
+    c("ps_trunc_matrix", "ps_trunc", "matrix"),
+    exact = TRUE
+  )
   expect_equal(ps_trunc_meta(truncated)$method, "ps")
   expect_equal(ps_trunc_meta(truncated)$lower_bound, 0.01)
 })
@@ -933,37 +1031,50 @@ test_that("ps_trunc() records a matrix's percentile bounds without their quantil
 
 test_that("ps_trunc() refuses focal levels on the categorical path", {
   fixture <- valid_trunc_matrix_fixture()
-  scores <- as.data.frame(fixture$ps_matrix)
-  trunc_with <- function(...) {
-    ps_trunc(scores, .exposure = fixture$exposure, method = "ps", ...)
-  }
 
   # The categorical path reads one column per exposure level and never resolves
   # a focal level, so an argument naming one describes a coding it does not
-  # use. The data frame method drops these on the way to the matrix method,
-  # which leaves the caller believing they were honored.
-  focal <- expect_error(
-    trunc_with(.focal_level = "a"),
-    class = "propensity_unsupported_arg_error"
-  )
-  expect_match(conditionMessage(focal), "`.focal_level`", fixed = TRUE)
+  # use. A matrix reaches the refusal by dispatch and a data frame by the
+  # hand-off the data frame method makes, and the arguments used to be dropped
+  # on both routes, which left the caller believing they were honored.
+  expect_focal_refusal <- function(scores) {
+    trunc_with <- function(...) {
+      ps_trunc(scores, .exposure = fixture$exposure, method = "ps", ...)
+    }
 
-  reference <- expect_error(
-    trunc_with(.reference_level = "a"),
-    class = "propensity_unsupported_arg_error"
-  )
-  expect_match(conditionMessage(reference), "`.reference_level`", fixed = TRUE)
+    focal <- expect_error(
+      trunc_with(.focal_level = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(focal), "`.focal_level`", fixed = TRUE)
 
-  # The deprecated spellings stand for the same two arguments, and are refused
-  # on the same terms. The deprecation itself is quieted here so that what is
-  # read is the refusal.
-  withr::local_options(lifecycle_verbosity = "quiet")
-  expect_error(
-    trunc_with(.treated = "a"),
-    class = "propensity_unsupported_arg_error"
-  )
-  expect_error(
-    trunc_with(.untreated = "a"),
-    class = "propensity_unsupported_arg_error"
-  )
+    reference <- expect_error(
+      trunc_with(.reference_level = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(
+      conditionMessage(reference),
+      "`.reference_level`",
+      fixed = TRUE
+    )
+
+    # The deprecated spellings stand for the same two arguments, and are refused
+    # on the same terms. The deprecation itself is quieted here so that what is
+    # read is the refusal.
+    withr::local_options(lifecycle_verbosity = "quiet")
+    treated <- expect_error(
+      trunc_with(.treated = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(treated), "`.treated`", fixed = TRUE)
+
+    untreated <- expect_error(
+      trunc_with(.untreated = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(untreated), "`.untreated`", fixed = TRUE)
+  }
+
+  expect_focal_refusal(fixture$ps_matrix)
+  expect_focal_refusal(as.data.frame(fixture$ps_matrix))
 })

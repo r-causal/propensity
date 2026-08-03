@@ -33,7 +33,11 @@ test_that("ps_trim works with matrix propensity scores for symmetric trimming", 
     lower = 0.1
   )
 
-  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
   expect_equal(dim(trimmed), dim(ps_matrix))
 
   # Check metadata
@@ -67,7 +71,11 @@ test_that("ps_trim works with data.frame propensity scores", {
 
   trimmed <- ps_trim(ps_df, .exposure = exposure, method = "ps", lower = 0.2)
 
-  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
   expect_equal(nrow(trimmed), nrow(ps_df))
   expect_equal(ncol(trimmed), ncol(ps_df))
 })
@@ -85,7 +93,11 @@ test_that("optimal trimming works for categorical exposures", {
   # Apply optimal trimming
   trimmed <- ps_trim(ps_matrix, .exposure = exposure, method = "optimal")
 
-  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
 
   # Check metadata
   meta <- ps_trim_meta(trimmed)
@@ -232,7 +244,11 @@ test_that("ps_trim handles parsnip-style column names", {
     )
   )
 
-  expect_s3_class(trimmed, "ps_trim_matrix")
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
 })
 
 test_that("ps_trim warns when no column names provided", {
@@ -521,7 +537,11 @@ test_that("ps_refit works with categorical propensity score trimming", {
   refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
   # Check properties
-  expect_s3_class(refitted_ps, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    refitted_ps,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
   expect_true(is_refit(refitted_ps))
   expect_equal(dim(refitted_ps), dim(ps_matrix))
 
@@ -986,6 +1006,106 @@ test_that("a matrix with the wrong number of columns names ps_trim", {
   )
 })
 
+test_that("a refusal on the delegated categorical route names ps_trim", {
+  fixture <- categorical_trim_fixture()
+  valid <- valid_trim_matrix_fixture()
+
+  # A data frame of categorical scores reaches the matrix method by a plain
+  # call rather than by dispatch, so the frame the refusals report against has
+  # to travel with them. Whichever guard fires, the caller wrote `ps_trim()`.
+  expect_identical(
+    condition_call_name(
+      ps_trim(
+        as.data.frame(fixture$bad_matrix),
+        method = "ps",
+        .exposure = fixture$exposure
+      )
+    ),
+    "ps_trim"
+  )
+
+  expect_identical(
+    condition_call_name(
+      ps_trim(
+        as.data.frame(valid$ps_matrix),
+        .exposure = valid$exposure,
+        method = "adaptive"
+      )
+    ),
+    "ps_trim"
+  )
+
+  expect_identical(
+    condition_call_name(
+      ps_trim(
+        as.data.frame(valid$ps_matrix),
+        .exposure = valid$exposure,
+        method = "ps",
+        lower = 0.35
+      )
+    ),
+    "ps_trim"
+  )
+})
+
+test_that("a warning on the delegated categorical route names ps_trim", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # A threshold this high leaves one level with no rows, which the matrix
+  # method reports before returning the scores untrimmed.
+  cnd <- rlang::catch_cnd(
+    ps_trim(
+      as.data.frame(fixture$ps_matrix),
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.28
+    ),
+    classes = "warning"
+  )
+
+  expect_s3_class(cnd, "propensity_no_data_warning")
+  expect_identical(
+    paste(deparse(conditionCall(cnd)[[1]]), collapse = " "),
+    "ps_trim"
+  )
+})
+
+test_that("ps_trim refuses a call argument that names no frame", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # The generic passes its dots to its methods, so the frame the categorical
+  # path reports against is reachable from user code, and a value the condition
+  # system cannot read as one is refused where it arrives rather than left to
+  # turn the next guard that fires into a report of rlang's internals.
+  expect_error(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      call = "bogus"
+    ),
+    class = "propensity_call_arg_error"
+  )
+
+  # The data frame method hands the frame on, so it is the one that reads the
+  # value and the one the refusal names.
+  delegated <- rlang::catch_cnd(
+    ps_trim(
+      as.data.frame(fixture$ps_matrix),
+      .exposure = fixture$exposure,
+      method = "ps",
+      call = "bogus"
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(delegated, "propensity_call_arg_error")
+  expect_identical(
+    paste(deparse(conditionCall(delegated)[[1]]), collapse = " "),
+    "ps_trim"
+  )
+})
+
 test_that("ps_trim trims a matrix with the method left at its default", {
   fixture <- valid_trim_matrix_fixture()
 
@@ -1069,7 +1189,11 @@ test_that("ps_trim trims a data frame with the method left at its default", {
     .exposure = fixture$exposure
   )
 
-  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
   expect_equal(ps_trim_meta(trimmed)$method, "ps")
   expect_equal(ps_trim_meta(trimmed)$delta, 0.1)
 })
@@ -1211,37 +1335,50 @@ test_that("ps_trim() names the threshold and the limit it reached", {
 
 test_that("ps_trim() refuses focal levels on the categorical path", {
   fixture <- valid_trim_matrix_fixture()
-  scores <- as.data.frame(fixture$ps_matrix)
-  trim_with <- function(...) {
-    ps_trim(scores, .exposure = fixture$exposure, method = "ps", ...)
-  }
 
   # The categorical path reads one column per exposure level and never resolves
   # a focal level, so an argument naming one describes a coding it does not
-  # use. The data frame method drops these on the way to the matrix method,
-  # which leaves the caller believing they were honored.
-  focal <- expect_error(
-    trim_with(.focal_level = "a"),
-    class = "propensity_unsupported_arg_error"
-  )
-  expect_match(conditionMessage(focal), "`.focal_level`", fixed = TRUE)
+  # use. A matrix reaches the refusal by dispatch and a data frame by the
+  # hand-off the data frame method makes, and the arguments used to be dropped
+  # on both routes, which left the caller believing they were honored.
+  expect_focal_refusal <- function(scores) {
+    trim_with <- function(...) {
+      ps_trim(scores, .exposure = fixture$exposure, method = "ps", ...)
+    }
 
-  reference <- expect_error(
-    trim_with(.reference_level = "a"),
-    class = "propensity_unsupported_arg_error"
-  )
-  expect_match(conditionMessage(reference), "`.reference_level`", fixed = TRUE)
+    focal <- expect_error(
+      trim_with(.focal_level = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(focal), "`.focal_level`", fixed = TRUE)
 
-  # The deprecated spellings stand for the same two arguments, and are refused
-  # on the same terms. The deprecation itself is quieted here so that what is
-  # read is the refusal.
-  withr::local_options(lifecycle_verbosity = "quiet")
-  expect_error(
-    trim_with(.treated = "a"),
-    class = "propensity_unsupported_arg_error"
-  )
-  expect_error(
-    trim_with(.untreated = "a"),
-    class = "propensity_unsupported_arg_error"
-  )
+    reference <- expect_error(
+      trim_with(.reference_level = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(
+      conditionMessage(reference),
+      "`.reference_level`",
+      fixed = TRUE
+    )
+
+    # The deprecated spellings stand for the same two arguments, and are refused
+    # on the same terms. The deprecation itself is quieted here so that what is
+    # read is the refusal.
+    withr::local_options(lifecycle_verbosity = "quiet")
+    treated <- expect_error(
+      trim_with(.treated = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(treated), "`.treated`", fixed = TRUE)
+
+    untreated <- expect_error(
+      trim_with(.untreated = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(untreated), "`.untreated`", fixed = TRUE)
+  }
+
+  expect_focal_refusal(fixture$ps_matrix)
+  expect_focal_refusal(as.data.frame(fixture$ps_matrix))
 })

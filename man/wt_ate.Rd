@@ -208,7 +208,9 @@ wt_cens(
 \item A \strong{numeric vector} of predicted probabilities (binary/continuous).
 \item A \strong{data frame} or \strong{matrix} with one column per exposure level. Both
 shapes are read the same way, for categorical exposures and for binary
-ones alike (see \code{.propensity_col}).
+ones alike, including the default choice of column described under
+\code{.propensity_col}. That argument is itself a formal of the data frame
+methods only, so selecting a column by name means passing a data frame.
 \item A fitted \strong{\code{glm}} object -- fitted values are extracted automatically.
 \item A modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
 \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
@@ -221,7 +223,10 @@ derive it from the fitted values, which give the probability of the
 response's second level, and subtract them from one when the resolved
 focal level is the first level instead. A data frame or matrix reduces to
 a single column, read on the same scale; see \code{.propensity_col} for how
-that column is chosen.}
+that column is chosen. A matrix reduces by those same defaults, but
+\code{.propensity_col} belongs to the data frame methods alone, so a matrix
+whose column you want to name has to be converted with \code{as.data.frame()}
+first.}
 
 \item{.exposure}{The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
