@@ -2443,3 +2443,165 @@ test_that("ps_trim() drops the bounds an adaptive trimming ignores", {
     c(as.numeric(plain), as.numeric(ignored))
   )
 })
+
+# The binary route names ps_trim, whichever method answered ------------------
+
+# `ps_trim.data.frame` reaches the vector method by a plain call rather than by
+# dispatch, so a condition the vector method raises reports the frame it was
+# raised from, which is a method no caller wrote. The same condition on a bare
+# vector names `ps_trim()`, because dispatch reports the generic. The scores a
+# caller holds in one column of a data frame are the scores they would have
+# passed as a vector, so the two routes owe the same report.
+
+trim_binary_frame_fixture <- function() {
+  list(
+    scores = data.frame(.pred_1 = c(0.15, 0.4, 0.6, 0.85)),
+    out_of_range = data.frame(.pred_1 = c(0, 0.5, 1)),
+    exposure = c(0, 1, 0, 1)
+  )
+}
+
+test_that("a refusal on the binary data frame route names ps_trim", {
+  testthat::skip("awaiting implementation")
+  fixture <- trim_binary_frame_fixture()
+
+  # The scores themselves.
+  expect_identical(
+    condition_call_name(ps_trim(fixture$out_of_range, method = "ps")),
+    "ps_trim"
+  )
+
+  # The method asked for.
+  expect_identical(
+    condition_call_name(ps_trim(fixture$scores, method = "bogus")),
+    "ps_trim"
+  )
+
+  # The cutoffs the method was handed.
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$scores, method = "ps", lower = 0.9, upper = 0.1)
+    ),
+    "ps_trim"
+  )
+
+  # The level the binary coding is read against.
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$scores, method = "ps", .focal_level = c(0, 1))
+    ),
+    "ps_trim"
+  )
+
+  # The exposure a preference score cannot be worked out without.
+  expect_identical(
+    condition_call_name(ps_trim(fixture$scores, method = "pref")),
+    "ps_trim"
+  )
+})
+
+test_that("a warning on the binary data frame route names ps_trim", {
+  testthat::skip("awaiting implementation")
+  fixture <- trim_binary_frame_fixture()
+
+  # Two of the methods read their cutoffs off the scores and say so when they
+  # are handed cutoffs they will not use. The announcement is the caller's to
+  # act on, so it names the call the caller wrote.
+  expect_warning(
+    ps_trim(fixture$scores, method = "adaptive", lower = 0.2),
+    class = "propensity_warning"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$scores, method = "adaptive", lower = 0.2),
+      classes = "warning"
+    ),
+    "ps_trim"
+  )
+
+  expect_warning(
+    ps_trim(
+      fixture$scores,
+      method = "cr",
+      upper = 0.8,
+      .exposure = fixture$exposure
+    ),
+    class = "propensity_warning"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(
+        fixture$scores,
+        method = "cr",
+        upper = 0.8,
+        .exposure = fixture$exposure
+      ),
+      classes = "warning"
+    ),
+    "ps_trim"
+  )
+})
+
+test_that("a refusal on the numeric route still names ps_trim", {
+  fixture <- trim_binary_frame_fixture()
+  scores <- fixture$scores[[1]]
+
+  # Dispatch reports the generic without being handed a frame, so the vector
+  # route already names `ps_trim()`. Threading a frame through the data frame
+  # route has no business moving that.
+  expect_identical(
+    condition_call_name(ps_trim(fixture$out_of_range[[1]], method = "ps")),
+    "ps_trim"
+  )
+  expect_identical(
+    condition_call_name(ps_trim(scores, method = "bogus")),
+    "ps_trim"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(scores, method = "ps", lower = 0.9, upper = 0.1)
+    ),
+    "ps_trim"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(scores, method = "ps", .focal_level = c(0, 1))
+    ),
+    "ps_trim"
+  )
+  expect_identical(
+    condition_call_name(ps_trim(scores, method = "pref")),
+    "ps_trim"
+  )
+})
+
+test_that("ps_trim refuses a call argument on the binary route", {
+  testthat::skip("awaiting implementation")
+  fixture <- trim_binary_frame_fixture()
+
+  # The generic passes its dots to its methods, so the frame the binary path
+  # reports against is reachable from user code, and a value the condition
+  # system cannot read as one is refused where it arrives rather than left to
+  # turn the next guard that fires into a report of rlang's internals.
+  expect_error(
+    ps_trim(fixture$scores[[1]], method = "ps", call = "bogus"),
+    class = "propensity_call_arg_error"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$scores[[1]], method = "ps", call = "bogus")
+    ),
+    "ps_trim"
+  )
+
+  # The data frame method reads the value before it hands the frame on, so it
+  # is the one the refusal names.
+  expect_error(
+    ps_trim(fixture$scores, method = "ps", call = "bogus"),
+    class = "propensity_call_arg_error"
+  )
+  expect_identical(
+    condition_call_name(ps_trim(fixture$scores, method = "ps", call = "bogus")),
+    "ps_trim"
+  )
+})

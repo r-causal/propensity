@@ -6,6 +6,21 @@
 # inside a verb and re-emits one summary of them per verb, so several drops in a
 # grouped call arrive as one warning and count as one. Assert that the count is
 # positive, or that it is zero, rather than that it equals a number of drops.
+# Reports the name at the head of the call a condition was attributed to, which
+# is what a reader sees after "Error in" or "Warning in". A condition raised
+# from a dispatched method reports the generic, so the name is the one the
+# caller wrote whichever method answered the call. `NA` stands for a condition
+# that never arrived or that named no call at all, neither of which any
+# attribution test accepts.
+condition_call_name <- function(expr, classes = "error") {
+  cnd <- rlang::catch_cnd(expr, classes = classes)
+  if (is.null(cnd) || is.null(conditionCall(cnd))) {
+    return(NA_character_)
+  }
+
+  paste(deparse(conditionCall(cnd)[[1]]), collapse = " ")
+}
+
 count_record_drops <- function(expr) {
   drops <- 0L
   count <- function(cnd) {

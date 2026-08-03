@@ -1516,3 +1516,139 @@ test_that("the truncation record names each unit once", {
     expect_equal(idx, sort(idx))
   }
 })
+
+# The binary route names ps_trunc, whichever method answered -----------------
+
+# `ps_trunc.data.frame` reaches the vector method by a plain call rather than by
+# dispatch, so a condition the vector method raises reports the frame it was
+# raised from, which is a method no caller wrote. The same condition on a bare
+# vector names `ps_trunc()`, because dispatch reports the generic. The scores a
+# caller holds in one column of a data frame are the scores they would have
+# passed as a vector, so the two routes owe the same report.
+
+trunc_binary_frame_fixture <- function() {
+  list(
+    scores = data.frame(.pred_1 = c(0.15, 0.4, 0.6, 0.85)),
+    out_of_range = data.frame(.pred_1 = c(0, 0.5, 1)),
+    exposure = c(0, 1, 0, 1)
+  )
+}
+
+test_that("a refusal on the binary data frame route names ps_trunc", {
+  testthat::skip("awaiting implementation")
+  fixture <- trunc_binary_frame_fixture()
+
+  # The scores themselves.
+  expect_identical(
+    condition_call_name(ps_trunc(fixture$out_of_range, method = "ps")),
+    "ps_trunc"
+  )
+
+  # The method asked for.
+  expect_identical(
+    condition_call_name(ps_trunc(fixture$scores, method = "bogus")),
+    "ps_trunc"
+  )
+
+  # The bounds the method was handed.
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores, method = "ps", lower = 0.9, upper = 0.1)
+    ),
+    "ps_trunc"
+  )
+
+  # The percentiles the bounds are read off at.
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores, method = "pctl", lower = 1.5, upper = 0.95)
+    ),
+    "ps_trunc"
+  )
+
+  # The level the binary coding is read against.
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores, method = "ps", .focal_level = c(0, 1))
+    ),
+    "ps_trunc"
+  )
+
+  # The exposure a common range cannot be worked out without.
+  expect_identical(
+    condition_call_name(ps_trunc(fixture$scores, method = "cr")),
+    "ps_trunc"
+  )
+})
+
+test_that("a refusal on the numeric route still names ps_trunc", {
+  fixture <- trunc_binary_frame_fixture()
+  scores <- fixture$scores[[1]]
+
+  # Dispatch reports the generic without being handed a frame, so the vector
+  # route already names `ps_trunc()`. Threading a frame through the data frame
+  # route has no business moving that.
+  expect_identical(
+    condition_call_name(ps_trunc(fixture$out_of_range[[1]], method = "ps")),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(ps_trunc(scores, method = "bogus")),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(scores, method = "ps", lower = 0.9, upper = 0.1)
+    ),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(scores, method = "pctl", lower = 1.5, upper = 0.95)
+    ),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(scores, method = "ps", .focal_level = c(0, 1))
+    ),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(ps_trunc(scores, method = "cr")),
+    "ps_trunc"
+  )
+})
+
+test_that("ps_trunc refuses a call argument on the binary route", {
+  testthat::skip("awaiting implementation")
+  fixture <- trunc_binary_frame_fixture()
+
+  # The generic passes its dots to its methods, so the frame the binary path
+  # reports against is reachable from user code, and a value the condition
+  # system cannot read as one is refused where it arrives rather than left to
+  # turn the next guard that fires into a report of rlang's internals.
+  expect_error(
+    ps_trunc(fixture$scores[[1]], method = "ps", call = "bogus"),
+    class = "propensity_call_arg_error"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores[[1]], method = "ps", call = "bogus")
+    ),
+    "ps_trunc"
+  )
+
+  # The data frame method reads the value before it hands the frame on, so it
+  # is the one the refusal names.
+  expect_error(
+    ps_trunc(fixture$scores, method = "ps", call = "bogus"),
+    class = "propensity_call_arg_error"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores, method = "ps", call = "bogus")
+    ),
+    "ps_trunc"
+  )
+})

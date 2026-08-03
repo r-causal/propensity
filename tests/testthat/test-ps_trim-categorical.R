@@ -935,15 +935,6 @@ test_that("print.ps_trim_matrix() shows every row without the trimming record", 
 # when `ps_trim()` is called from one, and nothing at all when it is called at
 # the top level.
 
-condition_call_name <- function(expr) {
-  cnd <- rlang::catch_cnd(expr, classes = "error")
-  if (is.null(cnd) || is.null(conditionCall(cnd))) {
-    return(NA_character_)
-  }
-
-  paste(deparse(conditionCall(cnd)[[1]]), collapse = " ")
-}
-
 categorical_trim_fixture <- function() {
   list(
     exposure = factor(c("a", "b", "c", "a")),
