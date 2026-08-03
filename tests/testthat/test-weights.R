@@ -810,6 +810,126 @@ test_that("binary weights are unchanged when the default focal level is named", 
   }
 })
 
+# ---- levels the exposure never takes ---------------------------------------
+#
+# A factor answers for every level it declares, whether or not any observation
+# holds it, and subsetting one without `droplevels()` leaves declared levels
+# behind. The level resolved as focal by default therefore has to come from the
+# values the exposure actually takes: resolving it among the declared levels can
+# land on one no observation holds, which codes every unit as reference and
+# returns weights for an exposure nobody has.
+#
+# A level the caller names has to be one the exposure takes for the same reason.
+# A typo in `.focal_level` codes every unit as reference, and a typo in
+# `.reference_level` codes every unit as focal, in both cases silently. The
+# categorical path already refuses a level the exposure never takes; the binary
+# path owes the same refusal, whatever the exposure's storage.
+
+test_that("binary weights resolve the default focal level among observed values", {
+  testthat::skip("awaiting implementation")
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.25, 0.8, 0.3, 0.6)
+  with_unused <- factor(c("a", "c", "a", "c"), levels = c("a", "b", "c"))
+
+  # "c" is the second level the exposure takes, so it is the focal level whether
+  # or not the unused "b" sits between them
+  is_focal <- c(0, 1, 0, 1)
+
+  expect_equal(
+    as.numeric(wt_ate(ps, with_unused)),
+    is_focal / ps + (1 - is_focal) / (1 - ps)
+  )
+  expect_equal(wt_ate(ps, with_unused), wt_ate(ps, droplevels(with_unused)))
+})
+
+test_that("binary wt_att() gives the focal units weight one under an unused level", {
+  testthat::skip("awaiting implementation")
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.25, 0.8, 0.3, 0.6)
+  with_unused <- factor(c("a", "c", "a", "c"), levels = c("a", "b", "c"))
+
+  weights <- wt_att(ps, with_unused)
+
+  # att: 1 for the focal "c" units, e / (1 - e) for the "a" units
+  expect_equal(as.numeric(weights), c(0.25 / 0.75, 1, 0.3 / 0.7, 1))
+  expect_equal(weights, wt_att(ps, droplevels(with_unused)))
+})
+
+test_that("binary weights refuse a focal level the exposure never takes", {
+  testthat::skip("awaiting implementation")
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  expect_error(
+    wt_att(ps, exposure, exposure_type = "binary", .focal_level = "Treated"),
+    class = "propensity_error"
+  )
+})
+
+test_that("binary weights refuse a reference level the exposure never takes", {
+  testthat::skip("awaiting implementation")
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  expect_error(
+    wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .reference_level = "Control"
+    ),
+    class = "propensity_error"
+  )
+})
+
+test_that("binary weights refuse an absent level on 0/1 and logical exposures", {
+  testthat::skip("awaiting implementation")
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  zero_one <- c(0, 1, 0, 1)
+  true_false <- c(FALSE, TRUE, FALSE, TRUE)
+
+  expect_error(
+    wt_att(ps, zero_one, exposure_type = "binary", .focal_level = 2),
+    class = "propensity_error"
+  )
+  expect_error(
+    wt_att(ps, zero_one, exposure_type = "binary", .reference_level = 2),
+    class = "propensity_error"
+  )
+  expect_error(
+    wt_att(ps, true_false, exposure_type = "binary", .focal_level = "yes"),
+    class = "propensity_error"
+  )
+})
+
+test_that("binary weights accept a level the exposure takes", {
+  testthat::skip("awaiting implementation")
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  # att: 1 for the focal "treated" units, e / (1 - e) for the "control" units
+  expected <- c(0.2 / 0.8, 1, 0.3 / 0.7, 1)
+
+  expect_equal(
+    as.numeric(wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .focal_level = "treated"
+    )),
+    expected
+  )
+  expect_equal(
+    as.numeric(wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .reference_level = "control"
+    )),
+    expected
+  )
+})
+
 # ---- 0/1 and logical exposures honor the named levels ----------------------
 #
 # A 0/1 exposure is the same two-level exposure whether it is stored as double
@@ -4316,6 +4436,74 @@ test_that("all methods handle NAs appropriately", {
       wt_ate(glm_na, y, exposure_type = "binary")
     )
   })
+})
+
+# A missing exposure value is missing, not a third level. Counting it as one
+# gives a two-level exposure three levels, which takes it off the binary path
+# entirely: at a sample size where the categorical heuristic fires the exposure
+# is refused for holding too few levels, and at a smaller one it falls through
+# to the continuous density weights without a word. An exposure declared binary
+# has to be coded from the levels it takes, with the missing values carried
+# through to the weights.
+
+test_that("exposure detection ignores missing values at a categorical sample size", {
+  testthat::skip("awaiting implementation")
+  withr::local_options(propensity.quiet = TRUE)
+  set.seed(1)
+  ps <- runif(50, 0.2, 0.8)
+  exposure <- rbinom(50, 1, 0.5)
+  exposure[[3]] <- NA
+
+  weights <- wt_ate(ps, exposure)
+
+  expect_equal(weights, wt_ate(ps, exposure, exposure_type = "binary"))
+  expect_equal(
+    as.numeric(weights),
+    exposure / ps + (1 - exposure) / (1 - ps)
+  )
+  expect_true(is.na(as.numeric(weights)[[3]]))
+})
+
+test_that("exposure detection ignores missing values at a small sample size", {
+  testthat::skip("awaiting implementation")
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
+  exposure <- c(0, 1, 0, 1, 0, 1, 0, NA)
+
+  weights <- wt_ate(ps, exposure)
+
+  expect_equal(weights, wt_ate(ps, exposure, exposure_type = "binary"))
+  expect_equal(
+    as.numeric(weights),
+    exposure / ps + (1 - exposure) / (1 - ps)
+  )
+})
+
+test_that("an explicitly binary exposure with missing values is coded from its levels", {
+  testthat::skip("awaiting implementation")
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
+  exposure <- c(1, 2, 1, 2, 1, 2, 1, NA)
+
+  # 2 is the second level the exposure takes, so it is the focal level
+  is_focal <- c(0, 1, 0, 1, 0, 1, 0, NA)
+
+  expect_equal(
+    as.numeric(wt_ate(ps, exposure, exposure_type = "binary")),
+    is_focal / ps + (1 - is_focal) / (1 - ps)
+  )
+})
+
+test_that("an explicitly binary integer exposure with missing values keeps its coding", {
+  testthat::skip("awaiting implementation")
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
+  exposure <- c(0L, 1L, 0L, 1L, 0L, 1L, 0L, NA)
+
+  expect_equal(
+    as.numeric(wt_ate(ps, exposure, exposure_type = "binary")),
+    exposure / ps + (1 - exposure) / (1 - ps)
+  )
 })
 
 # Integration tests ----
