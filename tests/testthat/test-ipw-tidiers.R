@@ -349,6 +349,55 @@ test_that("tidy() ignores conf.level when conf.int is FALSE", {
   expect_identical(tidy(res, conf.level = 0.9), tidy(res))
 })
 
+test_that("tidy() rejects a conf.level that is not one number inside (0, 1)", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  # The endpoints are excluded: a level of 0 or 1 has no normal-approximation
+  # interval to report.
+  expect_error(
+    tidy(res, conf.int = TRUE, conf.level = 1),
+    class = "propensity_conf_level_error"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, conf.level = 0),
+    class = "propensity_conf_level_error"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, conf.level = c(0.9, 0.95)),
+    class = "propensity_conf_level_error"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, conf.level = NA_real_),
+    class = "propensity_conf_level_error"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, conf.level = NULL),
+    class = "propensity_conf_level_error"
+  )
+
+  # The level is validated whether or not bounds were asked for, so a bad value
+  # is reported rather than quietly going unused.
+  expect_error(
+    tidy(res, conf.level = "0.95"),
+    class = "propensity_conf_level_error"
+  )
+})
+
+test_that("tidy() rejects an argument that lands in the dots", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  # The dots exist to match the generic. A misspelled argument absorbed there
+  # would otherwise return the default interval as though it had been asked for.
+  expect_error(
+    tidy(res, conf.int = TRUE, conf_level = 0.9),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
 # ---- exponentiate ------------------------------------------------------------
 
 test_that("tidy(exponentiate = TRUE) relabels and exponentiates ratio rows", {
