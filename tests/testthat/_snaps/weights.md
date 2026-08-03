@@ -7,6 +7,16 @@
       ! The propensity score must be between 0 and 1.
       i The range of `ps` is -0.1 and 3.3
 
+# the refusal of an absent level names the levels the exposure takes
+
+    Code
+      expr
+    Condition <propensity_focal_level_error>
+      Error in `wt_att()`:
+      ! `.focal_level` must be a level that `.exposure` takes.
+      x No observation takes the value "Treated".
+      i Levels present: "control" and "treated".
+
 # ATE errors appropriately for categorical with vector propensity scores
 
     Code

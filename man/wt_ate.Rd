@@ -226,7 +226,8 @@ that column is chosen.}
 numeric 0/1 vector, logical, or two-level factor. For categorical
 exposures, a factor or character vector. For continuous exposures, a
 numeric vector. Optional when \code{.propensity} is a \code{glm} object (extracted
-from the model).}
+from the model). Missing values are not counted as a level of their own,
+and are carried through to the weights as missing.}
 
 \item{.sigma}{Numeric vector of observation-level standard deviations for
 continuous exposures (e.g., \code{influence(model)$sigma}). Extracted
@@ -239,16 +240,19 @@ automatically when \code{.propensity} is a \code{glm} object.}
 \item{.focal_level}{The value of \code{.exposure} representing the focal
 (treated) group. Every binary coding honors it: 0/1 numeric, logical,
 two-level factor, and two-level character exposures are all coded with the
-named level as focal. With no level named, a binary exposure defaults to
-its higher level, which is \code{1} for a 0/1 exposure and \code{TRUE} for a logical
-one. Naming any other level reverses the coding, so \code{.propensity} must
-then hold the probability of the named level. Required for \code{wt_att()} and
-\code{wt_atu()} with categorical exposures.}
+named level as focal, and a level the exposure never takes is an error.
+With no level named, a binary exposure defaults to its higher level, which
+is \code{1} for a 0/1 exposure, \code{TRUE} for a logical one, and the second of the
+two levels a factor or character exposure takes. Levels a factor declares
+but never takes are not candidates. Naming any other level reverses the
+coding, so \code{.propensity} must then hold the probability of the named
+level. Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
 (control) group. For a binary exposure, naming it makes the exposure's
-other level focal, with the same consequence for \code{.propensity}.
-Automatically detected if not supplied.}
+other level focal, with the same consequence for \code{.propensity}, and a
+level the exposure never takes is an error. Automatically detected if not
+supplied.}
 
 \item{stabilize}{If \code{TRUE}, multiply weights by an estimate of the marginal
 treatment probability (binary) or density (continuous). Only supported by

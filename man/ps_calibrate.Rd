@@ -42,15 +42,18 @@ via \code{\link[stats:glm]{stats::glm()}}. Ignored when \code{method = "isoreg"}
 \item{.focal_level}{The value of \code{.exposure} representing the focal group
 (typically the treated group). Every binary coding honors it: 0/1 numeric,
 logical, two-level factor, and two-level character exposures are all coded
-with the named level as focal. With no level named, the exposure defaults
-to its higher level, which is \code{1} for a 0/1 exposure and \code{TRUE} for a
-logical one. Naming any other level reverses the coding, so \code{ps} must then
-hold the probability of the named level.}
+with the named level as focal, and a level the exposure never takes is an
+error. With no level named, the exposure defaults to its higher level,
+which is \code{1} for a 0/1 exposure, \code{TRUE} for a logical one, and the second
+of the two levels a factor or character exposure takes. Levels a factor
+declares but never takes are not candidates. Naming any other level
+reverses the coding, so \code{ps} must then hold the probability of the named
+level.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
 group (typically the control group). Naming it makes the exposure's other
-level focal, with the same consequence for \code{ps}. Automatically detected if
-not supplied.}
+level focal, with the same consequence for \code{ps}, and a level the exposure
+never takes is an error. Automatically detected if not supplied.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 

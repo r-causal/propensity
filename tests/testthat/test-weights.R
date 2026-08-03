@@ -826,7 +826,6 @@ test_that("binary weights are unchanged when the default focal level is named", 
 # path owes the same refusal, whatever the exposure's storage.
 
 test_that("binary weights resolve the default focal level among observed values", {
-  testthat::skip("awaiting implementation")
   withr::local_options(propensity.quiet = TRUE)
   ps <- c(0.25, 0.8, 0.3, 0.6)
   with_unused <- factor(c("a", "c", "a", "c"), levels = c("a", "b", "c"))
@@ -843,7 +842,6 @@ test_that("binary weights resolve the default focal level among observed values"
 })
 
 test_that("binary wt_att() gives the focal units weight one under an unused level", {
-  testthat::skip("awaiting implementation")
   withr::local_options(propensity.quiet = TRUE)
   ps <- c(0.25, 0.8, 0.3, 0.6)
   with_unused <- factor(c("a", "c", "a", "c"), levels = c("a", "b", "c"))
@@ -856,18 +854,16 @@ test_that("binary wt_att() gives the focal units weight one under an unused leve
 })
 
 test_that("binary weights refuse a focal level the exposure never takes", {
-  testthat::skip("awaiting implementation")
   ps <- c(0.2, 0.8, 0.3, 0.7)
   exposure <- c("control", "treated", "control", "treated")
 
   expect_error(
     wt_att(ps, exposure, exposure_type = "binary", .focal_level = "Treated"),
-    class = "propensity_error"
+    class = "propensity_focal_level_error"
   )
 })
 
 test_that("binary weights refuse a reference level the exposure never takes", {
-  testthat::skip("awaiting implementation")
   ps <- c(0.2, 0.8, 0.3, 0.7)
   exposure <- c("control", "treated", "control", "treated")
 
@@ -878,32 +874,39 @@ test_that("binary weights refuse a reference level the exposure never takes", {
       exposure_type = "binary",
       .reference_level = "Control"
     ),
-    class = "propensity_error"
+    class = "propensity_focal_level_error"
   )
 })
 
 test_that("binary weights refuse an absent level on 0/1 and logical exposures", {
-  testthat::skip("awaiting implementation")
   ps <- c(0.2, 0.8, 0.3, 0.7)
   zero_one <- c(0, 1, 0, 1)
   true_false <- c(FALSE, TRUE, FALSE, TRUE)
 
   expect_error(
     wt_att(ps, zero_one, exposure_type = "binary", .focal_level = 2),
-    class = "propensity_error"
+    class = "propensity_focal_level_error"
   )
   expect_error(
     wt_att(ps, zero_one, exposure_type = "binary", .reference_level = 2),
-    class = "propensity_error"
+    class = "propensity_focal_level_error"
   )
   expect_error(
     wt_att(ps, true_false, exposure_type = "binary", .focal_level = "yes"),
-    class = "propensity_error"
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("the refusal of an absent level names the levels the exposure takes", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  expect_propensity_error(
+    wt_att(ps, exposure, exposure_type = "binary", .focal_level = "Treated")
   )
 })
 
 test_that("binary weights accept a level the exposure takes", {
-  testthat::skip("awaiting implementation")
   ps <- c(0.2, 0.8, 0.3, 0.7)
   exposure <- c("control", "treated", "control", "treated")
 
@@ -2455,36 +2458,19 @@ test_that("data frame propensity warns when only some levels have columns", {
   )
 })
 
-test_that("the fallback warning names a declared level the exposure never takes", {
+test_that("a level the exposure never takes does not block matching a column", {
   fixture <- level_named_df_fixture()
   ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
   with_unused <- factor(c("a", "a", "b", "b"), levels = c("a", "b", "c"))
 
   # The frame is named for every level the exposure holds, so by the names the
-  # user can see the match should succeed. It does not: a factor answers for its
-  # declared levels, `"c"` among them, and one of those has no column, so the
-  # names are judged not to cover the exposure and the selection falls to
-  # position. The wrong column is then read, guarded by this warning alone, so
-  # the warning has to name the level that is in the way.
-  warning <- expect_warning(
-    wt_att(
-      ps_df,
-      with_unused,
-      exposure_type = "binary",
-      .focal_level = "a"
-    ),
-    class = "propensity_df_column_warning"
-  )
-  msg <- gsub("[[:space:]]+", " ", conditionMessage(warning))
-  expect_match(msg, "\"c\"", fixed = TRUE)
-  expect_match(msg, "droplevels", fixed = TRUE)
-
-  # And that the remedy it names is the remedy: dropping the unused level makes
-  # the match succeed and the warning go away.
+  # user can see the match succeeds. The declared `"c"` is not one of them: the
+  # coding resolves against the levels the exposure takes, so the column names
+  # are checked against those same levels and the unused one is not in the way.
   weights <- expect_no_warning(
     wt_att(
       ps_df,
-      droplevels(with_unused),
+      with_unused,
       exposure_type = "binary",
       .focal_level = "a"
     )
@@ -2493,29 +2479,24 @@ test_that("the fallback warning names a declared level the exposure never takes"
     as.double(weights),
     as.double(wt_att(
       fixture$p_a,
-      droplevels(with_unused),
+      with_unused,
       exposure_type = "binary",
       .focal_level = "a"
     ))
   )
-})
 
-test_that("the fallback warning stays quiet about levels when every one is declared", {
-  fixture <- level_named_df_fixture()
-  ps_df <- data.frame(x1 = fixture$p_a, x2 = fixture$p_b)
-
-  # The names here cover no level at all, which the unused level has nothing to
-  # do with, so the hint about it must not appear.
-  warning <- expect_warning(
-    wt_att(
-      ps_df,
-      fixture$factor,
-      exposure_type = "binary",
-      .focal_level = "a"
-    ),
-    class = "propensity_df_column_warning"
+  # Dropping the unused level changes nothing, because nothing depended on it.
+  expect_equal(
+    as.double(weights),
+    as.double(expect_no_warning(
+      wt_att(
+        ps_df,
+        droplevels(with_unused),
+        exposure_type = "binary",
+        .focal_level = "a"
+      )
+    ))
   )
-  expect_no_match(conditionMessage(warning), "droplevels", fixed = TRUE)
 })
 
 test_that("data frame propensity warns when the focal level names two columns", {
@@ -4447,7 +4428,6 @@ test_that("all methods handle NAs appropriately", {
 # through to the weights.
 
 test_that("exposure detection ignores missing values at a categorical sample size", {
-  testthat::skip("awaiting implementation")
   withr::local_options(propensity.quiet = TRUE)
   set.seed(1)
   ps <- runif(50, 0.2, 0.8)
@@ -4465,7 +4445,6 @@ test_that("exposure detection ignores missing values at a categorical sample siz
 })
 
 test_that("exposure detection ignores missing values at a small sample size", {
-  testthat::skip("awaiting implementation")
   withr::local_options(propensity.quiet = TRUE)
   ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
   exposure <- c(0, 1, 0, 1, 0, 1, 0, NA)
@@ -4480,7 +4459,6 @@ test_that("exposure detection ignores missing values at a small sample size", {
 })
 
 test_that("an explicitly binary exposure with missing values is coded from its levels", {
-  testthat::skip("awaiting implementation")
   withr::local_options(propensity.quiet = TRUE)
   ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
   exposure <- c(1, 2, 1, 2, 1, 2, 1, NA)
@@ -4495,7 +4473,6 @@ test_that("an explicitly binary exposure with missing values is coded from its l
 })
 
 test_that("an explicitly binary integer exposure with missing values keeps its coding", {
-  testthat::skip("awaiting implementation")
   withr::local_options(propensity.quiet = TRUE)
   ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
   exposure <- c(0L, 1L, 0L, 1L, 0L, 1L, 0L, NA)
@@ -4503,6 +4480,41 @@ test_that("an explicitly binary integer exposure with missing values keeps its c
   expect_equal(
     as.numeric(wt_ate(ps, exposure, exposure_type = "binary")),
     exposure / ps + (1 - exposure) / (1 - ps)
+  )
+})
+
+# Counting the levels of an NA-bearing exposure from the values it takes also
+# gives the glm route a focal level to resolve there. `fitted()` reports the
+# probability of the response's second level, so a named first level has to be
+# read as its complement, and the observation with no exposure value is carried
+# through as a missing weight rather than deciding the coding for the rest.
+
+test_that("the glm route inverts fitted values for a named level under missing exposure values", {
+  withr::local_options(propensity.quiet = TRUE)
+  set.seed(2025)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- factor(
+    ifelse(rbinom(n, 1, plogis(0.4 * x)) == 1, "b", "a"),
+    levels = c("a", "b")
+  )
+  exposure[[5]] <- NA
+
+  # `na.exclude` pads the fitted values back out, so they line up with the
+  # exposure the weights are built against
+  model <- glm(exposure ~ x, family = binomial, na.action = na.exclude)
+  e <- 1 - unname(stats::predict(model, type = "response"))
+  is_focal <- exposure == "a"
+
+  weights <- wt_ate(model, exposure, .focal_level = "a")
+
+  expect_equal(as.numeric(weights), ifelse(is_focal, 1 / e, 1 / (1 - e)))
+  expect_true(is.na(as.numeric(weights)[[5]]))
+
+  # Naming the level the coding already resolves leaves the fitted values alone
+  expect_equal(
+    as.numeric(wt_ate(model, exposure, .focal_level = "b")),
+    as.numeric(wt_ate(model, exposure))
   )
 })
 

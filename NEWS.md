@@ -36,14 +36,37 @@
   `propensity_df_duplicate_column_warning`, and the column read is unchanged.
   Setting `.propensity_col` answers the question the warning asks and is silent.
 
-* The warning raised when no column of a `.propensity` data frame can be matched
-  to a named level now names an unused declared level of a factor `.exposure`
-  as the reason, when it is the reason, and points at `droplevels()`. A factor
-  answers for the levels it declares rather than the ones it takes, so a frame
-  named for every level the exposure actually holds still failed to cover it,
-  and the selection fell to position and read the wrong column. The frame's
-  names gave the reader nothing to go on, since by them the match should have
-  succeeded.
+* The binary path now resolves the default focal level among the values the
+  exposure takes rather than among the levels a factor declares. A factor
+  answers for every level it declares, and subsetting one without
+  `droplevels()` leaves declared levels behind, so a level no observation held
+  could sit second and be taken as focal: every unit was then coded as
+  reference, and the weights described an exposure nobody had. `ps_trim()`,
+  `ps_trunc()`, and `ps_calibrate()` read the same coding and were wrong in
+  the same way. A `.propensity` data frame is matched to columns by these same
+  levels, so a frame named for every level the exposure holds now matches by
+  name, and the warning raised when no column matches no longer carries a
+  `droplevels()` hint, which was a workaround for this defect.
+
+* `.focal_level` and `.reference_level` are now checked against the values the
+  exposure takes on the binary path, with an error of class
+  `propensity_focal_level_error` that names the levels present. A level the
+  exposure never takes sorted every unit into one group in silence: a focal
+  level nobody holds left every unit reference, and a reference level nobody
+  holds left every unit focal, so a misspelled level returned weights rather
+  than a refusal. The categorical path already refused this. The check covers
+  factor, character, 0/1, and logical exposures.
+
+* Exposure levels are now counted from the values an exposure takes, so a
+  missing value is no longer counted as a level of its own. A two-level
+  exposure carrying missing values counted three, which took it off the binary
+  path entirely: at a sample size where the categorical heuristic fired it was
+  refused for holding too few levels, and at a smaller one it fell through to
+  the continuous density weights without a word. Such an exposure is now coded
+  from the levels it takes, with the missing values carried through to the
+  weights. The `glm` methods resolve a named focal level for it as they do for
+  any other exposure, so naming the level the fit treats as the reference now
+  reads the complement of the fitted values there as well.
 
 * `ps_calibrate()` documents the focal level contract its `.exposure` coding
   actually follows, matching the weight functions: every binary coding honors

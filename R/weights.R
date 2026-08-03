@@ -124,7 +124,8 @@
 #'   numeric 0/1 vector, logical, or two-level factor. For categorical
 #'   exposures, a factor or character vector. For continuous exposures, a
 #'   numeric vector. Optional when `.propensity` is a `glm` object (extracted
-#'   from the model).
+#'   from the model). Missing values are not counted as a level of their own,
+#'   and are carried through to the weights as missing.
 #' @param exposure_type Type of exposure: `"auto"` (default), `"binary"`,
 #'   `"categorical"`, or `"continuous"`. `"auto"` detects the type from
 #'   `.exposure`.
@@ -136,15 +137,18 @@
 #' @param .focal_level The value of `.exposure` representing the focal
 #'   (treated) group. Every binary coding honors it: 0/1 numeric, logical,
 #'   two-level factor, and two-level character exposures are all coded with the
-#'   named level as focal. With no level named, a binary exposure defaults to
-#'   its higher level, which is `1` for a 0/1 exposure and `TRUE` for a logical
-#'   one. Naming any other level reverses the coding, so `.propensity` must
-#'   then hold the probability of the named level. Required for `wt_att()` and
-#'   `wt_atu()` with categorical exposures.
+#'   named level as focal, and a level the exposure never takes is an error.
+#'   With no level named, a binary exposure defaults to its higher level, which
+#'   is `1` for a 0/1 exposure, `TRUE` for a logical one, and the second of the
+#'   two levels a factor or character exposure takes. Levels a factor declares
+#'   but never takes are not candidates. Naming any other level reverses the
+#'   coding, so `.propensity` must then hold the probability of the named
+#'   level. Required for `wt_att()` and `wt_atu()` with categorical exposures.
 #' @param .reference_level The value of `.exposure` representing the reference
 #'   (control) group. For a binary exposure, naming it makes the exposure's
-#'   other level focal, with the same consequence for `.propensity`.
-#'   Automatically detected if not supplied.
+#'   other level focal, with the same consequence for `.propensity`, and a
+#'   level the exposure never takes is an error. Automatically detected if not
+#'   supplied.
 #' @param ... These dots are for future extensions and must be empty.
 #' @param stabilize If `TRUE`, multiply weights by an estimate of the marginal
 #'   treatment probability (binary) or density (continuous). Only supported by

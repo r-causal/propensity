@@ -40,7 +40,7 @@ detect_exposure_type <- function(.exposure) {
     "binary"
   } else if (is.factor(.exposure) || is.character(.exposure)) {
     # Check number of unique values for factor/character
-    if (length(unique(.exposure)) > 2) {
+    if (length(observed_values(.exposure)) > 2) {
       "categorical"
     } else {
       "binary"
@@ -113,10 +113,22 @@ transform_exposure_binary <- function(
   }
 
   if (!is.null(.focal_level)) {
+    check_named_binary_level(
+      .exposure,
+      .focal_level,
+      arg = ".focal_level",
+      call = call
+    )
     return(ifelse(.exposure == .focal_level, 1, 0))
   }
 
   if (!is.null(.reference_level)) {
+    check_named_binary_level(
+      .exposure,
+      .reference_level,
+      arg = ".reference_level",
+      call = call
+    )
     return(ifelse(.exposure != .reference_level, 1, 0))
   }
 
@@ -131,11 +143,7 @@ transform_exposure_binary <- function(
   }
 
   if (has_two_levels(.exposure)) {
-    levels <- if (is.factor(.exposure)) {
-      levels(.exposure)
-    } else {
-      sort(unique(.exposure))
-    }
+    levels <- binary_exposure_levels(.exposure)
     alert_info("Setting focal level to {.val {levels[[2]]}}")
     return(ifelse(.exposure == levels[[2]], 1, 0))
   } else {
@@ -148,6 +156,34 @@ transform_exposure_binary <- function(
       error_class = "propensity_binary_transform_error"
     )
   }
+}
+
+# A level named as focal or as reference has to be one the exposure takes.
+# Naming one it never takes sorts every unit into a single group without a word:
+# a focal level nobody holds leaves every unit reference, and a reference level
+# nobody holds leaves every unit focal. The categorical path already refuses
+# this, and the binary path owes the same refusal whatever the exposure's
+# storage. Membership is tested with the comparison the coding itself makes, so
+# a level is accepted exactly when it would select the units the caller means.
+check_named_binary_level <- function(
+  .exposure,
+  level,
+  arg,
+  call = rlang::caller_env()
+) {
+  if (any(.exposure == level, na.rm = TRUE)) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.arg {arg}} must be a level that {.arg .exposure} takes.",
+      x = "No observation takes the value {.val {level}}.",
+      i = "Levels present: {.val {binary_exposure_levels(.exposure)}}."
+    ),
+    call = call,
+    error_class = "propensity_focal_level_error"
+  )
 }
 
 # The exposure level `transform_exposure_binary()` actually codes as 1. A named
@@ -189,11 +225,7 @@ effective_binary_focal_level <- function(
     return(NULL)
   }
 
-  if (is.factor(.exposure)) {
-    levels(.exposure)[[2]]
-  } else {
-    sort(unique(.exposure))[[2]]
-  }
+  binary_exposure_levels(.exposure)[[2]]
 }
 
 # Subsetting a factor yields a factor; record its label, which is what the
@@ -206,9 +238,9 @@ as_focal_label <- function(x) {
 # it. Both sides come from `effective_binary_focal_level()`, so this agrees with
 # `transform_exposure_binary()` by construction. A level that cannot be resolved
 # counts as the default, leaving the exposure to be handled downstream as it is
-# today. Note that an NA-bearing factor or character exposure short-circuits
-# this to TRUE regardless of the argument: `has_two_levels()` counts NA as a
-# level, so the default focal level is NULL and the comparison below never runs.
+# today. That covers a reference level with more than one level left beside it,
+# and an exposure that does not take exactly two values. Missing values are not
+# values, so an exposure that carries them is answered on the levels it takes.
 resolved_focal_is_default <- function(
   .exposure,
   .focal_level = NULL,
@@ -269,7 +301,7 @@ is_categorical <- function(.exposure) {
     return(FALSE)
   }
 
-  ratio <- length(unique(.exposure)) / n_non_na
+  ratio <- length(observed_values(.exposure)) / n_non_na
   # Handle NaN case explicitly
   if (is.nan(ratio)) {
     return(FALSE)
@@ -278,8 +310,16 @@ is_categorical <- function(.exposure) {
   ratio < 0.2
 }
 
+# The values an exposure actually takes. A missing value is missing, not a level
+# of its own: counting it as one gives a two-level exposure three levels, which
+# takes it off the binary path entirely, and the same inflation makes a
+# categorical exposure look like it has one more category than it has.
+observed_values <- function(.x) {
+  unique(.x[!is.na(.x)])
+}
+
 has_two_levels <- function(.x) {
-  length(unique(.x)) == 2
+  length(observed_values(.x)) == 2
 }
 
 check_refit <- function(.propensity, call = rlang::caller_env()) {
@@ -687,28 +727,19 @@ preserve_categorical_attrs <- function(psw_obj, wts, exposure_type) {
   psw_obj
 }
 
-# The exposure levels `transform_exposure_binary()` reads, derived the same way
-# it derives them so that a column named for a level is named for the level the
-# coding actually uses.
+# The exposure levels the binary coding resolves against, in the order it
+# resolves them: the levels a factor takes, or the sorted values anything else
+# takes. A factor answers for every level it declares, whether or not any
+# observation holds it, so a declared level nobody holds would otherwise sit
+# between the two real ones and be coded as focal, returning weights for an
+# exposure nobody has. `sort()` and `droplevels()` both leave missing values
+# out, which is what keeps an NA from counting as a level of its own.
 binary_exposure_levels <- function(.exposure) {
   if (is.factor(.exposure)) {
-    levels(.exposure)
+    levels(droplevels(.exposure))
   } else {
     sort(unique(.exposure))
   }
-}
-
-# Levels a factor exposure declares and never takes. These join the levels the
-# column names are checked against, so a frame named for every level the
-# exposure actually holds still fails to cover it and the selection falls to
-# position. Dropping them is what makes the match work, and nothing else the
-# caller can do to the data frame will.
-unused_exposure_levels <- function(.exposure) {
-  if (!is.factor(.exposure)) {
-    return(character())
-  }
-
-  setdiff(levels(.exposure), levels(droplevels(.exposure)))
 }
 
 # Position of the column holding the probability of the resolved focal level,
@@ -792,26 +823,6 @@ warn_ambiguous_focal_column <- function(
   invisible(TRUE)
 }
 
-# The declared levels standing between the frame's names and a match, or none
-# when they are not what stands there. Answered only when the frame covers every
-# level the exposure actually takes and fails on declared ones it never takes:
-# that is the case where the names the user can see do answer the question and
-# the answer is refused anyway. Any other name mismatch is about the names
-# themselves, and pointing at the levels there would misdirect.
-blocking_unused_levels <- function(.propensity, .exposure) {
-  unused <- unused_exposure_levels(.exposure)
-  if (length(unused) == 0) {
-    return(character())
-  }
-
-  used <- levels(droplevels(.exposure))
-  if (!all(used %in% names(.propensity))) {
-    return(character())
-  }
-
-  unused
-}
-
 # Helper function to extract propensity scores from data frames
 # This consolidates the logic used across multiple weight functions
 extract_propensity_from_df <- function(
@@ -879,21 +890,11 @@ extract_propensity_from_df <- function(
   # directly, so there is nothing to choose between and nothing to report.
   level_named <- !is.null(.focal_level) || !is.null(.reference_level)
   if (is_binary_exposure && level_named && ncol(.propensity) > 1) {
-    unused <- blocking_unused_levels(.propensity, .exposure)
-    droplevels_hint <- if (length(unused) > 0) {
-      c(
-        i = "{.arg .exposure} declares the level{?s} {.val {unused}} that it \\
-        never takes, so its levels cannot all be matched to columns. Call \\
-        {.fun droplevels} on it to match by name."
-      )
-    }
-
     warn(
       c(
         "Can't tell which column of {.arg .propensity} holds the probability of the focal level.",
         i = "Selected {.val {names(.propensity)[[col_pos]]}} by position.",
-        i = "Name the columns after the levels of {.arg .exposure}, or set {.arg .propensity_col}, to select the column by name.",
-        droplevels_hint
+        i = "Name the columns after the levels of {.arg .exposure}, or set {.arg .propensity_col}, to select the column by name."
       ),
       warning_class = "propensity_df_column_warning",
       call = call
