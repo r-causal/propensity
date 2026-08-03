@@ -1538,3 +1538,81 @@ test_that("ps_calibrate() names .propensity in the length mismatch error", {
   expect_match(msg, "`.propensity`", fixed = TRUE)
   expect_false(grepl("`ps`", msg, fixed = TRUE))
 })
+
+# What a refused cast says, and what the fallback needs ------------------------
+
+test_that("casting between differently calibrated ps_calib objects names the disagreement", {
+  skip("awaiting implementation")
+
+  x <- calib_vctrs_fixture()
+
+  # Built directly so the spline fit, and with it mgcv, stays out of a test
+  # about what the cast compares.
+  smoothed <- new_ps_calib(
+    vec_data(x),
+    ps_calib_meta = list(method = "logistic", smooth = TRUE)
+  )
+
+  # A `ps_calib` is printed with its method but not with whether the fit was
+  # smoothed, so these two types render identically and a refusal that names
+  # neither reads as a type that cannot be converted to itself.
+  expect_identical(vec_ptype_full(x), vec_ptype_full(smoothed))
+  expect_error(
+    vec_cast(x, to = smoothed),
+    regexp = "different calibration parameters",
+    class = "vctrs_error_incompatible_type"
+  )
+
+  # The combine says what disagrees, and the cast makes the same comparison, so
+  # it says the same thing.
+  isotonic <- new_ps_calib(
+    vec_data(x),
+    ps_calib_meta = list(method = "isoreg", smooth = FALSE)
+  )
+  expect_error(
+    vec_cast(x, to = isotonic),
+    regexp = "different calibration parameters",
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("ps_calibrate() falls back to a straight line without reaching for mgcv", {
+  skip("awaiting implementation")
+
+  # Five distinct scores are too few to place the knots of a spline, so the
+  # fallback fits a logistic regression and mgcv takes no part in the
+  # calibration. Checking for the package before working that out refuses the
+  # call over a dependency the calibration it performs has no use for.
+  scores <- rep(c(0.2, 0.3, 0.4, 0.5, 0.6), each = 4)
+  exposure <- rep(c(0, 1), 10)
+
+  local_mocked_bindings(
+    check_installed = function(...) rlang::abort("mgcv was checked for"),
+    .package = "rlang"
+  )
+
+  calibrated <- ps_calibrate(scores, exposure, smooth = TRUE)
+
+  expect_s3_class(calibrated, "ps_calib")
+  expect_false(ps_calib_meta(calibrated)$smooth)
+
+  oracle <- glm(
+    treat ~ ps,
+    data = data.frame(treat = exposure, ps = scores),
+    family = binomial()
+  )
+  expect_equal(
+    as.numeric(calibrated),
+    unname(predict(oracle, type = "response"))
+  )
+})
+
+test_that("ps_calibrate() names the propensity scores it was not given", {
+  skip("awaiting implementation")
+
+  err <- expect_error(
+    ps_calibrate(.exposure = c(0, 1, 0, 1)),
+    class = "propensity_missing_arg_error"
+  )
+  expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
+})

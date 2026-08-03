@@ -832,3 +832,138 @@ test_that("ps_trunc() keeps a missing row with an extreme score out of the perce
   expect_false(is_unit_truncated(truncated)[3])
   expect_true(is_unit_truncated(truncated)[4])
 })
+
+# What the bounds say, and what the categorical path cannot use ----------------
+
+# Four exposure levels, so the threshold a row cannot meet is 1/4 and the
+# message has an exact decimal to name.
+four_level_trunc_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "d"))
+  ps_matrix <- rbind(
+    c(0.40, 0.30, 0.20, 0.10),
+    c(0.10, 0.40, 0.30, 0.20),
+    c(0.20, 0.10, 0.40, 0.30),
+    c(0.30, 0.20, 0.10, 0.40)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trunc() names the threshold and the limit it reached", {
+  skip("awaiting implementation")
+
+  fixture <- four_level_trunc_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trunc(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_range_error")
+
+  # The sibling of the message ps_trim() gives for the same threshold: the one
+  # the caller supplied, and the 1/k the k columns of the matrix impose.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(msg, "0.3", fixed = TRUE)
+  expect_match(msg, "0.25", fixed = TRUE)
+})
+
+test_that("ps_trunc() validates the percentiles it bounds a matrix at", {
+  skip("awaiting implementation")
+
+  fixture <- valid_trunc_matrix_fixture()
+
+  # Bounds that cross pin every score to the bound on the far side of the
+  # other, which leaves every row uniform and records a truncation nobody asked
+  # for. The vector path refuses the same pair.
+  crossed <- rlang::catch_cnd(
+    ps_trunc(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "pctl",
+      lower = 0.99,
+      upper = 0.01
+    ),
+    classes = "error"
+  )
+  expect_s3_class(crossed, "propensity_range_error")
+
+  # A probability outside the unit interval reaches `quantile()` as one, which
+  # refuses it in base R's words about an argument the caller never wrote.
+  outside <- rlang::catch_cnd(
+    ps_trunc(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "pctl",
+      lower = -0.1,
+      upper = 0.9
+    ),
+    classes = "error"
+  )
+  expect_s3_class(outside, "propensity_range_error")
+})
+
+test_that("ps_trunc() records a matrix's percentile bounds without their quantile names", {
+  skip("awaiting implementation")
+
+  fixture <- valid_trunc_matrix_fixture()
+  truncated <- ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "pctl",
+    lower = 0.1,
+    upper = 0.9
+  )
+  meta <- ps_trunc_meta(truncated)
+
+  # `quantile()` names its result for the probability it was asked for, which
+  # says nothing about the bound and reappears wherever the bound is printed or
+  # compared.
+  expect_null(names(meta$lower_bound))
+  expect_null(names(meta$upper_bound))
+})
+
+test_that("ps_trunc() refuses focal levels on the categorical path", {
+  skip("awaiting implementation")
+
+  fixture <- valid_trunc_matrix_fixture()
+  scores <- as.data.frame(fixture$ps_matrix)
+  trunc_with <- function(...) {
+    ps_trunc(scores, .exposure = fixture$exposure, method = "ps", ...)
+  }
+
+  # The categorical path reads one column per exposure level and never resolves
+  # a focal level, so an argument naming one describes a coding it does not
+  # use. The data frame method drops these on the way to the matrix method,
+  # which leaves the caller believing they were honored.
+  focal <- expect_error(
+    trunc_with(.focal_level = "a"),
+    class = "propensity_unsupported_arg_error"
+  )
+  expect_match(conditionMessage(focal), "`.focal_level`", fixed = TRUE)
+
+  reference <- expect_error(
+    trunc_with(.reference_level = "a"),
+    class = "propensity_unsupported_arg_error"
+  )
+  expect_match(conditionMessage(reference), "`.reference_level`", fixed = TRUE)
+
+  # The deprecated spellings stand for the same two arguments, and are refused
+  # on the same terms. The deprecation itself is quieted here so that what is
+  # read is the refusal.
+  withr::local_options(lifecycle_verbosity = "quiet")
+  expect_error(
+    trunc_with(.treated = "a"),
+    class = "propensity_unsupported_arg_error"
+  )
+  expect_error(
+    trunc_with(.untreated = "a"),
+    class = "propensity_unsupported_arg_error"
+  )
+})

@@ -1452,3 +1452,75 @@ test_that("ps_trunc() names .propensity in the out-of-range error", {
   expect_match(msg, "`.propensity`", fixed = TRUE)
   expect_false(grepl("`ps`", msg, fixed = TRUE))
 })
+
+# Bounds, groups, and the record they leave -----------------------------------
+
+test_that("ps_trunc() names the propensity scores it was not given", {
+  skip("awaiting implementation")
+
+  err <- expect_error(ps_trunc(), class = "propensity_missing_arg_error")
+  expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
+})
+
+test_that("ps_trunc() refuses a common range read off no scores", {
+  skip("awaiting implementation")
+
+  scores <- c(NA, NA, 0.4, 0.55, 0.7)
+
+  # The lower bound is the lowest score among the focal units. Over no scores
+  # `min()` returns `Inf` under a base R warning, and the bounds then cross,
+  # which is reported as distributions that do not overlap rather than as a
+  # group with no scores to read a bound off.
+  expect_no_warning(
+    expect_error(
+      ps_trunc(scores, method = "cr", .exposure = c(1, 1, 0, 0, 0)),
+      class = "propensity_no_data_error"
+    )
+  )
+
+  # The upper bound is the highest score among the reference units, and
+  # `max()` returns `-Inf` over none of them.
+  expect_no_warning(
+    expect_error(
+      ps_trunc(scores, method = "cr", .exposure = c(0, 0, 1, 1, 1)),
+      class = "propensity_no_data_error"
+    )
+  )
+})
+
+test_that("ps_trunc() records the percentile bounds without their quantile names", {
+  skip("awaiting implementation")
+
+  set.seed(12)
+  truncated <- ps_trunc(runif(40, 0.02, 0.98), method = "pctl")
+  meta <- ps_trunc_meta(truncated)
+
+  # `quantile()` names its result for the probability it was asked for, which
+  # says nothing about the bound and reappears wherever the bound is printed or
+  # compared.
+  expect_null(names(meta$lower_bound))
+  expect_null(names(meta$upper_bound))
+})
+
+test_that("the truncation record names each unit once", {
+  skip("awaiting implementation")
+
+  # The record is built from the units pinned to the lower bound and those
+  # pinned to the upper one, so it holds each position once and in order
+  # whatever the method read its bounds off.
+  set.seed(13)
+  scores <- runif(40, 0.02, 0.98)
+  exposure <- rbinom(40, 1, scores)
+
+  truncations <- list(
+    ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+    ps_trunc(scores, method = "pctl", lower = 0.1, upper = 0.9),
+    ps_trunc(scores, method = "cr", .exposure = exposure)
+  )
+
+  for (truncated in truncations) {
+    idx <- ps_trunc_meta(truncated)$truncated_idx
+    expect_equal(anyDuplicated(idx), 0L)
+    expect_equal(idx, sort(idx))
+  }
+})

@@ -930,3 +930,13 @@ test_that("ps_tilt() names .propensity when refusing an unused .focal_level", {
   expect_match(msg, "`.propensity`", fixed = TRUE)
   expect_false(grepl("`ps`", msg, fixed = TRUE))
 })
+
+test_that("ps_tilt() names the propensity scores it was not given", {
+  skip("awaiting implementation")
+
+  err <- expect_error(
+    ps_tilt(estimand = "ate"),
+    class = "propensity_missing_arg_error"
+  )
+  expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
+})

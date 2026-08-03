@@ -1161,3 +1161,85 @@ test_that("ps_trim() takes its optimal threshold from the complete rows", {
     as.numeric(unclass(without_na))
   )
 })
+
+# What the threshold error says, and what the categorical path cannot use ------
+
+# Four exposure levels, so the threshold a row cannot meet is 1/4 and the
+# message has an exact decimal to name.
+four_level_trim_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "d"))
+  ps_matrix <- rbind(
+    c(0.40, 0.30, 0.20, 0.10),
+    c(0.10, 0.40, 0.30, 0.20),
+    c(0.20, 0.10, 0.40, 0.30),
+    c(0.30, 0.20, 0.10, 0.40)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trim() names the threshold and the limit it reached", {
+  skip("awaiting implementation")
+
+  fixture <- four_level_trim_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_range_error")
+
+  # Both numbers are facts about this call: the threshold the caller supplied
+  # and the one it has to fall below, which is 1/k for the k columns the matrix
+  # holds. A message naming neither leaves the caller to work out what their
+  # own limit is.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(msg, "0.3", fixed = TRUE)
+  expect_match(msg, "0.25", fixed = TRUE)
+})
+
+test_that("ps_trim() refuses focal levels on the categorical path", {
+  skip("awaiting implementation")
+
+  fixture <- valid_trim_matrix_fixture()
+  scores <- as.data.frame(fixture$ps_matrix)
+  trim_with <- function(...) {
+    ps_trim(scores, .exposure = fixture$exposure, method = "ps", ...)
+  }
+
+  # The categorical path reads one column per exposure level and never resolves
+  # a focal level, so an argument naming one describes a coding it does not
+  # use. The data frame method drops these on the way to the matrix method,
+  # which leaves the caller believing they were honored.
+  focal <- expect_error(
+    trim_with(.focal_level = "a"),
+    class = "propensity_unsupported_arg_error"
+  )
+  expect_match(conditionMessage(focal), "`.focal_level`", fixed = TRUE)
+
+  reference <- expect_error(
+    trim_with(.reference_level = "a"),
+    class = "propensity_unsupported_arg_error"
+  )
+  expect_match(conditionMessage(reference), "`.reference_level`", fixed = TRUE)
+
+  # The deprecated spellings stand for the same two arguments, and are refused
+  # on the same terms. The deprecation itself is quieted here so that what is
+  # read is the refusal.
+  withr::local_options(lifecycle_verbosity = "quiet")
+  expect_error(
+    trim_with(.treated = "a"),
+    class = "propensity_unsupported_arg_error"
+  )
+  expect_error(
+    trim_with(.untreated = "a"),
+    class = "propensity_unsupported_arg_error"
+  )
+})

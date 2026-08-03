@@ -108,24 +108,79 @@ test_that("Summary: Arithmetic behavior differences", {
 })
 
 test_that("Summary: Key differences and missing methods", {
-  # Where the three classes differ:
-  # 1. psw inherits `[`, summary(), min(), max(), range(), median(),
-  #    quantile(), anyDuplicated(), and diff() from causalgenerics' causal_wts
-  #    methods; ps_trim and ps_trunc each define their own.
-  # 2. ps_trim and ps_trunc implement sort(), unique(), and rep() so that the
-  #    record of which units were modified follows the result. psw implements
-  #    none of the three and takes the vctrs defaults.
-  # 3. na.omit() is implemented for ps_trim alone.
-  # 4. Arithmetic differs by design: psw keeps its class, ps_trim and ps_trunc
-  #    return plain numeric, since a transformed propensity score is no longer
-  #    a propensity score.
+  defines_method <- function(generic, class) {
+    !is.null(utils::getS3method(generic, class, optional = TRUE))
+  }
+  defined_for <- function(generics, class) {
+    generics[vapply(generics, defines_method, logical(1), class = class)]
+  }
+
+  # psw takes `[`, summary(), min(), max(), range(), median(), quantile(),
+  # anyDuplicated(), and diff() from causalgenerics' causal_wts methods;
+  # ps_trim and ps_trunc each define their own.
+  inherited <- c(
+    "[",
+    "summary",
+    "min",
+    "max",
+    "range",
+    "median",
+    "quantile",
+    "anyDuplicated",
+    "diff"
+  )
+  expect_equal(defined_for(inherited, "psw"), character(0))
+  expect_equal(defined_for(inherited, "causal_wts"), inherited)
+  expect_equal(defined_for(inherited, "ps_trim"), inherited)
+  expect_equal(defined_for(inherited, "ps_trunc"), inherited)
+
+  # ps_trim and ps_trunc implement sort(), unique(), and rep() so that the
+  # record of which units were modified follows the result. psw implements
+  # none of the three and takes the vctrs defaults.
+  record_keeping <- c("sort", "unique", "rep")
+  expect_equal(defined_for(record_keeping, "psw"), character(0))
+  expect_equal(defined_for(record_keeping, "causal_wts"), character(0))
+  expect_equal(defined_for(record_keeping, "ps_trim"), record_keeping)
+  expect_equal(defined_for(record_keeping, "ps_trunc"), record_keeping)
+
+  # na.omit() has a method for ps_trim alone. psw and ps_trunc reach the
+  # default, which keeps their class, as the tests above assert.
+  expect_true(defines_method("na.omit", "ps_trim"))
+  expect_false(defines_method("na.omit", "ps_trunc"))
+  expect_false(defines_method("na.omit", "psw"))
 
   # Each class defines vec_restore() exactly once.
+  expect_equal(
+    sort(grep("^vec_restore\\.", ls(asNamespace("propensity")), value = TRUE)),
+    c("vec_restore.ps_trim", "vec_restore.ps_trunc", "vec_restore.psw")
+  )
 
-  # All three classes:
-  # - return numeric from min, max, range, median, quantile
-  # - return the expected types from anyDuplicated, diff
-  # - integrate with vctrs for coercion, combination, and subsetting
+  # All three classes return plain numeric from min(), max(), range(),
+  # median(), and quantile(), an integer from anyDuplicated(), and plain
+  # numeric from diff(). ps_trim marks trimmed units NA, so its summaries
+  # need na.rm.
+  psw_obj <- psw(c(0.1, 0.2, 0.3), estimand = "ate")
+  ps_trim_obj <- ps_trim(
+    c(0.1, 0.2, 0.9),
+    method = "ps",
+    lower = 0.15,
+    upper = 0.8
+  )
+  ps_trunc_obj <- ps_trunc(
+    c(0.1, 0.2, 0.9),
+    method = "ps",
+    lower = 0.15,
+    upper = 0.8
+  )
 
-  expect_true(TRUE) # Placeholder assertion
+  for (x in list(psw_obj, ps_trim_obj, ps_trunc_obj)) {
+    expect_identical(class(min(x, na.rm = TRUE)), "numeric")
+    expect_identical(class(max(x, na.rm = TRUE)), "numeric")
+    expect_identical(class(range(x, na.rm = TRUE)), "numeric")
+    expect_length(range(x, na.rm = TRUE), 2)
+    expect_identical(class(median(x, na.rm = TRUE)), "numeric")
+    expect_identical(class(quantile(x, na.rm = TRUE)), "numeric")
+    expect_identical(class(anyDuplicated(x)), "integer")
+    expect_identical(class(diff(x)), "numeric")
+  }
 })

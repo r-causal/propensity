@@ -2359,3 +2359,95 @@ test_that("ps_trim() names .propensity in the out-of-range error", {
   expect_match(msg, "`.propensity`", fixed = TRUE)
   expect_false(grepl("`ps`", msg, fixed = TRUE))
 })
+
+# Bounds, groups, and arguments the trimming cannot use ------------------------
+
+test_that("ps_trim() names the propensity scores it was not given", {
+  skip("awaiting implementation")
+
+  err <- expect_error(ps_trim(), class = "propensity_missing_arg_error")
+  expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
+})
+
+test_that("the ps deprecation is attributed to the caller", {
+  skip("awaiting implementation")
+
+  messages <- deprecation_warnings_from_user(
+    quote(ps_trim(ps = scores, method = "ps", lower = 0.2, upper = 0.8)),
+    list(scores = trim_rename_scores())
+  )
+
+  expect_length(messages, 1)
+  expect_false(deprecation_misattributed(messages))
+})
+
+# One exposure group's scores are all missing, so the common range has no bound
+# to read off that group.
+cr_missing_group_scores <- function() {
+  c(NA, NA, 0.4, 0.55, 0.7)
+}
+
+test_that("ps_trim() refuses a common range read off no scores", {
+  skip("awaiting implementation")
+
+  # The lower bound is the lowest score among the focal units. Over no scores
+  # `min()` returns `Inf` under a base R warning, which reads as a range no unit
+  # falls inside, so every unit is trimmed instead.
+  expect_no_warning(
+    expect_error(
+      ps_trim(
+        cr_missing_group_scores(),
+        method = "cr",
+        .exposure = c(1, 1, 0, 0, 0)
+      ),
+      class = "propensity_no_data_error"
+    )
+  )
+
+  # The upper bound is the highest score among the reference units, and
+  # `max()` returns `-Inf` over none of them.
+  expect_no_warning(
+    expect_error(
+      ps_trim(
+        cr_missing_group_scores(),
+        method = "cr",
+        .exposure = c(0, 0, 1, 1, 1)
+      ),
+      class = "propensity_no_data_error"
+    )
+  )
+})
+
+test_that("ps_trim() drops the bounds an adaptive trimming ignores", {
+  skip("awaiting implementation")
+
+  set.seed(11)
+  ps <- runif(60, 0.02, 0.98)
+
+  # The bound is announced as ignored, which is what the announcement is for;
+  # it is muffled below so that what the metadata records is what is read.
+  expect_warning(
+    ps_trim(ps, method = "adaptive", lower = 0.1),
+    class = "propensity_warning"
+  )
+  ignored <- suppressWarnings(ps_trim(ps, method = "adaptive", lower = 0.1))
+  meta <- ps_trim_meta(ignored)
+
+  # An adaptive trimming reads its cutoff off the scores, so a bound it was
+  # handed took no part in it and describes nothing about the result.
+  expect_null(meta$lower)
+  expect_null(meta$upper)
+
+  plain <- ps_trim(ps, method = "adaptive")
+  expect_equal(meta$cutoff, ps_trim_meta(plain)$cutoff)
+
+  # Two trimmings that ran the same rule to the same cutoff describe the same
+  # trimming, so combining them keeps the class rather than reporting different
+  # parameters and falling back to numeric.
+  combined <- expect_no_warning(c(plain, ignored))
+  expect_s3_class(combined, "ps_trim")
+  expect_equal(
+    as.numeric(combined),
+    c(as.numeric(plain), as.numeric(ignored))
+  )
+})

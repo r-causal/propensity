@@ -5208,7 +5208,7 @@ test_that("Matching (ATM) weights match PSweight", {
   expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
 })
 
-test_that("Entropy weights use different formula than PSweight", {
+test_that("Entropy weights match PSweight for model-fitted scores", {
   skip_if_not_installed("PSweight")
   skip_on_cran()
 
@@ -5232,26 +5232,19 @@ test_that("Entropy weights use different formula than PSweight", {
   )
 
   # Extract entropy weights and un-normalize
-  # PSweight normalizes weights to sum to 1 within each group
+  # PSweight normalizes weights to sum to 1 within each treatment group, so
+  # scaling each group by the sum of our raw weights recovers the raw scale
   psw_weights_norm <- psw_obj$ps.weights$entropy
 
-  # Calculate sum of raw weights for each group to un-normalize
   trt <- PSweight::psdata_cl$trt
-  raw_wts <- ifelse(trt == 1, 1 - ps_fitted, ps_fitted)
-  sum_raw_trt1 <- sum(raw_wts[trt == 1])
-  sum_raw_trt0 <- sum(raw_wts[trt == 0])
+  our_sum1 <- sum(our_weights[trt == 1])
+  our_sum0 <- sum(our_weights[trt == 0])
 
-  # Un-normalize PSweight weights
   psw_weights_raw <- numeric(nrow(PSweight::psdata_cl))
-  psw_weights_raw[trt == 1] <- psw_weights_norm[trt == 1] * sum_raw_trt1
-  psw_weights_raw[trt == 0] <- psw_weights_norm[trt == 0] * sum_raw_trt0
+  psw_weights_raw[trt == 1] <- psw_weights_norm[trt == 1] * our_sum1
+  psw_weights_raw[trt == 0] <- psw_weights_norm[trt == 0] * our_sum0
 
-  # Our package uses entropy tilting function h(e) = -[e*log(e) + (1-e)*log(1-e)]
-  # PSweight uses simpler formula: w = (1-e) for treated, w = e for control
-  # These give different results by a factor related to the entropy function
-  # So we just verify the ratio is consistent
-  ratio <- as.numeric(our_weights) / psw_weights_raw
-  expect_true(sd(ratio) / mean(ratio) < 0.01) # Coefficient of variation < 1%
+  expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
 })
 
 test_that("Treated (ATT) weights match PSweight", {
@@ -5392,10 +5385,9 @@ test_that("GLM methods produce same results as PSweight", {
   sum_ipw_trt1 <- sum(raw_ipw[trt == 1])
   sum_ipw_trt0 <- sum(raw_ipw[trt == 0])
 
-  # Entropy weights
-  raw_entropy <- ifelse(trt == 1, 1 - ps_fitted, ps_fitted)
-  sum_entropy_trt1 <- sum(raw_entropy[trt == 1])
-  sum_entropy_trt0 <- sum(raw_entropy[trt == 0])
+  # Entropy weights, un-normalized with the sums of our own raw weights
+  sum_entropy_trt1 <- sum(our_entropy_glm[trt == 1])
+  sum_entropy_trt0 <- sum(our_entropy_glm[trt == 0])
 
   # Un-normalize PSweight weights
   psw_ate_raw <- numeric(nrow(PSweight::psdata_cl))
@@ -5410,11 +5402,7 @@ test_that("GLM methods produce same results as PSweight", {
 
   # Compare
   expect_equal(as.numeric(our_ate_glm), psw_ate_raw, tolerance = 1e-10)
-
-  # For entropy, our package uses different formula than PSweight
-  # so we just verify the ratio is consistent
-  entropy_ratio <- as.numeric(our_entropy_glm) / psw_entropy_raw
-  expect_true(sd(entropy_ratio) / mean(entropy_ratio) < 0.01)
+  expect_equal(as.numeric(our_entropy_glm), psw_entropy_raw, tolerance = 1e-10)
 })
 
 # ---- validating a stabilization score at the weight functions ---------------
@@ -6085,4 +6073,62 @@ test_that("`.sigma` applies only to continuous exposures", {
     wt_cens(ps, exposure, .sigma = 1, exposure_type = "binary"),
     class = "propensity_sigma_error"
   )
+})
+
+test_that("`.sigma` must hold usable standard deviations", {
+  skip("awaiting implementation")
+
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+  spread <- function(sigma) {
+    wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      exposure_type = "continuous",
+      .sigma = sigma,
+      stabilize = TRUE
+    )
+  }
+
+  # A standard deviation reaches `dnorm()` as it arrives, so a negative one
+  # comes back as `NaN` weights under a base R warning about them, a zero comes
+  # back as infinite weights, and a missing one comes back missing. None of the
+  # three is a spread the density can be given, so all three are refused before
+  # it is evaluated.
+  expect_no_warning(
+    expect_error(spread(-1), class = "propensity_sigma_error")
+  )
+  expect_error(spread(0), class = "propensity_sigma_error")
+  expect_error(spread(rep(NA_real_, n)), class = "propensity_sigma_error")
+
+  # One bad value among good ones spreads one observation's density, so it is
+  # refused on the same terms.
+  expect_no_warning(
+    expect_error(
+      spread(replace(fixture$sigma, 3, -1)),
+      class = "propensity_sigma_error"
+    )
+  )
+})
+
+# ---- deprecations are attributed to the caller ------------------------------
+
+test_that("the .treated deprecation is attributed to the caller", {
+  skip("awaiting implementation")
+
+  messages <- deprecation_warnings_from_user(
+    quote(wt_ate(truncated, exposure, .treated = 1)),
+    list(
+      truncated = ps_trunc(
+        c(0.05, 0.3, 0.5, 0.7, 0.95),
+        method = "ps",
+        lower = 0.1,
+        upper = 0.9
+      ),
+      exposure = c(0, 1, 0, 1, 0)
+    )
+  )
+
+  expect_length(messages, 1)
+  expect_false(deprecation_misattributed(messages))
 })
