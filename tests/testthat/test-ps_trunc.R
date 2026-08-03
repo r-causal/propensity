@@ -1535,7 +1535,6 @@ trunc_binary_frame_fixture <- function() {
 }
 
 test_that("a refusal on the binary data frame route names ps_trunc", {
-  testthat::skip("awaiting implementation")
   fixture <- trunc_binary_frame_fixture()
 
   # The scores themselves.
@@ -1621,7 +1620,6 @@ test_that("a refusal on the numeric route still names ps_trunc", {
 })
 
 test_that("ps_trunc refuses a call argument on the binary route", {
-  testthat::skip("awaiting implementation")
   fixture <- trunc_binary_frame_fixture()
 
   # The generic passes its dots to its methods, so the frame the binary path

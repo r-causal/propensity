@@ -230,10 +230,18 @@ ps_trunc.default <- function(
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated(),
-  user_env = rlang::caller_env()
+  # Two frames arrive here because two condition systems read them.
+  # `user_env` is the frame lifecycle reports a deprecation from, which decides
+  # whether the reader is told to change their own call or to report an issue.
+  # `call` is the frame every other condition is attributed to, which rlang
+  # reads to name the function in the report. A route that reaches this method
+  # by a call rather than by dispatch has to supply both.
+  user_env = rlang::caller_env(),
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
-  method <- rlang::arg_match(method)
+  method <- rlang::arg_match(method, error_call = call)
   meta_list <- list(method = method)
 
   # Handle deprecation
@@ -247,9 +255,9 @@ ps_trunc.default <- function(
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
-  check_focal_levels(.focal_level, .reference_level)
+  check_focal_levels(.focal_level, .reference_level, call = call)
 
-  check_ps_range(.propensity)
+  check_ps_range(.propensity, call = call)
 
   if (method == "ps") {
     if (is.null(lower)) {
@@ -258,7 +266,7 @@ ps_trunc.default <- function(
     if (is.null(upper)) {
       upper <- 0.9
     }
-    check_lower_upper(lower, upper)
+    check_lower_upper(lower, upper, call = call)
 
     lb <- lower
     ub <- upper
@@ -269,8 +277,8 @@ ps_trunc.default <- function(
     if (is.null(upper)) {
       upper <- 0.95
     }
-    check_quantile_probs(lower, upper)
-    check_lower_upper(lower, upper)
+    check_quantile_probs(lower, upper, call = call)
+    check_lower_upper(lower, upper, call = call)
     # `quantile()` names its result for the probability it was asked for, which
     # says nothing about the bound and reappears wherever the bound is printed
     # or compared.
@@ -282,14 +290,16 @@ ps_trunc.default <- function(
     if (is.null(.exposure)) {
       abort(
         "For {.code method = 'cr'}, must supply {.arg .exposure}.",
-        error_class = "propensity_missing_arg_error"
+        error_class = "propensity_missing_arg_error",
+        call = call
       )
     }
-    check_exposure_complete(.exposure, method)
+    check_exposure_complete(.exposure, method, call = call)
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
     # A score that arrived missing is not one this function can place against a
     # bound, so it takes no part in working the bounds out. Dropping it here
@@ -297,10 +307,10 @@ ps_trunc.default <- function(
     observed <- !is.na(.propensity)
     ps_treat <- .propensity[observed & .exposure == 1]
     ps_untrt <- .propensity[observed & .exposure == 0]
-    check_cr_groups_observed(ps_treat, ps_untrt)
+    check_cr_groups_observed(ps_treat, ps_untrt, call = call)
     lb <- min(ps_treat)
     ub <- max(ps_untrt)
-    check_common_range(lb, ub)
+    check_common_range(lb, ub, call = call)
   }
 
   # Winsorize. A missing score compares as neither below the lower bound nor
@@ -556,6 +566,9 @@ ps_trunc.data.frame <- function(
 
   ps_vec <- binary_ps_column(.propensity, "ps_trunc")
 
+  # The default method is reached here by a call rather than by dispatch, so it
+  # is handed a frame to report against. Left to its own, a refusal on this
+  # route would name the method the caller never wrote.
   ps_trunc.default(
     .propensity = ps_vec,
     method = method,
@@ -567,7 +580,8 @@ ps_trunc.data.frame <- function(
     ...,
     .treated = .treated,
     .untreated = .untreated,
-    user_env = rlang::caller_env()
+    user_env = rlang::caller_env(),
+    call = call
   )
 }
 

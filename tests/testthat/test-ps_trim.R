@@ -2462,7 +2462,6 @@ trim_binary_frame_fixture <- function() {
 }
 
 test_that("a refusal on the binary data frame route names ps_trim", {
-  testthat::skip("awaiting implementation")
   fixture <- trim_binary_frame_fixture()
 
   # The scores themselves.
@@ -2501,7 +2500,6 @@ test_that("a refusal on the binary data frame route names ps_trim", {
 })
 
 test_that("a warning on the binary data frame route names ps_trim", {
-  testthat::skip("awaiting implementation")
   fixture <- trim_binary_frame_fixture()
 
   # Two of the methods read their cutoffs off the scores and say so when they
@@ -2576,7 +2574,6 @@ test_that("a refusal on the numeric route still names ps_trim", {
 })
 
 test_that("ps_trim refuses a call argument on the binary route", {
-  testthat::skip("awaiting implementation")
   fixture <- trim_binary_frame_fixture()
 
   # The generic passes its dots to its methods, so the frame the binary path

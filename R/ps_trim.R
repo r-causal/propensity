@@ -294,10 +294,18 @@ ps_trim.default <- function(
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated(),
-  user_env = rlang::caller_env()
+  # Two frames arrive here because two condition systems read them.
+  # `user_env` is the frame lifecycle reports a deprecation from, which decides
+  # whether the reader is told to change their own call or to report an issue.
+  # `call` is the frame every other condition is attributed to, which rlang
+  # reads to name the function in the report. A route that reaches this method
+  # by a call rather than by dispatch has to supply both.
+  user_env = rlang::caller_env(),
+  call = rlang::current_env()
 ) {
+  check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
-  method <- rlang::arg_match(method)
+  method <- rlang::arg_match(method, error_call = call)
 
   # Optimal trimming is defined over the rows of a propensity score matrix, so
   # there is nothing for it to do with a vector of scores.
@@ -307,11 +315,12 @@ ps_trim.default <- function(
         "Method {.val optimal} is only supported for categorical exposures.",
         i = "Supply the propensity scores as a matrix or data frame with one column per exposure level."
       ),
-      error_class = "propensity_wt_not_supported_error"
+      error_class = "propensity_wt_not_supported_error",
+      call = call
     )
   }
 
-  check_ps_range(.propensity)
+  check_ps_range(.propensity, call = call)
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -324,7 +333,7 @@ ps_trim.default <- function(
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
-  check_focal_levels(.focal_level, .reference_level)
+  check_focal_levels(.focal_level, .reference_level, call = call)
 
   if (method == "ps") {
     if (is.null(lower)) {
@@ -333,11 +342,12 @@ ps_trim.default <- function(
     if (is.null(upper)) {
       upper <- 0.9
     }
-    check_lower_upper(lower, upper)
+    check_lower_upper(lower, upper, call = call)
   } else if (method == "adaptive") {
     if (!is.null(lower) || !is.null(upper)) {
       warn(
-        "For {.code method = 'adaptive'}, {.code lower} and {.code upper} are ignored."
+        "For {.code method = 'adaptive'}, {.code lower} and {.code upper} are ignored.",
+        call = call
       )
     }
   } else if (method == "pctl") {
@@ -347,8 +357,8 @@ ps_trim.default <- function(
     if (is.null(upper)) {
       upper <- 0.95
     }
-    check_quantile_probs(lower, upper)
-    check_lower_upper(lower, upper)
+    check_quantile_probs(lower, upper, call = call)
+    check_lower_upper(lower, upper, call = call)
   } else if (method == "pref") {
     if (is.null(lower)) {
       lower <- 0.3
@@ -356,11 +366,12 @@ ps_trim.default <- function(
     if (is.null(upper)) {
       upper <- 0.7
     }
-    check_lower_upper(lower, upper)
+    check_lower_upper(lower, upper, call = call)
   } else if (method == "cr") {
     if (!is.null(lower) || !is.null(upper)) {
       warn(
-        "For {.code method = 'cr'}, {.code lower} and {.code upper} are ignored."
+        "For {.code method = 'cr'}, {.code lower} and {.code upper} are ignored.",
+        call = call
       )
     }
   }
@@ -417,14 +428,16 @@ ps_trim.default <- function(
     if (is.null(.exposure)) {
       abort(
         "For {.code method = 'pref'}, must supply {.arg .exposure}.",
-        error_class = "propensity_missing_arg_error"
+        error_class = "propensity_missing_arg_error",
+        call = call
       )
     }
-    check_exposure_complete(.exposure, method)
+    check_exposure_complete(.exposure, method, call = call)
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
     prop_exposure <- mean(.exposure)
     pref_score <- plogis(qlogis(.propensity) - qlogis(prop_exposure))
@@ -434,18 +447,20 @@ ps_trim.default <- function(
     if (is.null(.exposure)) {
       abort(
         "For {.code method = 'cr'}, must supply {.arg .exposure}.",
-        error_class = "propensity_missing_arg_error"
+        error_class = "propensity_missing_arg_error",
+        call = call
       )
     }
-    check_exposure_complete(.exposure, method)
+    check_exposure_complete(.exposure, method, call = call)
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
-      .reference_level = .reference_level
+      .reference_level = .reference_level,
+      call = call
     )
     ps_treat <- .propensity[observed & .exposure == 1]
     ps_untrt <- .propensity[observed & .exposure == 0]
-    check_cr_groups_observed(ps_treat, ps_untrt)
+    check_cr_groups_observed(ps_treat, ps_untrt, call = call)
     cr_lower <- min(ps_treat)
     cr_upper <- max(ps_untrt)
     meta_list$cr_lower <- cr_lower
@@ -722,6 +737,9 @@ ps_trim.data.frame <- function(
 
   ps_vec <- binary_ps_column(.propensity, "ps_trim")
 
+  # The default method is reached here by a call rather than by dispatch, so it
+  # is handed a frame to report against. Left to its own, a refusal on this
+  # route would name the method the caller never wrote.
   ps_trim.default(
     .propensity = ps_vec,
     method = method,
@@ -733,7 +751,8 @@ ps_trim.data.frame <- function(
     ...,
     .treated = .treated,
     .untreated = .untreated,
-    user_env = rlang::caller_env()
+    user_env = rlang::caller_env(),
+    call = call
   )
 }
 

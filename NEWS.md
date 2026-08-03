@@ -58,12 +58,14 @@
   focal; the arguments were declared and never read, and the data frame method
   dropped them on the way to the matrix method.
 
-* A condition raised on the categorical path of `ps_trim()` and `ps_trunc()` now
-  names the function the caller wrote, whatever shape the propensity scores
-  arrived in. A data frame reaches the matrix method by a call rather than by
-  dispatch, so every error and warning that route raised was reported against
-  `ps_trim.matrix()` or `ps_trunc.matrix()`, a method the caller has no reason to
-  know of, while the same condition on a matrix named the generic.
+* A condition raised by `ps_trim()` or `ps_trunc()` now names the function the
+  caller wrote, whatever shape the propensity scores arrived in. A data frame of
+  scores reaches the matrix method on the categorical path, and the vector
+  method on the binary one, by a call rather than by dispatch, so every error
+  and warning either route raised was reported against `ps_trim.matrix()`,
+  `ps_trunc.matrix()`, `ps_trim.default()`, or `ps_trunc.default()`, methods the
+  caller has no reason to know of, while the same condition on a matrix or on a
+  bare vector named the generic.
 
 * Refusing to cast one `ps_calib` to another now names the disagreement, as the
   `ps_trim` and `ps_trunc` casts already do. A `ps_calib` is printed with its
