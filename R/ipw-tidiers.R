@@ -159,3 +159,78 @@ check_conf_level <- function(
 
   invisible(conf.level)
 }
+
+#' Glance at an inverse probability weighted result
+#'
+#' @description
+#' `glance()` describes an [ipw()] result rather than its estimates: one row
+#' naming the estimand, the exposure type, the standard error method, the two
+#' models, and the number of observations the outcome model was fit on. A fit
+#' reporting several effect measures, or several comparisons of a categorical
+#' exposure, still returns exactly one row.
+#'
+#' The columns and their types are the same on every route [ipw()] takes, so the
+#' rows of several results stack into one table.
+#'
+#' @param x An `ipw` object, as returned by [ipw()].
+#' @param ... These dots are for future extensions and must be empty.
+#'
+#' @return A one-row [tibble][tibble::tibble] with the columns:
+#' \describe{
+#'   \item{`estimand`}{The estimand the weights target, such as `"ate"`.}
+#'   \item{`exposure_type`}{The exposure the propensity score model describes,
+#'     one of `"binary"`, `"categorical"`, or `"continuous"`.}
+#'   \item{`se_method`}{The standard error method, `"mestimation"` or
+#'     `"linearization"`.}
+#'   \item{`wt_model`}{The class of the propensity score model.}
+#'   \item{`outcome_model`}{The class of the outcome model.}
+#'   \item{`nobs`}{The number of observations the outcome model was fit on.}
+#' }
+#'
+#' @examples
+#' set.seed(123)
+#' n <- 200
+#' x1 <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.5 * x1))
+#' y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.3 * x1))
+#' dat <- data.frame(x1, z, y)
+#'
+#' ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+#' wts <- wt_ate(ps_mod)
+#' outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+#' result <- ipw(ps_mod, outcome_mod)
+#'
+#' glance(result)
+#'
+#' @seealso [ipw()] for the estimator, and [`tidy()`][tidy.ipw()] for its
+#'   estimates.
+#'
+#' @exportS3Method generics::glance ipw
+glance.ipw <- function(x, ...) {
+  rlang::check_dots_empty()
+
+  tibble::tibble(
+    estimand = x$estimand,
+    exposure_type = ipw_exposure_type(x$wt_mod),
+    se_method = x$se_method,
+    wt_model = class(x$wt_mod)[[1]],
+    outcome_model = class(x$outcome_mod)[[1]],
+    nobs = as.integer(stats::nobs(x$outcome_mod))
+  )
+}
+
+# The exposure a fitted propensity score model describes. The class of the model
+# does not settle it on its own: a gaussian glm models a continuous exposure and
+# `ipw()` routes it down the same path an lm takes, while every other family
+# models a binary one.
+ipw_exposure_type <- function(wt_mod) {
+  if (inherits(wt_mod, "multinom")) {
+    return("categorical")
+  }
+
+  if (inherits(wt_mod, "glm") && !identical(wt_mod$family$family, "gaussian")) {
+    return("binary")
+  }
+
+  "continuous"
+}
