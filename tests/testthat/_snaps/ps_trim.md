@@ -12,7 +12,7 @@
       expr
     Condition <propensity_missing_arg_error>
       Error in `ps_trim()`:
-      ! For `method = 'pref'`, must supply `exposure`.
+      ! For `method = 'pref'`, must supply `.exposure`.
 
 ---
 
@@ -38,7 +38,7 @@
       expr
     Condition <propensity_missing_arg_error>
       Error in `ps_trim()`:
-      ! For `method = 'cr'`, must supply `exposure`.
+      ! For `method = 'cr'`, must supply `.exposure`.
 
 ---
 
@@ -118,7 +118,7 @@
       expr
     Condition <propensity_missing_arg_error>
       Error in `ps_trim()`:
-      ! For `method = 'pref'`, must supply `exposure`.
+      ! For `method = 'pref'`, must supply `.exposure`.
 
 ---
 
@@ -126,7 +126,7 @@
       expr
     Condition <propensity_missing_arg_error>
       Error in `ps_trim()`:
-      ! For `method = 'cr'`, must supply `exposure`.
+      ! For `method = 'cr'`, must supply `.exposure`.
 
 # ps_trim warns when combining objects with different parameters
 
@@ -137,4 +137,21 @@
       Converting ps_trim to numeric: different trimming parameters
       i Metadata cannot be preserved when combining incompatible objects
       i Use identical objects or explicitly cast to numeric to avoid this warning
+
+# ps_trim rejects the categorical-only optimal method on a vector
+
+    Code
+      expr
+    Condition <propensity_wt_not_supported_error>
+      Error in `ps_trim()`:
+      ! Method "optimal" is only supported for categorical exposures.
+      i Supply the propensity scores as a matrix or data frame with one column per exposure level.
+
+# ps_trim names `.exposure` when the method requires one
+
+    Code
+      expr
+    Condition <propensity_missing_arg_error>
+      Error in `ps_trim()`:
+      ! For `method = 'cr'`, must supply `.exposure`.
 

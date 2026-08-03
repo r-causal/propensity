@@ -117,8 +117,8 @@ test_that("ps_trim validates delta < 1/k", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   colnames(ps_matrix) <- levels(exposure)
 
-  # delta >= 1/3 should trigger warning
-  trimmed <- expect_propensity_warning(
+  # delta >= 1/3 should error
+  expect_propensity_error(
     ps_trim(
       ps_matrix,
       .exposure = exposure,
@@ -126,10 +126,6 @@ test_that("ps_trim validates delta < 1/k", {
       lower = 0.35
     )
   )
-
-  # Should return original data
-  meta <- ps_trim_meta(trimmed)
-  expect_equal(length(meta$keep_idx), n)
 })
 
 test_that("ps_trim errors for unsupported methods with categorical", {
@@ -944,8 +940,6 @@ valid_trim_matrix_fixture <- function() {
 }
 
 test_that("ps_trim trims a matrix with the method left at its default", {
-  testthat::skip("awaiting implementation")
-
   fixture <- valid_trim_matrix_fixture()
 
   # The generic's default is the full six-value vector, which the matrix method
@@ -959,8 +953,6 @@ test_that("ps_trim trims a matrix with the method left at its default", {
 })
 
 test_that("ps_trim rejects an unsupported matrix method with a package error", {
-  testthat::skip("awaiting implementation")
-
   fixture <- valid_trim_matrix_fixture()
 
   cnd <- rlang::catch_cnd(
@@ -978,8 +970,6 @@ test_that("ps_trim rejects an unsupported matrix method with a package error", {
 })
 
 test_that("ps_trim aborts when the categorical threshold reaches 1/k", {
-  testthat::skip("awaiting implementation")
-
   fixture <- valid_trim_matrix_fixture()
 
   # A threshold at or above 1/k cannot be met by every column of a row that
@@ -1000,8 +990,6 @@ test_that("ps_trim aborts when the categorical threshold reaches 1/k", {
 })
 
 test_that("ps_trim defaults the categorical threshold to 0.1", {
-  testthat::skip("awaiting implementation")
-
   fixture <- valid_trim_matrix_fixture()
 
   # Trimming and truncation deliberately default to different thresholds: 0.1
@@ -1016,4 +1004,19 @@ test_that("ps_trim defaults the categorical threshold to 0.1", {
 
   defaulted <- ps_trim(fixture$ps_matrix, .exposure = fixture$exposure)
   expect_equal(ps_trim_meta(defaulted)$delta, 0.1)
+})
+
+test_that("ps_trim trims a data frame with the method left at its default", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # The data frame method hands `method` to the matrix method untouched, so the
+  # generic's default has to survive that hand-off as well.
+  trimmed <- ps_trim(
+    as.data.frame(fixture$ps_matrix),
+    .exposure = fixture$exposure
+  )
+
+  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_equal(ps_trim_meta(trimmed)$method, "ps")
+  expect_equal(ps_trim_meta(trimmed)$delta, 0.1)
 })

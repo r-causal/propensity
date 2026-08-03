@@ -546,8 +546,6 @@ valid_trunc_matrix_fixture <- function() {
 }
 
 test_that("ps_trunc truncates a matrix with the method left at its default", {
-  testthat::skip("awaiting implementation")
-
   fixture <- valid_trunc_matrix_fixture()
 
   # The generic's default is the full three-value vector, which the matrix
@@ -562,8 +560,6 @@ test_that("ps_trunc truncates a matrix with the method left at its default", {
 })
 
 test_that("ps_trunc rejects an unsupported matrix method with a package error", {
-  testthat::skip("awaiting implementation")
-
   fixture <- valid_trunc_matrix_fixture()
 
   cnd <- rlang::catch_cnd(
@@ -577,8 +573,6 @@ test_that("ps_trunc rejects an unsupported matrix method with a package error", 
 })
 
 test_that("ps_trunc aborts when the categorical threshold reaches 1/k", {
-  testthat::skip("awaiting implementation")
-
   fixture <- valid_trunc_matrix_fixture()
 
   # The sibling of the condition ps_trim() raises for the same threshold,
@@ -597,8 +591,6 @@ test_that("ps_trunc aborts when the categorical threshold reaches 1/k", {
 })
 
 test_that("ps_trunc defaults the categorical threshold to 0.01", {
-  testthat::skip("awaiting implementation")
-
   fixture <- valid_trunc_matrix_fixture()
 
   # Truncation and trimming deliberately default to different thresholds: 0.01
@@ -613,4 +605,19 @@ test_that("ps_trunc defaults the categorical threshold to 0.01", {
 
   defaulted <- ps_trunc(fixture$ps_matrix, .exposure = fixture$exposure)
   expect_equal(ps_trunc_meta(defaulted)$lower_bound, 0.01)
+})
+
+test_that("ps_trunc truncates a data frame with the method left at its default", {
+  fixture <- valid_trunc_matrix_fixture()
+
+  # The data frame method hands `method` to the matrix method untouched, so the
+  # generic's default has to survive that hand-off as well.
+  truncated <- ps_trunc(
+    as.data.frame(fixture$ps_matrix),
+    .exposure = fixture$exposure
+  )
+
+  expect_s3_class(truncated, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_equal(ps_trunc_meta(truncated)$method, "ps")
+  expect_equal(ps_trunc_meta(truncated)$lower_bound, 0.01)
 })

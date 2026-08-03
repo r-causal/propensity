@@ -744,8 +744,6 @@ test_that("ps_trunc refuses a focal level the exposure never takes", {
 })
 
 test_that("ps_trunc names `.exposure` when the common range method requires one", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.4, 0.6, 0.8)
 
   # Without an exposure the common range method reaches the binary transform

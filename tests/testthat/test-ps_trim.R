@@ -946,8 +946,6 @@ test_that("ps_trim refuses a focal level the exposure never takes", {
 })
 
 test_that("ps_trim rejects the categorical-only optimal method on a vector", {
-  testthat::skip("awaiting implementation")
-
   set.seed(11)
   n <- 40
   x <- rnorm(n)
@@ -976,8 +974,6 @@ test_that("ps_trim rejects the categorical-only optimal method on a vector", {
 })
 
 test_that("ps_trim names `.exposure` when the method requires one", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.4, 0.6, 0.8)
 
   # `exposure` is not an argument of ps_trim(), so a message naming it sends

@@ -10,9 +10,10 @@
 
     Code
       expr
-    Condition <rlang_error>
+    Condition <propensity_method_error>
       Error in `ps_trunc()`:
-      ! `method` must be one of "ps" or "pctl", not "cr".
+      ! Method "cr" is not supported for categorical exposures.
+      i Use "ps" or "pctl".
 
 # ps_trunc requires exposure for categorical
 

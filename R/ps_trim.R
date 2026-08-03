@@ -38,7 +38,14 @@
 #'   `method`:
 #'
 #'   * `"ps"`: absolute propensity score bounds (defaults: 0.1, 0.9). For
-#'     categorical exposures, only `lower` is used as the symmetric threshold.
+#'     categorical exposures, only `lower` is used, as the symmetric threshold
+#'     delta, and it defaults to 0.1. That default deliberately differs from the
+#'     0.01 threshold [ps_trunc()] uses for categorical exposures: trimming
+#'     discards the units it selects, so its default follows common-support
+#'     trimming practice, whereas truncation keeps every unit and only pins the
+#'     most extreme scores back. With `k` exposure levels, a threshold of `1/k`
+#'     or larger cannot be met by every column of a row that sums to one, and is
+#'     an error.
 #'   * `"pctl"`: quantile probabilities (defaults: 0.05, 0.95).
 #'   * `"pref"`: preference score bounds (defaults: 0.3, 0.7).
 #'   * `"adaptive"`, `"cr"`, `"optimal"`: ignored (thresholds are data-driven).
@@ -233,6 +240,19 @@ ps_trim.default <- function(
   .untreated = NULL
 ) {
   method <- rlang::arg_match(method)
+
+  # Optimal trimming is defined over the rows of a propensity score matrix, so
+  # there is nothing for it to do with a vector of scores.
+  if (method == "optimal") {
+    abort(
+      c(
+        "Method {.val optimal} is only supported for categorical exposures.",
+        i = "Supply the propensity scores as a matrix or data frame with one column per exposure level."
+      ),
+      error_class = "propensity_wt_not_supported_error"
+    )
+  }
+
   check_ps_range(ps)
 
   # Handle deprecation
@@ -271,7 +291,7 @@ ps_trim.default <- function(
       lower <- 0.3
     }
     if (is.null(upper)) upper <- 0.7
-  } else {
+  } else if (method == "cr") {
     if (!is.null(lower) || !is.null(upper)) {
       warn(
         "For {.code method = 'cr'}, {.code lower} and {.code upper} are ignored."
@@ -280,8 +300,6 @@ ps_trim.default <- function(
   }
 
   n <- length(ps)
-  keep_idx <- integer(0)
-  trimmed_idx <- integer(0)
   meta_list <- list(method = method, lower = lower, upper = upper)
 
   # Decide which indices are kept
@@ -313,7 +331,7 @@ ps_trim.default <- function(
   } else if (method == "pref") {
     if (is.null(.exposure)) {
       abort(
-        "For {.code method = 'pref'}, must supply {.arg exposure}.",
+        "For {.code method = 'pref'}, must supply {.arg .exposure}.",
         error_class = "propensity_missing_arg_error"
       )
     }
@@ -326,10 +344,10 @@ ps_trim.default <- function(
     pref_score <- plogis(qlogis(ps) - qlogis(prop_exposure))
     meta_list$P <- prop_exposure
     keep_idx <- which(pref_score >= lower & pref_score <= upper)
-  } else {
+  } else if (method == "cr") {
     if (is.null(.exposure)) {
       abort(
-        "For {.code method = 'cr'}, must supply {.arg exposure}.",
+        "For {.code method = 'cr'}, must supply {.arg .exposure}.",
         error_class = "propensity_missing_arg_error"
       )
     }
@@ -380,8 +398,21 @@ ps_trim.matrix <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Only ps and optimal are valid for categorical
-  method <- rlang::arg_match(method, values = c("ps", "optimal"))
+  # The generic offers every method, so match against that full set and then
+  # reject the ones the categorical path does not define.
+  method <- rlang::arg_match(
+    method,
+    values = c("ps", "adaptive", "pctl", "pref", "cr", "optimal")
+  )
+  if (!method %in% c("ps", "optimal")) {
+    abort(
+      c(
+        "Method {.val {method}} is not supported for categorical exposures.",
+        i = "Use {.val ps} or {.val optimal}."
+      ),
+      error_class = "propensity_method_error"
+    )
+  }
 
   # Validate exposure for categorical
   if (is.null(.exposure)) {
@@ -410,25 +441,25 @@ ps_trim.matrix <- function(
     }
     delta <- lower # Use lower as delta for consistency
 
-    # Validate delta
+    # A threshold at or above 1/k cannot be met by every column of a row that
+    # sums to one, so there is no trimming rule left to apply.
     if (delta >= 1 / k) {
+      abort(
+        "Invalid trimming threshold (delta >= 1/k).",
+        error_class = "propensity_range_error"
+      )
+    }
+
+    # Apply symmetric trimming rule: keep if min(propensity scores) > delta
+    keep_idx <- which(apply(ps, 1, function(x) min(x) > delta))
+
+    # Check if all treatment groups are preserved
+    if (length(unique(.exposure[keep_idx])) < k) {
       warn(
-        "Invalid trimming threshold (delta >= 1/k); returning original data",
-        warning_class = "propensity_range_warning"
+        "One or more groups removed after trimming; returning original data",
+        warning_class = "propensity_no_data_warning"
       )
       keep_idx <- seq_len(n)
-    } else {
-      # Apply symmetric trimming rule: keep if min(propensity scores) > delta
-      keep_idx <- which(apply(ps, 1, function(x) min(x) > delta))
-
-      # Check if all treatment groups are preserved
-      if (length(unique(.exposure[keep_idx])) < k) {
-        warn(
-          "One or more groups removed after trimming; returning original data",
-          warning_class = "propensity_no_data_warning"
-        )
-        keep_idx <- seq_len(n)
-      }
     }
 
     meta_list$delta <- delta

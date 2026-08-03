@@ -9,26 +9,28 @@
 # ps_trim validates delta < 1/k
 
     Code
-      out <- ps_trim(ps_matrix, .exposure = exposure, method = "ps", lower = 0.35)
-    Condition <propensity_range_warning>
-      Warning in `ps_trim()`:
-      Invalid trimming threshold (delta >= 1/k); returning original data
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trim()`:
+      ! Invalid trimming threshold (delta >= 1/k).
 
 # ps_trim errors for unsupported methods with categorical
 
     Code
       expr
-    Condition <rlang_error>
+    Condition <propensity_method_error>
       Error in `ps_trim()`:
-      ! `method` must be one of "ps" or "optimal", not "adaptive".
+      ! Method "adaptive" is not supported for categorical exposures.
+      i Use "ps" or "optimal".
 
 ---
 
     Code
       expr
-    Condition <rlang_error>
+    Condition <propensity_method_error>
       Error in `ps_trim()`:
-      ! `method` must be one of "ps" or "optimal", not "pctl".
+      ! Method "pctl" is not supported for categorical exposures.
+      i Use "ps" or "optimal".
 
 # ps_trim requires exposure for categorical
 

@@ -23,10 +23,18 @@
 #'   * `"cr"`: Truncate to the common range of propensity scores across
 #'     exposure groups (binary exposures only). Bounds are
 #'     `[min(ps[focal]), max(ps[reference])]`. Requires `.exposure`.
+#'
+#'   For categorical exposures, only `"ps"` and `"pctl"` are supported.
 #' @param lower,upper Bounds for truncation. Interpretation depends on `method`:
 #'   * `method = "ps"`: Propensity score values (defaults: 0.1 and 0.9). For
 #'     categorical exposures, `lower` is the truncation threshold delta
-#'     (default: 0.01); `upper` is ignored.
+#'     (default: 0.01) and `upper` is ignored. That default deliberately differs
+#'     from the 0.1 threshold [ps_trim()] uses for categorical exposures:
+#'     truncation keeps every unit and only pins the most extreme scores back to
+#'     the threshold, so its default is a gentle winsorization, whereas trimming
+#'     discards the units it selects and follows common-support trimming
+#'     practice. With `k` exposure levels, a threshold of `1/k` or larger cannot
+#'     be met by every column of a row that sums to one, and is an error.
 #'   * `method = "pctl"`: Quantile probabilities (defaults: 0.05 and 0.95;
 #'     categorical defaults: 0.01 and 0.99).
 #'   * `method = "cr"`: Ignored; bounds are determined by the data.
@@ -216,6 +224,12 @@ ps_trunc.default <- function(
     meta_list$lower_pctl <- lower
     meta_list$upper_pctl <- upper
   } else {
+    if (is.null(.exposure)) {
+      abort(
+        "For {.code method = 'cr'}, must supply {.arg .exposure}.",
+        error_class = "propensity_missing_arg_error"
+      )
+    }
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
@@ -261,8 +275,18 @@ ps_trunc.matrix <- function(
   .treated = NULL,
   .untreated = NULL
 ) {
-  # Only ps and pctl are valid for categorical
-  method <- rlang::arg_match(method, values = c("ps", "pctl"))
+  # The generic offers every method, so match against that full set and then
+  # reject the ones the categorical path does not define.
+  method <- rlang::arg_match(method, values = c("ps", "pctl", "cr"))
+  if (!method %in% c("ps", "pctl")) {
+    abort(
+      c(
+        "Method {.val {method}} is not supported for categorical exposures.",
+        i = "Use {.val ps} or {.val pctl}."
+      ),
+      error_class = "propensity_method_error"
+    )
+  }
 
   # Validate exposure for categorical
   if (is.null(.exposure)) {

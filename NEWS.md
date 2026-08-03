@@ -1,5 +1,42 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_trim()` and `ps_trunc()` now accept a propensity score matrix or data
+  frame with `method` left at its default. The generic offers every method and
+  the matrix methods matched against the two each supports, so the unevaluated
+  default was compared against a set it could not belong to and a call that
+  named no method was refused for naming the wrong one.
+
+* A method the categorical path does not define is now refused with an error of
+  class `propensity_method_error` naming the methods that path does support,
+  rather than with the bare argument-matching error of class `rlang_error`
+  raised before.
+
+* `ps_trim()` now refuses `method = "optimal"` on a vector of propensity
+  scores, with an error of class `propensity_wt_not_supported_error` pointing
+  at the matrix or data frame input the method is defined for. Optimal trimming
+  is defined over the rows of a propensity score matrix; on a vector it fell
+  through to common-range trimming and recorded itself as `"optimal"`, so the
+  result misreported what had been done to it.
+
+* `ps_trim()` now refuses a categorical trimming threshold at or above `1/k`
+  for `k` exposure levels, with an error of class `propensity_range_error`,
+  matching `ps_trunc()`. Such a threshold cannot be met by every column of a row
+  that sums to one, and the untrimmed scores were returned instead with the
+  rejected threshold recorded in the metadata, reporting a trimming that never
+  happened.
+
+* `ps_trunc()` now refuses `method = "cr"` with no `.exposure`, with an error of
+  class `propensity_missing_arg_error`. The common range method reached the
+  binary transform with nothing to transform, and the caller was told that the
+  exposure could not be converted rather than that it was never supplied. The
+  matching refusals in `ps_trim()` name `.exposure`, the argument the function
+  takes, rather than `exposure`, which it does not.
+
+* `ps_trim()` and `ps_trunc()` document why their categorical thresholds
+  differ: `ps_trim()` defaults to 0.1, following common-support trimming
+  practice, and `ps_trunc()` to 0.01, a gentle winsorization that keeps every
+  unit.
+
 * The weight functions now accept a matrix `.propensity` on a binary exposure,
   reading it exactly as they read the equivalent data frame: the column holding
   the probability of the resolved focal level, chosen by the rules documented

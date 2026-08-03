@@ -52,7 +52,14 @@ For categorical exposures, only \code{"ps"} and \code{"optimal"} are supported.}
 \code{method}:
 \itemize{
 \item \code{"ps"}: absolute propensity score bounds (defaults: 0.1, 0.9). For
-categorical exposures, only \code{lower} is used as the symmetric threshold.
+categorical exposures, only \code{lower} is used, as the symmetric threshold
+delta, and it defaults to 0.1. That default deliberately differs from the
+0.01 threshold \code{\link[=ps_trunc]{ps_trunc()}} uses for categorical exposures: trimming
+discards the units it selects, so its default follows common-support
+trimming practice, whereas truncation keeps every unit and only pins the
+most extreme scores back. With \code{k} exposure levels, a threshold of \code{1/k}
+or larger cannot be met by every column of a row that sums to one, and is
+an error.
 \item \code{"pctl"}: quantile probabilities (defaults: 0.05, 0.95).
 \item \code{"pref"}: preference score bounds (defaults: 0.3, 0.7).
 \item \code{"adaptive"}, \code{"cr"}, \code{"optimal"}: ignored (thresholds are data-driven).

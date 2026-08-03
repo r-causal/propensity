@@ -2,10 +2,9 @@
 
     Code
       expr
-    Condition <propensity_binary_transform_error>
+    Condition <propensity_missing_arg_error>
       Error in `ps_trunc()`:
-      ! Don't know how to transform `.exposure` to 0/1 binary variable.
-      i Specify `.focal_level` and `.reference_level`.
+      ! For `method = 'cr'`, must supply `.exposure`.
 
 ---
 
@@ -34,4 +33,12 @@
       Converting ps_trunc to numeric: different truncation parameters
       i Metadata cannot be preserved when combining incompatible objects
       i Use identical objects or explicitly cast to numeric to avoid this warning
+
+# ps_trunc names `.exposure` when the common range method requires one
+
+    Code
+      expr
+    Condition <propensity_missing_arg_error>
+      Error in `ps_trunc()`:
+      ! For `method = 'cr'`, must supply `.exposure`.
 

@@ -34,13 +34,21 @@ categorical exposures, quantiles are computed across all columns.
 \item \code{"cr"}: Truncate to the common range of propensity scores across
 exposure groups (binary exposures only). Bounds are
 \verb{[min(ps[focal]), max(ps[reference])]}. Requires \code{.exposure}.
-}}
+}
+
+For categorical exposures, only \code{"ps"} and \code{"pctl"} are supported.}
 
 \item{lower, upper}{Bounds for truncation. Interpretation depends on \code{method}:
 \itemize{
 \item \code{method = "ps"}: Propensity score values (defaults: 0.1 and 0.9). For
 categorical exposures, \code{lower} is the truncation threshold delta
-(default: 0.01); \code{upper} is ignored.
+(default: 0.01) and \code{upper} is ignored. That default deliberately differs
+from the 0.1 threshold \code{\link[=ps_trim]{ps_trim()}} uses for categorical exposures:
+truncation keeps every unit and only pins the most extreme scores back to
+the threshold, so its default is a gentle winsorization, whereas trimming
+discards the units it selects and follows common-support trimming
+practice. With \code{k} exposure levels, a threshold of \code{1/k} or larger cannot
+be met by every column of a row that sums to one, and is an error.
 \item \code{method = "pctl"}: Quantile probabilities (defaults: 0.05 and 0.95;
 categorical defaults: 0.01 and 0.99).
 \item \code{method = "cr"}: Ignored; bounds are determined by the data.
