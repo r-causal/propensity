@@ -189,6 +189,7 @@ ps_trunc.default <- function(
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level)
 
   check_ps_range(ps)
 

@@ -232,8 +232,6 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
 })
 
 test_that("wt_cens() refuses a categorical exposure", {
-  testthat::skip("awaiting implementation")
-
   # A censoring weight inverts the probability of remaining uncensored, which is
   # a two-level event. Delegating to the ATE machinery would answer a
   # categorical exposure with ATE weights carrying the "uncensored" estimand,
@@ -934,8 +932,6 @@ test_that("the refusal of an absent level names the levels the exposure takes", 
 })
 
 test_that("the absent-level refusal answers an exposure with nothing observed", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.8, 0.3, 0.7)
   all_missing <- rep(NA_character_, 4)
 
@@ -953,8 +949,6 @@ test_that("the absent-level refusal answers an exposure with nothing observed", 
 })
 
 test_that("binary weights refuse a `.focal_level` holding more than one value", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.8, 0.3, 0.7)
   exposure <- c("control", "treated", "control", "treated")
 
@@ -971,9 +965,24 @@ test_that("binary weights refuse a `.focal_level` holding more than one value", 
   )
 })
 
-test_that("categorical weights refuse a `.focal_level` holding more than one value", {
-  testthat::skip("awaiting implementation")
+test_that("binary weights refuse a `.reference_level` holding more than one value", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
 
+  # The reference level is compared elementwise too, and `!=` against two
+  # levels holds nowhere, so every unit is coded as reference.
+  expect_error(
+    wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .reference_level = c("control", "treated")
+    ),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("categorical weights refuse a `.focal_level` holding more than one value", {
   exposure <- factor(c("A", "B", "C", "A"))
   ps_matrix <- matrix(
     1 / 3,
@@ -2900,8 +2909,6 @@ test_that("`wt_cens()` resolves a data frame column and its deprecation once", {
 })
 
 test_that("`wt_cens()` names itself in the deprecation on the numeric and glm routes", {
-  testthat::skip("awaiting implementation")
-
   fixture <- level_named_df_fixture()
 
   # The numeric method delegates to the ATE machinery by handing it the
@@ -2972,8 +2979,6 @@ test_that("continuous exposures keep the positional data frame default", {
 # drop a dimension.
 
 test_that("a matrix `.propensity` reaches the same binary weights as a data frame", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.8, 0.3, 0.7)
   exposure <- c(0, 1, 0, 1)
   ps_matrix <- cbind(control = 1 - ps, treated = ps)
@@ -2993,8 +2998,6 @@ test_that("a matrix `.propensity` reaches the same binary weights as a data fram
 })
 
 test_that("a matrix `.propensity` still carries a categorical exposure", {
-  testthat::skip("awaiting implementation")
-
   exposure <- factor(c("A", "B", "C", "A", "B", "C"))
   ps_matrix <- matrix(
     1 / 3,
@@ -3031,8 +3034,6 @@ exposure_type_alerts <- function(expr) {
 }
 
 test_that("the data frame methods announce the exposure type once", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(propensity.quiet = FALSE)
 
   ps <- c(0.2, 0.8, 0.3, 0.7)
@@ -3595,7 +3596,7 @@ test_that("an invalid exposure_type on the wt_cens route names wt_cens()", {
     unwrap_condition_message(cnd),
     paste(
       "`exposure_type` must be one of \"auto\", \"binary\",",
-      "\"categorical\", or \"continuous\", not \"wrong\"."
+      "or \"continuous\", not \"wrong\"."
     ),
     fixed = TRUE
   )
@@ -3716,9 +3717,6 @@ categorical_attribution_routes <- function() {
     },
     wt_entropy = function(ps, exposure) {
       wt_entropy(ps, exposure, exposure_type = "categorical")
-    },
-    wt_cens = function(ps, exposure) {
-      wt_cens(ps, exposure, exposure_type = "categorical")
     }
   )
 }
@@ -5973,8 +5971,6 @@ test_that("continuous `.sigma` weights record the usual psw metadata", {
 # pass `exposure_type` by position gets, since `.sigma` holds that position.
 
 test_that("`.sigma` must be numeric", {
-  testthat::skip("awaiting implementation")
-
   fixture <- continuous_sigma_fixture()
   ps <- c(0.2, 0.8, 0.3, 0.7)
   exposure <- c(0, 1, 0, 1)
@@ -5999,8 +5995,6 @@ test_that("`.sigma` must be numeric", {
 })
 
 test_that("`.sigma` must hold one value or one value per observation", {
-  testthat::skip("awaiting implementation")
-
   fixture <- continuous_sigma_fixture()
   n <- length(fixture$exposure)
 
@@ -6020,6 +6014,20 @@ test_that("`.sigma` must hold one value or one value per observation", {
       fixture$fitted,
       fixture$exposure,
       .sigma = numeric(0),
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_sigma_error"
+  )
+
+  # A matrix holds as many values as its dimensions multiply to, so one shaped
+  # to the exposure's count passes the length rule and reaches the density with
+  # its cells read in storage order.
+  expect_error(
+    wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = matrix(fixture$sigma, nrow = 2),
       exposure_type = "continuous",
       stabilize = TRUE
     ),
@@ -6047,8 +6055,6 @@ test_that("`.sigma` must hold one value or one value per observation", {
 })
 
 test_that("`.sigma` applies only to continuous exposures", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.8, 0.3, 0.7)
   exposure <- c(0, 1, 0, 1)
 

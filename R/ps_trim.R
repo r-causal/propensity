@@ -245,6 +245,7 @@ ps_trim.default <- function(
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level)
 
   if (method == "ps") {
     if (is.null(lower)) {

@@ -107,7 +107,8 @@
       expr
     Condition <propensity_wt_not_supported_error>
       Error in `wt_entropy()`:
-      ! Exposure type "continuous" not currently supported for entropy
+      ! Exposure type "continuous" is not supported.
+      i Supported exposure types: "binary" and "categorical".
 
 # wt_ate works with data frames
 
@@ -231,7 +232,7 @@
       expr
     Condition <rlang_error>
       Error in `wt_cens()`:
-      ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "wrong".
+      ! `exposure_type` must be one of "auto", "binary", or "continuous", not "wrong".
 
 # an invalid exposure_type on a trimmed propensity score names wt_ate()
 
@@ -369,9 +370,10 @@
 
     Code
       expr
-    Condition <rlang_error>
+    Condition <propensity_wt_not_supported_error>
       Error in `wt_att()`:
-      ! `exposure_type` must be one of "auto", "binary", or "categorical", not "continuous".
+      ! Exposure type "continuous" is not supported.
+      i Supported exposure types: "binary" and "categorical".
 
 # all methods handle NAs appropriately
 

@@ -186,8 +186,6 @@ test_that("categorical propensity scores at exactly 0 or 1 are rejected", {
 })
 
 test_that("the categorical range refusal names `.propensity`", {
-  testthat::skip("awaiting implementation")
-
   exposure <- factor(c("A", "B"), levels = c("A", "B", "C"))
   ps_zero <- data.frame(
     A = c(0, 0.3),
@@ -838,8 +836,6 @@ test_that("stabilized categorical ATE marginals use the complete cases", {
 })
 
 test_that("stabilized categorical weights refuse an exposure with nothing observed", {
-  testthat::skip("awaiting implementation")
-
   exposure <- factor(rep(NA_character_, 4), levels = c("A", "B", "C"))
   ps_matrix <- matrix(
     1 / 3,

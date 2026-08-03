@@ -199,6 +199,7 @@ ps_calibrate <- function(
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level)
   # Check that ps is numeric and in valid range
   if (!is.numeric(ps)) {
     abort(

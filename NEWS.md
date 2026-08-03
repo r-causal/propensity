@@ -1,5 +1,64 @@
 # propensity 0.1.0.9000 (development version)
 
+* The weight functions now accept a matrix `.propensity` on a binary exposure,
+  reading it exactly as they read the equivalent data frame: the column holding
+  the probability of the resolved focal level, chosen by the rules documented
+  under `.propensity_col`. A matrix survived every check unchanged, because
+  comparison and coercion are elementwise, and then failed where the weights
+  were given their class with a dimensionality error against an argument the
+  caller never named. Matrices on categorical exposures are unaffected.
+
+* `.sigma` is now validated: it must be numeric, must hold either a single
+  value or one per observation, and applies only to continuous exposures.
+  Anything else is refused with an error of class `propensity_sigma_error`.
+  `.sigma` was read straight into a normal density, so a value that was not a
+  number reached the density as though it were one and a length that neither
+  matched nor divided the exposure recycled into weights nobody asked for.
+  `.sigma` also sits in the third position, so an exposure type supplied
+  without a name arrived there and was absorbed without a word.
+
+* The data frame methods now announce the detected exposure type once. Each
+  resolved the type to choose a column and then handed the unresolved argument
+  to the numeric method, which resolved it again, so a call that made one
+  decision announced it twice.
+
+* `wt_cens()` now names itself, rather than `wt_ate()`, in the deprecation
+  warning for `.treated` and `.untreated` on its numeric method. The numeric
+  method delegated the deprecated arguments to the ATE machinery, which raised
+  the warning against itself.
+
+* `wt_cens()` now supports binary and continuous exposures only. Remaining
+  uncensored is a two-level event, and a categorical exposure was answered with
+  ATE weights carrying the `"uncensored"` estimand. Naming a categorical
+  exposure, or supplying one that detection reads as categorical, is now an
+  error of class `propensity_wt_not_supported_error`.
+
+* `.focal_level` and `.reference_level` must now hold a single level, on every
+  route that reads them. Each is compared against the exposure elementwise, so
+  more than one level recycled across the observations and sorted the units
+  into groups nobody named: two focal levels alternated down a binary exposure,
+  and two reference levels left every unit coded as reference. The refusal has
+  class `propensity_focal_level_error`.
+
+* An exposure type a weight function does not support is now refused with an
+  error of class `propensity_wt_not_supported_error` whether it was named or
+  detected, and the message lists the types that function does support. Naming
+  one was previously reported as an unrecognized value.
+
+* Stabilized categorical weights now refuse an exposure with no observed
+  values. The default stabilizer is the share of units at each level, so with
+  none observed every share was 0 / 0 and the weights came back missing
+  everywhere. The refusal has class
+  `propensity_stabilize_categorical_error`. Without stabilization such an
+  exposure still returns missing weights, which is the answer to that call.
+
+* The refusal of a focal or reference level the exposure never takes now
+  reports an exposure with no observed values as such, instead of listing the
+  levels present and rendering an empty sentence.
+
+* The categorical range refusal now names `.propensity`, the argument the
+  scores arrived in, matching the binary refusal.
+
 * An `.exposure` with dimensions is now refused on the binary path, with an
   error of class `propensity_binary_transform_error` that names the shape it
   was given. The length rule reads `length()`, which counts cells for a matrix

@@ -188,8 +188,6 @@ test_that(".focal_level and .reference_level parameters work consistently with p
 })
 
 test_that("ps_calibrate refuses a focal level the exposure never takes", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.4, 0.6, 0.8)
   exposure <- c("a", "b", "a", "b")
 

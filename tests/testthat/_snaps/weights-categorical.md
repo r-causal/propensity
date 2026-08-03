@@ -63,7 +63,7 @@
       Error in `wt_ate()`:
       ! All propensity scores must be between 0 and 1.
       i The bounds are exclusive: a score of exactly 0 or 1 leaves the weight undefined.
-      i The range of values is -0.1 and 0.6
+      i The range of values in `.propensity` is -0.1 and 0.6
 
 # ATT weights work for categorical exposures
 

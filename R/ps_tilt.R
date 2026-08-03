@@ -290,7 +290,7 @@ check_tilt_ps_matrix <- function(ps, call = rlang::caller_env()) {
   }
 
   check_ps_matrix_rowsums(ps, call = call)
-  check_ps_matrix_range(ps, call = call)
+  check_ps_matrix_range(ps, arg = "ps", call = call)
 
   ps
 }
