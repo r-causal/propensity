@@ -50,14 +50,12 @@
 #'
 #' # Propensity score range
 #'
-#' A numeric `ps` must lie strictly inside \eqn{(0, 1)}, the same requirement
-#' [wt_ate()] and the rest of the weight family impose before they tilt. A
-#' matrix or data frame `ps` may hold an exact zero or one, as the categorical
-#' weight path allows, provided each row sums to one. Only the entropy tilt
-#' needs the boundary resolved: \eqn{0 \log 0} is the one indeterminate whose
-#' limit the arithmetic does not reach on its own, and a zero is treated as
-#' `.Machine$double.eps` so that it contributes nothing. The other tilts already
-#' return their limit there.
+#' Every propensity score in `ps` must lie strictly inside \eqn{(0, 1)}, the
+#' same requirement [wt_ate()] and the rest of the weight family impose before
+#' they tilt. The bound holds for a matrix or data frame `ps` entry by entry,
+#' and each row must sum to one on top of it. A fitted model that separates the
+#' exposure can return a probability of exactly zero or one; those scores have
+#' no weight to divide and are rejected here rather than tilted.
 #'
 #' A missing propensity score gives a missing tilt under every estimand,
 #' `"ate"` included, so an observation whose propensity score is unknown never

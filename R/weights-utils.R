@@ -576,10 +576,26 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
   invisible(TRUE)
 }
 
+# The bounds are the same open interval that check_ps_range() enforces on the
+# binary path. A score of exactly 0 for a unit's observed level divides by zero
+# in the weight calculation, so the endpoints are rejected rather than carried
+# through as infinite weights.
 check_ps_matrix_range <- function(ps_matrix, call = rlang::caller_env()) {
-  if (any(ps_matrix < 0 | ps_matrix > 1, na.rm = TRUE)) {
+  ps_vals <- as.numeric(ps_matrix)
+  non_na_vals <- ps_vals[!is.na(ps_vals)]
+
+  if (
+    length(non_na_vals) > 0 &&
+      any(non_na_vals <= 0 | non_na_vals >= 1 | !is.finite(non_na_vals))
+  ) {
     abort(
-      "All propensity scores must be between 0 and 1.",
+      c(
+        "All propensity scores must be between 0 and 1.",
+        i = "The bounds are exclusive: a score of exactly 0 or 1 leaves the \\
+        weight undefined.",
+        i = "The range of values is \\
+        {format(range(non_na_vals), nsmall = 1, digits = 1)}"
+      ),
       call = call,
       error_class = "propensity_range_error"
     )

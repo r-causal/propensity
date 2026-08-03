@@ -1214,6 +1214,25 @@ ps_design_data <- function(seed = 2024, n = 600) {
   data.frame(x1, cov, z, y)
 }
 
+# A three-level exposure drawn from a multinomial in `x1`. Cutting `x1` into
+# three bins instead would make the exposure a deterministic function of the
+# covariate, which separates the multinomial fit: its fitted probabilities
+# reach exactly 0 and 1, which are outside the open interval the weight
+# functions require.
+ps_design_categorical <- function(dat, seed = 2025) {
+  withr::local_seed(seed)
+  eta_b <- -0.2 + 0.8 * dat$x1
+  eta_c <- 0.1 - 0.6 * dat$x1
+  denom <- 1 + exp(eta_b) + exp(eta_c)
+  p_a <- 1 / denom
+  p_b <- exp(eta_b) / denom
+  u <- runif(nrow(dat))
+  factor(
+    ifelse(u < p_a, "a", ifelse(u < p_a + p_b, "b", "c")),
+    levels = c("a", "b", "c")
+  )
+}
+
 test_that("mestimation reconstructs the binary ps design from .data when the fit frame is gone", {
   skip_if_not_installed("deli")
   dat <- ps_design_data()
@@ -1528,10 +1547,7 @@ test_that("the categorical path errors informatively when the outcome frame is g
   # The weight extraction is per method, so the guided treatment has to reach
   # every one of them.
   dat <- ps_design_data()
-  dat$a <- factor(
-    ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
-    levels = c("a", "b", "c")
-  )
+  dat$a <- ps_design_categorical(dat)
   ps_mod <- nnet::multinom(
     a ~ x1,
     data = dat,

@@ -2101,6 +2101,12 @@ calculate_categorical_weights <- function(
   # e_{i,Z_i} = sum over j of Z_{ij} * e_{ij}
   e_actual <- rowSums(Z * ps_matrix)
 
+  # A unit with no observed level has an all-zero indicator row, so e_{i,Z_i}
+  # comes back as 0. There is no weight to give such a unit, so it is missing
+  # here just as it is on the binary and continuous paths.
+  missing_exposure <- is.na(.exposure)
+  e_actual[missing_exposure] <- NA_real_
+
   if (!estimand %in% ipw_estimands) {
     abort(
       "Unknown estimand: {estimand}",
@@ -2134,11 +2140,13 @@ calculate_categorical_weights <- function(
     if (!is.null(stabilization_score)) {
       weights <- weights * stabilization_score
     } else {
-      # For categorical, use marginal probabilities
-      p_marginal <- table(.exposure) / n
+      # For categorical, use marginal probabilities. `table()` counts only the
+      # units with an observed level, so the denominator has to match or the
+      # marginals sum to less than 1 whenever the exposure is missing.
+      p_marginal <- table(.exposure) / sum(!missing_exposure)
 
       # Create stabilization weights based on marginal probabilities
-      stab_wts <- numeric(n)
+      stab_wts <- rep(NA_real_, n)
       for (j in 1:k) {
         stab_wts[.exposure == levels_exp[j]] <- p_marginal[j]
       }

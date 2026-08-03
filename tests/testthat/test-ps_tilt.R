@@ -623,23 +623,23 @@ test_that("ps_tilt() rejects a binary propensity score at the bounds", {
   expect_error(ps_tilt(c(0.5, 1), "att"), class = "propensity_range_error")
 })
 
-test_that("ps_tilt() accepts a categorical propensity score at the bounds", {
-  # The categorical weight path admits an exact zero or one, so the tilt does
-  # too. Only entropy needs the boundary resolved: its 0 log 0 is the one
-  # indeterminate whose limit the arithmetic does not reach on its own.
+test_that("ps_tilt() rejects a categorical propensity score at the bounds", {
+  # The same open interval the categorical weight path requires: a score of
+  # exactly zero at a unit's own level divides its weight by zero, so the
+  # matrix is rejected before any tilt is evaluated.
   ps <- matrix(
     c(0, 0.2, 1, 0.3, 0, 0.5),
     nrow = 2,
     dimnames = list(NULL, c("a", "b", "c"))
   )
 
-  expect_equal(ps_tilt(ps, "atm"), c(0, 0.2))
-  expect_equal(ps_tilt(ps, "ato"), c(0, 0.096774193548387094))
-  expect_equal(ps_tilt(ps, "att", .focal_level = "a"), c(0, 0.2))
-
-  entropy <- ps_tilt(ps, "entropy")
-  expect_true(all(is.finite(entropy)))
-  expect_gt(entropy[[1]], 0)
+  expect_error(ps_tilt(ps, "atm"), class = "propensity_range_error")
+  expect_error(ps_tilt(ps, "ato"), class = "propensity_range_error")
+  expect_error(
+    ps_tilt(ps, "att", .focal_level = "a"),
+    class = "propensity_range_error"
+  )
+  expect_error(ps_tilt(ps, "entropy"), class = "propensity_range_error")
 })
 
 test_that("ps_tilt() rejects a matrix whose rows are not probability vectors", {

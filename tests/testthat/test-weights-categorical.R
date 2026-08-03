@@ -141,8 +141,6 @@ test_that("propensity score matrix validation works", {
 })
 
 test_that("categorical propensity scores at exactly 0 or 1 are rejected", {
-  testthat::skip("awaiting implementation")
-
   exposure <- factor(c("A", "B"), levels = c("A", "B", "C"))
 
   # A score of exactly 0 for a unit's observed level divides by zero in the
@@ -728,8 +726,6 @@ test_that("categorical weights warn on unnamed columns", {
 })
 
 test_that("categorical ATE weights are missing where the exposure is missing", {
-  testthat::skip("awaiting implementation")
-
   exposure <- factor(c("A", "B", NA, "C"), levels = c("A", "B", "C"))
   ps_matrix <- matrix(
     c(
@@ -768,8 +764,6 @@ test_that("categorical ATE weights are missing where the exposure is missing", {
 })
 
 test_that("stabilized categorical ATE marginals use the complete cases", {
-  testthat::skip("awaiting implementation")
-
   exposure <- factor(c("A", "B", NA, "C"), levels = c("A", "B", "C"))
   ps_matrix <- matrix(
     c(
@@ -819,8 +813,6 @@ test_that("stabilized categorical ATE marginals use the complete cases", {
 })
 
 test_that("tilted categorical weights are missing where the exposure is missing", {
-  testthat::skip("awaiting implementation")
-
   exposure <- factor(c("A", "B", NA, "C"), levels = c("A", "B", "C"))
   ps_matrix <- matrix(
     c(
