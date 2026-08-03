@@ -14,7 +14,7 @@
 #' - `wt_ato()`: **Average Treatment Effect for the Overlap Population** --
 #'   weights proportional to overlap.
 #' - `wt_entropy()`: **Entropy-weighted Average Treatment Effect** --
-#'   an entropy-balanced population.
+#'   the entropy-tilted population.
 #' - `wt_cens()`: **Inverse probability of censoring weights** -- uses the
 #'   same formula as `wt_ate()` but labels the estimand `"uncensored"`. Use
 #'   these to adjust for censoring in survival analysis, not for treatment
@@ -75,6 +75,33 @@
 #' See the [halfmoon](https://CRAN.R-project.org/package=halfmoon) package
 #' for weight diagnostics and visualization.
 #'
+#' ## Propensity scores at 0 and 1
+#'
+#' Propensity scores must lie strictly inside (0, 1), since a score at either
+#' endpoint leaves the weight undefined. A score of exactly 0 or 1 is refused
+#' with an error of class `propensity_range_error`. For a categorical exposure
+#' that rule reads every cell of the matrix rather than only the column holding
+#' each unit's observed level, which is the same open interval the binary path
+#' enforces on the single score and its complement.
+#'
+#' [ipw()] applies a narrower rule to the propensity scores it rebuilds from its
+#' own propensity score model. For a categorical exposure it refuses only a
+#' probability of exactly zero at the level a unit was actually assigned, since
+#' that alone leaves the unit's own weight undefined, and a column for a level
+#' the unit was not assigned may reach zero without the fit being refused. The
+#' difference is deliberate: the weight functions can refuse a matrix that holds
+#' nothing [ipw()] would have objected to. The weights still have to be built
+#' before [ipw()] can be reached, so the refusal here is the one to resolve.
+#'
+#' [nnet::multinom()] reaches the endpoints readily. Under separation the
+#' softmax puts the probability at a unit's assigned level at exactly 1 in
+#' double precision, and the columns for the other levels can underflow to
+#' exactly 0. Trimming is no way around the refusal: [ps_trim()] and
+#' [ps_trunc()] validate a categorical matrix under the same open interval and
+#' refuse it before either reaches a threshold. Bound the fitted probabilities
+#' away from 0 and 1 yourself, renormalizing each row to sum to 1, or refit the
+#' propensity score model so that it does not separate.
+#'
 #' ## Weight formulas
 #'
 #' ### Binary exposures
@@ -88,6 +115,11 @@
 #' - **ATM**: \eqn{w = \frac{\min(e(X), 1-e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}
 #' - **ATO**: \eqn{w = A \cdot (1-e(X)) + (1-A) \cdot e(X)}
 #' - **Entropy**: \eqn{w = \frac{h(e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}, where \eqn{h(e) = -[e \log(e) + (1-e) \log(1-e)]}
+#'
+#' The entropy weight tilts the propensity score by \eqn{h(e)}, the entropy of
+#' the score itself, in the sense of Zhou, Matsouaka, and Thomas (2020). It is
+#' not entropy balancing, which solves for weights that satisfy exact covariate
+#' moment constraints rather than tilting a fitted propensity score.
 #'
 #' ### Continuous exposures
 #'

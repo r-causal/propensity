@@ -1748,10 +1748,12 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       k <- spec$ps$k
       ps_mat <- ipw_categorical_ps(spec$ps$X, th_ps, k)
       # Only the score at the level each unit was actually assigned divides the
-      # weight. A softmax row can underflow to an exact zero in the columns for
-      # the levels a unit was not assigned, and under ordinary separation that is
-      # where the zeros land, leaving the denominator positive and the analysis
-      # sound. Firing on those would reject working fits.
+      # weight. Separation drives a softmax row toward the corner at that level:
+      # the assigned level's probability rounds to exactly 1 well before the
+      # columns for the other levels underflow to an exact 0, which they do only
+      # under stronger separation still. A denominator of 1 is harmless, and a
+      # zero in a column for a level the unit was not assigned never reaches the
+      # denominator at all, so firing on either would reject working fits.
       check_ipw_ps_separation(
         sum(rowSums(spec$exposure * ps_mat) == 0),
         call = call

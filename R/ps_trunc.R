@@ -7,14 +7,17 @@
 #' which sets extreme values to `NA` (effectively removing those observations
 #' from analysis).
 #'
-#' @param .propensity A numeric vector of propensity scores between 0 and 1 (binary
+#' @param .propensity A numeric vector of propensity scores in (0, 1) (binary
 #'   exposures), or a matrix/data.frame where each column contains propensity
 #'   scores for one level of a categorical exposure. A data frame truncated for
 #'   a binary exposure is reduced to a single column: the second column of a two
 #'   column data frame, which is the probability of the second level in the
 #'   layout model predictions come in, and the first column otherwise. The
 #'   column taken is announced; `options(propensity.quiet = TRUE)` silences the
-#'   announcement.
+#'   announcement. A matrix is held to the same open interval as a vector, so a
+#'   score of exactly 0 or 1 in any cell is refused and a separated multinomial
+#'   fit cannot be repaired by truncating it; see **Propensity scores at 0 and
+#'   1** in [wt_ate()].
 #' @param .exposure An exposure vector. Required for method `"cr"` (binary
 #'   exposure vector) and for categorical exposures (factor or character vector)
 #'   with any method.
@@ -29,7 +32,11 @@
 #'   * `"cr"`: Truncate to the common range of propensity scores across
 #'     exposure groups (binary exposures only). Bounds are
 #'     `[min(.propensity[focal]), max(.propensity[reference])]`. Requires
-#'     `.exposure`.
+#'     `.exposure`. When those bounds cross, so that the two distributions do
+#'     not overlap at all, there is no common range to bound the scores to and
+#'     the call errors with class `propensity_no_overlap_error`. That differs
+#'     deliberately from [ps_trim()], which trims every observed unit in the
+#'     same situation, a truthful record of an empty overlap region.
 #'
 #'   For categorical exposures, only `"ps"` and `"pctl"` are supported.
 #' @param lower,upper Bounds for truncation. Interpretation depends on `method`:
@@ -104,10 +111,7 @@
 #' A missing exposure is a different matter, and `"cr"` refuses one with an
 #' error of class `propensity_missing_value_error`. Its bounds come from the
 #' exposure groups, and a unit that belongs to neither leaves them undefined.
-#' Remove or impute the missing exposure values first. `"cr"` also refuses
-#' exposure groups whose propensity score distributions do not overlap, with an
-#' error of class `propensity_no_overlap_error`, since there is then no common
-#' range to bound the scores to.
+#' Remove or impute the missing exposure values first.
 #'
 #' ## The truncation record
 #'

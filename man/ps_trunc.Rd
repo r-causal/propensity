@@ -19,14 +19,17 @@ ps_trunc(
 )
 }
 \arguments{
-\item{.propensity}{A numeric vector of propensity scores between 0 and 1 (binary
+\item{.propensity}{A numeric vector of propensity scores in (0, 1) (binary
 exposures), or a matrix/data.frame where each column contains propensity
 scores for one level of a categorical exposure. A data frame truncated for
 a binary exposure is reduced to a single column: the second column of a two
 column data frame, which is the probability of the second level in the
 layout model predictions come in, and the first column otherwise. The
 column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
-announcement.}
+announcement. A matrix is held to the same open interval as a vector, so a
+score of exactly 0 or 1 in any cell is refused and a separated multinomial
+fit cannot be repaired by truncating it; see \strong{Propensity scores at 0 and
+1} in \code{\link[=wt_ate]{wt_ate()}}.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{
@@ -40,7 +43,11 @@ categorical exposures, quantiles are computed across all columns.
 \item \code{"cr"}: Truncate to the common range of propensity scores across
 exposure groups (binary exposures only). Bounds are
 \verb{[min(.propensity[focal]), max(.propensity[reference])]}. Requires
-\code{.exposure}.
+\code{.exposure}. When those bounds cross, so that the two distributions do
+not overlap at all, there is no common range to bound the scores to and
+the call errors with class \code{propensity_no_overlap_error}. That differs
+deliberately from \code{\link[=ps_trim]{ps_trim()}}, which trims every observed unit in the
+same situation, a truthful record of an empty overlap region.
 }
 
 For categorical exposures, only \code{"ps"} and \code{"pctl"} are supported.}
@@ -144,10 +151,7 @@ observations dropped.
 A missing exposure is a different matter, and \code{"cr"} refuses one with an
 error of class \code{propensity_missing_value_error}. Its bounds come from the
 exposure groups, and a unit that belongs to neither leaves them undefined.
-Remove or impute the missing exposure values first. \code{"cr"} also refuses
-exposure groups whose propensity score distributions do not overlap, with an
-error of class \code{propensity_no_overlap_error}, since there is then no common
-range to bound the scores to.
+Remove or impute the missing exposure values first.
 }
 
 \subsection{The truncation record}{

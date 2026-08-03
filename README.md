@@ -90,14 +90,14 @@ Set `se_method = "linearization"` for the influence-function method
 
 Each weight function targets a different population:
 
-| Estimand    | Target population           | Function                       |
-|-------------|-----------------------------|--------------------------------|
-| **ATE**     | Entire population           | `wt_ate()`                     |
-| **ATT**     | Treated units               | `wt_att()`                     |
-| **ATU**     | Untreated units             | `wt_atu()` (alias: `wt_atc()`) |
-| **ATO**     | Overlap population          | `wt_ato()`                     |
-| **ATM**     | Matched population          | `wt_atm()`                     |
-| **Entropy** | Entropy-balanced population | `wt_entropy()`                 |
+| Estimand    | Target population         | Function                       |
+|-------------|---------------------------|--------------------------------|
+| **ATE**     | Entire population         | `wt_ate()`                     |
+| **ATT**     | Treated units             | `wt_att()`                     |
+| **ATU**     | Untreated units           | `wt_atu()` (alias: `wt_atc()`) |
+| **ATO**     | Overlap population        | `wt_ato()`                     |
+| **ATM**     | Matched population        | `wt_atm()`                     |
+| **Entropy** | Entropy-tilted population | `wt_entropy()`                 |
 
 ATO and ATM weights are bounded by construction, making them a good
 alternative when ATE weights are highly variable.

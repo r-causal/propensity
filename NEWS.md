@@ -1,5 +1,28 @@
 # propensity 0.1.0.9000 (development version)
 
+* `wt_entropy()` is documented as computing entropy weights, which tilt the
+  propensity score by its own entropy in the sense of Zhou, Matsouaka, and
+  Thomas (2020). The package overview called them entropy balancing weights, and
+  the weight function help, the README, and the getting started vignette named an
+  entropy-balanced population. Entropy balancing is a different method, solving
+  for weights that satisfy exact covariate moment constraints rather than tilting
+  a fitted propensity score. Behavior is unchanged.
+
+* The weight functions document the open interval they require of a categorical
+  propensity score matrix, and how it differs from the narrower rule `ipw()`
+  applies to the scores it rebuilds from its own propensity score model. A
+  separated `nnet::multinom()` fit reaches the endpoints readily, and neither
+  `ps_trim()` nor `ps_trunc()` accepts such a matrix either, so the remedy is to
+  bound the fitted probabilities away from 0 and 1 or to refit. `ipw()`,
+  `ps_trim()`, and `ps_trunc()` carry a pointer to that text. Behavior is
+  unchanged.
+
+* `ps_trim()` and `ps_trunc()` document what `method = "cr"` does when the
+  exposure groups' propensity score distributions do not overlap at all.
+  `ps_trim()` trims every observed unit, a truthful record of an empty overlap
+  region, while `ps_trunc()` errors with class `propensity_no_overlap_error`,
+  since there is no range left to bound the scores to. Behavior is unchanged.
+
 * A deprecated argument now reports the call that supplied it. lifecycle decides
   whether a deprecation belongs to the caller or to the package that raised it,
   and the warnings for `.treated`, `.untreated`, and `ps` were raised from

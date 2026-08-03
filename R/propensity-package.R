@@ -15,7 +15,7 @@
 #'   (`wt_atc()` is an alias)
 #' * [wt_atm()]: Average treatment effect for the evenly matchable (ATM) weights
 #' * [wt_ato()]: Average treatment effect for the overlap population (ATO) weights
-#' * [wt_entropy()]: Entropy balancing weights
+#' * [wt_entropy()]: Entropy weights for the entropy-tilted population
 #' * [wt_cens()]: Censoring weights
 #'
 #' @section Propensity score modifications:

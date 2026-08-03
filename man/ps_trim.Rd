@@ -26,7 +26,10 @@ binary exposure is reduced to a single column: the second column of a two
 column data frame, which is the probability of the second level in the
 layout model predictions come in, and the first column otherwise. The
 column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
-announcement.}
+announcement. A matrix is held to the same open interval as a vector, so a
+score of exactly 0 or 1 in any cell is refused and a separated multinomial
+fit cannot be repaired by trimming it; see \strong{Propensity scores at 0 and 1}
+in \code{\link[=wt_ate]{wt_ate()}}.}
 
 \item{method}{Trimming method. One of:
 \itemize{
@@ -47,7 +50,13 @@ to the preference scale (Walker et al., 2013) and trims outside
 \item \strong{\code{"cr"}}: Common range (clinical equipoise). Trims to the overlap
 region of the propensity score distributions across exposure groups.
 Requires \code{.exposure}. Binary exposures only. The \code{lower} and \code{upper}
-arguments are ignored.
+arguments are ignored. When the two distributions do not overlap at all,
+so that the lowest score among the focal units sits above the highest
+among the reference units, the overlap region is empty and every observed
+unit is trimmed. That is a truthful record of an empty region rather than
+an error, and it differs deliberately from \code{\link[=ps_trunc]{ps_trunc()}}, which refuses
+the same data with an error of class \code{propensity_no_overlap_error}
+because there is no range left to bound the scores to.
 \item \strong{\code{"optimal"}}: Multi-category optimal trimming (Yang et al., 2016).
 Categorical exposures only. Requires \code{.exposure}.
 }

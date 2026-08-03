@@ -14,7 +14,10 @@
 #'   column data frame, which is the probability of the second level in the
 #'   layout model predictions come in, and the first column otherwise. The
 #'   column taken is announced; `options(propensity.quiet = TRUE)` silences the
-#'   announcement.
+#'   announcement. A matrix is held to the same open interval as a vector, so a
+#'   score of exactly 0 or 1 in any cell is refused and a separated multinomial
+#'   fit cannot be repaired by trimming it; see **Propensity scores at 0 and 1**
+#'   in [wt_ate()].
 #' @param method Trimming method. One of:
 #'
 #'   * **`"ps"`** (default): Fixed threshold. Observations with propensity
@@ -34,7 +37,13 @@
 #'   * **`"cr"`**: Common range (clinical equipoise). Trims to the overlap
 #'     region of the propensity score distributions across exposure groups.
 #'     Requires `.exposure`. Binary exposures only. The `lower` and `upper`
-#'     arguments are ignored.
+#'     arguments are ignored. When the two distributions do not overlap at all,
+#'     so that the lowest score among the focal units sits above the highest
+#'     among the reference units, the overlap region is empty and every observed
+#'     unit is trimmed. That is a truthful record of an empty region rather than
+#'     an error, and it differs deliberately from [ps_trunc()], which refuses
+#'     the same data with an error of class `propensity_no_overlap_error`
+#'     because there is no range left to bound the scores to.
 #'   * **`"optimal"`**: Multi-category optimal trimming (Yang et al., 2016).
 #'     Categorical exposures only. Requires `.exposure`.
 #'
