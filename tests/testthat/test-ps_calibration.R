@@ -776,3 +776,271 @@ test_that("ps_calibrate refuses an exposure with dimensions", {
     class = "propensity_binary_transform_error"
   )
 })
+
+# What a comparison with a calibrated vector asks ----------------------------
+
+# The scores this fixture calibrates span the unit interval and none of them
+# land on a whole number, which is what the integer routes below turn on. The
+# exposure alternates enough for the calibration model to fit without a seed.
+
+calib_vctrs_fixture <- function(method = "logistic", smooth = FALSE) {
+  ps_calibrate(
+    c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95),
+    c(0, 0, 1, 0, 1, 1, 0, 1),
+    method = method,
+    smooth = smooth
+  )
+}
+
+# A comparison asks about the values a vector holds, not about the type holding
+# them, so it has no metadata to lose and nothing to announce. Left to the
+# default vctrs route it goes through the common type of the two sides, which
+# for a calibrated vector and a number is the numeric downgrade, and so every
+# comparison reports dropping metadata that the answer never depended on. The
+# sibling weight class answers comparisons from its own values and stays
+# silent; a calibrated vector owes the same.
+
+test_that("comparing a ps_calib with a number does not warn about class", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture()
+  values <- as.numeric(cal)
+
+  expect_no_warning(
+    {
+      expect_identical(cal > 0.5, values > 0.5)
+      expect_identical(cal >= 0.5, values >= 0.5)
+      expect_identical(cal < 0.5, values < 0.5)
+      expect_identical(cal <= 0.5, values <= 0.5)
+      expect_identical(cal == values[[1]], values == values[[1]])
+      expect_identical(cal != values[[1]], values != values[[1]])
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+test_that("comparing a ps_calib yields a plain logical", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture()
+
+  expect_no_warning(
+    {
+      greater <- cal > 0.5
+      equal <- cal == as.numeric(cal)[[1]]
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+
+  expect_type(greater, "logical")
+  expect_type(equal, "logical")
+  expect_false(inherits(greater, "ps_calib"))
+  expect_false(inherits(equal, "ps_calib"))
+  expect_null(attributes(greater))
+  expect_null(attributes(equal))
+})
+
+test_that("ps_calib comparisons enforce vctrs strict size semantics", {
+  testthat::skip("awaiting implementation")
+
+  # The size half of this contract holds today and guards against a comparison
+  # that answers directly falling back to base R recycling: anything other than
+  # equal lengths, or one side of length 1, has no answer.
+  cal <- calib_vctrs_fixture()
+  short <- cal[1:3]
+
+  expect_error(cal == short, class = "vctrs_error_incompatible_size")
+  expect_error(cal > short, class = "vctrs_error_incompatible_size")
+  expect_error(cal != short, class = "vctrs_error_incompatible_size")
+
+  # Broadcasting a length-1 right side still works, and is the path a caller
+  # asking which scores clear a threshold takes.
+  expect_no_warning(
+    {
+      expect_identical(cal > 0.5, as.numeric(cal) > 0.5)
+      expect_identical(cal[1] == cal, as.numeric(cal)[[1]] == as.numeric(cal))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+# What calibration reads from scores that carry a record ---------------------
+
+# `ps_calibrate()` accepts propensity scores that have already been trimmed or
+# truncated, and the first thing it does with them is compare them against 0
+# and 1. Comparing a classed vector routes through the numeric downgrade, so
+# the range check announces a conversion the caller never asked for, once per
+# comparison, before any calibration happens. The values read are the same
+# either way, and so is the calibration built from them.
+
+test_that("calibrating trimmed scores does not warn about class", {
+  ps <- c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95)
+  exposure <- c(0, 0, 1, 0, 1, 1, 0, 1)
+  trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+  from_numeric <- ps_calibrate(as.numeric(trimmed), exposure, smooth = FALSE)
+
+  testthat::skip("awaiting implementation")
+
+  expect_no_warning(
+    {
+      from_trimmed <- ps_calibrate(trimmed, exposure, smooth = FALSE)
+      expect_s3_class(from_trimmed, "ps_calib")
+      expect_equal(as.numeric(from_trimmed), as.numeric(from_numeric))
+      expect_identical(ps_calib_meta(from_trimmed), ps_calib_meta(from_numeric))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+test_that("calibrating truncated scores does not warn about class", {
+  ps <- c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95)
+  exposure <- c(0, 0, 1, 0, 1, 1, 0, 1)
+  truncated <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+  from_numeric <- ps_calibrate(as.numeric(truncated), exposure, smooth = FALSE)
+
+  testthat::skip("awaiting implementation")
+
+  expect_no_warning(
+    {
+      from_truncated <- ps_calibrate(truncated, exposure, smooth = FALSE)
+      expect_s3_class(from_truncated, "ps_calib")
+      expect_equal(as.numeric(from_truncated), as.numeric(from_numeric))
+      expect_identical(
+        ps_calib_meta(from_truncated),
+        ps_calib_meta(from_numeric)
+      )
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+test_that("calibrating trimmed scores by isotonic regression is also silent", {
+  ps <- c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95)
+  exposure <- c(0, 0, 1, 0, 1, 1, 0, 1)
+  trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+  from_numeric <- ps_calibrate(
+    as.numeric(trimmed),
+    exposure,
+    method = "isoreg"
+  )
+
+  testthat::skip("awaiting implementation")
+
+  # Isotonic calibration reaches the scores through a different fit than the
+  # logistic path, so the values it reads are worth pinning on their own.
+  expect_no_warning(
+    {
+      from_trimmed <- ps_calibrate(trimmed, exposure, method = "isoreg")
+      expect_equal(as.numeric(from_trimmed), as.numeric(from_numeric))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+# Where a calibrated vector and an integer meet ------------------------------
+
+# Calibrated propensity scores lie strictly between 0 and 1, so the integers
+# have no room for them: a combination that met an integer in the integers
+# would be every score rounded away, and a cast to integer loses every value it
+# was given. The sibling classes resolve an integer in the doubles, announcing
+# the downgrade once, and refuse the cast to integer as lossy. A calibrated
+# vector that has no answer at all for an integer is the odd one out.
+
+test_that("combining a ps_calib with an integer keeps the calibrated scores", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture()
+  combined <- expect_propensity_warning(vec_c(cal, 1L))
+
+  expect_type(combined, "double")
+  expect_equal(combined, c(as.numeric(cal), 1))
+})
+
+test_that("combining an integer with a ps_calib keeps the calibrated scores", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture()
+  combined <- expect_propensity_warning(vec_c(1L, cal))
+
+  expect_type(combined, "double")
+  expect_equal(combined, c(1, as.numeric(cal)))
+})
+
+test_that("casting a ps_calib to integer refuses rather than rounds", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture()
+
+  expect_error(
+    vec_cast(cal, integer()),
+    class = "vctrs_error_cast_lossy"
+  )
+})
+
+test_that("casting an integer to ps_calib keeps the calibration of the target", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture()
+  out <- vec_cast(c(0L, 1L), to = cal)
+
+  expect_s3_class(out, "ps_calib")
+  expect_equal(as.numeric(out), c(0, 1))
+  expect_identical(ps_calib_meta(out), ps_calib_meta(cal))
+})
+
+test_that("comparing a ps_calib with an integer matches comparing a double", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture()
+
+  expect_no_warning(
+    {
+      expect_identical(cal == 1L, cal == 1)
+      expect_identical(cal > 0L, cal > 0)
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+# What a cast to a calibrated vector owes its target -------------------------
+
+# A cast returns the values it was handed in the type it was handed, and a
+# calibrated vector's type is how the calibration was performed. A cast that
+# writes its own description over the target's hands back a vector claiming a
+# calibration nothing carried out, under a method name no argument accepts.
+
+test_that("casting a double to ps_calib keeps the method of the target", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture()
+  out <- vec_cast(c(0.3, 0.4), to = cal)
+
+  expect_s3_class(out, "ps_calib")
+  expect_equal(as.numeric(out), c(0.3, 0.4))
+  expect_identical(ps_calib_meta(out), ps_calib_meta(cal))
+  expect_identical(ps_calib_meta(out)$method, "logistic")
+  expect_false(ps_calib_meta(out)$smooth)
+})
+
+test_that("casting a double to an isotonic ps_calib keeps that method", {
+  testthat::skip("awaiting implementation")
+
+  cal <- calib_vctrs_fixture(method = "isoreg")
+  out <- vec_cast(c(0.3, 0.4), to = cal)
+
+  expect_identical(ps_calib_meta(out)$method, "isoreg")
+})
+
+test_that("casting a double to ps_calib keeps the smoothing of the target", {
+  testthat::skip("awaiting implementation")
+
+  # Built directly so the spline fit, and with it mgcv, stays out of a test
+  # about what the cast copies.
+  to <- new_ps_calib(
+    double(),
+    ps_calib_meta = list(method = "logistic", smooth = TRUE)
+  )
+  out <- vec_cast(c(0.3, 0.4), to = to)
+
+  expect_true(ps_calib_meta(out)$smooth)
+})
