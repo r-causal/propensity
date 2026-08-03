@@ -1,5 +1,39 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_refit()` now refits a model whose formula transforms a term, such as
+  `z ~ log(x)` or a spline basis, without being handed the data. The default
+  `.data` came from the stored model frame, which holds each term already
+  computed, so refitting looked for a variable named `x` among columns named
+  `log(x)` and failed. The data the model names are now read back and cut down
+  by row name to the rows the model analyzed, so a transformation is recomputed
+  from the retained rows alone, which is what refitting on those rows means. A
+  spline's knots therefore move to where the retained rows place them. A model
+  fit without a data argument names none, and its variables are read out of the
+  formula's environment instead.
+
+* `ps_refit()` now refits a model whose `weights` or `offset` names a column of
+  the data it was fit on. The stored model frame records both under fixed names
+  rather than the ones the call reads, so refitting from it reported the column
+  as a missing object. The recovered data are the frame the original call read,
+  which carries that column, so the weights and offsets follow the retained
+  rows. A `weights` or `offset` vector held outside the data still cannot follow
+  them and raises an error about differing variable lengths.
+
+* `ps_refit()` now names the likely cause when the data recovered from `model`
+  hold fewer rows than the propensity scores describe. Scores predicted from a
+  fit with `na.action = na.exclude` are padded back to the full length of the
+  data, so they outnumber the rows the fit read. The refusal now says so and
+  points at an `na.action` that drops those rows.
+
+* `ps_refit()` no longer puts a `subset` from the original model call to work a
+  second time. The retained rows are already a narrowing of the sample that
+  `subset` chose, so re-applying it selected among rows it was never about and
+  returned propensity scores that were quietly wrong. The `subset` is now
+  dropped from the refit call, on both the default and the explicit `.data`
+  route. A `subset` passed through `...` is an instruction of its own and is
+  still honored. How `ps_refit()` recovers its data, and the limits on
+  `weights` and `offset` read from outside the formula, are now documented.
+
 * `ps_calibrate(method = "isoreg")` no longer runs a step described as
   preventing extrapolation beyond the observed range. Each of the two isotonic
   fits was raised to its own minimum over the exposure group that reads it,

@@ -1484,9 +1484,43 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #' @param model The original fitted model used to estimate the propensity
 #'   scores (e.g. a [glm][stats::glm] or [multinom][nnet::multinom] object).
 #'   The model is refit via [update()][stats::update] on the retained subset.
-#' @param .data A data frame. If `NULL` (the default), the data are extracted
-#'   from `model` via [model.frame()][stats::model.frame].
+#' @param .data A data frame with one row per observation in `trimmed_ps`, in
+#'   the same order. If `NULL` (the default), the data are recovered from
+#'   `model`: its [model.frame()][stats::model.frame] when that already holds
+#'   every variable the refit reads, and otherwise the data the model names,
+#'   restricted by row name to the rows the model analyzed. A model fit without
+#'   a data argument names none, and its variables are read out of the formula's
+#'   environment instead. A formula that transforms a term, such as `z ~ log(x)`
+#'   or a spline basis, stores that term already computed, so only the
+#'   underlying variables let the transformation be recomputed from the retained
+#'   rows. Pass `.data` when the data the model was fit on can no longer be
+#'   reached.
 #' @param ... Additional arguments passed to [update()][stats::update].
+#'
+#' @details
+#' ## Composing with a `subset`
+#'
+#' A `subset` in the original call has already chosen the sample the propensity
+#' scores are about, and the trimming record indexes that sample rather than
+#' every row the data carry. Refitting narrows that sample further, to the
+#' retained rows, so the original `subset` is dropped from the call rather than
+#' put to work a second time on rows it was never about. A `subset` passed
+#' through `...` is an instruction of its own and is honored.
+#'
+#' ## Arguments read from outside the formula
+#'
+#' `weights`, `offset`, and `na.action` in the original call are re-evaluated
+#' against the retained rows. A `weights` or `offset` naming a column of the
+#' data the model was fit on is read from that column and follows the retained
+#' rows, whether the data are recovered from `model` or passed to `.data`. A
+#' vector held outside the data cannot follow them: it keeps the length it had
+#' and raises an error about differing variable lengths.
+#'
+#' Scores predicted from a fit with `na.action = na.exclude` are padded back to
+#' the full length of the data, so they describe more observations than the fit
+#' read and the trimming record indexes a sample the model never analyzed.
+#' `ps_refit()` refuses such scores. Trim scores from a fit whose `na.action`
+#' drops those rows instead.
 #'
 #' @return A `ps_trim` object with re-estimated propensity scores for retained
 #'   observations and `NA` for trimmed observations. Use [is_refit()] to
@@ -1532,24 +1566,45 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
     )
   }
 
-  if (is.null(.data)) {
-    .data <- model.frame(model)
+  from_model <- is.null(.data)
+  if (from_model) {
+    .data <- refit_data(model)
   }
 
   if (nrow(.data) != n_obs) {
+    # Data recovered from the model are the rows the model analyzed, so scores
+    # that outnumber those rows were read over a longer sample than the fit did,
+    # and an `na.action` that pads rather than drops is what does that. Scores
+    # that fall short of them describe some narrower sample, which no padding
+    # could account for.
+    padding_hint <- if (from_model && n_obs > nrow(.data)) {
+      c(
+        i = "Scores predicted from a fit with {.code na.action = na.exclude} are padded back to the full length of the data, so they outnumber the rows the model analyzed.",
+        i = "Trim scores from a fit whose {.arg na.action} drops those rows, such as {.fun stats::na.omit}."
+      )
+    }
+
     abort(
       c(
         "{.arg .data} must have the same number of rows as observations in {.arg trimmed_ps}.",
         x = "{.arg .data} has {nrow(.data)} row{?s}.",
-        x = "{.arg trimmed_ps} has {n_obs} observation{?s}."
+        x = "{.arg trimmed_ps} has {n_obs} observation{?s}.",
+        padding_hint
       ),
       error_class = "propensity_length_error"
     )
   }
 
-  # refit on untrimmed rows
+  # refit on untrimmed rows. The retained rows are the sample to fit on, so a
+  # `subset` the original call carried has already chosen its rows: putting it
+  # to work again would choose among rows it was never about. It is dropped
+  # unless the caller names one, which is an instruction of its own.
   data_sub <- .data[meta$keep_idx, , drop = FALSE]
-  refit_model <- stats::update(model, data = data_sub, ...)
+  refit_model <- if ("subset" %in% ...names()) {
+    stats::update(model, data = data_sub, ...)
+  } else {
+    stats::update(model, data = data_sub, subset = NULL, ...)
+  }
 
   # predict new PS for all rows
   if (is.matrix(trimmed_ps)) {
@@ -1594,6 +1649,86 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
     x = new_ps,
     ps_trim_meta = meta
   )
+}
+
+# The variables the refit call reads: the ones the formula names, plus any named
+# by `weights` or `offset`, which are evaluated against whatever data the refit
+# is handed. The original `subset` is dropped from that call, so the variables it
+# names are not among them.
+refit_call_vars <- function(model, model_formula) {
+  model_call <- stats::getCall(model)
+  extras <- lapply(
+    list(model_call$weights, model_call$offset),
+    function(arg) if (is.null(arg)) character() else all.vars(arg)
+  )
+
+  unique(c(all.vars(model_formula), unlist(extras, use.names = FALSE)))
+}
+
+# The data `ps_refit()` refits on when the caller names none. The model frame
+# holds each term as the formula computed it, so `z ~ log(x)` stores a column of
+# logged values and nothing to recompute them from; refitting on the retained
+# rows has to recompute the transformation from those rows alone, which only the
+# raw variables allow. It also stores `weights` and `offset` under fixed names
+# rather than the ones the call reads. The model frame is enough whenever it
+# already carries every variable the refit reads, and it costs nothing to read.
+#
+# Otherwise the data the model names are read back and cut down to the rows the
+# model analyzed. The whole frame is used, not just the variables the formula
+# names: it is the frame the original call read, so `weights`, `offset`, and a
+# `.` in the formula mean against it what they meant when the model was fit. A
+# fit that named no data has no frame to read back, and its variables come from
+# the formula's environment instead.
+refit_data <- function(model, call = rlang::caller_env()) {
+  model_formula <- stats::formula(model)
+  model_frame <- stats::model.frame(model)
+
+  if (all(refit_call_vars(model, model_formula) %in% names(model_frame))) {
+    return(model_frame)
+  }
+
+  raw <- tryCatch(
+    {
+      model_data <- eval(stats::getCall(model)$data, environment(model_formula))
+      if (is.data.frame(model_data)) {
+        model_data
+      } else {
+        stats::get_all_vars(model_formula, data = model_data)
+      }
+    },
+    error = function(cnd) cnd
+  )
+
+  if (inherits(raw, "condition")) {
+    abort(
+      c(
+        "Can't recover the data {.arg model} was fit on.",
+        x = conditionMessage(raw),
+        i = "Pass the data frame to {.arg .data}."
+      ),
+      error_class = "propensity_no_data_error",
+      call = call
+    )
+  }
+
+  # The recovered data carry every row they were read from, while the propensity
+  # scores, and with them the trimming record, are about the rows the model
+  # analyzed. Row names line the two up across the rows a fit dropped as missing
+  # or a `subset` excluded.
+  rows <- match(rownames(model_frame), rownames(raw))
+
+  if (anyNA(rows)) {
+    abort(
+      c(
+        "Can't match the rows {.arg model} was fit on to the data it read.",
+        i = "Pass the data frame to {.arg .data}."
+      ),
+      error_class = "propensity_no_data_error",
+      call = call
+    )
+  }
+
+  raw[rows, , drop = FALSE]
 }
 
 #' Check if propensity scores have been refit

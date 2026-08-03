@@ -222,3 +222,15 @@
     Message
       i Using the ".pred_1" column as the propensity score for `ps_trim()`.
 
+# ps_refit() names padded predictions when the row counts disagree
+
+    Code
+      expr
+    Condition <propensity_length_error>
+      Error in `ps_refit()`:
+      ! `.data` must have the same number of rows as observations in `trimmed_ps`.
+      x `.data` has 118 rows.
+      x `trimmed_ps` has 120 observations.
+      i Scores predicted from a fit with `na.action = na.exclude` are padded back to the full length of the data, so they outnumber the rows the model analyzed.
+      i Trim scores from a fit whose `na.action` drops those rows, such as `stats::na.omit()`.
+

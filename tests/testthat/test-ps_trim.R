@@ -1663,8 +1663,6 @@ refit_by_hand <- function(model_formula, data, keep_idx, n_obs) {
 }
 
 test_that("ps_refit() refits a log-transformed term with no data argument", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
   z <- df$z
   x <- df$x
@@ -1688,8 +1686,6 @@ test_that("ps_refit() refits a log-transformed term with no data argument", {
 })
 
 test_that("ps_refit() refits a spline basis with no data argument", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
   z <- df$z
   x <- df$x
@@ -1716,8 +1712,6 @@ test_that("ps_refit() refits a spline basis with no data argument", {
 })
 
 test_that("ps_refit() refits an interaction between transformed terms", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
   z <- df$z
   x <- df$x
@@ -1742,8 +1736,6 @@ test_that("ps_refit() refits an interaction between transformed terms", {
 })
 
 test_that("ps_refit() refits a transformed term fit with a data argument", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
 
   fit <- glm(z ~ log(x), data = df, family = binomial)
@@ -1765,8 +1757,6 @@ test_that("ps_refit() refits a transformed term fit with a data argument", {
 })
 
 test_that("ps_refit() records the refit and keeps the record through a transform", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
   z <- df$z
   x <- df$x
@@ -1800,8 +1790,6 @@ test_that("ps_refit() records the refit and keeps the record through a transform
 })
 
 test_that("ps_refit() still refits an untransformed formula from the model alone", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
   z <- df$z
   x <- df$x
@@ -1825,8 +1813,6 @@ test_that("ps_refit() still refits an untransformed formula from the model alone
 })
 
 test_that("ps_refit() still refits a transformed term from an explicit .data", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
 
   fit <- glm(z ~ log(x), data = df, family = binomial)
@@ -1847,8 +1833,6 @@ test_that("ps_refit() still refits a transformed term from an explicit .data", {
 })
 
 test_that("ps_refit() still refits a model whose rows were dropped as missing", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
   z <- df$z
   covariate <- df$x
@@ -1882,20 +1866,19 @@ test_that("ps_refit() still refits a model whose rows were dropped as missing", 
 })
 
 test_that("ps_refit() refits on the retained rows of a model fit with a subset", {
-  testthat::skip("awaiting implementation")
-
   df <- refit_transform_fixture()
   z <- df$z
   x <- df$x
-  in_range <- x < 9
 
-  fit <- glm(z ~ x, family = binomial, subset = in_range)
+  fit <- glm(z ~ x, family = binomial, subset = -(1:40))
 
   # The original subset already chose the sample the scores are about, so the
   # trimming record indexes that sample and not the rows the variables carry.
   # Refitting narrows that sample to the retained rows; it must not put the
-  # original subset to work a second time on rows it was never about.
-  analysis <- df[in_range, , drop = FALSE]
+  # original subset to work a second time on rows it was never about. A
+  # positional subset re-applied to the retained rows quietly names different
+  # units rather than failing, so the wrong answer would arrive without a word.
+  analysis <- df[-(1:40), , drop = FALSE]
 
   trimmed <- ps_trim(
     unname(predict(fit, type = "response")),
@@ -1913,4 +1896,305 @@ test_that("ps_refit() refits on the retained rows of a model fit with a subset",
     as.numeric(refit),
     refit_by_hand(z ~ x, analysis, meta$keep_idx, nrow(analysis))
   )
+})
+
+test_that("ps_refit() puts a subset to work once when given an explicit .data", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ x, data = df, family = binomial, subset = -(1:40))
+
+  # An explicit `.data` is already the sample the scores are about, so the
+  # original subset has done its work and must not choose rows a second time.
+  # A positional subset re-applied to the retained rows quietly names different
+  # units rather than failing, so the wrong answer arrives without a word.
+  analysis <- df[-(1:40), , drop = FALSE]
+
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_length(trimmed, nrow(analysis))
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit, .data = analysis)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ x, analysis, meta$keep_idx, nrow(analysis))
+  )
+})
+
+test_that("ps_refit() says so when the model's data can no longer be reached", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ log(x), data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  # A transformed term is stored already computed, so the raw variables have to
+  # be read back from the data the model names. Nothing else can stand in for
+  # them, and the data are gone.
+  rm(df)
+
+  expect_error(
+    ps_refit(trimmed, fit),
+    class = "propensity_no_data_error"
+  )
+})
+
+test_that("ps_refit() honors a subset the caller passes through ...", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ x, data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  narrowed <- seq_len(20)
+
+  refit <- ps_refit(trimmed, fit, subset = narrowed)
+
+  # The caller's subset chooses the rows the model is fit on; the scores are
+  # still read back over every retained row.
+  by_hand <- glm(
+    z ~ x,
+    data = df[meta$keep_idx, , drop = FALSE],
+    family = binomial,
+    subset = narrowed
+  )
+  expected <- rep(NA_real_, nrow(df))
+  expected[meta$keep_idx] <- unname(predict(
+    by_hand,
+    newdata = df[meta$keep_idx, , drop = FALSE],
+    type = "response"
+  ))
+
+  expect_equal(as.numeric(refit), expected)
+})
+
+test_that("ps_refit() says so when the model's data no longer hold its rows", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ log(x), data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  # The name the model gave its data now holds a narrower frame, so the rows the
+  # model analyzed cannot all be found in it. Reading whatever rows are there
+  # would refit on a sample the trimming record was never about.
+  df <- df[41:nrow(df), , drop = FALSE]
+
+  expect_error(
+    ps_refit(trimmed, fit),
+    class = "propensity_no_data_error"
+  )
+})
+
+test_that("ps_refit() refits a weighted model whose weights live in the data", {
+  df <- refit_transform_fixture()
+  df$sampling_wt <- runif(nrow(df), 0.5, 2)
+
+  fit <- glm(
+    z ~ log(x),
+    data = df,
+    family = quasibinomial,
+    weights = sampling_wt
+  )
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  # `weights` names a column, so the recovered data have to carry it for the
+  # weights to follow the retained rows.
+  kept <- df[meta$keep_idx, , drop = FALSE]
+  by_hand <- glm(
+    z ~ log(x),
+    data = kept,
+    family = quasibinomial,
+    weights = sampling_wt
+  )
+  expected <- rep(NA_real_, nrow(df))
+  expected[meta$keep_idx] <- unname(predict(by_hand, type = "response"))
+
+  expect_equal(as.numeric(refit), expected)
+})
+
+test_that("ps_refit() refits a model whose offset lives in the data", {
+  df <- refit_transform_fixture()
+  df$log_time <- rnorm(nrow(df), 0, 0.1)
+
+  fit <- glm(z ~ log(x), data = df, family = binomial, offset = log_time)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  kept <- df[meta$keep_idx, , drop = FALSE]
+  by_hand <- glm(
+    z ~ log(x),
+    data = kept,
+    family = binomial,
+    offset = log_time
+  )
+  expected <- rep(NA_real_, nrow(df))
+  expected[meta$keep_idx] <- unname(predict(by_hand, type = "response"))
+
+  expect_equal(as.numeric(refit), expected)
+})
+
+test_that("ps_refit() refits weights named in the data of an untransformed fit", {
+  df <- refit_transform_fixture()
+  df$sampling_wt <- runif(nrow(df), 0.5, 2)
+
+  # Nothing in the formula is transformed, so the stored model frame holds every
+  # variable the formula names; it still does not hold the weights.
+  fit <- glm(z ~ x, data = df, family = quasibinomial, weights = sampling_wt)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  kept <- df[meta$keep_idx, , drop = FALSE]
+  by_hand <- glm(
+    z ~ x,
+    data = kept,
+    family = quasibinomial,
+    weights = sampling_wt
+  )
+  expected <- rep(NA_real_, nrow(df))
+  expected[meta$keep_idx] <- unname(predict(by_hand, type = "response"))
+
+  expect_equal(as.numeric(refit), expected)
+})
+
+test_that("ps_refit() names padded predictions when the row counts disagree", {
+  df <- refit_transform_fixture()
+  df$x[c(3, 17)] <- NA
+
+  # `na.exclude` puts the dropped rows back as `NA` when predicting, so the
+  # scores are about a longer sample than the fit ever read, and the record
+  # built from them cannot index the rows the model analyzed.
+  fit <- glm(z ~ x, data = df, family = binomial, na.action = na.exclude)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  expect_length(trimmed, nrow(df))
+
+  expect_error(
+    ps_refit(trimmed, fit),
+    class = "propensity_length_error"
+  )
+  expect_propensity_error(ps_refit(trimmed, fit))
+})
+
+test_that("ps_refit() blames padding only when the scores outnumber the rows", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ x, data = df, family = binomial)
+
+  # Scores describing a narrower sample than the fit read. The counts disagree
+  # the other way round from padding, which only ever lengthens them, so the
+  # refusal has no business naming `na.exclude`.
+  narrower <- ps_trim(
+    unname(predict(fit, type = "response"))[1:100],
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  cnd <- expect_error(
+    ps_refit(narrower, fit),
+    class = "propensity_length_error"
+  )
+  msg <- conditionMessage(cnd)
+
+  expect_match(msg, "has 120 rows", fixed = TRUE)
+  expect_match(msg, "has 100 observations", fixed = TRUE)
+  expect_no_match(msg, "na.exclude", fixed = TRUE)
+})
+
+test_that("ps_refit() replaces a stored subset with the one the caller passes", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ x, data = df, family = binomial, subset = -(1:40))
+  analysis <- df[-(1:40), , drop = FALSE]
+
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_length(trimmed, nrow(analysis))
+
+  narrowed <- seq_len(30)
+  refit <- ps_refit(trimmed, fit, subset = narrowed)
+
+  # The caller's subset stands in for the stored one rather than joining it:
+  # it chooses among the retained rows once, and the rows the stored subset
+  # already excluded are not excluded a second time.
+  kept <- analysis[meta$keep_idx, , drop = FALSE]
+  by_hand <- glm(z ~ x, data = kept, family = binomial, subset = narrowed)
+  expected <- rep(NA_real_, nrow(analysis))
+  expected[meta$keep_idx] <- unname(predict(
+    by_hand,
+    newdata = kept,
+    type = "response"
+  ))
+
+  expect_equal(as.numeric(refit), expected)
+
+  # Had the stored subset also been honored, the fit would have read a
+  # different set of rows and said something different about them.
+  applied_twice <- glm(
+    z ~ x,
+    data = kept[-(1:40), , drop = FALSE],
+    family = binomial,
+    subset = narrowed
+  )
+  not_expected <- rep(NA_real_, nrow(analysis))
+  not_expected[meta$keep_idx] <- unname(predict(
+    applied_twice,
+    newdata = kept,
+    type = "response"
+  ))
+
+  expect_false(isTRUE(all.equal(as.numeric(refit), not_expected)))
 })

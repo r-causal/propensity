@@ -16,8 +16,17 @@ record was dropped or no longer covers it raises an error of class
 scores (e.g. a \link[stats:glm]{glm} or \link[nnet:multinom]{multinom} object).
 The model is refit via \link[stats:update]{update()} on the retained subset.}
 
-\item{.data}{A data frame. If \code{NULL} (the default), the data are extracted
-from \code{model} via \link[stats:model.frame]{model.frame()}.}
+\item{.data}{A data frame with one row per observation in \code{trimmed_ps}, in
+the same order. If \code{NULL} (the default), the data are recovered from
+\code{model}: its \link[stats:model.frame]{model.frame()} when that already holds
+every variable the refit reads, and otherwise the data the model names,
+restricted by row name to the rows the model analyzed. A model fit without
+a data argument names none, and its variables are read out of the formula's
+environment instead. A formula that transforms a term, such as \code{z ~ log(x)}
+or a spline basis, stores that term already computed, so only the
+underlying variables let the transformation be recomputed from the retained
+rows. Pass \code{.data} when the data the model was fit on can no longer be
+reached.}
 
 \item{...}{Additional arguments passed to \link[stats:update]{update()}.}
 }
@@ -38,6 +47,33 @@ propensity scores. Refitting the model on the retained subset produces
 propensity scores that better reflect this population, improving both model
 fit and downstream weight estimation. Weight functions warn if a trimmed
 propensity score has not been refit.
+}
+\details{
+\subsection{Composing with a \code{subset}}{
+
+A \code{subset} in the original call has already chosen the sample the propensity
+scores are about, and the trimming record indexes that sample rather than
+every row the data carry. Refitting narrows that sample further, to the
+retained rows, so the original \code{subset} is dropped from the call rather than
+put to work a second time on rows it was never about. A \code{subset} passed
+through \code{...} is an instruction of its own and is honored.
+}
+
+\subsection{Arguments read from outside the formula}{
+
+\code{weights}, \code{offset}, and \code{na.action} in the original call are re-evaluated
+against the retained rows. A \code{weights} or \code{offset} naming a column of the
+data the model was fit on is read from that column and follows the retained
+rows, whether the data are recovered from \code{model} or passed to \code{.data}. A
+vector held outside the data cannot follow them: it keeps the length it had
+and raises an error about differing variable lengths.
+
+Scores predicted from a fit with \code{na.action = na.exclude} are padded back to
+the full length of the data, so they describe more observations than the fit
+read and the trimming record indexes a sample the model never analyzed.
+\code{ps_refit()} refuses such scores. Trim scores from a fit whose \code{na.action}
+drops those rows instead.
+}
 }
 \examples{
 set.seed(2)
