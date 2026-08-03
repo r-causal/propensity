@@ -1093,17 +1093,16 @@ test_that("augment(data = ) keeps a weight column the supplied data holds", {
   # through `data` is the caller's own, so a column of theirs survives whatever
   # it happens to be named, including the name the default path declines to
   # carry. Dropping it would delete a user's data for matching a name.
-  user_weights <- as.double(
-    stats::model.weights(stats::model.frame(mods$outcome_mod))
-  )
+  user_weights <- 2 *
+    as.double(stats::model.weights(stats::model.frame(mods$outcome_mod)))
   user_frame <- dat
   user_frame[["(weights)"]] <- user_weights
 
   augmented <- augment(res, data = user_frame)
   expect_augment_contract(augmented, user_frame, res)
 
-  # The user's column arrives verbatim, as the doubles they held rather than as
-  # a copy of `.weights`, and the two sit side by side.
+  # The user's column arrives verbatim, as the scaled doubles they held rather
+  # than as a copy of `.weights`, and the two sit side by side.
   expect_identical(augmented[["(weights)"]], user_weights)
   expect_s3_class(augmented$.weights, "psw")
   expect_identical(estimand(augmented$.weights), "ate")

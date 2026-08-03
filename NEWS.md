@@ -27,11 +27,14 @@
 
 * `augment()` returns the data the outcome model was fit on with the propensity
   score, the weights, the fitted values, and the residuals attached as
-  dot-prefixed columns, one row per observation and nothing dropped. A
+  dot-prefixed columns, one row per observation and no observation dropped. A
   categorical exposure carries a probability for every level and so gets one
-  `.propensity_<level>` column per level in place of `.propensity`. Pass the
-  modeling data to `data` to carry those columns on a frame that also holds the
-  covariates the outcome formula left out.
+  `.propensity_<level>` column per level in place of `.propensity`. Unlike
+  broom's `augment()` methods, the model frame's `(weights)` column is not
+  carried through: the weights appear once, as `.weights`, the `psw` vector the
+  outcome model was fit with, so the class and the estimand they record travel
+  with them. Pass the modeling data to `data` to carry those columns on a frame
+  that also holds the covariates the outcome formula left out.
 
 * `wt_entropy()` is documented as computing entropy weights, which tilt the
   propensity score by its own entropy in the sense of Zhou, Matsouaka, and

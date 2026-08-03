@@ -11,8 +11,9 @@
 
 \item{data}{A data frame with one row for each observation the fit used, or
 \code{NULL}, the default, to use the outcome model's own model frame. That frame
-holds the response, the terms of the outcome formula, and the \code{(weights)}
-column \code{\link[stats:model.frame]{stats::model.frame()}} records, and all of them are kept.}
+holds the response and the terms of the outcome formula, and both are kept.
+The \code{(weights)} column \code{\link[stats:model.frame]{stats::model.frame()}} records is the one thing left
+out of it, because those weights are reported as \code{.weights}.}
 
 \item{...}{These dots are for future extensions and must be empty.}
 }
@@ -52,6 +53,16 @@ frame to carry them on, which is how broom uses the argument: it names the
 data the fit was produced from, not new data to predict on. Supplying the
 modeling data rather than leaving the default is how covariates the outcome
 formula left out arrive beside the fit's own columns.
+
+The weights are reported once, as \code{.weights}, which is a deliberate departure
+from broom. A broom \code{augment()} method carries the model frame's \code{(weights)}
+column through and adds no weights column of its own; here the weights are the
+central per-observation quantity of the analysis, and the \code{\link[=psw]{psw()}} vector
+reports them with the estimand they target attached, which the model frame's
+plain numeric copy of the same values does not. The default frame therefore
+leaves \code{(weights)} out. A frame supplied through \code{data} is the caller's own
+and is carried as it arrives, so a weight column they hold stays where they
+put it, whatever it is named.
 }
 \examples{
 set.seed(123)

@@ -253,11 +253,22 @@ glance.ipw <- function(x, ...) {
 #' modeling data rather than leaving the default is how covariates the outcome
 #' formula left out arrive beside the fit's own columns.
 #'
+#' The weights are reported once, as `.weights`, which is a deliberate departure
+#' from broom. A broom `augment()` method carries the model frame's `(weights)`
+#' column through and adds no weights column of its own; here the weights are the
+#' central per-observation quantity of the analysis, and the [psw()] vector
+#' reports them with the estimand they target attached, which the model frame's
+#' plain numeric copy of the same values does not. The default frame therefore
+#' leaves `(weights)` out. A frame supplied through `data` is the caller's own
+#' and is carried as it arrives, so a weight column they hold stays where they
+#' put it, whatever it is named.
+#'
 #' @param x An `ipw` object, as returned by [ipw()].
 #' @param data A data frame with one row for each observation the fit used, or
 #'   `NULL`, the default, to use the outcome model's own model frame. That frame
-#'   holds the response, the terms of the outcome formula, and the `(weights)`
-#'   column [stats::model.frame()] records, and all of them are kept.
+#'   holds the response and the terms of the outcome formula, and both are kept.
+#'   The `(weights)` column [stats::model.frame()] records is the one thing left
+#'   out of it, because those weights are reported as `.weights`.
 #' @param ... These dots are for future extensions and must be empty.
 #'
 #' @return A [tibble][tibble::tibble] with one row per observation, holding every
@@ -309,9 +320,14 @@ augment.ipw <- function(x, data = NULL, ...) {
   rlang::check_dots_empty()
 
   outcome_frame <- stats::model.frame(x$outcome_mod)
+  weights <- stats::model.weights(outcome_frame)
 
   if (is.null(data)) {
-    data <- outcome_frame
+    # The weights are reported as `.weights`, so the frame this method builds
+    # for itself leaves out the numeric copy of them `model.frame()` records.
+    # The drop belongs to this branch alone: a frame the caller supplies is
+    # theirs, and a column of theirs is not deleted for matching a name.
+    data <- outcome_frame[names(outcome_frame) != "(weights)"]
   } else {
     assert_class(data, "data.frame")
     check_augment_rows(data, nrow(outcome_frame))
@@ -323,7 +339,7 @@ augment.ipw <- function(x, data = NULL, ...) {
     as.list(data),
     augment_propensity_columns(x$wt_mod),
     list(
-      .weights = stats::model.weights(outcome_frame),
+      .weights = weights,
       .fitted = fitted
     )
   )
@@ -339,8 +355,9 @@ augment.ipw <- function(x, data = NULL, ...) {
     columns$.resid <- ipw_outcome_numeric(data[[response]]) - fitted
   }
 
-  # The source frame is carried verbatim, `(weights)` included, so its names are
-  # taken as they are rather than repaired into syntactic ones.
+  # A frame supplied through `data` is the caller's own and may hold
+  # non-syntactic names, `(weights)` among them, so the names of the source
+  # frame are taken as they are rather than repaired into syntactic ones.
   tibble::as_tibble(columns, .name_repair = "minimal")
 }
 
