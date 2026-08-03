@@ -32,6 +32,10 @@ A named list with elements:
 
   Integer vector of trimmed observation indices.
 
+- `n_obs`:
+
+  The number of observations those indices describe.
+
 - `lower`, `upper`:
 
   Numeric cutoffs, when applicable.
@@ -43,6 +47,10 @@ A named list with elements:
 
 Additional method-specific elements (e.g. `cutoff`, `delta`, `lambda`)
 may also be present.
+
+`keep_idx`, `trimmed_idx`, and `n_obs` are absent when an operation that
+changed the number of observations dropped the record; see
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md).
 
 ## See also
 
@@ -74,5 +82,8 @@ ps_trim_meta(trimmed)
 #> 
 #> $trimmed_idx
 #> [1] 1 4
+#> 
+#> $n_obs
+#> [1] 4
 #> 
 ```

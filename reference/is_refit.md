@@ -22,6 +22,20 @@ is_refit(x)
 
 A single `TRUE` or `FALSE`.
 
+## Details
+
+On a [psw](https://r-causal.github.io/propensity/reference/psw.md)
+vector built from trimmed propensity scores, the answer comes from the
+trimming record carried on the weights. `is_refit()` reads a single flag
+out of that record rather than a position, so unlike
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
+it answers from any record present, whatever length the weights have
+since taken on. It raises an error of class
+`propensity_missing_meta_error` only when weights marked as trimmed
+carry no record at all, which is what a subset of such weights leaves
+behind. Weights that were never trimmed have nothing missing and return
+`FALSE`.
+
 ## See also
 
 [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)

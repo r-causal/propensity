@@ -3,8 +3,8 @@
 This vignette walks through the core propensity score weighting
 workflow: fitting a propensity score model, calculating weights, and
 estimating causal effects with
-[`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md). We’ll
-also cover what to do when propensity scores are extreme.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
+We’ll also cover what to do when propensity scores are extreme.
 
 ## Setup
 
@@ -54,7 +54,6 @@ to get ATE weights. It pulls out the fitted values and exposure for you:
 wts <- wt_ate(ps_mod)
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
 #> Warning in eval(family$initialize): non-integer #successes in a binomial glm!
 ```
@@ -79,7 +78,6 @@ case you need to supply the exposure too:
 ps <- fitted(ps_mod)
 wt_ate(ps, dat$z)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = ate}[100]>
 #>   [1]  1.237569  1.962759  2.211732  1.312977  1.974772  1.918957  3.413991
 #>   [8]  1.844849  1.223426  2.048453  1.409967  1.189795  1.283684  2.580633
@@ -100,10 +98,14 @@ wt_ate(ps, dat$z)
 
 ### Step 3: Estimate causal effects
 
-[`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md) takes
-the propensity score model and the weighted outcome model and returns
-causal effect estimates. The standard errors use linearization to
-account for the fact that the propensity scores are estimated:
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+takes the propensity score model and the weighted outcome model and
+returns causal effect estimates. By default, the standard errors come
+from M-estimation: the propensity score and outcome models are stacked
+into a single system of estimating equations, so the uncertainty of
+estimating the propensity scores is carried into the standard errors
+rather than ignored. Set `se_method = "linearization"` to use the
+influence-function method instead:
 
 ``` r
 
@@ -112,17 +114,17 @@ result
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
 #> 
-#> Propensity Score Model:
+#> Weight Estimator:
 #>   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
 #> 
 #> Outcome Model:
 #>   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) 
 #> 
 #> Estimates:
-#>         estimate  std.err        z ci.lower ci.upper conf.level   p.value    
-#> rd       0.32000  0.10411  3.07376   0.1160  0.52404       0.95  0.002114 ** 
-#> log(rr)  0.69137  0.12490  5.53528   0.4466  0.93618       0.95 3.107e-08 ***
-#> log(or)  1.32884  0.12288 10.81398   1.0880  1.56969       0.95 < 2.2e-16 ***
+#>         estimate std.err      z ci.lower ci.upper conf.level  p.value   
+#> rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **
+#> log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **
+#> log(or)  1.32884 0.46176 2.8778  0.42381  2.23387       0.95 0.004005 **
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
@@ -157,15 +159,12 @@ To switch estimands, just swap the weight function:
 wts_ate <- wt_ate(ps_mod)
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 wts_att <- wt_att(ps_mod)
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 wts_ato <- wt_ato(ps_mod)
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 ```
 
 ## Handling extreme weights
@@ -197,13 +196,11 @@ down-weight observations where overlap is poor:
 summary(wt_ato(ps_mod))
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 #> 0.08451 0.30539 0.43830 0.43370 0.52629 0.92053
 summary(wt_atm(ps_mod))
 #> ℹ Using exposure variable "z" from GLM model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 #> 0.09231 0.43965 0.78036 0.70946 1.00000 1.00000
 ```
@@ -266,6 +263,9 @@ ps_trim_meta(ps_trimmed)
 #> 
 #> $trimmed_idx
 #> [1] 19 59
+#> 
+#> $n_obs
+#> [1] 100
 ```
 
 Use `!is_unit_trimmed()` to subset your data down to the retained
@@ -293,7 +293,6 @@ Then pass the refitted scores to the weight function as usual:
 
 wts_trimmed <- wt_ate(ps_refitted, dat$z)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 summary(wts_trimmed)
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.     NAs 
 #>   1.073   1.386   1.726   1.970   2.157   4.724       2
@@ -335,13 +334,15 @@ ps_trunc_meta(ps_truncated)
 #> 
 #> $truncated_idx
 #> integer(0)
+#> 
+#> $n_obs
+#> [1] 100
 ```
 
 ``` r
 
 wts_truncated <- wt_ate(ps_truncated, dat$z)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 summary(wts_truncated)
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 #>   1.092   1.440   1.780   2.028   2.111  12.583
@@ -363,7 +364,7 @@ sample.
 ### Binary outcomes
 
 For binary outcomes,
-[`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md)
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
 returns three effect measures: the risk difference, log risk ratio, and
 log odds ratio:
 
@@ -373,17 +374,17 @@ result
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
 #> 
-#> Propensity Score Model:
+#> Weight Estimator:
 #>   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
 #> 
 #> Outcome Model:
 #>   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) 
 #> 
 #> Estimates:
-#>         estimate  std.err        z ci.lower ci.upper conf.level   p.value    
-#> rd       0.32000  0.10411  3.07376   0.1160  0.52404       0.95  0.002114 ** 
-#> log(rr)  0.69137  0.12490  5.53528   0.4466  0.93618       0.95 3.107e-08 ***
-#> log(or)  1.32884  0.12288 10.81398   1.0880  1.56969       0.95 < 2.2e-16 ***
+#>         estimate std.err      z ci.lower ci.upper conf.level  p.value   
+#> rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **
+#> log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **
+#> log(or)  1.32884 0.46176 2.8778  0.42381  2.23387       0.95 0.004005 **
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
@@ -394,14 +395,14 @@ estimates into a data frame:
 ``` r
 
 as.data.frame(result)
-#>    effect  estimate   std.err         z  ci.lower  ci.upper conf.level
-#> 1      rd 0.3199973 0.1041062  3.073758 0.1159529 0.5240417       0.95
-#> 2 log(rr) 0.6913736 0.1249031  5.535278 0.4465679 0.9361792       0.95
-#> 3 log(or) 1.3288426 0.1228819 10.813984 1.0879986 1.5696867       0.95
-#>        p.value
-#> 1 2.113806e-03
-#> 2 3.107345e-08
-#> 3 0.000000e+00
+#>    effect  estimate   std.err        z  ci.lower  ci.upper conf.level
+#> 1      rd 0.3199973 0.1035844 3.089243 0.1169757 0.5230189       0.95
+#> 2 log(rr) 0.6913736 0.2481136 2.786520 0.2050798 1.1776674       0.95
+#> 3 log(or) 1.3288426 0.4617580 2.877790 0.4238136 2.2338717       0.95
+#>       p.value
+#> 1 0.002006669
+#> 2 0.005327738
+#> 3 0.004004714
 ```
 
 Use `exponentiate = TRUE` to get risk ratios and odds ratios on their
@@ -411,20 +412,20 @@ the log scale:
 ``` r
 
 as.data.frame(result, exponentiate = TRUE)
-#>   effect  estimate   std.err         z  ci.lower  ci.upper conf.level
-#> 1     rd 0.3199973 0.1041062  3.073758 0.1159529 0.5240417       0.95
-#> 2     rr 1.9964559 0.1249031  5.535278 1.5629389 2.5502189       0.95
-#> 3     or 3.7766698 0.1228819 10.813984 2.9683272 4.8051424       0.95
-#>        p.value
-#> 1 2.113806e-03
-#> 2 3.107345e-08
-#> 3 0.000000e+00
+#>   effect  estimate   std.err        z  ci.lower  ci.upper conf.level
+#> 1     rd 0.3199973 0.1035844 3.089243 0.1169757 0.5230189       0.95
+#> 2     rr 1.9964559 0.2481136 2.786520 1.2276230 3.2467918       0.95
+#> 3     or 3.7766699 0.4617580 2.877790 1.5277768 9.3359421       0.95
+#>       p.value
+#> 1 0.002006669
+#> 2 0.005327738
+#> 3 0.004004714
 ```
 
 ### Continuous outcomes
 
 For continuous outcomes,
-[`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md)
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
 returns the mean difference. Use
 [`lm()`](https://rdrr.io/r/stats/lm.html) for the outcome model:
 
@@ -437,15 +438,15 @@ ipw(ps_mod, outcome_cont)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
 #> 
-#> Propensity Score Model:
+#> Weight Estimator:
 #>   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
 #> 
 #> Outcome Model:
 #>   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) 
 #> 
 #> Estimates:
-#>      estimate std.err       z ci.lower ci.upper conf.level   p.value    
-#> diff  0.92737 0.20498 4.52416   0.5256   1.3291       0.95 6.064e-06 ***
+#>      estimate std.err     z ci.lower ci.upper conf.level   p.value    
+#> diff  0.92737 0.20395 4.547  0.52763   1.3271       0.95 5.443e-06 ***
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
@@ -526,5 +527,5 @@ See the function reference for details:
   [`?ps_trunc`](https://r-causal.github.io/propensity/reference/ps_trunc.md),
   [`?ps_calibrate`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
   – Handling extreme propensity scores
-- [`?ipw`](https://r-causal.github.io/propensity/reference/ipw.md) –
-  Inverse probability weighted estimation
+- [`?ipw`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  – Inverse probability weighted estimation

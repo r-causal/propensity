@@ -255,6 +255,15 @@ wt_cens(
     or
     [`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md).
 
+  For a binary exposure, `.propensity` is the probability of the focal
+  level, so a numeric vector must be supplied on the scale of whichever
+  level `.focal_level` or `.reference_level` resolves to. The `glm`
+  methods derive it from the fitted values, which give the probability
+  of the response's second level, and subtract them from one when the
+  resolved focal level is the first level instead. The data frame
+  methods reduce to a single column and read it on the same scale; see
+  `.propensity_col` for how that column is chosen.
+
 - .exposure:
 
   The exposure (treatment) variable. For binary exposures, a numeric 0/1
@@ -276,14 +285,21 @@ wt_cens(
 
 - .focal_level:
 
-  The value of `.exposure` representing the focal (treated) group. For
-  binary exposures, defaults to the higher value. Required for
-  `wt_att()` and `wt_atu()` with categorical exposures.
+  The value of `.exposure` representing the focal (treated) group. Every
+  binary coding honors it: 0/1 numeric, logical, two-level factor, and
+  two-level character exposures are all coded with the named level as
+  focal. With no level named, a binary exposure defaults to its higher
+  level, which is `1` for a 0/1 exposure and `TRUE` for a logical one.
+  Naming any other level reverses the coding, so `.propensity` must then
+  hold the probability of the named level. Required for `wt_att()` and
+  `wt_atu()` with categorical exposures.
 
 - .reference_level:
 
   The value of `.exposure` representing the reference (control) group.
-  Automatically detected if not supplied.
+  For a binary exposure, naming it makes the exposure's other level
+  focal, with the same consequence for `.propensity`. Automatically
+  detected if not supplied.
 
 - stabilize:
 
@@ -293,8 +309,15 @@ wt_cens(
 
 - stabilization_score:
 
-  Optional numeric value to use as the stabilization multiplier instead
-  of the default (the marginal mean of `.exposure`). Ignored when
+  Optional stabilization multiplier to use instead of the default (the
+  marginal mean of `.exposure`). Either a single value applied to every
+  weight or a numeric vector holding one value per observation, which is
+  multiplied into the weights observation by observation. Every value
+  must be positive and finite, and any other length or value is refused
+  with an error of class `propensity_stabilization_score_error`. A
+  per-observation score is recorded on the result and is dropped, with a
+  warning, by any operation that changes the length of the weight
+  vector, since it cannot be re-indexed for the new length. Ignored when
   `stabilize = FALSE`.
 
 - ...:
@@ -313,8 +336,20 @@ wt_cens(
 
   Column to use when `.propensity` is a data frame with a binary
   exposure. Accepts a column name (quoted or unquoted) or numeric index.
-  Defaults to the second column. Ignored for categorical exposures,
-  where all columns are used.
+  Whichever column is selected is read as the probability of the
+  resolved focal level.
+
+  With no column named, the exposure's levels drive the choice. When the
+  data frame has a column named for every level of `.exposure`, the
+  column named for the resolved focal level is used, wherever it sits in
+  the frame. Otherwise the second column is used, or the only column
+  when the frame has just one. Falling back to position after
+  `.focal_level` or `.reference_level` was supplied warns and reports
+  the column used, since the named level could not be matched to a
+  column; the fallback is silent when no level was named and when the
+  frame has a single column.
+
+  Ignored for categorical exposures, where all columns are used.
 
 ## Value
 
@@ -324,6 +359,9 @@ A [`psw`](https://r-causal.github.io/propensity/reference/psw.md) vector
 - `estimand`: character, e.g. `"ate"`, `"att"`, `"uncensored"`.
 
 - `stabilized`: logical, whether stabilization was applied.
+
+- `stabilization_score`: double, the user-supplied stabilization score
+  (one value, or one per observation), or `NULL` if none was supplied.
 
 - `trimmed`: logical, whether the propensity scores were trimmed.
 
@@ -472,8 +510,13 @@ Medicine*, 34(28), 3661–3679.
   [`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
   for modifying propensity scores before weighting.
 
-- [`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md) for
-  inverse-probability-weighted estimation of causal effects.
+- [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  for inverse-probability-weighted estimation of causal effects.
+
+- [`ps_tilt()`](https://r-causal.github.io/propensity/reference/ps_tilt.md)
+  for the tilting function each weight divides by the propensity score
+  of the received exposure level, which also standardizes a
+  g-computation estimate to the same target population.
 
 ## Examples
 
@@ -485,7 +528,6 @@ trt <- rbinom(100, 1, ps)
 
 wt_ate(ps, trt)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = ate}[100]>
 #>   [1] 1.492675 1.368655 1.745754 5.165661 1.173194 7.328950 2.094172 1.228599
 #>   [9] 1.847923 1.870179 7.433103 1.861044 1.557495 2.262990 1.223002 1.219720
@@ -502,7 +544,6 @@ wt_ate(ps, trt)
 #>  [97] 1.377723 1.211939 1.899058 2.037508
 wt_att(ps, trt)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = att}[100]>
 #>   [1] 0.4926755 1.0000000 0.7457538 4.1656608 1.0000000 1.0000000 1.0941724
 #>   [8] 1.0000000 1.0000000 0.8701789 6.4331026 0.8610445 1.0000000 1.2629898
@@ -521,7 +562,6 @@ wt_att(ps, trt)
 #>  [99] 0.8990583 1.0375079
 wt_atu(ps, trt)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = atu}[100]>
 #>   [1] 1.0000000 0.3686554 1.0000000 1.0000000 0.1731942 6.3289497 1.0000000
 #>   [8] 0.2285990 0.8479233 1.0000000 1.0000000 1.0000000 0.5574953 1.0000000
@@ -540,7 +580,6 @@ wt_atu(ps, trt)
 #>  [99] 1.0000000 1.0000000
 wt_atm(ps, trt)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = atm}[100]>
 #>   [1] 0.4926755 0.3686554 0.7457538 1.0000000 0.1731942 1.0000000 1.0000000
 #>   [8] 0.2285990 0.8479233 0.8701789 1.0000000 0.8610445 0.5574953 1.0000000
@@ -559,7 +598,6 @@ wt_atm(ps, trt)
 #>  [99] 0.8990583 1.0000000
 wt_ato(ps, trt)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = ato}[100]>
 #>   [1] 0.3300620 0.2693559 0.4271815 0.8064139 0.1476262 0.8635548 0.5224844
 #>   [8] 0.1860648 0.4588520 0.4652918 0.8654667 0.4626673 0.3579435 0.5581067
@@ -578,7 +616,6 @@ wt_ato(ps, trt)
 #>  [99] 0.4734232 0.5092044
 wt_entropy(ps, trt)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = entropy}[100]>
 #>   [1] 0.9466884 0.7974021 1.1914845 2.5383087 0.4910630 2.9202760 1.4494516
 #>   [8] 0.5903003 1.2746181 1.2917997 2.9354392 1.2847853 1.0158386 1.5532690
@@ -599,7 +636,6 @@ wt_entropy(ps, trt)
 # Stabilized ATE weights (reduces variance)
 wt_ate(ps, trt, stabilize = TRUE)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = ate; stabilized}[100]>
 #>   [1] 0.7612645 0.6706411 0.8903344 2.6344870 0.5748651 3.5911853 1.0680279
 #>   [8] 0.6020135 0.9054824 0.9537912 3.7908823 0.9491327 0.7631727 1.1541248
@@ -620,7 +656,6 @@ wt_ate(ps, trt, stabilize = TRUE)
 # Inspect the result
 w <- wt_ate(ps, trt)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 estimand(w)
 #> [1] "ate"
 summary(w)
@@ -648,7 +683,6 @@ ps_model <- glm(trt2 ~ x1 + x2, family = binomial)
 wt_ate(ps_model)
 #> ℹ Using exposure variable "trt2" from GLM model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = ate}[100]>
 #>   [1] 1.772299 2.816364 1.919886 2.059945 1.590514 2.019637 1.592626 3.675866
 #>   [9] 1.731064 1.526937 2.194737 1.585679 1.604308 2.035997 1.836701 3.038426
@@ -686,7 +720,6 @@ cens_ps <- runif(50, 0.6, 0.95)
 cens_ind <- rbinom(50, 1, cens_ps)
 wt_cens(cens_ps, cens_ind)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = uncensored}[50]>
 #>  [1] 1.116412 1.447081 1.644465 1.108844 1.394494 1.217840 1.263824 3.727943
 #>  [9] 1.503634 1.333104 1.218367 1.278290 1.203561 1.169213 1.298047 1.361360
@@ -697,6 +730,5 @@ wt_cens(cens_ps, cens_ind)
 #> [49] 1.185878 1.072937
 estimand(wt_cens(cens_ps, cens_ind))  # "uncensored"
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> [1] "uncensored"
 ```

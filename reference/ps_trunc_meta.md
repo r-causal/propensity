@@ -28,6 +28,12 @@ A named list with truncation metadata, including:
 
 - `truncated_idx` – integer positions of values that were winsorized
 
+- `n_obs` – the number of observations those positions describe
+
+`truncated_idx` and `n_obs` are absent when an operation that changed
+the number of observations dropped the record; see
+[`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md).
+
 ## See also
 
 [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md),
@@ -51,5 +57,8 @@ ps_trunc_meta(ps_t)
 #> 
 #> $truncated_idx
 #> [1] 1 5
+#> 
+#> $n_obs
+#> [1] 5
 #> 
 ```

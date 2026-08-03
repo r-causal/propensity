@@ -62,14 +62,19 @@ ps_calibrate(
 - .focal_level:
 
   The value of `.exposure` representing the focal group (typically the
-  treated group). If `NULL` (default), coding is determined
-  automatically.
+  treated group). Every binary coding honors it: 0/1 numeric, logical,
+  two-level factor, and two-level character exposures are all coded with
+  the named level as focal. With no level named, the exposure defaults
+  to its higher level, which is `1` for a 0/1 exposure and `TRUE` for a
+  logical one. Naming any other level reverses the coding, so `ps` must
+  then hold the probability of the named level.
 
 - .reference_level:
 
   The value of `.exposure` representing the reference group (typically
-  the control group). If `NULL` (default), coding is determined
-  automatically.
+  the control group). Naming it makes the exposure's other level focal,
+  with the same consequence for `ps`. Automatically detected if not
+  supplied.
 
 - .treated:
 
@@ -144,7 +149,6 @@ exposure <- rbinom(200, 1, ps)
 
 # Logistic calibration without smoothing (simple Platt scaling)
 cal <- ps_calibrate(ps, exposure, smooth = FALSE)
-#> ℹ Setting focal level to 1
 cal
 #> <ps_calib[200]; method=logistic>
 #>  [1] 0.8768754 0.8875980 0.2784575 0.8280651 0.6675032 0.5319951 0.7570779
@@ -154,7 +158,6 @@ cal
 # Use calibrated scores to calculate weights
 wt_ate(cal, exposure)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = ate; calibrated}[200]>
 #>   [1]  1.140413  1.126636  3.591212  1.207634  1.498120  1.879717  4.116546
 #>   [8]  1.191179  1.464118  1.371375  1.855251  1.347954  1.128055  1.334694
@@ -188,11 +191,9 @@ wt_ate(cal, exposure)
 
 # Isotonic regression calibration
 cal_iso <- ps_calibrate(ps, exposure, method = "isoreg")
-#> ℹ Setting focal level to 1
 
 if (rlang::is_installed("mgcv")) {
   # Logistic calibration with spline smoothing (default)
   cal_smooth <- ps_calibrate(ps, exposure)
 }
-#> ℹ Setting focal level to 1
 ```

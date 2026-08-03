@@ -20,6 +20,7 @@ new_psw(
   trimmed = FALSE,
   truncated = FALSE,
   calibrated = FALSE,
+  stabilization_score = NULL,
   ...
 )
 
@@ -29,20 +30,17 @@ psw(
   stabilized = FALSE,
   trimmed = FALSE,
   truncated = FALSE,
-  calibrated = FALSE
+  calibrated = FALSE,
+  stabilization_score = NULL
 )
 
 is_psw(x)
 
 is_stabilized(wt)
 
-is_causal_wt(x)
+stabilization_score(wt)
 
 as_psw(x, estimand = NULL)
-
-estimand(wt)
-
-estimand(wt) <- value
 ```
 
 ## Arguments
@@ -50,8 +48,8 @@ estimand(wt) <- value
 - x:
 
   For `psw()` and `new_psw()`: a numeric vector of weights (default:
-  [`double()`](https://rdrr.io/r/base/double.html)). For `is_psw()`,
-  `is_causal_wt()`, and `as_psw()`: an object to test or coerce.
+  [`double()`](https://rdrr.io/r/base/double.html)). For `is_psw()` and
+  `as_psw()`: an object to test or coerce.
 
 - estimand:
 
@@ -77,6 +75,13 @@ estimand(wt) <- value
   Logical. Were the weights derived from calibrated propensity scores?
   Defaults to `FALSE`.
 
+- stabilization_score:
+
+  Optional numeric stabilization score to record on the object, either a
+  single value or one value per observation. Every value must be
+  positive and finite. Defaults to `NULL`, meaning no fixed score was
+  supplied.
+
 - ...:
 
   Additional attributes stored on the object (developer use only).
@@ -85,20 +90,14 @@ estimand(wt) <- value
 
   A `psw` or `causal_wts` object.
 
-- value:
-
-  A character string: the new estimand to assign.
-
 ## Value
 
 - `new_psw()`, `psw()`, `as_psw()`: A `psw` vector.
 
-- `is_psw()`, `is_causal_wt()`, `is_stabilized()`: A single logical
-  value.
+- `is_psw()`, `is_stabilized()`: A single logical value.
 
-- `estimand()`: A character string, or `NULL` if no estimand is set.
-
-- `estimand<-`: The modified `psw` object (called for its side effect).
+- `stabilization_score()`: A numeric value or vector, or `NULL` if none
+  was recorded or a per-observation score was dropped.
 
 ## Details
 
@@ -117,27 +116,121 @@ estimand(wt) <- value
 
 - `is_psw()` tests whether an object is a `psw` vector.
 
-- `is_causal_wt()` tests whether an object inherits from the broader
-  `causal_wts` class (which includes `psw` objects).
-
-- `estimand()` and `estimand<-` get and set the estimand attribute.
-
 - `is_stabilized()` returns `TRUE` if the weights are stabilized.
+
+- `stabilization_score()` returns the user-supplied stabilization score,
+  or `NULL` when none was recorded or when a per-observation score was
+  dropped because an operation changed the length of the weights.
+
+### The stabilization score
+
+A `stabilization_score` is the multiplier the weights were stabilized
+on. It holds either a single value, which scales every weight, or one
+value per observation, which scales each weight by its own. Both forms
+are checked where the score is recorded: a score must be numeric,
+positive, and finite, and hold a length the weights can use, and one
+that does not is refused with an error of class
+`propensity_stabilization_score_error`. A score is recorded as a plain
+double vector, with its storage type normalized and any names dropped,
+so a score written `1L` and one written `1` are the same score and
+combine without conflict.
+
+A zero-length `psw` is a prototype: it records what a result built from
+it will carry rather than describing observations of its own, so a
+per-observation score on one is recorded as given and checked for length
+when the observations arrive. A cast whose data arrives at a length the
+score does not match drops the score rather than refusing the cast,
+since the score describes the prototype's observations and says nothing
+about the data being cast. A cast to no observations keeps it, having
+brought no observations for it to contradict.
+
+`psw` objects also inherit the broader `causal_wts` class. The accessors
+that class carries,
+[`causalgenerics::is_causal_wt()`](https://r-causal.github.io/causalgenerics/reference/causal-weights.html),
+[`causalgenerics::estimand()`](https://r-causal.github.io/causalgenerics/reference/causal-weights.html),
+and `estimand<-`, are re-exported by propensity and documented at
+[`causalgenerics::estimand()`](https://r-causal.github.io/causalgenerics/reference/causal-weights.html).
 
 ### Arithmetic and combining
 
 Arithmetic operations on `psw` objects preserve the class and
 attributes, so operations like normalization (`weights / sum(weights)`)
-retain metadata. Combining `psw` objects with
-[`c()`](https://rdrr.io/r/base/c.html) preserves the class only when all
-metadata matches; mismatched metadata produces a warning and falls back
-to a plain numeric vector.
+retain metadata.
+
+An operation between two `psw` objects merges what each of them records.
+Two different estimands are pasted together, and an estimand only one
+operand names stands for the result; the result is stabilized only when
+both operands are, and it is marked as trimmed, truncated, or calibrated
+when either operand is. The remaining attributes, the
+`stabilization_score`, the records left by a modified propensity score,
+and the attributes describing a categorical exposure, are carried by
+agreement: one only a single operand records carries, and one both
+record with the same value carries. One they record differently is
+dropped, since neither value describes the result, and a warning of
+class `propensity_metadata_conflict_warning` names it, once for each
+attribute dropped that way and whatever order the inputs were given in.
+The rule is applied per operation, so an attribute one operation drops
+for a disagreement can be carried again by a later operation whose
+operands agree.
+
+A `stabilization_score` is carried only when the result is stabilized,
+which takes both operands. A result that is not stabilized drops the
+score without comment.
+
+Combining `psw` objects with [`c()`](https://rdrr.io/r/base/c.html)
+preserves the class only when all metadata matches; mismatched metadata
+produces a warning and falls back to a plain numeric vector.
+Concatenation appends one set of observations to another, so the
+positions a modification record names would describe units from the
+other input; those records are dropped from the result whether or not
+the inputs agree on them. The categorical attributes name exposure
+levels rather than positions and carry when the inputs agree.
 
 Subsetting with `[` preserves class and attributes for vector
-subscripts. Matrix or array subscripts intentionally drop the `psw`
-class and return a plain numeric vector via base R linear indexing; this
-is required so [`glm.fit()`](https://rdrr.io/r/stats/glm.html)-style
-internal indexing works on `psw`-weighted GLMs. Summary functions
+subscripts. Two kinds of attribute hold one value per observation and so
+cannot be re-indexed for a subset: a `stabilization_score` with more
+than one value, and the records left by a modified propensity score
+(`ps_trim_meta`, `ps_trunc_meta`, and `ps_calib_meta`). Where an
+operation goes through vctrs, these are carried when the result comes
+back at the length they were recorded on and dropped when it does not.
+Any same-length operation keeps them, a reordering or a subscript with
+duplicates included, so the positions a record names can end up
+describing different observations than they did.
+
+Dropping the `stabilization_score` warns, because the score was supplied
+by the user and the weights can be recomputed on the subset. Dropping a
+modification record is silent, because these records also travel by
+routes vctrs does not see, and a warning on the one route it controls
+would be neither complete nor about anything the user wrote.
+Subassignment that grows the vector carries a record across the length
+change, since `[<-` casts the replacement and then leaves base R to
+preserve the attributes; and
+[`model.frame()`](https://rdrr.io/r/stats/model.frame.html) drops the
+`NA`-weighted rows from a weights column in C and re-attaches the
+original variable's attributes to the shortened result, so weights built
+on trimmed propensity scores come back out of every outcome model fit on
+them still carrying a record written for rows that are no longer there.
+
+Honesty therefore lives at query time.
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
+answers by position, so it checks that the record covers the vector it
+is given and raises an error of class `propensity_missing_meta_error`
+when it does not, or when weights marked as trimmed carry no record at
+all, rather than name trimmed units at stale positions.
+[`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md)
+reads a single flag rather than a position, so it answers from any
+record present and refuses only when the record is absent entirely.
+
+The result of any of these operations stays a `psw` and keeps every
+other attribute, including its stabilized, trimmed, truncated, and
+calibrated status, and the attributes describing a categorical exposure,
+which name the exposure levels rather than the units and so mean the
+same thing at any length.
+
+Matrix or array subscripts intentionally drop the `psw` class and return
+a plain numeric vector via base R linear indexing; this is required so
+[`glm.fit()`](https://rdrr.io/r/stats/glm.html)-style internal indexing
+works on `psw`-weighted GLMs. Summary functions
 ([`sum()`](https://rdrr.io/r/base/sum.html),
 [`mean()`](https://rdrr.io/r/base/mean.html), etc.) return plain numeric
 values.

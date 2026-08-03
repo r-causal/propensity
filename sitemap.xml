@@ -8,7 +8,7 @@
 <url><loc>https://r-causal.github.io/propensity/index.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/news/index.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/index.html</loc></url>
-<url><loc>https://r-causal.github.io/propensity/reference/ipw.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/ipw-methods.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/is_ps_calibrated.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/is_ps_trimmed.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/is_ps_truncated.html</loc></url>
@@ -18,11 +18,13 @@
 <url><loc>https://r-causal.github.io/propensity/reference/propensity-package.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_calibrate.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_refit.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/ps_tilt.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_trim.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_trim_meta.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_trunc.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_trunc_meta.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/psw.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/reexports.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/wt_ate.html</loc></url>
 </urlset>
 

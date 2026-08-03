@@ -86,17 +86,19 @@ ps_trim(
 
 - .focal_level:
 
-  The value of `.exposure` representing the focal (treated) group. For
-  binary exposures, defaults to the higher value. Required for
-  [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-  and
-  [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-  with categorical exposures.
+  The value of `.exposure` representing the focal (treated) group, used
+  by `"pref"` and `"cr"`. Every binary coding honors it: 0/1 numeric,
+  logical, two-level factor, and two-level character exposures are all
+  coded with the named level as focal. With no level named, a binary
+  exposure defaults to its higher level, which is `1` for a 0/1 exposure
+  and `TRUE` for a logical one. Naming any other level reverses the
+  coding, so `ps` must then hold the probability of the named level.
 
 - .reference_level:
 
   The value of `.exposure` representing the reference (control) group.
-  Automatically detected if not supplied.
+  Naming it makes the exposure's other level focal, with the same
+  consequence for `ps`. Automatically detected if not supplied.
 
 - ...:
 
@@ -124,6 +126,8 @@ Key fields include:
 - `keep_idx`: integer indices of retained observations
 
 - `trimmed_idx`: integer indices of trimmed (NA) observations
+
+- `n_obs`: the number of observations those indices describe
 
 - Method-specific fields such as `cutoff` (adaptive),
   `q_lower`/`q_upper` (pctl), `cr_lower`/`cr_upper` (cr), `delta`
@@ -188,6 +192,59 @@ Use
 [`ps_trim_meta()`](https://r-causal.github.io/propensity/reference/ps_trim_meta.md)
 to inspect the trimming metadata, including the method, cutoffs, and
 which observations were retained or trimmed.
+
+### The trimming record
+
+A `ps_trim` records which units were trimmed as positions among the
+observations it was written for, along with how many observations that
+was. Operations that hand this package the subscript re-index those
+positions onto the result: subsetting with `[`,
+[`sort()`](https://rdrr.io/r/base/sort.html),
+[`unique()`](https://rdrr.io/r/base/unique.html),
+[`rep()`](https://rdrr.io/r/base/rep.html), and
+[`na.omit()`](https://rdrr.io/r/stats/na.fail.html) all return a record
+written for what they return, and a subscript naming a position more
+than once reports that unit at every place it now holds.
+
+Operations that change how many observations there are without supplying
+a subscript cannot re-index the record, and it is dropped rather than
+worked out from the values, since reading membership back from the `NA`
+pattern would report a propensity score that arrived missing as one this
+package removed.
+[`vctrs::vec_slice()`](https://vctrs.r-lib.org/reference/vec_slice.html),
+which is how filtering, joining, and grouped summaries in dplyr reach a
+column, is the usual route, and dropping the record there raises a
+warning of class `propensity_trim_record_warning`. Combining with
+[`c()`](https://rdrr.io/r/base/c.html) drops it without comment, because
+concatenation appends one set of observations to another and the
+prototype it builds the result from holds no positions to lose. The
+values, the class, and the method and its cutoffs are untouched either
+way.
+
+A record can also outlive the observations it describes, because it
+travels by routes vctrs does not see: growing a `ps_trim` by
+subassignment carries it across the length change.
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
+and
+[`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+therefore check that the record covers the object they are given and
+raise an error of class `propensity_missing_meta_error` when it does
+not, rather than name trimmed units at stale positions.
+
+That check compares how many observations the record was written for
+against how many the object holds, which a reordering does not change.
+An operation that reorders the observations through vctrs, rather than
+through `[`, therefore keeps a record written for the order they used to
+be in: `vctrs::vec_slice(x, 5:1)` and
+[`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html)
+both return the values in a new order under positions still naming the
+old one.
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
+answers from those positions and names the wrong units, and
+[`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
+refits on the wrong rows. Subsetting with `[` is handed the subscript
+and re-indexes, so reorder with `[`, or put the propensity scores in the
+order you want before trimming them.
 
 ## References
 
@@ -488,7 +545,6 @@ trimmed <- ps_trim(ps, method = "adaptive")
 refitted <- ps_refit(trimmed, fit)
 wt_ate(refitted, .exposure = z)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = ate; trimmed}[300]>
 #>   [1] 1.240579 2.058164 1.179439 1.179070 2.479678 2.130709 1.546037 1.552398
 #>   [9]       NA 2.593380 2.268587 1.386216 1.455212 1.200838 1.140328       NA

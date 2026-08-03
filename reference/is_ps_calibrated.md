@@ -35,7 +35,6 @@ is_ps_calibrated(ps)
 #> [1] FALSE
 
 calibrated <- ps_calibrate(ps, exposure, smooth = FALSE)
-#> ℹ Setting focal level to 1
 is_ps_calibrated(calibrated)
 #> [1] TRUE
 ```

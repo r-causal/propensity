@@ -7,8 +7,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>A Toolkit for Calculating and Working with Propensity Scores • propensity</title>
 <script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<link href="deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
+<script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="A Toolkit for Calculating and Working with Propensity Scores">
 <meta name="description" content="Calculates propensity score weights for multiple causal estimands across binary, continuous, and categorical exposures. Provides methods for handling extreme propensity scores through trimming, truncation, and calibration. Includes inverse probability weighted estimators that correctly account for propensity score estimation uncertainty.">
@@ -96,27 +96,27 @@
 <span></span>
 <span><span class="co"># Step 2: Calculate ATE weights and fit a weighted outcome model</span></span>
 <span><span class="va">wts</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
-<span><span class="va">outcome_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">z</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span>, weights <span class="op">=</span> <span class="va">wts</span><span class="op">)</span></span>
+<span><span class="va">outcome_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">z</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">quasibinomial</a></span><span class="op">(</span><span class="op">)</span>, weights <span class="op">=</span> <span class="va">wts</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Step 3: Estimate causal effects with correct standard errors</span></span>
-<span><span class="fu"><a href="reference/ipw.html">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_mod</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_mod</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Propensity Score Model:</span></span>
+<span><span class="co">#&gt; Weight Estimator:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = z ~ x1, family = binomial(), data = dat) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Outcome Model:</span></span>
-<span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
+<span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Estimates:</span></span>
-<span><span class="co">#&gt;         estimate std.err       z ci.lower ci.upper conf.level   p.value    </span></span>
-<span><span class="co">#&gt; rd       0.14230 0.07038 2.02194   0.0044  0.28025       0.95 0.0431831 *  </span></span>
-<span><span class="co">#&gt; log(rr)  0.28031 0.10770 2.60262   0.0692  0.49141       0.95 0.0092513 ** </span></span>
-<span><span class="co">#&gt; log(or)  0.57339 0.16200 3.53950   0.2559  0.89090       0.95 0.0004009 ***</span></span>
+<span><span class="co">#&gt;         estimate  std.err      z  ci.lower ci.upper conf.level p.value  </span></span>
+<span><span class="co">#&gt; rd      0.142304 0.070204 2.0270 0.0047068  0.27990       0.95 0.04266 *</span></span>
+<span><span class="co">#&gt; log(rr) 0.280314 0.142195 1.9713 0.0016172  0.55901       0.95 0.04869 *</span></span>
+<span><span class="co">#&gt; log(or) 0.573392 0.286710 1.9999 0.0114518  1.13533       0.95 0.04551 *</span></span>
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
-<p><code><a href="reference/ipw.html">ipw()</a></code> uses linearization to account for uncertainty in the estimated propensity scores when computing standard errors.</p>
+<p>By default, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> computes standard errors by M-estimation, stacking the propensity score and outcome estimating equations so the uncertainty of estimating the propensity scores is carried into the standard errors. Set <code>se_method = "linearization"</code> for the influence-function method (binary exposures with an exposure-only outcome model).</p>
 </div>
 <div class="section level2">
 <h2 id="estimands">Estimands<a class="anchor" aria-label="anchor" href="#estimands"></a>
@@ -231,7 +231,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer>

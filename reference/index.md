@@ -2,8 +2,9 @@
 
 ## All functions
 
-- [`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md)
-  [`as.data.frame(`*`<ipw>`*`)`](https://r-causal.github.io/propensity/reference/ipw.md)
+- [`ipw(`*`<multinom>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
+  [`ipw(`*`<lm>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
+  [`ipw(`*`<glm>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
   : Inverse Probability Weighted Estimation
 
 - [`is_ps_calibrated()`](https://r-causal.github.io/propensity/reference/is_ps_calibrated.md)
@@ -35,6 +36,9 @@
 - [`ps_refit()`](https://r-causal.github.io/propensity/reference/ps_refit.md)
   : Refit a Propensity Score Model on Retained Observations
 
+- [`ps_tilt()`](https://r-causal.github.io/propensity/reference/ps_tilt.md)
+  : Propensity score tilting functions
+
 - [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
   : Trim Propensity Scores
 
@@ -55,11 +59,9 @@
   [`psw()`](https://r-causal.github.io/propensity/reference/psw.md)
   [`is_psw()`](https://r-causal.github.io/propensity/reference/psw.md)
   [`is_stabilized()`](https://r-causal.github.io/propensity/reference/psw.md)
-  [`is_causal_wt()`](https://r-causal.github.io/propensity/reference/psw.md)
-  [`as_psw()`](https://r-causal.github.io/propensity/reference/psw.md)
-  [`estimand()`](https://r-causal.github.io/propensity/reference/psw.md)
-  [`` `estimand<-`() ``](https://r-causal.github.io/propensity/reference/psw.md)
-  : Propensity Score Weight Vectors
+  [`stabilization_score()`](https://r-causal.github.io/propensity/reference/psw.md)
+  [`as_psw()`](https://r-causal.github.io/propensity/reference/psw.md) :
+  Propensity Score Weight Vectors
 
 - [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)

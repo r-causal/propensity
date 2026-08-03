@@ -72,17 +72,19 @@ ps_trunc(
 
 - .focal_level:
 
-  The value of `.exposure` representing the focal (treated) group. For
-  binary exposures, defaults to the higher value. Required for
-  [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-  and
-  [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-  with categorical exposures.
+  The value of `.exposure` representing the focal (treated) group, used
+  by `"cr"`. Every binary coding honors it: 0/1 numeric, logical,
+  two-level factor, and two-level character exposures are all coded with
+  the named level as focal. With no level named, a binary exposure
+  defaults to its higher level, which is `1` for a 0/1 exposure and
+  `TRUE` for a logical one. Naming any other level reverses the coding,
+  so `ps` must then hold the probability of the named level.
 
 - .reference_level:
 
   The value of `.exposure` representing the reference (control) group.
-  Automatically detected if not supplied.
+  Naming it makes the exposure's other level focal, with the same
+  consequence for `ps`. Automatically detected if not supplied.
 
 - ...:
 
@@ -102,7 +104,8 @@ A `ps_trunc` object (a numeric vector for binary exposures, or a matrix
 for categorical exposures). Use
 [`ps_trunc_meta()`](https://r-causal.github.io/propensity/reference/ps_trunc_meta.md)
 to inspect metadata including `method`, `lower_bound`, `upper_bound`,
-and `truncated_idx` (positions of modified values).
+`truncated_idx` (positions of modified values), and `n_obs` (the number
+of observations those positions describe).
 
 ## Details
 
@@ -128,6 +131,53 @@ return plain numeric vectors. Once propensity scores are transformed
 [`c()`](https://rdrr.io/r/base/c.html) requires matching truncation
 parameters. Mismatched parameters produce a warning and return a plain
 numeric vector.
+
+### The truncation record
+
+A `ps_trunc` records which units were winsorized as positions among the
+observations it was written for, along with how many observations that
+was. Operations that hand this package the subscript re-index those
+positions onto the result: subsetting with `[`,
+[`sort()`](https://rdrr.io/r/base/sort.html),
+[`unique()`](https://rdrr.io/r/base/unique.html), and
+[`rep()`](https://rdrr.io/r/base/rep.html) all return a record written
+for what they return, and a subscript naming a position more than once
+reports that unit at every place it now holds.
+
+Operations that change how many observations there are without supplying
+a subscript cannot re-index the record, and it is dropped rather than
+worked out from the values, since a score that arrived equal to a bound
+is indistinguishable from one this function pinned there.
+[`vctrs::vec_slice()`](https://vctrs.r-lib.org/reference/vec_slice.html),
+which is how filtering, joining, and grouped summaries in dplyr reach a
+column, is the usual route, and dropping the record there raises a
+warning of class `propensity_trunc_record_warning`. Combining with
+[`c()`](https://rdrr.io/r/base/c.html) drops it without comment, because
+concatenation appends one set of observations to another and the
+prototype it builds the result from holds no positions to lose. The
+values, the class, and the method and its bounds are untouched either
+way.
+
+A record can also outlive the observations it describes, because it
+travels by routes vctrs does not see: growing a `ps_trunc` by
+subassignment carries it across the length change.
+[`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
+therefore checks that the record covers the object it is given and
+raises an error of class `propensity_missing_meta_error` when it does
+not, rather than name truncated units at stale positions.
+
+That check compares how many observations the record was written for
+against how many the object holds, which a reordering does not change.
+An operation that reorders the observations through vctrs, rather than
+through `[`, therefore keeps a record written for the order they used to
+be in: `vctrs::vec_slice(x, 5:1)` and
+[`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html)
+both return the values in a new order under positions still naming the
+old one, and
+[`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
+answers from those positions and names the wrong units. Subsetting with
+`[` is handed the subscript and re-indexes, so reorder with `[`, or put
+the propensity scores in the order you want before truncating them.
 
 ## References
 
@@ -279,7 +329,6 @@ ps_trunc(ps, method = "pctl", lower = 0.01, upper = 0.99)
 # Use truncated scores to calculate weights
 wt_ate(ps_t, .exposure = z)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 #> <psw{estimand = ate; truncated}[200]>
 #>   [1] 1.411053 2.329651 1.164068 1.319056 2.002780 2.256110 1.426305 1.838777
 #>   [9] 1.111111 2.068547 2.711819 1.316722 1.710458 1.352060 1.132865 1.111111

@@ -1,0 +1,151 @@
+# Propensity score tilting functions
+
+Every estimand this package supports targets a population whose
+covariate distribution is the study population reweighted by a tilting
+function \\h\\ of the propensity score. `ps_tilt()` evaluates \\h\\ at
+each observation's propensity score.
+
+The tilt is the numerator of every weight: a weight is \\h\\ divided by
+the propensity score of the exposure level the unit actually received.
+It is also what standardizes a g-computation estimate to a target
+population, which for `"atm"`, `"ato"`, and `"entropy"` is the only
+route to the estimand, since those populations are not subsets of the
+rows and cannot be reached by filtering.
+
+## Usage
+
+``` r
+ps_tilt(ps, estimand, ..., .focal_level = NULL)
+```
+
+## Arguments
+
+- ps:
+
+  Propensity scores. A numeric vector of \\P(Z = \text{focal} \mid X)\\
+  for a binary exposure, or a matrix or data frame with one column per
+  exposure level, named for that level, for a categorical exposure.
+
+- estimand:
+
+  One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or `"entropy"`.
+
+- ...:
+
+  These dots are for future extensions and must be empty.
+
+- .focal_level:
+
+  The exposure level the `"att"` and `"atu"` tilts target, matched
+  against the column names of `ps`. A column named for the level exactly
+  wins; failing that, a `.pred_` prefix is stripped, so `.pred_a`
+  matches the level `a`. Required for those two estimands with a
+  categorical `ps`, and accepted nowhere else: a numeric `ps` is already
+  the probability of the focal level, and the remaining tilts treat
+  every level alike.
+
+## Value
+
+A plain double vector, unnamed, with one element per observation: the
+length of `ps` for the numeric method, and the number of rows of `ps`
+for the matrix and data frame methods.
+
+## Tilting functions
+
+For a binary exposure with propensity score \\e = P(Z = \text{focal}
+\mid X)\\:
+
+|  |  |  |
+|----|----|----|
+| estimand | \\h(e)\\ | target population |
+| `"ate"` | \\1\\ | everyone |
+| `"att"` | \\e\\ | the focal group |
+| `"atu"` | \\1 - e\\ | the reference group |
+| `"atm"` | \\\min(e, 1 - e)\\ | the evenly matchable |
+| `"ato"` | \\e(1 - e)\\ | the overlap population |
+| `"entropy"` | \\-e \log(e) - (1 - e) \log(1 - e)\\ | the entropy-tilted population |
+
+For a categorical exposure with propensity score vector \\(e_1, \ldots,
+e_K)\\ and focal level \\f\\: `"ate"` is \\1\\, `"att"` is \\e_f\\,
+`"atu"` is \\1 - e_f\\, `"atm"` is \\\min_k e_k\\, `"ato"` is \\(\sum_k
+1 / e_k)^{-1}\\, and `"entropy"` is \\-\sum_k e_k \log(e_k)\\.
+
+Stabilization and censoring weights are not tilts. Stabilization
+multiplies a weight by a marginal quantity that does not depend on the
+covariates, and
+[`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+reuses the `"ate"` formula, so neither has an entry here.
+
+## Propensity score range
+
+A numeric `ps` must lie strictly inside \\(0, 1)\\, the same requirement
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+and the rest of the weight family impose before they tilt. A matrix or
+data frame `ps` may hold an exact zero or one, as the categorical weight
+path allows, provided each row sums to one. Only the entropy tilt needs
+the boundary resolved: \\0 \log 0\\ is the one indeterminate whose limit
+the arithmetic does not reach on its own, and a zero is treated as
+`.Machine$double.eps` so that it contributes nothing. The other tilts
+already return their limit there.
+
+A missing propensity score gives a missing tilt under every estimand,
+`"ate"` included, so an observation whose propensity score is unknown
+never counts toward a tilted mean. A numeric `ps` propagates `NA`
+position by position, and a matrix `ps` gives `NA` for any row holding
+one: a probability vector with a missing entry is not one this can tilt
+on, whichever level the tilt reads.
+
+## Modified propensity scores
+
+`ps_tilt()` takes plain propensity scores. A score modified by
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md),
+[`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md),
+or
+[`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
+carries a class of its own and has no method here; pass the scores
+underneath it, with `as.numeric(x)` for a binary exposure or
+`as.matrix(x)` for a categorical one. Units
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+set to `NA` stay `NA` through that extraction and take an `NA` tilt.
+
+## See also
+
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+and the rest of the weight family, which divide the tilt by the
+propensity score of the received exposure level.
+
+## Examples
+
+``` r
+set.seed(1)
+n <- 500
+x <- rnorm(n)
+z <- rbinom(n, 1, plogis(0.6 * x))
+y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + x))
+sim <- data.frame(x = x, z = z, y = y)
+ps <- unname(
+  predict(glm(z ~ x, data = sim, family = binomial()), type = "response")
+)
+
+# a weight is the tilt over the propensity of the received exposure level
+received <- z * ps + (1 - z) * (1 - ps)
+all.equal(
+  as.numeric(wt_ato(ps, z, exposure_type = "binary")),
+  ps_tilt(ps, "ato") / received
+)
+#> [1] TRUE
+
+# tilted g-computation: standardize counterfactual predictions to the
+# overlap population with an h-weighted mean, no weights in the outcome model
+fit <- glm(y ~ z * x, data = sim, family = binomial())
+m1 <- predict(fit, transform(sim, z = 1), type = "response")
+m0 <- predict(fit, transform(sim, z = 0), type = "response")
+
+h <- ps_tilt(ps, "ato")
+weighted.mean(m1, h) - weighted.mean(m0, h)
+#> [1] 0.1231355
+
+# the same predictions standardized to everyone give the ATE instead
+mean(m1) - mean(m0)
+#> [1] 0.1210093
+```

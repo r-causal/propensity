@@ -28,6 +28,10 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
 
   A `ps_trim` object returned by
   [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md).
+  Refitting reads the retained positions out of the trimming record, so
+  an object whose record was dropped or no longer covers it raises an
+  error of class `propensity_missing_meta_error`; see
+  [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md).
 
 - model:
 
@@ -80,7 +84,6 @@ trimmed <- ps_trim(ps, lower = 0.1, upper = 0.9)
 refit <- ps_refit(trimmed, ps_model)
 wts <- wt_ate(refit, .exposure = z)
 #> ℹ Treating `.exposure` as binary
-#> ℹ Setting focal level to 1
 
 is_refit(refit)
 #> [1] TRUE

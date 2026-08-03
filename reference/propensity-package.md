@@ -52,7 +52,7 @@ Handle extreme propensity scores before calculating weights:
 
 ## Estimation
 
-- [`ipw()`](https://r-causal.github.io/propensity/reference/ipw.md):
+- [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html):
   Inverse probability weighted estimator with variance estimation that
   accounts for propensity score estimation uncertainty
 
@@ -67,7 +67,7 @@ estimand and modifications applied:
   [`is_psw()`](https://r-causal.github.io/propensity/reference/psw.md):
   Create and test propensity score weights
 
-- [`estimand()`](https://r-causal.github.io/propensity/reference/psw.md):
+- [`estimand()`](https://r-causal.github.io/causalgenerics/reference/causal-weights.html):
   Query the causal estimand
 
 - [`is_stabilized()`](https://r-causal.github.io/propensity/reference/psw.md):
@@ -85,3 +85,8 @@ estimand and modifications applied:
 
 **Maintainer**: Malcolm Barrett <malcolmbarrett@gmail.com>
 ([ORCID](https://orcid.org/0000-0003-0299-5825)) \[copyright holder\]
+
+Authors:
+
+- Malcolm Barrett <malcolmbarrett@gmail.com>
+  ([ORCID](https://orcid.org/0000-0003-0299-5825)) \[copyright holder\]

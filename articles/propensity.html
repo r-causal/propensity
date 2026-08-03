@@ -7,8 +7,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>Getting Started with propensity • propensity</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<link href="../deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
+<script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Getting Started with propensity">
 </head>
@@ -61,7 +61,7 @@
     
 <p>This vignette walks through the core propensity score weighting
 workflow: fitting a propensity score model, calculating weights, and
-estimating causal effects with <code><a href="../reference/ipw.html">ipw()</a></code>. We’ll also cover what
+estimating causal effects with <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code>. We’ll also cover what
 to do when propensity scores are extreme.</p>
 <div class="section level2">
 <h2 id="setup">Setup<a class="anchor" aria-label="anchor" href="#setup"></a>
@@ -102,13 +102,12 @@ weights. It pulls out the fitted values and exposure for you:</p>
 <code class="sourceCode R"><span><span class="va">wts</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span>
 <span><span class="va">outcome_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">z</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span>, weights <span class="op">=</span> <span class="va">wts</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Warning in eval(family$initialize): non-integer #successes in a binomial glm!</span></span></code></pre></div>
 <p><code><a href="../reference/wt_ate.html">wt_ate()</a></code> returns a <code>psw</code> object, which is
 just a numeric vector with some extra metadata attached:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/psw.html">estimand</a></span><span class="op">(</span><span class="va">wts</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/causal-weights.html" class="external-link">estimand</a></span><span class="op">(</span><span class="va">wts</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "ate"</span></span>
 <span><span class="fu"><a href="../reference/psw.html">is_stabilized</a></span><span class="op">(</span><span class="va">wts</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] FALSE</span></span></code></pre></div>
@@ -118,7 +117,6 @@ that case you need to supply the exposure too:</p>
 <code class="sourceCode R"><span><span class="va">ps</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/fitted.values.html" class="external-link">fitted</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">dat</span><span class="op">$</span><span class="va">z</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span>
 <span><span class="co">#&gt; &lt;psw{estimand = ate}[100]&gt;</span></span>
 <span><span class="co">#&gt;   [1]  1.237569  1.962759  2.211732  1.312977  1.974772  1.918957  3.413991</span></span>
 <span><span class="co">#&gt;   [8]  1.844849  1.223426  2.048453  1.409967  1.189795  1.283684  2.580633</span></span>
@@ -139,27 +137,31 @@ that case you need to supply the exposure too:</p>
 <div class="section level3">
 <h3 id="step-3-estimate-causal-effects">Step 3: Estimate causal effects<a class="anchor" aria-label="anchor" href="#step-3-estimate-causal-effects"></a>
 </h3>
-<p><code><a href="../reference/ipw.html">ipw()</a></code> takes the propensity score model and the weighted
-outcome model and returns causal effect estimates. The standard errors
-use linearization to account for the fact that the propensity scores are
-estimated:</p>
+<p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> takes the propensity score model and the weighted
+outcome model and returns causal effect estimates. By default, the
+standard errors come from M-estimation: the propensity score and outcome
+models are stacked into a single system of estimating equations, so the
+uncertainty of estimating the propensity scores is carried into the
+standard errors rather than ignored. Set
+<code>se_method = "linearization"</code> to use the influence-function
+method instead:</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ipw.html">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_mod</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_mod</span><span class="op">)</span></span>
 <span><span class="va">result</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Propensity Score Model:</span></span>
+<span><span class="co">#&gt; Weight Estimator:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Outcome Model:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Estimates:</span></span>
-<span><span class="co">#&gt;         estimate  std.err        z ci.lower ci.upper conf.level   p.value    </span></span>
-<span><span class="co">#&gt; rd       0.32000  0.10411  3.07376   0.1160  0.52404       0.95  0.002114 ** </span></span>
-<span><span class="co">#&gt; log(rr)  0.69137  0.12490  5.53528   0.4466  0.93618       0.95 3.107e-08 ***</span></span>
-<span><span class="co">#&gt; log(or)  1.32884  0.12288 10.81398   1.0880  1.56969       0.95 &lt; 2.2e-16 ***</span></span>
+<span><span class="co">#&gt;         estimate std.err      z ci.lower ci.upper conf.level  p.value   </span></span>
+<span><span class="co">#&gt; rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **</span></span>
+<span><span class="co">#&gt; log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **</span></span>
+<span><span class="co">#&gt; log(or)  1.32884 0.46176 2.8778  0.42381  2.23387       0.95 0.004005 **</span></span>
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 </div>
@@ -218,15 +220,12 @@ on that below).</p>
 <code class="sourceCode R"><span><span class="va">wts_ate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span>
 <span><span class="va">wts_att</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_att</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span>
 <span><span class="va">wts_ato</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ato</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="handling-extreme-weights">Handling extreme weights<a class="anchor" aria-label="anchor" href="#handling-extreme-weights"></a>
@@ -250,13 +249,11 @@ where overlap is poor:</p>
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="../reference/wt_ate.html">wt_ato</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
 <span><span class="co">#&gt; 0.08451 0.30539 0.43830 0.43370 0.52629 0.92053</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="../reference/wt_ate.html">wt_atm</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
 <span><span class="co">#&gt; 0.09231 0.43965 0.78036 0.70946 1.00000 1.00000</span></span></code></pre></div>
 <p>The trade-off is that you’re now targeting a different
@@ -308,7 +305,10 @@ data-driven threshold:</p>
 <span><span class="co">#&gt;  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $trimmed_idx</span></span>
-<span><span class="co">#&gt; [1] 19 59</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 19 59</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; $n_obs</span></span>
+<span><span class="co">#&gt; [1] 100</span></span></code></pre></div>
 <p>Use <code>!is_unit_trimmed()</code> to subset your data down to the
 retained observations:</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
@@ -324,7 +324,6 @@ retained sample so the scores reflect the trimmed population:</p>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wts_trimmed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_refitted</span>, <span class="va">dat</span><span class="op">$</span><span class="va">z</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">wts_trimmed</span><span class="op">)</span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.     NAs </span></span>
 <span><span class="co">#&gt;   1.073   1.386   1.726   1.970   2.157   4.724       2</span></span></code></pre></div>
@@ -357,11 +356,13 @@ clipped:</p>
 <span><span class="co">#&gt; [1] 0.95</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $truncated_idx</span></span>
-<span><span class="co">#&gt; integer(0)</span></span></code></pre></div>
+<span><span class="co">#&gt; integer(0)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; $n_obs</span></span>
+<span><span class="co">#&gt; [1] 100</span></span></code></pre></div>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wts_truncated</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_truncated</span>, <span class="va">dat</span><span class="op">$</span><span class="va">z</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Setting focal level to <span style="color: #0000BB;">1</span></span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">wts_truncated</span><span class="op">)</span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
 <span><span class="co">#&gt;   1.092   1.440   1.780   2.028   2.111  12.583</span></span></code></pre></div>
@@ -383,74 +384,74 @@ sample.</p>
 <div class="section level3">
 <h3 id="binary-outcomes">Binary outcomes<a class="anchor" aria-label="anchor" href="#binary-outcomes"></a>
 </h3>
-<p>For binary outcomes, <code><a href="../reference/ipw.html">ipw()</a></code> returns three effect
+<p>For binary outcomes, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> returns three effect
 measures: the risk difference, log risk ratio, and log odds ratio:</p>
 <div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">result</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Propensity Score Model:</span></span>
+<span><span class="co">#&gt; Weight Estimator:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Outcome Model:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Estimates:</span></span>
-<span><span class="co">#&gt;         estimate  std.err        z ci.lower ci.upper conf.level   p.value    </span></span>
-<span><span class="co">#&gt; rd       0.32000  0.10411  3.07376   0.1160  0.52404       0.95  0.002114 ** </span></span>
-<span><span class="co">#&gt; log(rr)  0.69137  0.12490  5.53528   0.4466  0.93618       0.95 3.107e-08 ***</span></span>
-<span><span class="co">#&gt; log(or)  1.32884  0.12288 10.81398   1.0880  1.56969       0.95 &lt; 2.2e-16 ***</span></span>
+<span><span class="co">#&gt;         estimate std.err      z ci.lower ci.upper conf.level  p.value   </span></span>
+<span><span class="co">#&gt; rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **</span></span>
+<span><span class="co">#&gt; log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **</span></span>
+<span><span class="co">#&gt; log(or)  1.32884 0.46176 2.8778  0.42381  2.23387       0.95 0.004005 **</span></span>
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 <p><code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code> pulls the estimates into a data
 frame:</p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    effect  estimate   std.err         z  ci.lower  ci.upper conf.level</span></span>
-<span><span class="co">#&gt; 1      rd 0.3199973 0.1041062  3.073758 0.1159529 0.5240417       0.95</span></span>
-<span><span class="co">#&gt; 2 log(rr) 0.6913736 0.1249031  5.535278 0.4465679 0.9361792       0.95</span></span>
-<span><span class="co">#&gt; 3 log(or) 1.3288426 0.1228819 10.813984 1.0879986 1.5696867       0.95</span></span>
-<span><span class="co">#&gt;        p.value</span></span>
-<span><span class="co">#&gt; 1 2.113806e-03</span></span>
-<span><span class="co">#&gt; 2 3.107345e-08</span></span>
-<span><span class="co">#&gt; 3 0.000000e+00</span></span></code></pre></div>
+<span><span class="co">#&gt;    effect  estimate   std.err        z  ci.lower  ci.upper conf.level</span></span>
+<span><span class="co">#&gt; 1      rd 0.3199973 0.1035844 3.089243 0.1169757 0.5230189       0.95</span></span>
+<span><span class="co">#&gt; 2 log(rr) 0.6913736 0.2481136 2.786520 0.2050798 1.1776674       0.95</span></span>
+<span><span class="co">#&gt; 3 log(or) 1.3288426 0.4617580 2.877790 0.4238136 2.2338717       0.95</span></span>
+<span><span class="co">#&gt;       p.value</span></span>
+<span><span class="co">#&gt; 1 0.002006669</span></span>
+<span><span class="co">#&gt; 2 0.005327738</span></span>
+<span><span class="co">#&gt; 3 0.004004714</span></span></code></pre></div>
 <p>Use <code>exponentiate = TRUE</code> to get risk ratios and odds
 ratios on their natural scale. The standard errors, z-statistics, and
 p-values stay on the log scale:</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span>, exponentiate <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   effect  estimate   std.err         z  ci.lower  ci.upper conf.level</span></span>
-<span><span class="co">#&gt; 1     rd 0.3199973 0.1041062  3.073758 0.1159529 0.5240417       0.95</span></span>
-<span><span class="co">#&gt; 2     rr 1.9964559 0.1249031  5.535278 1.5629389 2.5502189       0.95</span></span>
-<span><span class="co">#&gt; 3     or 3.7766698 0.1228819 10.813984 2.9683272 4.8051424       0.95</span></span>
-<span><span class="co">#&gt;        p.value</span></span>
-<span><span class="co">#&gt; 1 2.113806e-03</span></span>
-<span><span class="co">#&gt; 2 3.107345e-08</span></span>
-<span><span class="co">#&gt; 3 0.000000e+00</span></span></code></pre></div>
+<span><span class="co">#&gt;   effect  estimate   std.err        z  ci.lower  ci.upper conf.level</span></span>
+<span><span class="co">#&gt; 1     rd 0.3199973 0.1035844 3.089243 0.1169757 0.5230189       0.95</span></span>
+<span><span class="co">#&gt; 2     rr 1.9964559 0.2481136 2.786520 1.2276230 3.2467918       0.95</span></span>
+<span><span class="co">#&gt; 3     or 3.7766699 0.4617580 2.877790 1.5277768 9.3359421       0.95</span></span>
+<span><span class="co">#&gt;       p.value</span></span>
+<span><span class="co">#&gt; 1 0.002006669</span></span>
+<span><span class="co">#&gt; 2 0.005327738</span></span>
+<span><span class="co">#&gt; 3 0.004004714</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="continuous-outcomes">Continuous outcomes<a class="anchor" aria-label="anchor" href="#continuous-outcomes"></a>
 </h3>
-<p>For continuous outcomes, <code><a href="../reference/ipw.html">ipw()</a></code> returns the mean
+<p>For continuous outcomes, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> returns the mean
 difference. Use <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code> for the outcome model:</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">y_cont</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">+</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="va">z</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">+</span> <span class="fl">0.2</span> <span class="op">*</span> <span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
 <span><span class="va">dat</span><span class="op">$</span><span class="va">y_cont</span> <span class="op">&lt;-</span> <span class="va">y_cont</span></span>
 <span><span class="va">outcome_cont</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y_cont</span> <span class="op">~</span> <span class="va">z</span>, data <span class="op">=</span> <span class="va">dat</span>, weights <span class="op">=</span> <span class="va">wts</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/ipw.html">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_cont</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_cont</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Propensity Score Model:</span></span>
+<span><span class="co">#&gt; Weight Estimator:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Outcome Model:</span></span>
 <span><span class="co">#&gt;   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Estimates:</span></span>
-<span><span class="co">#&gt;      estimate std.err       z ci.lower ci.upper conf.level   p.value    </span></span>
-<span><span class="co">#&gt; diff  0.92737 0.20498 4.52416   0.5256   1.3291       0.95 6.064e-06 ***</span></span>
+<span><span class="co">#&gt;      estimate std.err     z ci.lower ci.upper conf.level   p.value    </span></span>
+<span><span class="co">#&gt; diff  0.92737 0.20395 4.547  0.52763   1.3271       0.95 5.443e-06 ***</span></span>
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 </div>
@@ -509,7 +510,7 @@ weights for survival or longitudinal analyses:</p>
 <span><span class="va">wts_cens</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_cens</a></span><span class="op">(</span><span class="va">cens_mod</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Censoring weights use the same formula as ATE weights</span></span>
-<span><span class="fu"><a href="../reference/psw.html">estimand</a></span><span class="op">(</span><span class="va">wts_cens</span><span class="op">)</span> <span class="co"># "uncensored"</span></span></code></pre></div>
+<span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/causal-weights.html" class="external-link">estimand</a></span><span class="op">(</span><span class="va">wts_cens</span><span class="op">)</span> <span class="co"># "uncensored"</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="learning-more">Learning more<a class="anchor" aria-label="anchor" href="#learning-more"></a>
@@ -522,7 +523,7 @@ weights for survival or longitudinal analyses:</p>
 <code><a href="../reference/ps_trim.html">?ps_trim</a></code>, <code><a href="../reference/ps_trunc.html">?ps_trunc</a></code>,
 <code><a href="../reference/ps_calibrate.html">?ps_calibrate</a></code> – Handling extreme propensity scores</li>
 <li>
-<code><a href="../reference/ipw.html">?ipw</a></code> – Inverse probability weighted estimation</li>
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">?ipw</a></code> – Inverse probability weighted estimation</li>
 </ul>
 </div>
 </div>
@@ -537,7 +538,7 @@ weights for survival or longitudinal analyses:</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer>
