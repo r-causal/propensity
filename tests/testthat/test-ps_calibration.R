@@ -1049,8 +1049,6 @@ calib_isoreg_boundary_fixture <- function() {
 # Regression guard: this fit holds today and has to survive any change to the
 # isotonic route.
 test_that("isotonic calibration fits pooled block means on interior scores", {
-  testthat::skip("awaiting implementation")
-
   expect_equal(
     as.numeric(calib_isoreg_interior_fixture()),
     c(
@@ -1070,8 +1068,6 @@ test_that("isotonic calibration fits pooled block means on interior scores", {
 # Regression guard: the same fit read at the ends of the interval, where a
 # change to the isotonic route would show up first.
 test_that("isotonic calibration fits pooled block means on boundary scores", {
-  testthat::skip("awaiting implementation")
-
   calibrated <- calib_isoreg_boundary_fixture()
 
   expect_equal(
@@ -1130,8 +1126,7 @@ calib_few_unique_fixture <- function() {
 }
 
 test_that("ps_calibrate announces falling back from a spline", {
-  testthat::skip("awaiting implementation")
-
+  skip_if_not_installed("mgcv")
   withr::local_options(propensity.quiet = FALSE)
   fixture <- calib_few_unique_fixture()
 
@@ -1146,8 +1141,7 @@ test_that("ps_calibrate announces falling back from a spline", {
 })
 
 test_that("the fallback message is recorded", {
-  testthat::skip("awaiting implementation")
-
+  skip_if_not_installed("mgcv")
   withr::local_options(propensity.quiet = FALSE)
   fixture <- calib_few_unique_fixture()
 
@@ -1157,8 +1151,7 @@ test_that("the fallback message is recorded", {
 })
 
 test_that("the fallback is silent when informational output is turned off", {
-  testthat::skip("awaiting implementation")
-
+  skip_if_not_installed("mgcv")
   # `alert_info()` respects `propensity.quiet`, which the suite sets, so the
   # announcement must not reach a caller who has asked for quiet.
   withr::local_options(propensity.quiet = TRUE)
@@ -1172,8 +1165,7 @@ test_that("the fallback is silent when informational output is turned off", {
 # Regression guard: the fallback fits the model it says it fits, which holds
 # today and is what the announcement will describe.
 test_that("the fallback fits the logistic model it records", {
-  testthat::skip("awaiting implementation")
-
+  skip_if_not_installed("mgcv")
   fixture <- calib_few_unique_fixture()
   calibrated <- ps_calibrate(fixture$ps, fixture$exposure, smooth = TRUE)
   straight_line <- glm(
@@ -1193,8 +1185,6 @@ test_that("the fallback fits the logistic model it records", {
 # Regression guard: with enough distinct scores the spline is fit, so there is
 # no fallback to announce.
 test_that("a spline fit with enough distinct scores announces nothing", {
-  testthat::skip("awaiting implementation")
-
   skip_if_not_installed("mgcv")
   withr::local_options(propensity.quiet = FALSE)
   ps <- seq(0.1, 0.9, length.out = 20)
@@ -1208,9 +1198,12 @@ test_that("a spline fit with enough distinct scores announces nothing", {
 
 # Trimming and weighting need scores strictly inside the unit interval, because
 # a zero or a one divides into a weight nothing can use. Calibration is the one
-# route that accepts them: repairing scores a model pushed to the ends is part
-# of what it is for, and the fit maps every score it reads, endpoints included,
-# back inside the interval.
+# route that accepts them, since repairing scores a model pushed to the ends is
+# part of what it is for. The logistic calibration curve maps them back inside
+# the interval, which is what the fixture below is calibrated by. Isotonic
+# calibration can return a score at an endpoint when its pooled block is pure,
+# as the boundary characterization above records, and such scores are rejected
+# by the weight functions.
 
 calib_boundary_policy_fixture <- function() {
   list(
@@ -1244,8 +1237,6 @@ calib_boundary_policy_fixture <- function() {
 
 # Regression guard: the inclusive range is deliberate and has to keep holding.
 test_that("calibration accepts scores at the ends of the unit interval", {
-  testthat::skip("awaiting implementation")
-
   fixture <- calib_boundary_policy_fixture()
   calibrated <- ps_calibrate(fixture$ps, fixture$exposure, smooth = FALSE)
 
@@ -1258,8 +1249,6 @@ test_that("calibration accepts scores at the ends of the unit interval", {
 # Regression guard, and the contrast that makes the one above a choice rather
 # than an oversight: every other route still refuses the endpoints.
 test_that("trimming and weighting still refuse scores at the ends of the unit interval", {
-  testthat::skip("awaiting implementation")
-
   fixture <- calib_boundary_policy_fixture()
 
   expect_error(
@@ -1288,8 +1277,6 @@ calib_na_exposure_fixture <- function() {
 }
 
 test_that("calibration predicts over every row when the exposure has gaps", {
-  testthat::skip("awaiting implementation")
-
   fixture <- calib_na_exposure_fixture()
   calibrated <- ps_calibrate(fixture$ps, fixture$exposure, smooth = FALSE)
 
@@ -1313,8 +1300,6 @@ test_that("calibration predicts over every row when the exposure has gaps", {
 # Regression guard: the spline route already predicts over every row, which is
 # the behavior the straight-line route above owes.
 test_that("a spline calibration predicts over every row when the exposure has gaps", {
-  testthat::skip("awaiting implementation")
-
   skip_if_not_installed("mgcv")
   ps <- seq(0.1, 0.9, length.out = 20)
   exposure <- rep(c(0, 1), 10)
@@ -1330,8 +1315,6 @@ test_that("a spline calibration predicts over every row when the exposure has ga
 # the fit for the exposure group it belongs to, and a unit with no exposure
 # belongs to neither, so it has no calibrated score to take.
 test_that("isotonic calibration leaves a unit with no exposure uncalibrated", {
-  testthat::skip("awaiting implementation")
-
   fixture <- calib_na_exposure_fixture()
   calibrated <- as.numeric(
     ps_calibrate(fixture$ps, fixture$exposure, method = "isoreg")
@@ -1353,8 +1336,6 @@ test_that("isotonic calibration leaves a unit with no exposure uncalibrated", {
 # the answer a matrix deserves too.
 
 test_that("ps_calibrate refuses a matrix of propensity scores", {
-  testthat::skip("awaiting implementation")
-
   exposure <- c(0, 1, 0, 1)
   one_column <- matrix(c(0.2, 0.4, 0.6, 0.8), ncol = 1)
   two_columns <- cbind(c(0.2, 0.4, 0.6, 0.8), c(0.8, 0.6, 0.4, 0.2))
@@ -1370,8 +1351,6 @@ test_that("ps_calibrate refuses a matrix of propensity scores", {
 })
 
 test_that("ps_calibrate reports a matrix of propensity scores informatively", {
-  testthat::skip("awaiting implementation")
-
   expect_propensity_error(
     ps_calibrate(
       cbind(c(0.2, 0.4, 0.6, 0.8), c(0.8, 0.6, 0.4, 0.2)),
@@ -1384,8 +1363,6 @@ test_that("ps_calibrate reports a matrix of propensity scores informatively", {
 # Regression guard: a data frame of scores is already refused under the class
 # a matrix is pinned to above.
 test_that("ps_calibrate refuses a data frame of propensity scores", {
-  testthat::skip("awaiting implementation")
-
   expect_error(
     ps_calibrate(
       data.frame(a = c(0.2, 0.4, 0.6, 0.8), b = c(0.8, 0.6, 0.4, 0.2)),
@@ -1393,5 +1370,23 @@ test_that("ps_calibrate refuses a data frame of propensity scores", {
       smooth = FALSE
     ),
     class = "propensity_type_error"
+  )
+})
+
+# One dimension is one score per unit, which is the shape calibration reads.
+# The refusal above is about holding more than that, not about carrying a `dim`
+# attribute, and `wt_ate()` reads a one-dimensional array too.
+test_that("ps_calibrate accepts a one-dimensional array of propensity scores", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c(0, 1, 0, 1)
+  one_d <- array(ps, dim = length(ps))
+
+  calibrated <- ps_calibrate(one_d, exposure, smooth = FALSE)
+
+  expect_s3_class(calibrated, "ps_calib")
+  expect_equal(
+    as.numeric(calibrated),
+    as.numeric(ps_calibrate(ps, exposure, smooth = FALSE)),
+    tolerance = 1e-12
   )
 })

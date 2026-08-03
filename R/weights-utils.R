@@ -947,12 +947,7 @@ calculate_weight_from_modified_ps <- function(
   }
 
   # Handle matrix or vector propensity scores
-  if (
-    inherits(
-      .propensity,
-      c("ps_trim_matrix", "ps_trunc_matrix", "ps_calib_matrix")
-    )
-  ) {
+  if (inherits(.propensity, c("ps_trim_matrix", "ps_trunc_matrix"))) {
     # For matrix propensity scores, pass them directly
     # The weight function should handle the matrix appropriately
     base_wt <- weight_fn(

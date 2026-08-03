@@ -16,8 +16,13 @@ ps_calibrate(
 )
 }
 \arguments{
-\item{ps}{A numeric vector of propensity scores between 0 and 1. Must not
-already be calibrated.}
+\item{ps}{A numeric vector of propensity scores in \verb{[0, 1]}. Unlike the rest
+of the package, calibration accepts scores of exactly 0 and exactly 1,
+since repairing scores a model pushed to the ends of the interval is part
+of what calibration is for. The logistic calibration curve maps them back
+inside the interval; isotonic calibration can return a score at an
+endpoint when its pooled block is pure, and such scores are rejected by
+the weight functions. Must not already be calibrated.}
 
 \item{.exposure}{A binary vector of observed treatment assignments, the same
 length as \code{ps}.}
@@ -37,7 +42,12 @@ samples for stable estimates.}
 \item{smooth}{Logical. When \code{method = "logistic"}, controls the form of the
 calibration model. If \code{TRUE} (default), fits a GAM with a spline on
 \code{ps} via \code{\link[mgcv:gam]{mgcv::gam()}}; if \code{FALSE}, fits a simple logistic regression
-via \code{\link[stats:glm]{stats::glm()}}. Ignored when \code{method = "isoreg"}.}
+via \code{\link[stats:glm]{stats::glm()}}. Ignored when \code{method = "isoreg"}. A spline needs
+enough distinct scores to place its knots, so with fewer than 10 distinct
+values of \code{ps} among the observations the fit reads, those with both a
+score and an exposure recorded, the fit falls back to logistic regression
+without a spline. The fallback is announced and recorded in the returned
+metadata.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal group
 (typically the treated group). Every binary coding honors it: 0/1 numeric,
@@ -85,6 +95,17 @@ fast, and the \code{smooth = TRUE} option adds flexibility via a spline.
 between estimated and true probabilities and have a sufficiently large
 sample.
 }
+
+\strong{Missing values:}
+A unit with a missing exposure tells the calibration model nothing, so it is
+dropped from the fit. What happens to that unit afterwards depends on the
+method. Logistic calibration, smoothed or not, fits a curve from propensity
+score to calibrated score and reads every unit off it, so a unit with a
+missing exposure but an observed score is still calibrated. Isotonic
+calibration fits separately within each exposure group and reads each unit
+from the fit for the group it belongs to; a unit with a missing exposure
+belongs to neither group and is returned as \code{NA}. Under both methods a
+missing propensity score yields a missing calibrated score.
 
 The calibrated scores are returned as a \code{ps_calib} object, which can be
 passed directly to weight functions such as \code{\link[=wt_ate]{wt_ate()}}.

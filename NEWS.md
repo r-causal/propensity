@@ -1,5 +1,50 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_calibrate(method = "isoreg")` no longer runs a step described as
+  preventing extrapolation beyond the observed range. Each of the two isotonic
+  fits was raised to its own minimum over the exposure group that reads it,
+  which every value that group reads already clears, so the step changed
+  nothing. The calibrated scores are unchanged.
+
+* `ps_calibrate()` now says so when `smooth = TRUE` cannot be honored. A spline
+  needs enough distinct propensity scores to place its knots, so with fewer
+  than 10 among the observations it reads, those with both a score and an
+  exposure recorded, the fit falls back to logistic regression without one.
+  The returned
+  metadata recorded the fallback, but nothing at the point of the call said the
+  spline that was asked for was never fit. The announcement respects
+  `options(propensity.quiet)`, and the threshold is now documented.
+
+* The propensity scores `ps_calibrate()` accepts are documented as the closed
+  interval, including exactly 0 and exactly 1. Every other route refuses the
+  endpoints, since a score there divides into no usable weight. Calibration
+  takes them deliberately, because repairing scores a model pushed to the ends
+  of the interval is part of what it is for. The logistic calibration curve
+  maps them back inside the interval; isotonic calibration can return a score
+  at an endpoint when its pooled block is pure, and such scores are rejected by
+  the weight functions in turn.
+
+* `ps_calibrate(smooth = FALSE)` now returns a calibrated score for every unit
+  with an observed propensity score, including units whose exposure is missing.
+  The fit reads only the units with a recorded exposure, as it always did, but
+  the curve it produces was read back only over those same units, leaving a
+  unit with a missing exposure uncalibrated. The smooth fit already predicted
+  over every unit. Isotonic calibration still returns `NA` for a unit with a
+  missing exposure, which has no group fit to be read from, and the behavior of
+  each method is now documented.
+
+* `ps_calibrate()` now refuses a matrix of propensity scores with an error of
+  class `propensity_type_error` naming the shape as the problem. A one-column
+  matrix was flattened and its dimensions dropped without a word, and a matrix
+  with more than one column failed a length check that compared its cells
+  against the observations in `.exposure` and reported the mismatch as a length
+  problem, which said nothing about the shape. A one-dimensional array is still
+  accepted, as it is elsewhere in the package.
+
+* The unused `ps_calib_matrix` class is removed, along with its
+  `is_ps_calibrated()` and `print()` methods. No calibration route ever
+  constructed one.
+
 * Comparing a `ps_calib` with a number, with an integer, or with another
   `ps_calib` is now silent and returns a plain logical vector. Every comparison
   settled its type through the numeric downgrade first, so asking which scores
