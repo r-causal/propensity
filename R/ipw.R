@@ -283,6 +283,15 @@
 #' model. The outcome model weights must match the values implied by the
 #' propensity score model; a mismatch errors, on both standard error methods.
 #'
+#' For a continuous exposure that requirement fixes the spread of the
+#' conditional density. `ipw()` stacks a single pooled residual variance
+#' alongside the propensity score coefficients, so the weights it rebuilds are
+#' the ones [wt_ate()] produces with its pooled default. Weights built with an
+#' observation-level `.sigma`, such as `influence(model)$sigma`, are a different
+#' function of the data with no counterpart in the stacked system, and the
+#' consistency check refuses them. Refit the weights without `.sigma` to use
+#' `ipw()`.
+#'
 #' The propensity score model must not separate the exposure. A model whose
 #' covariates predict the exposure without error has no finite maximum likelihood
 #' estimate, and the propensity scores its coefficients imply reach exactly zero
@@ -299,6 +308,14 @@
 #' alone leaves the unit's own weight undefined, and a softmax column for a level
 #' the unit was not assigned may reach zero without the fit being refused. A
 #' continuous exposure has no saturating inverse link and is not checked.
+#'
+#' The weight functions apply a stricter rule to the propensity scores they are
+#' handed: a categorical matrix holding an exact 0 or 1 anywhere is refused,
+#' whichever level the cell belongs to. A separated [nnet::multinom()] fit is
+#' therefore stopped where its weights are built rather than here, and neither
+#' [ps_trim()] nor [ps_trunc()] offers a way past that, since both validate a
+#' categorical matrix under the same open interval. See **Propensity scores at 0
+#' and 1** in [wt_ate()] for the remedy.
 #'
 #' The propensity score model must also be fit without case weights, since the
 #' stacked propensity score equations are unweighted and a weighted fit would not

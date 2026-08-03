@@ -5,7 +5,17 @@
     Condition <propensity_range_error>
       Error in `wt_ate()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is -0.1 and 3.3
+      i The range of `.propensity` is -0.1 and 3.3
+
+# the refusal of an absent level names the levels the exposure takes
+
+    Code
+      expr
+    Condition <propensity_focal_level_error>
+      Error in `wt_att()`:
+      ! `.focal_level` must be a level that `.exposure` takes.
+      x No observation takes the value "Treated".
+      i Levels present: "control" and "treated".
 
 # ATE errors appropriately for categorical with vector propensity scores
 
@@ -72,7 +82,7 @@
     Condition <propensity_range_error>
       Error in `wt_entropy()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is -0.1 and 3.3
+      i The range of `.propensity` is -0.1 and 3.3
 
 # wt_entropy works with ps_trim objects
 
@@ -97,7 +107,8 @@
       expr
     Condition <propensity_wt_not_supported_error>
       Error in `wt_entropy()`:
-      ! Exposure type "continuous" not currently supported for entropy
+      ! Exposure type "continuous" is not supported.
+      i Supported exposure types: "binary" and "categorical".
 
 # wt_ate works with data frames
 
@@ -138,7 +149,7 @@
     Condition <propensity_range_error>
       Error in `wt_ate()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is -0.1 and 1.1
+      i The range of `.propensity` is -0.1 and 1.1
 
 ---
 
@@ -147,7 +158,7 @@
     Condition <propensity_range_error>
       Error in `wt_att()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is 0.0 and 1.0
+      i The range of `.propensity` is 0.0 and 1.0
 
 ---
 
@@ -221,7 +232,7 @@
       expr
     Condition <rlang_error>
       Error in `wt_cens()`:
-      ! `exposure_type` must be one of "auto", "binary", "categorical", or "continuous", not "wrong".
+      ! `exposure_type` must be one of "auto", "binary", or "continuous", not "wrong".
 
 # an invalid exposure_type on a trimmed propensity score names wt_ate()
 
@@ -287,7 +298,7 @@
     Condition <propensity_range_error>
       Error in `wt_ate()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is 0.5 and 1.5
+      i The range of `.propensity` is 0.5 and 1.5
 
 # GLM methods error appropriately
 
@@ -359,9 +370,10 @@
 
     Code
       expr
-    Condition <rlang_error>
+    Condition <propensity_wt_not_supported_error>
       Error in `wt_att()`:
-      ! `exposure_type` must be one of "auto", "binary", or "categorical", not "continuous".
+      ! Exposure type "continuous" is not supported.
+      i Supported exposure types: "binary" and "categorical".
 
 # all methods handle NAs appropriately
 

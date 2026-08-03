@@ -187,6 +187,18 @@ test_that(".focal_level and .reference_level parameters work consistently with p
   expect_equal(as.numeric(calib_auto), as.numeric(calib_logical))
 })
 
+test_that("ps_calibrate refuses a focal level the exposure never takes", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c("a", "b", "a", "b")
+
+  # A focal level nobody holds leaves every unit in the reference group, so the
+  # calibration model is fit against an outcome that never varies.
+  expect_error(
+    ps_calibrate(ps, exposure, .focal_level = "absent"),
+    class = "propensity_focal_level_error"
+  )
+})
+
 test_that(".focal_level/.reference_level defaults are NULL like other package functions", {
   # Check that the defaults match the package pattern
   ps_calibrate_formals <- formals(ps_calibrate)
@@ -763,4 +775,857 @@ test_that("ps_calibrate refuses an exposure with dimensions", {
     ps_calibrate(ps, dimensioned),
     class = "propensity_binary_transform_error"
   )
+})
+
+# What a comparison with a calibrated vector asks ----------------------------
+
+# The scores this fixture calibrates span the unit interval and none of them
+# land on a whole number, which is what the integer routes below turn on. The
+# exposure alternates enough for the calibration model to fit without a seed.
+
+calib_vctrs_fixture <- function(method = "logistic", smooth = FALSE) {
+  ps_calibrate(
+    c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95),
+    c(0, 0, 1, 0, 1, 1, 0, 1),
+    method = method,
+    smooth = smooth
+  )
+}
+
+# A comparison asks about the values a vector holds, not about the type holding
+# them, so it has no metadata to lose and nothing to announce. Left to the
+# default vctrs route it goes through the common type of the two sides, which
+# for a calibrated vector and a number is the numeric downgrade, and so every
+# comparison reports dropping metadata that the answer never depended on. The
+# sibling weight class answers comparisons from its own values and stays
+# silent; a calibrated vector owes the same.
+
+test_that("comparing a ps_calib with a number does not warn about class", {
+  cal <- calib_vctrs_fixture()
+  values <- as.numeric(cal)
+
+  expect_no_warning(
+    {
+      expect_identical(cal > 0.5, values > 0.5)
+      expect_identical(cal >= 0.5, values >= 0.5)
+      expect_identical(cal < 0.5, values < 0.5)
+      expect_identical(cal <= 0.5, values <= 0.5)
+      expect_identical(cal == values[[1]], values == values[[1]])
+      expect_identical(cal != values[[1]], values != values[[1]])
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+test_that("comparing a ps_calib yields a plain logical", {
+  cal <- calib_vctrs_fixture()
+
+  expect_no_warning(
+    {
+      greater <- cal > 0.5
+      equal <- cal == as.numeric(cal)[[1]]
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+
+  expect_type(greater, "logical")
+  expect_type(equal, "logical")
+  expect_false(inherits(greater, "ps_calib"))
+  expect_false(inherits(equal, "ps_calib"))
+  expect_null(attributes(greater))
+  expect_null(attributes(equal))
+})
+
+test_that("ps_calib comparisons enforce vctrs strict size semantics", {
+  # The size half of this contract holds today and guards against a comparison
+  # that answers directly falling back to base R recycling: anything other than
+  # equal lengths, or one side of length 1, has no answer.
+  cal <- calib_vctrs_fixture()
+  short <- cal[1:3]
+
+  expect_error(cal == short, class = "vctrs_error_incompatible_size")
+  expect_error(cal > short, class = "vctrs_error_incompatible_size")
+  expect_error(cal != short, class = "vctrs_error_incompatible_size")
+
+  # Broadcasting a length-1 right side still works, and is the path a caller
+  # asking which scores clear a threshold takes.
+  expect_no_warning(
+    {
+      expect_identical(cal > 0.5, as.numeric(cal) > 0.5)
+      expect_identical(cal[1] == cal, as.numeric(cal)[[1]] == as.numeric(cal))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+test_that("a refused comparison names the code that wrote it", {
+  cal <- calib_vctrs_fixture()
+  short <- cal[1:3]
+
+  # The recycling the comparison operators enforce happens inside a helper the
+  # caller has no way to reach, and vctrs raises the refusal from further down
+  # still. Left to itself the refusal names that helper, which says nothing to
+  # whoever wrote the comparison, so the frame it reports against travels down
+  # with the sizes.
+  compare_in_fn <- function(x, y) x == y
+  cnd <- rlang::catch_cnd(compare_in_fn(cal, short), classes = "error")
+
+  expect_s3_class(cnd, "vctrs_error_incompatible_size")
+  expect_identical(
+    paste(deparse(conditionCall(cnd)[[1]]), collapse = " "),
+    "compare_in_fn"
+  )
+})
+
+# What calibration reads from scores that carry a record ---------------------
+
+# `ps_calibrate()` accepts propensity scores that have already been trimmed or
+# truncated, and the first thing it does with them is compare them against 0
+# and 1. Comparing a classed vector routes through the numeric downgrade, so
+# the range check announces a conversion the caller never asked for, once per
+# comparison, before any calibration happens. The values read are the same
+# either way, and so is the calibration built from them.
+
+test_that("calibrating trimmed scores does not warn about class", {
+  ps <- c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95)
+  exposure <- c(0, 0, 1, 0, 1, 1, 0, 1)
+  trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+  from_numeric <- ps_calibrate(as.numeric(trimmed), exposure, smooth = FALSE)
+
+  expect_no_warning(
+    {
+      from_trimmed <- ps_calibrate(trimmed, exposure, smooth = FALSE)
+      expect_s3_class(from_trimmed, "ps_calib")
+      expect_equal(as.numeric(from_trimmed), as.numeric(from_numeric))
+      expect_identical(ps_calib_meta(from_trimmed), ps_calib_meta(from_numeric))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+test_that("calibrating truncated scores does not warn about class", {
+  ps <- c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95)
+  exposure <- c(0, 0, 1, 0, 1, 1, 0, 1)
+  truncated <- ps_trunc(ps, method = "ps", lower = 0.1, upper = 0.9)
+  from_numeric <- ps_calibrate(as.numeric(truncated), exposure, smooth = FALSE)
+
+  expect_no_warning(
+    {
+      from_truncated <- ps_calibrate(truncated, exposure, smooth = FALSE)
+      expect_s3_class(from_truncated, "ps_calib")
+      expect_equal(as.numeric(from_truncated), as.numeric(from_numeric))
+      expect_identical(
+        ps_calib_meta(from_truncated),
+        ps_calib_meta(from_numeric)
+      )
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+test_that("calibrating trimmed scores by isotonic regression is also silent", {
+  ps <- c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95)
+  exposure <- c(0, 0, 1, 0, 1, 1, 0, 1)
+  trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
+  from_numeric <- ps_calibrate(
+    as.numeric(trimmed),
+    exposure,
+    method = "isoreg"
+  )
+
+  # Isotonic calibration reaches the scores through a different fit than the
+  # logistic path, so the values it reads are worth pinning on their own.
+  expect_no_warning(
+    {
+      from_trimmed <- ps_calibrate(trimmed, exposure, method = "isoreg")
+      expect_equal(as.numeric(from_trimmed), as.numeric(from_numeric))
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+# Where a calibrated vector and an integer meet ------------------------------
+
+# Calibrated propensity scores lie strictly between 0 and 1, so the integers
+# have no room for them: a combination that met an integer in the integers
+# would be every score rounded away, and a cast to integer loses every value it
+# was given. The sibling classes resolve an integer in the doubles, announcing
+# the downgrade once, and refuse the cast to integer as lossy. A calibrated
+# vector that has no answer at all for an integer is the odd one out.
+
+test_that("combining a ps_calib with an integer keeps the calibrated scores", {
+  cal <- calib_vctrs_fixture()
+  combined <- expect_propensity_warning(vec_c(cal, 1L))
+
+  expect_type(combined, "double")
+  expect_equal(combined, c(as.numeric(cal), 1))
+})
+
+test_that("combining an integer with a ps_calib keeps the calibrated scores", {
+  cal <- calib_vctrs_fixture()
+  combined <- expect_propensity_warning(vec_c(1L, cal))
+
+  expect_type(combined, "double")
+  expect_equal(combined, c(1, as.numeric(cal)))
+})
+
+test_that("casting a ps_calib to integer refuses rather than rounds", {
+  cal <- calib_vctrs_fixture()
+
+  expect_error(
+    vec_cast(cal, integer()),
+    class = "vctrs_error_cast_lossy"
+  )
+})
+
+test_that("casting an integer to ps_calib keeps the calibration of the target", {
+  cal <- calib_vctrs_fixture()
+  out <- vec_cast(c(0L, 1L), to = cal)
+
+  expect_s3_class(out, "ps_calib")
+  expect_equal(as.numeric(out), c(0, 1))
+  expect_identical(ps_calib_meta(out), ps_calib_meta(cal))
+})
+
+test_that("comparing a ps_calib with an integer matches comparing a double", {
+  cal <- calib_vctrs_fixture()
+
+  expect_no_warning(
+    {
+      expect_identical(cal == 1L, cal == 1)
+      expect_identical(cal > 0L, cal > 0)
+    },
+    class = "propensity_class_downgrade_warning"
+  )
+})
+
+# What a cast to a calibrated vector owes its target -------------------------
+
+# A cast returns the values it was handed in the type it was handed, and a
+# calibrated vector's type is how the calibration was performed. A cast that
+# writes its own description over the target's hands back a vector claiming a
+# calibration nothing carried out, under a method name no argument accepts.
+
+test_that("casting a double to ps_calib keeps the method of the target", {
+  cal <- calib_vctrs_fixture()
+  out <- vec_cast(c(0.3, 0.4), to = cal)
+
+  expect_s3_class(out, "ps_calib")
+  expect_equal(as.numeric(out), c(0.3, 0.4))
+  expect_identical(ps_calib_meta(out), ps_calib_meta(cal))
+  expect_identical(ps_calib_meta(out)$method, "logistic")
+  expect_false(ps_calib_meta(out)$smooth)
+})
+
+test_that("casting a double to an isotonic ps_calib keeps that method", {
+  cal <- calib_vctrs_fixture(method = "isoreg")
+  out <- vec_cast(c(0.3, 0.4), to = cal)
+
+  expect_identical(ps_calib_meta(out)$method, "isoreg")
+})
+
+test_that("casting a double to ps_calib keeps the smoothing of the target", {
+  # Built directly so the spline fit, and with it mgcv, stays out of a test
+  # about what the cast copies.
+  to <- new_ps_calib(
+    double(),
+    ps_calib_meta = list(method = "logistic", smooth = TRUE)
+  )
+  out <- vec_cast(c(0.3, 0.4), to = to)
+
+  expect_true(ps_calib_meta(out)$smooth)
+})
+
+# What the isotonic fit produces ---------------------------------------------
+
+# Isotonic calibration pools adjacent violators separately within each exposure
+# group and reads every unit's calibrated score from the fit for the group it
+# belongs to, so each fitted value is the mean of a pooled block of zeros and
+# ones rather than the output of an optimizer. The values below characterize
+# that fit as it stands, inside the unit interval and at both of its ends, so
+# any later change to the shape of the calibration curve, such as a guard
+# against reading past the scores actually observed, has to be a deliberate
+# one.
+
+calib_isoreg_interior_fixture <- function() {
+  ps_calibrate(
+    c(0.05, 0.15, 0.3, 0.45, 0.55, 0.7, 0.85, 0.95),
+    c(0, 0, 1, 0, 1, 1, 0, 1),
+    method = "isoreg"
+  )
+}
+
+# Scores hugging both ends of the interval, endpoints included, which
+# calibration accepts.
+calib_isoreg_boundary_fixture <- function() {
+  ps_calibrate(
+    c(0, 0.001, 0.02, 0.35, 0.5, 0.65, 0.98, 0.999, 1),
+    c(0, 1, 0, 0, 1, 0, 1, 0, 1),
+    method = "isoreg"
+  )
+}
+
+# Regression guard: this fit holds today and has to survive any change to the
+# isotonic route.
+test_that("isotonic calibration fits pooled block means on interior scores", {
+  expect_equal(
+    as.numeric(calib_isoreg_interior_fixture()),
+    c(
+      0,
+      0,
+      0.5,
+      0.5,
+      0.666666666666667,
+      0.666666666666667,
+      0.666666666666667,
+      1
+    ),
+    tolerance = 1e-12
+  )
+})
+
+# Regression guard: the same fit read at the ends of the interval, where a
+# change to the isotonic route would show up first.
+test_that("isotonic calibration fits pooled block means on boundary scores", {
+  calibrated <- calib_isoreg_boundary_fixture()
+
+  expect_equal(
+    as.numeric(calibrated),
+    c(
+      0,
+      0.333333333333333,
+      0.333333333333333,
+      0.333333333333333,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      1
+    ),
+    tolerance = 1e-12
+  )
+  expect_true(all(diff(as.numeric(calibrated)) >= 0))
+})
+
+# What the fallback from a spline to a straight line announces ---------------
+
+# `smooth = TRUE` asks for a spline, and a spline needs enough distinct scores
+# to place its knots, so with fewer than ten the calibration falls back to a
+# plain logistic regression. That changes which model produced the scores the
+# caller is handed, and today it happens without a word: the returned metadata
+# records the fallback, but nothing at the point of the call says the spline
+# that was asked for was never fit.
+
+calib_few_unique_fixture <- function() {
+  list(
+    ps = rep(c(0.2, 0.4, 0.6, 0.8), each = 5),
+    exposure = c(
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0
+    )
+  )
+}
+
+test_that("ps_calibrate announces falling back from a spline", {
+  skip_if_not_installed("mgcv")
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- calib_few_unique_fixture()
+
+  messages <- testthat::capture_messages(
+    ps_calibrate(fixture$ps, fixture$exposure, smooth = TRUE)
+  )
+
+  # One message, naming the smoothing that was asked for and not carried out.
+  # The wording itself is pinned by the snapshot below.
+  expect_length(messages, 1)
+  expect_match(messages, "smooth|spline", ignore.case = TRUE)
+})
+
+test_that("the fallback message is recorded", {
+  skip_if_not_installed("mgcv")
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- calib_few_unique_fixture()
+
+  expect_snapshot(
+    calibrated <- ps_calibrate(fixture$ps, fixture$exposure, smooth = TRUE)
+  )
+})
+
+test_that("the fallback is silent when informational output is turned off", {
+  skip_if_not_installed("mgcv")
+  # `alert_info()` respects `propensity.quiet`, which the suite sets, so the
+  # announcement must not reach a caller who has asked for quiet.
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- calib_few_unique_fixture()
+
+  expect_no_message(
+    ps_calibrate(fixture$ps, fixture$exposure, smooth = TRUE)
+  )
+})
+
+# Regression guard: the fallback fits the model it says it fits, which holds
+# today and is what the announcement will describe.
+test_that("the fallback fits the logistic model it records", {
+  skip_if_not_installed("mgcv")
+  fixture <- calib_few_unique_fixture()
+  calibrated <- ps_calibrate(fixture$ps, fixture$exposure, smooth = TRUE)
+  straight_line <- glm(
+    exposure ~ ps,
+    data = data.frame(exposure = fixture$exposure, ps = fixture$ps),
+    family = binomial()
+  )
+
+  expect_false(ps_calib_meta(calibrated)$smooth)
+  expect_equal(
+    as.numeric(calibrated),
+    unname(fitted(straight_line)),
+    tolerance = 1e-12
+  )
+})
+
+# Regression guard: with enough distinct scores the spline is fit, so there is
+# no fallback to announce.
+test_that("a spline fit with enough distinct scores announces nothing", {
+  skip_if_not_installed("mgcv")
+  withr::local_options(propensity.quiet = FALSE)
+  ps <- seq(0.1, 0.9, length.out = 20)
+  exposure <- rep(c(0, 1), 10)
+
+  calibrated <- expect_no_message(ps_calibrate(ps, exposure, smooth = TRUE))
+  expect_true(ps_calib_meta(calibrated)$smooth)
+})
+
+# Where calibration draws the ends of the unit interval ----------------------
+
+# Trimming and weighting need scores strictly inside the unit interval, because
+# a zero or a one divides into a weight nothing can use. Calibration is the one
+# route that accepts them, since repairing scores a model pushed to the ends is
+# part of what it is for. The logistic calibration curve maps them back inside
+# the interval, which is what the fixture below is calibrated by. Isotonic
+# calibration can return a score at an endpoint when its pooled block is pure,
+# as the boundary characterization above records, and such scores are rejected
+# by the weight functions.
+
+calib_boundary_policy_fixture <- function() {
+  list(
+    ps = c(0, seq(0.05, 0.95, length.out = 20), 1),
+    exposure = c(
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      0,
+      1
+    )
+  )
+}
+
+# Regression guard: the inclusive range is deliberate and has to keep holding.
+test_that("calibration accepts scores at the ends of the unit interval", {
+  fixture <- calib_boundary_policy_fixture()
+  calibrated <- ps_calibrate(fixture$ps, fixture$exposure, smooth = FALSE)
+
+  expect_s3_class(calibrated, "ps_calib")
+  expect_length(calibrated, length(fixture$ps))
+  expect_true(all(as.numeric(calibrated) > 0))
+  expect_true(all(as.numeric(calibrated) < 1))
+})
+
+# Regression guard, and the contrast that makes the one above a choice rather
+# than an oversight: every other route still refuses the endpoints.
+test_that("trimming and weighting still refuse scores at the ends of the unit interval", {
+  fixture <- calib_boundary_policy_fixture()
+
+  expect_error(
+    ps_trim(fixture$ps, method = "ps"),
+    class = "propensity_range_error"
+  )
+  expect_error(
+    wt_ate(fixture$ps, fixture$exposure),
+    class = "propensity_range_error"
+  )
+})
+
+# What calibration does with an exposure that has gaps -----------------------
+
+# A unit with no recorded exposure tells the calibration model nothing, so the
+# fit drops it, and that is the whole of its effect. The fitted curve maps a
+# propensity score to a calibrated one, and the score of a unit with no
+# exposure is as readable as any other, so the prediction covers every row.
+# Calibrating introduces no gap the scores did not already have.
+
+calib_na_exposure_fixture <- function() {
+  list(
+    ps = c(0.1, 0.25, 0.4, 0.5, 0.62, 0.75, 0.9),
+    exposure = c(0, 1, NA, 0, 1, 1, 0)
+  )
+}
+
+test_that("calibration predicts over every row when the exposure has gaps", {
+  fixture <- calib_na_exposure_fixture()
+  calibrated <- ps_calibrate(fixture$ps, fixture$exposure, smooth = FALSE)
+
+  model_data <- data.frame(exposure = fixture$exposure, ps = fixture$ps)
+  complete_case <- glm(
+    exposure ~ ps,
+    data = model_data[!is.na(fixture$exposure), ],
+    family = binomial()
+  )
+  over_all_rows <- as.numeric(predict(
+    complete_case,
+    newdata = model_data,
+    type = "response"
+  ))
+
+  expect_length(calibrated, length(fixture$ps))
+  expect_false(anyNA(as.numeric(calibrated)))
+  expect_equal(as.numeric(calibrated), over_all_rows, tolerance = 1e-12)
+})
+
+# Regression guard: the spline route already predicts over every row, which is
+# the behavior the straight-line route above owes.
+test_that("a spline calibration predicts over every row when the exposure has gaps", {
+  skip_if_not_installed("mgcv")
+  ps <- seq(0.1, 0.9, length.out = 20)
+  exposure <- rep(c(0, 1), 10)
+  exposure[7] <- NA
+
+  calibrated <- ps_calibrate(ps, exposure, smooth = TRUE)
+
+  expect_length(calibrated, length(ps))
+  expect_false(anyNA(as.numeric(calibrated)))
+})
+
+# Regression guard and contrast: isotonic calibration reads a unit's score from
+# the fit for the exposure group it belongs to, and a unit with no exposure
+# belongs to neither, so it has no calibrated score to take.
+test_that("isotonic calibration leaves a unit with no exposure uncalibrated", {
+  fixture <- calib_na_exposure_fixture()
+  calibrated <- as.numeric(
+    ps_calibrate(fixture$ps, fixture$exposure, method = "isoreg")
+  )
+
+  expect_length(calibrated, length(fixture$ps))
+  expect_true(is.na(calibrated[[3]]))
+  expect_false(anyNA(calibrated[-3]))
+})
+
+# What calibration does with a matrix of scores ------------------------------
+
+# The route through `ps_calibrate()` reads `ps` as one score per unit. A matrix
+# of scores, the shape the categorical routes take, has no reading here: with
+# one column it is flattened and its dimensions are dropped without a word, and
+# with more than one the length check reports a count of cells against a count
+# of units. Neither tells the caller that the shape is what is wrong. The same
+# error the function already raises for a `ps` that is not a numeric vector is
+# the answer a matrix deserves too.
+
+test_that("ps_calibrate refuses a matrix of propensity scores", {
+  exposure <- c(0, 1, 0, 1)
+  one_column <- matrix(c(0.2, 0.4, 0.6, 0.8), ncol = 1)
+  two_columns <- cbind(c(0.2, 0.4, 0.6, 0.8), c(0.8, 0.6, 0.4, 0.2))
+
+  expect_error(
+    ps_calibrate(one_column, exposure, smooth = FALSE),
+    class = "propensity_type_error"
+  )
+  expect_error(
+    ps_calibrate(two_columns, exposure, smooth = FALSE),
+    class = "propensity_type_error"
+  )
+})
+
+test_that("ps_calibrate reports a matrix of propensity scores informatively", {
+  expect_propensity_error(
+    ps_calibrate(
+      cbind(c(0.2, 0.4, 0.6, 0.8), c(0.8, 0.6, 0.4, 0.2)),
+      c(0, 1, 0, 1),
+      smooth = FALSE
+    )
+  )
+})
+
+# Regression guard: a data frame of scores is already refused under the class
+# a matrix is pinned to above.
+test_that("ps_calibrate refuses a data frame of propensity scores", {
+  expect_error(
+    ps_calibrate(
+      data.frame(a = c(0.2, 0.4, 0.6, 0.8), b = c(0.8, 0.6, 0.4, 0.2)),
+      c(0, 1, 0, 1),
+      smooth = FALSE
+    ),
+    class = "propensity_type_error"
+  )
+})
+
+# One dimension is one score per unit, which is the shape calibration reads.
+# The refusal above is about holding more than that, not about carrying a `dim`
+# attribute, and `wt_ate()` reads a one-dimensional array too.
+test_that("ps_calibrate accepts a one-dimensional array of propensity scores", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c(0, 1, 0, 1)
+  one_d <- array(ps, dim = length(ps))
+
+  calibrated <- ps_calibrate(one_d, exposure, smooth = FALSE)
+
+  expect_s3_class(calibrated, "ps_calib")
+  expect_equal(
+    as.numeric(calibrated),
+    as.numeric(ps_calibrate(ps, exposure, smooth = FALSE)),
+    tolerance = 1e-12
+  )
+})
+
+# Naming the propensity scores `.propensity` ----------------------------------
+
+# The weight functions read the propensity scores from `.propensity` and this
+# one reads them from `ps`, so a call written against one is refused by the
+# other in both directions. The tests below pin the scores under the new name,
+# the deprecated shim that keeps the old name working for a release, and the
+# refusal to read both names at once. The positional pin comes first: whatever
+# else the rename moves, it must not move what a call that names nothing
+# returns.
+#
+# Unlike `ps_trim()` and `ps_trunc()`, `ps_calibrate()` is a plain function
+# rather than a generic, so there is no dispatch to preserve. What stands in
+# for the dispatch pins is the refusal of a matrix of scores, which names the
+# argument and so has to follow the rename.
+
+calib_rename_scores <- function() {
+  c(0.10, 0.18, 0.27, 0.35, 0.44, 0.52, 0.61, 0.69, 0.78, 0.86, 0.92, 0.96)
+}
+
+calib_rename_exposure <- function() {
+  c(0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1)
+}
+
+# Smoothing is turned off so the calibration curve is a logistic regression of
+# the exposure on the scores, which the test can fit for itself as an oracle.
+calib_rename_positional <- function() {
+  ps_calibrate(
+    calib_rename_scores(),
+    calib_rename_exposure(),
+    method = "logistic",
+    smooth = FALSE
+  )
+}
+
+test_that("ps_calibrate() calibrates a positional vector of scores", {
+  out <- calib_rename_positional()
+
+  expect_s3_class(out, "ps_calib")
+  expect_length(out, 12)
+
+  oracle_data <- data.frame(
+    treat = calib_rename_exposure(),
+    ps = calib_rename_scores()
+  )
+  oracle <- glm(treat ~ ps, data = oracle_data, family = binomial)
+  expect_equal(
+    as.numeric(out),
+    unname(predict(oracle, type = "response"))
+  )
+
+  meta <- ps_calib_meta(out)
+  expect_equal(meta$method, "logistic")
+  expect_false(meta$smooth)
+})
+
+test_that("ps_calibrate() reads the propensity scores from .propensity", {
+  expect_equal(
+    ps_calibrate(
+      .propensity = calib_rename_scores(),
+      .exposure = calib_rename_exposure(),
+      method = "logistic",
+      smooth = FALSE
+    ),
+    calib_rename_positional()
+  )
+})
+
+test_that("ps_calibrate() deprecates the propensity scores under ps", {
+  with_always_deprecated({
+    expect_warning(
+      ps_calibrate(
+        ps = calib_rename_scores(),
+        .exposure = calib_rename_exposure(),
+        method = "logistic",
+        smooth = FALSE
+      ),
+      class = "lifecycle_warning_deprecated"
+    )
+  })
+
+  # The old name still has to reach the same calibration, not merely warn. The
+  # deprecation is pinned above, so it is silenced here rather than repeated.
+  withr::local_options(lifecycle_verbosity = "quiet")
+  expect_equal(
+    ps_calibrate(
+      ps = calib_rename_scores(),
+      .exposure = calib_rename_exposure(),
+      method = "logistic",
+      smooth = FALSE
+    ),
+    calib_rename_positional()
+  )
+})
+
+test_that("ps_calibrate() refuses the propensity scores under both names", {
+  withr::local_options(lifecycle_verbosity = "quiet")
+
+  # The condition subclass is the shim's to choose; what this pins is that the
+  # refusal is one of the package's own errors and that it names both spellings,
+  # so the caller can see which one to drop.
+  err <- expect_error(
+    ps_calibrate(
+      .propensity = calib_rename_scores(),
+      ps = calib_rename_scores(),
+      .exposure = calib_rename_exposure(),
+      method = "logistic",
+      smooth = FALSE
+    ),
+    class = "propensity_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_match(msg, "`ps`", fixed = TRUE)
+})
+
+test_that("ps_calibrate() names .propensity when refusing a matrix of scores", {
+  err <- expect_error(
+    ps_calibrate(
+      .propensity = matrix(calib_rename_scores(), nrow = 6),
+      .exposure = calib_rename_exposure()[1:6],
+      method = "logistic",
+      smooth = FALSE
+    ),
+    class = "propensity_type_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_false(grepl("`ps`", msg, fixed = TRUE))
+})
+
+test_that("ps_calibrate() names .propensity in the length mismatch error", {
+  err <- expect_error(
+    ps_calibrate(
+      .propensity = calib_rename_scores(),
+      .exposure = calib_rename_exposure()[-1],
+      method = "logistic",
+      smooth = FALSE
+    ),
+    class = "propensity_length_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_false(grepl("`ps`", msg, fixed = TRUE))
+})
+
+# What a refused cast says, and what the fallback needs ------------------------
+
+test_that("casting between differently calibrated ps_calib objects names the disagreement", {
+  x <- calib_vctrs_fixture()
+
+  # Built directly so the spline fit, and with it mgcv, stays out of a test
+  # about what the cast compares.
+  smoothed <- new_ps_calib(
+    vec_data(x),
+    ps_calib_meta = list(method = "logistic", smooth = TRUE)
+  )
+
+  # A `ps_calib` is printed with its method but not with whether the fit was
+  # smoothed, so these two types render identically and a refusal that names
+  # neither reads as a type that cannot be converted to itself.
+  expect_identical(vec_ptype_full(x), vec_ptype_full(smoothed))
+  expect_error(
+    vec_cast(x, to = smoothed),
+    regexp = "different calibration parameters",
+    class = "vctrs_error_incompatible_type"
+  )
+
+  # The combine says what disagrees, and the cast makes the same comparison, so
+  # it says the same thing.
+  isotonic <- new_ps_calib(
+    vec_data(x),
+    ps_calib_meta = list(method = "isoreg", smooth = FALSE)
+  )
+  expect_error(
+    vec_cast(x, to = isotonic),
+    regexp = "different calibration parameters",
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("ps_calibrate() falls back to a straight line without reaching for mgcv", {
+  # Five distinct scores are too few to place the knots of a spline, so the
+  # fallback fits a logistic regression and mgcv takes no part in the
+  # calibration. Checking for the package before working that out refuses the
+  # call over a dependency the calibration it performs has no use for.
+  scores <- rep(c(0.2, 0.3, 0.4, 0.5, 0.6), each = 4)
+  exposure <- rep(c(0, 1), 10)
+
+  local_mocked_bindings(
+    check_installed = function(...) rlang::abort("mgcv was checked for"),
+    .package = "rlang"
+  )
+
+  calibrated <- ps_calibrate(scores, exposure, smooth = TRUE)
+
+  expect_s3_class(calibrated, "ps_calib")
+  expect_false(ps_calib_meta(calibrated)$smooth)
+
+  oracle <- glm(
+    treat ~ ps,
+    data = data.frame(treat = exposure, ps = scores),
+    family = binomial()
+  )
+  expect_equal(
+    as.numeric(calibrated),
+    unname(predict(oracle, type = "response"))
+  )
+})
+
+test_that("ps_calibrate() names the propensity scores it was not given", {
+  err <- expect_error(
+    ps_calibrate(.exposure = c(0, 1, 0, 1)),
+    class = "propensity_missing_arg_error"
+  )
+  expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
 })

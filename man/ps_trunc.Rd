@@ -5,7 +5,7 @@
 \title{Truncate (Winsorize) Propensity Scores}
 \usage{
 ps_trunc(
-  ps,
+  .propensity,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
@@ -14,13 +14,22 @@ ps_trunc(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 )
 }
 \arguments{
-\item{ps}{A numeric vector of propensity scores between 0 and 1 (binary
+\item{.propensity}{A numeric vector of propensity scores in (0, 1) (binary
 exposures), or a matrix/data.frame where each column contains propensity
-scores for one level of a categorical exposure.}
+scores for one level of a categorical exposure. A data frame truncated for
+a binary exposure is reduced to a single column: the second column of a two
+column data frame, which is the probability of the second level in the
+layout model predictions come in, and the first column otherwise. The
+column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
+announcement. A matrix is held to the same open interval as a vector, so a
+score of exactly 0 or 1 in any cell is refused and a separated multinomial
+fit cannot be repaired by truncating it; see \strong{Propensity scores at 0 and
+1} in \code{\link[=wt_ate]{wt_ate()}}.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{
@@ -33,14 +42,27 @@ The \code{lower} and \code{upper} arguments specify quantile probabilities. For
 categorical exposures, quantiles are computed across all columns.
 \item \code{"cr"}: Truncate to the common range of propensity scores across
 exposure groups (binary exposures only). Bounds are
-\verb{[min(ps[focal]), max(ps[reference])]}. Requires \code{.exposure}.
-}}
+\verb{[min(.propensity[focal]), max(.propensity[reference])]}. Requires
+\code{.exposure}. When those bounds cross, so that the two distributions do
+not overlap at all, there is no common range to bound the scores to and
+the call errors with class \code{propensity_no_overlap_error}. That differs
+deliberately from \code{\link[=ps_trim]{ps_trim()}}, which trims every observed unit in the
+same situation, a truthful record of an empty overlap region.
+}
+
+For categorical exposures, only \code{"ps"} and \code{"pctl"} are supported.}
 
 \item{lower, upper}{Bounds for truncation. Interpretation depends on \code{method}:
 \itemize{
 \item \code{method = "ps"}: Propensity score values (defaults: 0.1 and 0.9). For
 categorical exposures, \code{lower} is the truncation threshold delta
-(default: 0.01); \code{upper} is ignored.
+(default: 0.01) and \code{upper} is ignored. That default deliberately differs
+from the 0.1 threshold \code{\link[=ps_trim]{ps_trim()}} uses for categorical exposures:
+truncation keeps every unit and only pins the most extreme scores back to
+the threshold, so its default is a gentle winsorization, whereas trimming
+discards the units it selects and follows common-support trimming
+practice. With \code{k} exposure levels, a threshold of \code{1/k} or larger cannot
+be met by every column of a row that sums to one, and is an error.
 \item \code{method = "pctl"}: Quantile probabilities (defaults: 0.05 and 0.95;
 categorical defaults: 0.01 and 0.99).
 \item \code{method = "cr"}: Ignored; bounds are determined by the data.
@@ -53,20 +75,28 @@ with any method.}
 \item{.focal_level}{The value of \code{.exposure} representing the focal
 (treated) group, used by \code{"cr"}. Every binary coding honors it: 0/1
 numeric, logical, two-level factor, and two-level character exposures are
-all coded with the named level as focal. With no level named, a binary
-exposure defaults to its higher level, which is \code{1} for a 0/1 exposure and
-\code{TRUE} for a logical one. Naming any other level reverses the coding, so
-\code{ps} must then hold the probability of the named level.}
+all coded with the named level as focal, and a level the exposure never
+takes is an error. With no level named, a binary exposure defaults to its
+higher level, which is \code{1} for a 0/1 exposure, \code{TRUE} for a logical one,
+and the second of the two levels a factor or character exposure takes.
+Levels a factor declares but never takes are not candidates. Naming any
+other level reverses the coding, so \code{.propensity} must then hold the
+probability of the named level.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
 (control) group. Naming it makes the exposure's other level focal, with
-the same consequence for \code{ps}. Automatically detected if not supplied.}
+the same consequence for \code{.propensity}, and a level the exposure never
+takes is an error. Automatically detected if not supplied.}
 
 \item{...}{Additional arguments passed to methods.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
+
+\item{ps}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.propensity} instead. A
+call that names \code{ps} must name the arguments after it as well, since a
+positional argument binds to \code{.propensity}.}
 }
 \value{
 A \code{ps_trunc} object (a numeric vector for binary exposures, or a
@@ -78,9 +108,10 @@ observations those positions describe).
 \description{
 \code{ps_trunc()} bounds extreme propensity scores to fixed limits, replacing
 out-of-range values with the boundary value (a form of \emph{winsorizing}). The
-result is a vector or matrix of the same length and dimensions as \code{ps}, with
-no observations removed. This contrasts with \code{\link[=ps_trim]{ps_trim()}}, which sets extreme
-values to \code{NA} (effectively removing those observations from analysis).
+result is a vector or matrix of the same length and dimensions as
+\code{.propensity}, with no observations removed. This contrasts with \code{\link[=ps_trim]{ps_trim()}},
+which sets extreme values to \code{NA} (effectively removing those observations
+from analysis).
 }
 \details{
 Unlike \code{\link[=ps_trim]{ps_trim()}}, truncation preserves all observations. No \code{NA} values
@@ -102,6 +133,27 @@ weights), the result is no longer a propensity score.
 \strong{Combining behavior}: Combining \code{ps_trunc} objects with \code{c()} requires
 matching truncation parameters. Mismatched parameters produce a warning and
 return a plain numeric vector.
+\subsection{Missing values}{
+
+A propensity score that arrives missing is not one this function pinned to a
+bound, so it takes no part in the truncation record: it never joins
+\code{truncated_idx}, and \code{\link[=is_unit_truncated]{is_unit_truncated()}} reports \code{FALSE} for it. The value
+stays missing in the result. For a matrix of categorical propensity scores, a
+row with a missing cell comes back missing throughout, because renormalizing
+a row divides by its sum and that sum is unknown.
+
+The methods that read their bounds off the data read them off the data they
+have. \code{"pctl"} and \code{"cr"} work their bounds out from the complete scores, and
+the categorical \code{"pctl"} bounds come from the cells of the complete rows, so
+the bounds are the ones the same call would produce with the missing
+observations dropped.
+
+A missing exposure is a different matter, and \code{"cr"} refuses one with an
+error of class \code{propensity_missing_value_error}. Its bounds come from the
+exposure groups, and a unit that belongs to neither leaves them undefined.
+Remove or impute the missing exposure values first.
+}
+
 \subsection{The truncation record}{
 
 A \code{ps_trunc} records which units were winsorized as positions among the
@@ -140,6 +192,12 @@ a new order under positions still naming the old one, and
 units. Subsetting with \code{[} is handed the subscript and re-indexes, so
 reorder with \code{[}, or put the propensity scores in the order you want before
 truncating them.
+
+Casting a numeric vector into a \code{ps_trunc} with \code{\link[vctrs:vec_cast]{vctrs::vec_cast()}} is a type
+operation and not a truncation. The result is described by the method and
+bounds of the target and records that none of the arriving values was pinned
+to a bound, so it can hold scores outside those bounds, including 0 and 1.
+Call \code{ps_trunc()} on the scores to truncate them.
 }
 }
 \examples{

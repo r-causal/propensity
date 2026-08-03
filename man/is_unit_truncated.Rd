@@ -7,7 +7,8 @@
 is_unit_truncated(x)
 }
 \arguments{
-\item{x}{A \code{ps_trunc} object created by \code{\link[=ps_trunc]{ps_trunc()}}.}
+\item{x}{A \code{ps_trunc} object created by \code{\link[=ps_trunc]{ps_trunc()}}, or a \link{psw} vector built
+from one.}
 }
 \value{
 A logical vector the same length as \code{x} (or number of rows for
@@ -19,19 +20,26 @@ observations had their propensity scores modified by truncation. Use
 \code{\link[=is_ps_truncated]{is_ps_truncated()}} to test whether an object has been truncated at all.
 
 The answer comes from the truncation record, which is written for a fixed
-set of observations and can both be lost and outlive them:
+set of observations and can both be lost and outlive them. On a \code{ps_trunc},
 \code{\link[vctrs:vec_slice]{vctrs::vec_slice()}} and \code{\link[=c]{c()}} drop it, and subassignment that grows the
-vector carries it across a length change. \code{is_unit_truncated()} therefore
-checks that the record covers the object it is given, and raises an error
-of class \code{propensity_missing_meta_error} when it does not, rather than
-name truncated units at stale positions.
+vector carries it across a length change; see \code{\link[=ps_trunc]{ps_trunc()}} for the whole
+contract. On a \link{psw} vector built from truncated propensity scores, a
+subset drops it, while subassignment that grows the weights carries it
+across the length change.
+
+\code{is_unit_truncated()} therefore checks that the record covers the object it
+is given, and raises an error of class \code{propensity_missing_meta_error} when
+it does not, or when an object marked as truncated carries no record at
+all, rather than name truncated units at stale positions. Query the
+\code{ps_trunc} object the record was written for instead.
 
 That check counts observations, which a reordering does not change, so it
 does not catch one. An operation that reorders through vctrs rather than
 through \code{[}, such as \code{vctrs::vec_slice(x, 5:1)} or \code{dplyr::arrange()},
-keeps a record written for the old order, and \code{is_unit_truncated()}
-answers from it and names the wrong units. See \code{\link[=ps_trunc]{ps_trunc()}} for the whole
-contract.
+keeps a record written for the old order, and a \code{psw} keeps one through any
+same-length operation, a reordering included. \code{is_unit_truncated()} answers
+from those positions and names the wrong units. See \code{\link[=ps_trunc]{ps_trunc()}} and \link{psw}
+for the whole contract.
 }
 \examples{
 ps <- c(0.02, 0.3, 0.5, 0.7, 0.98)

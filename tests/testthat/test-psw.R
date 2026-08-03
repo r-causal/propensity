@@ -228,6 +228,139 @@ test_that("vec_cast from psw to double returns the bare data", {
   expect_null(attributes(out))
 })
 
+# What a cast between two psw objects owes its target ------------------------
+
+# A cast returns `x`'s values in `to`'s type, and a psw's type is the metadata
+# it carries: the estimand the weights answer and whether they were stabilized
+# or built from modified propensity scores. Weights described one way are not
+# weights described another way, so a cast between them has no result to give
+# and refuses, which is the same comparison `vec_ptype2()` makes when it
+# refuses to find a common type.
+#
+# The refusal is what `[<-` rests on. Subassignment casts the replacement to
+# the target's type and then leaves base R to keep the target's attributes, so
+# a cast that hands `x` back unexamined writes weights for one estimand into
+# weights for another under the target's description.
+
+test_that("casting between psw objects with different metadata refuses", {
+  ate <- psw(double(), estimand = "ate")
+
+  expect_error(
+    vec_cast(psw(1, estimand = "att"), to = ate),
+    class = "vctrs_error_incompatible_type"
+  )
+  expect_error(
+    vec_cast(psw(1, estimand = "ate", stabilized = TRUE), to = ate),
+    class = "vctrs_error_incompatible_type"
+  )
+  expect_error(
+    vec_cast(psw(1, estimand = "ate", trimmed = TRUE), to = ate),
+    class = "vctrs_error_incompatible_type"
+  )
+  expect_error(
+    vec_cast(psw(1, estimand = "ate", truncated = TRUE), to = ate),
+    class = "vctrs_error_incompatible_type"
+  )
+  expect_error(
+    vec_cast(psw(1, estimand = "ate", calibrated = TRUE), to = ate),
+    class = "vctrs_error_incompatible_type"
+  )
+
+  # The score is part of the description even when both sides are stabilized,
+  # so weights held against different scores are different types.
+  scored <- psw(
+    double(),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.4
+  )
+  expect_error(
+    vec_cast(
+      psw(1, estimand = "ate", stabilized = TRUE, stabilization_score = 0.6),
+      to = scored
+    ),
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("a refused psw cast names the field the two objects disagree on", {
+  # `vec_ptype_full()` names only the estimand and the stabilization status, so
+  # a disagreement on anything else renders two identical-looking types and the
+  # refusal would read as a type that cannot be converted to itself.
+  scored <- psw(
+    double(),
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.4
+  )
+  other <- psw(
+    1,
+    estimand = "ate",
+    stabilized = TRUE,
+    stabilization_score = 0.6
+  )
+
+  expect_identical(
+    vec_ptype_full(other),
+    vec_ptype_full(scored)
+  )
+  expect_error(
+    vec_cast(other, to = scored),
+    regexp = "different stabilization scores",
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("casting between psw objects describing the same weights succeeds", {
+  to <- psw(double(), estimand = "ate", stabilized = TRUE)
+  x <- psw(c(1, 2), estimand = "ate", stabilized = TRUE)
+
+  out <- vec_cast(x, to = to)
+
+  expect_s3_class(out, "psw")
+  expect_identical(vec_data(out), c(1, 2))
+  expect_identical(estimand(out), "ate")
+  expect_true(is_stabilized(out))
+})
+
+test_that("assigning weights for another estimand into a psw refuses", {
+  w <- psw(c(1, 2), estimand = "ate")
+
+  expect_error(
+    {
+      w[1] <- psw(9, estimand = "att")
+    },
+    class = "vctrs_error_incompatible_type"
+  )
+  expect_identical(vec_data(w), c(1, 2))
+
+  # Weights described the same way are the target's type, so the replacement
+  # goes in.
+  expect_silent({
+    w[1] <- psw(9, estimand = "ate")
+  })
+  expect_identical(vec_data(w), c(9, 2))
+  expect_identical(estimand(w), "ate")
+})
+
+test_that("combining psw objects with different metadata still downgrades", {
+  # Regression guard. Combining settles its type through `vec_ptype2()`, which
+  # answers a disagreement with a warning and a common type of numeric, so no
+  # psw-to-psw cast is reached and the refusal above does not turn a combine
+  # that warns into one that errors.
+  ate <- psw(1, estimand = "ate")
+  att <- psw(2, estimand = "att")
+
+  expect_warning(
+    vec_c(ate, att),
+    class = "propensity_coercion_warning"
+  )
+
+  combined <- suppressWarnings(vec_c(ate, att))
+  expect_type(combined, "double")
+  expect_identical(combined, c(1, 2))
+})
+
 test_that("vec_ptype2 combines psw and other types correctly", {
   x <- psw(c(0.1, 0.2), estimand = "ate")
   y <- psw(c(0.3, 0.4), estimand = "ate")
@@ -250,12 +383,65 @@ test_that("vec_ptype2 combines psw and other types correctly", {
 
   # Combining with integer
   expect_propensity_warning(
-    expect_equal(vec_ptype2(x, integer()), integer()),
+    expect_equal(vec_ptype2(x, integer()), double()),
     print = TRUE
   )
   expect_propensity_warning(
-    expect_equal(vec_ptype2(integer(), x), integer()),
+    expect_equal(vec_ptype2(integer(), x), double()),
     print = TRUE
+  )
+})
+
+# Where a psw and an integer meet --------------------------------------------
+
+# Weights are quantities with fractional parts, so a common type of integer is
+# every weight rounded away: the combination reports the class it dropped and
+# then silently changes the numbers it kept. The type that holds both sets of
+# values is double, which is the answer `ps_trim` and `ps_trunc` already give
+# when they meet an integer.
+#
+# An explicit cast to integer is a different request. There the caller named
+# the type, so vctrs' own check reports the loss rather than rounding it away.
+
+test_that("combining a psw with an integer keeps the weights", {
+  w <- psw(c(1.5, 2.5), estimand = "ate")
+
+  expect_warning(
+    vec_c(w, 1L),
+    class = "propensity_class_downgrade_warning"
+  )
+
+  combined <- suppressWarnings(vec_c(w, 1L))
+  expect_type(combined, "double")
+  expect_identical(combined, c(1.5, 2.5, 1))
+})
+
+test_that("a psw and an integer meet in the doubles", {
+  w <- psw(c(1.5, 2.5), estimand = "ate")
+
+  expect_warning(
+    vec_ptype2(w, integer()),
+    class = "propensity_class_downgrade_warning"
+  )
+  expect_warning(
+    vec_ptype2(integer(), w),
+    class = "propensity_class_downgrade_warning"
+  )
+
+  expect_identical(suppressWarnings(vec_ptype2(w, integer())), double())
+  expect_identical(suppressWarnings(vec_ptype2(integer(), w)), double())
+})
+
+test_that("casting a psw to integer refuses rather than rounds", {
+  # Regression guard. The common type moving to double is about where the two
+  # meet on their own; a cast the caller wrote still answers for the loss.
+  expect_error(
+    vec_cast(psw(c(1.5, 2.5), estimand = "ate"), integer()),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_identical(
+    vec_cast(psw(c(1, 2), estimand = "ate"), integer()),
+    c(1L, 2L)
   )
 })
 
@@ -839,6 +1025,62 @@ test_that("growing a psw by subassignment leaves a record that no longer covers 
   expect_true(is_ps_trimmed(w))
   expect_error(is_unit_trimmed(w), class = "propensity_missing_meta_error")
   expect_false(expect_silent(is_refit(w)))
+})
+
+# Which units a psw's truncation pinned --------------------------------------
+
+# `is_unit_truncated()` is the truncation counterpart of `is_unit_trimmed()`
+# and asks the same kind of question: which of these observations did the
+# modification touch. The answer is one logical per observation, read out of
+# the positions the truncation record names, whether it is asked of the
+# propensity scores or of the weights built from them. Whether the weights were
+# built from truncated scores at all is the question `is_ps_truncated()`
+# answers, and a single flag is its whole answer.
+
+test_that("a psw answers the truncation query where its ps_trunc does", {
+  # The `ps_trunc` already answers per unit, which is the contract; the weights
+  # carry its record and owe the same answer.
+  ps <- ps_trunc(
+    c(0.05, 0.3, 0.5, 0.7, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+  expect_identical(is_unit_truncated(ps), c(TRUE, FALSE, FALSE, FALSE, TRUE))
+
+  w <- truncated_psw()
+  expect_true(is_ps_truncated(w))
+  expect_identical(ps_trunc_meta(w)$truncated_idx, c(1L, 5L))
+  expect_identical(is_unit_truncated(w), c(TRUE, FALSE, FALSE, FALSE, TRUE))
+})
+
+test_that("is_unit_truncated() answers once per unit of an untruncated psw", {
+  # Weights built from scores that were never truncated had no unit pinned to a
+  # bound, which is an answer for each of them rather than one for all of them.
+  expect_identical(is_unit_truncated(psw(1:3)), c(FALSE, FALSE, FALSE))
+
+  # No observations, no answers.
+  expect_identical(is_unit_truncated(psw(double())), logical(0))
+})
+
+test_that("growing a truncated psw leaves a record that no longer covers it", {
+  # `[<-` casts the replacement and then leaves base R to preserve the target's
+  # attributes, so the truncation record crosses a length change no restore
+  # ever sees, exactly as the trimming record does. It describes five
+  # observations and the weights now hold seven, so the positional query has no
+  # answer to give rather than a wrong one.
+  w <- truncated_psw()
+  expect_silent({
+    w[7] <- 2
+  })
+
+  expect_length(w, 7)
+  expect_identical(ps_trunc_meta(w), ps_trunc_meta(truncated_psw()))
+  expect_true(is_ps_truncated(w))
+  expect_error(
+    is_unit_truncated(w),
+    class = "propensity_missing_meta_error"
+  )
 })
 
 # An operation between two psw objects has two sets of metadata to answer for

@@ -231,6 +231,31 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
   expect_true(is_ps_truncated(wts_cens_trunc))
 })
 
+test_that("wt_cens() refuses a categorical exposure", {
+  # A censoring weight inverts the probability of remaining uncensored, which is
+  # a two-level event. Delegating to the ATE machinery would answer a
+  # categorical exposure with ATE weights carrying the "uncensored" estimand,
+  # which is a set of weights for a question censoring weights do not ask.
+  exposure <- factor(c("A", "B", "C", "A", "B", "C"))
+  ps_matrix <- matrix(
+    1 / 3,
+    nrow = 6,
+    ncol = 3,
+    dimnames = list(NULL, levels(exposure))
+  )
+
+  expect_error(
+    wt_cens(ps_matrix, exposure, exposure_type = "categorical"),
+    class = "propensity_wt_not_supported_error"
+  )
+
+  # auto-detection reaches the same refusal from a three-level exposure
+  expect_error(
+    wt_cens(ps_matrix, exposure),
+    class = "propensity_wt_not_supported_error"
+  )
+})
+
 test_that("wt_ate stores a user-supplied stabilization_score", {
   ps <- c(0.2, 0.4, 0.6, 0.8, 0.3, 0.7)
   exposure <- c(1, 0, 1, 0, 1, 0)
@@ -810,6 +835,200 @@ test_that("binary weights are unchanged when the default focal level is named", 
   }
 })
 
+# ---- levels the exposure never takes ---------------------------------------
+#
+# A factor answers for every level it declares, whether or not any observation
+# holds it, and subsetting one without `droplevels()` leaves declared levels
+# behind. The level resolved as focal by default therefore has to come from the
+# values the exposure actually takes: resolving it among the declared levels can
+# land on one no observation holds, which codes every unit as reference and
+# returns weights for an exposure nobody has.
+#
+# A level the caller names has to be one the exposure takes for the same reason.
+# A typo in `.focal_level` codes every unit as reference, and a typo in
+# `.reference_level` codes every unit as focal, in both cases silently. The
+# categorical path already refuses a level the exposure never takes; the binary
+# path owes the same refusal, whatever the exposure's storage.
+
+test_that("binary weights resolve the default focal level among observed values", {
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.25, 0.8, 0.3, 0.6)
+  with_unused <- factor(c("a", "c", "a", "c"), levels = c("a", "b", "c"))
+
+  # "c" is the second level the exposure takes, so it is the focal level whether
+  # or not the unused "b" sits between them
+  is_focal <- c(0, 1, 0, 1)
+
+  expect_equal(
+    as.numeric(wt_ate(ps, with_unused)),
+    is_focal / ps + (1 - is_focal) / (1 - ps)
+  )
+  expect_equal(wt_ate(ps, with_unused), wt_ate(ps, droplevels(with_unused)))
+})
+
+test_that("binary wt_att() gives the focal units weight one under an unused level", {
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.25, 0.8, 0.3, 0.6)
+  with_unused <- factor(c("a", "c", "a", "c"), levels = c("a", "b", "c"))
+
+  weights <- wt_att(ps, with_unused)
+
+  # att: 1 for the focal "c" units, e / (1 - e) for the "a" units
+  expect_equal(as.numeric(weights), c(0.25 / 0.75, 1, 0.3 / 0.7, 1))
+  expect_equal(weights, wt_att(ps, droplevels(with_unused)))
+})
+
+test_that("binary weights refuse a focal level the exposure never takes", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  expect_error(
+    wt_att(ps, exposure, exposure_type = "binary", .focal_level = "Treated"),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("binary weights refuse a reference level the exposure never takes", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  expect_error(
+    wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .reference_level = "Control"
+    ),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("binary weights refuse an absent level on 0/1 and logical exposures", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  zero_one <- c(0, 1, 0, 1)
+  true_false <- c(FALSE, TRUE, FALSE, TRUE)
+
+  expect_error(
+    wt_att(ps, zero_one, exposure_type = "binary", .focal_level = 2),
+    class = "propensity_focal_level_error"
+  )
+  expect_error(
+    wt_att(ps, zero_one, exposure_type = "binary", .reference_level = 2),
+    class = "propensity_focal_level_error"
+  )
+  expect_error(
+    wt_att(ps, true_false, exposure_type = "binary", .focal_level = "yes"),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("the refusal of an absent level names the levels the exposure takes", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  expect_propensity_error(
+    wt_att(ps, exposure, exposure_type = "binary", .focal_level = "Treated")
+  )
+})
+
+test_that("the absent-level refusal answers an exposure with nothing observed", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  all_missing <- rep(NA_character_, 4)
+
+  cnd <- expect_error(
+    wt_att(ps, all_missing, exposure_type = "binary", .focal_level = "b"),
+    class = "propensity_focal_level_error"
+  )
+
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  # An exposure missing everywhere takes no levels, so the hint that lists the
+  # levels present has nothing to list and renders as an empty sentence.
+  expect_no_match(msg, "Levels present: .", fixed = TRUE)
+  expect_match(msg, "no observed values|missing", ignore.case = TRUE)
+})
+
+test_that("binary weights refuse a `.focal_level` holding more than one value", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  # The coding compares the exposure to the level elementwise, so two levels
+  # recycle across the exposure and sort the units into groups nobody named.
+  expect_error(
+    wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .focal_level = c("control", "treated")
+    ),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("binary weights refuse a `.reference_level` holding more than one value", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  # The reference level is compared elementwise too, and `!=` against two
+  # levels holds nowhere, so every unit is coded as reference.
+  expect_error(
+    wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .reference_level = c("control", "treated")
+    ),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("categorical weights refuse a `.focal_level` holding more than one value", {
+  exposure <- factor(c("A", "B", "C", "A"))
+  ps_matrix <- matrix(
+    1 / 3,
+    nrow = 4,
+    ncol = 3,
+    dimnames = list(NULL, levels(exposure))
+  )
+
+  expect_error(
+    wt_att(
+      ps_matrix,
+      exposure,
+      exposure_type = "categorical",
+      .focal_level = c("A", "B")
+    ),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("binary weights accept a level the exposure takes", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c("control", "treated", "control", "treated")
+
+  # att: 1 for the focal "treated" units, e / (1 - e) for the "control" units
+  expected <- c(0.2 / 0.8, 1, 0.3 / 0.7, 1)
+
+  expect_equal(
+    as.numeric(wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .focal_level = "treated"
+    )),
+    expected
+  )
+  expect_equal(
+    as.numeric(wt_att(
+      ps,
+      exposure,
+      exposure_type = "binary",
+      .reference_level = "control"
+    )),
+    expected
+  )
+})
+
 # ---- 0/1 and logical exposures honor the named levels ----------------------
 #
 # A 0/1 exposure is the same two-level exposure whether it is stored as double
@@ -1363,17 +1582,16 @@ test_that("glm weights resolve the deprecated `.untreated` to the same reference
 
 test_that("ATE works for continuous cases", {
   denom_model <- lm(mpg ~ gear + am + carb, data = mtcars)
+  model_sigma <- influence(denom_model)$sigma
 
-  # Compute population variances
+  # The marginal density uses the exposure's population moments.
   un_mean <- mean(mtcars$mpg)
-  un_var <- mean((mtcars$mpg - un_mean)^2)
-  cond_var <- mean((mtcars$mpg - predict(denom_model))^2)
+  un_sd <- sqrt(mean((mtcars$mpg - un_mean)^2))
 
-  # Compute z-scores and densities
-  z_num <- (mtcars$mpg - un_mean) / sqrt(un_var)
-  z_den <- (mtcars$mpg - predict(denom_model)) / sqrt(cond_var)
-  f_num <- dnorm(z_num)
-  f_den <- dnorm(z_den)
+  # Both densities are normal densities in the exposure's own units, and the
+  # conditional one is spread by the supplied observation-level `.sigma`.
+  f_num <- dnorm(mtcars$mpg, mean = un_mean, sd = un_sd)
+  f_den <- dnorm(mtcars$mpg, mean = predict(denom_model), sd = model_sigma)
 
   # Expected weights
   wts <- 1 / f_den
@@ -1384,29 +1602,25 @@ test_that("ATE works for continuous cases", {
     weights <- wt_ate(
       predict(denom_model),
       .exposure = mtcars$mpg,
-      .sigma = influence(denom_model)$sigma,
+      .sigma = model_sigma,
       exposure_type = "continuous"
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )
 
-  expect_equal(weights, psw(wts, "ate"), tolerance = 0.01)
+  expect_equal(weights, psw(wts, "ate"))
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
     stabilized_weights <- wt_ate(
       predict(denom_model),
       .exposure = mtcars$mpg,
-      .sigma = influence(denom_model)$sigma,
+      .sigma = model_sigma,
       stabilize = TRUE,
     ),
     "Treating `.exposure` as continuous"
   )
 
-  expect_equal(
-    stabilized_weights,
-    psw(stb_wts, "ate", stabilized = TRUE),
-    tolerance = 0.01
-  )
+  expect_equal(stabilized_weights, psw(stb_wts, "ate", stabilized = TRUE))
 })
 
 test_that("stabilized weights use P(A=1) and P(A=0) as numerators", {
@@ -2335,36 +2549,19 @@ test_that("data frame propensity warns when only some levels have columns", {
   )
 })
 
-test_that("the fallback warning names a declared level the exposure never takes", {
+test_that("a level the exposure never takes does not block matching a column", {
   fixture <- level_named_df_fixture()
   ps_df <- data.frame(a = fixture$p_a, b = fixture$p_b)
   with_unused <- factor(c("a", "a", "b", "b"), levels = c("a", "b", "c"))
 
   # The frame is named for every level the exposure holds, so by the names the
-  # user can see the match should succeed. It does not: a factor answers for its
-  # declared levels, `"c"` among them, and one of those has no column, so the
-  # names are judged not to cover the exposure and the selection falls to
-  # position. The wrong column is then read, guarded by this warning alone, so
-  # the warning has to name the level that is in the way.
-  warning <- expect_warning(
-    wt_att(
-      ps_df,
-      with_unused,
-      exposure_type = "binary",
-      .focal_level = "a"
-    ),
-    class = "propensity_df_column_warning"
-  )
-  msg <- gsub("[[:space:]]+", " ", conditionMessage(warning))
-  expect_match(msg, "\"c\"", fixed = TRUE)
-  expect_match(msg, "droplevels", fixed = TRUE)
-
-  # And that the remedy it names is the remedy: dropping the unused level makes
-  # the match succeed and the warning go away.
+  # user can see the match succeeds. The declared `"c"` is not one of them: the
+  # coding resolves against the levels the exposure takes, so the column names
+  # are checked against those same levels and the unused one is not in the way.
   weights <- expect_no_warning(
     wt_att(
       ps_df,
-      droplevels(with_unused),
+      with_unused,
       exposure_type = "binary",
       .focal_level = "a"
     )
@@ -2373,29 +2570,24 @@ test_that("the fallback warning names a declared level the exposure never takes"
     as.double(weights),
     as.double(wt_att(
       fixture$p_a,
-      droplevels(with_unused),
+      with_unused,
       exposure_type = "binary",
       .focal_level = "a"
     ))
   )
-})
 
-test_that("the fallback warning stays quiet about levels when every one is declared", {
-  fixture <- level_named_df_fixture()
-  ps_df <- data.frame(x1 = fixture$p_a, x2 = fixture$p_b)
-
-  # The names here cover no level at all, which the unused level has nothing to
-  # do with, so the hint about it must not appear.
-  warning <- expect_warning(
-    wt_att(
-      ps_df,
-      fixture$factor,
-      exposure_type = "binary",
-      .focal_level = "a"
-    ),
-    class = "propensity_df_column_warning"
+  # Dropping the unused level changes nothing, because nothing depended on it.
+  expect_equal(
+    as.double(weights),
+    as.double(expect_no_warning(
+      wt_att(
+        ps_df,
+        droplevels(with_unused),
+        exposure_type = "binary",
+        .focal_level = "a"
+      )
+    ))
   )
-  expect_no_match(conditionMessage(warning), "droplevels", fixed = TRUE)
 })
 
 test_that("data frame propensity warns when the focal level names two columns", {
@@ -2716,6 +2908,52 @@ test_that("`wt_cens()` resolves a data frame column and its deprecation once", {
   expect_identical(estimand(weights), "uncensored")
 })
 
+test_that("`wt_cens()` names itself in the deprecation on the numeric and glm routes", {
+  fixture <- level_named_df_fixture()
+
+  # The numeric method delegates to the ATE machinery by handing it the
+  # deprecated argument, so the deprecation is raised there and attributed to
+  # the function that raised it rather than to the one the user called.
+  deprecations <- character()
+  with_always_deprecated(
+    withCallingHandlers(
+      wt_cens(
+        fixture$p_a,
+        fixture$factor,
+        exposure_type = "binary",
+        .treated = "a"
+      ),
+      lifecycle_warning_deprecated = function(cnd) {
+        deprecations <<- c(deprecations, conditionMessage(cnd))
+        rlang::cnd_muffle(cnd)
+      }
+    )
+  )
+
+  expect_length(deprecations, 1)
+  expect_match(deprecations[[1]], "wt_cens()", fixed = TRUE)
+  expect_no_match(deprecations[[1]], "wt_ate()", fixed = TRUE)
+
+  # the glm route resolves the deprecated argument before delegating, so it
+  # already names wt_cens(); pinned here beside the numeric route
+  withr::local_options(propensity.quiet = TRUE)
+  glm_fixture <- focal_glm_fixture()
+  glm_deprecations <- character()
+  with_always_deprecated(
+    withCallingHandlers(
+      wt_cens(glm_fixture$model, exposure_type = "binary", .treated = "a"),
+      lifecycle_warning_deprecated = function(cnd) {
+        glm_deprecations <<- c(glm_deprecations, conditionMessage(cnd))
+        rlang::cnd_muffle(cnd)
+      }
+    )
+  )
+
+  expect_length(glm_deprecations, 1)
+  expect_match(glm_deprecations[[1]], "wt_cens()", fixed = TRUE)
+  expect_no_match(glm_deprecations[[1]], "wt_ate()", fixed = TRUE)
+})
+
 test_that("continuous exposures keep the positional data frame default", {
   set.seed(2024)
   exposure <- rnorm(10)
@@ -2730,6 +2968,89 @@ test_that("continuous exposures keep the positional data frame default", {
       stabilize = TRUE
     )
   )
+})
+
+# ---- a matrix of level probabilities ---------------------------------------
+#
+# A matrix of one column per exposure level holds what the equivalent data frame
+# holds, so the two carry the same propensity scores into the same weights. On a
+# binary exposure the matrix instead survives every check elementwise and
+# reaches the weight constructor with its shape intact, where vctrs refuses to
+# drop a dimension.
+
+test_that("a matrix `.propensity` reaches the same binary weights as a data frame", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c(0, 1, 0, 1)
+  ps_matrix <- cbind(control = 1 - ps, treated = ps)
+
+  from_matrix <- wt_ate(ps_matrix, exposure, exposure_type = "binary")
+
+  expect_equal(
+    from_matrix,
+    wt_ate(as.data.frame(ps_matrix), exposure, exposure_type = "binary")
+  )
+  # the data frame route reads the second column, which holds the probability
+  # of the focal level
+  expect_equal(
+    as.numeric(from_matrix),
+    exposure / ps + (1 - exposure) / (1 - ps)
+  )
+})
+
+test_that("a matrix `.propensity` still carries a categorical exposure", {
+  exposure <- factor(c("A", "B", "C", "A", "B", "C"))
+  ps_matrix <- matrix(
+    1 / 3,
+    nrow = 6,
+    ncol = 3,
+    dimnames = list(NULL, levels(exposure))
+  )
+
+  # for ATE, h(e) = 1, so each weight is 1 / e_{i,Z_i}
+  expect_equal(
+    as.numeric(wt_ate(ps_matrix, exposure, exposure_type = "categorical")),
+    rep(3, 6)
+  )
+})
+
+# ---- announcing the exposure type once -------------------------------------
+#
+# Every data frame method resolves the exposure type to choose a column and then
+# hands the unresolved argument on to the numeric method, which resolves it
+# again. The resolution announces itself, so a call that made one decision
+# announces it twice.
+
+exposure_type_alerts <- function(expr) {
+  alerts <- character()
+  withCallingHandlers(
+    expr,
+    message = function(cnd) {
+      alerts <<- c(alerts, conditionMessage(cnd))
+      invokeRestart("muffleMessage")
+    }
+  )
+
+  grep("Treating", alerts, value = TRUE)
+}
+
+test_that("the data frame methods announce the exposure type once", {
+  withr::local_options(propensity.quiet = FALSE)
+
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c(0, 1, 0, 1)
+  ps_df <- data.frame(control = 1 - ps, treated = ps)
+
+  # the vector route makes the same decision, and is the reference for how
+  # often making it is announced
+  expect_length(exposure_type_alerts(wt_ate(ps, exposure)), 1)
+
+  expect_length(exposure_type_alerts(wt_ate(ps_df, exposure)), 1)
+  expect_length(exposure_type_alerts(wt_att(ps_df, exposure)), 1)
+
+  cat_exposure <- factor(c("A", "B", "C", "A", "B", "C"))
+  cat_df <- data.frame(A = rep(1 / 3, 6), B = rep(1 / 3, 6), C = rep(1 / 3, 6))
+
+  expect_length(exposure_type_alerts(wt_ate(cat_df, cat_exposure)), 1)
 })
 
 test_that("data frame propensity resolves the focal column before stabilizing", {
@@ -3275,7 +3596,7 @@ test_that("an invalid exposure_type on the wt_cens route names wt_cens()", {
     unwrap_condition_message(cnd),
     paste(
       "`exposure_type` must be one of \"auto\", \"binary\",",
-      "\"categorical\", or \"continuous\", not \"wrong\"."
+      "or \"continuous\", not \"wrong\"."
     ),
     fixed = TRUE
   )
@@ -3396,9 +3717,6 @@ categorical_attribution_routes <- function() {
     },
     wt_entropy = function(ps, exposure) {
       wt_entropy(ps, exposure, exposure_type = "categorical")
-    },
-    wt_cens = function(ps, exposure) {
-      wt_cens(ps, exposure, exposure_type = "categorical")
     }
   )
 }
@@ -4318,6 +4636,105 @@ test_that("all methods handle NAs appropriately", {
   })
 })
 
+# A missing exposure value is missing, not a third level. Counting it as one
+# gives a two-level exposure three levels, which takes it off the binary path
+# entirely: at a sample size where the categorical heuristic fires the exposure
+# is refused for holding too few levels, and at a smaller one it falls through
+# to the continuous density weights without a word. An exposure declared binary
+# has to be coded from the levels it takes, with the missing values carried
+# through to the weights.
+
+test_that("exposure detection ignores missing values at a categorical sample size", {
+  withr::local_options(propensity.quiet = TRUE)
+  set.seed(1)
+  ps <- runif(50, 0.2, 0.8)
+  exposure <- rbinom(50, 1, 0.5)
+  exposure[[3]] <- NA
+
+  weights <- wt_ate(ps, exposure)
+
+  expect_equal(weights, wt_ate(ps, exposure, exposure_type = "binary"))
+  expect_equal(
+    as.numeric(weights),
+    exposure / ps + (1 - exposure) / (1 - ps)
+  )
+  expect_true(is.na(as.numeric(weights)[[3]]))
+})
+
+test_that("exposure detection ignores missing values at a small sample size", {
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
+  exposure <- c(0, 1, 0, 1, 0, 1, 0, NA)
+
+  weights <- wt_ate(ps, exposure)
+
+  expect_equal(weights, wt_ate(ps, exposure, exposure_type = "binary"))
+  expect_equal(
+    as.numeric(weights),
+    exposure / ps + (1 - exposure) / (1 - ps)
+  )
+})
+
+test_that("an explicitly binary exposure with missing values is coded from its levels", {
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
+  exposure <- c(1, 2, 1, 2, 1, 2, 1, NA)
+
+  # 2 is the second level the exposure takes, so it is the focal level
+  is_focal <- c(0, 1, 0, 1, 0, 1, 0, NA)
+
+  expect_equal(
+    as.numeric(wt_ate(ps, exposure, exposure_type = "binary")),
+    is_focal / ps + (1 - is_focal) / (1 - ps)
+  )
+})
+
+test_that("an explicitly binary integer exposure with missing values keeps its coding", {
+  withr::local_options(propensity.quiet = TRUE)
+  ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.25)
+  exposure <- c(0L, 1L, 0L, 1L, 0L, 1L, 0L, NA)
+
+  expect_equal(
+    as.numeric(wt_ate(ps, exposure, exposure_type = "binary")),
+    exposure / ps + (1 - exposure) / (1 - ps)
+  )
+})
+
+# Counting the levels of an NA-bearing exposure from the values it takes also
+# gives the glm route a focal level to resolve there. `fitted()` reports the
+# probability of the response's second level, so a named first level has to be
+# read as its complement, and the observation with no exposure value is carried
+# through as a missing weight rather than deciding the coding for the rest.
+
+test_that("the glm route inverts fitted values for a named level under missing exposure values", {
+  withr::local_options(propensity.quiet = TRUE)
+  set.seed(2025)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- factor(
+    ifelse(rbinom(n, 1, plogis(0.4 * x)) == 1, "b", "a"),
+    levels = c("a", "b")
+  )
+  exposure[[5]] <- NA
+
+  # `na.exclude` pads the fitted values back out, so they line up with the
+  # exposure the weights are built against
+  model <- glm(exposure ~ x, family = binomial, na.action = na.exclude)
+  e <- 1 - unname(stats::predict(model, type = "response"))
+  is_focal <- exposure == "a"
+
+  weights <- wt_ate(model, exposure, .focal_level = "a")
+
+  expect_equal(as.numeric(weights), ifelse(is_focal, 1 / e, 1 / (1 - e)))
+  expect_true(is.na(as.numeric(weights)[[5]]))
+
+  # Naming the level the coding already resolves leaves the fitted values alone
+  expect_equal(
+    as.numeric(wt_ate(model, exposure, .focal_level = "b")),
+    as.numeric(wt_ate(model, exposure))
+  )
+})
+
 # Integration tests ----
 
 test_that("weight functions integrate correctly with ps_trim and ps_trunc", {
@@ -4791,7 +5208,7 @@ test_that("Matching (ATM) weights match PSweight", {
   expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
 })
 
-test_that("Entropy weights use different formula than PSweight", {
+test_that("Entropy weights match PSweight for model-fitted scores", {
   skip_if_not_installed("PSweight")
   skip_on_cran()
 
@@ -4815,26 +5232,19 @@ test_that("Entropy weights use different formula than PSweight", {
   )
 
   # Extract entropy weights and un-normalize
-  # PSweight normalizes weights to sum to 1 within each group
+  # PSweight normalizes weights to sum to 1 within each treatment group, so
+  # scaling each group by the sum of our raw weights recovers the raw scale
   psw_weights_norm <- psw_obj$ps.weights$entropy
 
-  # Calculate sum of raw weights for each group to un-normalize
   trt <- PSweight::psdata_cl$trt
-  raw_wts <- ifelse(trt == 1, 1 - ps_fitted, ps_fitted)
-  sum_raw_trt1 <- sum(raw_wts[trt == 1])
-  sum_raw_trt0 <- sum(raw_wts[trt == 0])
+  our_sum1 <- sum(our_weights[trt == 1])
+  our_sum0 <- sum(our_weights[trt == 0])
 
-  # Un-normalize PSweight weights
   psw_weights_raw <- numeric(nrow(PSweight::psdata_cl))
-  psw_weights_raw[trt == 1] <- psw_weights_norm[trt == 1] * sum_raw_trt1
-  psw_weights_raw[trt == 0] <- psw_weights_norm[trt == 0] * sum_raw_trt0
+  psw_weights_raw[trt == 1] <- psw_weights_norm[trt == 1] * our_sum1
+  psw_weights_raw[trt == 0] <- psw_weights_norm[trt == 0] * our_sum0
 
-  # Our package uses entropy tilting function h(e) = -[e*log(e) + (1-e)*log(1-e)]
-  # PSweight uses simpler formula: w = (1-e) for treated, w = e for control
-  # These give different results by a factor related to the entropy function
-  # So we just verify the ratio is consistent
-  ratio <- as.numeric(our_weights) / psw_weights_raw
-  expect_true(sd(ratio) / mean(ratio) < 0.01) # Coefficient of variation < 1%
+  expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
 })
 
 test_that("Treated (ATT) weights match PSweight", {
@@ -4975,10 +5385,9 @@ test_that("GLM methods produce same results as PSweight", {
   sum_ipw_trt1 <- sum(raw_ipw[trt == 1])
   sum_ipw_trt0 <- sum(raw_ipw[trt == 0])
 
-  # Entropy weights
-  raw_entropy <- ifelse(trt == 1, 1 - ps_fitted, ps_fitted)
-  sum_entropy_trt1 <- sum(raw_entropy[trt == 1])
-  sum_entropy_trt0 <- sum(raw_entropy[trt == 0])
+  # Entropy weights, un-normalized with the sums of our own raw weights
+  sum_entropy_trt1 <- sum(our_entropy_glm[trt == 1])
+  sum_entropy_trt0 <- sum(our_entropy_glm[trt == 0])
 
   # Un-normalize PSweight weights
   psw_ate_raw <- numeric(nrow(PSweight::psdata_cl))
@@ -4993,11 +5402,7 @@ test_that("GLM methods produce same results as PSweight", {
 
   # Compare
   expect_equal(as.numeric(our_ate_glm), psw_ate_raw, tolerance = 1e-10)
-
-  # For entropy, our package uses different formula than PSweight
-  # so we just verify the ratio is consistent
-  entropy_ratio <- as.numeric(our_entropy_glm) / psw_entropy_raw
-  expect_true(sd(entropy_ratio) / mean(entropy_ratio) < 0.01)
+  expect_equal(as.numeric(our_entropy_glm), psw_entropy_raw, tolerance = 1e-10)
 })
 
 # ---- validating a stabilization score at the weight functions ---------------
@@ -5301,4 +5706,425 @@ test_that("wt_ate() rejects an invalid stabilization score built on trimmed scor
     )),
     class = "propensity_stabilization_score_error"
   )
+})
+
+# ---- observation-level standard deviations in continuous weights -----------
+
+# A continuous ATE weight is the density ratio f_A(a_i) / f_{A|X}(a_i | x_i).
+# The conditional density is the one the propensity model estimates, so its
+# spread is that model's residual standard deviation: the observation-level
+# `.sigma` when the caller supplies one, the pooled residual standard deviation
+# otherwise. Both densities are normal densities in the exposure's own units, so
+# both carry the 1/sigma factor that makes them integrate to one. Evaluating a
+# standard normal ordinate at a z-score instead drops that factor, and pooling
+# the spread discards the per-observation standard deviations entirely, which
+# leaves the weights unable to respond to `.sigma` at all.
+
+continuous_sigma_fixture <- function() {
+  list(
+    fitted = c(1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5),
+    exposure = c(0.8, 1.9, 2.4, 2.1, 3.6, 3.1, 4.9, 4.2),
+    sigma = c(0.5, 0.8, 1, 1.2, 0.7, 0.9, 1.1, 1.3)
+  )
+}
+
+# The marginal density in the numerator of every expectation below. Its mean and
+# standard deviation are the exposure's own, both taken as population moments.
+continuous_marginal_density <- function(exposure) {
+  marginal_mean <- mean(exposure)
+  marginal_sd <- sqrt(mean((exposure - marginal_mean)^2))
+  dnorm(exposure, mean = marginal_mean, sd = marginal_sd)
+}
+
+test_that("continuous ATE weights respond to `.sigma`", {
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+
+  narrow <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = rep(1, n),
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  wide <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = rep(5, n),
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+
+  expect_false(identical(as.numeric(narrow), as.numeric(wide)))
+
+  f_num <- continuous_marginal_density(fixture$exposure)
+  expect_equal(
+    as.numeric(narrow),
+    f_num / dnorm(fixture$exposure, mean = fixture$fitted, sd = 1)
+  )
+  expect_equal(
+    as.numeric(wide),
+    f_num / dnorm(fixture$exposure, mean = fixture$fitted, sd = 5)
+  )
+})
+
+test_that("stabilized continuous ATE weights are the normalized density ratio at `.sigma`", {
+  fixture <- continuous_sigma_fixture()
+
+  f_num <- continuous_marginal_density(fixture$exposure)
+  f_den <- dnorm(
+    fixture$exposure,
+    mean = fixture$fitted,
+    sd = fixture$sigma
+  )
+
+  weights <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = fixture$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(as.numeric(weights), f_num / f_den)
+
+  # A fixed stabilization score stands in for the marginal density; the
+  # conditional density in the denominator is the same one.
+  scored <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = fixture$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    stabilization_score = 0.5
+  )
+  expect_equal(as.numeric(scored), 0.5 / f_den)
+})
+
+test_that("unstabilized continuous ATE weights invert the normalized conditional density", {
+  fixture <- continuous_sigma_fixture()
+
+  f_den <- dnorm(
+    fixture$exposure,
+    mean = fixture$fitted,
+    sd = fixture$sigma
+  )
+
+  withr::local_options(propensity.quiet = FALSE)
+  expect_message(
+    weights <- wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = fixture$sigma,
+      exposure_type = "continuous"
+    ),
+    "Using unstabilized weights for continuous exposures is not recommended."
+  )
+
+  expect_equal(as.numeric(weights), 1 / f_den)
+})
+
+test_that("continuous ATE weights fall back to the pooled residual standard deviation", {
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+
+  pooled_sd <- sqrt(mean((fixture$exposure - fixture$fitted)^2))
+  f_num <- continuous_marginal_density(fixture$exposure)
+  f_den <- dnorm(fixture$exposure, mean = fixture$fitted, sd = pooled_sd)
+
+  stabilized <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(as.numeric(stabilized), f_num / f_den)
+
+  withr::local_options(propensity.quiet = FALSE)
+  expect_message(
+    unstabilized <- wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      exposure_type = "continuous"
+    ),
+    "Using unstabilized weights for continuous exposures is not recommended."
+  )
+  expect_equal(as.numeric(unstabilized), 1 / f_den)
+
+  # Supplying the pooled standard deviation for every observation is the same
+  # calculation the fallback performs.
+  expect_equal(
+    as.numeric(stabilized),
+    as.numeric(wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = rep(pooled_sd, n),
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ))
+  )
+})
+
+test_that("wt_ate() on a gaussian model pools the residual standard deviation unless `.sigma` says otherwise", {
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+  model_data <- data.frame(a = fixture$exposure, x = seq_len(n))
+  model <- glm(a ~ x, data = model_data, family = gaussian())
+  pooled_sd <- sqrt(mean((fixture$exposure - fitted(model))^2))
+  f_num <- continuous_marginal_density(fixture$exposure)
+
+  # A model carries no observation-level standard deviations of its own into
+  # the weights, so the model route is the numeric route on its fitted values.
+  from_model <- wt_ate(model, exposure_type = "continuous", stabilize = TRUE)
+  from_numeric <- wt_ate(
+    fitted(model),
+    fixture$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(as.numeric(from_model), as.numeric(from_numeric))
+  expect_equal(
+    as.numeric(from_model),
+    as.numeric(
+      f_num / dnorm(fixture$exposure, mean = fitted(model), sd = pooled_sd)
+    )
+  )
+
+  # The model's leave-one-out standard deviations are available as an opt-in,
+  # and asking for them changes the weights.
+  model_sigma <- influence(model)$sigma
+  from_sigma <- wt_ate(
+    model,
+    .sigma = model_sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(
+    as.numeric(from_sigma),
+    as.numeric(
+      f_num / dnorm(fixture$exposure, mean = fitted(model), sd = model_sigma)
+    )
+  )
+  expect_false(identical(as.numeric(from_model), as.numeric(from_sigma)))
+})
+
+test_that("continuous `.sigma` weights record the usual psw metadata", {
+  fixture <- continuous_sigma_fixture()
+
+  stabilized <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = fixture$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_s3_class(stabilized, "psw")
+  expect_identical(estimand(stabilized), "ate")
+  expect_true(is_stabilized(stabilized))
+  expect_null(stabilization_score(stabilized))
+  expect_length(stabilized, length(fixture$exposure))
+
+  scored <- wt_ate(
+    fixture$fitted,
+    fixture$exposure,
+    .sigma = fixture$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    stabilization_score = 0.5
+  )
+  expect_true(is_stabilized(scored))
+  expect_identical(stabilization_score(scored), 0.5)
+
+  withr::local_options(propensity.quiet = FALSE)
+  expect_message(
+    unstabilized <- wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = fixture$sigma,
+      exposure_type = "continuous"
+    ),
+    "Using unstabilized weights for continuous exposures is not recommended."
+  )
+  expect_identical(estimand(unstabilized), "ate")
+  expect_false(is_stabilized(unstabilized))
+  expect_null(stabilization_score(unstabilized))
+})
+
+# ---- validating `.sigma` ---------------------------------------------------
+#
+# `.sigma` is read straight into a normal density as the conditional spread, and
+# nothing checks it on the way. A value that is not a number reaches the density
+# as though it were one; a length that neither matches nor divides the exposure
+# recycles into weights nobody asked for; and on a binary or categorical
+# exposure it is absorbed without a word, which is what a caller who meant to
+# pass `exposure_type` by position gets, since `.sigma` holds that position.
+
+test_that("`.sigma` must be numeric", {
+  fixture <- continuous_sigma_fixture()
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c(0, 1, 0, 1)
+
+  # `.sigma` is the third argument, so an exposure type supplied by position
+  # lands there instead
+  expect_error(
+    wt_ate(ps, exposure, "categorical"),
+    class = "propensity_sigma_error"
+  )
+
+  expect_error(
+    wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = "1",
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_sigma_error"
+  )
+})
+
+test_that("`.sigma` must hold one value or one value per observation", {
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+
+  expect_error(
+    wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = fixture$sigma[1:2],
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_sigma_error"
+  )
+
+  expect_error(
+    wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = numeric(0),
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_sigma_error"
+  )
+
+  # A matrix holds as many values as its dimensions multiply to, so one shaped
+  # to the exposure's count passes the length rule and reaches the density with
+  # its cells read in storage order.
+  expect_error(
+    wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = matrix(fixture$sigma, nrow = 2),
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_sigma_error"
+  )
+
+  # a single spread for every observation is the other accepted length, and is
+  # the same calculation as supplying it once per observation
+  expect_equal(
+    as.numeric(wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = 1,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )),
+    as.numeric(wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      .sigma = rep(1, n),
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ))
+  )
+})
+
+test_that("`.sigma` applies only to continuous exposures", {
+  ps <- c(0.2, 0.8, 0.3, 0.7)
+  exposure <- c(0, 1, 0, 1)
+
+  cnd <- expect_error(
+    wt_ate(ps, exposure, .sigma = 1, exposure_type = "binary"),
+    class = "propensity_sigma_error"
+  )
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(cnd)),
+    "continuous"
+  )
+
+  cat_exposure <- factor(c("A", "B", "C", "A", "B", "C"))
+  ps_matrix <- matrix(
+    1 / 3,
+    nrow = 6,
+    ncol = 3,
+    dimnames = list(NULL, levels(cat_exposure))
+  )
+
+  expect_error(
+    wt_ate(ps_matrix, cat_exposure, .sigma = 1, exposure_type = "categorical"),
+    class = "propensity_sigma_error"
+  )
+
+  # wt_cens() carries `.sigma` into the same machinery
+  expect_error(
+    wt_cens(ps, exposure, .sigma = 1, exposure_type = "binary"),
+    class = "propensity_sigma_error"
+  )
+})
+
+test_that("`.sigma` must hold usable standard deviations", {
+  fixture <- continuous_sigma_fixture()
+  n <- length(fixture$exposure)
+  spread <- function(sigma) {
+    wt_ate(
+      fixture$fitted,
+      fixture$exposure,
+      exposure_type = "continuous",
+      .sigma = sigma,
+      stabilize = TRUE
+    )
+  }
+
+  # A standard deviation reaches `dnorm()` as it arrives, so a negative one
+  # comes back as `NaN` weights under a base R warning about them, a zero comes
+  # back as infinite weights, and a missing one comes back missing. None of the
+  # three is a spread the density can be given, so all three are refused before
+  # it is evaluated.
+  expect_no_warning(
+    expect_error(spread(-1), class = "propensity_sigma_error")
+  )
+  expect_error(spread(0), class = "propensity_sigma_error")
+  expect_error(spread(rep(NA_real_, n)), class = "propensity_sigma_error")
+
+  # One bad value among good ones spreads one observation's density, so it is
+  # refused on the same terms.
+  expect_no_warning(
+    expect_error(
+      spread(replace(fixture$sigma, 3, -1)),
+      class = "propensity_sigma_error"
+    )
+  )
+})
+
+# ---- deprecations are attributed to the caller ------------------------------
+
+test_that("the .treated deprecation is attributed to the caller", {
+  messages <- deprecation_warnings_from_user(
+    quote(wt_ate(truncated, exposure, .treated = 1)),
+    list(
+      truncated = ps_trunc(
+        c(0.05, 0.3, 0.5, 0.7, 0.95),
+        method = "ps",
+        lower = 0.1,
+        upper = 0.9
+      ),
+      exposure = c(0, 1, 0, 1, 0)
+    )
+  )
+
+  expect_length(messages, 1)
+  expect_false(deprecation_misattributed(messages))
 })

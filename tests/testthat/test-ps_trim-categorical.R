@@ -1,3 +1,20 @@
+valid_trim_matrix_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a", "b", "c"))
+  # every row sums to 1 and no cell falls below 0.1, so the default threshold
+  # trims nothing and leaves all three groups in place
+  ps_matrix <- rbind(
+    c(0.50, 0.30, 0.20),
+    c(0.30, 0.50, 0.20),
+    c(0.20, 0.30, 0.50),
+    c(0.40, 0.40, 0.20),
+    c(0.25, 0.35, 0.40),
+    c(0.34, 0.33, 0.33)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
 test_that("ps_trim works with matrix propensity scores for symmetric trimming", {
   # Create test data
   set.seed(123)
@@ -16,7 +33,11 @@ test_that("ps_trim works with matrix propensity scores for symmetric trimming", 
     lower = 0.1
   )
 
-  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
   expect_equal(dim(trimmed), dim(ps_matrix))
 
   # Check metadata
@@ -50,7 +71,11 @@ test_that("ps_trim works with data.frame propensity scores", {
 
   trimmed <- ps_trim(ps_df, .exposure = exposure, method = "ps", lower = 0.2)
 
-  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
   expect_equal(nrow(trimmed), nrow(ps_df))
   expect_equal(ncol(trimmed), ncol(ps_df))
 })
@@ -68,7 +93,11 @@ test_that("optimal trimming works for categorical exposures", {
   # Apply optimal trimming
   trimmed <- ps_trim(ps_matrix, .exposure = exposure, method = "optimal")
 
-  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
 
   # Check metadata
   meta <- ps_trim_meta(trimmed)
@@ -117,8 +146,8 @@ test_that("ps_trim validates delta < 1/k", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   colnames(ps_matrix) <- levels(exposure)
 
-  # delta >= 1/3 should trigger warning
-  trimmed <- expect_propensity_warning(
+  # delta >= 1/3 should error
+  expect_propensity_error(
     ps_trim(
       ps_matrix,
       .exposure = exposure,
@@ -126,10 +155,6 @@ test_that("ps_trim validates delta < 1/k", {
       lower = 0.35
     )
   )
-
-  # Should return original data
-  meta <- ps_trim_meta(trimmed)
-  expect_equal(length(meta$keep_idx), n)
 })
 
 test_that("ps_trim errors for unsupported methods with categorical", {
@@ -219,7 +244,11 @@ test_that("ps_trim handles parsnip-style column names", {
     )
   )
 
-  expect_s3_class(trimmed, "ps_trim_matrix")
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
 })
 
 test_that("ps_trim warns when no column names provided", {
@@ -307,7 +336,7 @@ test_that("ps_trim symmetric trimming matches PSweight for categorical exposures
 
   # Our approach
   our_result <- ps_trim(
-    ps = ps_matrix_psw,
+    .propensity = ps_matrix_psw,
     .exposure = psdata$trt_3cat,
     method = "ps",
     lower = 0.1
@@ -387,7 +416,7 @@ test_that("ps_trim optimal trimming matches PSweight for multi-category", {
   }
 
   our_optimal <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = test_data$trt,
     method = "optimal"
   )
@@ -445,7 +474,7 @@ test_that("ps_trim handles edge cases consistently with PSweight", {
 
   our_trim <- expect_propensity_warning(
     ps_trim(
-      ps = ps_matrix,
+      .propensity = ps_matrix,
       .exposure = trt,
       method = "ps",
       lower = 0.06
@@ -499,7 +528,7 @@ test_that("ps_refit works with categorical propensity score trimming", {
 
   # Apply trimming
   trimmed_ps <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = test_data$trt,
     method = "ps",
     lower = 0.15
@@ -508,7 +537,11 @@ test_that("ps_refit works with categorical propensity score trimming", {
   refitted_ps <- ps_refit(trimmed_ps, model, .data = test_data)
 
   # Check properties
-  expect_s3_class(refitted_ps, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_s3_class(
+    refitted_ps,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
   expect_true(is_refit(refitted_ps))
   expect_equal(dim(refitted_ps), dim(ps_matrix))
 
@@ -549,7 +582,7 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
   # Apply very strict trimming
   expect_propensity_warning(
     ps_trim(
-      ps = ps_matrix,
+      .propensity = ps_matrix,
       .exposure = exposure,
       method = "ps",
       lower = 0.3 # This will trim everything
@@ -567,7 +600,7 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
 
   trimmed_extreme <- expect_propensity_warning(
     ps_trim(
-      ps = ps_matrix_extreme,
+      .propensity = ps_matrix_extreme,
       .exposure = exposure,
       method = "ps",
       lower = 0.02
@@ -621,7 +654,7 @@ test_that("ps_refit handles optimal trimming for categorical exposures", {
 
   # Apply optimal trimming
   trimmed_ps <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = test_data$trt,
     method = "optimal"
   )
@@ -668,7 +701,7 @@ test_that("ps_refit preserves column names and order for categorical", {
 
   # Apply trimming
   trimmed_ps <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = test_data$trt,
     method = "ps",
     lower = 0.1
@@ -712,7 +745,7 @@ test_that("ps_refit handles minimal data for categorical exposures", {
   # Apply aggressive trimming to leave minimal data
   trimmed_ps <- expect_propensity_warning(
     ps_trim(
-      ps = ps_matrix,
+      .propensity = ps_matrix,
       .exposure = test_data$trt,
       method = "ps",
       lower = 0.25 # This should trim many observations
@@ -741,7 +774,7 @@ test_that("wt_ate warns when using trimmed but not refitted categorical PS", {
 
   # Apply trimming
   trimmed_ps <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = exposure,
     method = "ps",
     lower = 0.2
@@ -847,6 +880,53 @@ test_that("print methods respect n parameter", {
   expect_false(any(grepl("# \\.\\.\\. with", output_inf)))
 })
 
+# What the matrix print method shows -----------------------------------------
+
+# The trimming record is metadata, and `ps_trim_meta()` is how a caller reads
+# it. The print method summarizes that record in the header and then shows the
+# scores, and the scores are what it shows: the record is a set of index vectors
+# as long as the data, so printed after the matrix it is a second and longer
+# object the caller did not ask to see.
+
+trim_print_fixture <- function() {
+  set.seed(123)
+  n <- 20
+  exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+
+  ps_matrix <- matrix(runif(n * 3, 0.05, 0.95), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  ps_trim(ps_matrix, .exposure = exposure, method = "ps", lower = 0.2)
+}
+
+test_that("print.ps_trim_matrix() shows some rows without the trimming record", {
+  trimmed <- trim_print_fixture()
+  output <- capture.output(print(trimmed, n = 3))
+
+  expect_false(any(grepl('attr\\(,"ps_trim_meta"\\)', output)))
+
+  # Header, column names, the rows asked for, and the count of the rest.
+  expect_length(output, 6)
+  expect_match(
+    output[1],
+    "<ps_trim_matrix\\[20 x 3\\]; trimmed \\d+ of 20; method=ps>"
+  )
+  expect_equal(sum(grepl("^\\s*\\[\\s*\\d+,\\]", output)), 3)
+  expect_true(any(grepl("# \\.\\.\\. with 17 more rows", output)))
+})
+
+test_that("print.ps_trim_matrix() shows every row without the trimming record", {
+  trimmed <- trim_print_fixture()
+  output <- capture.output(print(trimmed, n = Inf))
+
+  expect_false(any(grepl('attr\\(,"ps_trim_meta"\\)', output)))
+
+  # Header, column names, and every row.
+  expect_length(output, 22)
+  expect_equal(sum(grepl("^\\s*\\[\\s*\\d+,\\]", output)), 20)
+})
+
 # ---- the matrix method names ps_trim, whoever called it --------------------
 
 # `ps_trim.matrix` validates the propensity score matrix from inside a
@@ -854,15 +934,6 @@ test_that("print methods respect n parameter", {
 # reports. A frame taken from the method's caller is the user's own function
 # when `ps_trim()` is called from one, and nothing at all when it is called at
 # the top level.
-
-condition_call_name <- function(expr) {
-  cnd <- rlang::catch_cnd(expr, classes = "error")
-  if (is.null(cnd) || is.null(conditionCall(cnd))) {
-    return(NA_character_)
-  }
-
-  paste(deparse(conditionCall(cnd)[[1]]), collapse = " ")
-}
 
 categorical_trim_fixture <- function() {
   list(
@@ -924,4 +995,381 @@ test_that("a matrix with the wrong number of columns names ps_trim", {
     ),
     "ps_trim"
   )
+})
+
+test_that("a refusal on the delegated categorical route names ps_trim", {
+  fixture <- categorical_trim_fixture()
+  valid <- valid_trim_matrix_fixture()
+
+  # A data frame of categorical scores reaches the matrix method by a plain
+  # call rather than by dispatch, so the frame the refusals report against has
+  # to travel with them. Whichever guard fires, the caller wrote `ps_trim()`.
+  expect_identical(
+    condition_call_name(
+      ps_trim(
+        as.data.frame(fixture$bad_matrix),
+        method = "ps",
+        .exposure = fixture$exposure
+      )
+    ),
+    "ps_trim"
+  )
+
+  expect_identical(
+    condition_call_name(
+      ps_trim(
+        as.data.frame(valid$ps_matrix),
+        .exposure = valid$exposure,
+        method = "adaptive"
+      )
+    ),
+    "ps_trim"
+  )
+
+  expect_identical(
+    condition_call_name(
+      ps_trim(
+        as.data.frame(valid$ps_matrix),
+        .exposure = valid$exposure,
+        method = "ps",
+        lower = 0.35
+      )
+    ),
+    "ps_trim"
+  )
+})
+
+test_that("a warning on the delegated categorical route names ps_trim", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # A threshold this high leaves one level with no rows, which the matrix
+  # method reports before returning the scores untrimmed.
+  cnd <- rlang::catch_cnd(
+    ps_trim(
+      as.data.frame(fixture$ps_matrix),
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.28
+    ),
+    classes = "warning"
+  )
+
+  expect_s3_class(cnd, "propensity_no_data_warning")
+  expect_identical(
+    paste(deparse(conditionCall(cnd)[[1]]), collapse = " "),
+    "ps_trim"
+  )
+})
+
+test_that("ps_trim refuses a call argument that names no frame", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # The generic passes its dots to its methods, so the frame the categorical
+  # path reports against is reachable from user code, and a value the condition
+  # system cannot read as one is refused where it arrives rather than left to
+  # turn the next guard that fires into a report of rlang's internals.
+  expect_error(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      call = "bogus"
+    ),
+    class = "propensity_call_arg_error"
+  )
+
+  # The data frame method hands the frame on, so it is the one that reads the
+  # value and the one the refusal names.
+  delegated <- rlang::catch_cnd(
+    ps_trim(
+      as.data.frame(fixture$ps_matrix),
+      .exposure = fixture$exposure,
+      method = "ps",
+      call = "bogus"
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(delegated, "propensity_call_arg_error")
+  expect_identical(
+    paste(deparse(conditionCall(delegated)[[1]]), collapse = " "),
+    "ps_trim"
+  )
+})
+
+test_that("ps_trim trims a matrix with the method left at its default", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # The generic's default is the full six-value vector, which the matrix method
+  # narrows to the two methods it supports. Omitting `method` has to resolve to
+  # the first of those rather than failing to match the vector it was handed.
+  trimmed <- ps_trim(fixture$ps_matrix, .exposure = fixture$exposure)
+
+  # The whole chain, in order: a test that any one of these is inherited holds
+  # for a matrix result that lost the class it was given.
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
+  expect_equal(ps_trim_meta(trimmed)$method, "ps")
+  expect_equal(dim(trimmed), dim(fixture$ps_matrix))
+})
+
+test_that("ps_trim rejects an unsupported matrix method with a package error", {
+  fixture <- valid_trim_matrix_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "adaptive"
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_method_error")
+  # The message has to name the methods the matrix path does support.
+  expect_match(conditionMessage(cnd), "optimal", fixed = TRUE)
+})
+
+test_that("ps_trim aborts when the categorical threshold reaches 1/k", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # A threshold at or above 1/k cannot be met by every column of a row that
+  # sums to one, so there is no trimming rule to apply. Returning the untrimmed
+  # scores with the rejected threshold recorded in the metadata reports a
+  # trimming that did not happen.
+  cnd <- rlang::catch_cnd(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.35
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_range_error")
+})
+
+test_that("ps_trim defaults the categorical threshold to 0.1", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # Trimming and truncation deliberately default to different thresholds: 0.1
+  # here against 0.01 in ps_trunc(), because trimming drops units and
+  # truncation only bounds them.
+  explicit <- ps_trim(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps"
+  )
+  expect_equal(ps_trim_meta(explicit)$delta, 0.1)
+
+  defaulted <- ps_trim(fixture$ps_matrix, .exposure = fixture$exposure)
+  expect_equal(ps_trim_meta(defaulted)$delta, 0.1)
+})
+
+test_that("ps_trim trims a data frame with the method left at its default", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # The data frame method hands `method` to the matrix method untouched, so the
+  # generic's default has to survive that hand-off as well.
+  trimmed <- ps_trim(
+    as.data.frame(fixture$ps_matrix),
+    .exposure = fixture$exposure
+  )
+
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
+  expect_equal(ps_trim_meta(trimmed)$method, "ps")
+  expect_equal(ps_trim_meta(trimmed)$delta, 0.1)
+})
+
+# Missing values ------------------------------------------------------------
+
+# A row carrying a missing score is not one this package removed, so the record
+# says nothing about it and the row comes back as it arrived. Trimming either
+# discards a row or leaves it untouched, so unlike truncation it has no reason
+# to rewrite the scores that row does hold.
+
+missing_cell_trim_fixture <- function() {
+  exposure <- factor(c("a", "a", "a", "b", "b", "b", "c", "c", "c"))
+  # Three rows per level, so that dropping row 3 for its low score and row 7
+  # for its missing one still leaves every group represented and the
+  # group-preservation reset does not fire. Row 3 falls below the 0.1
+  # threshold; row 7 has no score for level "a".
+  ps_matrix <- rbind(
+    c(0.60, 0.20, 0.20),
+    c(0.50, 0.30, 0.20),
+    c(0.05, 0.90, 0.05),
+    c(0.20, 0.60, 0.20),
+    c(0.30, 0.50, 0.20),
+    c(0.40, 0.40, 0.20),
+    c(NA, 0.50, 0.50),
+    c(0.20, 0.20, 0.60),
+    c(0.30, 0.20, 0.50)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trim() does not record a row with a missing score as trimmed", {
+  fixture <- missing_cell_trim_fixture()
+
+  # `min(x) > delta` is missing for row 7, which drops it from the retained
+  # positions and lands it among the trimmed ones, where it is blanked out and
+  # two observed scores are lost with it.
+  with_na <- ps_trim(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps",
+    lower = 0.1
+  )
+  without_na <- ps_trim(
+    fixture$ps_matrix[-7, ],
+    .exposure = fixture$exposure[-7],
+    method = "ps",
+    lower = 0.1
+  )
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$trimmed_idx, 3)
+  expect_equal(meta$keep_idx, c(1, 2, 4, 5, 6, 8, 9))
+  expect_equal(meta$n_obs, 9)
+  expect_false(is_unit_trimmed(with_na)[7])
+
+  # The row is neither trimmed nor rewritten, so it comes back as it arrived.
+  expect_equal(unclass(with_na)[7, ], fixture$ps_matrix[7, ])
+
+  # Every other row is decided by the same comparison against the same
+  # threshold, so the missing row changes nothing about them.
+  expect_equal(
+    as.numeric(unclass(with_na)[-7, ]),
+    as.numeric(unclass(without_na))
+  )
+})
+
+test_that("ps_trim() takes its optimal threshold from the complete rows", {
+  fixture <- missing_cell_trim_fixture()
+
+  # The optimal threshold is a root of a function of the row sums of 1 / e,
+  # which is missing for row 7, so the comparison that decides whether to solve
+  # for it at all is an error rather than an answer.
+  with_na <- ps_trim(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "optimal"
+  )
+  without_na <- ps_trim(
+    fixture$ps_matrix[-7, ],
+    .exposure = fixture$exposure[-7],
+    method = "optimal"
+  )
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$lambda, ps_trim_meta(without_na)$lambda)
+  expect_equal(meta$trimmed_idx, 3)
+  expect_equal(meta$keep_idx, c(1, 2, 4, 5, 6, 8, 9))
+  expect_false(is_unit_trimmed(with_na)[7])
+  expect_equal(unclass(with_na)[7, ], fixture$ps_matrix[7, ])
+  expect_equal(
+    as.numeric(unclass(with_na)[-7, ]),
+    as.numeric(unclass(without_na))
+  )
+})
+
+# What the threshold error says, and what the categorical path cannot use ------
+
+# Four exposure levels, so the threshold a row cannot meet is 1/4 and the
+# message has an exact decimal to name.
+four_level_trim_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "d"))
+  ps_matrix <- rbind(
+    c(0.40, 0.30, 0.20, 0.10),
+    c(0.10, 0.40, 0.30, 0.20),
+    c(0.20, 0.10, 0.40, 0.30),
+    c(0.30, 0.20, 0.10, 0.40)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trim() names the threshold and the limit it reached", {
+  fixture <- four_level_trim_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_range_error")
+
+  # Both numbers are facts about this call: the threshold the caller supplied
+  # and the one it has to fall below, which is 1/k for the k columns the matrix
+  # holds. A message naming neither leaves the caller to work out what their
+  # own limit is.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(msg, "0.3", fixed = TRUE)
+  expect_match(msg, "0.25", fixed = TRUE)
+})
+
+test_that("ps_trim() refuses focal levels on the categorical path", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # The categorical path reads one column per exposure level and never resolves
+  # a focal level, so an argument naming one describes a coding it does not
+  # use. A matrix reaches the refusal by dispatch and a data frame by the
+  # hand-off the data frame method makes, and the arguments used to be dropped
+  # on both routes, which left the caller believing they were honored.
+  expect_focal_refusal <- function(scores) {
+    trim_with <- function(...) {
+      ps_trim(scores, .exposure = fixture$exposure, method = "ps", ...)
+    }
+
+    focal <- expect_error(
+      trim_with(.focal_level = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(focal), "`.focal_level`", fixed = TRUE)
+
+    reference <- expect_error(
+      trim_with(.reference_level = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(
+      conditionMessage(reference),
+      "`.reference_level`",
+      fixed = TRUE
+    )
+
+    # The deprecated spellings stand for the same two arguments, and are refused
+    # on the same terms. The deprecation itself is quieted here so that what is
+    # read is the refusal.
+    withr::local_options(lifecycle_verbosity = "quiet")
+    treated <- expect_error(
+      trim_with(.treated = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(treated), "`.treated`", fixed = TRUE)
+
+    untreated <- expect_error(
+      trim_with(.untreated = "a"),
+      class = "propensity_unsupported_arg_error"
+    )
+    expect_match(conditionMessage(untreated), "`.untreated`", fixed = TRUE)
+  }
+
+  expect_focal_refusal(fixture$ps_matrix)
+  expect_focal_refusal(as.data.frame(fixture$ps_matrix))
 })

@@ -177,7 +177,7 @@ wt_cens(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -191,7 +191,7 @@ wt_cens(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -206,8 +206,11 @@ wt_cens(
 \item{.propensity}{Propensity scores in one of several forms:
 \itemize{
 \item A \strong{numeric vector} of predicted probabilities (binary/continuous).
-\item A \strong{data frame} or matrix with one column per exposure level
-(categorical), or two columns for binary (see \code{.propensity_col}).
+\item A \strong{data frame} or \strong{matrix} with one column per exposure level. Both
+shapes are read the same way, for categorical exposures and for binary
+ones alike, including the default choice of column described under
+\code{.propensity_col}. That argument is itself a formal of the data frame
+methods only, so selecting a column by name means passing a data frame.
 \item A fitted \strong{\code{glm}} object -- fitted values are extracted automatically.
 \item A modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
 \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
@@ -218,44 +221,66 @@ level, so a numeric vector must be supplied on the scale of whichever
 level \code{.focal_level} or \code{.reference_level} resolves to. The \code{glm} methods
 derive it from the fitted values, which give the probability of the
 response's second level, and subtract them from one when the resolved
-focal level is the first level instead. The data frame methods reduce to a
-single column and read it on the same scale; see \code{.propensity_col} for how
-that column is chosen.}
+focal level is the first level instead. A data frame or matrix reduces to
+a single column, read on the same scale; see \code{.propensity_col} for how
+that column is chosen. A matrix reduces by those same defaults, but
+\code{.propensity_col} belongs to the data frame methods alone, so a matrix
+whose column you want to name has to be converted with \code{as.data.frame()}
+first.}
 
 \item{.exposure}{The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
 exposures, a factor or character vector. For continuous exposures, a
 numeric vector. Optional when \code{.propensity} is a \code{glm} object (extracted
-from the model).}
+from the model). Missing values are not counted as a level of their own,
+and are carried through to the weights as missing.}
 
-\item{.sigma}{Numeric vector of observation-level standard deviations for
-continuous exposures (e.g., \code{influence(model)$sigma}). Extracted
-automatically when \code{.propensity} is a \code{glm} object.}
+\item{.sigma}{Observation-level standard deviations of the conditional
+density for continuous exposures, one per observation (e.g.,
+\code{influence(model)$sigma}). Optional: with none supplied, including when
+\code{.propensity} is a \code{glm} object, the conditional density uses the pooled
+residual standard deviation of \code{.exposure} around \code{.propensity}. Weights
+built with an observation-level \code{.sigma} cannot be used with \code{\link[=ipw]{ipw()}}; see
+\strong{Continuous exposures} in Details.
+
+Must be numeric, holding either a single standard deviation or one per
+observation, and applies only to continuous exposures. \code{.sigma} sits in
+the third position, which is where a value meant for \code{exposure_type}
+arrives when it is supplied without a name, so anything else is refused
+with an error of class \code{propensity_sigma_error}.}
 
 \item{exposure_type}{Type of exposure: \code{"auto"} (default), \code{"binary"},
 \code{"categorical"}, or \code{"continuous"}. \code{"auto"} detects the type from
-\code{.exposure}.}
+\code{.exposure}. Not every weight function answers every type; see \strong{Exposure
+types} in Details for which does which. Naming a type a function does not
+support, or supplying an exposure detection reads as one, is an error of
+class \code{propensity_wt_not_supported_error}.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal
 (treated) group. Every binary coding honors it: 0/1 numeric, logical,
 two-level factor, and two-level character exposures are all coded with the
-named level as focal. With no level named, a binary exposure defaults to
-its higher level, which is \code{1} for a 0/1 exposure and \code{TRUE} for a logical
-one. Naming any other level reverses the coding, so \code{.propensity} must
-then hold the probability of the named level. Required for \code{wt_att()} and
-\code{wt_atu()} with categorical exposures.}
+named level as focal, and a level the exposure never takes is an error.
+With no level named, a binary exposure defaults to its higher level, which
+is \code{1} for a 0/1 exposure, \code{TRUE} for a logical one, and the second of the
+two levels a factor or character exposure takes. Levels a factor declares
+but never takes are not candidates. Naming any other level reverses the
+coding, so \code{.propensity} must then hold the probability of the named
+level. Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
 (control) group. For a binary exposure, naming it makes the exposure's
-other level focal, with the same consequence for \code{.propensity}.
-Automatically detected if not supplied.}
+other level focal, with the same consequence for \code{.propensity}, and a
+level the exposure never takes is an error. Automatically detected if not
+supplied.}
 
 \item{stabilize}{If \code{TRUE}, multiply weights by an estimate of the marginal
 treatment probability (binary) or density (continuous). Only supported by
 \code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in Details.}
 
 \item{stabilization_score}{Optional stabilization multiplier to use instead
-of the default (the marginal mean of \code{.exposure}). Either a single value
+of the default described under \strong{Stabilization}: the marginal mean of
+\code{.exposure}, or its marginal normal density for a continuous exposure.
+Either a single value
 applied to every weight or a numeric vector holding one value per
 observation, which is multiplied into the weights observation by
 observation. Every value must be positive and finite, and any other length
@@ -314,16 +339,17 @@ units with the most overlap.
 \item \code{wt_ato()}: \strong{Average Treatment Effect for the Overlap Population} --
 weights proportional to overlap.
 \item \code{wt_entropy()}: \strong{Entropy-weighted Average Treatment Effect} --
-an entropy-balanced population.
+the entropy-tilted population.
 \item \code{wt_cens()}: \strong{Inverse probability of censoring weights} -- uses the
 same formula as \code{wt_ate()} but labels the estimand \code{"uncensored"}. Use
 these to adjust for censoring in survival analysis, not for treatment
-weighting.
+weighting. Remaining uncensored is a two-level event, so \code{wt_cens()}
+supports binary and continuous exposures only.
 }
 
 \code{.propensity} accepts a numeric vector of predicted probabilities, a
-\code{data.frame} of per-level probabilities, a fitted \code{glm} object, or a
-modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
+\code{data.frame} or matrix of per-level probabilities, a fitted \code{glm} object, or
+a modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
 \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
 
 All functions return a \code{\link{psw}} object -- a numeric vector that tracks the
@@ -334,10 +360,13 @@ estimand, stabilization status, and any trimming or truncation applied.
 
 All weight functions support binary exposures. \code{wt_ate()} and \code{wt_cens()}
 also support continuous exposures. All except \code{wt_cens()} support
-categorical exposures.
+categorical exposures; naming a categorical exposure to \code{wt_cens()}, or
+handing it one detection reads as categorical, is an error of class
+\code{propensity_wt_not_supported_error}.
 \itemize{
 \item \strong{Binary}: \code{.exposure} is a two-level vector (e.g., 0/1, logical, or a
-two-level factor). \code{.propensity} is a numeric vector of P(treatment | X).
+two-level factor). \code{.propensity} is a numeric vector of P(treatment | X),
+or a matrix or data frame holding it in one of its columns.
 \item \strong{Categorical}: \code{.exposure} is a factor or character vector with 3+
 levels. \code{.propensity} must be a matrix or data frame with one column per
 level, where rows sum to 1.
@@ -352,10 +381,12 @@ ratio; stabilization is strongly recommended.
 
 Setting \code{stabilize = TRUE} multiplies the base weight by an estimate of
 P(A) (binary) or f_A(A) (continuous), reducing variance. When no
-\code{stabilization_score} is supplied, the marginal mean of \code{.exposure} is
-used. Stabilization is supported for ATE and censoring weights
-(\code{wt_ate()} and \code{wt_cens()}) and is strongly recommended for continuous
-exposures.
+\code{stabilization_score} is supplied, that estimate is the marginal mean of
+\code{.exposure} for a binary or categorical exposure, and for a continuous
+exposure the marginal normal density evaluated at the population mean and
+standard deviation of \code{.exposure}. Stabilization is supported for ATE and
+censoring weights (\code{wt_ate()} and \code{wt_cens()}) and is strongly recommended
+for continuous exposures.
 }
 
 \subsection{Handling extreme weights}{
@@ -375,6 +406,34 @@ See the \href{https://CRAN.R-project.org/package=halfmoon}{halfmoon} package
 for weight diagnostics and visualization.
 }
 
+\subsection{Propensity scores at 0 and 1}{
+
+Propensity scores must lie strictly inside (0, 1), since a score at either
+endpoint leaves the weight undefined. A score of exactly 0 or 1 is refused
+with an error of class \code{propensity_range_error}. For a categorical exposure
+that rule reads every cell of the matrix rather than only the column holding
+each unit's observed level, which is the same open interval the binary path
+enforces on the single score and its complement.
+
+\code{\link[=ipw]{ipw()}} applies a narrower rule to the propensity scores it rebuilds from its
+own propensity score model. For a categorical exposure it refuses only a
+probability of exactly zero at the level a unit was actually assigned, since
+that alone leaves the unit's own weight undefined, and a column for a level
+the unit was not assigned may reach zero without the fit being refused. The
+difference is deliberate: the weight functions can refuse a matrix that holds
+nothing \code{\link[=ipw]{ipw()}} would have objected to. The weights still have to be built
+before \code{\link[=ipw]{ipw()}} can be reached, so the refusal here is the one to resolve.
+
+\code{\link[nnet:multinom]{nnet::multinom()}} reaches the endpoints readily. Under separation the
+softmax puts the probability at a unit's assigned level at exactly 1 in
+double precision, and the columns for the other levels can underflow to
+exactly 0. Trimming is no way around the refusal: \code{\link[=ps_trim]{ps_trim()}} and
+\code{\link[=ps_trunc]{ps_trunc()}} validate a categorical matrix under the same open interval and
+refuse it before either reaches a threshold. Bound the fitted probabilities
+away from 0 and 1 yourself, renormalizing each row to sum to 1, or refit the
+propensity score model so that it does not separate.
+}
+
 \subsection{Weight formulas}{
 \subsection{Binary exposures}{
 
@@ -388,6 +447,11 @@ For binary treatments (\eqn{A \in \{0, 1\}}), with propensity score
 \item \strong{ATO}: \eqn{w = A \cdot (1-e(X)) + (1-A) \cdot e(X)}
 \item \strong{Entropy}: \eqn{w = \frac{h(e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}, where \eqn{h(e) = -[e \log(e) + (1-e) \log(1-e)]}
 }
+
+The entropy weight tilts the propensity score by \eqn{h(e)}, the entropy of
+the score itself, in the sense of Zhou, Matsouaka, and Thomas (2020). It is
+not entropy balancing, which solves for weights that satisfy exact covariate
+moment constraints rather than tilting a fitted propensity score.
 }
 
 \subsection{Continuous exposures}{
@@ -396,6 +460,21 @@ Weights use the density ratio
 \eqn{w = f_A(A) / f_{A|X}(A \mid X)}, where \eqn{f_A} is the marginal
 density and \eqn{f_{A|X}} is the conditional density (both assumed
 normal). Only \code{wt_ate()} and \code{wt_cens()} support continuous exposures.
+
+The marginal density is evaluated at the population mean and standard
+deviation of \code{.exposure}. The conditional density is centered on
+\code{.propensity} and spread by the propensity model's residual standard
+deviation. That spread is the pooled residual standard deviation
+\eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies an
+observation-level standard deviation for each unit, which the \code{glm} methods
+do not do on their own.
+
+\code{\link[=ipw]{ipw()}} models the conditional density with a single pooled residual
+variance, estimated jointly with the rest of the parameter vector. Weights
+built with an observation-level \code{.sigma} therefore have no counterpart in
+that estimating equation, and \code{ipw()} rejects them in its weight consistency
+check. Build weights with the pooled default when the outcome model is
+headed for \code{ipw()}.
 }
 
 \subsection{Categorical exposures}{

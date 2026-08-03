@@ -81,16 +81,21 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #' true treatment probabilities. This can improve the accuracy of inverse
 #' probability weights derived from a misspecified propensity score model.
 #'
-#' @param ps A numeric vector of propensity scores between 0 and 1. Must not
-#'   already be calibrated.
+#' @param .propensity A numeric vector of propensity scores in `[0, 1]`. Unlike
+#'   the rest of the package, calibration accepts scores of exactly 0 and
+#'   exactly 1, since repairing scores a model pushed to the ends of the
+#'   interval is part of what calibration is for. The logistic calibration curve
+#'   maps them back inside the interval; isotonic calibration can return a score
+#'   at an endpoint when its pooled block is pure, and such scores are rejected
+#'   by the weight functions. Must not already be calibrated.
 #' @param .exposure A binary vector of observed treatment assignments, the same
-#'   length as `ps`.
+#'   length as `.propensity`.
 #' @param method Calibration method. One of:
 #'   \describe{
 #'     \item{`"logistic"`}{(Default) Logistic calibration, also called Platt
-#'       scaling. Fits a logistic regression of `.exposure` on `ps`, yielding
-#'       a smooth, parametric correction. Works well with small samples and
-#'       when the bias in `ps` is approximately monotone.}
+#'       scaling. Fits a logistic regression of `.exposure` on `.propensity`,
+#'       yielding a smooth, parametric correction. Works well with small
+#'       samples and when the bias in `.propensity` is approximately monotone.}
 #'     \item{`"isoreg"`}{Isotonic regression. Fits a non-parametric,
 #'       monotone step function. More flexible than logistic calibration
 #'       because it makes no distributional assumption, but needs larger
@@ -98,21 +103,32 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   }
 #' @param smooth Logical. When `method = "logistic"`, controls the form of the
 #'   calibration model. If `TRUE` (default), fits a GAM with a spline on
-#'   `ps` via [mgcv::gam()]; if `FALSE`, fits a simple logistic regression
-#'   via [stats::glm()]. Ignored when `method = "isoreg"`.
+#'   `.propensity` via [mgcv::gam()]; if `FALSE`, fits a simple logistic
+#'   regression via [stats::glm()]. Ignored when `method = "isoreg"`. A spline
+#'   needs enough distinct scores to place its knots, so with fewer than 10
+#'   distinct values of `.propensity` among the observations the fit reads,
+#'   those with both a score and an exposure recorded, the fit falls back to
+#'   logistic regression without a spline. The fallback is announced and
+#'   recorded in the returned metadata.
 #' @param .focal_level The value of `.exposure` representing the focal group
 #'   (typically the treated group). Every binary coding honors it: 0/1 numeric,
 #'   logical, two-level factor, and two-level character exposures are all coded
-#'   with the named level as focal. With no level named, the exposure defaults
-#'   to its higher level, which is `1` for a 0/1 exposure and `TRUE` for a
-#'   logical one. Naming any other level reverses the coding, so `ps` must then
-#'   hold the probability of the named level.
+#'   with the named level as focal, and a level the exposure never takes is an
+#'   error. With no level named, the exposure defaults to its higher level,
+#'   which is `1` for a 0/1 exposure, `TRUE` for a logical one, and the second
+#'   of the two levels a factor or character exposure takes. Levels a factor
+#'   declares but never takes are not candidates. Naming any other level
+#'   reverses the coding, so `.propensity` must then hold the probability of
+#'   the named level.
 #' @param .reference_level The value of `.exposure` representing the reference
 #'   group (typically the control group). Naming it makes the exposure's other
-#'   level focal, with the same consequence for `ps`. Automatically detected if
-#'   not supplied.
+#'   level focal, with the same consequence for `.propensity`, and a level the
+#'   exposure never takes is an error. Automatically detected if not supplied.
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
+#' @param ps `r lifecycle::badge("deprecated")` Use `.propensity` instead. A
+#'   call that names `ps` must name the arguments after it as well, since a
+#'   positional argument binds to `.propensity`.
 #'
 #' @details
 #' Calibration is useful when the propensity score model is correctly
@@ -128,10 +144,21 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   between estimated and true probabilities and have a sufficiently large
 #'   sample.
 #'
+#' **Missing values:**
+#' A unit with a missing exposure tells the calibration model nothing, so it is
+#' dropped from the fit. What happens to that unit afterwards depends on the
+#' method. Logistic calibration, smoothed or not, fits a curve from propensity
+#' score to calibrated score and reads every unit off it, so a unit with a
+#' missing exposure but an observed score is still calibrated. Isotonic
+#' calibration fits separately within each exposure group and reads each unit
+#' from the fit for the group it belongs to; a unit with a missing exposure
+#' belongs to neither group and is returned as `NA`. Under both methods a
+#' missing propensity score yields a missing calibrated score.
+#'
 #' The calibrated scores are returned as a `ps_calib` object, which can be
 #' passed directly to weight functions such as [wt_ate()].
 #'
-#' @return A `ps_calib` vector the same length as `ps`. The attribute
+#' @return A `ps_calib` vector the same length as `.propensity`. The attribute
 #'   `ps_calib_meta` stores calibration metadata (method and whether
 #'   smoothing was applied). Use [is_ps_calibrated()] to test whether an
 #'   object has been calibrated.
@@ -172,18 +199,24 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   cal_smooth <- ps_calibrate(ps, exposure)
 #' }
 #'
-#' @importFrom stats glm fitted binomial
+#' @importFrom stats glm binomial predict
 #' @export
 ps_calibrate <- function(
-  ps,
+  .propensity,
   .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- handle_propensity_deprecation(
+    rlang::maybe_missing(.propensity),
+    ps,
+    "ps_calibrate"
+  )
   method <- rlang::arg_match(method)
 
   # Handle deprecation
@@ -196,33 +229,60 @@ ps_calibrate <- function(
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
-  # Check that ps is numeric and in valid range
-  if (!is.numeric(ps)) {
+  check_focal_levels(.focal_level, .reference_level)
+  # Check that the propensity scores are numeric and in valid range
+  # A one-dimensional array holds one score per observation, which is the shape
+  # calibration reads, so its dimension is dropped the way the weight functions
+  # already drop it. Two or more dimensions hold something else.
+  if (length(dim(.propensity)) == 1L) {
+    dim(.propensity) <- NULL
+  }
+
+  if (!is.null(dim(.propensity))) {
     abort(
-      "`ps` must be a numeric vector.",
+      c(
+        "{.arg .propensity} must be a numeric vector.",
+        x = "It is {.cls {class(.propensity)[[1]]}} with \\
+        {length(dim(.propensity))} dimension{?s}.",
+        i = "Calibration reads one propensity score per observation. Calibrate
+             the columns of a matrix of scores one at a time."
+      ),
       error_class = "propensity_type_error"
     )
   }
 
-  if (is_ps_calibrated(ps)) {
+  if (!is.numeric(.propensity)) {
     abort(
-      "`ps` is already calibrated. Cannot calibrate already calibrated propensity scores.",
+      "{.arg .propensity} must be a numeric vector.",
+      error_class = "propensity_type_error"
+    )
+  }
+
+  if (is_ps_calibrated(.propensity)) {
+    abort(
+      "{.arg .propensity} is already calibrated. Cannot calibrate already calibrated propensity scores.",
       error_class = "propensity_already_calibrated_error"
     )
   }
 
-  # Extract numeric values for comparison if ps is a causal weight object
-  ps_numeric <- if (is_causal_wt(ps)) {
-    as.numeric(ps)
-  } else if (inherits(ps, "ps_calib")) {
-    vec_data(ps)
-  } else {
-    ps
-  }
+  # Calibration reads the values the scores hold, not the class holding them,
+  # and trimmed or truncated scores reach the numeric routes through their
+  # common type with a number, which announces a conversion the caller never
+  # asked for. Reading them once here keeps the rest of the function numeric.
+  ps_numeric <- as.numeric(.propensity)
 
+  # The range accepted here is the closed interval, not the open one
+  # `check_ps_range()` enforces everywhere else. Trimming and weighting divide
+  # by a score, so a 0 or a 1 has no weight to give and is refused; calibration
+  # repairs scores a model pushed to the ends of the interval, so refusing them
+  # would turn away the very scores calibration exists to fix. What comes back
+  # is inside the interval under logistic calibration, whose curve never
+  # reaches either end. Isotonic calibration can return a score at an endpoint
+  # when its pooled block is pure, and such scores are rejected by the weight
+  # functions in turn.
   if (any(ps_numeric < 0 | ps_numeric > 1, na.rm = TRUE)) {
     abort(
-      "`ps` values must be between 0 and 1.",
+      "{.arg .propensity} values must be between 0 and 1.",
       error_class = "propensity_range_error"
     )
   }
@@ -234,9 +294,10 @@ ps_calibrate <- function(
     .reference_level = .reference_level
   )
 
-  if (length(ps) != length(.exposure)) {
+  if (length(.propensity) != length(.exposure)) {
     abort(
-      "Propensity score vector `ps` must be the same length as `.exposure`.",
+      "Propensity score vector {.arg .propensity} must be the same length as \\
+      {.arg .exposure}.",
       error_class = "propensity_length_error"
     )
   }
@@ -245,50 +306,50 @@ ps_calibrate <- function(
   # Only store calibration-specific metadata
 
   # Handle NA values
-  na_idx <- is.na(ps) | is.na(.exposure)
+  na_idx <- is.na(ps_numeric) | is.na(.exposure)
 
   # Perform calibration based on method
-  calib_model <- NULL
   if (method == "logistic") {
+    # The units the fit reads: those with both a score and an exposure.
+    calib_data <- data.frame(
+      treat = .exposure[!na_idx],
+      ps = ps_numeric[!na_idx]
+    )
+
     if (smooth) {
-      # Check if mgcv is available for smooth calibration
+      # Whether a spline can be placed is settled before mgcv is asked for.
+      # Deciding the other way round refuses the call over a package the
+      # calibration it goes on to perform takes no part in.
+      n_unique <- length(unique(calib_data$ps))
+      if (n_unique < 10) {
+        # Fall back to simple logistic regression if too few unique values.
+        # The caller asked for a spline and is getting a straight line, so the
+        # substitution is announced rather than left to the metadata.
+        smooth <- FALSE
+        alert_info(
+          "{n_unique} distinct propensity score{?s} {?is/are} too few to place the knots of a spline, so calibration falls back to logistic regression without one."
+        )
+      }
+    }
+
+    if (smooth) {
       rlang::check_installed(
         "mgcv",
         reason = "for smooth calibration using GAM (Generalized Additive Model)."
       )
 
-      # Create data frame for GAM fitting (only non-NA values)
-      calib_data <- data.frame(
-        treat = .exposure[!na_idx],
-        ps = ps[!na_idx]
+      # Fit GAM with smooth spline: treat ~ s(ps)
+      calib_model <- mgcv::gam(
+        treat ~ s(ps),
+        data = calib_data,
+        family = "binomial"
       )
-
-      # Check if we have enough unique values for smoothing (like probably does)
-      n_unique <- length(unique(calib_data$ps))
-      if (n_unique < 10) {
-        # Fall back to simple logistic regression if too few unique values
-        smooth <- FALSE
-        calib_model <- stats::glm(
-          treat ~ ps,
-          data = calib_data,
-          family = stats::binomial()
-        )
-      } else {
-        # Fit GAM with smooth spline: treat ~ s(ps)
-        calib_model <- mgcv::gam(
-          treat ~ s(ps),
-          data = calib_data,
-          family = "binomial"
-        )
-      }
-    }
-
-    if (!smooth) {
-      # For simple logistic regression, fit on original data (not data frame)
-      # This handles the case where smooth was originally FALSE or was set to FALSE due to fallback
-      if (is.null(calib_model)) {
-        calib_model <- stats::glm(.exposure ~ ps, family = stats::binomial())
-      }
+    } else {
+      calib_model <- stats::glm(
+        treat ~ ps,
+        data = calib_data,
+        family = stats::binomial()
+      )
     }
 
     if (isFALSE(calib_model$converged)) {
@@ -298,25 +359,15 @@ ps_calibrate <- function(
       )
     }
 
-    # Calibrated probabilities are the fitted values from this model
-    # This will be shorter if there are NAs, so we need to expand back
-    if (smooth) {
-      # For GAM models, predict on the full ps vector (including NAs)
-      # Create prediction data frame
-      pred_data <- data.frame(ps = ps)
-      fitted_vals <- as.numeric(predict(
-        calib_model,
-        newdata = pred_data,
-        type = "response"
-      ))
-      calib_ps <- fitted_vals
-    } else {
-      # For GLM models, use fitted values and expand back
-      fitted_vals <- stats::fitted(calib_model)
-      calib_ps <- numeric(length(ps))
-      calib_ps[!na_idx] <- fitted_vals
-      calib_ps[na_idx] <- NA
-    }
+    # Both logistic fits read the units with an observed exposure, and both
+    # produce a curve from propensity score to calibrated score, so both are
+    # read over every unit. A unit dropped from the fit for want of an exposure
+    # still has a score the curve maps; only a missing score has no answer.
+    calib_ps <- as.numeric(predict(
+      calib_model,
+      newdata = data.frame(ps = ps_numeric),
+      type = "response"
+    ))
   } else if (method == "isoreg") {
     # Smoothing is not applicable to isotonic regression
     smooth <- FALSE
@@ -324,7 +375,7 @@ ps_calibrate <- function(
     # Two-step isotonic regression calibration following van der Laan et al.
     # (2024, arXiv:2411.06342): fit separately for treated and control groups,
     # then combine. This matches WeightIt::calibrate(method = "isoreg").
-    ps_valid <- ps[!na_idx]
+    ps_valid <- ps_numeric[!na_idx]
     treat_valid <- .exposure[!na_idx]
 
     # Calibrate for controls: P(treat=0|ps) via isotonic regression on 1-ps
@@ -332,22 +383,14 @@ ps_calibrate <- function(
     # Calibrate for treated: P(treat=1|ps) via isotonic regression on ps
     p1 <- pava_weighted(ps_valid, treat_valid)
 
-    # Squish to prevent extrapolation beyond observed range
-    is_ctrl <- treat_valid == 0
     is_trt <- treat_valid == 1
-    if (any(is_ctrl)) {
-      p0 <- pmax(p0, min(p0[is_ctrl]))
-    }
-    if (any(is_trt)) {
-      p1 <- pmax(p1, min(p1[is_trt]))
-    }
 
     # Combine: controls use p0, treated use p1
     calib_ps_valid <- p0
     calib_ps_valid[is_trt] <- p1[is_trt]
 
     # Map back to full vector with NAs
-    calib_ps <- numeric(length(ps))
+    calib_ps <- numeric(length(.propensity))
     calib_ps[!na_idx] <- calib_ps_valid
     if (any(na_idx)) {
       calib_ps[na_idx] <- NA
@@ -370,22 +413,13 @@ ps_calibrate <- function(
 #' Constructor for ps_calib objects
 #' @noRd
 new_ps_calib <- function(x, ps_calib_meta = list()) {
-  if (is.matrix(x)) {
-    # For matrices, we don't use vctrs
-    structure(
-      x,
-      ps_calib_meta = ps_calib_meta,
-      class = c("ps_calib_matrix", "ps_calib", "matrix")
-    )
-  } else {
-    vec_assert(x, ptype = double())
-    new_vctr(
-      x,
-      ps_calib_meta = ps_calib_meta,
-      class = "ps_calib",
-      inherit_base_type = TRUE
-    )
-  }
+  vec_assert(x, ptype = double())
+  new_vctr(
+    x,
+    ps_calib_meta = ps_calib_meta,
+    class = "ps_calib",
+    inherit_base_type = TRUE
+  )
 }
 
 #' Extract metadata from ps_calib object
@@ -430,11 +464,6 @@ is_ps_calibrated.psw <- function(x) {
 
 #' @export
 is_ps_calibrated.ps_calib <- function(x) {
-  TRUE
-}
-
-#' @export
-is_ps_calibrated.ps_calib_matrix <- function(x) {
   TRUE
 }
 
@@ -490,16 +519,79 @@ vec_arith.numeric.ps_calib <- function(op, x, y, ...) {
   vec_arith_base(op, x, y)
 }
 
+# A comparison asks about the values a vector holds, not about the type holding
+# them, so it reads them directly instead of routing through the common type of
+# the two sides, which for a calibrated vector and a number is the numeric
+# downgrade. Recycling still goes through vctrs, so sizes with no common size
+# have no answer rather than the one base R recycling would invent. The refusal
+# is reported against the comparison the user wrote rather than against this
+# helper, which they have no way to reach.
+ps_calib_compare <- function(e1, e2, call = rlang::caller_env()) {
+  args <- vctrs::vec_recycle_common(e1, e2, .call = call)
+
+  if (inherits(args[[1]], "ps_calib")) {
+    args[[1]] <- vctrs::vec_data(args[[1]])
+  }
+  if (inherits(args[[2]], "ps_calib")) {
+    args[[2]] <- vctrs::vec_data(args[[2]])
+  }
+
+  args
+}
+
+#' @export
+`<.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] < args[[2]]
+}
+
+#' @export
+`<=.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] <= args[[2]]
+}
+
+#' @export
+`==.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] == args[[2]]
+}
+
+#' @export
+`>.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] > args[[2]]
+}
+
+#' @export
+`>=.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] >= args[[2]]
+}
+
+#' @export
+`!=.ps_calib` <- function(e1, e2) {
+  args <- ps_calib_compare(e1, e2)
+  args[[1]] != args[[2]]
+}
+
+# How a calibration is described: the curve it was fit with and whether that
+# curve was smoothed. A `ps_calib` carries no positional record, so this is the
+# whole of its metadata, and it is read through one helper so that the combine
+# and the cast compare the same thing.
+calib_parameters <- function(meta) {
+  fields <- c("method", "smooth")
+
+  rlang::set_names(lapply(fields, function(field) meta[[field]]), fields)
+}
+
 #' @export
 vec_ptype2.ps_calib.ps_calib <- function(x, y, ...) {
   x_meta <- ps_calib_meta(x)
   y_meta <- ps_calib_meta(y)
 
   # Check if calibration parameters match
-  if (
-    !identical(x_meta$method, y_meta$method) ||
-      !identical(x_meta$smooth, y_meta$smooth)
-  ) {
+  if (!identical(calib_parameters(x_meta), calib_parameters(y_meta))) {
     warn_incompatible_metadata(
       x,
       y,
@@ -524,17 +616,29 @@ vec_ptype2.double.ps_calib <- function(x, y, ...) {
   double()
 }
 
+# A cast returns the values it was handed in the type it was handed, and a
+# `ps_calib`'s type is the whole description of the calibration. That is the
+# comparison `vec_ptype2()` already makes when it refuses to find a common type,
+# so the cast makes it too.
+#
+# `vec_ptype_full()` names the method but not whether the fit was smoothed, so
+# two types that differ only in that render identically and the refusal would
+# read as a type that cannot be converted to itself. What disagrees is named
+# alongside them, the way the combine names it.
 #' @export
 vec_cast.ps_calib.ps_calib <- function(x, to, ...) {
   # Check if metadata matches
   x_meta <- ps_calib_meta(x)
   to_meta <- ps_calib_meta(to)
 
-  if (
-    !identical(x_meta$method, to_meta$method) ||
-      !identical(x_meta$smooth, to_meta$smooth)
-  ) {
-    vctrs::stop_incompatible_cast(x, to, x_arg = "", to_arg = "")
+  if (!identical(calib_parameters(x_meta), calib_parameters(to_meta))) {
+    vctrs::stop_incompatible_cast(
+      x,
+      to,
+      x_arg = "",
+      to_arg = "",
+      details = "different calibration parameters"
+    )
   }
 
   # Return x as-is if metadata matches
@@ -552,16 +656,39 @@ as.double.ps_calib <- function(x, ...) {
   vec_data(x)
 }
 
+# A cast returns the values it was handed in the type it was handed, and how the
+# calibration was performed is part of that type, so the description comes from
+# the target rather than being invented here.
 #' @export
 vec_cast.ps_calib.double <- function(x, to, ...) {
-  # create a default ps_calib
-  new_ps_calib(
-    x,
-    ps_calib_meta = list(
-      method = "unknown",
-      smooth = FALSE
-    )
-  )
+  new_ps_calib(vec_cast(x, double()), ps_calib_meta = ps_calib_meta(to))
+}
+
+# Calibrated propensity scores lie strictly between 0 and 1, so meeting an
+# integer in the integers would round every one of them away. The common type is
+# the one that holds both sets of values.
+#' @export
+vec_ptype2.ps_calib.integer <- function(x, y, ...) {
+  warn_class_downgrade("ps_calib")
+  double()
+}
+
+#' @export
+vec_ptype2.integer.ps_calib <- function(x, y, ...) {
+  warn_class_downgrade("ps_calib")
+  double()
+}
+
+#' @export
+vec_cast.integer.ps_calib <- function(x, to, ...) {
+  # A propensity score has no integer to be, so vctrs' own check reports the
+  # loss rather than silently rounding it away.
+  vec_cast(vec_data(x), integer(), x_arg = "ps_calib")
+}
+
+#' @export
+vec_cast.ps_calib.integer <- function(x, to, ...) {
+  new_ps_calib(as.double(x), ps_calib_meta = ps_calib_meta(to))
 }
 
 #' @export
@@ -684,45 +811,6 @@ print.ps_calib <- function(x, ..., n = NULL) {
 
     if (n_vals > n_show) {
       cat("# ... with", n_vals - n_show, "more values\n")
-    }
-  }
-
-  invisible(x)
-}
-
-#' @export
-print.ps_calib_matrix <- function(x, ..., n = NULL) {
-  meta <- ps_calib_meta(x)
-  n_rows <- nrow(x)
-  k <- ncol(x)
-
-  # Create header
-  cat(sprintf(
-    "<ps_calib_matrix[%d x %d]; method=%s%s>\n",
-    n_rows,
-    k,
-    meta$method,
-    if (isTRUE(meta$smooth)) " (smooth)" else ""
-  ))
-
-  # Determine how many rows to show
-  if (is.null(n)) {
-    n_print <- getOption("propensity.print_max", default = 10)
-  } else {
-    n_print <- n
-  }
-
-  # Show all rows if n is Inf or very large
-  if (is.infinite(n_print) || n_print >= n_rows) {
-    print(unclass(x))
-  } else {
-    # Show first n_print rows
-    n_show <- min(n_print, n_rows)
-    x_sub <- x[seq_len(n_show), , drop = FALSE]
-    print(unclass(x_sub))
-
-    if (n_rows > n_show) {
-      cat("# ... with", n_rows - n_show, "more rows\n")
     }
   }
 

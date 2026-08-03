@@ -9,26 +9,30 @@
 # ps_trim validates delta < 1/k
 
     Code
-      out <- ps_trim(ps_matrix, .exposure = exposure, method = "ps", lower = 0.35)
-    Condition <propensity_range_warning>
-      Warning in `ps_trim()`:
-      Invalid trimming threshold (delta >= 1/k); returning original data
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trim()`:
+      ! The trimming threshold must fall below 1/k, for k columns of propensity scores.
+      x `lower` is 0.35, and 1/k is 0.3333333 for the 3 columns the scores hold.
+      i No row summing to one can hold every score above 1/k, so a threshold there leaves no rule to apply.
 
 # ps_trim errors for unsupported methods with categorical
 
     Code
       expr
-    Condition <rlang_error>
+    Condition <propensity_method_error>
       Error in `ps_trim()`:
-      ! `method` must be one of "ps" or "optimal", not "adaptive".
+      ! Method "adaptive" is not supported for categorical exposures.
+      i Use "ps" or "optimal".
 
 ---
 
     Code
       expr
-    Condition <rlang_error>
+    Condition <propensity_method_error>
       Error in `ps_trim()`:
-      ! `method` must be one of "ps" or "optimal", not "pctl".
+      ! Method "pctl" is not supported for categorical exposures.
+      i Use "ps" or "optimal".
 
 # ps_trim requires exposure for categorical
 
@@ -67,7 +71,7 @@
 # ps_trim handles edge cases consistently with PSweight
 
     Code
-      out <- ps_trim(ps = ps_matrix, .exposure = trt, method = "ps", lower = 0.06)
+      out <- ps_trim(.propensity = ps_matrix, .exposure = trt, method = "ps", lower = 0.06)
     Condition <propensity_no_data_warning>
       Warning in `ps_trim()`:
       One or more groups removed after trimming; returning original data
@@ -75,7 +79,8 @@
 # ps_refit errors when all observations are trimmed for categorical
 
     Code
-      out <- ps_trim(ps = ps_matrix, .exposure = exposure, method = "ps", lower = 0.3)
+      out <- ps_trim(.propensity = ps_matrix, .exposure = exposure, method = "ps",
+        lower = 0.3)
     Condition <propensity_no_data_warning>
       Warning in `ps_trim()`:
       One or more groups removed after trimming; returning original data
@@ -83,7 +88,7 @@
 ---
 
     Code
-      out <- ps_trim(ps = ps_matrix_extreme, .exposure = exposure, method = "ps",
+      out <- ps_trim(.propensity = ps_matrix_extreme, .exposure = exposure, method = "ps",
         lower = 0.02)
     Condition <propensity_no_data_warning>
       Warning in `ps_trim()`:
@@ -100,7 +105,8 @@
 # ps_refit handles minimal data for categorical exposures
 
     Code
-      out <- ps_trim(ps = ps_matrix, .exposure = test_data$trt, method = "ps", lower = 0.25)
+      out <- ps_trim(.propensity = ps_matrix, .exposure = test_data$trt, method = "ps",
+      lower = 0.25)
     Condition <propensity_no_data_warning>
       Warning in `ps_trim()`:
       One or more groups removed after trimming; returning original data

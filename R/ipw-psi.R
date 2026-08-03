@@ -165,17 +165,21 @@ ipw_categorical_weight_fn <- function(estimand) {
 # `exposure` the continuous A, and `extras` carries the conditional variance
 # sigma2_d, the marginal moments mu_a and sigma2_a, the fixed stabilization
 # score, and the stabilized flag. Replicates ate_continuous() exactly, including
-# the z-score dnorm without the 1/sigma normalization and the silent
-# unstabilized branch (the registry never emits the alert).
+# the silent unstabilized branch (the registry never emits the alert). The
+# conditional spread is the single pooled parameter sigma2_d, so weights built
+# with an observation-level `.sigma` have no counterpart here.
 ipw_continuous_weight_fn <- function(estimand) {
   function(ps, exposure, extras) {
-    z_den <- (exposure - ps) / sqrt(extras$sigma2_d)
-    f_den <- stats::dnorm(z_den)
+    f_den <- stats::dnorm(exposure, mean = ps, sd = sqrt(extras$sigma2_d))
     wt <- 1 / f_den
 
     if (isTRUE(extras$stabilized) && is.null(extras$score)) {
-      z_num <- (exposure - extras$mu_a) / sqrt(extras$sigma2_a)
-      wt * stats::dnorm(z_num)
+      f_num <- stats::dnorm(
+        exposure,
+        mean = extras$mu_a,
+        sd = sqrt(extras$sigma2_a)
+      )
+      wt * f_num
     } else if (isTRUE(extras$stabilized) && !is.null(extras$score)) {
       wt * extras$score
     } else {

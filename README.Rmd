@@ -83,7 +83,7 @@ Each weight function targets a different population:
 | **ATU** | Untreated units | `wt_atu()` (alias: `wt_atc()`) |
 | **ATO** | Overlap population | `wt_ato()` |
 | **ATM** | Matched population | `wt_atm()` |
-| **Entropy** | Entropy-balanced population | `wt_entropy()` |
+| **Entropy** | Entropy-tilted population | `wt_entropy()` |
 
 ATO and ATM weights are bounded by construction, making them a good alternative when ATE weights are highly variable.
 

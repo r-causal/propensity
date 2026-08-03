@@ -1,5 +1,466 @@
 # propensity 0.1.0.9000 (development version)
 
+* `wt_entropy()` is documented as computing entropy weights, which tilt the
+  propensity score by its own entropy in the sense of Zhou, Matsouaka, and
+  Thomas (2020). The package overview called them entropy balancing weights, and
+  the weight function help, the README, and the getting started vignette named an
+  entropy-balanced population. Entropy balancing is a different method, solving
+  for weights that satisfy exact covariate moment constraints rather than tilting
+  a fitted propensity score. Behavior is unchanged.
+
+* The weight functions document the open interval they require of a categorical
+  propensity score matrix, and how it differs from the narrower rule `ipw()`
+  applies to the scores it rebuilds from its own propensity score model. A
+  separated `nnet::multinom()` fit reaches the endpoints readily, and neither
+  `ps_trim()` nor `ps_trunc()` accepts such a matrix either, so the remedy is to
+  bound the fitted probabilities away from 0 and 1 or to refit. `ipw()`,
+  `ps_trim()`, and `ps_trunc()` carry a pointer to that text. Behavior is
+  unchanged.
+
+* `ps_trim()` and `ps_trunc()` document what `method = "cr"` does when the
+  exposure groups' propensity score distributions do not overlap at all.
+  `ps_trim()` trims every observed unit, a truthful record of an empty overlap
+  region, while `ps_trunc()` errors with class `propensity_no_overlap_error`,
+  since there is no range left to bound the scores to. Behavior is unchanged.
+
+* A deprecated argument now reports the call that supplied it. lifecycle decides
+  whether a deprecation belongs to the caller or to the package that raised it,
+  and the warnings for `.treated`, `.untreated`, and `ps` were raised from
+  helpers that named no calling environment, so every one of them arrived with a
+  bullet asking the reader to report an issue against propensity for an argument
+  they had written themselves.
+
+* `wt_ate()` and `wt_cens()` now refuse a `.sigma` that holds a value at or
+  below zero, a value without a bound, or nothing but missing values, with an
+  error of class `propensity_sigma_error`. A standard deviation reached
+  `dnorm()` as it arrived: a negative one came back as `NaN` weights under a
+  base R warning about them, a zero came back as infinite weights, and a missing
+  one came back missing.
+
+* `ps_trim()`, `ps_trunc()`, `ps_calibrate()`, and `ps_tilt()` now name
+  `.propensity` when they are called without propensity scores, with an error of
+  class `propensity_missing_arg_error`. Dispatch reported base R's missing
+  argument message, which names the formal rather than the two spellings the
+  scores may arrive under.
+
+* `ps_trim()` and `ps_trunc()` now name the threshold they were given and the
+  `1/k` the width of a propensity score matrix imposes on it. The refusal read
+  `Invalid trimming threshold (delta >= 1/k)`, which left the caller to work out
+  both numbers, one of which was their own.
+
+* `ps_trim()` and `ps_trunc()` now refuse `method = "cr"` when one exposure
+  group has no observed propensity score, with an error of class
+  `propensity_no_data_error`. The bounds are the lowest score among the focal
+  units and the highest among the reference units, and over none of them `min()`
+  and `max()` returned `Inf` and `-Inf` under a base R warning: `ps_trim()` then
+  trimmed every unit, and `ps_trunc()` reported distributions that do not
+  overlap, which describes a different problem.
+
+* `ps_trunc()` now validates the percentiles it bounds a matrix of categorical
+  propensity scores at, as it already did for a vector. Bounds that crossed
+  pinned every score to the bound on the far side of the other, and a
+  probability outside the unit interval was refused in base R's words about
+  `quantile()`, an argument the caller never wrote.
+
+* `ps_trim()` and `ps_trunc()` no longer record a bound the method never read.
+  `method = "adaptive"` and `method = "cr"` announce that `lower` and `upper` are
+  ignored and then work their cutoffs out from the scores, but the ignored bounds
+  were kept in the metadata, so two trimmings that ran the same rule to the same
+  cutoff described themselves differently and combining them warned and fell back
+  to numeric.
+
+* The percentile cutoffs `ps_trim()` and `ps_trunc()` record are no longer named
+  for the probability they were read at. `quantile()` names its result `"5%"` or
+  `"95%"`, which says nothing about the cutoff and reappeared wherever the cutoff
+  was printed or compared.
+
+* `ps_trim()` and `ps_trunc()` now refuse `.focal_level`, `.reference_level`,
+  `.treated`, and `.untreated` on the categorical path, with an error of class
+  `propensity_unsupported_arg_error` naming the argument. A categorical exposure
+  is described by one column of scores per level, so no level is treated as
+  focal; the arguments were declared and never read, and the data frame method
+  dropped them on the way to the matrix method.
+
+* A condition raised by `ps_trim()` or `ps_trunc()` now names the function the
+  caller wrote, whatever shape the propensity scores arrived in. A data frame of
+  scores reaches the matrix method on the categorical path, and the vector
+  method on the binary one, by a call rather than by dispatch, so every error
+  and warning either route raised was reported against `ps_trim.matrix()`,
+  `ps_trunc.matrix()`, `ps_trim.default()`, or `ps_trunc.default()`, methods the
+  caller has no reason to know of, while the same condition on a matrix or on a
+  bare vector named the generic.
+
+* Refusing to cast one `ps_calib` to another now names the disagreement, as the
+  `ps_trim` and `ps_trunc` casts already do. A `ps_calib` is printed with its
+  method but not with whether the fit was smoothed, so two types that differ
+  only in that rendered identically and the refusal read as a type that cannot
+  be converted to itself.
+
+* `ps_calibrate(smooth = TRUE)` no longer requires mgcv when it is going to fall
+  back to a straight line. Whether enough distinct propensity scores are present
+  to place the knots of a spline is now settled first, so a calibration that
+  fits a logistic regression is no longer refused over a package it takes no
+  part in.
+
+* Printing a `ps_trim` column inside a tibble is documented as slicing the
+  column for display, which raises the record-drop warning. The warning is
+  truthful and describes the vector built for the display; the column is
+  unchanged.
+
+* `ps_trim()`, `ps_trunc()`, `ps_calibrate()`, and `ps_tilt()` now take the
+  propensity scores in `.propensity`, the name the weight functions already read
+  them under. These four called the argument `ps`, so a call written against one
+  family was refused by the other. The old name still works and is deprecated:
+  supplying `ps` warns and reaches the same result, supplying both `ps` and
+  `.propensity` is an error naming the two spellings, and `ps` will be removed in
+  a future release. One consequence is inherent to the rename: a call that names
+  `ps` and leaves a later argument positional, such as
+  `ps_trim(ps = x, "adaptive")`, binds the positional argument to `.propensity`
+  rather than to `method`, and is then refused for supplying the scores twice. A
+  call that names `ps` must name the arguments after it as well. The error the
+  weight functions raise for a propensity score outside (0, 1) now names
+  `.propensity` too, which is what those functions have always called the
+  argument it reports on.
+
+* `ps_refit()` now refits a model whose formula transforms a term, such as
+  `z ~ log(x)` or a spline basis, without being handed the data. The default
+  `.data` came from the stored model frame, which holds each term already
+  computed, so refitting looked for a variable named `x` among columns named
+  `log(x)` and failed. The data the model names are now read back and cut down
+  by row name to the rows the model analyzed, so a transformation is recomputed
+  from the retained rows alone, which is what refitting on those rows means. A
+  spline's knots therefore move to where the retained rows place them. A model
+  fit without a data argument names none, and its variables are read out of the
+  formula's environment instead.
+
+* `ps_refit()` now refits a model whose `weights` or `offset` names a column of
+  the data it was fit on. The stored model frame records both under fixed names
+  rather than the ones the call reads, so refitting from it reported the column
+  as a missing object. The recovered data are the frame the original call read,
+  which carries that column, so the weights and offsets follow the retained
+  rows. A `weights` or `offset` vector held outside the data still cannot follow
+  them and raises an error about differing variable lengths.
+
+* `ps_refit()` now names the likely cause when the data recovered from `model`
+  hold fewer rows than the propensity scores describe. Scores predicted from a
+  fit with `na.action = na.exclude` are padded back to the full length of the
+  data, so they outnumber the rows the fit read. The refusal now says so and
+  points at an `na.action` that drops those rows.
+
+* `ps_refit()` no longer puts a `subset` from the original model call to work a
+  second time. The retained rows are already a narrowing of the sample that
+  `subset` chose, so re-applying it selected among rows it was never about and
+  returned propensity scores that were quietly wrong. The `subset` is now
+  dropped from the refit call, on both the default and the explicit `.data`
+  route. A `subset` passed through `...` is an instruction of its own and is
+  still honored. How `ps_refit()` recovers its data, and the limits on
+  `weights` and `offset` read from outside the formula, are now documented.
+
+* `ps_calibrate(method = "isoreg")` no longer runs a step described as
+  preventing extrapolation beyond the observed range. Each of the two isotonic
+  fits was raised to its own minimum over the exposure group that reads it,
+  which every value that group reads already clears, so the step changed
+  nothing. The calibrated scores are unchanged.
+
+* `ps_calibrate()` now says so when `smooth = TRUE` cannot be honored. A spline
+  needs enough distinct propensity scores to place its knots, so with fewer
+  than 10 among the observations it reads, those with both a score and an
+  exposure recorded, the fit falls back to logistic regression without one. The
+  returned metadata recorded the fallback, but nothing at the point of the call
+  said the spline that was asked for was never fit. The announcement respects
+  `options(propensity.quiet)`, and the threshold is now documented.
+
+* The propensity scores `ps_calibrate()` accepts are documented as the closed
+  interval, including exactly 0 and exactly 1. Every other route refuses the
+  endpoints, since a score there divides into no usable weight. Calibration
+  takes them deliberately, because repairing scores a model pushed to the ends
+  of the interval is part of what it is for. The logistic calibration curve
+  maps them back inside the interval; isotonic calibration can return a score
+  at an endpoint when its pooled block is pure, and such scores are rejected by
+  the weight functions in turn.
+
+* `ps_calibrate(smooth = FALSE)` now returns a calibrated score for every unit
+  with an observed propensity score, including units whose exposure is missing.
+  The fit reads only the units with a recorded exposure, as it always did, but
+  the curve it produces was read back only over those same units, leaving a
+  unit with a missing exposure uncalibrated. The smooth fit already predicted
+  over every unit. Isotonic calibration still returns `NA` for a unit with a
+  missing exposure, which has no group fit to be read from, and the behavior of
+  each method is now documented.
+
+* `ps_calibrate()` now refuses a matrix of propensity scores with an error of
+  class `propensity_type_error` naming the shape as the problem. A one-column
+  matrix was flattened and its dimensions dropped without a word, and a matrix
+  with more than one column failed a length check that compared its cells
+  against the observations in `.exposure` and reported the mismatch as a length
+  problem, which said nothing about the shape. A one-dimensional array is still
+  accepted, as the weight functions accept it.
+
+* The unused `ps_calib_matrix` class is removed, along with its
+  `is_ps_calibrated()` and `print()` methods. No calibration route ever
+  constructed one.
+
+* Comparing a `ps_calib` with a number, with an integer, or with another
+  `ps_calib` is now silent and returns a plain logical vector. Every comparison
+  settled its type through the numeric downgrade first, so asking which scores
+  clear a threshold reported dropping metadata the answer never depended on.
+  Sizes are still recycled through vctrs, so lengths with no common size raise
+  an error rather than take base R's answer.
+
+* `ps_calibrate()` now reads the values of trimmed or truncated propensity
+  scores once, up front, so calibrating them no longer reports a class
+  conversion the caller never asked for. The range check and each of the
+  logistic, smooth, and isotonic fits compared or modeled the scores in their
+  original class, which announced the downgrade once per comparison. The
+  calibration produced is the one the same values give as a plain numeric
+  vector.
+
+* Combining a `ps_calib` with an integer vector now gives a numeric result
+  holding the calibrated scores, and casting a `ps_calib` to integer now raises
+  a lossy-cast error. The combination found no common type for the two and
+  refused to run at all, and the cast refused without naming what an integer
+  would have cost. This is the answer `ps_trim`, `ps_trunc`, and `psw` already
+  give.
+
+* Casting a numeric or integer vector to a `ps_calib` now carries the
+  calibration of the target. It described the result as having been calibrated
+  by a method named `"unknown"`, which no argument to `ps_calibrate()` accepts,
+  without smoothing.
+
+* `is_unit_truncated()` now answers per unit for a `psw` vector built from
+  truncated propensity scores, reading the positions out of the truncation
+  record as it already did for a `ps_trunc`. It returned the single flag
+  `is_ps_truncated()` answers, which was one value for a query asked once per
+  observation. Weights marked as truncated whose record no longer describes
+  them raise an error of class `propensity_missing_meta_error` rather than
+  report the wrong units, matching `is_unit_trimmed()`.
+
+* Casting one `psw` to another now compares the whole description of the
+  weights, the estimand, the stabilization status and score, and the trimmed,
+  truncated, and calibrated flags, and refuses with an incompatible-cast error
+  naming the field they disagree on. It returned the values unexamined. Most of
+  what is compared goes unmentioned when a `psw` is printed, so the refusal
+  names the disagreement rather than rendering two identical-looking types.
+  Subassignment rests on
+  that comparison: `w[1] <- value` casts the replacement to `w`'s type and then
+  leaves base R to keep `w`'s attributes, so weights for one estimand could be
+  written into weights for another under the target's description, and
+  `rbind()` on data frames of weights did the same. Combining is unaffected,
+  since it settles its type through `vec_ptype2()`, which still warns and
+  returns numeric.
+
+* Combining a `psw` with an integer vector now gives a numeric result holding
+  the weights, rather than an integer vector of every weight rounded away. The
+  combination reported the class it dropped and then silently changed the
+  numbers it kept. This is the answer `ps_trim` and `ps_trunc` already give.
+  Casting a `psw` to integer still raises a lossy-cast error when the weights
+  have fractional parts, since there the caller named the type.
+
+* Casting one `ps_trim` to another now compares the trimming parameters and the
+  refit flag, and casting one `ps_trunc` to another compares the truncation
+  parameters, which is the comparison the combine already made. Each refuses
+  with an incompatible-cast error naming what disagrees, instead of returning
+  the values described by the target. Neither class is printed with the
+  parameters being compared, so the refusal names them rather than rendering
+  two identical-looking types.
+
+* The line a `ps_trim` is printed under now names the number of observations
+  the trimmed count is out of, as in `ps_trim; trimmed 9 of 20`. It ended at
+  `of ` with nothing after it, and an object whose record had been dropped was
+  described with a trailing separator that introduced nothing.
+
+* The line a `ps_trunc` is printed under now reports its bounds to three
+  significant digits. A bound read off the scores is a score, and `"pctl"` and
+  `"cr"` put every digit of it in the description.
+
+* Printing a `ps_trim` or `ps_trunc` matrix of categorical propensity scores no
+  longer dumps the modification record after the scores. The record is a set of
+  index vectors as long as the data, and the header already summarizes it.
+  Read it with `ps_trim_meta()` or `ps_trunc_meta()`.
+
+* `ps_trim()` and `ps_trunc()` now announce which column they take from a data
+  frame of propensity scores given for a binary exposure. The rule is unchanged,
+  the second column of a two column data frame and the first column otherwise,
+  and is now documented. `options(propensity.quiet = TRUE)` silences the
+  announcement.
+
+* Casting a numeric vector into a `ps_trim` or a `ps_trunc` is documented as a
+  type operation rather than a trimming or a truncation: the result is described
+  by the target and can hold scores outside the target's cutoffs or bounds,
+  including 0 and 1, without being trimmed or pinned.
+
+* Two `ps_trunc` objects are compatible for combining only if they agree on the
+  percentiles their bounds were requested at, as well as on the bounds
+  themselves. Two objects truncated at the same scores from different
+  percentiles are described differently, and now warn and combine as numeric,
+  as other metadata mismatches do.
+
+* Combining `ps_trim` objects trimmed the same way, or `ps_trunc` objects
+  truncated the same way, now keeps the description of that trimming or
+  truncation on the result. The prototype the combination is built on carries
+  the metadata across instead of trimming or truncating an empty vector again,
+  which had no scores to read a cutoff off and no exposure to be handed:
+  `method = "pctl"` came back with missing quantiles, `ps_trim(method = "pref")`
+  and `ps_trunc(method = "cr")` raised an error about a missing `.exposure`
+  argument the caller had not omitted, `ps_trunc(method = "pctl")` failed the
+  cast against the prototype it had just built, and the refit flag set by
+  `ps_refit()` was dropped. The result still carries no record of which units
+  were modified, since concatenation appends one set of observations to another.
+
+* Casting a numeric or integer vector to `ps_trim` or `ps_trunc` now returns it
+  under the trimming or truncation of the target, and records the positions for
+  the values arriving. Previously the result reported `method = "unknown"` and,
+  for `ps_trunc`, missing bounds, whatever it had been cast to.
+
+* Two `ps_trim` objects are now compatible for combining only if they agree on
+  the cutoffs their trimming settled on, matching the rule `ps_trunc` already
+  applied to its bounds. Two objects trimmed with the same method and the same
+  percentiles can still have been trimmed at different scores, and the result
+  would have reported one object's cutoffs over the other object's units.
+  Incompatible objects warn and combine as numeric, as other metadata mismatches
+  do.
+
+* Combining a `ps_trim` or a `ps_trunc` with an integer vector now gives a
+  numeric result holding the propensity scores, rather than an integer vector of
+  zeros and ones. Casting either class to integer now raises a lossy-cast error
+  instead of rounding every score away, as `psw` already did.
+
+* `ps_trim()` and `ps_trunc()` now follow one policy for a propensity score
+  that arrives missing: it joins neither the retained nor the modified
+  positions, `is_unit_trimmed()` and `is_unit_truncated()` report `FALSE` for
+  it, and the value propagates as `NA`. A matrix row with a missing cell passes
+  through `ps_trim()` unchanged and comes back missing throughout from
+  `ps_trunc()`, which has to divide by the row sum to renormalize. The
+  `"adaptive"`, `"pctl"`, `"cr"`, and `"optimal"` cutoffs are now worked out
+  from the complete scores or rows, so each is the cutoff the same call would
+  produce with the missing observations dropped; `"pref"` continues to center
+  its preference scores on the proportion exposed across the whole sample, which
+  is a fact about the exposure rather than about the scores. Previously
+  `ps_trim()` recorded an arrived-missing score as one it had trimmed under
+  `method = "ps"` and `method = "pref"`, `ps_trunc()` recorded a matrix row it
+  could not renormalize as one it had pinned to a bound whenever an observed
+  cell of that row fell outside them, a matrix row with a missing cell was
+  blanked out by `ps_trim()` and its observed scores lost with it, and the
+  `"adaptive"`, `"pctl"`, `"cr"`, and `"optimal"` methods either raised a bare
+  base error or trimmed the whole sample.
+
+* `ps_trim(method = "pref")`, `ps_trim(method = "cr")`, and
+  `ps_trunc(method = "cr")` now refuse an exposure with missing values, with an
+  error of class `propensity_missing_value_error`. Their cutoffs come from the
+  exposure groups, and a unit that belongs to neither left every cutoff missing,
+  which trimmed the whole sample without a word or recorded bounds that were
+  never applied.
+
+* `ps_trim()` now requires `lower` below `upper` for `method = "pctl"` and
+  `method = "pref"`, and `ps_trunc()` for `method = "pctl"`, with the error of
+  class `propensity_range_error` that `method = "ps"` already raised. Bounds the
+  wrong way around describe an empty interval, so every unit fell outside it.
+  Percentile bounds outside `[0, 1]` are refused with the same class, naming the
+  valid range rather than passing the bare `quantile()` error about `probs`, an
+  argument neither function takes.
+
+* `ps_trunc(method = "cr")` now refuses exposure groups whose propensity score
+  distributions do not overlap, with an error of class
+  `propensity_no_overlap_error`. The bounds crossed, every score was pinned to
+  the bound on the far side of the other, and the result reported a common range
+  the groups did not have.
+
+* `ps_trim()` and `ps_trunc()` now accept a propensity score matrix or data
+  frame with `method` left at its default. The generic offers every method and
+  the matrix methods matched against the two each supports, so the unevaluated
+  default was compared against a set it could not belong to and a call that
+  named no method was refused for naming the wrong one.
+
+* A method the categorical path does not define is now refused with an error of
+  class `propensity_method_error` naming the methods that path does support,
+  rather than with the bare argument-matching error of class `rlang_error`
+  raised before.
+
+* `ps_trim()` now refuses `method = "optimal"` on a vector of propensity
+  scores, with an error of class `propensity_wt_not_supported_error` pointing
+  at the matrix or data frame input the method is defined for. Optimal trimming
+  is defined over the rows of a propensity score matrix; on a vector it fell
+  through to common-range trimming and recorded itself as `"optimal"`, so the
+  result misreported what had been done to it.
+
+* `ps_trim()` now refuses a categorical trimming threshold at or above `1/k`
+  for `k` exposure levels, with an error of class `propensity_range_error`,
+  matching `ps_trunc()`. Such a threshold cannot be met by every column of a row
+  that sums to one, and the untrimmed scores were returned instead with the
+  rejected threshold recorded in the metadata, reporting a trimming that never
+  happened.
+
+* `ps_trunc()` now refuses `method = "cr"` with no `.exposure`, with an error of
+  class `propensity_missing_arg_error`. The common range method reached the
+  binary transform with nothing to transform, and the caller was told that the
+  exposure could not be converted rather than that it was never supplied. The
+  matching refusals in `ps_trim()` name `.exposure`, the argument the function
+  takes, rather than `exposure`, which it does not.
+
+* `ps_trim()` and `ps_trunc()` document why their categorical thresholds
+  differ: `ps_trim()` defaults to 0.1, following common-support trimming
+  practice, and `ps_trunc()` to 0.01, a gentle winsorization that keeps every
+  unit.
+
+* The weight functions now accept a matrix `.propensity` on a binary exposure,
+  reading it exactly as they read the equivalent data frame: the column holding
+  the probability of the resolved focal level, chosen by the rules documented
+  under `.propensity_col`. A matrix survived every check unchanged, because
+  comparison and coercion are elementwise, and then failed where the weights
+  were given their class with a dimensionality error against an argument the
+  caller never named. Matrices on categorical exposures are unaffected.
+
+* `.sigma` is now validated: it must be numeric, must hold either a single
+  value or one per observation, and applies only to continuous exposures.
+  Anything else is refused with an error of class `propensity_sigma_error`.
+  `.sigma` was read straight into a normal density, so a value that was not a
+  number reached the density as though it were one and a length that neither
+  matched nor divided the exposure recycled into weights nobody asked for.
+  `.sigma` also sits in the third position, so an exposure type supplied
+  without a name arrived there and was absorbed without a word.
+
+* The data frame methods now announce the detected exposure type once. Each
+  resolved the type to choose a column and then handed the unresolved argument
+  to the numeric method, which resolved it again, so a call that made one
+  decision announced it twice.
+
+* `wt_cens()` now names itself, rather than `wt_ate()`, in the deprecation
+  warning for `.treated` and `.untreated` on its numeric method. The numeric
+  method delegated the deprecated arguments to the ATE machinery, which raised
+  the warning against itself.
+
+* `wt_cens()` now supports binary and continuous exposures only. Remaining
+  uncensored is a two-level event, and a categorical exposure was answered with
+  ATE weights carrying the `"uncensored"` estimand. Naming a categorical
+  exposure, or supplying one that detection reads as categorical, is now an
+  error of class `propensity_wt_not_supported_error`.
+
+* `.focal_level` and `.reference_level` must now hold a single level, on every
+  route that reads them. Each is compared against the exposure elementwise, so
+  more than one level recycled across the observations and sorted the units
+  into groups nobody named: two focal levels alternated down a binary exposure,
+  and two reference levels left every unit coded as reference. The refusal has
+  class `propensity_focal_level_error`.
+
+* An exposure type a weight function does not support is now refused with an
+  error of class `propensity_wt_not_supported_error` whether it was named or
+  detected, and the message lists the types that function does support. Naming
+  one was previously reported as an unrecognized value.
+
+* Stabilized categorical weights now refuse an exposure with no observed
+  values. The default stabilizer is the share of units at each level, so with
+  none observed every share was 0 / 0 and the weights came back missing
+  everywhere. The refusal has class
+  `propensity_stabilize_categorical_error`. Without stabilization such an
+  exposure still returns missing weights, which is the answer to that call.
+
+* The refusal of a focal or reference level the exposure never takes now
+  reports an exposure with no observed values as such, instead of listing the
+  levels present and rendering an empty sentence.
+
+* The categorical range refusal now names `.propensity`, the argument the
+  scores arrived in, matching the binary refusal.
+
 * An `.exposure` with dimensions is now refused on the binary path, with an
   error of class `propensity_binary_transform_error` that names the shape it
   was given. The length rule reads `length()`, which counts cells for a matrix
@@ -36,14 +497,66 @@
   `propensity_df_duplicate_column_warning`, and the column read is unchanged.
   Setting `.propensity_col` answers the question the warning asks and is silent.
 
-* The warning raised when no column of a `.propensity` data frame can be matched
-  to a named level now names an unused declared level of a factor `.exposure`
-  as the reason, when it is the reason, and points at `droplevels()`. A factor
-  answers for the levels it declares rather than the ones it takes, so a frame
-  named for every level the exposure actually holds still failed to cover it,
-  and the selection fell to position and read the wrong column. The frame's
-  names gave the reader nothing to go on, since by them the match should have
-  succeeded.
+* The binary path now resolves the default focal level among the values the
+  exposure takes rather than among the levels a factor declares. A factor
+  answers for every level it declares, and subsetting one without
+  `droplevels()` leaves declared levels behind, so a level no observation held
+  could sit second and be taken as focal: every unit was then coded as
+  reference, and the weights described an exposure nobody had. `ps_trim()`,
+  `ps_trunc()`, and `ps_calibrate()` read the same coding and were wrong in
+  the same way. A `.propensity` data frame is matched to columns by these same
+  levels, so a frame named for every level the exposure holds now matches by
+  name, and the warning raised when no column matches no longer carries a
+  `droplevels()` hint, which was a workaround for this defect.
+
+* `.focal_level` and `.reference_level` are now checked against the values the
+  exposure takes on the binary path, with an error of class
+  `propensity_focal_level_error` that names the levels present. A level the
+  exposure never takes sorted every unit into one group in silence: a focal
+  level nobody holds left every unit reference, and a reference level nobody
+  holds left every unit focal, so a misspelled level returned weights rather
+  than a refusal. The categorical path already refused this. The check covers
+  factor, character, 0/1, and logical exposures.
+
+* Exposure levels are now counted from the values an exposure takes, so a
+  missing value is no longer counted as a level of its own. A two-level
+  exposure carrying missing values counted three, which took it off the binary
+  path entirely: at a sample size where the categorical heuristic fired it was
+  refused for holding too few levels, and at a smaller one it fell through to
+  the continuous density weights without a word. Such an exposure is now coded
+  from the levels it takes, with the missing values carried through to the
+  weights. The `glm` methods resolve a named focal level for it as they do for
+  any other exposure, so naming the level the fit treats as the reference now
+  reads the complement of the fitted values there as well.
+
+* Continuous exposure weights are now the ratio of two fully normalized normal
+  densities, and `.sigma` sets the spread of the conditional density one
+  observation at a time. Both densities were evaluated as standard normal
+  ordinates at z-scores, which drops the `1/sigma` factor that makes a normal
+  density integrate to one, and the conditional spread was the pooled residual
+  standard deviation in every case, so `.sigma` was documented and accepted but
+  never read: no value of it changed a single weight. The weight values change,
+  and stabilized weights now sit closer to a mean of one.
+
+* The `glm` methods of `wt_ate()` and `wt_cens()` no longer extract
+  `influence(model)$sigma` for a continuous exposure. The conditional density
+  uses the pooled residual standard deviation of the exposure around the fitted
+  values unless `.sigma` names observation-level ones. The extraction had no
+  effect on the result while `.sigma` was ignored, and now that `.sigma` is read
+  it would silently make every model route a leave-one-out calculation, which is
+  a different estimator from the one the numeric route computes from the same
+  fitted values. Pass `.sigma = influence(model)$sigma` to ask for those
+  standard deviations.
+
+* `ipw()` accepts continuous weights built with the pooled default alone. Its
+  stacked estimating equations carry a single pooled residual variance
+  alongside the propensity score coefficients, so weights spread by
+  observation-level standard deviations are a different function of the data
+  with no counterpart in that system and cannot be reproduced at any parameter
+  value. The weight consistency check refuses them, and its message now names
+  `.sigma` as a cause. Estimates and standard errors for weights built the
+  supported way are unchanged, since the normalization rescales those weights
+  by a constant.
 
 * `ps_calibrate()` documents the focal level contract its `.exposure` coding
   actually follows, matching the weight functions: every binary coding honors

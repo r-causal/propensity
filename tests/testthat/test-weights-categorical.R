@@ -140,6 +140,74 @@ test_that("propensity score matrix validation works", {
   )
 })
 
+test_that("categorical propensity scores at exactly 0 or 1 are rejected", {
+  exposure <- factor(c("A", "B"), levels = c("A", "B", "C"))
+
+  # A score of exactly 0 for a unit's observed level divides by zero in the
+  # weight calculation, so it must be rejected rather than produce `Inf`.
+  ps_zero <- data.frame(
+    A = c(0, 0.3),
+    B = c(0.5, 0.4),
+    C = c(0.5, 0.3)
+  )
+
+  expect_error(
+    wt_ate(ps_zero, exposure, exposure_type = "categorical"),
+    class = "propensity_range_error"
+  )
+
+  # A score of exactly 1 is equally outside the open interval (0, 1).
+  ps_one <- data.frame(
+    A = c(1, 0.3),
+    B = c(0, 0.4),
+    C = c(0, 0.3)
+  )
+
+  expect_error(
+    wt_ate(ps_one, exposure, exposure_type = "categorical"),
+    class = "propensity_range_error"
+  )
+
+  expect_error(
+    wt_ato(ps_zero, exposure, exposure_type = "categorical"),
+    class = "propensity_range_error"
+  )
+
+  # Scores strictly inside (0, 1) are still accepted
+  ps_interior <- data.frame(
+    A = c(0.2, 0.3),
+    B = c(0.5, 0.4),
+    C = c(0.3, 0.3)
+  )
+
+  weights <- wt_ate(ps_interior, exposure, exposure_type = "categorical")
+
+  expect_equal(as.numeric(weights), c(1 / 0.2, 1 / 0.4))
+})
+
+test_that("the categorical range refusal names `.propensity`", {
+  exposure <- factor(c("A", "B"), levels = c("A", "B", "C"))
+  ps_zero <- data.frame(
+    A = c(0, 0.3),
+    B = c(0.5, 0.4),
+    C = c(0.5, 0.3)
+  )
+
+  cnd <- expect_error(
+    wt_ate(ps_zero, exposure, exposure_type = "categorical"),
+    class = "propensity_range_error"
+  )
+
+  # The binary route's range refusal names the argument the scores arrived in.
+  # The matrix route reports a bare range, which says nothing about which
+  # argument the caller has to correct.
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(cnd)),
+    "The range of values in `.propensity`",
+    fixed = TRUE
+  )
+})
+
 test_that("ATE weights work for categorical exposures", {
   set.seed(123)
   exposure <- factor(c("A", "B", "C", "A", "B", "C"))
@@ -678,4 +746,180 @@ test_that("categorical weights warn on unnamed columns", {
     wt_entropy(ps_matrix, trt, exposure_type = "categorical"),
     print = TRUE
   )
+})
+
+test_that("categorical ATE weights are missing where the exposure is missing", {
+  exposure <- factor(c("A", "B", NA, "C"), levels = c("A", "B", "C"))
+  ps_matrix <- matrix(
+    c(
+      0.2,
+      0.5,
+      0.3,
+      0.3,
+      0.4,
+      0.3,
+      0.5,
+      0.2,
+      0.3,
+      0.3,
+      0.4,
+      0.3
+    ),
+    ncol = 3,
+    byrow = TRUE
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  weights <- wt_ate(ps_matrix, exposure, exposure_type = "categorical")
+
+  # For ATE, h(e) = 1, so w_i = 1 / e_{i,Z_i}. The third unit has no observed
+  # level, so it has no weight.
+  expected_weights <- c(
+    1 / 0.2, # A
+    1 / 0.4, # B
+    NA, # missing exposure
+    1 / 0.3 # C
+  )
+
+  expect_equal(as.numeric(weights), expected_weights)
+  expect_equal(which(is.na(weights)), 3L)
+  expect_true(all(is.finite(as.numeric(weights)[-3])))
+})
+
+test_that("stabilized categorical ATE marginals use the complete cases", {
+  exposure <- factor(c("A", "B", NA, "C"), levels = c("A", "B", "C"))
+  ps_matrix <- matrix(
+    c(
+      0.2,
+      0.5,
+      0.3,
+      0.3,
+      0.4,
+      0.3,
+      0.5,
+      0.2,
+      0.3,
+      0.3,
+      0.4,
+      0.3
+    ),
+    ncol = 3,
+    byrow = TRUE
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  weights <- wt_ate(
+    ps_matrix,
+    exposure,
+    exposure_type = "categorical",
+    stabilize = TRUE
+  )
+
+  expect_true(is_stabilized(weights))
+
+  # The marginal probabilities are shares of the observed exposures, so they
+  # sum to 1 over the three units with a level: one A, one B, and one C give
+  # 1/3 each. Dividing by the number of rows instead would deflate every
+  # weight by the share of units with a missing exposure.
+  p_marginal <- 1 / 3
+
+  expected_weights <- c(
+    p_marginal / 0.2, # A
+    p_marginal / 0.4, # B
+    NA, # missing exposure
+    p_marginal / 0.3 # C
+  )
+
+  expect_equal(as.numeric(weights), expected_weights)
+  expect_equal(which(is.na(weights)), 3L)
+  expect_true(all(is.finite(as.numeric(weights)[-3])))
+})
+
+test_that("stabilized categorical weights refuse an exposure with nothing observed", {
+  exposure <- factor(rep(NA_character_, 4), levels = c("A", "B", "C"))
+  ps_matrix <- matrix(
+    1 / 3,
+    nrow = 4,
+    ncol = 3,
+    dimnames = list(NULL, levels(exposure))
+  )
+
+  # The marginal probabilities the default stabilizer builds are shares of the
+  # units with an observed level, so with none observed every share is 0 / 0.
+  # Weights that are missing everywhere are not an answer to the call that was
+  # made, so the degenerate stabilizer is reported rather than returned.
+  expect_error(
+    wt_ate(
+      ps_matrix,
+      exposure,
+      exposure_type = "categorical",
+      stabilize = TRUE
+    ),
+    class = "propensity_stabilize_categorical_error"
+  )
+
+  # Without stabilization there is no marginal to form, and a unit with no
+  # observed level has no weight, which is already the answer.
+  weights <- wt_ate(ps_matrix, exposure, exposure_type = "categorical")
+  expect_true(all(is.na(as.numeric(weights))))
+})
+
+test_that("tilted categorical weights are missing where the exposure is missing", {
+  exposure <- factor(c("A", "B", NA, "C"), levels = c("A", "B", "C"))
+  ps_matrix <- matrix(
+    c(
+      0.2,
+      0.5,
+      0.3,
+      0.3,
+      0.4,
+      0.3,
+      0.5,
+      0.2,
+      0.3,
+      0.3,
+      0.4,
+      0.3
+    ),
+    ncol = 3,
+    byrow = TRUE
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  weights_ato <- wt_ato(ps_matrix, exposure, exposure_type = "categorical")
+
+  # For ATO, h(e) = 1 / sum(1 / e_k), so w_i = h(e_i) / e_{i,Z_i}
+  h_vals <- numeric(4)
+  h_vals[1] <- 1 / (1 / 0.2 + 1 / 0.5 + 1 / 0.3)
+  h_vals[2] <- 1 / (1 / 0.3 + 1 / 0.4 + 1 / 0.3)
+  h_vals[3] <- 1 / (1 / 0.5 + 1 / 0.2 + 1 / 0.3)
+  h_vals[4] <- 1 / (1 / 0.3 + 1 / 0.4 + 1 / 0.3)
+
+  expected_ato <- c(
+    h_vals[1] / 0.2, # A
+    h_vals[2] / 0.4, # B
+    NA, # missing exposure
+    h_vals[4] / 0.3 # C
+  )
+
+  expect_equal(as.numeric(weights_ato), expected_ato)
+  expect_equal(which(is.na(weights_ato)), 3L)
+
+  weights_att <- wt_att(
+    ps_matrix,
+    exposure,
+    .focal_level = "A",
+    exposure_type = "categorical"
+  )
+
+  # For ATT, h(e) = e_focal, so w_i = e_{i,A} / e_{i,Z_i}
+  expected_att <- c(
+    0.2 / 0.2, # A
+    0.3 / 0.4, # B
+    NA, # missing exposure
+    0.3 / 0.3 # C
+  )
+
+  expect_equal(as.numeric(weights_att), expected_att)
+  expect_equal(which(is.na(weights_att)), 3L)
 })

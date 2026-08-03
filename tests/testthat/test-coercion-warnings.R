@@ -227,15 +227,25 @@ test_that("data.frame operations work as expected", {
     wt = psw(c(0.8, 0.2, 0.6), estimand = "att")
   )
 
-  # rbind maintains psw class when estimands match for first data frame
-  # but converts to numeric when they don't match
-  result1 <- rbind(df1, df2)
+  # `rbind()` builds the combined column by subassigning into the first frame's
+  # column, so the second frame's weights are cast to the first frame's type.
+  # Weights for different estimands are not each other's type, so the cast
+  # refuses rather than describing the ATT weights as ATE.
+  expect_error(rbind(df1, df2), class = "vctrs_error_incompatible_type")
+
+  # Weights described the same way are the target's type, so they go in and
+  # `rbind()` keeps the class.
+  df3 <- data.frame(
+    id = 4:6,
+    wt = psw(c(0.8, 0.2, 0.6), estimand = "ate")
+  )
+  result1 <- rbind(df1, df3)
   expect_equal(nrow(result1), 6)
-  # rbind preserves the first object's class
   expect_s3_class(result1$wt, "psw")
   expect_equal(as.numeric(result1$wt), c(0.5, 0.7, 0.3, 0.8, 0.2, 0.6))
 
-  # But vec_rbind does trigger the warning
+  # vec_rbind settles its type through `vec_ptype2()`, which answers the
+  # disagreement with a warning and a common type of numeric.
   result2 <- expect_propensity_warning(vctrs::vec_rbind(df1, df2))
   expect_equal(nrow(result2), 6)
   expect_type(result2$wt, "double")

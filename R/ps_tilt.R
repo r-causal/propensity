@@ -50,21 +50,20 @@
 #'
 #' # Propensity score range
 #'
-#' A numeric `ps` must lie strictly inside \eqn{(0, 1)}, the same requirement
-#' [wt_ate()] and the rest of the weight family impose before they tilt. A
-#' matrix or data frame `ps` may hold an exact zero or one, as the categorical
-#' weight path allows, provided each row sums to one. Only the entropy tilt
-#' needs the boundary resolved: \eqn{0 \log 0} is the one indeterminate whose
-#' limit the arithmetic does not reach on its own, and a zero is treated as
-#' `.Machine$double.eps` so that it contributes nothing. The other tilts already
-#' return their limit there.
+#' Every propensity score in `.propensity` must lie strictly inside
+#' \eqn{(0, 1)}, the same requirement [wt_ate()] and the rest of the weight
+#' family impose before they tilt. The bound holds for a matrix or data frame
+#' `.propensity` entry by entry, and each row must sum to one on top of it. A
+#' fitted model that separates the exposure can return a probability of exactly
+#' zero or one; those scores have no weight to divide and are rejected here
+#' rather than tilted.
 #'
 #' A missing propensity score gives a missing tilt under every estimand,
 #' `"ate"` included, so an observation whose propensity score is unknown never
-#' counts toward a tilted mean. A numeric `ps` propagates `NA` position by
-#' position, and a matrix `ps` gives `NA` for any row holding one: a probability
-#' vector with a missing entry is not one this can tilt on, whichever level the
-#' tilt reads.
+#' counts toward a tilted mean. A numeric `.propensity` propagates `NA` position
+#' by position, and a matrix `.propensity` gives `NA` for any row holding one: a
+#' probability vector with a missing entry is not one this can tilt on,
+#' whichever level the tilt reads.
 #'
 #' # Modified propensity scores
 #'
@@ -74,22 +73,27 @@
 #' exposure or `as.matrix(x)` for a categorical one. Units [ps_trim()] set to
 #' `NA` stay `NA` through that extraction and take an `NA` tilt.
 #'
-#' @param ps Propensity scores. A numeric vector of \eqn{P(Z = \text{focal} \mid
-#'   X)} for a binary exposure, or a matrix or data frame with one column per
-#'   exposure level, named for that level, for a categorical exposure.
+#' @param .propensity Propensity scores. A numeric vector of
+#'   \eqn{P(Z = \text{focal} \mid X)} for a binary exposure, or a matrix or data
+#'   frame with one column per exposure level, named for that level, for a
+#'   categorical exposure.
 #' @param estimand One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or
 #'   `"entropy"`.
 #' @param ... These dots are for future extensions and must be empty.
 #' @param .focal_level The exposure level the `"att"` and `"atu"` tilts target,
-#'   matched against the column names of `ps`. A column named for the level
-#'   exactly wins; failing that, a `.pred_` prefix is stripped, so `.pred_a`
-#'   matches the level `a`. Required for those two estimands with a categorical
-#'   `ps`, and accepted nowhere else: a numeric `ps` is already the probability
-#'   of the focal level, and the remaining tilts treat every level alike.
+#'   matched against the column names of `.propensity`. A column named for the
+#'   level exactly wins; failing that, a `.pred_` prefix is stripped, so
+#'   `.pred_a` matches the level `a`. Required for those two estimands with a
+#'   categorical `.propensity`, and accepted nowhere else: a numeric
+#'   `.propensity` is already the probability of the focal level, and the
+#'   remaining tilts treat every level alike.
+#' @param ps `r lifecycle::badge("deprecated")` Use `.propensity` instead. A
+#'   call that names `ps` must name the arguments after it as well, since a
+#'   positional argument binds to `.propensity`.
 #'
 #' @return A plain double vector, unnamed, with one element per observation: the
-#'   length of `ps` for the numeric method, and the number of rows of `ps` for
-#'   the matrix and data frame methods.
+#'   length of `.propensity` for the numeric method, and the number of rows of
+#'   `.propensity` for the matrix and data frame methods.
 #'
 #' @seealso [wt_ate()] and the rest of the weight family, which divide the tilt
 #'   by the propensity score of the received exposure level.
@@ -125,7 +129,22 @@
 #' mean(m1) - mean(m0)
 #'
 #' @export
-ps_tilt <- function(ps, estimand, ..., .focal_level = NULL) {
+ps_tilt <- function(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+) {
+  # The deprecated name is a formal of its own, and read before the dots are
+  # emptied, because the dots here must be empty: a name arriving through them
+  # would be refused as an unused argument rather than read as the scores.
+  .propensity <- handle_propensity_deprecation(
+    rlang::maybe_missing(.propensity),
+    ps,
+    "ps_tilt"
+  )
+
   rlang::check_dots_empty()
 
   if (missing(estimand)) {
@@ -138,14 +157,22 @@ ps_tilt <- function(ps, estimand, ..., .focal_level = NULL) {
     )
   }
 
-  UseMethod("ps_tilt")
+  UseMethod("ps_tilt", .propensity)
 }
 
 #' @export
-ps_tilt.default <- function(ps, estimand, ..., .focal_level = NULL) {
+ps_tilt.default <- function(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
   abort(
     c(
-      "No method for objects of class {.cls {class(ps)}}.",
+      "No method for objects of class {.cls {class(.propensity)}}.",
       i = "{.fun ps_tilt} takes plain propensity scores. A score modified by \\
       {.fun ps_trim}, {.fun ps_trunc}, or {.fun ps_calibrate} carries a class \\
       of its own; pass the scores underneath it, with {.code as.numeric(x)} \\
@@ -156,25 +183,53 @@ ps_tilt.default <- function(ps, estimand, ..., .focal_level = NULL) {
 }
 
 #' @export
-ps_tilt.numeric <- function(ps, estimand, ..., .focal_level = NULL) {
+ps_tilt.numeric <- function(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
   estimand <- check_tilt_estimand(estimand)
   check_tilt_focal_unused(.focal_level, estimand, matrix_ps = FALSE)
-  check_ps_range(ps)
+  check_ps_range(.propensity)
 
-  ps <- as.double(ps)
+  .propensity <- as.double(.propensity)
 
-  mask_missing_tilt(ps_tilt_binary(ps, estimand), is.na(ps))
+  mask_missing_tilt(ps_tilt_binary(.propensity, estimand), is.na(.propensity))
 }
 
 #' @export
-ps_tilt.matrix <- function(ps, estimand, ..., .focal_level = NULL) {
-  tilt_from_matrix(ps, estimand, .focal_level, call = rlang::current_env())
-}
+ps_tilt.matrix <- function(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
-#' @export
-ps_tilt.data.frame <- function(ps, estimand, ..., .focal_level = NULL) {
   tilt_from_matrix(
-    as.matrix(ps),
+    .propensity,
+    estimand,
+    .focal_level,
+    call = rlang::current_env()
+  )
+}
+
+#' @export
+ps_tilt.data.frame <- function(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
+  tilt_from_matrix(
+    as.matrix(.propensity),
     estimand,
     .focal_level,
     call = rlang::current_env()
@@ -274,7 +329,7 @@ check_tilt_estimand <- function(estimand, call = rlang::caller_env()) {
 check_tilt_ps_matrix <- function(ps, call = rlang::caller_env()) {
   if (!is.numeric(ps)) {
     abort(
-      "{.arg ps} must be a numeric matrix or data frame.",
+      "{.arg .propensity} must be a numeric matrix or data frame.",
       call = call,
       error_class = "propensity_matrix_type_error"
     )
@@ -283,7 +338,7 @@ check_tilt_ps_matrix <- function(ps, call = rlang::caller_env()) {
   if (ncol(ps) < 2) {
     abort(
       c(
-        "{.arg ps} must have one column per exposure level.",
+        "{.arg .propensity} must have one column per exposure level.",
         i = "It has {ncol(ps)} column{?s}."
       ),
       call = call,
@@ -321,7 +376,7 @@ resolve_tilt_focal <- function(
   if (is.null(columns)) {
     abort(
       c(
-        "{.arg ps} must have column names to resolve {.arg .focal_level}.",
+        "{.arg .propensity} must have column names to resolve {.arg .focal_level}.",
         i = "Name each column for the exposure level whose probability it \\
         holds."
       ),
@@ -334,7 +389,7 @@ resolve_tilt_focal <- function(
   if (length(focal) != 1) {
     abort(
       c(
-        "{.arg .focal_level} must name a single column of {.arg ps}.",
+        "{.arg .focal_level} must name a single column of {.arg .propensity}.",
         x = "It is length {length(focal)}."
       ),
       call = call,
@@ -354,7 +409,7 @@ resolve_tilt_focal <- function(
     tied <- columns[matches]
     abort(
       c(
-        "{.arg .focal_level} must name a single column of {.arg ps}.",
+        "{.arg .focal_level} must name a single column of {.arg .propensity}.",
         x = "{.val {focal}} matches {.val {tied}}."
       ),
       call = call,
@@ -365,7 +420,7 @@ resolve_tilt_focal <- function(
   if (!length(matches)) {
     abort(
       c(
-        "{.arg .focal_level} must name a single column of {.arg ps}.",
+        "{.arg .focal_level} must name a single column of {.arg .propensity}.",
         x = "{.val {focal}} is not one of {.val {columns}}."
       ),
       call = call,
@@ -407,7 +462,7 @@ check_tilt_focal_unused <- function(
     "The {.val {estimand}} tilt treats every exposure level alike, so it has \\
     no focal level."
   } else {
-    "A numeric {.arg ps} is already the probability of the focal level, so no \\
+    "A numeric {.arg .propensity} is already the probability of the focal level, so no \\
     binary tilt takes one."
   }
 

@@ -22,7 +22,7 @@ Calculate propensity score weights for different causal estimands:
 (\code{wt_atc()} is an alias)
 \item \code{\link[=wt_atm]{wt_atm()}}: Average treatment effect for the evenly matchable (ATM) weights
 \item \code{\link[=wt_ato]{wt_ato()}}: Average treatment effect for the overlap population (ATO) weights
-\item \code{\link[=wt_entropy]{wt_entropy()}}: Entropy balancing weights
+\item \code{\link[=wt_entropy]{wt_entropy()}}: Entropy weights for the entropy-tilted population
 \item \code{\link[=wt_cens]{wt_cens()}}: Censoring weights
 }
 }

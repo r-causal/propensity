@@ -102,7 +102,7 @@ Each estimand targets a different population:
 | ATU | Untreated (reference) group | `wt_atu()` |
 | ATO | Overlap population | `wt_ato()` |
 | ATM | Matched population | `wt_atm()` |
-| Entropy | Entropy-balanced population | `wt_entropy()` |
+| Entropy | Entropy-tilted population | `wt_entropy()` |
 
 `wt_atc()` is an alias for `wt_atu()`.
 

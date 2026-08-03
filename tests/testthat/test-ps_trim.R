@@ -445,17 +445,21 @@ test_that("Casting ps_trim -> double => underlying numeric data", {
   expect_equal(casted, c(0.2, NA, 0.9))
 })
 
-test_that("Casting double -> ps_trim => minimal ps_trim object", {
+test_that("Casting double -> ps_trim keeps the trimming of the target", {
   base_vec <- c(0.1, 0.7, NA, 0.4)
-  # If we do vec_cast(base_vec, ps_trim())
-  # => calls vec_cast.ps_trim.double
-  ps_t <- vec_cast(base_vec, to = structure(double(), class = "ps_trim"))
+  to <- ps_trim(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  # A cast returns the values it was given in the type it was given, and the
+  # trimming is part of that type.
+  ps_t <- vec_cast(base_vec, to = to)
   expect_s3_class(ps_t, "ps_trim")
-  # The meta is "unknown" method or similar
   meta <- attr(ps_t, "ps_trim_meta")
-  expect_equal(meta$method, "unknown")
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower, 0.1)
+  expect_equal(meta$upper, 0.9)
   expect_equal(meta$keep_idx, seq_along(base_vec))
   expect_length(meta$trimmed_idx, 0)
+  expect_equal(meta$n_obs, length(base_vec))
 })
 
 test_that("Casting integer->ps_trim likewise uses new_trimmed_ps", {
@@ -539,35 +543,6 @@ test_that("ps_trim errors when exposure is missing for methods that require it",
 
   # Should work fine with ps method (no exposure needed)
   expect_no_error(ps_trim(ps, method = "ps"))
-})
-
-test_that("ps_trim vec_ptype_full output matches expected format", {
-  set.seed(123)
-  ps <- runif(20, 0.05, 0.95)
-
-  # Create ps_trim with some values trimmed
-  ps_trim_obj <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)
-  n_trimmed <- length(ps_trim_meta(ps_trim_obj)$trimmed_idx)
-
-  # Test the vec_ptype_full output
-  expect_equal(
-    vctrs::vec_ptype_full(ps_trim_obj),
-    paste("ps_trim;", "trimmed", n_trimmed, "of ")
-  )
-
-  # Test with no values trimmed
-  ps_no_trim <- ps_trim(ps, method = "ps", lower = 0, upper = 1)
-  expect_equal(
-    vctrs::vec_ptype_full(ps_no_trim),
-    "ps_trim; trimmed 0 of "
-  )
-
-  # Test with all values trimmed
-  ps_all_trim <- ps_trim(ps, method = "ps", lower = 0.99, upper = 1)
-  expect_equal(
-    vctrs::vec_ptype_full(ps_all_trim),
-    paste("ps_trim;", "trimmed", 20, "of ")
-  )
 })
 
 test_that("ps_trim index tracking works when combining objects", {
@@ -926,5 +901,1704 @@ test_that("ps_trim refuses an exposure with dimensions", {
   expect_error(
     ps_trim(ps, method = "cr", .exposure = dimensioned),
     class = "propensity_binary_transform_error"
+  )
+})
+
+test_that("ps_trim refuses a focal level the exposure never takes", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c("a", "b", "a", "b")
+
+  # A focal level nobody holds leaves every unit in the reference group, so the
+  # bounds are computed over a split the caller did not ask for.
+  expect_error(
+    ps_trim(ps, method = "pref", .exposure = exposure, .focal_level = "absent"),
+    class = "propensity_focal_level_error"
+  )
+  expect_error(
+    ps_trim(ps, method = "cr", .exposure = exposure, .focal_level = "absent"),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("ps_trim rejects the categorical-only optimal method on a vector", {
+  set.seed(11)
+  n <- 40
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  ps <- predict(glm(z ~ x, family = binomial), type = "response")
+
+  # Optimal trimming is defined over the rows of a propensity score matrix. On
+  # a vector the method falls through to common-range trimming and records
+  # itself as "optimal", so the object misreports what was done to it.
+  cnd <- rlang::catch_cnd(
+    ps_trim(ps, method = "optimal", .exposure = z),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "propensity_wt_not_supported_error")
+
+  # The rejection follows from the method and the type of `ps`, so it must not
+  # depend on whether an exposure was supplied.
+  cnd_no_exposure <- rlang::catch_cnd(
+    ps_trim(ps, method = "optimal"),
+    classes = "error"
+  )
+  expect_s3_class(cnd_no_exposure, "propensity_wt_not_supported_error")
+
+  # The message has to point at the input the method is defined for.
+  expect_propensity_error(ps_trim(ps, method = "optimal", .exposure = z))
+})
+
+test_that("ps_trim names `.exposure` when the method requires one", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # `exposure` is not an argument of ps_trim(), so a message naming it sends
+  # the caller after something they cannot supply.
+  cnd_cr <- rlang::catch_cnd(ps_trim(ps, method = "cr"), classes = "error")
+  expect_s3_class(cnd_cr, "propensity_missing_arg_error")
+  expect_match(conditionMessage(cnd_cr), "`.exposure`", fixed = TRUE)
+
+  cnd_pref <- rlang::catch_cnd(ps_trim(ps, method = "pref"), classes = "error")
+  expect_s3_class(cnd_pref, "propensity_missing_arg_error")
+  expect_match(conditionMessage(cnd_pref), "`.exposure`", fixed = TRUE)
+
+  expect_propensity_error(ps_trim(ps, method = "cr"))
+})
+
+# Missing values ------------------------------------------------------------
+
+# A propensity score that arrives missing is not one this package removed, so
+# the record says nothing about it: it belongs to neither the retained nor the
+# trimmed positions, and it propagates as `NA` into the result. The methods
+# that read a cutoff off the scores read it off the scores they have.
+
+test_that("ps_trim() does not record a score that arrived missing as trimmed", {
+  trimmed <- ps_trim(
+    c(0.2, 0.5, NA, 0.7),
+    method = "ps",
+    lower = 0.3,
+    upper = 0.9
+  )
+  meta <- ps_trim_meta(trimmed)
+
+  expect_equal(as.numeric(trimmed), c(NA, 0.5, NA, 0.7))
+  expect_equal(meta$trimmed_idx, 1)
+  expect_equal(meta$keep_idx, c(2, 4))
+  expect_equal(meta$n_obs, 4)
+  expect_equal(is_unit_trimmed(trimmed), c(TRUE, FALSE, FALSE, FALSE))
+})
+
+test_that("ps_trim() takes its adaptive cutoff from the complete scores", {
+  ps <- c(0.01, 0.2, 0.5, NA, 0.7, 0.99)
+
+  # The cutoff comes from the mean and the maximum of 1 / (e (1 - e)), both of
+  # which are missing the moment one score is, and the comparison that chooses
+  # between the two branches is then an error rather than an answer.
+  with_na <- ps_trim(ps, method = "adaptive")
+  without_na <- ps_trim(ps[-4], method = "adaptive")
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$cutoff, ps_trim_meta(without_na)$cutoff)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$keep_idx, c(2, 3, 5))
+  expect_equal(meta$trimmed_idx, c(1, 6))
+  expect_false(is_unit_trimmed(with_na)[4])
+})
+
+test_that("ps_trim() takes its percentile cutoffs from the complete scores", {
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+
+  # `quantile()` refuses a missing value unless it is told to drop it, so the
+  # percentile method is an error on any sample with one.
+  with_na <- ps_trim(ps, method = "pctl", lower = 0.2, upper = 0.8)
+  without_na <- ps_trim(ps[-4], method = "pctl", lower = 0.2, upper = 0.8)
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$q_lower, ps_trim_meta(without_na)$q_lower)
+  expect_equal(meta$q_upper, ps_trim_meta(without_na)$q_upper)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$keep_idx, c(2, 3, 5))
+  expect_equal(meta$trimmed_idx, c(1, 6))
+  expect_false(is_unit_trimmed(with_na)[4])
+})
+
+test_that("ps_trim() takes its common range from the complete scores", {
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+  z <- c(0, 0, 1, 1, 1, 0)
+
+  # One missing score in the focal group makes the lower bound missing, which
+  # puts every score outside the range and trims the whole sample.
+  with_na <- ps_trim(ps, method = "cr", .exposure = z, .focal_level = 1)
+  without_na <- ps_trim(
+    ps[-4],
+    method = "cr",
+    .exposure = z[-4],
+    .focal_level = 1
+  )
+  meta <- ps_trim_meta(with_na)
+
+  expect_equal(meta$cr_lower, ps_trim_meta(without_na)$cr_lower)
+  expect_equal(meta$cr_upper, ps_trim_meta(without_na)$cr_upper)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$keep_idx, c(3, 5, 6))
+  expect_equal(meta$trimmed_idx, c(1, 2))
+  expect_false(is_unit_trimmed(with_na)[4])
+})
+
+test_that("ps_trim() leaves a missing score out of the preference record", {
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+  z <- c(0, 0, 0, 1, 1, 1)
+
+  # The preference score of a missing propensity score is missing, so the unit
+  # falls outside the bounds and is recorded as one this package trimmed.
+  trimmed <- ps_trim(ps, method = "pref", .exposure = z, .focal_level = 1)
+  meta <- ps_trim_meta(trimmed)
+
+  expect_true(is.na(as.numeric(trimmed)[4]))
+  expect_equal(meta$keep_idx, c(3, 5))
+  expect_equal(meta$trimmed_idx, c(1, 2, 6))
+  expect_false(is_unit_trimmed(trimmed)[4])
+})
+
+test_that("ps_trim() refuses an exposure with missing values", {
+  ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
+  z <- c(0, 0, 0, 1, 1, NA)
+  z_factor <- factor(c("a", "a", "a", "b", "b", NA))
+
+  # The proportion exposed is missing with one exposure value missing, so every
+  # preference score is missing and the whole sample is trimmed without a word.
+  # A trimming rule that cannot be computed is reported rather than applied.
+  pref_numeric <- rlang::catch_cnd(
+    ps_trim(ps, method = "pref", .exposure = z, .focal_level = 1),
+    classes = "condition"
+  )
+  expect_s3_class(pref_numeric, "error")
+  expect_s3_class(pref_numeric, "propensity_error")
+
+  pref_factor <- rlang::catch_cnd(
+    ps_trim(ps, method = "pref", .exposure = z_factor, .focal_level = "b"),
+    classes = "condition"
+  )
+  expect_s3_class(pref_factor, "error")
+  expect_s3_class(pref_factor, "propensity_error")
+
+  # The common range is bounded by the extremes of each group, both of which
+  # are missing once a unit belongs to neither, and every score then falls
+  # outside the range.
+  cr_numeric <- rlang::catch_cnd(
+    ps_trim(ps, method = "cr", .exposure = z, .focal_level = 1),
+    classes = "condition"
+  )
+  expect_s3_class(cr_numeric, "error")
+  expect_s3_class(cr_numeric, "propensity_error")
+
+  cr_factor <- rlang::catch_cnd(
+    ps_trim(ps, method = "cr", .exposure = z_factor, .focal_level = "b"),
+    classes = "condition"
+  )
+  expect_s3_class(cr_factor, "error")
+  expect_s3_class(cr_factor, "propensity_error")
+
+  expect_propensity_error(
+    ps_trim(ps, method = "pref", .exposure = z, .focal_level = 1)
+  )
+})
+
+# Bounds validation ---------------------------------------------------------
+
+test_that("ps_trim() requires lower below upper for the pctl and pref methods", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  z <- c(0, 0, 1, 1)
+
+  # Bounds the wrong way around describe an empty interval, so every unit falls
+  # outside it and the whole sample is trimmed. Method "ps" already refuses
+  # this and the other bounded methods owe the same refusal.
+  pctl <- rlang::catch_cnd(
+    ps_trim(ps, method = "pctl", lower = 0.9, upper = 0.1),
+    classes = "condition"
+  )
+  expect_s3_class(pctl, "error")
+  expect_s3_class(pctl, "propensity_range_error")
+
+  pref <- rlang::catch_cnd(
+    ps_trim(
+      ps,
+      method = "pref",
+      lower = 0.9,
+      upper = 0.1,
+      .exposure = z,
+      .focal_level = 1
+    ),
+    classes = "condition"
+  )
+  expect_s3_class(pref, "error")
+  expect_s3_class(pref, "propensity_range_error")
+
+  expect_propensity_error(ps_trim(
+    ps,
+    method = "pctl",
+    lower = 0.9,
+    upper = 0.1
+  ))
+})
+
+test_that("ps_trim() refuses percentile bounds outside the unit interval", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # For the percentile method the bounds are probabilities. `quantile()`
+  # refuses one outside [0, 1] in a bare error naming `probs`, an argument
+  # `ps_trim()` does not have.
+  low <- rlang::catch_cnd(
+    ps_trim(ps, method = "pctl", lower = -0.1),
+    classes = "condition"
+  )
+  expect_s3_class(low, "error")
+  expect_s3_class(low, "propensity_error")
+
+  high <- rlang::catch_cnd(
+    ps_trim(ps, method = "pctl", upper = 1.5),
+    classes = "condition"
+  )
+  expect_s3_class(high, "error")
+  expect_s3_class(high, "propensity_error")
+
+  expect_propensity_error(ps_trim(ps, method = "pctl", lower = -0.1))
+})
+
+test_that("ps_trim() refuses a bound that is missing", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # A missing bound answers neither `TRUE` nor `FALSE` in the comparison that
+  # decides which scores to keep, so the rule comes out as a bare base error
+  # about a missing value rather than as an answer.
+  fixed <- rlang::catch_cnd(
+    ps_trim(ps, method = "ps", lower = NA),
+    classes = "condition"
+  )
+  expect_s3_class(fixed, "error")
+  expect_s3_class(fixed, "propensity_error")
+
+  pctl <- rlang::catch_cnd(
+    ps_trim(ps, method = "pctl", upper = NA),
+    classes = "condition"
+  )
+  expect_s3_class(pctl, "error")
+  expect_s3_class(pctl, "propensity_error")
+
+  pref <- rlang::catch_cnd(
+    ps_trim(
+      ps,
+      method = "pref",
+      lower = NA,
+      .exposure = c(0, 0, 1, 1),
+      .focal_level = 1
+    ),
+    classes = "condition"
+  )
+  expect_s3_class(pref, "error")
+  expect_s3_class(pref, "propensity_error")
+
+  expect_propensity_error(ps_trim(ps, method = "ps", lower = NA))
+})
+
+# Combining trimmed propensity scores ----------------------------------------
+
+# Two `ps_trim` objects are combined through the prototype they share. The
+# prototype stands for the trimming that produced them, so it carries the method
+# and the cutoffs that method settled on. A cutoff read off the scores cannot be
+# worked out again from a prototype that holds none, so it is carried across
+# rather than recomputed. The prototype describes no observations, so it names no
+# positions and the combined result has no record.
+
+trim_combine_fixture <- function() {
+  set.seed(4)
+  n <- 40
+  x <- rnorm(n, sd = 2)
+
+  list(
+    ps = plogis(x),
+    exposure = rbinom(n, 1, plogis(x))
+  )
+}
+
+test_that("combining adaptive ps_trim objects keeps the cutoff the trimming found", {
+  fixture <- trim_combine_fixture()
+  trimmed <- ps_trim(fixture$ps, method = "adaptive")
+  meta <- ps_trim_meta(trimmed)
+
+  combined <- expect_silent(c(trimmed[1:20], trimmed[21:40]))
+  combined_meta <- ps_trim_meta(combined)
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(trimmed))
+  expect_equal(combined_meta$method, "adaptive")
+  expect_gt(meta$cutoff, 0)
+  expect_equal(combined_meta$cutoff, meta$cutoff)
+  expect_null(combined_meta$keep_idx)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$n_obs)
+})
+
+test_that("combining pctl ps_trim objects keeps the quantiles the trimming found", {
+  fixture <- trim_combine_fixture()
+  trimmed <- ps_trim(fixture$ps, method = "pctl")
+  meta <- ps_trim_meta(trimmed)
+
+  combined <- expect_silent(c(trimmed[1:20], trimmed[21:40]))
+  combined_meta <- ps_trim_meta(combined)
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(trimmed))
+  expect_equal(combined_meta$method, "pctl")
+  expect_equal(combined_meta$lower, 0.05)
+  expect_equal(combined_meta$upper, 0.95)
+
+  # The quantiles come from the scores, and a prototype holds none, so a
+  # prototype that works them out again reports a missing cutoff instead.
+  expect_false(is.na(combined_meta$q_lower))
+  expect_false(is.na(combined_meta$q_upper))
+  expect_equal(combined_meta$q_lower, meta$q_lower)
+  expect_equal(combined_meta$q_upper, meta$q_upper)
+  expect_null(combined_meta$keep_idx)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$n_obs)
+})
+
+test_that("combining pctl ps_trim objects trimmed at different quantiles warns", {
+  # Same method and same percentiles, different scores, so the quantiles those
+  # percentiles landed on differ. A shared prototype would report one object's
+  # cutoffs over the other object's units, so there is no shared type to combine
+  # in.
+  x <- ps_trim(c(0.1, 0.3, 0.5, 0.7, 0.9), method = "pctl")
+  y <- ps_trim(c(0.2, 0.4, 0.5, 0.6, 0.8), method = "pctl")
+
+  expect_false(identical(
+    ps_trim_meta(x)$q_lower,
+    ps_trim_meta(y)$q_lower
+  ))
+
+  combined <- expect_propensity_warning(vec_c(x, y))
+
+  expect_type(combined, "double")
+  expect_false(inherits(combined, "ps_trim"))
+  expect_equal(combined, c(as.numeric(x), as.numeric(y)))
+})
+
+test_that("combining pref ps_trim objects keeps the exposure prevalence", {
+  fixture <- trim_combine_fixture()
+  trimmed <- ps_trim(
+    fixture$ps,
+    method = "pref",
+    .exposure = fixture$exposure
+  )
+  meta <- ps_trim_meta(trimmed)
+
+  # The preference scale is defined against the exposure, which a prototype
+  # built by trimming again would have to be handed and is not.
+  combined <- expect_silent(c(trimmed[1:20], trimmed[21:40]))
+  combined_meta <- ps_trim_meta(combined)
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(trimmed))
+  expect_equal(combined_meta$method, "pref")
+  expect_equal(combined_meta$lower, 0.3)
+  expect_equal(combined_meta$upper, 0.7)
+  expect_equal(combined_meta$P, meta$P)
+  expect_null(combined_meta$keep_idx)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$n_obs)
+})
+
+test_that("combining cr ps_trim objects keeps the common range", {
+  fixture <- trim_combine_fixture()
+  trimmed <- ps_trim(fixture$ps, method = "cr", .exposure = fixture$exposure)
+  meta <- ps_trim_meta(trimmed)
+
+  combined <- expect_silent(c(trimmed[1:20], trimmed[21:40]))
+  combined_meta <- ps_trim_meta(combined)
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(trimmed))
+  expect_equal(combined_meta$method, "cr")
+  expect_equal(combined_meta$cr_lower, meta$cr_lower)
+  expect_equal(combined_meta$cr_upper, meta$cr_upper)
+  expect_null(combined_meta$keep_idx)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$n_obs)
+})
+
+test_that("combining refit ps_trim objects keeps the refit flag", {
+  set.seed(5)
+  n <- 40
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  model <- glm(z ~ x, family = binomial)
+
+  trimmed <- ps_trim(unname(fitted(model)), lower = 0.2, upper = 0.8)
+  refit <- ps_refit(trimmed, model)
+  expect_true(is_refit(refit))
+
+  # Refitting is part of what produced these scores rather than a position among
+  # them, so it means the same thing at any length.
+  combined <- expect_silent(c(refit[1:20], refit[21:40]))
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_true(is_refit(combined))
+})
+
+test_that("combining a ps_trim with an integer keeps the propensity scores", {
+  x <- ps_trim(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  # Propensity scores lie strictly between 0 and 1, so a combination that meets
+  # an integer in the integers is every score rounded away.
+  combined <- expect_propensity_warning(vec_c(x, 1L))
+
+  expect_type(combined, "double")
+  expect_equal(combined, c(0.2, 0.5, 0.85, 1))
+})
+
+test_that("casting a ps_trim to integer refuses rather than rounds", {
+  x <- ps_trim(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  expect_error(
+    vec_cast(x, integer()),
+    class = "vctrs_error_cast_lossy"
+  )
+})
+
+# The description a trimmed vector is printed under --------------------------
+
+# `vec_ptype_full()` writes the line a trimmed vector is printed under. It
+# reports how many observations were trimmed, which means something to a reader
+# only against the number of observations there were, so it names both.
+
+trim_ptype_fixture <- function() {
+  set.seed(123)
+  ps_trim(runif(20, 0.05, 0.95), method = "ps", lower = 0.2, upper = 0.8)
+}
+
+test_that("vec_ptype_full() names the size the trimmed count is out of", {
+  trimmed <- trim_ptype_fixture()
+  n_trimmed <- length(ps_trim_meta(trimmed)$trimmed_idx)
+
+  expect_gt(n_trimmed, 0)
+  expect_identical(
+    vec_ptype_full(trimmed),
+    sprintf("ps_trim; trimmed %d of %d", n_trimmed, length(trimmed))
+  )
+})
+
+test_that("vec_ptype_full() reports the size when nothing was trimmed", {
+  set.seed(123)
+  untrimmed <- ps_trim(
+    runif(20, 0.05, 0.95),
+    method = "ps",
+    lower = 0,
+    upper = 1
+  )
+
+  expect_length(ps_trim_meta(untrimmed)$trimmed_idx, 0)
+  expect_identical(vec_ptype_full(untrimmed), "ps_trim; trimmed 0 of 20")
+})
+
+test_that("vec_ptype_full() counts against the subset, not the whole vector", {
+  trimmed <- trim_ptype_fixture()
+  sliced <- trimmed[1:8]
+  n_sliced <- length(ps_trim_meta(sliced)$trimmed_idx)
+
+  # The record is re-indexed to the subset, so both the count and the size the
+  # description reports are the subset's own.
+  expect_gt(n_sliced, 0)
+  expect_lt(n_sliced, length(ps_trim_meta(trimmed)$trimmed_idx))
+  expect_identical(
+    vec_ptype_full(sliced),
+    sprintf("ps_trim; trimmed %d of 8", n_sliced)
+  )
+})
+
+# Choosing a column from a data frame of propensity scores -------------------
+
+# Predictions from a binary model arrive as a column per level, and trimming
+# works on one column. The convention is the second column of a pair, which is
+# the probability of the second level in the layout these predictions come in,
+# and the only column otherwise. The caller did not make that choice, so it is
+# announced rather than left to be inferred from the result.
+
+trim_frame_fixture <- function() {
+  set.seed(2)
+  n <- 40
+  x <- rnorm(n)
+  p <- plogis(x)
+
+  list(
+    ps = data.frame(.pred_0 = 1 - p, .pred_1 = p),
+    exposure = rbinom(n, 1, p)
+  )
+}
+
+test_that("ps_trim() names the column it took from a data frame of two", {
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trim_frame_fixture()
+
+  messages <- testthat::capture_messages(
+    ps_trim(
+      fixture$ps,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3,
+      upper = 0.7
+    )
+  )
+
+  naming <- messages[grepl(".pred_1", messages, fixed = TRUE)]
+  expect_length(naming, 1)
+  expect_false(any(grepl(".pred_0", messages, fixed = TRUE)))
+})
+
+test_that("ps_trim() names the only column of a one column data frame", {
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trim_frame_fixture()
+  one_column <- fixture$ps[, ".pred_1", drop = FALSE]
+
+  messages <- testthat::capture_messages(
+    ps_trim(one_column, method = "ps", lower = 0.3, upper = 0.7)
+  )
+
+  expect_length(messages, 1)
+  expect_true(grepl(".pred_1", messages, fixed = TRUE))
+})
+
+test_that("ps_trim() announces no column when the messages are quieted", {
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- trim_frame_fixture()
+
+  expect_silent(
+    ps_trim(
+      fixture$ps,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3,
+      upper = 0.7
+    )
+  )
+})
+
+test_that("the column ps_trim() announces is named in a full sentence", {
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trim_frame_fixture()
+
+  expect_snapshot(
+    trimmed <- ps_trim(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+  )
+})
+
+test_that("ps_trim() takes the second column of a data frame of two", {
+  fixture <- trim_frame_fixture()
+
+  from_frame <- ps_trim(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+  from_second <- ps_trim(
+    fixture$ps[[2]],
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+  from_first <- ps_trim(
+    fixture$ps[[1]],
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+
+  expect_gt(length(ps_trim_meta(from_second)$trimmed_idx), 0)
+  expect_equal(as.numeric(from_frame), as.numeric(from_second))
+  expect_equal(
+    ps_trim_meta(from_frame)$trimmed_idx,
+    ps_trim_meta(from_second)$trimmed_idx
+  )
+  expect_false(identical(as.numeric(from_frame), as.numeric(from_first)))
+})
+
+# What a cast between trimmed vectors owes its target ------------------------
+
+# A cast returns the values it was handed in the type it was handed, and a
+# `ps_trim`'s type is the whole description of the trimming: the method, what
+# it was asked for, and the cutoffs it worked out from the scores it was given.
+# Two objects that disagree on any of that are not each other's type, so the
+# cast has no result to give and refuses, which is the comparison
+# `vec_ptype2()` already makes when it refuses to find a common type. A cast
+# that compares less than the combine does hands `x` back describing itself
+# under the target's name.
+
+test_that("casting between ps_trim objects trimmed at different cutoffs refuses", {
+  # The same percentiles asked of different scores are different cutoffs, and
+  # the record keeps both what was asked for and what came back.
+  x <- ps_trim(
+    c(0.1, 0.2, 0.5, 0.8, 0.9),
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+  to <- ps_trim(
+    c(0.05, 0.3, 0.5, 0.7, 0.95),
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  expect_false(identical(ps_trim_meta(x)$q_lower, ps_trim_meta(to)$q_lower))
+  expect_warning(
+    vec_ptype2(x, to),
+    class = "propensity_coercion_warning"
+  )
+  expect_identical(suppressWarnings(vec_ptype2(x, to)), double())
+
+  # Nothing a `ps_trim` is printed as names a cutoff, so the two types render
+  # identically and the refusal names what disagrees, as the combine does.
+  expect_identical(vec_ptype_full(x), vec_ptype_full(to))
+  expect_error(
+    vec_cast(x, to = to),
+    regexp = "different trimming parameters",
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("casting between ps_trim objects with different refit status refuses", {
+  # Refitting is part of what produced these scores, so scores the model was
+  # refit on and scores it was not are different types at the same cutoffs.
+  set.seed(11)
+  n <- 60
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  model <- glm(z ~ x, family = binomial)
+
+  trimmed <- ps_trim(unname(fitted(model)), lower = 0.2, upper = 0.8)
+  refit <- ps_refit(trimmed, model)
+
+  expect_false(is_refit(trimmed))
+  expect_true(is_refit(refit))
+  expect_warning(
+    vec_ptype2(trimmed, refit),
+    class = "propensity_coercion_warning"
+  )
+  expect_identical(suppressWarnings(vec_ptype2(trimmed, refit)), double())
+  expect_error(
+    vec_cast(trimmed, to = refit),
+    regexp = "different refit status",
+    class = "vctrs_error_incompatible_type"
+  )
+  expect_error(
+    vec_cast(refit, to = trimmed),
+    regexp = "different refit status",
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("casting between ps_trim objects describing the same trimming succeeds", {
+  # The positional half of the record describes the values arriving rather than
+  # the type they arrive in, so two objects trimmed the same way are each
+  # other's type however many units either one kept.
+  x <- ps_trim(
+    c(0.05, 0.2, 0.5, 0.8, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+  to <- ps_trim(
+    c(0.15, 0.25, 0.55, 0.85),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  out <- expect_silent(vec_cast(x, to = to))
+
+  expect_s3_class(out, "ps_trim")
+  expect_equal(as.numeric(out), as.numeric(x))
+  expect_equal(ps_trim_meta(out)$lower, 0.1)
+  expect_equal(ps_trim_meta(out)$upper, 0.9)
+})
+
+# Refitting a model whose formula transforms its terms ------------------------
+
+# `ps_refit()` promises the propensity model re-estimated on the rows the
+# trimming kept, so that is what these tests compare it against: the same
+# formula fit by hand on those rows. A model frame names its columns after term
+# expressions rather than after the variables the terms are built from, so it
+# carries a column called `log(x)` and no column called `x`, and a refit that
+# hands the model frame back as data leaves the formula with nothing to
+# evaluate. The transformations below are the ones a propensity model reaches
+# for most: a pointwise transformation, a basis whose knots depend on the rows
+# it is fit on, and an interaction between two transformed terms.
+
+refit_transform_fixture <- function() {
+  set.seed(2024)
+  n <- 120
+  x <- runif(n, 0.2, 12)
+  data.frame(
+    z = rbinom(n, 1, plogis(-2.2 + 1.6 * log(x))),
+    x = x,
+    w = rnorm(n)
+  )
+}
+
+# The scores `ps_refit()` owes the caller: the model fit on the retained rows,
+# read back over the full sample with the trimmed positions left missing.
+refit_by_hand <- function(model_formula, data, keep_idx, n_obs) {
+  fit <- glm(
+    model_formula,
+    data = data[keep_idx, , drop = FALSE],
+    family = binomial
+  )
+
+  expected <- rep(NA_real_, n_obs)
+  expected[keep_idx] <- unname(predict(fit, type = "response"))
+  expected
+}
+
+test_that("ps_refit() refits a log-transformed term with no data argument", {
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ log(x), family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ log(x), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() refits a spline basis with no data argument", {
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ splines::ns(x, 2), family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  # A spline places its knots from the rows it is fit on, so refitting on the
+  # retained rows moves them. The refit owes the caller the basis the retained
+  # rows imply, not the one the trimmed-away rows helped position.
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ splines::ns(x, 2), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() refits an interaction between transformed terms", {
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+  w <- df$w
+
+  fit <- glm(z ~ log(x) * I(w^2), family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ log(x) * I(w^2), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() refits a transformed term fit with a data argument", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ log(x), data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ log(x), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() records the refit and keeps the record through a transform", {
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ log(x), family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+
+  refit <- ps_refit(trimmed, fit)
+  refit_meta <- ps_trim_meta(refit)
+
+  expect_s3_class(refit, "ps_trim")
+  expect_true(is_refit(refit))
+  expect_false(is_refit(trimmed))
+  expect_equal(refit_meta$method, meta$method)
+  expect_equal(refit_meta$lower, meta$lower)
+  expect_equal(refit_meta$upper, meta$upper)
+  expect_equal(refit_meta$keep_idx, meta$keep_idx)
+  expect_equal(refit_meta$trimmed_idx, meta$trimmed_idx)
+  expect_equal(refit_meta$n_obs, meta$n_obs)
+
+  # Refitting re-estimates the retained units and says nothing new about the
+  # trimmed ones, so the missing positions are exactly the trimmed ones.
+  expect_equal(which(is.na(as.numeric(refit))), meta$trimmed_idx)
+  expect_length(refit, nrow(df))
+})
+
+test_that("ps_refit() still refits an untransformed formula from the model alone", {
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ x, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ x, df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() still refits a transformed term from an explicit .data", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ log(x), data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+
+  refit <- ps_refit(trimmed, fit, .data = df)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ log(x), df, meta$keep_idx, nrow(df))
+  )
+})
+
+test_that("ps_refit() still refits a model whose rows were dropped as missing", {
+  df <- refit_transform_fixture()
+  z <- df$z
+  covariate <- df$x
+  covariate[c(3, 17)] <- NA
+
+  fit <- glm(z ~ covariate, family = binomial)
+
+  # Fitting drops the incomplete rows, so the scores, and with them the
+  # trimming record, are about the rows the model kept rather than every row
+  # the variables carry.
+  analysis <- data.frame(z = z, covariate = covariate)
+  analysis <- analysis[!is.na(covariate), , drop = FALSE]
+  expect_equal(nrow(analysis), nrow(df) - 2L)
+
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_length(trimmed, nrow(analysis))
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ covariate, analysis, meta$keep_idx, nrow(analysis))
+  )
+})
+
+test_that("ps_refit() refits on the retained rows of a model fit with a subset", {
+  df <- refit_transform_fixture()
+  z <- df$z
+  x <- df$x
+
+  fit <- glm(z ~ x, family = binomial, subset = -(1:40))
+
+  # The original subset already chose the sample the scores are about, so the
+  # trimming record indexes that sample and not the rows the variables carry.
+  # Refitting narrows that sample to the retained rows; it must not put the
+  # original subset to work a second time on rows it was never about. A
+  # positional subset re-applied to the retained rows quietly names different
+  # units rather than failing, so the wrong answer would arrive without a word.
+  analysis <- df[-(1:40), , drop = FALSE]
+
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_length(trimmed, nrow(analysis))
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ x, analysis, meta$keep_idx, nrow(analysis))
+  )
+})
+
+test_that("ps_refit() puts a subset to work once when given an explicit .data", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ x, data = df, family = binomial, subset = -(1:40))
+
+  # An explicit `.data` is already the sample the scores are about, so the
+  # original subset has done its work and must not choose rows a second time.
+  # A positional subset re-applied to the retained rows quietly names different
+  # units rather than failing, so the wrong answer arrives without a word.
+  analysis <- df[-(1:40), , drop = FALSE]
+
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_length(trimmed, nrow(analysis))
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit, .data = analysis)
+
+  expect_equal(
+    as.numeric(refit),
+    refit_by_hand(z ~ x, analysis, meta$keep_idx, nrow(analysis))
+  )
+})
+
+test_that("ps_refit() says so when the model's data can no longer be reached", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ log(x), data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  # A transformed term is stored already computed, so the raw variables have to
+  # be read back from the data the model names. Nothing else can stand in for
+  # them, and the data are gone.
+  rm(df)
+
+  expect_error(
+    ps_refit(trimmed, fit),
+    class = "propensity_no_data_error"
+  )
+})
+
+test_that("ps_refit() honors a subset the caller passes through ...", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ x, data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  narrowed <- seq_len(20)
+
+  refit <- ps_refit(trimmed, fit, subset = narrowed)
+
+  # The caller's subset chooses the rows the model is fit on; the scores are
+  # still read back over every retained row.
+  by_hand <- glm(
+    z ~ x,
+    data = df[meta$keep_idx, , drop = FALSE],
+    family = binomial,
+    subset = narrowed
+  )
+  expected <- rep(NA_real_, nrow(df))
+  expected[meta$keep_idx] <- unname(predict(
+    by_hand,
+    newdata = df[meta$keep_idx, , drop = FALSE],
+    type = "response"
+  ))
+
+  expect_equal(as.numeric(refit), expected)
+})
+
+test_that("ps_refit() says so when the model's data no longer hold its rows", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ log(x), data = df, family = binomial)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  # The name the model gave its data now holds a narrower frame, so the rows the
+  # model analyzed cannot all be found in it. Reading whatever rows are there
+  # would refit on a sample the trimming record was never about.
+  df <- df[41:nrow(df), , drop = FALSE]
+
+  expect_error(
+    ps_refit(trimmed, fit),
+    class = "propensity_no_data_error"
+  )
+})
+
+test_that("ps_refit() refits a weighted model whose weights live in the data", {
+  df <- refit_transform_fixture()
+  df$sampling_wt <- runif(nrow(df), 0.5, 2)
+
+  fit <- glm(
+    z ~ log(x),
+    data = df,
+    family = quasibinomial,
+    weights = sampling_wt
+  )
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  # `weights` names a column, so the recovered data have to carry it for the
+  # weights to follow the retained rows.
+  kept <- df[meta$keep_idx, , drop = FALSE]
+  by_hand <- glm(
+    z ~ log(x),
+    data = kept,
+    family = quasibinomial,
+    weights = sampling_wt
+  )
+  expected <- rep(NA_real_, nrow(df))
+  expected[meta$keep_idx] <- unname(predict(by_hand, type = "response"))
+
+  expect_equal(as.numeric(refit), expected)
+})
+
+test_that("ps_refit() refits a model whose offset lives in the data", {
+  df <- refit_transform_fixture()
+  df$log_time <- rnorm(nrow(df), 0, 0.1)
+
+  fit <- glm(z ~ log(x), data = df, family = binomial, offset = log_time)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  kept <- df[meta$keep_idx, , drop = FALSE]
+  by_hand <- glm(
+    z ~ log(x),
+    data = kept,
+    family = binomial,
+    offset = log_time
+  )
+  expected <- rep(NA_real_, nrow(df))
+  expected[meta$keep_idx] <- unname(predict(by_hand, type = "response"))
+
+  expect_equal(as.numeric(refit), expected)
+})
+
+test_that("ps_refit() refits weights named in the data of an untransformed fit", {
+  df <- refit_transform_fixture()
+  df$sampling_wt <- runif(nrow(df), 0.5, 2)
+
+  # Nothing in the formula is transformed, so the stored model frame holds every
+  # variable the formula names; it still does not hold the weights.
+  fit <- glm(z ~ x, data = df, family = quasibinomial, weights = sampling_wt)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  refit <- ps_refit(trimmed, fit)
+
+  kept <- df[meta$keep_idx, , drop = FALSE]
+  by_hand <- glm(
+    z ~ x,
+    data = kept,
+    family = quasibinomial,
+    weights = sampling_wt
+  )
+  expected <- rep(NA_real_, nrow(df))
+  expected[meta$keep_idx] <- unname(predict(by_hand, type = "response"))
+
+  expect_equal(as.numeric(refit), expected)
+})
+
+test_that("ps_refit() names padded predictions when the row counts disagree", {
+  df <- refit_transform_fixture()
+  df$x[c(3, 17)] <- NA
+
+  # `na.exclude` puts the dropped rows back as `NA` when predicting, so the
+  # scores are about a longer sample than the fit ever read, and the record
+  # built from them cannot index the rows the model analyzed.
+  fit <- glm(z ~ x, data = df, family = binomial, na.action = na.exclude)
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  expect_length(trimmed, nrow(df))
+
+  expect_error(
+    ps_refit(trimmed, fit),
+    class = "propensity_length_error"
+  )
+  expect_propensity_error(ps_refit(trimmed, fit))
+})
+
+test_that("ps_refit() blames padding only when the scores outnumber the rows", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ x, data = df, family = binomial)
+
+  # Scores describing a narrower sample than the fit read. The counts disagree
+  # the other way round from padding, which only ever lengthens them, so the
+  # refusal has no business naming `na.exclude`.
+  narrower <- ps_trim(
+    unname(predict(fit, type = "response"))[1:100],
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  cnd <- expect_error(
+    ps_refit(narrower, fit),
+    class = "propensity_length_error"
+  )
+  msg <- conditionMessage(cnd)
+
+  expect_match(msg, "has 120 rows", fixed = TRUE)
+  expect_match(msg, "has 100 observations", fixed = TRUE)
+  expect_no_match(msg, "na.exclude", fixed = TRUE)
+})
+
+test_that("ps_refit() replaces a stored subset with the one the caller passes", {
+  df <- refit_transform_fixture()
+
+  fit <- glm(z ~ x, data = df, family = binomial, subset = -(1:40))
+  analysis <- df[-(1:40), , drop = FALSE]
+
+  trimmed <- ps_trim(
+    unname(predict(fit, type = "response")),
+    method = "ps",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trim_meta(trimmed)
+  expect_length(trimmed, nrow(analysis))
+
+  narrowed <- seq_len(30)
+  refit <- ps_refit(trimmed, fit, subset = narrowed)
+
+  # The caller's subset stands in for the stored one rather than joining it:
+  # it chooses among the retained rows once, and the rows the stored subset
+  # already excluded are not excluded a second time.
+  kept <- analysis[meta$keep_idx, , drop = FALSE]
+  by_hand <- glm(z ~ x, data = kept, family = binomial, subset = narrowed)
+  expected <- rep(NA_real_, nrow(analysis))
+  expected[meta$keep_idx] <- unname(predict(
+    by_hand,
+    newdata = kept,
+    type = "response"
+  ))
+
+  expect_equal(as.numeric(refit), expected)
+
+  # Had the stored subset also been honored, the fit would have read a
+  # different set of rows and said something different about them.
+  applied_twice <- glm(
+    z ~ x,
+    data = kept[-(1:40), , drop = FALSE],
+    family = binomial,
+    subset = narrowed
+  )
+  not_expected <- rep(NA_real_, nrow(analysis))
+  not_expected[meta$keep_idx] <- unname(predict(
+    applied_twice,
+    newdata = kept,
+    type = "response"
+  ))
+
+  expect_false(isTRUE(all.equal(as.numeric(refit), not_expected)))
+})
+
+# Naming the propensity scores `.propensity` ----------------------------------
+
+# The weight functions read the propensity scores from `.propensity` and these
+# read them from `ps`, so a call written against one is refused by the other in
+# both directions. The tests below pin the scores under the new name, the
+# deprecated shim that keeps the old name working for a release, and the
+# refusal to read both names at once. The positional pin comes first: whatever
+# else the rename moves, it must not move what a call that names nothing
+# returns.
+
+trim_rename_scores <- function() {
+  c(0.05, 0.15, 0.35, 0.5, 0.65, 0.85, 0.95)
+}
+
+trim_rename_positional <- function() {
+  ps_trim(trim_rename_scores(), method = "ps", lower = 0.2, upper = 0.8)
+}
+
+# A categorical propensity score matrix whose rows sum to 1, small enough that
+# the trimmed rows can be read off it: rows 1 and 3 hold a score of 0.1 and are
+# the two the cutoff below discards.
+trim_rename_matrix <- function() {
+  m <- rbind(
+    c(0.70, 0.20, 0.10),
+    c(0.20, 0.60, 0.20),
+    c(0.10, 0.30, 0.60),
+    c(0.50, 0.30, 0.20),
+    c(0.30, 0.40, 0.30),
+    c(0.25, 0.35, 0.40)
+  )
+  colnames(m) <- c("a", "b", "c")
+  m
+}
+
+trim_rename_exposure <- function() {
+  factor(c("a", "b", "c", "a", "b", "c"), levels = c("a", "b", "c"))
+}
+
+test_that("ps_trim() trims a positional vector of scores at the cutoffs", {
+  out <- trim_rename_positional()
+
+  expect_s3_class(out, "ps_trim")
+  expect_equal(as.numeric(out), c(NA, NA, 0.35, 0.5, 0.65, NA, NA))
+
+  meta <- ps_trim_meta(out)
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower, 0.2)
+  expect_equal(meta$upper, 0.8)
+  expect_equal(meta$keep_idx, 3:5)
+  expect_equal(meta$trimmed_idx, c(1L, 2L, 6L, 7L))
+  expect_equal(meta$n_obs, 7L)
+})
+
+test_that("ps_trim() reads the propensity scores from .propensity", {
+  expect_equal(
+    ps_trim(
+      .propensity = trim_rename_scores(),
+      method = "ps",
+      lower = 0.2,
+      upper = 0.8
+    ),
+    trim_rename_positional()
+  )
+})
+
+test_that("ps_trim() deprecates the propensity scores under ps", {
+  with_always_deprecated({
+    expect_warning(
+      ps_trim(
+        ps = trim_rename_scores(),
+        method = "ps",
+        lower = 0.2,
+        upper = 0.8
+      ),
+      class = "lifecycle_warning_deprecated"
+    )
+  })
+
+  # The old name still has to reach the same trimming, not merely warn. The
+  # deprecation is pinned above, so it is silenced here rather than repeated.
+  withr::local_options(lifecycle_verbosity = "quiet")
+  expect_equal(
+    ps_trim(ps = trim_rename_scores(), method = "ps", lower = 0.2, upper = 0.8),
+    trim_rename_positional()
+  )
+})
+
+test_that("ps_trim() refuses the propensity scores under both names", {
+  withr::local_options(lifecycle_verbosity = "quiet")
+
+  # The condition subclass is the shim's to choose; what this pins is that the
+  # refusal is one of the package's own errors and that it names both spellings,
+  # so the caller can see which one to drop.
+  err <- expect_error(
+    ps_trim(
+      .propensity = trim_rename_scores(),
+      ps = trim_rename_scores(),
+      method = "ps",
+      lower = 0.2,
+      upper = 0.8
+    ),
+    class = "propensity_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_match(msg, "`ps`", fixed = TRUE)
+})
+
+test_that("ps_trim() dispatches on a matrix supplied as .propensity", {
+  out <- ps_trim(
+    .propensity = trim_rename_matrix(),
+    .exposure = trim_rename_exposure(),
+    method = "ps",
+    lower = 0.15
+  )
+
+  expect_s3_class(out, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_equal(ps_trim_meta(out)$trimmed_idx, c(1L, 3L))
+  expect_equal(
+    out,
+    ps_trim(
+      trim_rename_matrix(),
+      .exposure = trim_rename_exposure(),
+      method = "ps",
+      lower = 0.15
+    )
+  )
+})
+
+test_that("ps_trim() dispatches on a data frame supplied as .propensity", {
+  out <- ps_trim(
+    .propensity = as.data.frame(trim_rename_matrix()),
+    .exposure = trim_rename_exposure(),
+    method = "ps",
+    lower = 0.15
+  )
+
+  expect_s3_class(out, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_equal(
+    out,
+    ps_trim(
+      as.data.frame(trim_rename_matrix()),
+      .exposure = trim_rename_exposure(),
+      method = "ps",
+      lower = 0.15
+    )
+  )
+})
+
+test_that("ps_trim() names .propensity in the out-of-range error", {
+  err <- expect_error(
+    ps_trim(.propensity = c(-1, 0.5), method = "ps", lower = 0.2, upper = 0.8),
+    class = "propensity_range_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_false(grepl("`ps`", msg, fixed = TRUE))
+})
+
+# Bounds, groups, and arguments the trimming cannot use ------------------------
+
+test_that("ps_trim() names the propensity scores it was not given", {
+  err <- expect_error(ps_trim(), class = "propensity_missing_arg_error")
+  expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
+})
+
+test_that("the ps deprecation is attributed to the caller", {
+  messages <- deprecation_warnings_from_user(
+    quote(ps_trim(ps = scores, method = "ps", lower = 0.2, upper = 0.8)),
+    list(scores = trim_rename_scores())
+  )
+
+  expect_length(messages, 1)
+  expect_false(deprecation_misattributed(messages))
+})
+
+# One exposure group's scores are all missing, so the common range has no bound
+# to read off that group.
+cr_missing_group_scores <- function() {
+  c(NA, NA, 0.4, 0.55, 0.7)
+}
+
+test_that("ps_trim() refuses a common range read off no scores", {
+  # The lower bound is the lowest score among the focal units. Over no scores
+  # `min()` returns `Inf` under a base R warning, which reads as a range no unit
+  # falls inside, so every unit is trimmed instead.
+  expect_no_warning(
+    expect_error(
+      ps_trim(
+        cr_missing_group_scores(),
+        method = "cr",
+        .exposure = c(1, 1, 0, 0, 0)
+      ),
+      class = "propensity_no_data_error"
+    )
+  )
+
+  # The upper bound is the highest score among the reference units, and
+  # `max()` returns `-Inf` over none of them.
+  expect_no_warning(
+    expect_error(
+      ps_trim(
+        cr_missing_group_scores(),
+        method = "cr",
+        .exposure = c(0, 0, 1, 1, 1)
+      ),
+      class = "propensity_no_data_error"
+    )
+  )
+})
+
+test_that("ps_trim() drops the bounds an adaptive trimming ignores", {
+  set.seed(11)
+  ps <- runif(60, 0.02, 0.98)
+
+  # The bound is announced as ignored, which is what the announcement is for;
+  # it is muffled below so that what the metadata records is what is read.
+  expect_warning(
+    ps_trim(ps, method = "adaptive", lower = 0.1),
+    class = "propensity_warning"
+  )
+  ignored <- suppressWarnings(ps_trim(ps, method = "adaptive", lower = 0.1))
+  meta <- ps_trim_meta(ignored)
+
+  # An adaptive trimming reads its cutoff off the scores, so a bound it was
+  # handed took no part in it and describes nothing about the result.
+  expect_null(meta$lower)
+  expect_null(meta$upper)
+
+  plain <- ps_trim(ps, method = "adaptive")
+  expect_equal(meta$cutoff, ps_trim_meta(plain)$cutoff)
+
+  # Two trimmings that ran the same rule to the same cutoff describe the same
+  # trimming, so combining them keeps the class rather than reporting different
+  # parameters and falling back to numeric.
+  combined <- expect_no_warning(c(plain, ignored))
+  expect_s3_class(combined, "ps_trim")
+  expect_equal(
+    as.numeric(combined),
+    c(as.numeric(plain), as.numeric(ignored))
+  )
+})
+
+# The binary route names ps_trim, whichever method answered ------------------
+
+# `ps_trim.data.frame` reaches the vector method by a plain call rather than by
+# dispatch, so a condition the vector method raises reports the frame it was
+# raised from, which is a method no caller wrote. The same condition on a bare
+# vector names `ps_trim()`, because dispatch reports the generic. The scores a
+# caller holds in one column of a data frame are the scores they would have
+# passed as a vector, so the two routes owe the same report.
+
+trim_binary_frame_fixture <- function() {
+  list(
+    scores = data.frame(.pred_1 = c(0.15, 0.4, 0.6, 0.85)),
+    out_of_range = data.frame(.pred_1 = c(0, 0.5, 1)),
+    exposure = c(0, 1, 0, 1)
+  )
+}
+
+test_that("a refusal on the binary data frame route names ps_trim", {
+  fixture <- trim_binary_frame_fixture()
+
+  # The scores themselves.
+  expect_identical(
+    condition_call_name(ps_trim(fixture$out_of_range, method = "ps")),
+    "ps_trim"
+  )
+
+  # The method asked for.
+  expect_identical(
+    condition_call_name(ps_trim(fixture$scores, method = "bogus")),
+    "ps_trim"
+  )
+
+  # The cutoffs the method was handed.
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$scores, method = "ps", lower = 0.9, upper = 0.1)
+    ),
+    "ps_trim"
+  )
+
+  # The level the binary coding is read against.
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$scores, method = "ps", .focal_level = c(0, 1))
+    ),
+    "ps_trim"
+  )
+
+  # The exposure a preference score cannot be worked out without.
+  expect_identical(
+    condition_call_name(ps_trim(fixture$scores, method = "pref")),
+    "ps_trim"
+  )
+})
+
+test_that("a warning on the binary data frame route names ps_trim", {
+  fixture <- trim_binary_frame_fixture()
+
+  # Two of the methods read their cutoffs off the scores and say so when they
+  # are handed cutoffs they will not use. The announcement is the caller's to
+  # act on, so it names the call the caller wrote.
+  expect_warning(
+    ps_trim(fixture$scores, method = "adaptive", lower = 0.2),
+    class = "propensity_warning"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$scores, method = "adaptive", lower = 0.2),
+      classes = "warning"
+    ),
+    "ps_trim"
+  )
+
+  expect_warning(
+    ps_trim(
+      fixture$scores,
+      method = "cr",
+      upper = 0.8,
+      .exposure = fixture$exposure
+    ),
+    class = "propensity_warning"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(
+        fixture$scores,
+        method = "cr",
+        upper = 0.8,
+        .exposure = fixture$exposure
+      ),
+      classes = "warning"
+    ),
+    "ps_trim"
+  )
+})
+
+test_that("a refusal on the numeric route still names ps_trim", {
+  fixture <- trim_binary_frame_fixture()
+  scores <- fixture$scores[[1]]
+
+  # Dispatch reports the generic without being handed a frame, so the vector
+  # route already names `ps_trim()`. Threading a frame through the data frame
+  # route has no business moving that.
+  expect_identical(
+    condition_call_name(ps_trim(fixture$out_of_range[[1]], method = "ps")),
+    "ps_trim"
+  )
+  expect_identical(
+    condition_call_name(ps_trim(scores, method = "bogus")),
+    "ps_trim"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(scores, method = "ps", lower = 0.9, upper = 0.1)
+    ),
+    "ps_trim"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(scores, method = "ps", .focal_level = c(0, 1))
+    ),
+    "ps_trim"
+  )
+  expect_identical(
+    condition_call_name(ps_trim(scores, method = "pref")),
+    "ps_trim"
+  )
+})
+
+test_that("ps_trim refuses a call argument on the binary route", {
+  fixture <- trim_binary_frame_fixture()
+
+  # The generic passes its dots to its methods, so the frame the binary path
+  # reports against is reachable from user code, and a value the condition
+  # system cannot read as one is refused where it arrives rather than left to
+  # turn the next guard that fires into a report of rlang's internals.
+  expect_error(
+    ps_trim(fixture$scores[[1]], method = "ps", call = "bogus"),
+    class = "propensity_call_arg_error"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$scores[[1]], method = "ps", call = "bogus")
+    ),
+    "ps_trim"
+  )
+
+  # The data frame method reads the value before it hands the frame on, so it
+  # is the one the refusal names.
+  expect_error(
+    ps_trim(fixture$scores, method = "ps", call = "bogus"),
+    class = "propensity_call_arg_error"
+  )
+  expect_identical(
+    condition_call_name(ps_trim(fixture$scores, method = "ps", call = "bogus")),
+    "ps_trim"
   )
 })

@@ -4,7 +4,7 @@
       expr
     Condition <propensity_type_error>
       Error in `ps_calibrate()`:
-      ! `ps` must be a numeric vector.
+      ! `.propensity` must be a numeric vector.
 
 # errors for out-of-range ps
 
@@ -12,7 +12,7 @@
       expr
     Condition <propensity_range_error>
       Error in `ps_calibrate()`:
-      ! `ps` values must be between 0 and 1.
+      ! `.propensity` values must be between 0 and 1.
 
 ---
 
@@ -20,7 +20,7 @@
       expr
     Condition <propensity_range_error>
       Error in `ps_calibrate()`:
-      ! `ps` values must be between 0 and 1.
+      ! `.propensity` values must be between 0 and 1.
 
 # errors when ps and .exposure have different lengths
 
@@ -28,7 +28,7 @@
       expr
     Condition <propensity_length_error>
       Error in `ps_calibrate()`:
-      ! Propensity score vector `ps` must be the same length as `.exposure`.
+      ! Propensity score vector `.propensity` must be the same length as `.exposure`.
 
 # error handling for ambiguous treatment coding
 
@@ -45,7 +45,7 @@
       expr
     Condition <propensity_already_calibrated_error>
       Error in `ps_calibrate()`:
-      ! `ps` is already calibrated. Cannot calibrate already calibrated propensity scores.
+      ! `.propensity` is already calibrated. Cannot calibrate already calibrated propensity scores.
 
 # method parameter validation works
 
@@ -54,4 +54,41 @@
     Condition <rlang_error>
       Error in `ps_calibrate()`:
       ! `method` must be one of "logistic" or "isoreg", not "invalid".
+
+# combining a ps_calib with an integer keeps the calibrated scores
+
+    Code
+      out <- vec_c(cal, 1L)
+    Condition <propensity_class_downgrade_warning>
+      Warning in `vec_ptype2.ps_calib.integer()`:
+      Converting ps_calib to numeric
+      i Class-specific attributes and metadata have been dropped
+      i Use explicit casting to numeric to avoid this warning
+
+# combining an integer with a ps_calib keeps the calibrated scores
+
+    Code
+      out <- vec_c(1L, cal)
+    Condition <propensity_class_downgrade_warning>
+      Warning in `vec_ptype2.integer.ps_calib()`:
+      Converting ps_calib to numeric
+      i Class-specific attributes and metadata have been dropped
+      i Use explicit casting to numeric to avoid this warning
+
+# the fallback message is recorded
+
+    Code
+      calibrated <- ps_calibrate(fixture$ps, fixture$exposure, smooth = TRUE)
+    Message
+      i 4 distinct propensity scores are too few to place the knots of a spline, so calibration falls back to logistic regression without one.
+
+# ps_calibrate reports a matrix of propensity scores informatively
+
+    Code
+      expr
+    Condition <propensity_type_error>
+      Error in `ps_calibrate()`:
+      ! `.propensity` must be a numeric vector.
+      x It is <matrix> with 2 dimensions.
+      i Calibration reads one propensity score per observation. Calibrate the columns of a matrix of scores one at a time.
 

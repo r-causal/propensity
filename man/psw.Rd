@@ -185,13 +185,14 @@ weights built on trimmed propensity scores come back out of every outcome
 model fit on them still carrying a record written for rows that are no
 longer there.
 
-Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} answers by
-position, so it checks that the record covers the vector it is given and
-raises an error of class \code{propensity_missing_meta_error} when it does not,
-or when weights marked as trimmed carry no record at all, rather than name
-trimmed units at stale positions. \code{\link[=is_refit]{is_refit()}} reads a single flag rather
-than a position, so it answers from any record present and refuses only when
-the record is absent entirely.
+Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} and
+\code{\link[=is_unit_truncated]{is_unit_truncated()}} answer by position, so each checks that the record
+covers the vector it is given and raises an error of class
+\code{propensity_missing_meta_error} when it does not, or when weights marked as
+modified carry no record at all, rather than name modified units at stale
+positions. \code{\link[=is_refit]{is_refit()}} reads a single flag rather than a position, so it
+answers from any record present and refuses only when the record is absent
+entirely.
 
 The result of any of these operations stays a \code{psw} and keeps every other
 attribute, including its stabilized, trimmed, truncated, and calibrated

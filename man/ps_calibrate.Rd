@@ -5,29 +5,35 @@
 \title{Calibrate propensity scores}
 \usage{
 ps_calibrate(
-  ps,
+  .propensity,
   .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 )
 }
 \arguments{
-\item{ps}{A numeric vector of propensity scores between 0 and 1. Must not
-already be calibrated.}
+\item{.propensity}{A numeric vector of propensity scores in \verb{[0, 1]}. Unlike
+the rest of the package, calibration accepts scores of exactly 0 and
+exactly 1, since repairing scores a model pushed to the ends of the
+interval is part of what calibration is for. The logistic calibration curve
+maps them back inside the interval; isotonic calibration can return a score
+at an endpoint when its pooled block is pure, and such scores are rejected
+by the weight functions. Must not already be calibrated.}
 
 \item{.exposure}{A binary vector of observed treatment assignments, the same
-length as \code{ps}.}
+length as \code{.propensity}.}
 
 \item{method}{Calibration method. One of:
 \describe{
 \item{\code{"logistic"}}{(Default) Logistic calibration, also called Platt
-scaling. Fits a logistic regression of \code{.exposure} on \code{ps}, yielding
-a smooth, parametric correction. Works well with small samples and
-when the bias in \code{ps} is approximately monotone.}
+scaling. Fits a logistic regression of \code{.exposure} on \code{.propensity},
+yielding a smooth, parametric correction. Works well with small
+samples and when the bias in \code{.propensity} is approximately monotone.}
 \item{\code{"isoreg"}}{Isotonic regression. Fits a non-parametric,
 monotone step function. More flexible than logistic calibration
 because it makes no distributional assumption, but needs larger
@@ -36,28 +42,40 @@ samples for stable estimates.}
 
 \item{smooth}{Logical. When \code{method = "logistic"}, controls the form of the
 calibration model. If \code{TRUE} (default), fits a GAM with a spline on
-\code{ps} via \code{\link[mgcv:gam]{mgcv::gam()}}; if \code{FALSE}, fits a simple logistic regression
-via \code{\link[stats:glm]{stats::glm()}}. Ignored when \code{method = "isoreg"}.}
+\code{.propensity} via \code{\link[mgcv:gam]{mgcv::gam()}}; if \code{FALSE}, fits a simple logistic
+regression via \code{\link[stats:glm]{stats::glm()}}. Ignored when \code{method = "isoreg"}. A spline
+needs enough distinct scores to place its knots, so with fewer than 10
+distinct values of \code{.propensity} among the observations the fit reads,
+those with both a score and an exposure recorded, the fit falls back to
+logistic regression without a spline. The fallback is announced and
+recorded in the returned metadata.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal group
 (typically the treated group). Every binary coding honors it: 0/1 numeric,
 logical, two-level factor, and two-level character exposures are all coded
-with the named level as focal. With no level named, the exposure defaults
-to its higher level, which is \code{1} for a 0/1 exposure and \code{TRUE} for a
-logical one. Naming any other level reverses the coding, so \code{ps} must then
-hold the probability of the named level.}
+with the named level as focal, and a level the exposure never takes is an
+error. With no level named, the exposure defaults to its higher level,
+which is \code{1} for a 0/1 exposure, \code{TRUE} for a logical one, and the second
+of the two levels a factor or character exposure takes. Levels a factor
+declares but never takes are not candidates. Naming any other level
+reverses the coding, so \code{.propensity} must then hold the probability of
+the named level.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
 group (typically the control group). Naming it makes the exposure's other
-level focal, with the same consequence for \code{ps}. Automatically detected if
-not supplied.}
+level focal, with the same consequence for \code{.propensity}, and a level the
+exposure never takes is an error. Automatically detected if not supplied.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
+
+\item{ps}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.propensity} instead. A
+call that names \code{ps} must name the arguments after it as well, since a
+positional argument binds to \code{.propensity}.}
 }
 \value{
-A \code{ps_calib} vector the same length as \code{ps}. The attribute
+A \code{ps_calib} vector the same length as \code{.propensity}. The attribute
 \code{ps_calib_meta} stores calibration metadata (method and whether
 smoothing was applied). Use \code{\link[=is_ps_calibrated]{is_ps_calibrated()}} to test whether an
 object has been calibrated.
@@ -82,6 +100,17 @@ fast, and the \code{smooth = TRUE} option adds flexibility via a spline.
 between estimated and true probabilities and have a sufficiently large
 sample.
 }
+
+\strong{Missing values:}
+A unit with a missing exposure tells the calibration model nothing, so it is
+dropped from the fit. What happens to that unit afterwards depends on the
+method. Logistic calibration, smoothed or not, fits a curve from propensity
+score to calibrated score and reads every unit off it, so a unit with a
+missing exposure but an observed score is still calibrated. Isotonic
+calibration fits separately within each exposure group and reads each unit
+from the fit for the group it belongs to; a unit with a missing exposure
+belongs to neither group and is returned as \code{NA}. Under both methods a
+missing propensity score yields a missing calibrated score.
 
 The calibrated scores are returned as a \code{ps_calib} object, which can be
 passed directly to weight functions such as \code{\link[=wt_ate]{wt_ate()}}.

@@ -14,15 +14,16 @@
 #' - `wt_ato()`: **Average Treatment Effect for the Overlap Population** --
 #'   weights proportional to overlap.
 #' - `wt_entropy()`: **Entropy-weighted Average Treatment Effect** --
-#'   an entropy-balanced population.
+#'   the entropy-tilted population.
 #' - `wt_cens()`: **Inverse probability of censoring weights** -- uses the
 #'   same formula as `wt_ate()` but labels the estimand `"uncensored"`. Use
 #'   these to adjust for censoring in survival analysis, not for treatment
-#'   weighting.
+#'   weighting. Remaining uncensored is a two-level event, so `wt_cens()`
+#'   supports binary and continuous exposures only.
 #'
 #' `.propensity` accepts a numeric vector of predicted probabilities, a
-#' `data.frame` of per-level probabilities, a fitted `glm` object, or a
-#' modified propensity score created by [ps_trim()], [ps_trunc()],
+#' `data.frame` or matrix of per-level probabilities, a fitted `glm` object, or
+#' a modified propensity score created by [ps_trim()], [ps_trunc()],
 #' [ps_refit()], or [ps_calibrate()].
 #'
 #' All functions return a [`psw`] object -- a numeric vector that tracks the
@@ -33,10 +34,13 @@
 #'
 #' All weight functions support binary exposures. `wt_ate()` and `wt_cens()`
 #' also support continuous exposures. All except `wt_cens()` support
-#' categorical exposures.
+#' categorical exposures; naming a categorical exposure to `wt_cens()`, or
+#' handing it one detection reads as categorical, is an error of class
+#' `propensity_wt_not_supported_error`.
 #'
 #' - **Binary**: `.exposure` is a two-level vector (e.g., 0/1, logical, or a
-#'   two-level factor). `.propensity` is a numeric vector of P(treatment | X).
+#'   two-level factor). `.propensity` is a numeric vector of P(treatment | X),
+#'   or a matrix or data frame holding it in one of its columns.
 #' - **Categorical**: `.exposure` is a factor or character vector with 3+
 #'   levels. `.propensity` must be a matrix or data frame with one column per
 #'   level, where rows sum to 1.
@@ -49,10 +53,12 @@
 #'
 #' Setting `stabilize = TRUE` multiplies the base weight by an estimate of
 #' P(A) (binary) or f_A(A) (continuous), reducing variance. When no
-#' `stabilization_score` is supplied, the marginal mean of `.exposure` is
-#' used. Stabilization is supported for ATE and censoring weights
-#' (`wt_ate()` and `wt_cens()`) and is strongly recommended for continuous
-#' exposures.
+#' `stabilization_score` is supplied, that estimate is the marginal mean of
+#' `.exposure` for a binary or categorical exposure, and for a continuous
+#' exposure the marginal normal density evaluated at the population mean and
+#' standard deviation of `.exposure`. Stabilization is supported for ATE and
+#' censoring weights (`wt_ate()` and `wt_cens()`) and is strongly recommended
+#' for continuous exposures.
 #'
 #' ## Handling extreme weights
 #'
@@ -69,6 +75,33 @@
 #' See the [halfmoon](https://CRAN.R-project.org/package=halfmoon) package
 #' for weight diagnostics and visualization.
 #'
+#' ## Propensity scores at 0 and 1
+#'
+#' Propensity scores must lie strictly inside (0, 1), since a score at either
+#' endpoint leaves the weight undefined. A score of exactly 0 or 1 is refused
+#' with an error of class `propensity_range_error`. For a categorical exposure
+#' that rule reads every cell of the matrix rather than only the column holding
+#' each unit's observed level, which is the same open interval the binary path
+#' enforces on the single score and its complement.
+#'
+#' [ipw()] applies a narrower rule to the propensity scores it rebuilds from its
+#' own propensity score model. For a categorical exposure it refuses only a
+#' probability of exactly zero at the level a unit was actually assigned, since
+#' that alone leaves the unit's own weight undefined, and a column for a level
+#' the unit was not assigned may reach zero without the fit being refused. The
+#' difference is deliberate: the weight functions can refuse a matrix that holds
+#' nothing [ipw()] would have objected to. The weights still have to be built
+#' before [ipw()] can be reached, so the refusal here is the one to resolve.
+#'
+#' [nnet::multinom()] reaches the endpoints readily. Under separation the
+#' softmax puts the probability at a unit's assigned level at exactly 1 in
+#' double precision, and the columns for the other levels can underflow to
+#' exactly 0. Trimming is no way around the refusal: [ps_trim()] and
+#' [ps_trunc()] validate a categorical matrix under the same open interval and
+#' refuse it before either reaches a threshold. Bound the fitted probabilities
+#' away from 0 and 1 yourself, renormalizing each row to sum to 1, or refit the
+#' propensity score model so that it does not separate.
+#'
 #' ## Weight formulas
 #'
 #' ### Binary exposures
@@ -83,12 +116,32 @@
 #' - **ATO**: \eqn{w = A \cdot (1-e(X)) + (1-A) \cdot e(X)}
 #' - **Entropy**: \eqn{w = \frac{h(e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}}, where \eqn{h(e) = -[e \log(e) + (1-e) \log(1-e)]}
 #'
+#' The entropy weight tilts the propensity score by \eqn{h(e)}, the entropy of
+#' the score itself, in the sense of Zhou, Matsouaka, and Thomas (2020). It is
+#' not entropy balancing, which solves for weights that satisfy exact covariate
+#' moment constraints rather than tilting a fitted propensity score.
+#'
 #' ### Continuous exposures
 #'
 #' Weights use the density ratio
 #' \eqn{w = f_A(A) / f_{A|X}(A \mid X)}, where \eqn{f_A} is the marginal
 #' density and \eqn{f_{A|X}} is the conditional density (both assumed
 #' normal). Only `wt_ate()` and `wt_cens()` support continuous exposures.
+#'
+#' The marginal density is evaluated at the population mean and standard
+#' deviation of `.exposure`. The conditional density is centered on
+#' `.propensity` and spread by the propensity model's residual standard
+#' deviation. That spread is the pooled residual standard deviation
+#' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies an
+#' observation-level standard deviation for each unit, which the `glm` methods
+#' do not do on their own.
+#'
+#' [ipw()] models the conditional density with a single pooled residual
+#' variance, estimated jointly with the rest of the parameter vector. Weights
+#' built with an observation-level `.sigma` therefore have no counterpart in
+#' that estimating equation, and `ipw()` rejects them in its weight consistency
+#' check. Build weights with the pooled default when the outcome model is
+#' headed for `ipw()`.
 #'
 #' ### Categorical exposures
 #'
@@ -106,8 +159,11 @@
 #'
 #' @param .propensity Propensity scores in one of several forms:
 #'   * A **numeric vector** of predicted probabilities (binary/continuous).
-#'   * A **data frame** or matrix with one column per exposure level
-#'     (categorical), or two columns for binary (see `.propensity_col`).
+#'   * A **data frame** or **matrix** with one column per exposure level. Both
+#'     shapes are read the same way, for categorical exposures and for binary
+#'     ones alike, including the default choice of column described under
+#'     `.propensity_col`. That argument is itself a formal of the data frame
+#'     methods only, so selecting a column by name means passing a data frame.
 #'   * A fitted **`glm`** object -- fitted values are extracted automatically.
 #'   * A modified propensity score created by [ps_trim()], [ps_trunc()],
 #'     [ps_refit()], or [ps_calibrate()].
@@ -117,40 +173,62 @@
 #'   level `.focal_level` or `.reference_level` resolves to. The `glm` methods
 #'   derive it from the fitted values, which give the probability of the
 #'   response's second level, and subtract them from one when the resolved
-#'   focal level is the first level instead. The data frame methods reduce to a
-#'   single column and read it on the same scale; see `.propensity_col` for how
-#'   that column is chosen.
+#'   focal level is the first level instead. A data frame or matrix reduces to
+#'   a single column, read on the same scale; see `.propensity_col` for how
+#'   that column is chosen. A matrix reduces by those same defaults, but
+#'   `.propensity_col` belongs to the data frame methods alone, so a matrix
+#'   whose column you want to name has to be converted with `as.data.frame()`
+#'   first.
 #' @param .exposure The exposure (treatment) variable. For binary exposures, a
 #'   numeric 0/1 vector, logical, or two-level factor. For categorical
 #'   exposures, a factor or character vector. For continuous exposures, a
 #'   numeric vector. Optional when `.propensity` is a `glm` object (extracted
-#'   from the model).
+#'   from the model). Missing values are not counted as a level of their own,
+#'   and are carried through to the weights as missing.
 #' @param exposure_type Type of exposure: `"auto"` (default), `"binary"`,
 #'   `"categorical"`, or `"continuous"`. `"auto"` detects the type from
-#'   `.exposure`.
-#' @param .sigma Numeric vector of observation-level standard deviations for
-#'   continuous exposures (e.g., `influence(model)$sigma`). Extracted
-#'   automatically when `.propensity` is a `glm` object.
+#'   `.exposure`. Not every weight function answers every type; see **Exposure
+#'   types** in Details for which does which. Naming a type a function does not
+#'   support, or supplying an exposure detection reads as one, is an error of
+#'   class `propensity_wt_not_supported_error`.
+#' @param .sigma Observation-level standard deviations of the conditional
+#'   density for continuous exposures, one per observation (e.g.,
+#'   `influence(model)$sigma`). Optional: with none supplied, including when
+#'   `.propensity` is a `glm` object, the conditional density uses the pooled
+#'   residual standard deviation of `.exposure` around `.propensity`. Weights
+#'   built with an observation-level `.sigma` cannot be used with [ipw()]; see
+#'   **Continuous exposures** in Details.
+#'
+#'   Must be numeric, holding either a single standard deviation or one per
+#'   observation, and applies only to continuous exposures. `.sigma` sits in
+#'   the third position, which is where a value meant for `exposure_type`
+#'   arrives when it is supplied without a name, so anything else is refused
+#'   with an error of class `propensity_sigma_error`.
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
 #' @param .focal_level The value of `.exposure` representing the focal
 #'   (treated) group. Every binary coding honors it: 0/1 numeric, logical,
 #'   two-level factor, and two-level character exposures are all coded with the
-#'   named level as focal. With no level named, a binary exposure defaults to
-#'   its higher level, which is `1` for a 0/1 exposure and `TRUE` for a logical
-#'   one. Naming any other level reverses the coding, so `.propensity` must
-#'   then hold the probability of the named level. Required for `wt_att()` and
-#'   `wt_atu()` with categorical exposures.
+#'   named level as focal, and a level the exposure never takes is an error.
+#'   With no level named, a binary exposure defaults to its higher level, which
+#'   is `1` for a 0/1 exposure, `TRUE` for a logical one, and the second of the
+#'   two levels a factor or character exposure takes. Levels a factor declares
+#'   but never takes are not candidates. Naming any other level reverses the
+#'   coding, so `.propensity` must then hold the probability of the named
+#'   level. Required for `wt_att()` and `wt_atu()` with categorical exposures.
 #' @param .reference_level The value of `.exposure` representing the reference
 #'   (control) group. For a binary exposure, naming it makes the exposure's
-#'   other level focal, with the same consequence for `.propensity`.
-#'   Automatically detected if not supplied.
+#'   other level focal, with the same consequence for `.propensity`, and a
+#'   level the exposure never takes is an error. Automatically detected if not
+#'   supplied.
 #' @param ... These dots are for future extensions and must be empty.
 #' @param stabilize If `TRUE`, multiply weights by an estimate of the marginal
 #'   treatment probability (binary) or density (continuous). Only supported by
 #'   `wt_ate()` and `wt_cens()`. See **Stabilization** in Details.
 #' @param stabilization_score Optional stabilization multiplier to use instead
-#'   of the default (the marginal mean of `.exposure`). Either a single value
+#'   of the default described under **Stabilization**: the marginal mean of
+#'   `.exposure`, or its marginal normal density for a continuous exposure.
+#'   Either a single value
 #'   applied to every weight or a numeric vector holding one value per
 #'   observation, which is multiplied into the weights observation by
 #'   observation. Every value must be positive and finite, and any other length
@@ -321,7 +399,8 @@ wt_ate.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -332,16 +411,20 @@ wt_ate.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_ate"
+    "wt_ate",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level, call = call)
 
   exposure_type <- match_exposure_type(
     exposure_type,
     .exposure,
     call = call
   )
+
+  check_sigma(.sigma, exposure_type, length(.exposure), call = call)
 
   # The exposure supplies the number of observations the score is checked
   # against, so a `.propensity` of a different length has to be caught first.
@@ -368,6 +451,13 @@ wt_ate.numeric <- function(
   }
 
   if (exposure_type == "binary") {
+    .propensity <- resolve_binary_propensity(
+      .propensity,
+      .exposure = .exposure,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level,
+      call = call
+    )
     check_ps_range(.propensity, call = call)
     wts <- ate_binary(
       .propensity = .propensity,
@@ -386,7 +476,7 @@ wt_ate.numeric <- function(
       stabilize = stabilize,
       stabilization_score = stabilization_score
     )
-  } else if (exposure_type == "categorical") {
+  } else {
     # For categorical, let calculate_categorical_weights handle all validation
     # including the more specific matrix checks
     wts <- calculate_categorical_weights(
@@ -398,8 +488,6 @@ wt_ate.numeric <- function(
       stabilization_score = stabilization_score,
       call = call
     )
-  } else {
-    abort_unsupported(exposure_type, "ATE", call = call)
   }
 
   # Create psw object with appropriate attributes. The stabilization score is
@@ -483,11 +571,6 @@ wt_ate.glm <- function(
     call = call
   )
 
-  # For continuous exposures, extract sigma if not provided
-  if (is.null(.sigma) && args$exposure_type == "continuous") {
-    .sigma <- stats::influence(.propensity)$sigma
-  }
-
   # Call the numeric method
   wt_ate.numeric(
     .propensity = args$propensity,
@@ -543,29 +626,30 @@ ate_continuous <- function(
   stabilize = FALSE,
   stabilization_score = NULL
 ) {
-  # Compute population mean & variance of A
-  un_mean <- mean(.exposure, na.rm = TRUE)
-  # sum(A−μ)^2 / n
-  un_var <- mean((.exposure - un_mean)^2, na.rm = TRUE)
+  # Both densities below are normal densities in the exposure's own units, so
+  # both carry the 1/sigma factor that makes them integrate to one.
 
-  # compute population residual variance E[(A − E[A|X])^2]
-  # sum(residual^2) / n
-  cond_var <- mean((.exposure - .propensity)^2, na.rm = TRUE)
+  # The conditional density f_{A|X}(A_i | X_i) is the one the propensity model
+  # estimates, so its spread is that model's residual standard deviation: the
+  # observation-level `.sigma` when the caller supplies one, the pooled residual
+  # standard deviation otherwise.
+  sigma_i <- if (is.null(.sigma)) {
+    sqrt(mean((.exposure - .propensity)^2, na.rm = TRUE))
+  } else {
+    .sigma
+  }
 
-  # standardize into Z-scores
-  z_num <- (.exposure - un_mean) / sqrt(un_var)
-  z_den <- (.exposure - .propensity) / sqrt(cond_var)
-
-  # evaluate standard normal densities on those Z's
-  # f_A(A_i)
-  f_num <- stats::dnorm(z_num)
-  # f_{A|X}(A_i | X_i)
-  f_den <- stats::dnorm(z_den)
+  f_den <- stats::dnorm(.exposure, mean = .propensity, sd = sigma_i)
 
   # build base weight = 1 / f_{A|X}
   wt <- 1 / f_den
 
   if (isTRUE(stabilize) && is.null(stabilization_score)) {
+    # The marginal density f_A(A_i) uses the exposure's population moments.
+    un_mean <- mean(.exposure, na.rm = TRUE)
+    un_var <- mean((.exposure - un_mean)^2, na.rm = TRUE)
+
+    f_num <- stats::dnorm(.exposure, mean = un_mean, sd = sqrt(un_var))
     wt <- wt * f_num
   } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
     wt <- wt * stabilization_score
@@ -618,7 +702,8 @@ wt_att.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -629,10 +714,12 @@ wt_att.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_att"
+    "wt_att",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level, call = call)
 
   exposure_type <- match_exposure_type(
     exposure_type,
@@ -643,6 +730,13 @@ wt_att.numeric <- function(
 
   if (exposure_type == "binary") {
     check_lengths_match(.propensity, .exposure, call = call)
+    .propensity <- resolve_binary_propensity(
+      .propensity,
+      .exposure = .exposure,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level,
+      call = call
+    )
     check_ps_range(.propensity, call = call)
     wts <- att_binary(
       .propensity = .propensity,
@@ -651,7 +745,7 @@ wt_att.numeric <- function(
       .reference_level = .reference_level,
       call = call
     )
-  } else if (exposure_type == "categorical") {
+  } else {
     # For categorical, let calculate_categorical_weights handle all validation
     wts <- calculate_categorical_weights(
       ps_matrix = .propensity,
@@ -662,8 +756,6 @@ wt_att.numeric <- function(
       stabilization_score = NULL,
       call = call
     )
-  } else {
-    abort_unsupported(exposure_type, "ATT", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -806,7 +898,8 @@ wt_atu.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -817,10 +910,12 @@ wt_atu.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_atu"
+    "wt_atu",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level, call = call)
 
   exposure_type <- match_exposure_type(
     exposure_type,
@@ -831,6 +926,13 @@ wt_atu.numeric <- function(
 
   if (exposure_type == "binary") {
     check_lengths_match(.propensity, .exposure, call = call)
+    .propensity <- resolve_binary_propensity(
+      .propensity,
+      .exposure = .exposure,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level,
+      call = call
+    )
     check_ps_range(.propensity, call = call)
     wts <- atu_binary(
       .propensity = .propensity,
@@ -839,7 +941,7 @@ wt_atu.numeric <- function(
       .reference_level = .reference_level,
       call = call
     )
-  } else if (exposure_type == "categorical") {
+  } else {
     # For categorical, let calculate_categorical_weights handle all validation
     wts <- calculate_categorical_weights(
       ps_matrix = .propensity,
@@ -850,8 +952,6 @@ wt_atu.numeric <- function(
       stabilization_score = NULL,
       call = call
     )
-  } else {
-    abort_unsupported(exposure_type, "ATU", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -994,7 +1094,8 @@ wt_atm.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -1005,10 +1106,12 @@ wt_atm.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_atm"
+    "wt_atm",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level, call = call)
 
   exposure_type <- match_exposure_type(
     exposure_type,
@@ -1019,6 +1122,13 @@ wt_atm.numeric <- function(
 
   if (exposure_type == "binary") {
     check_lengths_match(.propensity, .exposure, call = call)
+    .propensity <- resolve_binary_propensity(
+      .propensity,
+      .exposure = .exposure,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level,
+      call = call
+    )
     check_ps_range(.propensity, call = call)
     wts <- atm_binary(
       .propensity = .propensity,
@@ -1027,7 +1137,7 @@ wt_atm.numeric <- function(
       .reference_level = .reference_level,
       call = call
     )
-  } else if (exposure_type == "categorical") {
+  } else {
     # For categorical, let calculate_categorical_weights handle all validation
     wts <- calculate_categorical_weights(
       ps_matrix = .propensity,
@@ -1038,8 +1148,6 @@ wt_atm.numeric <- function(
       stabilization_score = NULL,
       call = call
     )
-  } else {
-    abort_unsupported(exposure_type, "ATM", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -1175,7 +1283,8 @@ wt_ato.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -1186,10 +1295,12 @@ wt_ato.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_ato"
+    "wt_ato",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level, call = call)
 
   exposure_type <- match_exposure_type(
     exposure_type,
@@ -1200,6 +1311,13 @@ wt_ato.numeric <- function(
 
   if (exposure_type == "binary") {
     check_lengths_match(.propensity, .exposure, call = call)
+    .propensity <- resolve_binary_propensity(
+      .propensity,
+      .exposure = .exposure,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level,
+      call = call
+    )
     check_ps_range(.propensity, call = call)
     wts <- ato_binary(
       .propensity = .propensity,
@@ -1208,7 +1326,7 @@ wt_ato.numeric <- function(
       .reference_level = .reference_level,
       call = call
     )
-  } else if (exposure_type == "categorical") {
+  } else {
     # For categorical, let calculate_categorical_weights handle all validation
     wts <- calculate_categorical_weights(
       ps_matrix = .propensity,
@@ -1219,8 +1337,6 @@ wt_ato.numeric <- function(
       stabilization_score = NULL,
       call = call
     )
-  } else {
-    abort_unsupported(exposure_type, "ATO", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -1355,7 +1471,8 @@ wt_entropy.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -1366,10 +1483,12 @@ wt_entropy.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_entropy"
+    "wt_entropy",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level, call = call)
 
   exposure_type <- match_exposure_type(
     exposure_type,
@@ -1380,6 +1499,13 @@ wt_entropy.numeric <- function(
 
   if (exposure_type == "binary") {
     check_lengths_match(.propensity, .exposure, call = call)
+    .propensity <- resolve_binary_propensity(
+      .propensity,
+      .exposure = .exposure,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level,
+      call = call
+    )
     check_ps_range(.propensity, call = call)
     wts <- entropy_binary(
       .propensity = .propensity,
@@ -1388,7 +1514,7 @@ wt_entropy.numeric <- function(
       .reference_level = .reference_level,
       call = call
     )
-  } else if (exposure_type == "categorical") {
+  } else {
     # For categorical, let calculate_categorical_weights handle all validation
     wts <- calculate_categorical_weights(
       ps_matrix = .propensity,
@@ -1399,8 +1525,6 @@ wt_entropy.numeric <- function(
       stabilization_score = NULL,
       call = call
     )
-  } else {
-    abort_unsupported(exposure_type, "entropy", call = call)
   }
 
   # Create psw object with appropriate attributes
@@ -1523,7 +1647,7 @@ wt_cens <- function(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -1540,7 +1664,7 @@ wt_cens.default <- function(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -1557,7 +1681,7 @@ wt_cens.numeric <- function(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -1565,9 +1689,35 @@ wt_cens.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
+
+  # Resolved here rather than left to the ATE machinery, which would name
+  # `wt_ate()` in the deprecation warning for an argument the user passed to
+  # `wt_cens()`.
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "wt_cens",
+    user_env = user_env
+  )
+  .focal_level <- focal_params$.focal_level
+  .reference_level <- focal_params$.reference_level
+  check_focal_levels(.focal_level, .reference_level, call = call)
+
+  # Censoring is a two-level event, so the exposure type is resolved against the
+  # types censoring weights answer rather than against the wider set the ATE
+  # machinery answers.
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    c("auto", "binary", "continuous"),
+    call = call
+  )
 
   # Get weights using ATE formula. `call` carries the frame this method was
   # dispatched into, so a rejection raised inside the ATE machinery still names
@@ -1579,8 +1729,8 @@ wt_cens.numeric <- function(
     exposure_type = exposure_type,
     .focal_level = .focal_level,
     .reference_level = .reference_level,
-    .treated = .treated,
-    .untreated = .untreated,
+    .treated = NULL,
+    .untreated = NULL,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     call = call,
@@ -1598,7 +1748,7 @@ wt_cens.data.frame <- function(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -1615,7 +1765,7 @@ wt_cens.data.frame <- function(
     .propensity = .propensity,
     .exposure = .exposure,
     exposure_type = exposure_type,
-    valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    valid_exposure_types = c("auto", "binary", "continuous"),
     .propensity_col_quo = col_quo,
     .sigma = .sigma,
     .focal_level = .focal_level,
@@ -1633,7 +1783,7 @@ wt_cens.glm <- function(
   .propensity,
   .exposure = NULL,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -1649,7 +1799,7 @@ wt_cens.glm <- function(
     .propensity,
     .exposure,
     exposure_type = exposure_type,
-    valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    valid_exposure_types = c("auto", "binary", "continuous"),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,
@@ -1657,11 +1807,6 @@ wt_cens.glm <- function(
     fn_name = "wt_cens",
     call = call
   )
-
-  # For continuous exposures, extract sigma if not provided
-  if (is.null(.sigma) && args$exposure_type == "continuous") {
-    .sigma <- stats::influence(.propensity)$sigma
-  }
 
   # Call the numeric method
   wt_cens.numeric(
@@ -2005,7 +2150,7 @@ wt_cens.ps_trim <- function(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -2036,7 +2181,7 @@ wt_cens.ps_trunc <- function(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,
@@ -2101,6 +2246,12 @@ calculate_categorical_weights <- function(
   # e_{i,Z_i} = sum over j of Z_{ij} * e_{ij}
   e_actual <- rowSums(Z * ps_matrix)
 
+  # A unit with no observed level has an all-zero indicator row, so e_{i,Z_i}
+  # comes back as 0. There is no weight to give such a unit, so it is missing
+  # here just as it is on the binary and continuous paths.
+  missing_exposure <- is.na(.exposure)
+  e_actual[missing_exposure] <- NA_real_
+
   if (!estimand %in% ipw_estimands) {
     abort(
       "Unknown estimand: {estimand}",
@@ -2134,11 +2285,32 @@ calculate_categorical_weights <- function(
     if (!is.null(stabilization_score)) {
       weights <- weights * stabilization_score
     } else {
-      # For categorical, use marginal probabilities
-      p_marginal <- table(.exposure) / n
+      # Every marginal is a share of the units with an observed level, so with
+      # none observed each one is 0 / 0. Weights that are missing everywhere are
+      # not an answer to the call that was made, so the degenerate stabilizer is
+      # reported rather than returned.
+      if (all(missing_exposure)) {
+        abort(
+          c(
+            "Can't stabilize categorical weights when {.arg .exposure} has no
+             observed values.",
+            x = "Every observation is missing, so every marginal probability
+                 is undefined.",
+            i = "Supply {.arg stabilization_score}, or leave
+                 {.code stabilize = FALSE}."
+          ),
+          error_class = "propensity_stabilize_categorical_error",
+          call = call
+        )
+      }
+
+      # For categorical, use marginal probabilities. `table()` counts only the
+      # units with an observed level, so the denominator has to match or the
+      # marginals sum to less than 1 whenever the exposure is missing.
+      p_marginal <- table(.exposure) / sum(!missing_exposure)
 
       # Create stabilization weights based on marginal probabilities
-      stab_wts <- numeric(n)
+      stab_wts <- rep(NA_real_, n)
       for (j in 1:k) {
         stab_wts[.exposure == levels_exp[j]] <- p_marginal[j]
       }
@@ -2323,7 +2495,7 @@ wt_cens.ps_calib <- function(
   .propensity,
   .exposure,
   .sigma = NULL,
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
   stabilize = FALSE,

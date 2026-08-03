@@ -172,14 +172,14 @@ test_that("Combining & casting ps_trunc => correct ptype2, cast behavior", {
   expect_type(out_cast, "double")
   expect_identical(out_cast, c(0.2, 0.6, 0.8))
 
-  # 4) Casting double -> ps_trunc => new default meta
+  # 4) Casting double -> ps_trunc => the truncation of the target
   new_vals <- runif(3)
   out_ps_trunc <- vctrs::vec_cast(new_vals, to = obj)
   expect_s3_class(out_ps_trunc, "ps_trunc")
   meta_new <- ps_trunc_meta(out_ps_trunc)
-  expect_equal(meta_new$method, "unknown") # per your code
-  expect_true(is.na(meta_new$lower_bound))
-  expect_true(is.na(meta_new$upper_bound))
+  expect_equal(meta_new$method, "ps")
+  expect_equal(meta_new$lower_bound, 0.2)
+  expect_equal(meta_new$upper_bound, 0.8)
 })
 
 test_that("wt_atm.numeric calls atm_binary() for binary .exposure, returns psw", {
@@ -387,6 +387,27 @@ test_that("ps_trunc vec_ptype_full output matches expected format", {
   expect_equal(
     vctrs::vec_ptype_full(ps_trunc_wide),
     "ps_trunc{[0.01,0.99], method=ps}"
+  )
+})
+
+# A bound the method reads off the scores is a score, and carries every digit
+# the score it came from was worked out to. The line a truncated vector is
+# printed under reports the bound to a few significant digits instead.
+
+test_that("vec_ptype_full() rounds a bound read off the scores", {
+  set.seed(123)
+  ps <- runif(20, 0.05, 0.95)
+
+  truncated <- ps_trunc(ps, method = "pctl", lower = 0.05, upper = 0.95)
+  meta <- ps_trunc_meta(truncated)
+
+  # The quantiles the bounds came from, to the digits they were worked out to.
+  expect_equal(unname(meta$lower_bound), 0.09084348598727956)
+  expect_equal(unname(meta$upper_bound), 0.9091581205616238)
+
+  expect_identical(
+    vctrs::vec_ptype_full(truncated),
+    "ps_trunc{[0.0908,0.909], method=pctl}"
   )
 })
 
@@ -723,5 +744,909 @@ test_that("ps_trunc refuses an exposure with dimensions", {
   expect_error(
     ps_trunc(ps, method = "cr", .exposure = dimensioned),
     class = "propensity_binary_transform_error"
+  )
+})
+
+test_that("ps_trunc refuses a focal level the exposure never takes", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  exposure <- c("a", "b", "a", "b")
+
+  # A focal level nobody holds leaves every unit in the reference group, so the
+  # bounds are computed over a split the caller did not ask for.
+  expect_error(
+    ps_trunc(
+      ps,
+      method = "cr",
+      .exposure = exposure,
+      .focal_level = "absent"
+    ),
+    class = "propensity_focal_level_error"
+  )
+})
+
+test_that("ps_trunc names `.exposure` when the common range method requires one", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # Without an exposure the common range method reaches the binary transform
+  # with nothing to transform, and the caller is told that the exposure could
+  # not be converted rather than that it was never supplied.
+  cnd <- rlang::catch_cnd(ps_trunc(ps, method = "cr"), classes = "error")
+  expect_s3_class(cnd, "propensity_missing_arg_error")
+  expect_match(conditionMessage(cnd), "`.exposure`", fixed = TRUE)
+
+  expect_propensity_error(ps_trunc(ps, method = "cr"))
+})
+
+# Missing values ------------------------------------------------------------
+
+# Truncation keeps every unit, so a propensity score that arrives missing stays
+# missing and is not one this package pinned to a bound. The methods that read
+# their bounds off the scores read them off the scores they have.
+
+test_that("ps_trunc() passes a score that arrived missing through unmarked", {
+  # Regression guard: this is what the fixed-bound method already does, and the
+  # policy the other methods are being brought to.
+  truncated <- ps_trunc(
+    c(0.2, 0.5, NA, 0.7),
+    method = "ps",
+    lower = 0.3,
+    upper = 0.6
+  )
+  meta <- ps_trunc_meta(truncated)
+
+  expect_equal(as.numeric(truncated), c(0.3, 0.5, NA, 0.6))
+  expect_equal(meta$truncated_idx, c(1, 4))
+  expect_equal(meta$n_obs, 4)
+  expect_equal(is_unit_truncated(truncated), c(TRUE, FALSE, FALSE, TRUE))
+})
+
+test_that("ps_trunc() takes its percentile bounds from the complete scores", {
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+
+  # `quantile()` refuses a missing value unless it is told to drop it, so the
+  # percentile method is an error on any sample with one.
+  with_na <- ps_trunc(ps, method = "pctl", lower = 0.2, upper = 0.8)
+  without_na <- ps_trunc(ps[-4], method = "pctl", lower = 0.2, upper = 0.8)
+  meta <- ps_trunc_meta(with_na)
+
+  expect_equal(meta$lower_bound, ps_trunc_meta(without_na)$lower_bound)
+  expect_equal(meta$upper_bound, ps_trunc_meta(without_na)$upper_bound)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$truncated_idx, c(1, 6))
+  expect_false(is_unit_truncated(with_na)[4])
+})
+
+test_that("ps_trunc() takes its common range from the complete scores", {
+  ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
+  z <- c(0, 0, 1, 1, 1, 0)
+
+  # One missing score in the focal group makes the lower bound missing, and no
+  # score compares below a missing bound, so nothing is pinned there.
+  with_na <- ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1)
+  without_na <- ps_trunc(
+    ps[-4],
+    method = "cr",
+    .exposure = z[-4],
+    .focal_level = 1
+  )
+  meta <- ps_trunc_meta(with_na)
+
+  expect_equal(meta$lower_bound, ps_trunc_meta(without_na)$lower_bound)
+  expect_equal(meta$upper_bound, ps_trunc_meta(without_na)$upper_bound)
+  expect_equal(as.numeric(with_na)[-4], as.numeric(without_na))
+  expect_true(is.na(as.numeric(with_na)[4]))
+  expect_equal(meta$truncated_idx, c(1, 2))
+  expect_false(is_unit_truncated(with_na)[4])
+})
+
+test_that("ps_trunc() refuses an exposure with missing values", {
+  ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
+  z <- c(0, 0, 0, 1, 1, NA)
+  z_factor <- factor(c("a", "a", "a", "b", "b", NA))
+
+  # The common range is bounded by the extremes of each group, both of which
+  # are missing once a unit belongs to neither. Nothing compares as outside a
+  # missing bound, so every score is returned untouched and the object reports
+  # bounds it never applied.
+  cr_numeric <- rlang::catch_cnd(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1),
+    classes = "condition"
+  )
+  expect_s3_class(cr_numeric, "error")
+  expect_s3_class(cr_numeric, "propensity_error")
+
+  cr_factor <- rlang::catch_cnd(
+    ps_trunc(ps, method = "cr", .exposure = z_factor, .focal_level = "b"),
+    classes = "condition"
+  )
+  expect_s3_class(cr_factor, "error")
+  expect_s3_class(cr_factor, "propensity_error")
+
+  expect_propensity_error(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1)
+  )
+})
+
+# Bounds validation ---------------------------------------------------------
+
+test_that("ps_trunc() requires lower below upper for the pctl method", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # Bounds the wrong way around cross, and every score is then pinned to the
+  # bound on the far side of the other one. Method "ps" already refuses this
+  # and the percentile method owes the same refusal.
+  cnd <- rlang::catch_cnd(
+    ps_trunc(ps, method = "pctl", lower = 0.95, upper = 0.05),
+    classes = "condition"
+  )
+  expect_s3_class(cnd, "error")
+  expect_s3_class(cnd, "propensity_range_error")
+
+  expect_propensity_error(
+    ps_trunc(ps, method = "pctl", lower = 0.95, upper = 0.05)
+  )
+})
+
+test_that("ps_trunc() refuses percentile bounds outside the unit interval", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # For the percentile method the bounds are probabilities. `quantile()`
+  # refuses one outside [0, 1] in a bare error naming `probs`, an argument
+  # `ps_trunc()` does not have.
+  low <- rlang::catch_cnd(
+    ps_trunc(ps, method = "pctl", lower = -0.1),
+    classes = "condition"
+  )
+  expect_s3_class(low, "error")
+  expect_s3_class(low, "propensity_error")
+
+  high <- rlang::catch_cnd(
+    ps_trunc(ps, method = "pctl", upper = 1.5),
+    classes = "condition"
+  )
+  expect_s3_class(high, "error")
+  expect_s3_class(high, "propensity_error")
+
+  expect_propensity_error(ps_trunc(ps, method = "pctl", lower = -0.1))
+})
+
+test_that("ps_trunc() refuses a bound that is missing", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # A missing bound answers neither `TRUE` nor `FALSE` in the comparison that
+  # decides which scores to pin, so the rule comes out as a bare base error
+  # about a missing value rather than as an answer.
+  fixed <- rlang::catch_cnd(
+    ps_trunc(ps, method = "ps", lower = NA),
+    classes = "condition"
+  )
+  expect_s3_class(fixed, "error")
+  expect_s3_class(fixed, "propensity_error")
+
+  pctl <- rlang::catch_cnd(
+    ps_trunc(ps, method = "pctl", upper = NA),
+    classes = "condition"
+  )
+  expect_s3_class(pctl, "error")
+  expect_s3_class(pctl, "propensity_error")
+
+  expect_propensity_error(ps_trunc(ps, method = "ps", lower = NA))
+})
+
+test_that("ps_trunc() refuses a common range the exposure groups do not share", {
+  ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
+  z <- c(0, 0, 0, 1, 1, 1)
+
+  # The lowest score among the exposed, 0.7, is above the highest among the
+  # unexposed, 0.6, so the common range is empty. Every score is pinned to a
+  # bound on the far side of the other one, which reports a common range where
+  # the groups have none.
+  cnd <- rlang::catch_cnd(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1),
+    classes = "condition"
+  )
+  expect_s3_class(cnd, "error")
+  expect_s3_class(cnd, "propensity_error")
+  expect_match(conditionMessage(cnd), "overlap")
+
+  expect_propensity_error(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1)
+  )
+})
+
+test_that("ps_trunc() reports the crossed bounds at a readable precision", {
+  ps <- c(0.1234567891, 0.2, 0.6, 0.7654321987, 0.8, 0.9)
+  z <- c(0, 0, 0, 1, 1, 1)
+
+  # The bounds are propensity scores read off the data, so they arrive at full
+  # double precision and a message that interpolates them raw reads as noise.
+  cnd <- rlang::catch_cnd(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1),
+    classes = "error"
+  )
+  msg <- conditionMessage(cnd)
+
+  expect_match(msg, "0.765", fixed = TRUE)
+  expect_no_match(msg, "0.7654321987", fixed = TRUE)
+})
+
+test_that("ps_trunc() keeps every score within the common range it records", {
+  # Regression guard: where the groups do overlap, the bounds are a range and
+  # every returned score lies inside it.
+  truncated <- ps_trunc(
+    c(0.1, 0.3, 0.6, 0.2, 0.5, 0.9),
+    method = "cr",
+    .exposure = c(0, 0, 0, 1, 1, 1),
+    .focal_level = 1
+  )
+  meta <- ps_trunc_meta(truncated)
+
+  expect_lt(meta$lower_bound, meta$upper_bound)
+  expect_true(all(as.numeric(truncated) >= meta$lower_bound))
+  expect_true(all(as.numeric(truncated) <= meta$upper_bound))
+})
+
+# Combining truncated propensity scores --------------------------------------
+
+# Two `ps_trunc` objects are combined through the prototype they share. The
+# prototype stands for the truncation that produced them, so it carries the
+# method and the bounds that method settled on. A bound read off the scores
+# cannot be worked out again from a prototype that holds none, so it is carried
+# across rather than recomputed. The prototype describes no observations, so it
+# names no positions and the combined result has no record.
+
+trunc_combine_fixture <- function() {
+  set.seed(4)
+  n <- 40
+  x <- rnorm(n, sd = 2)
+
+  list(
+    ps = plogis(x),
+    exposure = rbinom(n, 1, plogis(x))
+  )
+}
+
+test_that("combining ps_trunc objects keeps the bounds given to the truncation", {
+  fixture <- trunc_combine_fixture()
+  truncated <- ps_trunc(fixture$ps, method = "ps", lower = 0.1, upper = 0.9)
+
+  combined <- expect_silent(c(truncated[1:20], truncated[21:40]))
+  meta <- ps_trunc_meta(combined)
+
+  expect_s3_class(combined, "ps_trunc")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(truncated))
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, 0.1)
+  expect_equal(meta$upper_bound, 0.9)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+})
+
+test_that("combining pctl ps_trunc objects keeps the bounds the truncation found", {
+  fixture <- trunc_combine_fixture()
+  truncated <- ps_trunc(fixture$ps, method = "pctl")
+  original <- ps_trunc_meta(truncated)
+
+  # The bounds come from the scores, and a prototype holds none, so a prototype
+  # that works them out again reports missing bounds. Read back as the bounds
+  # the truncation used, they no longer describe the scores being combined.
+  combined <- expect_silent(c(truncated[1:20], truncated[21:40]))
+  meta <- ps_trunc_meta(combined)
+
+  expect_s3_class(combined, "ps_trunc")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(truncated))
+  expect_equal(meta$method, "pctl")
+  expect_equal(meta$lower_pctl, 0.05)
+  expect_equal(meta$upper_pctl, 0.95)
+  expect_false(is.na(meta$lower_bound))
+  expect_false(is.na(meta$upper_bound))
+  expect_equal(meta$lower_bound, original$lower_bound)
+  expect_equal(meta$upper_bound, original$upper_bound)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+})
+
+test_that("combining cr ps_trunc objects keeps the common range", {
+  fixture <- trunc_combine_fixture()
+  truncated <- ps_trunc(
+    fixture$ps,
+    method = "cr",
+    .exposure = fixture$exposure
+  )
+  original <- ps_trunc_meta(truncated)
+
+  # The common range is defined against the exposure, which a prototype built by
+  # truncating again would have to be handed and is not.
+  combined <- expect_silent(c(truncated[1:20], truncated[21:40]))
+  meta <- ps_trunc_meta(combined)
+
+  expect_s3_class(combined, "ps_trunc")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(truncated))
+  expect_equal(meta$method, "cr")
+  expect_equal(meta$lower_bound, original$lower_bound)
+  expect_equal(meta$upper_bound, original$upper_bound)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+})
+
+test_that("casting a double to a ps_trunc keeps the truncation of the target", {
+  to <- ps_trunc(
+    c(0.05, 0.3, 0.5, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  # A cast returns the values it was given in the type it was given, and the
+  # bounds are part of that type.
+  out <- vec_cast(c(0.3, 0.4), to = to)
+  meta <- ps_trunc_meta(out)
+
+  expect_s3_class(out, "ps_trunc")
+  expect_equal(as.numeric(out), c(0.3, 0.4))
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, 0.1)
+  expect_equal(meta$upper_bound, 0.9)
+  expect_equal(meta$truncated_idx, integer(0))
+  expect_equal(meta$n_obs, 2L)
+})
+
+test_that("combining a ps_trunc with an integer keeps the propensity scores", {
+  x <- ps_trunc(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  # Propensity scores lie strictly between 0 and 1, so a combination that meets
+  # an integer in the integers is every score rounded away.
+  combined <- expect_propensity_warning(vec_c(x, 1L))
+
+  expect_type(combined, "double")
+  expect_equal(combined, c(0.2, 0.5, 0.85, 1))
+})
+
+test_that("casting a ps_trunc to integer refuses rather than rounds", {
+  x <- ps_trunc(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  expect_error(
+    vec_cast(x, integer()),
+    class = "vctrs_error_cast_lossy"
+  )
+})
+
+# Choosing a column from a data frame of propensity scores -------------------
+
+# Predictions from a binary model arrive as a column per level, and truncation
+# works on one column. The convention is the second column of a pair, which is
+# the probability of the second level in the layout these predictions come in,
+# and the only column otherwise. The caller did not make that choice, so it is
+# announced rather than left to be inferred from the result.
+
+trunc_frame_fixture <- function() {
+  set.seed(2)
+  n <- 40
+  x <- rnorm(n)
+  p <- plogis(x)
+
+  list(
+    ps = data.frame(.pred_0 = 1 - p, .pred_1 = p),
+    exposure = rbinom(n, 1, p)
+  )
+}
+
+test_that("ps_trunc() names the column it took from a data frame of two", {
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trunc_frame_fixture()
+
+  messages <- testthat::capture_messages(
+    ps_trunc(
+      fixture$ps,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3,
+      upper = 0.7
+    )
+  )
+
+  naming <- messages[grepl(".pred_1", messages, fixed = TRUE)]
+  expect_length(naming, 1)
+  expect_false(any(grepl(".pred_0", messages, fixed = TRUE)))
+})
+
+test_that("ps_trunc() names the only column of a one column data frame", {
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trunc_frame_fixture()
+  one_column <- fixture$ps[, ".pred_1", drop = FALSE]
+
+  messages <- testthat::capture_messages(
+    ps_trunc(one_column, method = "ps", lower = 0.3, upper = 0.7)
+  )
+
+  expect_length(messages, 1)
+  expect_true(grepl(".pred_1", messages, fixed = TRUE))
+})
+
+test_that("ps_trunc() announces no column when the messages are quieted", {
+  withr::local_options(propensity.quiet = TRUE)
+  fixture <- trunc_frame_fixture()
+
+  expect_silent(
+    ps_trunc(
+      fixture$ps,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.3,
+      upper = 0.7
+    )
+  )
+})
+
+test_that("the column ps_trunc() announces is named in a full sentence", {
+  withr::local_options(propensity.quiet = FALSE)
+  fixture <- trunc_frame_fixture()
+
+  expect_snapshot(
+    truncated <- ps_trunc(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+  )
+})
+
+test_that("ps_trunc() takes the second column of a data frame of two", {
+  fixture <- trunc_frame_fixture()
+
+  from_frame <- ps_trunc(fixture$ps, method = "ps", lower = 0.3, upper = 0.7)
+  from_second <- ps_trunc(
+    fixture$ps[[2]],
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+  from_first <- ps_trunc(
+    fixture$ps[[1]],
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+
+  expect_gt(length(ps_trunc_meta(from_second)$truncated_idx), 0)
+  expect_equal(as.numeric(from_frame), as.numeric(from_second))
+  expect_equal(
+    ps_trunc_meta(from_frame)$truncated_idx,
+    ps_trunc_meta(from_second)$truncated_idx
+  )
+  expect_false(identical(as.numeric(from_frame), as.numeric(from_first)))
+})
+
+# What a cast between truncated vectors owes its target ----------------------
+
+# A cast returns the values it was handed in the type it was handed, and a
+# `ps_trunc`'s type is the whole description of the truncation: the method, the
+# bounds it pinned scores to, and the percentiles those bounds were read off
+# at. Two objects that disagree on any of that are not each other's type, so
+# the cast has no result to give and refuses, which is the comparison
+# `vec_ptype2()` already makes when it refuses to find a common type. A cast
+# that compares less than the combine does hands `x` back describing itself
+# under the target's name.
+
+test_that("casting between ps_trunc objects bounded at different percentiles refuses", {
+  # The bounds are half of what the record says; the other half is the
+  # percentile they were read off at, which is what tells a reader where they
+  # came from. Two truncations that reached the same bounds from different
+  # percentiles are described differently, and the combine says so.
+  x <- ps_trunc(
+    c(0.1, 0.2, 0.5, 0.8, 0.9),
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+
+  to_meta <- ps_trunc_meta(x)
+  to_meta$lower_pctl <- 0.25
+  to <- new_ps_trunc(vec_data(x), meta = to_meta)
+
+  expect_identical(
+    ps_trunc_meta(x)$lower_bound,
+    ps_trunc_meta(to)$lower_bound
+  )
+  expect_warning(
+    vec_ptype2(x, to),
+    class = "propensity_coercion_warning"
+  )
+  expect_identical(suppressWarnings(vec_ptype2(x, to)), double())
+
+  # A `ps_trunc` is printed with its bounds but not the percentiles they came
+  # from, so the two types render identically and the refusal names what
+  # disagrees, as the combine does.
+  expect_identical(vec_ptype_full(x), vec_ptype_full(to))
+  expect_error(
+    vec_cast(x, to = to),
+    regexp = "different truncation parameters",
+    class = "vctrs_error_incompatible_type"
+  )
+})
+
+test_that("casting between ps_trunc objects describing the same truncation succeeds", {
+  # The positional half of the record describes the values arriving rather than
+  # the type they arrive in, so two objects truncated the same way are each
+  # other's type however many units either one pinned.
+  x <- ps_trunc(
+    c(0.05, 0.2, 0.5, 0.8, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+  to <- ps_trunc(
+    c(0.15, 0.25, 0.55, 0.85),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  out <- expect_silent(vec_cast(x, to = to))
+
+  expect_s3_class(out, "ps_trunc")
+  expect_equal(as.numeric(out), as.numeric(x))
+  expect_equal(ps_trunc_meta(out)$lower_bound, 0.1)
+  expect_equal(ps_trunc_meta(out)$upper_bound, 0.9)
+})
+
+# Naming the propensity scores `.propensity` ----------------------------------
+
+# The weight functions read the propensity scores from `.propensity` and these
+# read them from `ps`, so a call written against one is refused by the other in
+# both directions. The tests below pin the scores under the new name, the
+# deprecated shim that keeps the old name working for a release, and the
+# refusal to read both names at once. The positional pin comes first: whatever
+# else the rename moves, it must not move what a call that names nothing
+# returns.
+
+trunc_rename_scores <- function() {
+  c(0.05, 0.15, 0.35, 0.5, 0.65, 0.85, 0.95)
+}
+
+trunc_rename_positional <- function() {
+  ps_trunc(trunc_rename_scores(), method = "ps", lower = 0.2, upper = 0.8)
+}
+
+# A categorical propensity score matrix whose rows sum to 1, small enough that
+# the bounded cells can be read off it.
+trunc_rename_matrix <- function() {
+  m <- rbind(
+    c(0.70, 0.20, 0.10),
+    c(0.20, 0.60, 0.20),
+    c(0.10, 0.30, 0.60),
+    c(0.50, 0.30, 0.20),
+    c(0.30, 0.40, 0.30),
+    c(0.25, 0.35, 0.40)
+  )
+  colnames(m) <- c("a", "b", "c")
+  m
+}
+
+trunc_rename_exposure <- function() {
+  factor(c("a", "b", "c", "a", "b", "c"), levels = c("a", "b", "c"))
+}
+
+test_that("ps_trunc() bounds a positional vector of scores at the cutoffs", {
+  out <- trunc_rename_positional()
+
+  expect_s3_class(out, "ps_trunc")
+  expect_equal(as.numeric(out), c(0.2, 0.2, 0.35, 0.5, 0.65, 0.8, 0.8))
+
+  meta <- ps_trunc_meta(out)
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, 0.2)
+  expect_equal(meta$upper_bound, 0.8)
+  expect_equal(meta$truncated_idx, c(1L, 2L, 6L, 7L))
+  expect_equal(meta$n_obs, 7L)
+})
+
+test_that("ps_trunc() reads the propensity scores from .propensity", {
+  expect_equal(
+    ps_trunc(
+      .propensity = trunc_rename_scores(),
+      method = "ps",
+      lower = 0.2,
+      upper = 0.8
+    ),
+    trunc_rename_positional()
+  )
+})
+
+test_that("ps_trunc() deprecates the propensity scores under ps", {
+  with_always_deprecated({
+    expect_warning(
+      ps_trunc(
+        ps = trunc_rename_scores(),
+        method = "ps",
+        lower = 0.2,
+        upper = 0.8
+      ),
+      class = "lifecycle_warning_deprecated"
+    )
+  })
+
+  # The old name still has to reach the same bounding, not merely warn. The
+  # deprecation is pinned above, so it is silenced here rather than repeated.
+  withr::local_options(lifecycle_verbosity = "quiet")
+  expect_equal(
+    ps_trunc(
+      ps = trunc_rename_scores(),
+      method = "ps",
+      lower = 0.2,
+      upper = 0.8
+    ),
+    trunc_rename_positional()
+  )
+})
+
+test_that("ps_trunc() refuses the propensity scores under both names", {
+  withr::local_options(lifecycle_verbosity = "quiet")
+
+  # The condition subclass is the shim's to choose; what this pins is that the
+  # refusal is one of the package's own errors and that it names both spellings,
+  # so the caller can see which one to drop.
+  err <- expect_error(
+    ps_trunc(
+      .propensity = trunc_rename_scores(),
+      ps = trunc_rename_scores(),
+      method = "ps",
+      lower = 0.2,
+      upper = 0.8
+    ),
+    class = "propensity_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_match(msg, "`ps`", fixed = TRUE)
+})
+
+test_that("ps_trunc() dispatches on a matrix supplied as .propensity", {
+  out <- ps_trunc(
+    .propensity = trunc_rename_matrix(),
+    .exposure = trunc_rename_exposure(),
+    method = "ps",
+    lower = 0.15
+  )
+
+  expect_s3_class(out, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_equal(
+    out,
+    ps_trunc(
+      trunc_rename_matrix(),
+      .exposure = trunc_rename_exposure(),
+      method = "ps",
+      lower = 0.15
+    )
+  )
+})
+
+test_that("ps_trunc() dispatches on a data frame supplied as .propensity", {
+  out <- ps_trunc(
+    .propensity = as.data.frame(trunc_rename_matrix()),
+    .exposure = trunc_rename_exposure(),
+    method = "ps",
+    lower = 0.15
+  )
+
+  expect_s3_class(out, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_equal(
+    out,
+    ps_trunc(
+      as.data.frame(trunc_rename_matrix()),
+      .exposure = trunc_rename_exposure(),
+      method = "ps",
+      lower = 0.15
+    )
+  )
+})
+
+test_that("ps_trunc() names .propensity in the out-of-range error", {
+  err <- expect_error(
+    ps_trunc(.propensity = c(-1, 0.5), method = "ps", lower = 0.2, upper = 0.8),
+    class = "propensity_range_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_false(grepl("`ps`", msg, fixed = TRUE))
+})
+
+# Bounds, groups, and the record they leave -----------------------------------
+
+test_that("ps_trunc() names the propensity scores it was not given", {
+  err <- expect_error(ps_trunc(), class = "propensity_missing_arg_error")
+  expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
+})
+
+test_that("ps_trunc() refuses a common range read off no scores", {
+  scores <- c(NA, NA, 0.4, 0.55, 0.7)
+
+  # The lower bound is the lowest score among the focal units. Over no scores
+  # `min()` returns `Inf` under a base R warning, and the bounds then cross,
+  # which is reported as distributions that do not overlap rather than as a
+  # group with no scores to read a bound off.
+  expect_no_warning(
+    expect_error(
+      ps_trunc(scores, method = "cr", .exposure = c(1, 1, 0, 0, 0)),
+      class = "propensity_no_data_error"
+    )
+  )
+
+  # The upper bound is the highest score among the reference units, and
+  # `max()` returns `-Inf` over none of them.
+  expect_no_warning(
+    expect_error(
+      ps_trunc(scores, method = "cr", .exposure = c(0, 0, 1, 1, 1)),
+      class = "propensity_no_data_error"
+    )
+  )
+})
+
+test_that("ps_trunc() records the percentile bounds without their quantile names", {
+  set.seed(12)
+  truncated <- ps_trunc(runif(40, 0.02, 0.98), method = "pctl")
+  meta <- ps_trunc_meta(truncated)
+
+  # `quantile()` names its result for the probability it was asked for, which
+  # says nothing about the bound and reappears wherever the bound is printed or
+  # compared.
+  expect_null(names(meta$lower_bound))
+  expect_null(names(meta$upper_bound))
+})
+
+test_that("the truncation record names each unit once", {
+  # The record is built from the units pinned to the lower bound and those
+  # pinned to the upper one, so it holds each position once and in order
+  # whatever the method read its bounds off.
+  set.seed(13)
+  scores <- runif(40, 0.02, 0.98)
+  exposure <- rbinom(40, 1, scores)
+
+  truncations <- list(
+    ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+    ps_trunc(scores, method = "pctl", lower = 0.1, upper = 0.9),
+    ps_trunc(scores, method = "cr", .exposure = exposure)
+  )
+
+  for (truncated in truncations) {
+    idx <- ps_trunc_meta(truncated)$truncated_idx
+    expect_equal(anyDuplicated(idx), 0L)
+    expect_equal(idx, sort(idx))
+  }
+})
+
+# The binary route names ps_trunc, whichever method answered -----------------
+
+# `ps_trunc.data.frame` reaches the vector method by a plain call rather than by
+# dispatch, so a condition the vector method raises reports the frame it was
+# raised from, which is a method no caller wrote. The same condition on a bare
+# vector names `ps_trunc()`, because dispatch reports the generic. The scores a
+# caller holds in one column of a data frame are the scores they would have
+# passed as a vector, so the two routes owe the same report.
+
+trunc_binary_frame_fixture <- function() {
+  list(
+    scores = data.frame(.pred_1 = c(0.15, 0.4, 0.6, 0.85)),
+    out_of_range = data.frame(.pred_1 = c(0, 0.5, 1)),
+    exposure = c(0, 1, 0, 1)
+  )
+}
+
+test_that("a refusal on the binary data frame route names ps_trunc", {
+  fixture <- trunc_binary_frame_fixture()
+
+  # The scores themselves.
+  expect_identical(
+    condition_call_name(ps_trunc(fixture$out_of_range, method = "ps")),
+    "ps_trunc"
+  )
+
+  # The method asked for.
+  expect_identical(
+    condition_call_name(ps_trunc(fixture$scores, method = "bogus")),
+    "ps_trunc"
+  )
+
+  # The bounds the method was handed.
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores, method = "ps", lower = 0.9, upper = 0.1)
+    ),
+    "ps_trunc"
+  )
+
+  # The percentiles the bounds are read off at.
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores, method = "pctl", lower = 1.5, upper = 0.95)
+    ),
+    "ps_trunc"
+  )
+
+  # The level the binary coding is read against.
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores, method = "ps", .focal_level = c(0, 1))
+    ),
+    "ps_trunc"
+  )
+
+  # The exposure a common range cannot be worked out without.
+  expect_identical(
+    condition_call_name(ps_trunc(fixture$scores, method = "cr")),
+    "ps_trunc"
+  )
+})
+
+test_that("a refusal on the numeric route still names ps_trunc", {
+  fixture <- trunc_binary_frame_fixture()
+  scores <- fixture$scores[[1]]
+
+  # Dispatch reports the generic without being handed a frame, so the vector
+  # route already names `ps_trunc()`. Threading a frame through the data frame
+  # route has no business moving that.
+  expect_identical(
+    condition_call_name(ps_trunc(fixture$out_of_range[[1]], method = "ps")),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(ps_trunc(scores, method = "bogus")),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(scores, method = "ps", lower = 0.9, upper = 0.1)
+    ),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(scores, method = "pctl", lower = 1.5, upper = 0.95)
+    ),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(scores, method = "ps", .focal_level = c(0, 1))
+    ),
+    "ps_trunc"
+  )
+  expect_identical(
+    condition_call_name(ps_trunc(scores, method = "cr")),
+    "ps_trunc"
+  )
+})
+
+test_that("ps_trunc refuses a call argument on the binary route", {
+  fixture <- trunc_binary_frame_fixture()
+
+  # The generic passes its dots to its methods, so the frame the binary path
+  # reports against is reachable from user code, and a value the condition
+  # system cannot read as one is refused where it arrives rather than left to
+  # turn the next guard that fires into a report of rlang's internals.
+  expect_error(
+    ps_trunc(fixture$scores[[1]], method = "ps", call = "bogus"),
+    class = "propensity_call_arg_error"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores[[1]], method = "ps", call = "bogus")
+    ),
+    "ps_trunc"
+  )
+
+  # The data frame method reads the value before it hands the frame on, so it
+  # is the one the refusal names.
+  expect_error(
+    ps_trunc(fixture$scores, method = "ps", call = "bogus"),
+    class = "propensity_call_arg_error"
+  )
+  expect_identical(
+    condition_call_name(
+      ps_trunc(fixture$scores, method = "ps", call = "bogus")
+    ),
+    "ps_trunc"
   )
 })

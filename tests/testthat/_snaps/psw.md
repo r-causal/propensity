@@ -40,20 +40,20 @@
 ---
 
     Code
-      expect_equal(vec_ptype2(x, integer()), integer())
+      expect_equal(vec_ptype2(x, integer()), double())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.integer()`:
-      Converting psw to integer
+      Converting psw to numeric
       i Class-specific attributes and metadata have been dropped
       i Use explicit casting to numeric to avoid this warning
 
 ---
 
     Code
-      expect_equal(vec_ptype2(integer(), x), integer())
+      expect_equal(vec_ptype2(integer(), x), double())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.integer.psw()`:
-      Converting psw to integer
+      Converting psw to numeric
       i Class-specific attributes and metadata have been dropped
       i Use explicit casting to numeric to avoid this warning
 
