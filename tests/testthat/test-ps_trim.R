@@ -944,3 +944,51 @@ test_that("ps_trim refuses a focal level the exposure never takes", {
     class = "propensity_focal_level_error"
   )
 })
+
+test_that("ps_trim rejects the categorical-only optimal method on a vector", {
+  testthat::skip("awaiting implementation")
+
+  set.seed(11)
+  n <- 40
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  ps <- predict(glm(z ~ x, family = binomial), type = "response")
+
+  # Optimal trimming is defined over the rows of a propensity score matrix. On
+  # a vector the method falls through to common-range trimming and records
+  # itself as "optimal", so the object misreports what was done to it.
+  cnd <- rlang::catch_cnd(
+    ps_trim(ps, method = "optimal", .exposure = z),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "propensity_wt_not_supported_error")
+
+  # The rejection follows from the method and the type of `ps`, so it must not
+  # depend on whether an exposure was supplied.
+  cnd_no_exposure <- rlang::catch_cnd(
+    ps_trim(ps, method = "optimal"),
+    classes = "error"
+  )
+  expect_s3_class(cnd_no_exposure, "propensity_wt_not_supported_error")
+
+  # The message has to point at the input the method is defined for.
+  expect_propensity_error(ps_trim(ps, method = "optimal", .exposure = z))
+})
+
+test_that("ps_trim names `.exposure` when the method requires one", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # `exposure` is not an argument of ps_trim(), so a message naming it sends
+  # the caller after something they cannot supply.
+  cnd_cr <- rlang::catch_cnd(ps_trim(ps, method = "cr"), classes = "error")
+  expect_s3_class(cnd_cr, "propensity_missing_arg_error")
+  expect_match(conditionMessage(cnd_cr), "`.exposure`", fixed = TRUE)
+
+  cnd_pref <- rlang::catch_cnd(ps_trim(ps, method = "pref"), classes = "error")
+  expect_s3_class(cnd_pref, "propensity_missing_arg_error")
+  expect_match(conditionMessage(cnd_pref), "`.exposure`", fixed = TRUE)
+
+  expect_propensity_error(ps_trim(ps, method = "cr"))
+})

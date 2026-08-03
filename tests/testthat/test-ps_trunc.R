@@ -742,3 +742,18 @@ test_that("ps_trunc refuses a focal level the exposure never takes", {
     class = "propensity_focal_level_error"
   )
 })
+
+test_that("ps_trunc names `.exposure` when the common range method requires one", {
+  testthat::skip("awaiting implementation")
+
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # Without an exposure the common range method reaches the binary transform
+  # with nothing to transform, and the caller is told that the exposure could
+  # not be converted rather than that it was never supplied.
+  cnd <- rlang::catch_cnd(ps_trunc(ps, method = "cr"), classes = "error")
+  expect_s3_class(cnd, "propensity_missing_arg_error")
+  expect_match(conditionMessage(cnd), "`.exposure`", fixed = TRUE)
+
+  expect_propensity_error(ps_trunc(ps, method = "cr"))
+})

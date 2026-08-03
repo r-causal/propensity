@@ -527,3 +527,90 @@ test_that("a matrix with the wrong number of columns names ps_trunc", {
     "ps_trunc"
   )
 })
+
+valid_trunc_matrix_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a", "b", "c"))
+  # every row sums to 1 and no cell falls below 0.01, so the default threshold
+  # leaves the scores as they are
+  ps_matrix <- rbind(
+    c(0.50, 0.30, 0.20),
+    c(0.30, 0.50, 0.20),
+    c(0.20, 0.30, 0.50),
+    c(0.40, 0.40, 0.20),
+    c(0.25, 0.35, 0.40),
+    c(0.34, 0.33, 0.33)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trunc truncates a matrix with the method left at its default", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- valid_trunc_matrix_fixture()
+
+  # The generic's default is the full three-value vector, which the matrix
+  # method narrows to the two methods it supports. Omitting `method` has to
+  # resolve to the first of those rather than failing to match the vector it
+  # was handed.
+  truncated <- ps_trunc(fixture$ps_matrix, .exposure = fixture$exposure)
+
+  expect_s3_class(truncated, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_equal(ps_trunc_meta(truncated)$method, "ps")
+  expect_equal(dim(truncated), dim(fixture$ps_matrix))
+})
+
+test_that("ps_trunc rejects an unsupported matrix method with a package error", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- valid_trunc_matrix_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trunc(fixture$ps_matrix, .exposure = fixture$exposure, method = "cr"),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_method_error")
+  # The message has to name the methods the matrix path does support.
+  expect_match(conditionMessage(cnd), "pctl", fixed = TRUE)
+})
+
+test_that("ps_trunc aborts when the categorical threshold reaches 1/k", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- valid_trunc_matrix_fixture()
+
+  # The sibling of the condition ps_trim() raises for the same threshold,
+  # pinned here so the two stay on one class.
+  cnd <- rlang::catch_cnd(
+    ps_trunc(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.35
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_range_error")
+})
+
+test_that("ps_trunc defaults the categorical threshold to 0.01", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- valid_trunc_matrix_fixture()
+
+  # Truncation and trimming deliberately default to different thresholds: 0.01
+  # here against 0.1 in ps_trim(), because truncation only bounds units and
+  # trimming drops them.
+  explicit <- ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps"
+  )
+  expect_equal(ps_trunc_meta(explicit)$lower_bound, 0.01)
+
+  defaulted <- ps_trunc(fixture$ps_matrix, .exposure = fixture$exposure)
+  expect_equal(ps_trunc_meta(defaulted)$lower_bound, 0.01)
+})

@@ -925,3 +925,95 @@ test_that("a matrix with the wrong number of columns names ps_trim", {
     "ps_trim"
   )
 })
+
+valid_trim_matrix_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a", "b", "c"))
+  # every row sums to 1 and no cell falls below 0.1, so the default threshold
+  # trims nothing and leaves all three groups in place
+  ps_matrix <- rbind(
+    c(0.50, 0.30, 0.20),
+    c(0.30, 0.50, 0.20),
+    c(0.20, 0.30, 0.50),
+    c(0.40, 0.40, 0.20),
+    c(0.25, 0.35, 0.40),
+    c(0.34, 0.33, 0.33)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trim trims a matrix with the method left at its default", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- valid_trim_matrix_fixture()
+
+  # The generic's default is the full six-value vector, which the matrix method
+  # narrows to the two methods it supports. Omitting `method` has to resolve to
+  # the first of those rather than failing to match the vector it was handed.
+  trimmed <- ps_trim(fixture$ps_matrix, .exposure = fixture$exposure)
+
+  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  expect_equal(ps_trim_meta(trimmed)$method, "ps")
+  expect_equal(dim(trimmed), dim(fixture$ps_matrix))
+})
+
+test_that("ps_trim rejects an unsupported matrix method with a package error", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- valid_trim_matrix_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "adaptive"
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_method_error")
+  # The message has to name the methods the matrix path does support.
+  expect_match(conditionMessage(cnd), "optimal", fixed = TRUE)
+})
+
+test_that("ps_trim aborts when the categorical threshold reaches 1/k", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- valid_trim_matrix_fixture()
+
+  # A threshold at or above 1/k cannot be met by every column of a row that
+  # sums to one, so there is no trimming rule to apply. Returning the untrimmed
+  # scores with the rejected threshold recorded in the metadata reports a
+  # trimming that did not happen.
+  cnd <- rlang::catch_cnd(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.35
+    ),
+    classes = "error"
+  )
+
+  expect_s3_class(cnd, "propensity_range_error")
+})
+
+test_that("ps_trim defaults the categorical threshold to 0.1", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- valid_trim_matrix_fixture()
+
+  # Trimming and truncation deliberately default to different thresholds: 0.1
+  # here against 0.01 in ps_trunc(), because trimming drops units and
+  # truncation only bounds them.
+  explicit <- ps_trim(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps"
+  )
+  expect_equal(ps_trim_meta(explicit)$delta, 0.1)
+
+  defaulted <- ps_trim(fixture$ps_matrix, .exposure = fixture$exposure)
+  expect_equal(ps_trim_meta(defaulted)$delta, 0.1)
+})
