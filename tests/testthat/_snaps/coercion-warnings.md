@@ -1,7 +1,7 @@
 # c() with psw objects of different estimands warns and returns correct numeric values
 
     Code
-      expr
+      out <- c(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -11,7 +11,7 @@
 ---
 
     Code
-      expr
+      out <- c(x, y, z)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -26,12 +26,12 @@
 ---
 
     Code
-      expr
+      out <- expect_propensity_warning(c(x, y, z))
 
 # c() with psw and numeric values warns and returns numeric
 
     Code
-      expr
+      out <- c(x, 0.9)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.double()`:
       Converting psw to numeric
@@ -41,7 +41,7 @@
 ---
 
     Code
-      expr
+      out <- c(x, c(0.2, 0.3))
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.double()`:
       Converting psw to numeric
@@ -51,7 +51,7 @@
 # c() with ps_trim objects of different parameters warns and returns numeric
 
     Code
-      expr
+      out <- c(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.ps_trim.ps_trim()`:
       Converting ps_trim to numeric: different trimming parameters
@@ -61,7 +61,7 @@
 # c() with ps_trunc objects behaves correctly
 
     Code
-      expr
+      out <- c(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.ps_trunc.ps_trunc()`:
       Converting ps_trunc to numeric: different truncation parameters
@@ -71,7 +71,7 @@
 # c() with mixed propensity classes warns and returns numeric
 
     Code
-      expr
+      out <- c(psw_obj, trim_obj)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.ps_trim()`:
       Converting psw and ps_trim to numeric
@@ -81,7 +81,7 @@
 ---
 
     Code
-      expr
+      out <- c(psw_obj, trunc_obj)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.ps_trunc()`:
       Converting psw and ps_trunc to numeric
@@ -91,7 +91,7 @@
 ---
 
     Code
-      expr
+      out <- c(trim_obj, trunc_obj)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.ps_trim.ps_trunc()`:
       Converting ps_trim and ps_trunc to numeric
@@ -101,7 +101,7 @@
 ---
 
     Code
-      expr
+      out <- c(psw_obj, trim_obj, trunc_obj)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.ps_trim()`:
       Converting psw and ps_trim to numeric
@@ -115,12 +115,12 @@
 ---
 
     Code
-      expr
+      out <- expect_propensity_warning(c(psw_obj, trim_obj, trunc_obj))
 
 # c() with empty vectors works correctly
 
     Code
-      expr
+      out <- c(x, empty_numeric)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.double()`:
       Converting psw to numeric
@@ -130,7 +130,7 @@
 ---
 
     Code
-      expr
+      out <- c(empty_psw, 0.5)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.double()`:
       Converting psw to numeric
@@ -140,7 +140,7 @@
 # c() with single values works correctly
 
     Code
-      expr
+      out <- c(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -150,7 +150,7 @@
 ---
 
     Code
-      expr
+      out <- c(x, z)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'ato'
@@ -160,7 +160,7 @@
 # c() with different stabilization status warns
 
     Code
-      expr
+      out <- c(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: different stabilization status
@@ -170,7 +170,7 @@
 # subsetting operations work correctly
 
     Code
-      expr
+      out <- c(x[1:2], y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -180,7 +180,7 @@
 ---
 
     Code
-      expr
+      out <- c(x[c(1, 3)], y[2])
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -190,7 +190,7 @@
 # append() works like c()
 
     Code
-      expr
+      out <- append(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -200,7 +200,7 @@
 # data.frame operations work as expected
 
     Code
-      expr
+      out <- vctrs::vec_rbind(df1, df2)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -210,7 +210,7 @@
 # vctrs vec_ptype2 returns appropriate prototypes
 
     Code
-      expr
+      out <- vec_ptype2(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -220,7 +220,7 @@
 # c() ordering matters for warnings
 
     Code
-      expr
+      out <- c(x, num)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.double()`:
       Converting psw to numeric

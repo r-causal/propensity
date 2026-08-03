@@ -101,6 +101,33 @@ assert_columns_exist <- function(
   invisible(TRUE)
 }
 
+# `unique()` takes values to hold out of the comparison. These methods find
+# duplicates with `vctrs::vec_unique_loc()`, which has no equivalent, so an
+# `incomparables` argument would be compared like any other value and the
+# caller would get an answer to a question they did not ask.
+check_incomparables <- function(
+  incomparables,
+  class_name,
+  call = rlang::caller_env()
+) {
+  if (isFALSE(incomparables)) {
+    return(invisible(incomparables))
+  }
+
+  abort(
+    c(
+      "{.arg incomparables} is not supported for {.cls {class_name}} objects.",
+      x = "Values named there would be compared along with the rest, so the
+           result would not be the one asked for.",
+      i = "Call {.fun unique} on {.code as.numeric(x)} to hold values out of
+           the comparison. The result is a plain numeric vector and carries no
+           record of which units were modified."
+    ),
+    error_class = "propensity_unsupported_arg_error",
+    call = call
+  )
+}
+
 # Coercion warning helpers
 warn_incompatible_metadata <- function(
   x,
@@ -145,4 +172,55 @@ warn_class_downgrade <- function(
     warning_class = "propensity_class_downgrade_warning",
     call = call
   )
+}
+
+# Modification record helpers
+
+# `ps_trim()` and `ps_trunc()` each leave a record of which units the
+# modification touched. A record names positions, and a position only means
+# something against a known number of observations, so the record writes that
+# number down rather than leaving it to be worked out: `truncated_idx` names
+# only the units that changed, and a record whose positions have been dropped
+# names none at all.
+record_covers <- function(meta, n) {
+  !is.null(meta$n_obs) && meta$n_obs == n
+}
+
+# `[` knows the subscript, which is what re-indexing a record takes. Every
+# occurrence of a recorded position is mapped onto the position it now holds, so
+# a subscript naming a position twice reports that unit twice. `NA` names no
+# position, so an element taken by one falls in neither set.
+reindex_positions <- function(positions, i) {
+  which(i %in% positions)
+}
+
+# The rows `x[i, ]` is built from, as positions in `x`, which is the form a
+# record is re-indexed against. A row subscript is not already in that form:
+# character subscripts name rows rather than positions, a logical subscript is
+# recycled over the rows and takes a whole row per element rather than per
+# `TRUE`, and a zero selects nothing. `NA` stands for a row that names no
+# observation in `x`, which is what base returns for it, and is left as `NA`
+# rather than dropped so the positions stay aligned with the rows.
+subscript_row_positions <- function(i, x) {
+  n <- nrow(x)
+
+  if (is.character(i)) {
+    return(match(i, rownames(x)))
+  }
+
+  if (is.logical(i)) {
+    i <- rep_len(i, n)
+    taken <- i | is.na(i)
+    return(replace(seq_len(n), is.na(i), NA_integer_)[taken])
+  }
+
+  i <- as.integer(i)
+
+  # Negative and missing subscripts never mix, so a subscript holding an `NA`
+  # names positions to take rather than positions to leave out.
+  if (!anyNA(i) && any(i < 0)) {
+    return(setdiff(seq_len(n), -i))
+  }
+
+  i[is.na(i) | i != 0]
 }

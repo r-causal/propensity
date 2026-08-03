@@ -82,7 +82,7 @@ test_that("adaptive method: ignores lower/upper, warns appropriately", {
 
   # 2) If user sets lower/upper, we expect a warning
   expect_propensity_warning(
-    out_adapt_warn <- ps_trim(
+    ps_trim(
       ps,
       method = "adaptive",
       lower = 0.2,
@@ -198,7 +198,8 @@ test_that("cr method: uses min(ps_treat) / max(ps_untrt), warns if cutoffs given
       lower = 0.2,
       upper = 0.8,
       .focal_level = 1
-    )
+    ),
+    print = TRUE
   )
 })
 
@@ -420,9 +421,7 @@ test_that("Combining two ps_trim with different parameters triggers warning", {
 
   # Attempt to combine with different parameters
   # This will warn about different trimming parameters and return numeric
-  expect_propensity_warning(
-    result <- vec_c(x, y)
-  )
+  result <- expect_propensity_warning(vec_c(x, y))
   expect_type(result, "double")
 })
 
@@ -430,9 +429,7 @@ test_that("Combining ps_trim with double => double", {
   x <- new_trimmed_ps(c(0.2, 0.5), ps_trim_meta = list())
 
   # vctrs logic => ptype2 => double
-  expect_propensity_warning(
-    combined <- vec_c(x, 0.7)
-  )
+  combined <- expect_propensity_warning(vec_c(x, 0.7))
   expect_type(combined, "double")
   expect_false(inherits(combined, "ps_trim"))
 })
@@ -511,10 +508,17 @@ test_that("ps_trim works with summarize(mean = mean(ps))", {
     ps_trim(method = "ps", lower = 0.3, upper = 0.7) |>
     ps_refit(fit)
 
-  out <- tibble(x, z, ps) |>
-    group_by(trimmed = is_unit_trimmed(ps)) |>
-    summarize(mean = mean(ps), .groups = "drop")
+  # A grouped summary slices the column once per group, and each slice holds
+  # scores the trimming record was not written for, so the record is dropped and
+  # says so. The summary itself reads values rather than positions.
+  summarized <- count_record_drops(
+    tibble(x, z, ps) |>
+      group_by(trimmed = is_unit_trimmed(ps)) |>
+      summarize(mean = mean(ps), .groups = "drop")
+  )
+  expect_gt(summarized$drops, 0)
 
+  out <- summarized$value
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("trimmed", "mean"))
   expect_type(out$mean, "double")
@@ -575,32 +579,27 @@ test_that("ps_trim index tracking works when combining objects", {
   ps_trim1 <- ps_trim(ps1, method = "ps", lower = 0.2, upper = 0.8)
   ps_trim2 <- ps_trim(ps2, method = "ps", lower = 0.2, upper = 0.8)
 
-  # Get original trimmed indices
-  meta1 <- ps_trim_meta(ps_trim1)
-  meta2 <- ps_trim_meta(ps_trim2)
-  n_trimmed1 <- length(meta1$trimmed_idx)
-  n_trimmed2 <- length(meta2$trimmed_idx)
-
   # Combine the objects
   combined <- c(ps_trim1, ps_trim2)
 
-  # Should be a ps_trim object
+  # Should be a ps_trim object holding every value in order
   expect_s3_class(combined, "ps_trim")
-
-  # Check that indices are properly tracked
-  combined_meta <- ps_trim_meta(combined)
   expect_equal(length(combined), 20)
-
-  # The total number of trimmed should be the sum
   expect_equal(
-    length(combined_meta$trimmed_idx),
-    n_trimmed1 + n_trimmed2
+    vec_data(combined),
+    c(vec_data(ps_trim1), vec_data(ps_trim2))
   )
 
-  # Check that NA values are at the correct positions
-  combined_data <- vec_data(combined)
-  expect_true(all(is.na(combined_data[combined_meta$trimmed_idx])))
-  expect_true(!anyNA(combined_data[combined_meta$keep_idx]))
+  # Concatenation appends one set of observations to another, so the positions
+  # either record names would describe units from the other input.
+  combined_meta <- ps_trim_meta(combined)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$keep_idx)
+  expect_equal(combined_meta$method, "ps")
+  expect_error(
+    is_unit_trimmed(combined),
+    class = "propensity_missing_meta_error"
+  )
 })
 
 test_that("ps_trim warns when combining objects with different parameters", {
@@ -612,9 +611,7 @@ test_that("ps_trim warns when combining objects with different parameters", {
   ps_trim2 <- ps_trim(ps2, method = "ps", lower = 0.3, upper = 0.7)
 
   # Should warn and return numeric
-  expect_propensity_warning(
-    combined <- c(ps_trim1, ps_trim2)
-  )
+  combined <- expect_propensity_warning(c(ps_trim1, ps_trim2))
 
   expect_type(combined, "double")
   expect_false(inherits(combined, "ps_trim"))
@@ -638,9 +635,10 @@ test_that("ps_trim index tracking works with subsetting and combining", {
   # Should maintain ps_trim class
   expect_s3_class(recombined, "ps_trim")
 
-  # Check indices are properly tracked
-  recombined_meta <- ps_trim_meta(recombined)
-  expect_equal(length(recombined_meta$trimmed_idx), length(meta$trimmed_idx))
+  # Each half kept a record written for itself, and the recombination has none:
+  # the halves were subset with a subscript in hand and appended without one.
+  expect_equal(length(ps_trim_meta(subset1)$trimmed_idx), sum(is.na(subset1)))
+  expect_null(ps_trim_meta(recombined)$trimmed_idx)
 
   # Check that NA values are preserved at correct positions
   recombined_data <- vec_data(recombined)
@@ -663,17 +661,270 @@ test_that("ps_trim handles multiple combines correctly", {
   # Combine all three
   combined <- c(ps_trim1, ps_trim2, ps_trim3)
 
-  # Should maintain ps_trim class
+  # Should maintain ps_trim class and every value
   expect_s3_class(combined, "ps_trim")
   expect_equal(length(combined), 15)
+  expect_equal(
+    vec_data(combined),
+    c(vec_data(ps_trim1), vec_data(ps_trim2), vec_data(ps_trim3))
+  )
 
-  # Check indices
-  combined_meta <- ps_trim_meta(combined)
-  combined_data <- vec_data(combined)
+  # Folding three inputs together drops the record just as folding two does.
+  expect_null(ps_trim_meta(combined)$trimmed_idx)
+  expect_error(
+    is_unit_trimmed(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
 
-  # All trimmed indices should have NA values
-  expect_true(all(is.na(combined_data[combined_meta$trimmed_idx])))
+# Trimming record integrity ------------------------------------------------
 
-  # All kept indices should have non-NA values
-  expect_true(!anyNA(combined_data[combined_meta$keep_idx]))
+# The record a `ps_trim` carries names positions among the observations it was
+# written for. An operation that changes how many observations there are is not
+# handed the subscript, so it cannot re-index the record onto the result and
+# drops it rather than leave positions describing units they were never about.
+
+trim_record_fixture <- function() {
+  ps_trim(
+    c(0.05, 0.3, 0.5, 0.95, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+}
+
+test_that("ps_trim() records how many observations its positions describe", {
+  meta <- ps_trim_meta(trim_record_fixture())
+
+  expect_equal(meta$trimmed_idx, c(1L, 4L))
+  expect_equal(meta$keep_idx, c(2L, 3L, 5L))
+  expect_equal(meta$n_obs, 5L)
+})
+
+test_that("slicing a ps_trim shorter drops the trimming record with a warning", {
+  x <- trim_record_fixture()
+
+  cnd <- expect_warning(
+    sliced <- vec_slice(x, 2:3),
+    class = "propensity_trim_record_warning"
+  )
+  expect_s3_class(cnd, "propensity_warning")
+
+  expect_s3_class(sliced, "ps_trim")
+  expect_equal(as.numeric(sliced), c(0.3, 0.5))
+
+  meta <- ps_trim_meta(sliced)
+  expect_null(meta$trimmed_idx)
+  expect_null(meta$keep_idx)
+  expect_null(meta$n_obs)
+
+  # Nothing that is not indexed by observation is touched by the drop.
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower, 0.1)
+  expect_equal(meta$upper, 0.9)
+  expect_true(is_ps_trimmed(sliced))
+
+  expect_error(
+    is_unit_trimmed(sliced),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("filtering a ps_trim column drops the trimming record with a warning", {
+  skip_if_not_installed("dplyr")
+
+  df <- data.frame(id = 1:5)
+  df$ps <- trim_record_fixture()
+
+  expect_warning(
+    filtered <- dplyr::filter(df, id %in% 2:3),
+    class = "propensity_trim_record_warning"
+  )
+
+  expect_s3_class(filtered$ps, "ps_trim")
+  expect_equal(as.numeric(filtered$ps), c(0.3, 0.5))
+  expect_null(ps_trim_meta(filtered$ps)$trimmed_idx)
+  expect_error(
+    is_unit_trimmed(filtered$ps),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("a length-preserving ps_trim restore keeps the trimming record", {
+  x <- trim_record_fixture()
+  meta <- ps_trim_meta(x)
+  trimmed_units <- c(TRUE, FALSE, FALSE, TRUE, FALSE)
+
+  whole <- expect_silent(vec_slice(x, seq_along(x)))
+  expect_identical(ps_trim_meta(whole), meta)
+  expect_identical(is_unit_trimmed(whole), trimmed_units)
+
+  empty_subscript <- expect_silent(x[])
+  expect_identical(ps_trim_meta(empty_subscript), meta)
+
+  # `[<-` casts the replacement and then leaves base R to assign into the
+  # target, so the record never leaves the observations it was written for.
+  expect_silent({
+    x[2] <- 0.4
+  })
+  expect_identical(ps_trim_meta(x), meta)
+  expect_identical(is_unit_trimmed(x), trimmed_units)
+})
+
+test_that("a zero-length ps_trim slice keeps the record and answers nothing", {
+  x <- trim_record_fixture()
+  meta <- ps_trim_meta(x)
+
+  proto <- expect_silent(vec_ptype(x))
+  expect_length(proto, 0)
+  expect_identical(ps_trim_meta(proto), meta)
+
+  # No observations, no answers. Indexing an empty logical by the positions the
+  # record names would grow one as long as the original scores.
+  expect_identical(is_unit_trimmed(proto), logical(0))
+  expect_identical(is_unit_trimmed(x[integer(0)]), logical(0))
+})
+
+test_that("a trimming record that no longer covers the scores refuses to answer", {
+  # Growing by subassignment crosses a length change no restore ever sees: the
+  # record describes five observations and the scores now hold seven.
+  x <- trim_record_fixture()
+  expect_silent({
+    x[7] <- 0.5
+  })
+
+  expect_length(x, 7)
+  expect_identical(ps_trim_meta(x), ps_trim_meta(trim_record_fixture()))
+  expect_true(is_ps_trimmed(x))
+  expect_error(is_unit_trimmed(x), class = "propensity_missing_meta_error")
+
+  # A refit is one fact about the propensity model rather than about any
+  # position, so a record that no longer covers these scores still answers it.
+  expect_false(expect_silent(is_refit(x)))
+})
+
+test_that("a record re-attached to shorter scores refuses rather than answers", {
+  x <- trim_record_fixture()
+  short <- new_trimmed_ps(c(0.3, 0.5), ps_trim_meta = ps_trim_meta(x))
+
+  expect_length(short, 2)
+  expect_error(is_unit_trimmed(short), class = "propensity_missing_meta_error")
+})
+
+test_that("ps_refit() refuses a ps_trim whose record was dropped", {
+  set.seed(11)
+  n <- 40
+  covariate <- rnorm(n)
+  exposure <- rbinom(n, 1, plogis(0.5 * covariate))
+  model <- glm(exposure ~ covariate, family = binomial)
+  trimmed <- ps_trim(
+    predict(model, type = "response"),
+    method = "ps",
+    lower = 0.3,
+    upper = 0.7
+  )
+
+  expect_warning(
+    sliced <- vec_slice(trimmed, 1:20),
+    class = "propensity_trim_record_warning"
+  )
+
+  expect_error(
+    ps_refit(sliced, model),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("combining ps_trim objects drops the trimming record", {
+  x <- trim_record_fixture()
+
+  combined <- expect_silent(c(x, x))
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 10)
+  expect_equal(as.numeric(combined), rep(as.numeric(x), 2))
+
+  # Concatenation appends one set of observations to another, so the positions
+  # either record names would describe units from the other input.
+  meta <- ps_trim_meta(combined)
+  expect_null(meta$trimmed_idx)
+  expect_null(meta$keep_idx)
+  expect_null(meta$n_obs)
+  expect_equal(meta$method, "ps")
+
+  expect_true(is_ps_trimmed(combined))
+  expect_error(
+    is_unit_trimmed(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("combining ps_trim objects does not read trimmed units off the NAs", {
+  # These scores record that nothing was trimmed, and one of them arrived
+  # missing. Reading membership back from the `NA` pattern would report a score
+  # that was never there as one this package removed.
+  untrimmed <- vec_cast(
+    c(0.3, NA, 0.5),
+    to = structure(double(), class = "ps_trim")
+  )
+  expect_identical(is_unit_trimmed(untrimmed), c(FALSE, FALSE, FALSE))
+
+  combined <- expect_silent(c(untrimmed, untrimmed))
+  expect_length(combined, 6)
+  expect_null(ps_trim_meta(combined)$trimmed_idx)
+  expect_error(
+    is_unit_trimmed(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("a ps_trim that lost its record says so instead of reporting none", {
+  x <- trim_record_fixture()
+  expect_warning(
+    sliced <- vec_slice(x, 2:3),
+    class = "propensity_trim_record_warning"
+  )
+
+  expect_match(vec_ptype_full(x), "trimmed 2 of", fixed = TRUE)
+  expect_match(vec_ptype_full(sliced), "record dropped", fixed = TRUE)
+})
+
+test_that("a ps_trim reordered through vctrs keeps the record for the old order", {
+  # The documented limit of the coverage check, which counts observations and so
+  # sees nothing in a reordering. No subscript reaches the restore, so the
+  # record survives naming where the observations used to be.
+  x <- trim_record_fixture()
+
+  reordered <- expect_silent(vec_slice(x, 5:1))
+  expect_equal(as.numeric(reordered), c(0.6, NA, 0.5, 0.3, NA))
+  expect_identical(ps_trim_meta(reordered), ps_trim_meta(x))
+
+  # The trimmed units now hold positions 2 and 5, and the record still names 1
+  # and 4, so the answer is the one the record gives rather than the one the
+  # values show.
+  expect_identical(
+    is_unit_trimmed(reordered),
+    c(TRUE, FALSE, FALSE, TRUE, FALSE)
+  )
+
+  # `[` is handed the subscript and re-indexes, so the same reordering through
+  # `[` reports the units that hold those positions.
+  expect_identical(is_unit_trimmed(x[5:1]), c(FALSE, TRUE, FALSE, FALSE, TRUE))
+})
+
+# An exposure with dimensions reaches the same coding the weight functions use,
+# where its cells were read in storage order rather than one value per
+# observation.
+
+test_that("ps_trim refuses an exposure with dimensions", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  dimensioned <- matrix(c(1, 0, 1, 0), nrow = 2, ncol = 2)
+
+  expect_error(
+    ps_trim(ps, method = "pref", .exposure = dimensioned),
+    class = "propensity_binary_transform_error"
+  )
+  expect_error(
+    ps_trim(ps, method = "cr", .exposure = dimensioned),
+    class = "propensity_binary_transform_error"
+  )
 })

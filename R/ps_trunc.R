@@ -31,6 +31,16 @@
 #'     categorical defaults: 0.01 and 0.99).
 #'   * `method = "cr"`: Ignored; bounds are determined by the data.
 #' @inheritParams wt_ate
+#' @param .focal_level The value of `.exposure` representing the focal
+#'   (treated) group, used by `"cr"`. Every binary coding honors it: 0/1
+#'   numeric, logical, two-level factor, and two-level character exposures are
+#'   all coded with the named level as focal. With no level named, a binary
+#'   exposure defaults to its higher level, which is `1` for a 0/1 exposure and
+#'   `TRUE` for a logical one. Naming any other level reverses the coding, so
+#'   `ps` must then hold the probability of the named level.
+#' @param .reference_level The value of `.exposure` representing the reference
+#'   (control) group. Naming it makes the exposure's other level focal, with
+#'   the same consequence for `ps`. Automatically detected if not supplied.
 #' @param ... Additional arguments passed to methods.
 #'
 #' @details
@@ -54,10 +64,50 @@
 #' matching truncation parameters. Mismatched parameters produce a warning and
 #' return a plain numeric vector.
 #'
+#' ## The truncation record
+#'
+#' A `ps_trunc` records which units were winsorized as positions among the
+#' observations it was written for, along with how many observations that was.
+#' Operations that hand this package the subscript re-index those positions onto
+#' the result: subsetting with `[`, [sort()], [unique()], and [rep()] all return
+#' a record written for what they return, and a subscript naming a position more
+#' than once reports that unit at every place it now holds.
+#'
+#' Operations that change how many observations there are without supplying a
+#' subscript cannot re-index the record, and it is dropped rather than worked
+#' out from the values, since a score that arrived equal to a bound is
+#' indistinguishable from one this function pinned there. [vctrs::vec_slice()],
+#' which is how filtering, joining, and grouped summaries in dplyr reach a
+#' column, is the usual route, and dropping the record there raises a warning
+#' of class `propensity_trunc_record_warning`. Combining with [c()] drops it
+#' without comment, because concatenation appends one set of observations to
+#' another and the prototype it builds the result from holds no positions to
+#' lose. The values, the class, and the method and its bounds are untouched
+#' either way.
+#'
+#' A record can also outlive the observations it describes, because it travels
+#' by routes vctrs does not see: growing a `ps_trunc` by subassignment carries
+#' it across the length change. [is_unit_truncated()] therefore checks that the
+#' record covers the object it is given and raises an error of class
+#' `propensity_missing_meta_error` when it does not, rather than name truncated
+#' units at stale positions.
+#'
+#' That check compares how many observations the record was written for against
+#' how many the object holds, which a reordering does not change. An operation
+#' that reorders the observations through vctrs, rather than through `[`,
+#' therefore keeps a record written for the order they used to be in:
+#' `vctrs::vec_slice(x, 5:1)` and `dplyr::arrange()` both return the values in
+#' a new order under positions still naming the old one, and
+#' [is_unit_truncated()] answers from those positions and names the wrong
+#' units. Subsetting with `[` is handed the subscript and re-indexes, so
+#' reorder with `[`, or put the propensity scores in the order you want before
+#' truncating them.
+#'
 #' @return A `ps_trunc` object (a numeric vector for binary exposures, or a
 #'   matrix for categorical exposures). Use [ps_trunc_meta()] to inspect
-#'   metadata including `method`, `lower_bound`, `upper_bound`, and
-#'   `truncated_idx` (positions of modified values).
+#'   metadata including `method`, `lower_bound`, `upper_bound`,
+#'   `truncated_idx` (positions of modified values), and `n_obs` (the number of
+#'   observations those positions describe).
 #'
 #' @references
 #' Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
@@ -185,7 +235,8 @@ ps_trunc.default <- function(
     list(
       lower_bound = lb,
       upper_bound = ub,
-      truncated_idx = truncated_idx
+      truncated_idx = truncated_idx,
+      n_obs = length(ps)
     )
   )
 
@@ -220,7 +271,7 @@ ps_trunc.matrix <- function(
   .exposure <- transform_exposure_categorical(.exposure)
 
   # Validate matrix
-  ps <- check_ps_matrix(ps, .exposure, call = rlang::caller_env())
+  ps <- check_ps_matrix(ps, .exposure, call = rlang::current_env())
 
   n <- nrow(ps)
   k <- ncol(ps)
@@ -297,6 +348,7 @@ ps_trunc.matrix <- function(
     lower_bound = lower_bound,
     upper_bound = upper_bound,
     truncated_idx = truncated_idx,
+    n_obs = n,
     is_matrix = TRUE
   )
 
@@ -400,6 +452,96 @@ new_ps_trunc <- function(x, meta) {
   }
 }
 
+# The positional half of a truncation record. The rest of it, the method and its
+# bounds, describes the truncation rather than the units and means the same
+# thing at any length.
+reindex_trunc_record <- function(meta, i) {
+  meta$truncated_idx <- reindex_positions(meta$truncated_idx, i)
+  meta$n_obs <- length(i)
+
+  meta
+}
+
+drop_trunc_record <- function(meta) {
+  meta[["truncated_idx"]] <- NULL
+  meta[["n_obs"]] <- NULL
+
+  meta
+}
+
+# A record that no longer describes the observations in front of it is dropped
+# rather than guessed at. Nothing in the values says which units a shorter or a
+# longer vector once had winsorized: a score that arrived equal to a bound is
+# indistinguishable from one this package pinned there.
+#
+# A record over no observations names no unit, so replacing it costs the caller
+# nothing and goes without comment. That is the record every prototype carries,
+# which is what concatenation builds its result from.
+discard_trunc_record <- function(meta, n) {
+  recorded <- meta$n_obs
+
+  if (!is.null(recorded) && recorded > 0) {
+    warn(
+      c(
+        "Dropping the record of which units were truncated.",
+        i = "The record describes {recorded} observation{?s} and this result
+             has {n}, so its positions do not describe them.",
+        i = "The values are unchanged and the result is still a
+             {.cls ps_trunc}. Truncate the propensity scores you want to work
+             with to get a record written for them."
+      ),
+      warning_class = "propensity_trunc_record_warning",
+      # One of the routes here is vctrs' internal dispatch, whose call would be
+      # reported and names nothing the caller wrote, so no call is attributed.
+      call = NULL
+    )
+  }
+
+  drop_trunc_record(meta)
+}
+
+# `i` holds the old positions the result is built from, in the order it holds
+# them, among the `n_obs` observations it was taken from. A record that covers
+# those observations re-indexes onto `i`; one that does not cannot be placed
+# against them at all.
+carry_trunc_record <- function(meta, n_obs, i) {
+  if (record_covers(meta, n_obs)) {
+    reindex_trunc_record(meta, i)
+  } else {
+    discard_trunc_record(meta, length(i))
+  }
+}
+
+# A positional query reads its answer out of the record, so a record that does
+# not cover the object in front of it has no answer to give: reporting every
+# unit as untouched would be a wrong answer rather than a missing one.
+check_trunc_record <- function(meta, n, fn, call = rlang::caller_env()) {
+  if (record_covers(meta, n)) {
+    return(invisible(meta))
+  }
+
+  recorded <- meta$n_obs
+  problem <- if (is.null(recorded)) {
+    "These propensity scores carry no record of which units were truncated."
+  } else {
+    "The record describes {recorded} observation{?s} and these propensity
+     scores have {n}, so its positions do not describe them."
+  }
+
+  abort(
+    c(
+      "{.code {fn}} has no usable truncation record for these propensity
+       scores.",
+      x = problem,
+      i = "An operation that changed the number of observations dropped it.
+           Truncate the propensity scores you want to work with, or query the
+           object the record was written for."
+    ),
+    error_class = "propensity_missing_meta_error",
+    call = call
+  )
+}
+
 #' Extract truncation metadata from a `ps_trunc` object
 #'
 #' @description Returns the metadata list attached to a [`ps_trunc`][ps_trunc()]
@@ -411,6 +553,10 @@ new_ps_trunc <- function(x, meta) {
 #'   * `method` -- the truncation method used (`"ps"`, `"pctl"`, or `"cr"`)
 #'   * `lower_bound`, `upper_bound` -- the applied bounds
 #'   * `truncated_idx` -- integer positions of values that were winsorized
+#'   * `n_obs` -- the number of observations those positions describe
+#'
+#'   `truncated_idx` and `n_obs` are absent when an operation that changed the
+#'   number of observations dropped the record; see [ps_trunc()].
 #'
 #' @seealso [ps_trunc()], [is_ps_truncated()], [is_unit_truncated()]
 #'
@@ -468,6 +614,21 @@ is_ps_truncated.ps_trunc_matrix <- function(x) {
 #'   observations had their propensity scores modified by truncation. Use
 #'   [is_ps_truncated()] to test whether an object has been truncated at all.
 #'
+#'   The answer comes from the truncation record, which is written for a fixed
+#'   set of observations and can both be lost and outlive them:
+#'   [vctrs::vec_slice()] and [c()] drop it, and subassignment that grows the
+#'   vector carries it across a length change. `is_unit_truncated()` therefore
+#'   checks that the record covers the object it is given, and raises an error
+#'   of class `propensity_missing_meta_error` when it does not, rather than
+#'   name truncated units at stale positions.
+#'
+#'   That check counts observations, which a reordering does not change, so it
+#'   does not catch one. An operation that reorders through vctrs rather than
+#'   through `[`, such as `vctrs::vec_slice(x, 5:1)` or `dplyr::arrange()`,
+#'   keeps a record written for the old order, and `is_unit_truncated()`
+#'   answers from it and names the wrong units. See [ps_trunc()] for the whole
+#'   contract.
+#'
 #' @param x A `ps_trunc` object created by [ps_trunc()].
 #' @return A logical vector the same length as `x` (or number of rows for
 #'   matrix input). `TRUE` marks observations whose values were winsorized.
@@ -494,7 +655,16 @@ is_unit_truncated.default <- function(x) {
 
 #' @export
 is_unit_truncated.ps_trunc <- function(x) {
+  # No observations, no answers. A record kept on an empty vector describes
+  # observations it does not have, and indexing an empty logical by the
+  # positions it names would grow one padded with `NA`.
+  if (length(x) == 0) {
+    return(logical(0))
+  }
+
   meta <- ps_trunc_meta(x)
+  check_trunc_record(meta, length(x), "is_unit_truncated()")
+
   out <- vector("logical", length = length(x))
   out[meta$truncated_idx] <- TRUE
 
@@ -503,7 +673,13 @@ is_unit_truncated.ps_trunc <- function(x) {
 
 #' @export
 is_unit_truncated.ps_trunc_matrix <- function(x) {
+  if (nrow(x) == 0) {
+    return(logical(0))
+  }
+
   meta <- ps_trunc_meta(x)
+  check_trunc_record(meta, nrow(x), "is_unit_truncated()")
+
   out <- vector("logical", length = nrow(x))
   out[meta$truncated_idx] <- TRUE
 
@@ -545,30 +721,17 @@ is_unit_truncated.ps_trunc_matrix <- function(x) {
     return(as.numeric(result))
   }
 
-  # Handle different index types for rows
-  n <- nrow(x)
-
-  if (is.logical(i)) {
-    # Convert logical to positions
-    i <- which(i)
-  } else if (any(i < 0)) {
-    # Handle negative indexing
-    i <- setdiff(seq_len(n), -i)
+  # The rows the result was built from, as positions in `x`, which is what
+  # re-indexing the record takes. These are worked out from the subscript rather
+  # than read off the result, so a form they do not reproduce, seen as a count
+  # that does not match the rows base returned, degrades the record rather than
+  # certifying it against rows it does not describe.
+  rows <- subscript_row_positions(i, x)
+  new_meta <- if (length(rows) == nrow(result)) {
+    carry_trunc_record(meta, nrow(x), rows)
+  } else {
+    discard_trunc_record(meta, nrow(result))
   }
-
-  # Map indices to new positions
-  new_truncated_idx <- integer(0)
-
-  for (idx in seq_along(i)) {
-    old_pos <- i[idx]
-    if (old_pos %in% meta$truncated_idx) {
-      new_truncated_idx <- c(new_truncated_idx, idx)
-    }
-  }
-
-  # Update metadata
-  new_meta <- meta
-  new_meta$truncated_idx <- new_truncated_idx
 
   attr(result, "ps_trunc_meta") <- new_meta
   class(result) <- c("ps_trunc_matrix", "ps_trunc", "matrix")
@@ -771,7 +934,13 @@ vec_cast.double.ps_trunc <- function(x, to, ...) {
 vec_cast.ps_trunc.double <- function(x, to, ...) {
   new_ps_trunc(
     x,
-    meta = list(method = "unknown", lower_bound = NA, upper_bound = NA)
+    meta = list(
+      method = "unknown",
+      lower_bound = NA,
+      upper_bound = NA,
+      truncated_idx = integer(0),
+      n_obs = length(x)
+    )
   )
 }
 
@@ -810,7 +979,13 @@ vec_cast.ps_trunc.integer <- function(x, to, ...) {
   xx <- as.double(x)
   new_ps_trunc(
     xx,
-    meta = list(method = "unknown", lower_bound = NA, upper_bound = NA)
+    meta = list(
+      method = "unknown",
+      lower_bound = NA,
+      upper_bound = NA,
+      truncated_idx = integer(0),
+      n_obs = length(xx)
+    )
   )
 }
 
@@ -883,21 +1058,29 @@ quantile.ps_trunc <- function(x, probs = seq(0, 1, 0.25), na.rm = FALSE, ...) {
   }
   i <- vec_as_location(i, n = length(x))
 
-  # Get the subset of data using NextMethod to handle vctrs subsetting
-  result <- NextMethod()
+  # The subscript is in hand here, which is what re-indexing a record takes and
+  # what the restore behind `NextMethod()` lacks: that restore would see a
+  # record written for a different number of observations and drop it. Building
+  # the result here keeps ordinary subsetting describing what it returns.
+  new_ps_trunc(vec_data(x)[i], carry_trunc_record(meta, length(x), i))
+}
 
-  # Update indices: map old positions to new positions
-  new_truncated_idx <- match(meta$truncated_idx, i)
-  new_truncated_idx <- new_truncated_idx[!is.na(new_truncated_idx)]
+#' @export
+unique.ps_trunc <- function(x, incomparables = FALSE, ...) {
+  check_incomparables(incomparables, "ps_trunc")
 
-  # Update metadata
-  new_meta <- meta
-  new_meta$truncated_idx <- new_truncated_idx
+  # `vec_unique_loc()` names the position each retained value came from, which
+  # is the subscript re-indexing the record takes. Without this the restore
+  # behind vctrs' own method sees only a shorter vector and drops the record.
+  x[vec_unique_loc(x)]
+}
 
-  # Update the attributes on the result
-  attr(result, "ps_trunc_meta") <- new_meta
-
-  result
+#' @export
+rep.ps_trunc <- function(x, ...) {
+  # The positions `rep()` produces are the subscript the result is built from,
+  # so the record follows them and a repeated unit is reported at each place it
+  # now holds.
+  x[rep(seq_along(x), ...)]
 }
 
 #' @export
@@ -907,66 +1090,33 @@ summary.ps_trunc <- function(object, ...) {
 
 #' @export
 sort.ps_trunc <- function(x, decreasing = FALSE, na.last = NA, ...) {
-  # Get original metadata
   meta <- ps_trunc_meta(x)
-
-  # Get numeric data
   x_data <- vec_data(x)
 
-  # Create a tracking vector to know which values were truncated
-  # TRUE = truncated, FALSE = not truncated
-  was_truncated <- logical(length(x))
-  was_truncated[meta$truncated_idx] <- TRUE
-
-  # Get the order
+  # `order()` returns the old positions in their new order, so it is the
+  # subscript the result is built from and the record follows it.
   ord <- order(x_data, na.last = na.last, decreasing = decreasing, ...)
 
-  # Apply the ordering to both data and tracking vector
-  sorted_data <- x_data[ord]
-  sorted_was_truncated <- was_truncated[ord]
-
-  # Find new positions of truncated values
-  new_truncated_idx <- which(sorted_was_truncated)
-
-  # Create new metadata with updated indices
-  new_meta <- meta
-  new_meta$truncated_idx <- new_truncated_idx
-
-  # Create the sorted ps_trunc object
-  new_ps_trunc(sorted_data, new_meta)
+  new_ps_trunc(x_data[ord], carry_trunc_record(meta, length(x), ord))
 }
 
 #' @export
 vec_restore.ps_trunc <- function(x, to, ...) {
-  # Get the prototype's metadata
-  to_meta <- ps_trunc_meta(to)
+  # vec_data in case x is already a vctr
+  data <- vec_data(x)
+  meta <- ps_trunc_meta(to)
 
-  # Extract numeric data for comparisons
-  x_data <- vec_data(x)
-
-  # For combining multiple ps_trunc objects, we need to reconstruct indices
-  # For ps_trunc, values at boundaries are modified, not NA
-  if (
-    length(to_meta$truncated_idx) == 0 &&
-      length(x_data) > 0 &&
-      !is.null(to_meta$lower_bound) &&
-      !is.null(to_meta$upper_bound)
-  ) {
-    # Identify which positions were truncated (at the bounds)
-    truncated_positions <- which(
-      x_data == to_meta$lower_bound | x_data == to_meta$upper_bound
-    )
-
-    # Update metadata with the truncated positions
-    new_meta <- to_meta
-    new_meta$truncated_idx <- truncated_positions
-
-    # Use the constructor to create a proper ps_trunc object
-    return(new_ps_trunc(x_data, new_meta))
+  # Nothing rebuilding a `ps_trunc` is handed the subscript behind a length
+  # change, so a record written for a different number of observations cannot be
+  # re-indexed onto the data arriving here. Zero-length data is exempt: a
+  # prototype or an empty slice holds no observations, so no position in the
+  # record contradicts it, and the record rides along to the restore that builds
+  # the real result.
+  if (length(data) > 0 && !record_covers(meta, length(data))) {
+    meta <- discard_trunc_record(meta, length(data))
   }
 
-  # Use the constructor with the prototype's metadata
-  new_ps_trunc(x_data, to_meta)
+  new_ps_trunc(data, meta)
 }
 
 #' @export

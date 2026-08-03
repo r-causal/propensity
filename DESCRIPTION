@@ -15,9 +15,11 @@ URL: https://r-causal.github.io/propensity/,
     https://github.com/r-causal/propensity
 BugReports: https://github.com/r-causal/propensity/issues
 Depends:
-    R (>= 4.2.0)
+    R (>= 4.3)
 Imports:
+    causalgenerics (>= 0.0.0.9000),
     cli,
+    deli,
     lifecycle,
     rlang,
     stats,
@@ -26,8 +28,10 @@ Imports:
 Suggests:
     broom,
     dplyr,
+    generics,
     ggplot2,
     knitr,
+    MASS,
     mgcv,
     nnet,
     parsnip,
@@ -40,9 +44,13 @@ Suggests:
     tidyr,
     WeightIt,
     withr
-VignetteBuilder: knitr
+VignetteBuilder:
+    knitr
+Remotes:
+    r-causal/causalgenerics,
+    r-causal/deli
+Config/roxygen2/version: 8.0.0
 Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3

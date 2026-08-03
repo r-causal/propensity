@@ -90,8 +90,8 @@ test_that("psw comparison operators dispatch on either side and return logicals 
 test_that("psw comparisons enforce vctrs strict size semantics", {
   # vec_equal()/vec_compare() error on size-mismatched inputs (anything other
   # than equal length, or one side of length 1). The bypass through
-  # psw_compare() must preserve that contract via vec_recycle_common(), not
-  # silently fall back to base R recycling.
+  # causalgenerics' causal_wts_compare() must preserve that contract via
+  # vec_recycle_common(), not silently fall back to base R recycling.
   a <- psw(c(1, 2, 3, 4), estimand = "ate")
   b <- psw(c(1, 2), estimand = "ate")
 
@@ -126,14 +126,14 @@ test_that("tidy(glm, conf.int = TRUE) works on glms weighted by psw vectors", {
 
   m <- glm(y ~ x, data = d, weights = w, family = quasibinomial())
 
-  # The bug originally errored with `Subscript `i` must be a simple vector,
-  # not a matrix.` Once the [.psw matrix-subscript fix is in place,
-  # profile.glm() runs to completion. It also evaluates `weights == 0` and
+  # This originally errored with `Subscript `i` must be a simple vector,
+  # not a matrix.` With a matrix subscript handled on psw, profile.glm() runs to
+  # completion. It also evaluates `weights == 0` and
   # `weights > 0` many times, which used to trigger
   # `propensity_class_downgrade_warning` from vec_ptype2.psw.double on every
   # comparison; the comparison-operator methods on psw silence that path.
-  expect_no_warning(
-    tidied <- broom::tidy(m, exponentiate = TRUE, conf.int = TRUE),
+  tidied <- expect_no_warning(
+    broom::tidy(m, exponentiate = TRUE, conf.int = TRUE),
     class = "propensity_class_downgrade_warning"
   )
   expect_true(all(c("conf.low", "conf.high") %in% names(tidied)))

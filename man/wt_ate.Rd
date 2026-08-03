@@ -211,7 +211,16 @@ wt_cens(
 \item A fitted \strong{\code{glm}} object -- fitted values are extracted automatically.
 \item A modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
 \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
-}}
+}
+
+For a binary exposure, \code{.propensity} is the probability of the focal
+level, so a numeric vector must be supplied on the scale of whichever
+level \code{.focal_level} or \code{.reference_level} resolves to. The \code{glm} methods
+derive it from the fitted values, which give the probability of the
+response's second level, and subtract them from one when the resolved
+focal level is the first level instead. The data frame methods reduce to a
+single column and read it on the same scale; see \code{.propensity_col} for how
+that column is chosen.}
 
 \item{.exposure}{The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
@@ -228,19 +237,33 @@ automatically when \code{.propensity} is a \code{glm} object.}
 \code{.exposure}.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal
-(treated) group. For binary exposures, defaults to the higher value.
-Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
+(treated) group. Every binary coding honors it: 0/1 numeric, logical,
+two-level factor, and two-level character exposures are all coded with the
+named level as focal. With no level named, a binary exposure defaults to
+its higher level, which is \code{1} for a 0/1 exposure and \code{TRUE} for a logical
+one. Naming any other level reverses the coding, so \code{.propensity} must
+then hold the probability of the named level. Required for \code{wt_att()} and
+\code{wt_atu()} with categorical exposures.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
-(control) group. Automatically detected if not supplied.}
+(control) group. For a binary exposure, naming it makes the exposure's
+other level focal, with the same consequence for \code{.propensity}.
+Automatically detected if not supplied.}
 
 \item{stabilize}{If \code{TRUE}, multiply weights by an estimate of the marginal
 treatment probability (binary) or density (continuous). Only supported by
 \code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in Details.}
 
-\item{stabilization_score}{Optional numeric value to use as the
-stabilization multiplier instead of the default (the marginal mean of
-\code{.exposure}). Ignored when \code{stabilize = FALSE}.}
+\item{stabilization_score}{Optional stabilization multiplier to use instead
+of the default (the marginal mean of \code{.exposure}). Either a single value
+applied to every weight or a numeric vector holding one value per
+observation, which is multiplied into the weights observation by
+observation. Every value must be positive and finite, and any other length
+or value is refused with an error of class
+\code{propensity_stabilization_score_error}. A per-observation score is recorded
+on the result and is dropped, with a warning, by any operation that changes
+the length of the weight vector, since it cannot be re-indexed for the new
+length. Ignored when \code{stabilize = FALSE}.}
 
 \item{...}{These dots are for future extensions and must be empty.}
 
@@ -250,8 +273,19 @@ stabilization multiplier instead of the default (the marginal mean of
 
 \item{.propensity_col}{Column to use when \code{.propensity} is a data frame
 with a binary exposure. Accepts a column name (quoted or unquoted) or
-numeric index. Defaults to the second column. Ignored for categorical
-exposures, where all columns are used.}
+numeric index. Whichever column is selected is read as the probability of
+the resolved focal level.
+
+With no column named, the exposure's levels drive the choice. When the
+data frame has a column named for every level of \code{.exposure}, the column
+named for the resolved focal level is used, wherever it sits in the frame.
+Otherwise the second column is used, or the only column when the frame has
+just one. Falling back to position after \code{.focal_level} or
+\code{.reference_level} was supplied warns and reports the column used, since
+the named level could not be matched to a column; the fallback is silent
+when no level was named and when the frame has a single column.
+
+Ignored for categorical exposures, where all columns are used.}
 }
 \value{
 A \code{\link{psw}} vector (a double vector with class \code{psw}) carrying
@@ -259,6 +293,8 @@ these attributes:
 \itemize{
 \item \code{estimand}: character, e.g. \code{"ate"}, \code{"att"}, \code{"uncensored"}.
 \item \code{stabilized}: logical, whether stabilization was applied.
+\item \code{stabilization_score}: double, the user-supplied stabilization score
+(one value, or one per observation), or \code{NULL} if none was supplied.
 \item \code{trimmed}: logical, whether the propensity scores were trimmed.
 \item \code{truncated}: logical, whether the propensity scores were truncated.
 \item \code{calibrated}: logical, whether the propensity scores were calibrated.
@@ -467,5 +503,8 @@ Medicine}, 34(28), 3661--3679.
 \item \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}}, \code{\link[=ps_refit]{ps_refit()}}, and \code{\link[=ps_calibrate]{ps_calibrate()}} for
 modifying propensity scores before weighting.
 \item \code{\link[=ipw]{ipw()}} for inverse-probability-weighted estimation of causal effects.
+\item \code{\link[=ps_tilt]{ps_tilt()}} for the tilting function each weight divides by the propensity
+score of the received exposure level, which also standardizes a
+g-computation estimate to the same target population.
 }
 }

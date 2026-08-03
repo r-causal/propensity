@@ -131,6 +131,22 @@ test_that("ps_trim unique() preserves class", {
   expect_true(length(uniq) <= 3) # At most 0.3, 0.5, and NA
 })
 
+test_that("ps_trim unique() rejects a non-default incomparables", {
+  # `vec_unique_loc()` names the position each retained value came from, which
+  # is what re-indexing the record takes and what has no place to hold a value
+  # out of the comparison. Deduplicating one anyway answers a question the
+  # caller did not ask: base returns both copies of 0.3 here.
+  x <- ps_trim(c(0.3, 0.3, 0.5), method = "ps", lower = 0.1, upper = 0.9)
+
+  cnd <- expect_error(
+    unique(x, incomparables = 0.3),
+    class = "propensity_unsupported_arg_error"
+  )
+  expect_s3_class(cnd, "propensity_error")
+
+  expect_length(expect_silent(unique(x, incomparables = FALSE)), 2)
+})
+
 test_that("ps_trim duplicated() returns logical vector", {
   ps <- c(0.3, 0.3, 0.1, 0.9, 0.5, 0.5)
   x <- ps_trim(ps, method = "ps", lower = 0.2, upper = 0.8)

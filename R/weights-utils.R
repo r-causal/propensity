@@ -20,9 +20,14 @@ abort_no_method <- function(.propensity, call = rlang::caller_env()) {
 match_exposure_type <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .exposure,
-  valid_types = c("auto", "binary", "categorical", "continuous")
+  valid_types = c("auto", "binary", "categorical", "continuous"),
+  call = rlang::caller_env()
 ) {
-  .exposure_type <- rlang::arg_match(exposure_type, valid_types)
+  .exposure_type <- rlang::arg_match(
+    exposure_type,
+    valid_types,
+    error_call = call
+  )
   if (.exposure_type == "auto") {
     detect_exposure_type(.exposure)
   } else {
@@ -90,12 +95,21 @@ transform_exposure_binary <- function(
   .reference_level = NULL,
   call = rlang::caller_env()
 ) {
-  if (is_binary(.exposure)) {
-    return(.exposure)
-  }
-
-  if (is.logical(.exposure)) {
-    return(as.numeric(.exposure))
+  # A matrix or data frame survives every branch below unchanged, because
+  # comparison and coercion are elementwise, and only fails much later where the
+  # weights are given their class. Refuse it here, where the shape is still
+  # attached to the argument that carries it.
+  if (!is.null(dim(.exposure))) {
+    abort(
+      c(
+        "{.arg .exposure} must be a vector.",
+        x = "It is {.cls {class(.exposure)[[1]]}} with \\
+        {length(dim(.exposure))} dimension{?s}.",
+        i = "Supply one value per observation."
+      ),
+      call = call,
+      error_class = "propensity_binary_transform_error"
+    )
   }
 
   if (!is.null(.focal_level)) {
@@ -106,11 +120,17 @@ transform_exposure_binary <- function(
     return(ifelse(.exposure != .reference_level, 1, 0))
   }
 
-  if (
-    is.null(.focal_level) &&
-      is.null(.reference_level) &&
-      has_two_levels(.exposure)
-  ) {
+  # With no level named, an exposure that already carries the 0/1 coding, or a
+  # logical one, is taken at face value and needs no announcement.
+  if (is_binary(.exposure)) {
+    return(.exposure)
+  }
+
+  if (is.logical(.exposure)) {
+    return(as.numeric(.exposure))
+  }
+
+  if (has_two_levels(.exposure)) {
     levels <- if (is.factor(.exposure)) {
       levels(.exposure)
     } else {
@@ -130,8 +150,115 @@ transform_exposure_binary <- function(
   }
 }
 
+# The exposure level `transform_exposure_binary()` actually codes as 1. A named
+# level always wins; only when neither is named does the coding fall back to the
+# exposure's own ordering, which is 1 for a 0/1 exposure and `TRUE` for a
+# logical one. Mirrors that function's branching in the same order.
+effective_binary_focal_level <- function(
+  .exposure,
+  .focal_level = NULL,
+  .reference_level = NULL
+) {
+  if (!is.null(.focal_level)) {
+    return(.focal_level)
+  }
+
+  if (!is.null(.reference_level)) {
+    # Every level other than the reference is coded as focal, so a single focal
+    # level is named only when the exposure takes exactly one other value.
+    # Missing values are dropped first: `!=` returns NA rather than FALSE for
+    # them, so an NA would survive the subscript and count as a second remaining
+    # value, leaving a two-level exposure with no focal level recorded.
+    observed <- .exposure[!is.na(.exposure)]
+    remaining <- unique(observed[observed != .reference_level])
+    if (length(remaining) != 1) {
+      return(NULL)
+    }
+    return(as_focal_label(remaining))
+  }
+
+  if (is_binary(.exposure)) {
+    return(1)
+  }
+
+  if (is.logical(.exposure)) {
+    return(TRUE)
+  }
+
+  if (!has_two_levels(.exposure)) {
+    return(NULL)
+  }
+
+  if (is.factor(.exposure)) {
+    levels(.exposure)[[2]]
+  } else {
+    sort(unique(.exposure))[[2]]
+  }
+}
+
+# Subsetting a factor yields a factor; record its label, which is what the
+# categorical path stores and what comparisons against exposure values expect.
+as_focal_label <- function(x) {
+  if (is.factor(x)) as.character(x) else x
+}
+
+# Whether the named levels leave the focal level where the default coding puts
+# it. Both sides come from `effective_binary_focal_level()`, so this agrees with
+# `transform_exposure_binary()` by construction. A level that cannot be resolved
+# counts as the default, leaving the exposure to be handled downstream as it is
+# today. Note that an NA-bearing factor or character exposure short-circuits
+# this to TRUE regardless of the argument: `has_two_levels()` counts NA as a
+# level, so the default focal level is NULL and the comparison below never runs.
+resolved_focal_is_default <- function(
+  .exposure,
+  .focal_level = NULL,
+  .reference_level = NULL
+) {
+  resolved <- effective_binary_focal_level(
+    .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
+  )
+  default <- effective_binary_focal_level(.exposure)
+
+  if (is.null(resolved) || is.null(default)) {
+    return(TRUE)
+  }
+
+  # `==` rather than `identical()`, matching how `transform_exposure_binary()`
+  # compares the exposure against a named level: 1 and 1L are the same level.
+  isTRUE(resolved == default)
+}
+
+# Binary att and atu weights are mirror images of one another: att weights built
+# on one exposure level are numerically identical to atu weights built on the
+# other, so nothing in the values records which level they target. Store the
+# level under the attribute name the categorical path uses, but only when the
+# caller named one; with no level named there is no intent to check against.
+record_binary_focal_level <- function(
+  psw_obj,
+  .exposure,
+  exposure_type,
+  .focal_level = NULL,
+  .reference_level = NULL
+) {
+  level_supplied <- !is.null(.focal_level) || !is.null(.reference_level)
+  if (!identical(exposure_type, "binary") || !level_supplied) {
+    return(psw_obj)
+  }
+
+  attr(psw_obj, "focal_category") <- effective_binary_focal_level(
+    .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
+  )
+
+  psw_obj
+}
+
 is_binary <- function(.exposure) {
-  identical(sort(unique(.exposure)), c(0, 1))
+  is.numeric(.exposure) &&
+    identical(sort(unique(as.double(.exposure))), c(0, 1))
 }
 
 is_categorical <- function(.exposure) {
@@ -166,6 +293,30 @@ check_refit <- function(.propensity, call = rlang::caller_env()) {
       call = call
     )
   }
+}
+
+# `call` is plumbing. Each route into a weight function binds the frame it was
+# dispatched into and hands it down, so that a condition raised several frames
+# below the surface still names the function the user called. The generics pass
+# their dots to their methods, so the argument is reachable from user code, and
+# a value the condition system cannot read as a call would turn the next guard
+# that fires into a report of rlang's internals. Checked where the value
+# arrives, before anything is done with it.
+check_call_arg <- function(call, error_call = rlang::caller_env()) {
+  if (is.null(call) || rlang::is_environment(call) || rlang::is_call(call)) {
+    return(invisible(call))
+  }
+
+  abort(
+    c(
+      "{.arg call} must be a call or an environment.",
+      x = "It has class {.cls {class(call)}}.",
+      i = "{.arg call} names the frame a condition is attributed to. Leave it
+           unset unless you are wrapping a weight function."
+    ),
+    error_class = "propensity_call_arg_error",
+    call = error_call
+  )
 }
 
 check_ps_range <- function(ps, call = rlang::caller_env()) {
@@ -344,35 +495,8 @@ check_ps_matrix <- function(
     )
   }
 
-  # Check that rows sum to 1 (within tolerance)
-  # Only check non-NA rows
-  row_sums <- rowSums(ps_matrix, na.rm = FALSE)
-  ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
-  non_na_rows <- !is.na(row_sums)
-
-  if (any(non_na_rows)) {
-    # Check only the rows that don't have NA values
-    if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
-      bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE & non_na_rows)
-      abort(
-        c(
-          "Propensity score matrix rows must sum to 1.",
-          i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
-        ),
-        call = call,
-        error_class = "propensity_matrix_sum_error"
-      )
-    }
-  }
-
-  # Check for valid probabilities
-  if (any(ps_matrix < 0 | ps_matrix > 1, na.rm = TRUE)) {
-    abort(
-      "All propensity scores must be between 0 and 1.",
-      call = call,
-      error_class = "propensity_range_error"
-    )
-  }
+  check_ps_matrix_rowsums(ps_matrix, call = call)
+  check_ps_matrix_range(ps_matrix, call = call)
 
   # Ensure columns are in the same order as factor levels
   # This is critical for correct weight calculation
@@ -425,19 +549,65 @@ check_ps_matrix <- function(
   ps_matrix
 }
 
+# Each row of a categorical propensity score matrix is a probability vector.
+# Shared with ps_tilt(), which reads a matrix with no exposure beside it and so
+# cannot run the rest of check_ps_matrix().
+check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
+  # Only check non-NA rows
+  row_sums <- rowSums(ps_matrix, na.rm = FALSE)
+  ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
+  non_na_rows <- !is.na(row_sums)
+
+  if (any(non_na_rows)) {
+    # Check only the rows that don't have NA values
+    if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
+      bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE & non_na_rows)
+      abort(
+        c(
+          "Propensity score matrix rows must sum to 1.",
+          i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
+        ),
+        call = call,
+        error_class = "propensity_matrix_sum_error"
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+check_ps_matrix_range <- function(ps_matrix, call = rlang::caller_env()) {
+  if (any(ps_matrix < 0 | ps_matrix > 1, na.rm = TRUE)) {
+    abort(
+      "All propensity scores must be between 0 and 1.",
+      call = call,
+      error_class = "propensity_range_error"
+    )
+  }
+
+  invisible(TRUE)
+}
+
 # Helper for ps_trim and ps_trunc methods
 calculate_weight_from_modified_ps <- function(
   .propensity,
   .exposure,
   weight_fn,
   modification_type = c("trim", "trunc", "calib"),
-  ...
+  ...,
+  call = rlang::caller_env()
 ) {
+  # `weight_fn` is a numeric method invoked through a local symbol, so its own
+  # frame deparses as `weight_fn()`. The default is the dispatching method's
+  # frame, which is handed down so that conditions raised inside the weight
+  # machinery name the weight function the user called.
+  check_call_arg(call, error_call = rlang::caller_env())
+
   modification_type <- rlang::arg_match(modification_type)
 
   # Only check refit for trim
   if (modification_type == "trim") {
-    check_refit(.propensity, call = rlang::caller_env())
+    check_refit(.propensity, call = call)
   }
 
   # Handle matrix or vector propensity scores
@@ -452,6 +622,7 @@ calculate_weight_from_modified_ps <- function(
     base_wt <- weight_fn(
       .propensity,
       .exposure = .exposure,
+      call = call,
       ...
     )
   } else {
@@ -462,6 +633,7 @@ calculate_weight_from_modified_ps <- function(
     base_wt <- weight_fn(
       numeric_ps,
       .exposure = .exposure,
+      call = call,
       ...
     )
   }
@@ -499,11 +671,140 @@ preserve_categorical_attrs <- function(psw_obj, wts, exposure_type) {
   psw_obj
 }
 
+# The exposure levels `transform_exposure_binary()` reads, derived the same way
+# it derives them so that a column named for a level is named for the level the
+# coding actually uses.
+binary_exposure_levels <- function(.exposure) {
+  if (is.factor(.exposure)) {
+    levels(.exposure)
+  } else {
+    sort(unique(.exposure))
+  }
+}
+
+# Levels a factor exposure declares and never takes. These join the levels the
+# column names are checked against, so a frame named for every level the
+# exposure actually holds still fails to cover it and the selection falls to
+# position. Dropping them is what makes the match work, and nothing else the
+# caller can do to the data frame will.
+unused_exposure_levels <- function(.exposure) {
+  if (!is.factor(.exposure)) {
+    return(character())
+  }
+
+  setdiff(levels(.exposure), levels(droplevels(.exposure)))
+}
+
+# Position of the column holding the probability of the resolved focal level,
+# or NULL when the column names cannot answer the question. The names must
+# cover every exposure level before any of them is trusted, so that a lone
+# coincidental match cannot redirect the selection. A reference level that
+# leaves more than one candidate resolves to no focal level at all, which is
+# likewise unanswerable.
+match_focal_level_column <- function(
+  .propensity,
+  .exposure,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  call = rlang::caller_env()
+) {
+  exposure_levels <- as.character(binary_exposure_levels(.exposure))
+  if (!all(exposure_levels %in% names(.propensity))) {
+    return(NULL)
+  }
+
+  focal_level <- effective_binary_focal_level(
+    .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level
+  )
+  if (is.null(focal_level)) {
+    return(NULL)
+  }
+
+  col_pos <- match(as.character(focal_level), names(.propensity))
+  if (is.na(col_pos)) {
+    return(NULL)
+  }
+
+  warn_ambiguous_focal_column(
+    .propensity,
+    focal_level = focal_level,
+    col_pos = col_pos,
+    call = call
+  )
+
+  col_pos
+}
+
+# `match()` takes the first column of a given name, and a data frame is allowed
+# more than one column of the same name. The selection is then made on nothing
+# the caller expressed, between columns that may hold different numbers, and the
+# one it lands on is as likely to be the wrong one. That the columns might also
+# be copies of each other is not worth checking for: the ambiguity is in the
+# names, and a caller who meant one of two identically named columns is owed the
+# same report as one whose columns differ. Only the selected name is at issue: a
+# name repeated elsewhere in the frame leaves this column unambiguous.
+warn_ambiguous_focal_column <- function(
+  .propensity,
+  focal_level,
+  col_pos,
+  call = rlang::caller_env()
+) {
+  focal_name <- as.character(focal_level)
+  # A data frame is allowed a missing column name, which compares to the focal
+  # name as `NA` rather than as no match. Left in, that `NA` reaches the
+  # comparison below and stops the call on a frame this function has nothing to
+  # say about.
+  n_matching <- sum(names(.propensity) == focal_name, na.rm = TRUE)
+  if (n_matching < 2) {
+    return(invisible(FALSE))
+  }
+
+  warn(
+    c(
+      "{.arg .propensity} has {n_matching} columns named {.val {focal_name}}, \\
+      the level resolved as focal.",
+      i = "Read column {col_pos}, the first of them.",
+      i = "Give the columns distinct names, or set {.arg .propensity_col}, to \\
+      select the column you mean."
+    ),
+    warning_class = "propensity_df_duplicate_column_warning",
+    call = call
+  )
+
+  invisible(TRUE)
+}
+
+# The declared levels standing between the frame's names and a match, or none
+# when they are not what stands there. Answered only when the frame covers every
+# level the exposure actually takes and fails on declared ones it never takes:
+# that is the case where the names the user can see do answer the question and
+# the answer is refused anyway. Any other name mismatch is about the names
+# themselves, and pointing at the levels there would misdirect.
+blocking_unused_levels <- function(.propensity, .exposure) {
+  unused <- unused_exposure_levels(.exposure)
+  if (length(unused) == 0) {
+    return(character())
+  }
+
+  used <- levels(droplevels(.exposure))
+  if (!all(used %in% names(.propensity))) {
+    return(character())
+  }
+
+  unused
+}
+
 # Helper function to extract propensity scores from data frames
 # This consolidates the logic used across multiple weight functions
 extract_propensity_from_df <- function(
   .propensity,
   .propensity_col_quo = NULL,
+  .exposure = NULL,
+  exposure_type = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
   call = rlang::caller_env()
 ) {
   if (!rlang::quo_is_null(.propensity_col_quo)) {
@@ -529,23 +830,61 @@ extract_propensity_from_df <- function(
       )
     }
 
-    ps_vec <- .propensity[[col_pos]]
-  } else {
-    # Default behavior: use second column if available, otherwise first
-    if (ncol(.propensity) >= 2) {
-      ps_vec <- .propensity[[2]]
-    } else if (ncol(.propensity) == 1) {
-      ps_vec <- .propensity[[1]]
-    } else {
-      abort(
-        "`.propensity` data frame must have at least one column.",
-        call = call,
-        error_class = "propensity_df_ncol_error"
-      )
+    return(.propensity[[col_pos]])
+  }
+
+  if (ncol(.propensity) == 0) {
+    abort(
+      "`.propensity` data frame must have at least one column.",
+      call = call,
+      error_class = "propensity_df_ncol_error"
+    )
+  }
+
+  is_binary_exposure <- identical(exposure_type, "binary")
+
+  if (is_binary_exposure) {
+    col_pos <- match_focal_level_column(
+      .propensity,
+      .exposure,
+      .focal_level = .focal_level,
+      .reference_level = .reference_level,
+      call = call
+    )
+    if (!is.null(col_pos)) {
+      return(.propensity[[col_pos]])
     }
   }
 
-  ps_vec
+  # Default behavior: use second column if available, otherwise first
+  col_pos <- if (ncol(.propensity) >= 2) 2L else 1L
+
+  # A single column is the caller supplying the probability of the focal level
+  # directly, so there is nothing to choose between and nothing to report.
+  level_named <- !is.null(.focal_level) || !is.null(.reference_level)
+  if (is_binary_exposure && level_named && ncol(.propensity) > 1) {
+    unused <- blocking_unused_levels(.propensity, .exposure)
+    droplevels_hint <- if (length(unused) > 0) {
+      c(
+        i = "{.arg .exposure} declares the level{?s} {.val {unused}} that it \\
+        never takes, so its levels cannot all be matched to columns. Call \\
+        {.fun droplevels} on it to match by name."
+      )
+    }
+
+    warn(
+      c(
+        "Can't tell which column of {.arg .propensity} holds the probability of the focal level.",
+        i = "Selected {.val {names(.propensity)[[col_pos]]}} by position.",
+        i = "Name the columns after the levels of {.arg .exposure}, or set {.arg .propensity_col}, to select the column by name.",
+        droplevels_hint
+      ),
+      warning_class = "propensity_df_column_warning",
+      call = call
+    )
+  }
+
+  .propensity[[col_pos]]
 }
 
 # Helper function to extract propensity scores from GLM objects
@@ -579,6 +918,12 @@ extract_propensity_from_glm <- function(
 
 # Helper function to handle common data frame method pattern
 # This encapsulates the logic used across all weight function data.frame methods
+#
+# The deprecated arguments are resolved here rather than downstream, for the
+# same reason as in `prepare_glm_weight_args()`: the resolved focal level
+# decides which column carries `.propensity`, and mapping it twice would emit
+# the deprecation warning twice, so the numeric method receives the mapped
+# levels and no deprecated arguments.
 handle_data_frame_weight_calculation <- function(
   weight_fn_numeric,
   .propensity,
@@ -586,13 +931,27 @@ handle_data_frame_weight_calculation <- function(
   exposure_type,
   valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
   .propensity_col_quo,
-  ...
+  .focal_level = NULL,
+  .reference_level = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  fn_name,
+  ...,
+  call = rlang::caller_env()
 ) {
+  # The default is the frame of the data frame method this was called from,
+  # which is the frame the generic dispatched into and so the one that names the
+  # weight function the user called. A caller may name another frame, and the
+  # generics' dots deliver it here rather than to the numeric method, so that
+  # the whole route is attributed to the same place. A value that cannot be
+  # read as a call is reported against the method rather than against itself.
+  check_call_arg(call, error_call = rlang::caller_env())
+
   # Validate inputs
   if (!is.data.frame(.propensity)) {
     abort(
       "`.propensity` must be a data frame.",
-      call = rlang::caller_env(2),
+      call = call,
       error_class = "propensity_matrix_type_error"
     )
   }
@@ -601,7 +960,16 @@ handle_data_frame_weight_calculation <- function(
   exposure_type_check <- match_exposure_type(
     exposure_type,
     .exposure,
-    valid_exposure_types
+    valid_exposure_types,
+    call = call
+  )
+
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    fn_name
   )
 
   if (exposure_type_check == "categorical") {
@@ -610,6 +978,9 @@ handle_data_frame_weight_calculation <- function(
       .propensity = .propensity,
       .exposure = .exposure,
       exposure_type = exposure_type,
+      .focal_level = focal_params$.focal_level,
+      .reference_level = focal_params$.reference_level,
+      call = call,
       ...
     ))
   }
@@ -618,14 +989,22 @@ handle_data_frame_weight_calculation <- function(
   ps_vec <- extract_propensity_from_df(
     .propensity,
     .propensity_col_quo,
-    call = rlang::caller_env(2)
+    .exposure = .exposure,
+    exposure_type = exposure_type_check,
+    .focal_level = focal_params$.focal_level,
+    .reference_level = focal_params$.reference_level,
+    call = call
   )
 
-  # Call the numeric method
+  # The numeric method is reached by value here, so its own frame deparses as
+  # `weight_fn_numeric()`. Hand it the call the route was entered on.
   weight_fn_numeric(
     .propensity = ps_vec,
     .exposure = .exposure,
     exposure_type = exposure_type,
+    .focal_level = focal_params$.focal_level,
+    .reference_level = focal_params$.reference_level,
+    call = call,
     ...
   )
 }
@@ -643,6 +1022,42 @@ fmla_extract_left_chr <- function(mod) {
   as.character(formula(mod)[[2]])
 }
 
+# Variables a model's left-hand side reads. `fmla_extract_left_chr()` deparses
+# the whole expression, so a transformed response such as `log(y)` gives back the
+# function name alongside its argument; a rebuild from a supplied data frame needs
+# the columns the response is computed from, which is what `all.vars()` gives and
+# what the user can actually supply.
+fmla_extract_left_vars <- function(mod) {
+  all.vars(formula(mod)[[2]])
+}
+
+# Evaluate a model's left-hand side against a data frame. A response written as a
+# transformation has to be computed rather than looked up by name, and the
+# functions and constants it reads resolve from the formula's environment, the
+# same way they did when the model was fit.
+#
+# The formula's environment is the enclosure, so a column absent from `data` is
+# taken from there instead of reported. Every caller asserts the columns the
+# response reads are present before reaching this, which is what keeps a
+# `.data` missing the response from being answered out of the enclosure. That
+# ordering is the whole protection and is pinned as such.
+#
+# `scale()` and friends return a one-column matrix; drop that dimension so the
+# result is an ordinary vector. The model-frame route reads its response through
+# `fmla_extract_left_vctr()` and keeps the matrix, so the two shapes are not the
+# same here; they converge at `ipw_outcome_numeric()`, whose `as.double()`
+# flattens either.
+fmla_eval_left <- function(mod, data) {
+  fmla <- formula(mod)
+  left <- eval(fmla[[2]], data, environment(fmla))
+
+  if (is.matrix(left) && ncol(left) == 1L) {
+    left <- drop(left)
+  }
+
+  left
+}
+
 # Helper function to handle optional exposure in GLM methods
 extract_exposure_from_glm <- function(
   glm_obj,
@@ -655,4 +1070,66 @@ extract_exposure_from_glm <- function(
     alert_info("Using exposure variable {.val {exposure_name}} from GLM model")
   }
   .exposure
+}
+
+# Shared preparation for the GLM methods of the weight functions.
+#
+# Fitted values report the probability of the level the response's default
+# coding treats as focal: the second factor level, or the second sorted value.
+# The weight formulas read `.propensity` as the probability of the level
+# actually resolved as focal, so naming the other level means the fitted values
+# must be inverted before the numeric method sees them.
+#
+# The deprecated arguments are resolved here rather than downstream. The
+# resolved focal level is needed to decide whether to invert, and mapping it
+# twice would emit the deprecation warning twice, so the numeric method
+# receives the mapped levels and no deprecated arguments.
+prepare_glm_weight_args <- function(
+  glm_obj,
+  .exposure,
+  exposure_type,
+  valid_exposure_types,
+  .focal_level,
+  .reference_level,
+  .treated,
+  .untreated,
+  fn_name,
+  call = rlang::caller_env()
+) {
+  .exposure <- extract_exposure_from_glm(glm_obj, .exposure)
+  exposure_type <- match_exposure_type(
+    exposure_type,
+    .exposure,
+    valid_exposure_types,
+    call = call
+  )
+
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    fn_name
+  )
+
+  ps_vec <- extract_propensity_from_glm(glm_obj, call = call)
+
+  invert <- identical(exposure_type, "binary") &&
+    !resolved_focal_is_default(
+      .exposure,
+      .focal_level = focal_params$.focal_level,
+      .reference_level = focal_params$.reference_level
+    )
+
+  if (invert) {
+    ps_vec <- 1 - ps_vec
+  }
+
+  list(
+    propensity = ps_vec,
+    exposure = .exposure,
+    exposure_type = exposure_type,
+    focal_level = focal_params$.focal_level,
+    reference_level = focal_params$.reference_level
+  )
 }

@@ -95,8 +95,8 @@ test_that("ps_trim preserves all treatment groups", {
   colnames(ps_matrix) <- c("A", "B", "C")
 
   # Try trimming with high threshold
-  expect_propensity_warning(
-    trimmed <- ps_trim(
+  trimmed <- expect_propensity_warning(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -118,8 +118,8 @@ test_that("ps_trim validates delta < 1/k", {
   colnames(ps_matrix) <- levels(exposure)
 
   # delta >= 1/3 should trigger warning
-  expect_propensity_warning(
-    trimmed <- ps_trim(
+  trimmed <- expect_propensity_warning(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -185,8 +185,8 @@ test_that("is_unit_trimmed works for matrix objects", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   colnames(ps_matrix) <- levels(exposure)
 
-  expect_propensity_warning(
-    trimmed <- ps_trim(
+  trimmed <- expect_propensity_warning(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -210,8 +210,8 @@ test_that("ps_trim handles parsnip-style column names", {
   ps_matrix <- ps_matrix / rowSums(ps_matrix)
   colnames(ps_matrix) <- c(".pred_A", ".pred_B", ".pred_C")
 
-  expect_no_error(
-    trimmed <- ps_trim(
+  trimmed <- expect_no_error(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -231,7 +231,7 @@ test_that("ps_trim warns when no column names provided", {
   # No column names
 
   expect_propensity_warning(
-    trimmed <- ps_trim(
+    ps_trim(
       ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -254,8 +254,8 @@ test_that("ps_trim.ps_trim warns about already trimmed scores", {
     lower = 0.1
   )
 
-  expect_propensity_warning(
-    trimmed_twice <- ps_trim(
+  trimmed_twice <- expect_propensity_warning(
+    ps_trim(
       trimmed_once,
       .exposure = exposure,
       method = "ps",
@@ -443,8 +443,8 @@ test_that("ps_trim handles edge cases consistently with PSweight", {
     )
   })
 
-  expect_propensity_warning(
-    our_trim <- ps_trim(
+  our_trim <- expect_propensity_warning(
+    ps_trim(
       ps = ps_matrix,
       .exposure = trt,
       method = "ps",
@@ -548,7 +548,7 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
 
   # Apply very strict trimming
   expect_propensity_warning(
-    trimmed_ps <- ps_trim(
+    ps_trim(
       ps = ps_matrix,
       .exposure = exposure,
       method = "ps",
@@ -565,8 +565,8 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
   )
   colnames(ps_matrix_extreme) <- c("A", "B", "C")
 
-  expect_propensity_warning(
-    trimmed_extreme <- ps_trim(
+  trimmed_extreme <- expect_propensity_warning(
+    ps_trim(
       ps = ps_matrix_extreme,
       .exposure = exposure,
       method = "ps",
@@ -710,8 +710,8 @@ test_that("ps_refit handles minimal data for categorical exposures", {
   }
 
   # Apply aggressive trimming to leave minimal data
-  expect_propensity_warning(
-    trimmed_ps <- ps_trim(
+  trimmed_ps <- expect_propensity_warning(
+    ps_trim(
       ps = ps_matrix,
       .exposure = test_data$trt,
       method = "ps",
@@ -748,9 +748,7 @@ test_that("wt_ate warns when using trimmed but not refitted categorical PS", {
   )
 
   # Using trimmed but not refitted PS should warn
-  expect_propensity_warning(
-    wts <- wt_ate(trimmed_ps, .exposure = exposure)
-  )
+  expect_propensity_warning(wt_ate(trimmed_ps, .exposure = exposure))
 })
 
 test_that("print.ps_trim_matrix produces expected output", {
@@ -847,4 +845,83 @@ test_that("print methods respect n parameter", {
   expect_true(any(grepl("# \\.\\.\\. with 22 more rows", output_3)))
   expect_true(any(grepl("# \\.\\.\\. with 15 more rows", output_10)))
   expect_false(any(grepl("# \\.\\.\\. with", output_inf)))
+})
+
+# ---- the matrix method names ps_trim, whoever called it --------------------
+
+# `ps_trim.matrix` validates the propensity score matrix from inside a
+# dispatched method, so the frame it hands the validator decides what the error
+# reports. A frame taken from the method's caller is the user's own function
+# when `ps_trim()` is called from one, and nothing at all when it is called at
+# the top level.
+
+condition_call_name <- function(expr) {
+  cnd <- rlang::catch_cnd(expr, classes = "error")
+  if (is.null(cnd) || is.null(conditionCall(cnd))) {
+    return(NA_character_)
+  }
+
+  paste(deparse(conditionCall(cnd)[[1]]), collapse = " ")
+}
+
+categorical_trim_fixture <- function() {
+  list(
+    exposure = factor(c("a", "b", "c", "a")),
+    # the first row sums to 1.4, which the matrix method refuses
+    bad_matrix = matrix(
+      c(0.7, 0.3, 0.2, 0.5, 0.4, 0.4, 0.3, 0.2, 0.3, 0.3, 0.5, 0.3),
+      nrow = 4,
+      ncol = 3
+    )
+  )
+}
+
+test_that("a refused propensity score matrix names ps_trim", {
+  fixture <- categorical_trim_fixture()
+
+  cnd <- rlang::catch_cnd(
+    ps_trim(fixture$bad_matrix, method = "ps", .exposure = fixture$exposure),
+    classes = "error"
+  )
+  expect_s3_class(cnd, "propensity_matrix_sum_error")
+
+  expect_identical(
+    condition_call_name(
+      ps_trim(fixture$bad_matrix, method = "ps", .exposure = fixture$exposure)
+    ),
+    "ps_trim"
+  )
+})
+
+test_that("a refused propensity score matrix names ps_trim, not the caller", {
+  fixture <- categorical_trim_fixture()
+
+  wrapping_trim_fn <- function(ps, .exposure) {
+    ps_trim(ps, method = "ps", .exposure = .exposure)
+  }
+
+  expect_identical(
+    condition_call_name(
+      wrapping_trim_fn(fixture$bad_matrix, fixture$exposure)
+    ),
+    "ps_trim"
+  )
+})
+
+test_that("a matrix with the wrong number of columns names ps_trim", {
+  fixture <- categorical_trim_fixture()
+
+  wrapping_trim_fn <- function(ps, .exposure) {
+    ps_trim(ps, method = "ps", .exposure = .exposure)
+  }
+
+  expect_identical(
+    condition_call_name(
+      wrapping_trim_fn(
+        fixture$bad_matrix[, 1:2, drop = FALSE],
+        fixture$exposure
+      )
+    ),
+    "ps_trim"
+  )
 })

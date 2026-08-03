@@ -10,8 +10,8 @@ test_that("tidyr::pivot_longer works with propensity classes", {
   )
 
   # Pivot longer should work but with warning
-  expect_propensity_warning(
-    result <- tidyr::pivot_longer(
+  result <- expect_propensity_warning(
+    tidyr::pivot_longer(
       df,
       cols = c(ate_wts, att_wts),
       names_to = "weight_type",
@@ -37,9 +37,9 @@ test_that("tidyr::pivot_longer works with mixed propensity classes", {
     trunc_col = ps_trunc(c(0.3, 0.5, 0.4, 0.7), lower = 0.1, upper = 0.9)
   )
 
-  expect_propensity_warning(
+  result <- expect_propensity_warning(
     expect_propensity_warning(
-      result <- tidyr::pivot_longer(
+      tidyr::pivot_longer(
         df,
         cols = c(psw_col, trim_col, trunc_col),
         names_to = "type",
@@ -79,8 +79,8 @@ test_that("tidyr::pivot_longer preserves class when all columns are compatible",
     wt3 = psw(c(0.3, 0.5, 0.4, 0.7), estimand = "ate")
   )
 
-  expect_silent(
-    result <- tidyr::pivot_longer(
+  result <- expect_silent(
+    tidyr::pivot_longer(
       df,
       cols = starts_with("wt"),
       names_to = "weight_var",
@@ -98,16 +98,12 @@ test_that("c() works as expected with warnings", {
   z <- 0.6
 
   # Different estimands
-  expect_propensity_warning(
-    result <- c(x, y)
-  )
+  result <- expect_propensity_warning(c(x, y))
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.3, 0.8))
 
   # Mixed with numeric
-  expect_propensity_warning(
-    result <- c(x, z)
-  )
+  result <- expect_propensity_warning(c(x, z))
   expect_type(result, "double")
   expect_equal(result, c(0.5, 0.7, 0.6))
 })
@@ -131,9 +127,7 @@ test_that("rbind and data frame operations work", {
   expect_equal(as.numeric(result$wt), c(0.5, 0.7, 0.3, 0.8))
 
   # But vec_rbind does trigger the warning
-  expect_propensity_warning(
-    result2 <- vctrs::vec_rbind(df1, df2)
-  )
+  result2 <- expect_propensity_warning(vctrs::vec_rbind(df1, df2))
   expect_equal(nrow(result2), 4)
   expect_type(result2$wt, "double")
   expect_equal(result2$wt, c(0.5, 0.7, 0.3, 0.8))
@@ -201,12 +195,19 @@ test_that("tidyr operations with NAs in ps_trim work correctly", {
     weights = trim_obj
   )
 
-  # pivot_wider should preserve the ps_trim structure
-  result <- tidyr::pivot_wider(
-    df,
-    names_from = group,
-    values_from = weights
+  # pivot_wider should preserve the ps_trim structure. Widening spreads four
+  # observations across two columns of four and fills the gaps, so neither
+  # column holds the observations the trimming record was written for and each
+  # drops it.
+  pivoted <- count_record_drops(
+    tidyr::pivot_wider(
+      df,
+      names_from = group,
+      values_from = weights
+    )
   )
+  expect_gt(pivoted$drops, 0)
+  result <- pivoted$value
 
   # Check structure - 4 rows for 4 unique ids
   expect_equal(nrow(result), 4)
@@ -287,8 +288,8 @@ test_that("tidyr works with stabilized weights", {
   )
 
   # Pivot should warn about different stabilization
-  expect_propensity_warning(
-    long <- tidyr::pivot_longer(
+  long <- expect_propensity_warning(
+    tidyr::pivot_longer(
       df,
       cols = c(wt_stab, wt_unstab),
       names_to = "stab_type",
@@ -316,12 +317,15 @@ test_that("tidyr with all NA weights works", {
   # All values should be NA
   expect_true(all(is.na(df$weight)))
 
-  # Pivot should still work
-  wide <- tidyr::pivot_wider(
-    df,
-    names_from = group,
-    values_from = weight
+  # Pivot should still work, dropping the trimming record with each new column
+  pivoted <- count_record_drops(
+    tidyr::pivot_wider(
+      df,
+      names_from = group,
+      values_from = weight
+    )
   )
+  expect_gt(pivoted$drops, 0)
 
-  expect_equal(nrow(wide), 4)
+  expect_equal(nrow(pivoted$value), 4)
 })

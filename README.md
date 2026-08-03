@@ -58,30 +58,33 @@ ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 
 # Step 2: Calculate ATE weights and fit a weighted outcome model
 wts <- wt_ate(ps_mod)
-outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
+outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
 # Step 3: Estimate causal effects with correct standard errors
 ipw(ps_mod, outcome_mod)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
 #> 
-#> Propensity Score Model:
+#> Weight Estimator:
 #>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) 
 #> 
 #> Outcome Model:
-#>   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) 
+#>   Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) 
 #> 
 #> Estimates:
-#>         estimate std.err       z ci.lower ci.upper conf.level   p.value    
-#> rd       0.14230 0.07038 2.02194   0.0044  0.28025       0.95 0.0431831 *  
-#> log(rr)  0.28031 0.10770 2.60262   0.0692  0.49141       0.95 0.0092513 ** 
-#> log(or)  0.57339 0.16200 3.53950   0.2559  0.89090       0.95 0.0004009 ***
+#>         estimate  std.err      z  ci.lower ci.upper conf.level p.value  
+#> rd      0.142304 0.070204 2.0270 0.0047068  0.27990       0.95 0.04266 *
+#> log(rr) 0.280314 0.142195 1.9713 0.0016172  0.55901       0.95 0.04869 *
+#> log(or) 0.573392 0.286710 1.9999 0.0114518  1.13533       0.95 0.04551 *
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
 
-`ipw()` uses linearization to account for uncertainty in the estimated
-propensity scores when computing standard errors.
+By default, `ipw()` computes standard errors by M-estimation, stacking
+the propensity score and outcome estimating equations so the uncertainty
+of estimating the propensity scores is carried into the standard errors.
+Set `se_method = "linearization"` for the influence-function method
+(binary exposures with an exposure-only outcome model).
 
 ## Estimands
 

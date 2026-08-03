@@ -608,13 +608,13 @@ test_that("categorical weights work with parsnip-style column names", {
   colnames(ps_matrix) <- c(".pred_A", ".pred_B", ".pred_C")
 
   # Should work without error
-  expect_no_error(
-    w_ate <- wt_ate(ps_matrix, trt, exposure_type = "categorical")
+  w_ate <- expect_no_error(
+    wt_ate(ps_matrix, trt, exposure_type = "categorical")
   )
 
   # Test focal matching works correctly
-  expect_no_error(
-    w_att <- wt_att(
+  w_att <- expect_no_error(
+    wt_att(
       ps_matrix,
       trt,
       exposure_type = "categorical",
@@ -650,26 +650,32 @@ test_that("categorical weights warn on unnamed columns", {
 
   # Test warning for all weight functions
   expect_propensity_warning(
-    wt_ate(ps_matrix, trt, exposure_type = "categorical")
+    wt_ate(ps_matrix, trt, exposure_type = "categorical"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_att(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A")
+    wt_att(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_atu(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A")
+    wt_atu(ps_matrix, trt, exposure_type = "categorical", .focal_level = "A"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_atm(ps_matrix, trt, exposure_type = "categorical")
+    wt_atm(ps_matrix, trt, exposure_type = "categorical"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_ato(ps_matrix, trt, exposure_type = "categorical")
+    wt_ato(ps_matrix, trt, exposure_type = "categorical"),
+    print = TRUE
   )
 
   expect_propensity_warning(
-    wt_entropy(ps_matrix, trt, exposure_type = "categorical")
+    wt_entropy(ps_matrix, trt, exposure_type = "categorical"),
+    print = TRUE
   )
 })

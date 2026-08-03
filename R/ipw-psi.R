@@ -1,0 +1,828 @@
+# Internal building blocks for the M-estimation path of ipw(). Three targets:
+# ipw_weight_fn() (the weight registry), ipw_theta_layout() (the theta
+# partition and its root-valued seed), and build_ipw_psi() (the stacked
+# estimating-function builder). Everything here is unexported and follows the
+# M-estimation design contract: the psi matrix stacks blocks in the fixed order
+# [ps score | stabilization | outcome score | marginal means | contrasts], and
+# the weights that enter the outcome-score block are recomputed from the
+# ps-parameter block of theta on every evaluation so the sandwich variance
+# accounts for propensity score estimation.
+
+# Inverse link functions. Covers the propensity score links (logit, probit,
+# cloglog) and the outcome links (logit, identity, log) used when reconstructing
+# fitted values from a coefficient block. These are the mathematical inverses,
+# not the family's clamped C routines, so a linear predictor extreme enough to
+# saturate one of them returns an exact 0 or 1 here where `linkinv` would not.
+#
+# The registry is a list rather than a `switch()` so that a caller can ask
+# whether a link is covered without triggering the error for one that is not.
+# The saturation guard on the linearization path needs exactly that.
+ipw_inv_links <- list(
+  logit = stats::plogis,
+  probit = stats::pnorm,
+  cloglog = function(x) 1 - exp(-exp(x)),
+  identity = function(x) x,
+  log = exp
+)
+
+ipw_inv_link <- function(link, call = rlang::caller_env()) {
+  inv_link <- ipw_inv_links[[link]]
+
+  if (is.null(inv_link)) {
+    abort(
+      "Unsupported link {.val {link}}.",
+      error_class = "propensity_ipw_link_error",
+      call = call
+    )
+  }
+
+  inv_link
+}
+
+# ---- weight registry --------------------------------------------------------
+
+# Every estimand `ipw()` knows a weight for. Which of them a particular fit
+# supports is narrower and depends on the exposure type, which `ipw_weight_fn()`
+# resolves below; this is the set an estimand has to belong to before that
+# question is worth asking, and `check_estimand()` reads it for that.
+ipw_estimands <- c("ate", "att", "atu", "atm", "ato", "entropy")
+
+ipw_weight_fn <- function(exposure_type, estimand, call = rlang::caller_env()) {
+  supported <- switch(
+    exposure_type,
+    binary = ipw_estimands,
+    categorical = ipw_estimands,
+    continuous = "ate",
+    abort(
+      "Unsupported exposure type {.val {exposure_type}}.",
+      error_class = "propensity_ipw_estimand_error",
+      call = call
+    )
+  )
+
+  if (!estimand %in% supported) {
+    abort(
+      c(
+        "{.fun ipw} does not support the {.val {estimand}} estimand for \\
+        {.val {exposure_type}} exposures.",
+        i = "Supported estimands for {.val {exposure_type}} exposures: \\
+        {.val {supported}}."
+      ),
+      error_class = "propensity_ipw_estimand_error",
+      call = call
+    )
+  }
+
+  switch(
+    exposure_type,
+    binary = ipw_binary_weight_fn(estimand),
+    categorical = ipw_categorical_weight_fn(estimand),
+    continuous = ipw_continuous_weight_fn(estimand)
+  )
+}
+
+# Binary weight registry. `ps` is the vector of propensity scores e_i,
+# `exposure` is the 0/1 exposure z, and `extras` carries the stabilization
+# probability, the fixed stabilization score, and optionally a tilt already
+# evaluated at `ps`. Formulas mirror the binary helpers in R/weights.R exactly.
+# Every estimand is the tilt h(e) from R/ps_tilt.R over the exposure denominator
+# z e + (1 - z)(1 - e); ate additionally carries the stabilization branches.
+#
+# A psi evaluation needs the tilt for the marginal-mean rows as well, so it
+# passes the one it already holds through `extras$tilt`. Callers with no tilt in
+# hand leave it out and the registry evaluates its own.
+ipw_binary_weight_fn <- function(estimand) {
+  if (identical(estimand, "ate")) {
+    return(function(ps, exposure, extras) {
+      z <- exposure
+      e <- ps
+      if (!is.null(extras$score)) {
+        wt <- (z / e) + ((1 - z) / (1 - e))
+        wt * extras$score
+      } else if (!is.null(extras$stab_prob)) {
+        p1 <- extras$stab_prob
+        p0 <- 1 - p1
+        (z * p1 / e) + ((1 - z) * p0 / (1 - e))
+      } else {
+        (z / e) + ((1 - z) / (1 - e))
+      }
+    })
+  }
+
+  function(ps, exposure, extras) {
+    z <- exposure
+    e <- ps
+    h_e <- if (is.null(extras$tilt)) {
+      ps_tilt_binary(e, estimand)
+    } else {
+      extras$tilt
+    }
+    h_e / (z * e + (1 - z) * (1 - e))
+  }
+}
+
+# Categorical weight registry. `ps` is the n-by-K propensity score matrix,
+# `exposure` the n-by-K reference-first indicator, and `extras` carries the
+# focal column index, the length-K stabilization probabilities (column order),
+# the fixed stabilization score, and optionally a tilt already evaluated at
+# `ps`, on the same terms as the binary registry. Formulas mirror
+# calculate_categorical_weights() in R/weights.R.
+ipw_categorical_weight_fn <- function(estimand) {
+  is_ate <- identical(estimand, "ate")
+
+  function(ps, exposure, extras) {
+    e_actual <- rowSums(exposure * ps)
+
+    # The ate tilt is the constant 1, which divides out of the weight.
+    if (!is_ate) {
+      h_e <- if (is.null(extras$tilt)) {
+        ps_tilt_categorical(ps, estimand, extras$focal_idx)
+      } else {
+        extras$tilt
+      }
+      return(h_e / e_actual)
+    }
+
+    weights <- 1 / e_actual
+
+    if (!is.null(extras$score)) {
+      weights <- weights * extras$score
+    } else if (!is.null(extras$stab_probs)) {
+      stab_row <- matrix(
+        extras$stab_probs,
+        nrow = nrow(ps),
+        ncol = ncol(ps),
+        byrow = TRUE
+      )
+      weights <- weights * rowSums(exposure * stab_row)
+    }
+
+    weights
+  }
+}
+
+# Continuous weight registry (ate only). `ps` is the fitted mean X alpha,
+# `exposure` the continuous A, and `extras` carries the conditional variance
+# sigma2_d, the marginal moments mu_a and sigma2_a, the fixed stabilization
+# score, and the stabilized flag. Replicates ate_continuous() exactly, including
+# the z-score dnorm without the 1/sigma normalization and the silent
+# unstabilized branch (the registry never emits the alert).
+ipw_continuous_weight_fn <- function(estimand) {
+  function(ps, exposure, extras) {
+    z_den <- (exposure - ps) / sqrt(extras$sigma2_d)
+    f_den <- stats::dnorm(z_den)
+    wt <- 1 / f_den
+
+    if (isTRUE(extras$stabilized) && is.null(extras$score)) {
+      z_num <- (exposure - extras$mu_a) / sqrt(extras$sigma2_a)
+      wt * stats::dnorm(z_num)
+    } else if (isTRUE(extras$stabilized) && !is.null(extras$score)) {
+      wt * extras$score
+    } else {
+      wt
+    }
+  }
+}
+
+# ---- theta layout -----------------------------------------------------------
+
+ipw_theta_layout <- function(spec, call = rlang::caller_env()) {
+  blocks <- switch(
+    spec$exposure_type,
+    binary = ipw_init_binary(spec, call = call),
+    categorical = ipw_init_categorical(spec, call = call),
+    continuous = ipw_init_continuous(spec, call = call)
+  )
+
+  block_order <- c("ps", "stab", "out", "mu", "contrast")
+  idx <- vector("list", length(block_order))
+  names(idx) <- block_order
+  pos <- 0L
+  for (b in block_order) {
+    n_b <- length(blocks[[b]])
+    idx[[b]] <- if (n_b > 0L) pos + seq_len(n_b) else integer(0)
+    pos <- pos + n_b
+  }
+
+  init <- do.call(c, unname(blocks[block_order]))
+
+  list(idx = idx, init = init)
+}
+
+# Labels for the contrast blocks a categorical exposure carries, one per
+# non-reference level in counterfactual order. The estimates table reports these
+# in its comparison column and the contrast diagnostics name the comparison they
+# concern, so both read them from here rather than rebuilding the pairs.
+ipw_comparison_labels <- function(spec) {
+  nonref <- names(spec$outcome$X_counterfactual)[-1]
+  paste(nonref, "vs", spec$reference_level)
+}
+
+# The transform a contrast form applies to a pair of marginal means.
+ipw_contrast_transform <- function(form, mu_hi, mu_lo) {
+  switch(
+    form,
+    rd = mu_hi - mu_lo,
+    diff = mu_hi - mu_lo,
+    "log(rr)" = log(mu_hi) - log(mu_lo),
+    "log(or)" = stats::qlogis(mu_hi) - stats::qlogis(mu_lo)
+  )
+}
+
+# Whether a marginal mean lies where the form's transform is defined. A
+# difference is defined everywhere, a log risk ratio needs a positive mean, and
+# a log odds ratio needs a mean strictly inside (0, 1). A mean that is already
+# NA carries no information about the domain and is left to the transform.
+ipw_contrast_defined <- function(form, mu) {
+  switch(
+    form,
+    rd = TRUE,
+    diff = TRUE,
+    "log(rr)" = is.na(mu) || mu > 0,
+    "log(or)" = is.na(mu) || (mu > 0 && mu < 1)
+  )
+}
+
+# The marginal means are free parameters of theta, so the solver moves them
+# through values where the transform has nothing to return: a risk pushed past 1
+# has no logit and a risk pushed below 0 has no logarithm. Base signals an
+# unclassed "NaNs produced" there, naming neither the effect nor the comparison
+# it belongs to. `reporter` replaces that with a classed warning that names
+# both. The transform still runs on the same values and returns the same result,
+# so the numbers the solver sees are unchanged.
+ipw_contrast_value <- function(form, mu_hi, mu_lo, reporter = NULL) {
+  if (ipw_contrast_defined(form, mu_hi) && ipw_contrast_defined(form, mu_lo)) {
+    return(ipw_contrast_transform(form, mu_hi, mu_lo))
+  }
+
+  if (!is.null(reporter)) {
+    reporter(form)
+  }
+
+  suppressWarnings(ipw_contrast_transform(form, mu_hi, mu_lo))
+}
+
+# A reporter for the contrast block of one comparison, or of the single binary
+# comparison when `comparison` is NULL. The solver revisits the same
+# out-of-domain marginal means on every step and again on every column of the
+# bread, so each effect reports once for the fit the reporter was built for.
+#
+# The init path builds no reporter. It seeds theta from the fitted models and
+# the solver evaluates psi at that seed, so anything undefined there is reported
+# from the psi block instead of twice.
+ipw_contrast_reporter <- function(comparison = NULL) {
+  reported <- new.env(parent = emptyenv())
+
+  function(form) {
+    if (isTRUE(reported[[form]])) {
+      return(invisible(NULL))
+    }
+    reported[[form]] <- TRUE
+
+    headline <- if (is.null(comparison)) {
+      "The {.val {form}} effect is undefined at the marginal means the solver \\
+      reached."
+    } else {
+      "The {.val {form}} effect for {.val {comparison}} is undefined at the \\
+      marginal means the solver reached."
+    }
+    domain <- switch(
+      form,
+      "log(rr)" = "a positive marginal mean",
+      "log(or)" = "a marginal mean strictly between 0 and 1"
+    )
+
+    warn(
+      c(
+        headline,
+        i = "{.val {form}} needs {domain} on each side of the comparison, and \\
+        at least one side is outside that range.",
+        i = "An exposure level whose fitted outcomes are all events, or all \\
+        non-events, drives its marginal mean to the boundary. Check the \\
+        outcome within each level of the exposure.",
+        i = "Estimates and standard errors from this fit are not reliable."
+      ),
+      warning_class = "propensity_ipw_contrast_warning",
+      # The reporter runs inside the estimating function, which the solver
+      # calls; the call reported here would name nothing the caller wrote.
+      call = NULL
+    )
+  }
+}
+
+# Plug-in contrast init values, named by form (with an optional level suffix for
+# categorical exposures).
+ipw_init_contrasts <- function(contrasts, mu_hi, mu_lo, suffix = NULL) {
+  if (is.null(contrasts) || !length(contrasts)) {
+    return(numeric(0))
+  }
+  vals <- vapply(
+    contrasts,
+    function(f) ipw_contrast_value(f, mu_hi, mu_lo),
+    numeric(1)
+  )
+  nm <- if (is.null(suffix)) contrasts else paste0(contrasts, "_", suffix)
+  stats::setNames(vals, nm)
+}
+
+# The stabilizer to use for a binary exposure whose weights carry no
+# per-observation stabilization score: the marginal exposure probability.
+#
+# Four consumers must agree on this value, and they read it from here rather
+# than rebuilding it so that changing the convention changes all four at once.
+# `ate_binary()` is the origin: it scales the default stabilized ATE weights by
+# this probability and its complement, so the value is already baked into the
+# weights a user hands to `ipw()`. The M-estimation init seeds the `stab_pi`
+# parameter with it. The linearization preflight rebuilds a stabilized weight
+# from it to compare against the weights that fit the outcome model, and
+# `effective_stabilizer()` recovers the same factor to scale the linearization
+# weight derivatives. A disagreement among them is silent in different ways: the
+# preflight would reject weights the solver would have accepted, or accept
+# weights it would not, while `effective_stabilizer()` would move only the
+# standard errors. `exposure` is the 0/1 recode everywhere but `ate_binary()`,
+# which passes the same recode under its own name.
+ipw_default_stab_seed <- function(exposure) {
+  mean(exposure, na.rm = TRUE)
+}
+
+ipw_init_binary <- function(spec, call = rlang::caller_env()) {
+  ps_block <- spec$ps$coefs
+
+  if (spec$stab$stabilized && is.null(spec$stab$score)) {
+    stab_block <- c(stab_pi = ipw_default_stab_seed(spec$exposure))
+  } else {
+    stab_block <- numeric(0)
+  }
+
+  beta <- spec$outcome$coefs
+  inv_out <- ipw_inv_link(spec$outcome$link, call = call)
+  pred1 <- inv_out(as.vector(spec$outcome$X_counterfactual$X1 %*% beta))
+  pred0 <- inv_out(as.vector(spec$outcome$X_counterfactual$X0 %*% beta))
+  # Seed the marginal means at the tilt-standardized weighted mean so the init
+  # is the exact root of the standardized mu rows. ate keeps the ordinary mean
+  # so its seed, and therefore its solve, is unchanged.
+  if (identical(spec$estimand, "ate")) {
+    mu1 <- mean(pred1)
+    mu0 <- mean(pred0)
+  } else {
+    e_fit <- ipw_inv_link(spec$ps$link, call = call)(as.vector(
+      spec$ps$X %*% spec$ps$coefs
+    ))
+    h <- ps_tilt_binary(e_fit, spec$estimand)
+    mu1 <- stats::weighted.mean(pred1, h)
+    mu0 <- stats::weighted.mean(pred0, h)
+  }
+  mu_block <- c(mu1 = mu1, mu0 = mu0)
+
+  con_block <- ipw_init_contrasts(spec$contrasts, mu1, mu0)
+
+  list(
+    ps = ps_block,
+    stab = stab_block,
+    out = beta,
+    mu = mu_block,
+    contrast = con_block
+  )
+}
+
+# Generate readable names for the multinomial ps coefficient block. The block is
+# as.vector(t(coef(multinom))): level-major, term-minor.
+ipw_name_categorical_ps <- function(spec) {
+  terms <- colnames(spec$ps$X)
+  levs <- names(spec$outcome$X_counterfactual)
+  nonref <- levs[-1]
+  nm <- as.vector(vapply(
+    nonref,
+    function(l) paste0(l, ":", terms),
+    character(length(terms))
+  ))
+  stats::setNames(spec$ps$coefs, nm)
+}
+
+ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
+  ps_block <- ipw_name_categorical_ps(spec)
+
+  levs <- names(spec$outcome$X_counterfactual)
+
+  if (spec$stab$stabilized && is.null(spec$stab$score)) {
+    props <- colMeans(spec$exposure)
+    stab_block <- stats::setNames(props[-1], paste0("stab_", levs[-1]))
+  } else {
+    stab_block <- numeric(0)
+  }
+
+  beta <- spec$outcome$coefs
+  inv_out <- ipw_inv_link(spec$outcome$link, call = call)
+  k <- spec$ps$k
+  # Seed each level's marginal mean at the tilt-standardized weighted mean, the
+  # exact root of the standardized mu rows. ate keeps the ordinary mean so its
+  # seed, and therefore its solve, is unchanged.
+  if (identical(spec$estimand, "ate")) {
+    weight_mu <- function(pred) mean(pred)
+  } else {
+    ps_fit <- ipw_categorical_ps(spec$ps$X, spec$ps$coefs, k)
+    focal_idx <- if (!is.null(spec$focal_level)) {
+      match(spec$focal_level, levs)
+    } else {
+      NULL
+    }
+    h <- ps_tilt_categorical(ps_fit, spec$estimand, focal_idx)
+    weight_mu <- function(pred) stats::weighted.mean(pred, h)
+  }
+  mu_vals <- vapply(
+    seq_len(k),
+    function(j) {
+      weight_mu(inv_out(as.vector(spec$outcome$X_counterfactual[[j]] %*% beta)))
+    },
+    numeric(1)
+  )
+  mu_block <- stats::setNames(mu_vals, paste0("mu_", levs))
+
+  con_list <- lapply(seq_len(k)[-1], function(j) {
+    ipw_init_contrasts(
+      spec$contrasts,
+      mu_vals[[j]],
+      mu_vals[[1]],
+      suffix = levs[[j]]
+    )
+  })
+  con_block <- if (length(con_list)) do.call(c, con_list) else numeric(0)
+
+  list(
+    ps = ps_block,
+    stab = stab_block,
+    out = beta,
+    mu = mu_block,
+    contrast = con_block
+  )
+}
+
+ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
+  alpha <- spec$ps$coefs
+  fitted_ps <- as.vector(spec$ps$X %*% alpha)
+  sigma2_d <- mean((spec$exposure - fitted_ps)^2)
+  ps_block <- c(alpha, sigma2_d = sigma2_d)
+
+  if (spec$stab$stabilized && is.null(spec$stab$score)) {
+    mu_a <- mean(spec$exposure)
+    sigma2_a <- mean((spec$exposure - mu_a)^2)
+    stab_block <- c(mu_a = mu_a, sigma2_a = sigma2_a)
+  } else {
+    stab_block <- numeric(0)
+  }
+
+  list(
+    ps = ps_block,
+    stab = stab_block,
+    out = spec$outcome$coefs,
+    mu = numeric(0),
+    contrast = numeric(0)
+  )
+}
+
+# ---- psi builder ------------------------------------------------------------
+
+build_ipw_psi <- function(spec, layout, call = rlang::caller_env()) {
+  weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand, call = call)
+  switch(
+    spec$exposure_type,
+    binary = ipw_psi_binary(spec, layout, weight_fn, call = call),
+    categorical = ipw_psi_categorical(spec, layout, weight_fn, call = call),
+    continuous = ipw_psi_continuous(spec, layout, weight_fn, call = call)
+  )
+}
+
+# Deterministic contrast rows: each form's residual repeated across the n
+# observation columns so the stacked matrix stays rectangular.
+ipw_contrast_rows <- function(
+  contrasts,
+  mu_hi,
+  mu_lo,
+  th_con,
+  n,
+  reporter = NULL
+) {
+  if (is.null(contrasts) || !length(contrasts)) {
+    return(NULL)
+  }
+  rows <- lapply(seq_along(contrasts), function(i) {
+    val <- ipw_contrast_value(contrasts[[i]], mu_hi, mu_lo, reporter = reporter)
+    matrix(val - th_con[[i]], nrow = 1, ncol = n)
+  })
+  do.call(rbind, rows)
+}
+
+ipw_stack <- function(blocks) {
+  do.call(rbind, blocks[!vapply(blocks, is.null, logical(1))])
+}
+
+# Weighted outcome-score block. Branch on the outcome family so a gaussian
+# outcome uses the weighted least-squares score and a binomial outcome uses the
+# weighted GLM score with the outcome link.
+ipw_outcome_rows <- function(theta, x, y, family, link, weights) {
+  if (family == "binomial") {
+    deli::ee_glm(
+      theta,
+      X = x,
+      y = y,
+      distribution = "binomial",
+      link = link,
+      weights = weights
+    )
+  } else {
+    deli::ee_regression(
+      theta,
+      X = x,
+      y = y,
+      model = "linear",
+      weights = weights
+    )
+  }
+}
+
+ipw_psi_binary <- function(
+  spec,
+  layout,
+  weight_fn,
+  call = rlang::caller_env()
+) {
+  idx <- layout$idx
+  x_ps <- spec$ps$X
+  ps_link <- spec$ps$link
+  inv_ps <- ipw_inv_link(ps_link, call = call)
+  z <- spec$exposure
+  x_out <- spec$outcome$X
+  y <- spec$outcome$y
+  family <- spec$outcome$family
+  out_link <- spec$outcome$link
+  inv_out <- ipw_inv_link(out_link, call = call)
+  x1 <- spec$outcome$X_counterfactual$X1
+  x0 <- spec$outcome$X_counterfactual$X0
+  score <- spec$stab$score
+  contrasts <- spec$contrasts
+  estimand <- spec$estimand
+  # The ate tilt is the constant 1: no tilt is evaluated and none is multiplied
+  # into the marginal-mean rows.
+  tilted <- !identical(estimand, "ate")
+  n <- spec$n
+  # Built once for the fit, not once per evaluation, so the report survives the
+  # solver's repeated visits to the same undefined means.
+  reporter <- ipw_contrast_reporter()
+
+  function(theta) {
+    th_ps <- theta[idx$ps]
+    th_stab <- theta[idx$stab]
+    th_out <- theta[idx$out]
+    th_mu <- theta[idx$mu]
+    th_con <- theta[idx$contrast]
+
+    ps_rows <- deli::ee_glm(
+      th_ps,
+      X = x_ps,
+      y = z,
+      distribution = "binomial",
+      link = ps_link
+    )
+    e <- inv_ps(as.vector(x_ps %*% th_ps))
+
+    stab_prob <- if (length(th_stab)) th_stab[[1]] else NULL
+    # The tilt enters an evaluation twice, as the numerator of the weights and
+    # as the standardization of the marginal-mean rows below. It is evaluated
+    # here and handed to both.
+    h <- if (tilted) ps_tilt_binary(e, estimand) else NULL
+    w <- weight_fn(e, z, list(stab_prob = stab_prob, score = score, tilt = h))
+
+    out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
+
+    stab_rows <- if (length(th_stab)) {
+      matrix(z - th_stab[[1]], nrow = 1)
+    } else {
+      NULL
+    }
+
+    mu1 <- th_mu[[1]]
+    mu0 <- th_mu[[2]]
+    # Standardize the marginal means to the estimand's tilted population. The
+    # tilt is recomputed from the ps block of theta on every evaluation, so the
+    # sandwich variance accounts for propensity score estimation. The root of
+    # sum_i h(e_i)(pred_a(x_i) - mu_a) = 0 is mu_a = weighted.mean(pred_a, h),
+    # and h = 1 for ate leaves the unweighted marginal means.
+    resid1 <- inv_out(as.vector(x1 %*% th_out)) - mu1
+    resid0 <- inv_out(as.vector(x0 %*% th_out)) - mu0
+    mu_rows <- if (tilted) {
+      rbind(h * resid1, h * resid0)
+    } else {
+      rbind(resid1, resid0)
+    }
+
+    con_rows <- ipw_contrast_rows(
+      contrasts,
+      mu1,
+      mu0,
+      th_con,
+      n,
+      reporter = reporter
+    )
+
+    ipw_stack(list(ps_rows, stab_rows, out_rows, mu_rows, con_rows))
+  }
+}
+
+# Reconstruct the n-by-K propensity score matrix from the multinomial ps block,
+# matching deli::ee_mlogit's internal softmax. Column order is reference-first.
+# A softmax is invariant to a common shift of its linear predictors, so each row
+# is shifted by its largest predictor, the reference category's implicit 0
+# included, before exponentiating. Without the shift a linear predictor above
+# about 709 overflows exp() to Inf and the row normalizes to NaN, which the
+# solver can reach on its own while iterating toward the root.
+ipw_categorical_ps <- function(x, theta, k) {
+  n <- nrow(x)
+  b <- ncol(x)
+  eta <- matrix(0, nrow = n, ncol = k)
+  shift <- rep(0, n)
+  for (j in seq_len(k - 1)) {
+    idx <- ((j - 1) * b + 1):(j * b)
+    eta[, j + 1] <- as.vector(x %*% theta[idx])
+    shift <- pmax(shift, eta[, j + 1])
+  }
+  ps <- exp(eta - shift)
+  ps / rowSums(ps)
+}
+
+ipw_psi_categorical <- function(
+  spec,
+  layout,
+  weight_fn,
+  call = rlang::caller_env()
+) {
+  idx <- layout$idx
+  x_ps <- spec$ps$X
+  k <- spec$ps$k
+  z_ind <- spec$exposure
+  x_out <- spec$outcome$X
+  y <- spec$outcome$y
+  family <- spec$outcome$family
+  out_link <- spec$outcome$link
+  inv_out <- ipw_inv_link(out_link, call = call)
+  x_cf <- spec$outcome$X_counterfactual
+  levs <- names(x_cf)
+  score <- spec$stab$score
+  focal_idx <- if (!is.null(spec$focal_level)) {
+    match(spec$focal_level, levs)
+  } else {
+    NULL
+  }
+  contrasts <- spec$contrasts
+  estimand <- spec$estimand
+  tilted <- !identical(estimand, "ate")
+  n <- spec$n
+  # One reporter per comparison, built once for the fit rather than once per
+  # evaluation, so each undefined effect reports once however often the solver
+  # revisits it. The labels are the ones the estimates table reports.
+  reporters <- lapply(ipw_comparison_labels(spec), ipw_contrast_reporter)
+
+  function(theta) {
+    th_ps <- theta[idx$ps]
+    th_stab <- theta[idx$stab]
+    th_out <- theta[idx$out]
+    th_mu <- theta[idx$mu]
+    th_con <- theta[idx$contrast]
+
+    ps_rows <- deli::ee_mlogit(th_ps, X = x_ps, y = z_ind)
+    ps_mat <- ipw_categorical_ps(x_ps, th_ps, k)
+
+    stab_probs <- if (length(th_stab)) {
+      c(1 - sum(th_stab), th_stab)
+    } else {
+      NULL
+    }
+    # Evaluated once and handed to both the weights and the marginal-mean rows.
+    h <- if (tilted) {
+      ps_tilt_categorical(ps_mat, estimand, focal_idx)
+    } else {
+      NULL
+    }
+    w <- weight_fn(
+      ps_mat,
+      z_ind,
+      list(
+        focal_idx = focal_idx,
+        stab_probs = stab_probs,
+        score = score,
+        tilt = h
+      )
+    )
+
+    out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
+
+    stab_rows <- if (length(th_stab)) {
+      do.call(
+        rbind,
+        lapply(seq_len(k - 1), function(j) {
+          matrix(z_ind[, j + 1] - th_stab[[j]], nrow = 1)
+        })
+      )
+    } else {
+      NULL
+    }
+
+    # Standardize each level's marginal mean to the estimand's tilted
+    # population, recomputing the tilt from the ps block on every evaluation.
+    # Row j of the block is h_i (pred_j(x_i) - mu_j) across the n columns, which
+    # makes the root mu_j = weighted.mean(pred_j, h). Each row is built at its
+    # own length n, so the tilt is never expanded to the full k-by-n matrix.
+    mu_rows <- t(vapply(
+      seq_len(k),
+      function(j) {
+        resid <- inv_out(as.vector(x_cf[[j]] %*% th_out)) - th_mu[[j]]
+        if (tilted) h * resid else resid
+      },
+      numeric(n)
+    ))
+
+    con_rows <- if (!is.null(contrasts) && length(contrasts)) {
+      mu_ref <- th_mu[[1]]
+      con_index <- 0L
+      row_list <- list()
+      for (j in seq_len(k)[-1]) {
+        mu_j <- th_mu[[j]]
+        reporter <- reporters[[j - 1L]]
+        for (form in contrasts) {
+          con_index <- con_index + 1L
+          val <- ipw_contrast_value(form, mu_j, mu_ref, reporter = reporter)
+          row_list[[con_index]] <- matrix(
+            val - th_con[[con_index]],
+            nrow = 1,
+            ncol = n
+          )
+        }
+      }
+      do.call(rbind, row_list)
+    } else {
+      NULL
+    }
+
+    ipw_stack(list(ps_rows, stab_rows, out_rows, mu_rows, con_rows))
+  }
+}
+
+ipw_psi_continuous <- function(
+  spec,
+  layout,
+  weight_fn,
+  call = rlang::caller_env()
+) {
+  idx <- layout$idx
+  x_ps <- spec$ps$X
+  a <- spec$exposure
+  x_out <- spec$outcome$X
+  y <- spec$outcome$y
+  family <- spec$outcome$family
+  out_link <- spec$outcome$link
+  score <- spec$stab$score
+  stabilized <- spec$stab$stabilized
+  n_alpha <- ncol(x_ps)
+
+  function(theta) {
+    th_ps <- theta[idx$ps]
+    th_stab <- theta[idx$stab]
+    th_out <- theta[idx$out]
+
+    alpha <- th_ps[seq_len(n_alpha)]
+    sigma2_d <- th_ps[[n_alpha + 1]]
+
+    ps_score <- deli::ee_regression(alpha, X = x_ps, y = a, model = "linear")
+    fitted_ps <- as.vector(x_ps %*% alpha)
+    var_row <- matrix((a - fitted_ps)^2 - sigma2_d, nrow = 1)
+    ps_rows <- rbind(ps_score, var_row)
+
+    if (length(th_stab)) {
+      mu_a <- th_stab[[1]]
+      sigma2_a <- th_stab[[2]]
+      stab_rows <- rbind(
+        matrix(a - mu_a, nrow = 1),
+        matrix((a - mu_a)^2 - sigma2_a, nrow = 1)
+      )
+    } else {
+      mu_a <- NULL
+      sigma2_a <- NULL
+      stab_rows <- NULL
+    }
+
+    w <- weight_fn(
+      fitted_ps,
+      a,
+      list(
+        sigma2_d = sigma2_d,
+        mu_a = mu_a,
+        sigma2_a = sigma2_a,
+        score = score,
+        stabilized = stabilized
+      )
+    )
+
+    out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
+
+    ipw_stack(list(ps_rows, stab_rows, out_rows))
+  }
+}

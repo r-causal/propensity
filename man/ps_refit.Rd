@@ -7,7 +7,10 @@
 ps_refit(trimmed_ps, model, .data = NULL, ...)
 }
 \arguments{
-\item{trimmed_ps}{A \code{ps_trim} object returned by \code{\link[=ps_trim]{ps_trim()}}.}
+\item{trimmed_ps}{A \code{ps_trim} object returned by \code{\link[=ps_trim]{ps_trim()}}. Refitting reads
+the retained positions out of the trimming record, so an object whose
+record was dropped or no longer covers it raises an error of class
+\code{propensity_missing_meta_error}; see \code{\link[=ps_trim]{ps_trim()}}.}
 
 \item{model}{The original fitted model used to estimate the propensity
 scores (e.g. a \link[stats:glm]{glm} or \link[nnet:multinom]{multinom} object).

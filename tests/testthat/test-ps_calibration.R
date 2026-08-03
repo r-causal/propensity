@@ -407,8 +407,8 @@ test_that("isotonic regression handles various cases like WeightIt", {
   treat_extreme <- c(0, 0, 0, 1, 1, 1, 1)
 
   # Our implementation should handle this without error
-  expect_no_error(
-    our_extreme <- ps_calibrate(ps_extreme, treat_extreme, method = "isoreg")
+  our_extreme <- expect_no_error(
+    ps_calibrate(ps_extreme, treat_extreme, method = "isoreg")
   )
   expect_true(all(as.numeric(our_extreme) >= 0 & as.numeric(our_extreme) <= 1))
   expect_true(all(diff(as.numeric(our_extreme)) >= -1e-10)) # Monotonic
@@ -749,4 +749,18 @@ test_that("pava_weighted preserves original order", {
   # After ordering by x: (1, 0.1), (2, 0.5), (3, 0.9) - already non-decreasing
   # So result should be the same as input
   expect_equal(result, y)
+})
+
+# An exposure with dimensions reaches the same coding the weight functions use,
+# where its cells were read in storage order rather than one value per
+# observation.
+
+test_that("ps_calibrate refuses an exposure with dimensions", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  dimensioned <- matrix(c(1, 0, 1, 0), nrow = 2, ncol = 2)
+
+  expect_error(
+    ps_calibrate(ps, dimensioned),
+    class = "propensity_binary_transform_error"
+  )
 })

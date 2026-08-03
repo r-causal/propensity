@@ -49,7 +49,7 @@ pak::pak("r-causal/propensity")
 
 ## Usage
 
-```{r usage, message = FALSE, warning = FALSE}
+```{r usage, message = FALSE}
 library(propensity)
 
 # Simulate data with a confounder, binary exposure, and binary outcome
@@ -64,13 +64,13 @@ ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 
 # Step 2: Calculate ATE weights and fit a weighted outcome model
 wts <- wt_ate(ps_mod)
-outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
+outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
 # Step 3: Estimate causal effects with correct standard errors
 ipw(ps_mod, outcome_mod)
 ```
 
-`ipw()` uses linearization to account for uncertainty in the estimated propensity scores when computing standard errors.
+By default, `ipw()` computes standard errors by M-estimation, stacking the propensity score and outcome estimating equations so the uncertainty of estimating the propensity scores is carried into the standard errors. Set `se_method = "linearization"` for the influence-function method (binary exposures with an exposure-only outcome model).
 
 ## Estimands
 

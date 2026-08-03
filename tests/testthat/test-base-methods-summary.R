@@ -108,21 +108,24 @@ test_that("Summary: Arithmetic behavior differences", {
 })
 
 test_that("Summary: Key differences and missing methods", {
-  # Missing methods across all classes:
-  # - None of the classes implement their own sort(), unique(), etc.
-  # - They rely on vctrs defaults which generally work well
+  # Where the three classes differ:
+  # 1. psw inherits `[`, summary(), min(), max(), range(), median(),
+  #    quantile(), anyDuplicated(), and diff() from causalgenerics' causal_wts
+  #    methods; ps_trim and ps_trunc each define their own.
+  # 2. ps_trim and ps_trunc implement sort(), unique(), and rep() so that the
+  #    record of which units were modified follows the result. psw implements
+  #    none of the three and takes the vctrs defaults.
+  # 3. na.omit() is implemented for ps_trim alone.
+  # 4. Arithmetic differs by design: psw keeps its class, ps_trim and ps_trunc
+  #    return plain numeric, since a transformed propensity score is no longer
+  #    a propensity score.
 
-  # Key differences:
-  # 1. psw doesn't have [ method, ps_trim and ps_trunc do
-  # 2. psw has summary() method, others don't
-  # 3. Arithmetic behavior is inconsistent (psw preserves, others don't)
-  # 4. ps_trim has duplicate vec_restore definitions
-  # 5. ps_trunc has duplicate vec_restore definitions
+  # Each class defines vec_restore() exactly once.
 
-  # All classes properly implement:
-  # - min, max, range, median, quantile (return numeric as expected)
-  # - anyDuplicated, diff (return expected types)
-  # - vctrs integration for most operations
+  # All three classes:
+  # - return numeric from min, max, range, median, quantile
+  # - return the expected types from anyDuplicated, diff
+  # - integrate with vctrs for coercion, combination, and subsetting
 
   expect_true(TRUE) # Placeholder assertion
 })

@@ -346,10 +346,17 @@ test_that("ps_trunc works with summarize(mean = mean(ps))", {
   ps <- predict(fit, type = "response") |>
     ps_trunc(method = "ps", lower = 0.3, upper = 0.7)
 
-  out <- tibble(x, z, ps) |>
-    group_by(truncated = is_unit_truncated(ps)) |>
-    summarize(mean = mean(ps), .groups = "drop")
+  # A grouped summary slices the column once per group, and each slice holds
+  # scores the truncation record was not written for, so the record is dropped
+  # and says so. The summary itself reads values rather than positions.
+  summarized <- count_record_drops(
+    tibble(x, z, ps) |>
+      group_by(truncated = is_unit_truncated(ps)) |>
+      summarize(mean = mean(ps), .groups = "drop")
+  )
+  expect_gt(summarized$drops, 0)
 
+  out <- summarized$value
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("truncated", "mean"))
   expect_type(out$mean, "double")
@@ -392,38 +399,26 @@ test_that("ps_trunc index tracking works when combining objects", {
   ps_trunc1 <- ps_trunc(ps1, method = "ps", lower = 0.2, upper = 0.8)
   ps_trunc2 <- ps_trunc(ps2, method = "ps", lower = 0.2, upper = 0.8)
 
-  # Get original truncated indices
-  meta1 <- ps_trunc_meta(ps_trunc1)
-  meta2 <- ps_trunc_meta(ps_trunc2)
-  n_truncated1 <- length(meta1$truncated_idx)
-  n_truncated2 <- length(meta2$truncated_idx)
-
   # Combine the objects
   combined <- c(ps_trunc1, ps_trunc2)
 
-  # Should be a ps_trunc object
+  # Should be a ps_trunc object holding every value in order
   expect_s3_class(combined, "ps_trunc")
-
-  # Check that indices are properly tracked
-  combined_meta <- ps_trunc_meta(combined)
   expect_equal(length(combined), 20)
-
-  # The total number of truncated should be the sum
   expect_equal(
-    length(combined_meta$truncated_idx),
-    n_truncated1 + n_truncated2
+    vec_data(combined),
+    c(vec_data(ps_trunc1), vec_data(ps_trunc2))
   )
 
-  # Check that values at bounds are at the correct positions
-  combined_data <- vec_data(combined)
-  lower_bound <- combined_meta$lower_bound
-  upper_bound <- combined_meta$upper_bound
-
-  # All truncated indices should have values at the bounds
-  truncated_values <- combined_data[combined_meta$truncated_idx]
-  expect_true(all(
-    truncated_values == lower_bound | truncated_values == upper_bound
-  ))
+  # Concatenation appends one set of observations to another, so the positions
+  # either record names would describe units from the other input.
+  combined_meta <- ps_trunc_meta(combined)
+  expect_null(combined_meta$truncated_idx)
+  expect_equal(combined_meta$method, "ps")
+  expect_error(
+    is_unit_truncated(combined),
+    class = "propensity_missing_meta_error"
+  )
 })
 
 test_that("ps_trunc warns when combining objects with different parameters", {
@@ -435,9 +430,7 @@ test_that("ps_trunc warns when combining objects with different parameters", {
   ps_trunc2 <- ps_trunc(ps2, method = "ps", lower = 0.3, upper = 0.7)
 
   # Should warn and return numeric
-  expect_propensity_warning(
-    combined <- c(ps_trunc1, ps_trunc2)
-  )
+  combined <- expect_propensity_warning(c(ps_trunc1, ps_trunc2))
 
   expect_type(combined, "double")
   expect_false(inherits(combined, "ps_trunc"))
@@ -461,12 +454,14 @@ test_that("ps_trunc index tracking works with subsetting and combining", {
   # Should maintain ps_trunc class
   expect_s3_class(recombined, "ps_trunc")
 
-  # Check indices are properly tracked
-  recombined_meta <- ps_trunc_meta(recombined)
+  # Each half kept a record written for itself, and the recombination has none:
+  # the halves were subset with a subscript in hand and appended without one.
   expect_equal(
-    length(recombined_meta$truncated_idx),
+    length(ps_trunc_meta(subset1)$truncated_idx) +
+      length(ps_trunc_meta(subset2)$truncated_idx),
     length(meta$truncated_idx)
   )
+  expect_null(ps_trunc_meta(recombined)$truncated_idx)
 
   # Check that truncated values are preserved at correct positions
   recombined_data <- vec_data(recombined)
@@ -500,18 +495,233 @@ test_that("ps_trunc handles multiple combines correctly", {
   # Combine all three
   combined <- c(ps_trunc1, ps_trunc2, ps_trunc3)
 
-  # Should maintain ps_trunc class
+  # Should maintain ps_trunc class and every value
   expect_s3_class(combined, "ps_trunc")
   expect_equal(length(combined), 15)
+  expect_equal(
+    vec_data(combined),
+    c(vec_data(ps_trunc1), vec_data(ps_trunc2), vec_data(ps_trunc3))
+  )
 
-  # Check indices
-  combined_meta <- ps_trunc_meta(combined)
-  combined_data <- vec_data(combined)
+  # Folding three inputs together drops the record just as folding two does.
+  expect_null(ps_trunc_meta(combined)$truncated_idx)
+  expect_error(
+    is_unit_truncated(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
 
-  # All truncated indices should have values at bounds
-  truncated_values <- combined_data[combined_meta$truncated_idx]
-  expect_true(all(
-    truncated_values == combined_meta$lower_bound |
-      truncated_values == combined_meta$upper_bound
-  ))
+# Truncation record integrity ----------------------------------------------
+
+# The record a `ps_trunc` carries names positions among the observations it was
+# written for. An operation that changes how many observations there are is not
+# handed the subscript, so it cannot re-index the record onto the result and
+# drops it rather than leave positions describing units they were never about.
+
+trunc_record_fixture <- function() {
+  # Position 1 is pinned up to the lower bound. Position 4 already sits on the
+  # upper bound and was left alone, so bound equality does not mark a unit.
+  ps_trunc(
+    c(0.05, 0.3, 0.5, 0.9, 0.6),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+}
+
+test_that("ps_trunc() records how many observations its positions describe", {
+  meta <- ps_trunc_meta(trunc_record_fixture())
+
+  expect_equal(meta$truncated_idx, 1L)
+  expect_equal(meta$n_obs, 5L)
+})
+
+test_that("slicing a ps_trunc shorter drops the truncation record with a warning", {
+  x <- trunc_record_fixture()
+
+  cnd <- expect_warning(
+    sliced <- vec_slice(x, 2:3),
+    class = "propensity_trunc_record_warning"
+  )
+  expect_s3_class(cnd, "propensity_warning")
+
+  expect_s3_class(sliced, "ps_trunc")
+  expect_equal(as.numeric(sliced), c(0.3, 0.5))
+
+  meta <- ps_trunc_meta(sliced)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+
+  # Nothing that is not indexed by observation is touched by the drop.
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, 0.1)
+  expect_equal(meta$upper_bound, 0.9)
+  expect_true(is_ps_truncated(sliced))
+
+  expect_error(
+    is_unit_truncated(sliced),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("filtering a ps_trunc column drops the truncation record with a warning", {
+  skip_if_not_installed("dplyr")
+
+  df <- data.frame(id = 1:5)
+  df$ps <- trunc_record_fixture()
+
+  expect_warning(
+    filtered <- dplyr::filter(df, id %in% 2:3),
+    class = "propensity_trunc_record_warning"
+  )
+
+  expect_s3_class(filtered$ps, "ps_trunc")
+  expect_equal(as.numeric(filtered$ps), c(0.3, 0.5))
+  expect_null(ps_trunc_meta(filtered$ps)$truncated_idx)
+  expect_error(
+    is_unit_truncated(filtered$ps),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("a length-preserving ps_trunc restore keeps the truncation record", {
+  x <- trunc_record_fixture()
+  meta <- ps_trunc_meta(x)
+  truncated_units <- c(TRUE, FALSE, FALSE, FALSE, FALSE)
+
+  whole <- expect_silent(vec_slice(x, seq_along(x)))
+  expect_identical(ps_trunc_meta(whole), meta)
+  expect_identical(is_unit_truncated(whole), truncated_units)
+
+  empty_subscript <- expect_silent(x[])
+  expect_identical(ps_trunc_meta(empty_subscript), meta)
+
+  expect_silent({
+    x[2] <- 0.4
+  })
+  expect_identical(ps_trunc_meta(x), meta)
+  expect_identical(is_unit_truncated(x), truncated_units)
+})
+
+test_that("a zero-length ps_trunc slice keeps the record and answers nothing", {
+  x <- trunc_record_fixture()
+
+  proto <- expect_silent(vec_ptype(x))
+  expect_length(proto, 0)
+  expect_identical(ps_trunc_meta(proto), ps_trunc_meta(x))
+
+  expect_identical(is_unit_truncated(proto), logical(0))
+  expect_identical(is_unit_truncated(x[integer(0)]), logical(0))
+})
+
+test_that("a truncation record that no longer covers the scores refuses to answer", {
+  x <- trunc_record_fixture()
+  expect_silent({
+    x[7] <- 0.5
+  })
+
+  expect_length(x, 7)
+  expect_identical(ps_trunc_meta(x), ps_trunc_meta(trunc_record_fixture()))
+  expect_true(is_ps_truncated(x))
+  expect_error(
+    is_unit_truncated(x),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("combining ps_trunc objects drops the truncation record", {
+  x <- trunc_record_fixture()
+
+  combined <- expect_silent(c(x, x))
+  expect_s3_class(combined, "ps_trunc")
+  expect_length(combined, 10)
+  expect_equal(as.numeric(combined), rep(as.numeric(x), 2))
+
+  meta <- ps_trunc_meta(combined)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+  expect_equal(meta$method, "ps")
+
+  expect_true(is_ps_truncated(combined))
+  expect_error(
+    is_unit_truncated(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("combining ps_trunc objects does not read truncated units off the bounds", {
+  # Position 4 holds a score that arrived equal to the upper bound and was left
+  # alone. Reading membership back from bound equality would report it, and the
+  # copy of it in the second half, as units this package winsorized.
+  x <- trunc_record_fixture()
+  expect_identical(
+    is_unit_truncated(x),
+    c(TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+
+  combined <- expect_silent(c(x, x))
+  expect_null(ps_trunc_meta(combined)$truncated_idx)
+  expect_error(
+    is_unit_truncated(combined),
+    class = "propensity_missing_meta_error"
+  )
+})
+
+test_that("casting to ps_trunc records positions and a length", {
+  x <- trunc_record_fixture()
+
+  empty <- vec_cast(double(), to = x)
+  expect_s3_class(empty, "ps_trunc")
+  expect_true("truncated_idx" %in% names(ps_trunc_meta(empty)))
+  expect_equal(ps_trunc_meta(empty)$truncated_idx, integer(0))
+  expect_equal(ps_trunc_meta(empty)$n_obs, 0L)
+
+  values <- vec_cast(c(0.3, 0.4), to = x)
+  expect_s3_class(values, "ps_trunc")
+  expect_equal(ps_trunc_meta(values)$truncated_idx, integer(0))
+  expect_equal(ps_trunc_meta(values)$n_obs, 2L)
+  expect_identical(is_unit_truncated(values), c(FALSE, FALSE))
+
+  from_integer <- vec_cast(c(0L, 1L), to = x)
+  expect_equal(ps_trunc_meta(from_integer)$truncated_idx, integer(0))
+  expect_equal(ps_trunc_meta(from_integer)$n_obs, 2L)
+})
+
+test_that("a ps_trunc reordered through vctrs keeps the record for the old order", {
+  # The documented limit of the coverage check, which counts observations and so
+  # sees nothing in a reordering. No subscript reaches the restore, so the
+  # record survives naming where the observations used to be.
+  x <- trunc_record_fixture()
+
+  reordered <- expect_silent(vec_slice(x, 5:1))
+  expect_equal(as.numeric(reordered), c(0.6, 0.9, 0.5, 0.3, 0.1))
+  expect_identical(ps_trunc_meta(reordered), ps_trunc_meta(x))
+
+  # The winsorized unit now holds position 5, and the record still names 1, so
+  # the answer is the one the record gives rather than the one the values show.
+  expect_identical(
+    is_unit_truncated(reordered),
+    c(TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+
+  # `[` is handed the subscript and re-indexes, so the same reordering through
+  # `[` reports the unit that holds that position.
+  expect_identical(
+    is_unit_truncated(x[5:1]),
+    c(FALSE, FALSE, FALSE, FALSE, TRUE)
+  )
+})
+
+# An exposure with dimensions reaches the same coding the weight functions use,
+# where its cells were read in storage order rather than one value per
+# observation.
+
+test_that("ps_trunc refuses an exposure with dimensions", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+  dimensioned <- matrix(c(1, 0, 1, 0), nrow = 2, ncol = 2)
+
+  expect_error(
+    ps_trunc(ps, method = "cr", .exposure = dimensioned),
+    class = "propensity_binary_transform_error"
+  )
 })

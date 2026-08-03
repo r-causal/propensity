@@ -46,6 +46,16 @@
 #'   vector), and `"optimal"` (factor or character). Not required for other
 #'   methods.
 #' @inheritParams wt_ate
+#' @param .focal_level The value of `.exposure` representing the focal
+#'   (treated) group, used by `"pref"` and `"cr"`. Every binary coding honors
+#'   it: 0/1 numeric, logical, two-level factor, and two-level character
+#'   exposures are all coded with the named level as focal. With no level
+#'   named, a binary exposure defaults to its higher level, which is `1` for a
+#'   0/1 exposure and `TRUE` for a logical one. Naming any other level reverses
+#'   the coding, so `ps` must then hold the probability of the named level.
+#' @param .reference_level The value of `.exposure` representing the reference
+#'   (control) group. Naming it makes the exposure's other level focal, with
+#'   the same consequence for `ps`. Automatically detected if not supplied.
 #' @param ... Additional arguments passed to methods.
 #'
 #' @details
@@ -91,6 +101,46 @@
 #' Use [ps_trim_meta()] to inspect the trimming metadata, including the method,
 #' cutoffs, and which observations were retained or trimmed.
 #'
+#' ## The trimming record
+#'
+#' A `ps_trim` records which units were trimmed as positions among the
+#' observations it was written for, along with how many observations that was.
+#' Operations that hand this package the subscript re-index those positions onto
+#' the result: subsetting with `[`, [sort()], [unique()], [rep()], and
+#' [na.omit()] all return a record written for what they return, and a subscript
+#' naming a position more than once reports that unit at every place it now
+#' holds.
+#'
+#' Operations that change how many observations there are without supplying a
+#' subscript cannot re-index the record, and it is dropped rather than worked
+#' out from the values, since reading membership back from the `NA` pattern
+#' would report a propensity score that arrived missing as one this package
+#' removed. [vctrs::vec_slice()], which is how filtering, joining, and grouped
+#' summaries in dplyr reach a column, is the usual route, and dropping the
+#' record there raises a warning of class `propensity_trim_record_warning`.
+#' Combining with [c()] drops it without comment, because concatenation appends
+#' one set of observations to another and the prototype it builds the result
+#' from holds no positions to lose. The values, the class, and the method and
+#' its cutoffs are untouched either way.
+#'
+#' A record can also outlive the observations it describes, because it travels
+#' by routes vctrs does not see: growing a `ps_trim` by subassignment carries it
+#' across the length change. [is_unit_trimmed()] and [ps_refit()] therefore
+#' check that the record covers the object they are given and raise an error of
+#' class `propensity_missing_meta_error` when it does not, rather than name
+#' trimmed units at stale positions.
+#'
+#' That check compares how many observations the record was written for against
+#' how many the object holds, which a reordering does not change. An operation
+#' that reorders the observations through vctrs, rather than through `[`,
+#' therefore keeps a record written for the order they used to be in:
+#' `vctrs::vec_slice(x, 5:1)` and `dplyr::arrange()` both return the values in
+#' a new order under positions still naming the old one. [is_unit_trimmed()]
+#' answers from those positions and names the wrong units, and [ps_refit()]
+#' refits on the wrong rows. Subsetting with `[` is handed the subscript and
+#' re-indexes, so reorder with `[`, or put the propensity scores in the order
+#' you want before trimming them.
+#'
 #' @return A **`ps_trim`** object (a numeric vector with class `"ps_trim"`, or a
 #'   matrix with class `"ps_trim_matrix"`). Trimmed observations are `NA`.
 #'   Metadata is stored in the `"ps_trim_meta"` attribute and can be accessed
@@ -99,6 +149,7 @@
 #'   * `method`: the trimming method used
 #'   * `keep_idx`: integer indices of retained observations
 #'   * `trimmed_idx`: integer indices of trimmed (NA) observations
+#'   * `n_obs`: the number of observations those indices describe
 #'   * Method-specific fields such as `cutoff` (adaptive), `q_lower`/`q_upper`
 #'     (pctl), `cr_lower`/`cr_upper` (cr), `delta` (categorical ps),
 #'     or `lambda` (optimal)
@@ -304,7 +355,8 @@ ps_trim.default <- function(
       meta_list,
       list(
         keep_idx = keep_idx,
-        trimmed_idx = trimmed_idx
+        trimmed_idx = trimmed_idx,
+        n_obs = n
       )
     )
   )
@@ -338,7 +390,7 @@ ps_trim.matrix <- function(
   .exposure <- transform_exposure_categorical(.exposure)
 
   # Validate matrix
-  ps <- check_ps_matrix(ps, .exposure, call = rlang::caller_env())
+  ps <- check_ps_matrix(ps, .exposure, call = rlang::current_env())
 
   n <- nrow(ps)
   k <- ncol(ps)
@@ -448,7 +500,8 @@ ps_trim.matrix <- function(
       meta_list,
       list(
         keep_idx = keep_idx,
-        trimmed_idx = trimmed_idx
+        trimmed_idx = trimmed_idx,
+        n_obs = n
       )
     )
   )
@@ -547,6 +600,86 @@ new_trimmed_ps <- function(x, ps_trim_meta = list()) {
   }
 }
 
+# The positional half of a trimming record. The rest of it, the method and its
+# cutoffs, describes the trimming rather than the units and means the same thing
+# at any length.
+reindex_trim_record <- function(meta, i) {
+  meta$keep_idx <- reindex_positions(meta$keep_idx, i)
+  meta$trimmed_idx <- reindex_positions(meta$trimmed_idx, i)
+  meta$n_obs <- length(i)
+
+  meta
+}
+
+drop_trim_record <- function(meta) {
+  meta[["keep_idx"]] <- NULL
+  meta[["trimmed_idx"]] <- NULL
+  meta[["n_obs"]] <- NULL
+
+  meta
+}
+
+# A record that no longer describes the observations in front of it is dropped
+# rather than guessed at. Nothing in the values says which units a shorter or a
+# longer vector once trimmed, and reading membership back from the `NA` pattern
+# would report a propensity score that arrived missing as one this package
+# removed.
+#
+# A record over no observations names no unit, so replacing it costs the caller
+# nothing and goes without comment. That is the record every prototype carries,
+# which is what concatenation builds its result from.
+discard_trim_record <- function(meta, n) {
+  recorded <- meta$n_obs
+
+  if (!is.null(recorded) && recorded > 0) {
+    warn(
+      c(
+        "Dropping the record of which units were trimmed.",
+        i = "The record describes {recorded} observation{?s} and this result
+             has {n}, so its positions do not describe them.",
+        i = "The values are unchanged and the result is still a
+             {.cls ps_trim}. Trim the propensity scores you want to work with
+             to get a record written for them."
+      ),
+      warning_class = "propensity_trim_record_warning",
+      # One of the routes here is vctrs' internal dispatch, whose call would be
+      # reported and names nothing the caller wrote, so no call is attributed.
+      call = NULL
+    )
+  }
+
+  drop_trim_record(meta)
+}
+
+# A positional query reads its answer out of the record, so a record that does
+# not cover the object in front of it has no answer to give: reporting every
+# unit as retained would be a wrong answer rather than a missing one.
+check_trim_record <- function(meta, n, fn, call = rlang::caller_env()) {
+  if (record_covers(meta, n)) {
+    return(invisible(meta))
+  }
+
+  recorded <- meta$n_obs
+  problem <- if (is.null(recorded)) {
+    "These propensity scores carry no record of which units were trimmed."
+  } else {
+    "The record describes {recorded} observation{?s} and these propensity
+     scores have {n}, so its positions do not describe them."
+  }
+
+  abort(
+    c(
+      "{.code {fn}} has no usable trimming record for these propensity scores.",
+      x = problem,
+      i = "An operation that changed the number of observations dropped it.
+           Trim the propensity scores you want to work with, or query the
+           object the record was written for."
+    ),
+    error_class = "propensity_missing_meta_error",
+    call = call
+  )
+}
+
 #' Test whether propensity scores have been trimmed
 #'
 #' @description `is_ps_trimmed()` returns `TRUE` if `x` is a `ps_trim` object
@@ -595,7 +728,30 @@ is_ps_trimmed.ps_trim_matrix <- function(x) {
 #'   to [is_ps_trimmed()], which tests whether the object has been trimmed at
 #'   all.
 #'
-#' @param x A `ps_trim` object created by [ps_trim()].
+#'   The answer comes from the trimming record, which is written for a fixed set
+#'   of observations and can both be lost and outlive them. On a `ps_trim`,
+#'   [vctrs::vec_slice()] and [c()] drop it, and subassignment that grows the
+#'   vector carries it across a length change; see [ps_trim()] for the whole
+#'   contract. On a [psw] vector built from trimmed propensity scores, a subset
+#'   drops it, while `model.frame()` re-attaches it to the shortened weights
+#'   column of an outcome model fit on these weights.
+#'
+#'   `is_unit_trimmed()` therefore checks that the record covers the object it
+#'   is given, and raises an error of class `propensity_missing_meta_error` when
+#'   it does not, or when an object marked as trimmed carries no record at all,
+#'   rather than name trimmed units at stale positions. Query the `ps_trim`
+#'   object the record was written for instead.
+#'
+#'   That check counts observations, which a reordering does not change, so it
+#'   does not catch one. A `ps_trim` reordered through vctrs rather than through
+#'   `[`, by `vctrs::vec_slice(x, 5:1)` or `dplyr::arrange()`, keeps a record
+#'   written for the old order, and a `psw` keeps one through any same-length
+#'   operation, a reordering included. `is_unit_trimmed()` answers from those
+#'   positions and names the wrong units. See [ps_trim()] and [psw] for the
+#'   whole contract.
+#'
+#' @param x A `ps_trim` object created by [ps_trim()], or a [psw] vector built
+#'   from one.
 #' @return A logical vector the same length as `x`, where `TRUE` marks a
 #'   trimmed unit.
 #'
@@ -628,7 +784,16 @@ is_unit_trimmed.default <- function(x) {
 
 #' @export
 is_unit_trimmed.ps_trim <- function(x) {
+  # No observations, no answers. A record kept on an empty vector describes
+  # observations it does not have, and indexing an empty logical by the
+  # positions it names would grow one padded with `NA`.
+  if (length(x) == 0) {
+    return(logical(0))
+  }
+
   meta <- ps_trim_meta(x)
+  check_trim_record(meta, length(x), "is_unit_trimmed()")
+
   out <- vector("logical", length = length(x))
   out[meta$trimmed_idx] <- TRUE
 
@@ -637,7 +802,13 @@ is_unit_trimmed.ps_trim <- function(x) {
 
 #' @export
 is_unit_trimmed.ps_trim_matrix <- function(x) {
+  if (nrow(x) == 0) {
+    return(logical(0))
+  }
+
   meta <- ps_trim_meta(x)
+  check_trim_record(meta, nrow(x), "is_unit_trimmed()")
+
   out <- vector("logical", length = nrow(x))
   out[meta$trimmed_idx] <- TRUE
 
@@ -679,35 +850,17 @@ is_unit_trimmed.ps_trim_matrix <- function(x) {
     return(as.numeric(result))
   }
 
-  # Handle different index types for rows
-  n <- nrow(x)
-
-  if (is.logical(i)) {
-    # Convert logical to positions
-    i <- which(i)
-  } else if (any(i < 0)) {
-    # Handle negative indexing
-    i <- setdiff(seq_len(n), -i)
+  # The rows the result was built from, as positions in `x`, which is what
+  # re-indexing the record takes. These are worked out from the subscript rather
+  # than read off the result, so a form they do not reproduce, seen as a count
+  # that does not match the rows base returned, degrades the record rather than
+  # certifying it against rows it does not describe.
+  rows <- subscript_row_positions(i, x)
+  new_meta <- if (length(rows) == nrow(result)) {
+    carry_trim_record(meta, nrow(x), rows)
+  } else {
+    discard_trim_record(meta, nrow(result))
   }
-
-  # Map indices to new positions
-  new_keep_idx <- integer(0)
-  new_trimmed_idx <- integer(0)
-
-  for (idx in seq_along(i)) {
-    old_pos <- i[idx]
-    if (old_pos %in% meta$keep_idx) {
-      new_keep_idx <- c(new_keep_idx, idx)
-    }
-    if (old_pos %in% meta$trimmed_idx) {
-      new_trimmed_idx <- c(new_trimmed_idx, idx)
-    }
-  }
-
-  # Update metadata
-  new_meta <- meta
-  new_meta$keep_idx <- new_keep_idx
-  new_meta$trimmed_idx <- new_trimmed_idx
 
   attr(result, "ps_trim_meta") <- new_meta
   class(result) <- c("ps_trim_matrix", "ps_trim", "matrix")
@@ -765,10 +918,18 @@ vec_ptype_abbr.ps_trim <- function(x, ...) "ps_trim"
 
 #' @export
 vec_ptype_full.ps_trim <- function(x, ...) {
+  meta <- ps_trim_meta(x)
+
+  # Without a record there is no count to report, and reporting none trimmed
+  # would say something about the units the record no longer speaks for.
+  if (is.null(meta$n_obs)) {
+    return("ps_trim; record dropped; ")
+  }
+
   paste(
     "ps_trim;",
     "trimmed",
-    length(ps_trim_meta(x)$trimmed_idx),
+    length(meta$trimmed_idx),
     "of "
   )
 }
@@ -861,8 +1022,10 @@ vec_ptype2.ps_trim.ps_trim <- function(x, y, ...) {
   if (
     is.null(x_meta$method) || is.null(x_meta$lower) || is.null(x_meta$upper)
   ) {
-    # Return basic ps_trim if metadata is incomplete
-    new_trimmed_ps(double(), ps_trim_meta = x_meta)
+    # Return basic ps_trim if metadata is incomplete. The prototype is shared by
+    # inputs whose observations are appended one after another, so the positions
+    # either record names would describe units from the other input.
+    new_trimmed_ps(double(), ps_trim_meta = drop_trim_record(x_meta))
   } else {
     ps_trim(
       double(),
@@ -915,7 +1078,8 @@ vec_cast.ps_trim.double <- function(x, to, ...) {
     ps_trim_meta = list(
       method = "unknown",
       keep_idx = seq_along(x),
-      trimmed_idx = integer(0)
+      trimmed_idx = integer(0),
+      n_obs = length(x)
     )
   )
 }
@@ -970,7 +1134,8 @@ vec_cast.ps_trim.integer <- function(x, to, ...) {
     ps_trim_meta = list(
       method = "unknown",
       keep_idx = seq_along(xx),
-      trimmed_idx = integer(0)
+      trimmed_idx = integer(0),
+      n_obs = length(xx)
     )
   )
 }
@@ -983,7 +1148,8 @@ vec_cast.ps_trim.ps_trunc <- function(x, to, ...) {
     ps_trim_meta = list(
       method = "from_trunc",
       keep_idx = seq_along(x),
-      trimmed_idx = integer(0)
+      trimmed_idx = integer(0),
+      n_obs = length(x)
     )
   )
 }
@@ -1054,58 +1220,60 @@ median.ps_trim <- function(x, na.rm = FALSE, ...) {
   }
   i <- vec_as_location(i, n = length(x))
 
-  # Get the subset of data using NextMethod to handle vctrs subsetting
-  result <- NextMethod()
+  # The subscript is in hand here, which is what re-indexing a record takes and
+  # what the restore behind `NextMethod()` lacks: that restore would see a
+  # record written for a different number of observations and drop it. Building
+  # the result here keeps ordinary subsetting describing what it returns.
+  new_trimmed_ps(
+    vec_data(x)[i],
+    ps_trim_meta = carry_trim_record(meta, length(x), i)
+  )
+}
 
-  # Update indices: map old positions to new positions
-  new_trimmed_idx <- match(meta$trimmed_idx, i)
-  new_trimmed_idx <- new_trimmed_idx[!is.na(new_trimmed_idx)]
-
-  new_keep_idx <- match(meta$keep_idx, i)
-  new_keep_idx <- new_keep_idx[!is.na(new_keep_idx)]
-
-  # Update metadata
-  new_meta <- meta
-  new_meta$trimmed_idx <- new_trimmed_idx
-  new_meta$keep_idx <- new_keep_idx
-
-  # Update the attributes on the result
-  attr(result, "ps_trim_meta") <- new_meta
-
-  result
+# `i` holds the old positions the result is built from, in the order it holds
+# them, among the `n_obs` observations it was taken from. A record that covers
+# those observations re-indexes onto `i`; one that does not cannot be placed
+# against them at all.
+carry_trim_record <- function(meta, n_obs, i) {
+  if (record_covers(meta, n_obs)) {
+    reindex_trim_record(meta, i)
+  } else {
+    discard_trim_record(meta, length(i))
+  }
 }
 
 #' @export
 sort.ps_trim <- function(x, decreasing = FALSE, na.last = NA, ...) {
-  # Get original metadata
   meta <- ps_trim_meta(x)
-
-  # Get numeric data
   x_data <- vec_data(x)
 
-  # Create a tracking vector to know which NAs are from trimming
-  # TRUE = trimmed, FALSE = not trimmed (includes original NAs)
-  is_trimmed <- logical(length(x))
-  is_trimmed[meta$trimmed_idx] <- TRUE
-
-  # Get the order
+  # `order()` returns the old positions in their new order, and drops the `NA`
+  # positions entirely when `na.last = NA`, so it is the subscript the result is
+  # built from and the record follows it.
   ord <- order(x_data, na.last = na.last, decreasing = decreasing, ...)
 
-  # Apply the ordering to both data and tracking vector
-  sorted_data <- x_data[ord]
-  sorted_is_trimmed <- is_trimmed[ord]
+  new_trimmed_ps(
+    x_data[ord],
+    ps_trim_meta = carry_trim_record(meta, length(x), ord)
+  )
+}
 
-  # Find new positions of trimmed values
-  new_trimmed_idx <- which(sorted_is_trimmed)
-  new_keep_idx <- which(!sorted_is_trimmed & !is.na(sorted_data))
+#' @export
+unique.ps_trim <- function(x, incomparables = FALSE, ...) {
+  check_incomparables(incomparables, "ps_trim")
 
-  # Create new metadata with updated indices
-  new_meta <- meta
-  new_meta$trimmed_idx <- new_trimmed_idx
-  new_meta$keep_idx <- new_keep_idx
+  # `vec_unique_loc()` names the position each retained value came from, which
+  # is the subscript re-indexing the record takes. Without this the restore
+  # behind vctrs' own method sees only a shorter vector and drops the record.
+  x[vec_unique_loc(x)]
+}
 
-  # Create the sorted ps_trim object
-  new_trimmed_ps(sorted_data, ps_trim_meta = new_meta)
+#' @export
+rep.ps_trim <- function(x, ...) {
+  # The positions `rep()` produces are the subscript the result is built from,
+  # so the record follows them and a repeated unit is reported at each place it
+  # now holds.
+  x[rep(seq_along(x), ...)]
 }
 
 #' @export
@@ -1126,20 +1294,11 @@ na.omit.ps_trim <- function(object, ...) {
   # Get the clean data
   clean_data <- vec_data(object)[not_na]
 
-  # Update metadata - only keep indices that are in kept_positions
-  new_trimmed_idx <- match(meta$trimmed_idx, kept_positions)
-  new_trimmed_idx <- new_trimmed_idx[!is.na(new_trimmed_idx)]
-
-  new_keep_idx <- match(meta$keep_idx, kept_positions)
-  new_keep_idx <- new_keep_idx[!is.na(new_keep_idx)]
-
-  # Create new metadata
-  new_meta <- meta
-  new_meta$trimmed_idx <- new_trimmed_idx
-  new_meta$keep_idx <- new_keep_idx
-
   # Create the result with na.action attribute
-  result <- new_trimmed_ps(clean_data, ps_trim_meta = new_meta)
+  result <- new_trimmed_ps(
+    clean_data,
+    ps_trim_meta = carry_trim_record(meta, length(object), kept_positions)
+  )
 
   # Add na.action attribute as base na.omit does
   attr(result, "na.action") <- which(!not_na)
@@ -1150,28 +1309,21 @@ na.omit.ps_trim <- function(object, ...) {
 
 #' @export
 vec_restore.ps_trim <- function(x, to, ...) {
-  # Get the prototype's metadata
-  to_meta <- ps_trim_meta(to)
+  # vec_data in case x is already a vctr
+  data <- vec_data(x)
+  meta <- ps_trim_meta(to)
 
-  # For combining multiple ps_trim objects, we need to reconstruct indices
-  # based on which values are NA (these were trimmed)
-  if (length(to_meta$trimmed_idx) == 0 && length(x) > 0) {
-    # Identify which positions have NA values (these were trimmed)
-    na_positions <- which(is.na(x))
-
-    # Update metadata with the NA positions as trimmed indices
-    new_meta <- to_meta
-    new_meta$trimmed_idx <- na_positions
-    new_meta$keep_idx <- setdiff(seq_along(x), na_positions)
-
-    # Use the constructor to create a proper ps_trim object
-    # vec_data in case x is already a vctr
-    return(new_trimmed_ps(vec_data(x), ps_trim_meta = new_meta))
+  # Nothing rebuilding a `ps_trim` is handed the subscript behind a length
+  # change, so a record written for a different number of observations cannot be
+  # re-indexed onto the data arriving here. Zero-length data is exempt: a
+  # prototype or an empty slice holds no observations, so no position in the
+  # record contradicts it, and the record rides along to the restore that builds
+  # the real result.
+  if (length(data) > 0 && !record_covers(meta, length(data))) {
+    meta <- discard_trim_record(meta, length(data))
   }
 
-  # Use the constructor with the prototype's metadata
-  # vec_data in case x is already a vctr
-  new_trimmed_ps(vec_data(x), ps_trim_meta = to_meta)
+  new_trimmed_ps(data, ps_trim_meta = meta)
 }
 
 #' @export
@@ -1204,7 +1356,10 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #' fit and downstream weight estimation. Weight functions warn if a trimmed
 #' propensity score has not been refit.
 #'
-#' @param trimmed_ps A `ps_trim` object returned by [ps_trim()].
+#' @param trimmed_ps A `ps_trim` object returned by [ps_trim()]. Refitting reads
+#'   the retained positions out of the trimming record, so an object whose
+#'   record was dropped or no longer covers it raises an error of class
+#'   `propensity_missing_meta_error`; see [ps_trim()].
 #' @param model The original fitted model used to estimate the propensity
 #'   scores (e.g. a [glm][stats::glm] or [multinom][nnet::multinom] object).
 #'   The model is refit via [update()][stats::update] on the retained subset.
@@ -1242,6 +1397,13 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   assert_class(trimmed_ps, "ps_trim")
   meta <- ps_trim_meta(trimmed_ps)
 
+  # Get the number of observations
+  n_obs <- if (is.matrix(trimmed_ps)) nrow(trimmed_ps) else length(trimmed_ps)
+
+  # Refitting subsets the data by the retained positions, so a record that does
+  # not cover these scores would name rows of a sample it was never about.
+  check_trim_record(meta, n_obs, "ps_refit()")
+
   if (length(meta$keep_idx) == 0) {
     abort(
       "No retained rows to refit on (all were trimmed).",
@@ -1252,9 +1414,6 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   if (is.null(.data)) {
     .data <- model.frame(model)
   }
-
-  # Get the number of observations
-  n_obs <- if (is.matrix(trimmed_ps)) nrow(trimmed_ps) else length(trimmed_ps)
 
   if (nrow(.data) != n_obs) {
     abort(
@@ -1322,6 +1481,15 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
 #' model has been refit on the retained (non-trimmed) observations via
 #' [ps_refit()].
 #'
+#' On a [psw] vector built from trimmed propensity scores, the answer comes from
+#' the trimming record carried on the weights. `is_refit()` reads a single flag
+#' out of that record rather than a position, so unlike [is_unit_trimmed()] it
+#' answers from any record present, whatever length the weights have since taken
+#' on. It raises an error of class `propensity_missing_meta_error` only when
+#' weights marked as trimmed carry no record at all, which is what a subset of
+#' such weights leaves behind. Weights that were never trimmed have nothing
+#' missing and return `FALSE`.
+#'
 #' @param x An object to test (typically a [ps_trim] vector).
 #' @return A single `TRUE` or `FALSE`.
 #'
@@ -1369,11 +1537,15 @@ is_refit.ps_trim <- function(x) {
 #'   \item{`method`}{Character string indicating the trimming method used.}
 #'   \item{`keep_idx`}{Integer vector of retained observation indices.}
 #'   \item{`trimmed_idx`}{Integer vector of trimmed observation indices.}
+#'   \item{`n_obs`}{The number of observations those indices describe.}
 #'   \item{`lower`, `upper`}{Numeric cutoffs, when applicable.}
 #'   \item{`refit`}{Logical, `TRUE` if the model was refit via [ps_refit()].}
 #' }
 #' Additional method-specific elements (e.g. `cutoff`, `delta`, `lambda`) may
 #' also be present.
+#'
+#' `keep_idx`, `trimmed_idx`, and `n_obs` are absent when an operation that
+#' changed the number of observations dropped the record; see [ps_trim()].
 #'
 #' @seealso [ps_trim()] for trimming propensity scores, [is_ps_trimmed()] and
 #'   [is_unit_trimmed()] for predicate queries.

@@ -44,6 +44,8 @@
 "_PACKAGE"
 
 ## usethis namespace: start
+#' @importFrom deli estimate
+#' @importFrom deli MEstimator
 #' @importFrom stats median
 #' @importFrom stats plogis
 #' @importFrom stats qlogis

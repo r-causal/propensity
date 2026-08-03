@@ -10,7 +10,7 @@
 # vec_ptype2 combines psw and other types correctly
 
     Code
-      expr
+      out <- vec_ptype2(x, z)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -20,7 +20,7 @@
 ---
 
     Code
-      expr
+      expect_equal(vec_ptype2(x, double()), double())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.double()`:
       Converting psw to numeric
@@ -30,7 +30,7 @@
 ---
 
     Code
-      expr
+      expect_equal(vec_ptype2(double(), x), double())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.double.psw()`:
       Converting psw to numeric
@@ -40,7 +40,7 @@
 ---
 
     Code
-      expr
+      expect_equal(vec_ptype2(x, integer()), integer())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.integer()`:
       Converting psw to integer
@@ -50,7 +50,7 @@
 ---
 
     Code
-      expr
+      expect_equal(vec_ptype2(integer(), x), integer())
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.integer.psw()`:
       Converting psw to integer
@@ -72,4 +72,44 @@
     Condition <vctrs_error_incompatible_op>
       Error in `vec_arith()`:
       ! <psw{estimand = ate}> * <list> is not permitted
+
+# the stabilization score rejections read clearly
+
+    Code
+      expr
+    Condition <propensity_stabilization_score_error>
+      Error in `psw()`:
+      ! `stabilization_score` must hold one value or one value per observation.
+      x It holds 2 values.
+      x The weights have 4 observations.
+      i Supply a single value to scale every weight, or one value for each observation.
+
+---
+
+    Code
+      expr
+    Condition <propensity_stabilization_score_error>
+      Error in `psw()`:
+      ! `stabilization_score` must be positive and finite.
+      x 1 of its values is not, the first at position 2: -0.5.
+      i The score multiplies the weights, so a value that is not positive and finite leaves them unusable.
+
+---
+
+    Code
+      expr
+    Condition <propensity_stabilization_score_error>
+      Error in `psw()`:
+      ! `stabilization_score` must be positive and finite.
+      x It is 0.
+      i The score multiplies the weights, so a value that is not positive and finite leaves them unusable.
+
+---
+
+    Code
+      expr
+    Condition <propensity_stabilization_score_error>
+      Error in `psw()`:
+      ! `stabilization_score` must be numeric.
+      x It has class <character>.
 

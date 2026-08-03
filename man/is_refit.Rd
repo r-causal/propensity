@@ -17,6 +17,16 @@ A single \code{TRUE} or \code{FALSE}.
 model has been refit on the retained (non-trimmed) observations via
 \code{\link[=ps_refit]{ps_refit()}}.
 }
+\details{
+On a \link{psw} vector built from trimmed propensity scores, the answer comes from
+the trimming record carried on the weights. \code{is_refit()} reads a single flag
+out of that record rather than a position, so unlike \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} it
+answers from any record present, whatever length the weights have since taken
+on. It raises an error of class \code{propensity_missing_meta_error} only when
+weights marked as trimmed carry no record at all, which is what a subset of
+such weights leaves behind. Weights that were never trimmed have nothing
+missing and return \code{FALSE}.
+}
 \examples{
 set.seed(2)
 n <- 30

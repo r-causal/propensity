@@ -15,10 +15,14 @@ A named list with truncation metadata, including:
 \item \code{method} -- the truncation method used (\code{"ps"}, \code{"pctl"}, or \code{"cr"})
 \item \code{lower_bound}, \code{upper_bound} -- the applied bounds
 \item \code{truncated_idx} -- integer positions of values that were winsorized
+\item \code{n_obs} -- the number of observations those positions describe
 }
+
+\code{truncated_idx} and \code{n_obs} are absent when an operation that changed the
+number of observations dropped the record; see \code{\link[=ps_trunc]{ps_trunc()}}.
 }
 \description{
-Returns the metadata list attached to a \code{\link[=ps_trunc]{ps_trunc}}
+Returns the metadata list attached to a \code{\link{ps_trunc}}
 object. The list includes fields such as \code{method}, \code{lower_bound},
 \code{upper_bound}, and \code{truncated_idx}.
 }

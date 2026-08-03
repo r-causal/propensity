@@ -51,11 +51,16 @@ exposure vector) and for categorical exposures (factor or character vector)
 with any method.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal
-(treated) group. For binary exposures, defaults to the higher value.
-Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
+(treated) group, used by \code{"cr"}. Every binary coding honors it: 0/1
+numeric, logical, two-level factor, and two-level character exposures are
+all coded with the named level as focal. With no level named, a binary
+exposure defaults to its higher level, which is \code{1} for a 0/1 exposure and
+\code{TRUE} for a logical one. Naming any other level reverses the coding, so
+\code{ps} must then hold the probability of the named level.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
-(control) group. Automatically detected if not supplied.}
+(control) group. Naming it makes the exposure's other level focal, with
+the same consequence for \code{ps}. Automatically detected if not supplied.}
 
 \item{...}{Additional arguments passed to methods.}
 
@@ -66,8 +71,9 @@ Required for \code{wt_att()} and \code{wt_atu()} with categorical exposures.}
 \value{
 A \code{ps_trunc} object (a numeric vector for binary exposures, or a
 matrix for categorical exposures). Use \code{\link[=ps_trunc_meta]{ps_trunc_meta()}} to inspect
-metadata including \code{method}, \code{lower_bound}, \code{upper_bound}, and
-\code{truncated_idx} (positions of modified values).
+metadata including \code{method}, \code{lower_bound}, \code{upper_bound},
+\code{truncated_idx} (positions of modified values), and \code{n_obs} (the number of
+observations those positions describe).
 }
 \description{
 \code{ps_trunc()} bounds extreme propensity scores to fixed limits, replacing
@@ -96,6 +102,45 @@ weights), the result is no longer a propensity score.
 \strong{Combining behavior}: Combining \code{ps_trunc} objects with \code{c()} requires
 matching truncation parameters. Mismatched parameters produce a warning and
 return a plain numeric vector.
+\subsection{The truncation record}{
+
+A \code{ps_trunc} records which units were winsorized as positions among the
+observations it was written for, along with how many observations that was.
+Operations that hand this package the subscript re-index those positions onto
+the result: subsetting with \code{[}, \code{\link[=sort]{sort()}}, \code{\link[=unique]{unique()}}, and \code{\link[=rep]{rep()}} all return
+a record written for what they return, and a subscript naming a position more
+than once reports that unit at every place it now holds.
+
+Operations that change how many observations there are without supplying a
+subscript cannot re-index the record, and it is dropped rather than worked
+out from the values, since a score that arrived equal to a bound is
+indistinguishable from one this function pinned there. \code{\link[vctrs:vec_slice]{vctrs::vec_slice()}},
+which is how filtering, joining, and grouped summaries in dplyr reach a
+column, is the usual route, and dropping the record there raises a warning
+of class \code{propensity_trunc_record_warning}. Combining with \code{\link[=c]{c()}} drops it
+without comment, because concatenation appends one set of observations to
+another and the prototype it builds the result from holds no positions to
+lose. The values, the class, and the method and its bounds are untouched
+either way.
+
+A record can also outlive the observations it describes, because it travels
+by routes vctrs does not see: growing a \code{ps_trunc} by subassignment carries
+it across the length change. \code{\link[=is_unit_truncated]{is_unit_truncated()}} therefore checks that the
+record covers the object it is given and raises an error of class
+\code{propensity_missing_meta_error} when it does not, rather than name truncated
+units at stale positions.
+
+That check compares how many observations the record was written for against
+how many the object holds, which a reordering does not change. An operation
+that reorders the observations through vctrs, rather than through \code{[},
+therefore keeps a record written for the order they used to be in:
+\code{vctrs::vec_slice(x, 5:1)} and \code{dplyr::arrange()} both return the values in
+a new order under positions still naming the old one, and
+\code{\link[=is_unit_truncated]{is_unit_truncated()}} answers from those positions and names the wrong
+units. Subsetting with \code{[} is handed the subscript and re-indexes, so
+reorder with \code{[}, or put the propensity scores in the order you want before
+truncating them.
+}
 }
 \examples{
 set.seed(2)

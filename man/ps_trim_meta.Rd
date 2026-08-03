@@ -15,11 +15,15 @@ A named list with elements:
 \item{\code{method}}{Character string indicating the trimming method used.}
 \item{\code{keep_idx}}{Integer vector of retained observation indices.}
 \item{\code{trimmed_idx}}{Integer vector of trimmed observation indices.}
+\item{\code{n_obs}}{The number of observations those indices describe.}
 \item{\code{lower}, \code{upper}}{Numeric cutoffs, when applicable.}
 \item{\code{refit}}{Logical, \code{TRUE} if the model was refit via \code{\link[=ps_refit]{ps_refit()}}.}
 }
 Additional method-specific elements (e.g. \code{cutoff}, \code{delta}, \code{lambda}) may
 also be present.
+
+\code{keep_idx}, \code{trimmed_idx}, and \code{n_obs} are absent when an operation that
+changed the number of observations dropped the record; see \code{\link[=ps_trim]{ps_trim()}}.
 }
 \description{
 \code{ps_trim_meta()} returns the metadata list attached to a

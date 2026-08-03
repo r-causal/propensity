@@ -1,7 +1,8 @@
 # tidyr::pivot_longer works with propensity classes
 
     Code
-      expr
+      out <- tidyr::pivot_longer(df, cols = c(ate_wts, att_wts), names_to = "weight_type",
+      values_to = "weight")
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -11,7 +12,8 @@
 # tidyr::pivot_longer works with mixed propensity classes
 
     Code
-      expr
+      out <- tidyr::pivot_longer(df, cols = c(psw_col, trim_col, trunc_col),
+      names_to = "type", values_to = "value")
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.ps_trim()`:
       Converting psw and ps_trim to numeric
@@ -25,12 +27,13 @@
 ---
 
     Code
-      expr
+      out <- expect_propensity_warning(tidyr::pivot_longer(df, cols = c(psw_col,
+        trim_col, trunc_col), names_to = "type", values_to = "value"))
 
 # c() works as expected with warnings
 
     Code
-      expr
+      out <- c(x, y)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -40,7 +43,7 @@
 ---
 
     Code
-      expr
+      out <- c(x, z)
     Condition <propensity_class_downgrade_warning>
       Warning in `vec_ptype2.psw.double()`:
       Converting psw to numeric
@@ -50,7 +53,7 @@
 # rbind and data frame operations work
 
     Code
-      expr
+      out <- vctrs::vec_rbind(df1, df2)
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: incompatible estimands 'ate' and 'att'
@@ -60,7 +63,8 @@
 # tidyr works with stabilized weights
 
     Code
-      expr
+      out <- tidyr::pivot_longer(df, cols = c(wt_stab, wt_unstab), names_to = "stab_type",
+      values_to = "weight")
     Condition <propensity_coercion_warning>
       Warning in `vec_ptype2.psw.psw()`:
       Converting psw to numeric: different stabilization status

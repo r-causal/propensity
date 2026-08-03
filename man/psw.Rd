@@ -5,10 +5,8 @@
 \alias{new_psw}
 \alias{is_psw}
 \alias{is_stabilized}
-\alias{is_causal_wt}
+\alias{stabilization_score}
 \alias{as_psw}
-\alias{estimand}
-\alias{estimand<-}
 \title{Propensity Score Weight Vectors}
 \usage{
 new_psw(
@@ -18,6 +16,7 @@ new_psw(
   trimmed = FALSE,
   truncated = FALSE,
   calibrated = FALSE,
+  stabilization_score = NULL,
   ...
 )
 
@@ -27,25 +26,22 @@ psw(
   stabilized = FALSE,
   trimmed = FALSE,
   truncated = FALSE,
-  calibrated = FALSE
+  calibrated = FALSE,
+  stabilization_score = NULL
 )
 
 is_psw(x)
 
 is_stabilized(wt)
 
-is_causal_wt(x)
+stabilization_score(wt)
 
 as_psw(x, estimand = NULL)
-
-estimand(wt)
-
-estimand(wt) <- value
 }
 \arguments{
 \item{x}{For \code{psw()} and \code{new_psw()}: a numeric vector of weights
-(default: \code{double()}). For \code{is_psw()}, \code{is_causal_wt()}, and \code{as_psw()}:
-an object to test or coerce.}
+(default: \code{double()}). For \code{is_psw()} and \code{as_psw()}: an object to test or
+coerce.}
 
 \item{estimand}{A character string identifying the target estimand (e.g.,
 \code{"ate"}, \code{"att"}, \code{"ato"}). Defaults to \code{NULL}.}
@@ -61,18 +57,21 @@ scores? Defaults to \code{FALSE}.}
 \item{calibrated}{Logical. Were the weights derived from calibrated
 propensity scores? Defaults to \code{FALSE}.}
 
+\item{stabilization_score}{Optional numeric stabilization score to record on
+the object, either a single value or one value per observation. Every value
+must be positive and finite. Defaults to \code{NULL}, meaning no fixed score was
+supplied.}
+
 \item{...}{Additional attributes stored on the object (developer use only).}
 
 \item{wt}{A \code{psw} or \code{causal_wts} object.}
-
-\item{value}{A character string: the new estimand to assign.}
 }
 \value{
 \itemize{
 \item \code{new_psw()}, \code{psw()}, \code{as_psw()}: A \code{psw} vector.
-\item \code{is_psw()}, \code{is_causal_wt()}, \code{is_stabilized()}: A single logical value.
-\item \code{estimand()}: A character string, or \code{NULL} if no estimand is set.
-\item \verb{estimand<-}: The modified \code{psw} object (called for its side effect).
+\item \code{is_psw()}, \code{is_stabilized()}: A single logical value.
+\item \code{stabilization_score()}: A numeric value or vector, or \code{NULL} if none was
+recorded or a per-observation score was dropped.
 }
 }
 \description{
@@ -98,22 +97,108 @@ assumes \code{x} is already a double vector and performs minimal validation.
 \subsection{Queries}{
 \itemize{
 \item \code{is_psw()} tests whether an object is a \code{psw} vector.
-\item \code{is_causal_wt()} tests whether an object inherits from the broader
-\code{causal_wts} class (which includes \code{psw} objects).
-\item \code{estimand()} and \verb{estimand<-} get and set the estimand attribute.
 \item \code{is_stabilized()} returns \code{TRUE} if the weights are stabilized.
+\item \code{stabilization_score()} returns the user-supplied stabilization score, or
+\code{NULL} when none was recorded or when a per-observation score was dropped
+because an operation changed the length of the weights.
 }
+}
+
+\subsection{The stabilization score}{
+
+A \code{stabilization_score} is the multiplier the weights were stabilized on. It
+holds either a single value, which scales every weight, or one value per
+observation, which scales each weight by its own. Both forms are checked
+where the score is recorded: a score must be numeric, positive, and finite,
+and hold a length the weights can use, and one that does not is refused with
+an error of class \code{propensity_stabilization_score_error}. A score is recorded
+as a plain double vector, with its storage type normalized and any names
+dropped, so a score written \code{1L} and one written \code{1} are the same score and
+combine without conflict.
+
+A zero-length \code{psw} is a prototype: it records what a result built from it
+will carry rather than describing observations of its own, so a
+per-observation score on one is recorded as given and checked for length when
+the observations arrive. A cast whose data arrives at a length the score does
+not match drops the score rather than refusing the cast, since the score
+describes the prototype's observations and says nothing about the data being
+cast. A cast to no observations keeps it, having brought no observations for
+it to contradict.
+
+\code{psw} objects also inherit the broader \code{causal_wts} class. The accessors that
+class carries, \code{\link[causalgenerics:is_causal_wt]{causalgenerics::is_causal_wt()}},
+\code{\link[causalgenerics:estimand]{causalgenerics::estimand()}}, and \verb{estimand<-}, are re-exported by propensity
+and documented at \code{\link[causalgenerics:estimand]{causalgenerics::estimand()}}.
 }
 
 \subsection{Arithmetic and combining}{
 
 Arithmetic operations on \code{psw} objects preserve the class and attributes,
 so operations like normalization (\code{weights / sum(weights)}) retain metadata.
+
+An operation between two \code{psw} objects merges what each of them records. Two
+different estimands are pasted together, and an estimand only one operand
+names stands for the result; the result is stabilized only when both operands
+are, and it is marked as trimmed, truncated, or calibrated when either
+operand is. The remaining attributes, the \code{stabilization_score}, the records
+left by a modified propensity score, and the attributes describing a
+categorical exposure, are carried by agreement: one only a single operand
+records carries, and one both record with the same value carries. One they
+record differently is dropped, since neither value describes the result, and
+a warning of class \code{propensity_metadata_conflict_warning} names it, once for
+each attribute dropped that way and whatever order the inputs were given in.
+The rule is applied per operation, so an attribute one operation drops for a
+disagreement can be carried again by a later operation whose operands agree.
+
+A \code{stabilization_score} is carried only when the result is stabilized, which
+takes both operands. A result that is not stabilized drops the score without
+comment.
+
 Combining \code{psw} objects with \code{\link[=c]{c()}} preserves the class only when all
 metadata matches; mismatched metadata produces a warning and falls back to a
-plain numeric vector.
+plain numeric vector. Concatenation appends one set of observations to
+another, so the positions a modification record names would describe units
+from the other input; those records are dropped from the result whether or
+not the inputs agree on them. The categorical attributes name exposure levels
+rather than positions and carry when the inputs agree.
 
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
+Two kinds of attribute hold one value per observation and so cannot be
+re-indexed for a subset: a \code{stabilization_score} with more than one value,
+and the records left by a modified propensity score (\code{ps_trim_meta},
+\code{ps_trunc_meta}, and \code{ps_calib_meta}). Where an operation goes through
+vctrs, these are carried when the result comes back at the length they were
+recorded on and dropped when it does not. Any same-length operation keeps
+them, a reordering or a subscript with duplicates included, so the positions
+a record names can end up describing different observations than they did.
+
+Dropping the \code{stabilization_score} warns, because the score was supplied by
+the user and the weights can be recomputed on the subset. Dropping a
+modification record is silent, because these records also travel by routes
+vctrs does not see, and a warning on the one route it controls would be
+neither complete nor about anything the user wrote. Subassignment that grows
+the vector carries a record across the length change, since \verb{[<-} casts the
+replacement and then leaves base R to preserve the attributes; and
+\code{model.frame()} drops the \code{NA}-weighted rows from a weights column in C and
+re-attaches the original variable's attributes to the shortened result, so
+weights built on trimmed propensity scores come back out of every outcome
+model fit on them still carrying a record written for rows that are no
+longer there.
+
+Honesty therefore lives at query time. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} answers by
+position, so it checks that the record covers the vector it is given and
+raises an error of class \code{propensity_missing_meta_error} when it does not,
+or when weights marked as trimmed carry no record at all, rather than name
+trimmed units at stale positions. \code{\link[=is_refit]{is_refit()}} reads a single flag rather
+than a position, so it answers from any record present and refuses only when
+the record is absent entirely.
+
+The result of any of these operations stays a \code{psw} and keeps every other
+attribute, including its stabilized, trimmed, truncated, and calibrated
+status, and the attributes describing a categorical exposure, which name the
+exposure levels rather than the units and so mean the same thing at any
+length.
+
 Matrix or array subscripts intentionally drop the \code{psw} class and return
 a plain numeric vector via base R linear indexing; this is required so
 \code{glm.fit()}-style internal indexing works on \code{psw}-weighted GLMs.
