@@ -162,6 +162,34 @@ Use \code{\link[=ps_trim_meta]{ps_trim_meta()}} to inspect the trimming metadata
 cutoffs, and which observations were retained or trimmed.
 }
 
+\subsection{Missing values}{
+
+A propensity score that arrives missing is not one this function removed, so
+it takes no part in the trimming record: it joins neither the retained nor
+the trimmed positions, and \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} reports \code{FALSE} for it. The
+value propagates as \code{NA} into the result. For a matrix of categorical
+propensity scores, a row with a missing cell comes back exactly as it
+arrived, since there is no complete probability vector to place against a
+threshold.
+
+The methods that read a cutoff off the scores read it off the scores they
+have. \code{"adaptive"}, \code{"pctl"}, \code{"cr"}, and \code{"optimal"} all work their cutoffs
+out from the complete scores or rows, so the cutoff is the one the same call
+would produce with the missing observations dropped.
+
+\code{"pref"} centers its preference scores on the proportion exposed across the
+whole sample, which is a fact about the exposure rather than about the
+scores, so a unit whose propensity score is missing still counts toward it
+and the cutoff is not the one the shorter call would produce. That unit's own
+preference score is missing, which leaves it outside both the retained and
+the trimmed positions like any other missing score.
+
+A missing exposure is a different matter, and \code{"pref"} and \code{"cr"} refuse one
+with an error of class \code{propensity_missing_value_error}. Their cutoffs come
+from the exposure groups, and a unit that belongs to neither leaves them
+undefined. Remove or impute the missing exposure values first.
+}
+
 \subsection{The trimming record}{
 
 A \code{ps_trim} records which units were trimmed as positions among the

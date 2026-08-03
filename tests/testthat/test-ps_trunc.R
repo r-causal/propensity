@@ -780,8 +780,6 @@ test_that("ps_trunc() passes a score that arrived missing through unmarked", {
 })
 
 test_that("ps_trunc() takes its percentile bounds from the complete scores", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
 
   # `quantile()` refuses a missing value unless it is told to drop it, so the
@@ -799,8 +797,6 @@ test_that("ps_trunc() takes its percentile bounds from the complete scores", {
 })
 
 test_that("ps_trunc() takes its common range from the complete scores", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
   z <- c(0, 0, 1, 1, 1, 0)
 
@@ -824,8 +820,6 @@ test_that("ps_trunc() takes its common range from the complete scores", {
 })
 
 test_that("ps_trunc() refuses an exposure with missing values", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
   z <- c(0, 0, 0, 1, 1, NA)
   z_factor <- factor(c("a", "a", "a", "b", "b", NA))
@@ -856,8 +850,6 @@ test_that("ps_trunc() refuses an exposure with missing values", {
 # Bounds validation ---------------------------------------------------------
 
 test_that("ps_trunc() requires lower below upper for the pctl method", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.4, 0.6, 0.8)
 
   # Bounds the wrong way around cross, and every score is then pinned to the
@@ -876,8 +868,6 @@ test_that("ps_trunc() requires lower below upper for the pctl method", {
 })
 
 test_that("ps_trunc() refuses percentile bounds outside the unit interval", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.4, 0.6, 0.8)
 
   # For the percentile method the bounds are probabilities. `quantile()`
@@ -900,9 +890,30 @@ test_that("ps_trunc() refuses percentile bounds outside the unit interval", {
   expect_propensity_error(ps_trunc(ps, method = "pctl", lower = -0.1))
 })
 
-test_that("ps_trunc() refuses a common range the exposure groups do not share", {
-  testthat::skip("awaiting implementation")
+test_that("ps_trunc() refuses a bound that is missing", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
 
+  # A missing bound answers neither `TRUE` nor `FALSE` in the comparison that
+  # decides which scores to pin, so the rule comes out as a bare base error
+  # about a missing value rather than as an answer.
+  fixed <- rlang::catch_cnd(
+    ps_trunc(ps, method = "ps", lower = NA),
+    classes = "condition"
+  )
+  expect_s3_class(fixed, "error")
+  expect_s3_class(fixed, "propensity_error")
+
+  pctl <- rlang::catch_cnd(
+    ps_trunc(ps, method = "pctl", upper = NA),
+    classes = "condition"
+  )
+  expect_s3_class(pctl, "error")
+  expect_s3_class(pctl, "propensity_error")
+
+  expect_propensity_error(ps_trunc(ps, method = "ps", lower = NA))
+})
+
+test_that("ps_trunc() refuses a common range the exposure groups do not share", {
   ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
   z <- c(0, 0, 0, 1, 1, 1)
 
@@ -921,6 +932,22 @@ test_that("ps_trunc() refuses a common range the exposure groups do not share", 
   expect_propensity_error(
     ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1)
   )
+})
+
+test_that("ps_trunc() reports the crossed bounds at a readable precision", {
+  ps <- c(0.1234567891, 0.2, 0.6, 0.7654321987, 0.8, 0.9)
+  z <- c(0, 0, 0, 1, 1, 1)
+
+  # The bounds are propensity scores read off the data, so they arrive at full
+  # double precision and a message that interpolates them raw reads as noise.
+  cnd <- rlang::catch_cnd(
+    ps_trunc(ps, method = "cr", .exposure = z, .focal_level = 1),
+    classes = "error"
+  )
+  msg <- conditionMessage(cnd)
+
+  expect_match(msg, "0.765", fixed = TRUE)
+  expect_no_match(msg, "0.7654321987", fixed = TRUE)
 })
 
 test_that("ps_trunc() keeps every score within the common range it records", {

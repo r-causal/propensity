@@ -676,8 +676,6 @@ test_that("ps_trunc() leaves a row with a missing score out of the record", {
 })
 
 test_that("ps_trunc() takes its percentile bounds from the complete rows", {
-  testthat::skip("awaiting implementation")
-
   fixture <- missing_cell_trunc_fixture()
 
   # The bounds are quantiles of every cell in the matrix, and `quantile()`
@@ -709,4 +707,68 @@ test_that("ps_trunc() takes its percentile bounds from the complete rows", {
     as.numeric(unclass(with_na)[-3, ]),
     as.numeric(unclass(without_na))
   )
+})
+
+extreme_missing_cell_trunc_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a"))
+  # Row 3 has no score for level "a" and carries observed scores that both
+  # methods would otherwise pin back to a bound. Whether a row belongs in the
+  # record is decided by a test that reads `any()` across it, and that test
+  # answers `TRUE` off those observed scores whatever the missing one does. Row
+  # 4 carries the extreme scores of a row this function really does truncate.
+  ps_matrix <- rbind(
+    c(0.60, 0.20, 0.20),
+    c(0.20, 0.60, 0.20),
+    c(NA, 0.05, 0.90),
+    c(0.05, 0.90, 0.05)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+test_that("ps_trunc() keeps a missing row with an extreme score out of the record", {
+  fixture <- extreme_missing_cell_trunc_fixture()
+
+  truncated <- ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps",
+    lower = 0.1
+  )
+  meta <- ps_trunc_meta(truncated)
+
+  # The observed score that would put the row in the record if it were read on
+  # its own.
+  expect_lt(fixture$ps_matrix[3, 2], meta$lower_bound)
+
+  # The row comes back missing throughout, so nothing in it was pinned to the
+  # threshold and the record has nothing to say about it.
+  expect_true(all(is.na(unclass(truncated)[3, ])))
+  expect_equal(meta$truncated_idx, 4)
+  expect_false(is_unit_truncated(truncated)[3])
+  expect_true(is_unit_truncated(truncated)[4])
+})
+
+test_that("ps_trunc() keeps a missing row with an extreme score out of the percentile record", {
+  fixture <- extreme_missing_cell_trunc_fixture()
+
+  truncated <- ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "pctl",
+    lower = 0.2,
+    upper = 0.8
+  )
+  meta <- ps_trunc_meta(truncated)
+
+  # The row holds a score below the lower bound and one above the upper bound,
+  # so a test read across the row answers `TRUE` off its observed cells alone.
+  expect_lt(fixture$ps_matrix[3, 2], meta$lower_bound)
+  expect_gt(fixture$ps_matrix[3, 3], meta$upper_bound)
+
+  expect_true(all(is.na(unclass(truncated)[3, ])))
+  expect_equal(meta$truncated_idx, 4)
+  expect_false(is_unit_truncated(truncated)[3])
+  expect_true(is_unit_truncated(truncated)[4])
 })

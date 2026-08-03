@@ -112,6 +112,33 @@
 #' Use [ps_trim_meta()] to inspect the trimming metadata, including the method,
 #' cutoffs, and which observations were retained or trimmed.
 #'
+#' ## Missing values
+#'
+#' A propensity score that arrives missing is not one this function removed, so
+#' it takes no part in the trimming record: it joins neither the retained nor
+#' the trimmed positions, and [is_unit_trimmed()] reports `FALSE` for it. The
+#' value propagates as `NA` into the result. For a matrix of categorical
+#' propensity scores, a row with a missing cell comes back exactly as it
+#' arrived, since there is no complete probability vector to place against a
+#' threshold.
+#'
+#' The methods that read a cutoff off the scores read it off the scores they
+#' have. `"adaptive"`, `"pctl"`, `"cr"`, and `"optimal"` all work their cutoffs
+#' out from the complete scores or rows, so the cutoff is the one the same call
+#' would produce with the missing observations dropped.
+#'
+#' `"pref"` centers its preference scores on the proportion exposed across the
+#' whole sample, which is a fact about the exposure rather than about the
+#' scores, so a unit whose propensity score is missing still counts toward it
+#' and the cutoff is not the one the shorter call would produce. That unit's own
+#' preference score is missing, which leaves it outside both the retained and
+#' the trimmed positions like any other missing score.
+#'
+#' A missing exposure is a different matter, and `"pref"` and `"cr"` refuse one
+#' with an error of class `propensity_missing_value_error`. Their cutoffs come
+#' from the exposure groups, and a unit that belongs to neither leaves them
+#' undefined. Remove or impute the missing exposure values first.
+#'
 #' ## The trimming record
 #'
 #' A `ps_trim` records which units were trimmed as positions among the
@@ -285,12 +312,19 @@ ps_trim.default <- function(
     if (is.null(lower)) {
       lower <- 0.05
     }
-    if (is.null(upper)) upper <- 0.95
+    if (is.null(upper)) {
+      upper <- 0.95
+    }
+    check_quantile_probs(lower, upper)
+    check_lower_upper(lower, upper)
   } else if (method == "pref") {
     if (is.null(lower)) {
       lower <- 0.3
     }
-    if (is.null(upper)) upper <- 0.7
+    if (is.null(upper)) {
+      upper <- 0.7
+    }
+    check_lower_upper(lower, upper)
   } else if (method == "cr") {
     if (!is.null(lower) || !is.null(upper)) {
       warn(
@@ -302,11 +336,18 @@ ps_trim.default <- function(
   n <- length(ps)
   meta_list <- list(method = method, lower = lower, upper = upper)
 
+  # A score that arrived missing is not one this function can place against a
+  # cutoff, so it takes no part in working the cutoff out and no part in the
+  # record. Every rule below compares scores with `which()`, which leaves a
+  # missing comparison out of the retained positions on its own; the trimmed
+  # positions are then everything else that was observed.
+  observed <- !is.na(ps)
+
   # Decide which indices are kept
   if (method == "ps") {
     keep_idx <- which(ps >= lower & ps <= upper)
   } else if (method == "adaptive") {
-    sum_wt <- 1 / (ps * (1 - ps))
+    sum_wt <- 1 / (ps[observed] * (1 - ps[observed]))
     k <- 2 * mean(sum_wt) - max(sum_wt)
 
     if (k >= 0) {
@@ -323,8 +364,8 @@ ps_trim.default <- function(
     meta_list$cutoff <- cutoff
     keep_idx <- which(pmin(ps, 1 - ps) > cutoff)
   } else if (method == "pctl") {
-    q_lower <- quantile(ps, probs = lower)
-    q_upper <- quantile(ps, probs = upper)
+    q_lower <- quantile(ps, probs = lower, na.rm = TRUE)
+    q_upper <- quantile(ps, probs = upper, na.rm = TRUE)
     meta_list$q_lower <- q_lower
     meta_list$q_upper <- q_upper
     keep_idx <- which(ps >= q_lower & ps <= q_upper)
@@ -335,6 +376,7 @@ ps_trim.default <- function(
         error_class = "propensity_missing_arg_error"
       )
     }
+    check_exposure_complete(.exposure, method)
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
@@ -351,13 +393,14 @@ ps_trim.default <- function(
         error_class = "propensity_missing_arg_error"
       )
     }
+    check_exposure_complete(.exposure, method)
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
       .reference_level = .reference_level
     )
-    ps_treat <- ps[.exposure == 1]
-    ps_untrt <- ps[.exposure == 0]
+    ps_treat <- ps[observed & .exposure == 1]
+    ps_untrt <- ps[observed & .exposure == 0]
     cr_lower <- min(ps_treat)
     cr_upper <- max(ps_untrt)
     meta_list$cr_lower <- cr_lower
@@ -366,7 +409,7 @@ ps_trim.default <- function(
     keep_idx <- which(ps >= cr_lower & ps <= cr_upper)
   }
 
-  trimmed_idx <- setdiff(seq_len(n), keep_idx)
+  trimmed_idx <- setdiff(seq_len(n), c(keep_idx, which(!observed)))
 
   # Replace trimmed entries with NA
   ps_na <- ps
@@ -431,6 +474,14 @@ ps_trim.matrix <- function(
   n <- nrow(ps)
   k <- ncol(ps)
 
+  # A row with a missing score has no complete probability vector to place
+  # against a threshold, so it takes no part in working the threshold out and no
+  # part in the record. Both rules below compare rows with `which()`, which
+  # leaves a missing comparison out of the retained positions on its own, and the
+  # group-preservation reset falls back to the complete rows for the same reason.
+  incomplete_rows <- which(apply(ps, 1, anyNA))
+  complete_rows <- setdiff(seq_len(n), incomplete_rows)
+
   # Initialize metadata
   meta_list <- list(method = method, is_matrix = TRUE)
 
@@ -459,7 +510,7 @@ ps_trim.matrix <- function(
         "One or more groups removed after trimming; returning original data",
         warning_class = "propensity_no_data_warning"
       )
-      keep_idx <- seq_len(n)
+      keep_idx <- complete_rows
     }
 
     meta_list$delta <- delta
@@ -468,29 +519,30 @@ ps_trim.matrix <- function(
     # Multi-category optimal trimming (Yang et al., 2016)
     # Calculate sum of inverse propensity scores
     sum_inv_ps <- rowSums(1 / ps)
+    sum_inv_complete <- sum_inv_ps[complete_rows]
 
     # Define trimming function
     trim_fun <- function(x) {
-      sum_trim <- sum_inv_ps[sum_inv_ps <= x]
+      sum_trim <- sum_inv_complete[sum_inv_complete <= x]
       if (length(sum_trim) == 0) {
         return(x)
       }
-      x - 2 * mean(sum_trim) / mean(sum_inv_ps <= x)
+      x - 2 * mean(sum_trim) / mean(sum_inv_complete <= x)
     }
 
     # Check if trimming is needed
-    if (trim_fun(max(sum_inv_ps)) < 0) {
+    if (trim_fun(max(sum_inv_complete)) < 0) {
       # No valid solution, use maximum + 1
-      lambda <- max(sum_inv_ps) + 1
-      keep_idx <- seq_len(n) # Keep all
+      lambda <- max(sum_inv_complete) + 1
+      keep_idx <- complete_rows # Keep all
     } else {
       # Find optimal lambda
       result <- tryCatch(
         {
           uniroot(
             trim_fun,
-            lower = min(sum_inv_ps),
-            upper = max(sum_inv_ps)
+            lower = min(sum_inv_complete),
+            upper = max(sum_inv_complete)
           )$root
         },
         error = function(e) {
@@ -512,11 +564,11 @@ ps_trim.matrix <- function(
             "One or more groups removed after trimming; returning original data",
             warning_class = "propensity_no_data_warning"
           )
-          keep_idx <- seq_len(n)
+          keep_idx <- complete_rows
           lambda <- NULL
         }
       } else {
-        keep_idx <- seq_len(n)
+        keep_idx <- complete_rows
         lambda <- NULL
       }
     }
@@ -524,7 +576,7 @@ ps_trim.matrix <- function(
     meta_list$lambda <- lambda
   }
 
-  trimmed_idx <- setdiff(seq_len(n), keep_idx)
+  trimmed_idx <- setdiff(seq_len(n), c(keep_idx, incomplete_rows))
 
   # Replace trimmed entries with NA
   ps_na <- ps

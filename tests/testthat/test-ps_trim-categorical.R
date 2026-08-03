@@ -1051,8 +1051,6 @@ missing_cell_trim_fixture <- function() {
 }
 
 test_that("ps_trim() does not record a row with a missing score as trimmed", {
-  testthat::skip("awaiting implementation")
-
   fixture <- missing_cell_trim_fixture()
 
   # `min(x) > delta` is missing for row 7, which drops it from the retained
@@ -1089,8 +1087,6 @@ test_that("ps_trim() does not record a row with a missing score as trimmed", {
 })
 
 test_that("ps_trim() takes its optimal threshold from the complete rows", {
-  testthat::skip("awaiting implementation")
-
   fixture <- missing_cell_trim_fixture()
 
   # The optimal threshold is a root of a function of the row sums of 1 / e,

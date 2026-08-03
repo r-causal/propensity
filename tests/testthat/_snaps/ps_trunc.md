@@ -42,3 +42,54 @@
       Error in `ps_trunc()`:
       ! For `method = 'cr'`, must supply `.exposure`.
 
+# ps_trunc() refuses an exposure with missing values
+
+    Code
+      expr
+    Condition <propensity_missing_value_error>
+      Error in `ps_trunc()`:
+      ! `.exposure` must not have missing values for method "cr".
+      x 1 exposure value is missing.
+      i The cutoffs are read off the exposure groups, and a unit that belongs to neither leaves them undefined.
+      i Remove or impute the missing exposure values.
+
+# ps_trunc() requires lower below upper for the pctl method
+
+    Code
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trunc()`:
+      ! `lower` must be smaller than `upper`
+      x `lower` is 0.95 and `upper` is 0.05
+
+# ps_trunc() refuses percentile bounds outside the unit interval
+
+    Code
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trunc()`:
+      ! For `method = 'pctl'`, `lower` and `upper` must be between 0 and 1.
+      x `lower` is -0.1 and `upper` is 0.95.
+      i The bounds are quantile probabilities rather than propensity scores, so each must lie in [0, 1].
+
+# ps_trunc() refuses a bound that is missing
+
+    Code
+      expr
+    Condition <propensity_missing_value_error>
+      Error in `ps_trunc()`:
+      ! `lower` must not be missing.
+      i Each bound is read into the comparison that decides what happens to a propensity score, and a missing bound decides nothing.
+      i Supply a value, or leave the argument unset to take the default for this method.
+
+# ps_trunc() refuses a common range the exposure groups do not share
+
+    Code
+      expr
+    Condition <propensity_no_overlap_error>
+      Error in `ps_trunc()`:
+      ! The exposure groups' propensity score distributions do not overlap.
+      x The lowest score among the focal units is 0.7, above the highest among the reference units, 0.6.
+      i `method = 'cr'` bounds the scores to the region both groups reach, and these groups reach none in common.
+      i Refit the propensity score model, or truncate with `method = 'ps'` or `method = 'pctl'`.
+

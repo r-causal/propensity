@@ -76,6 +76,29 @@
 #' matching truncation parameters. Mismatched parameters produce a warning and
 #' return a plain numeric vector.
 #'
+#' ## Missing values
+#'
+#' A propensity score that arrives missing is not one this function pinned to a
+#' bound, so it takes no part in the truncation record: it never joins
+#' `truncated_idx`, and [is_unit_truncated()] reports `FALSE` for it. The value
+#' stays missing in the result. For a matrix of categorical propensity scores, a
+#' row with a missing cell comes back missing throughout, because renormalizing
+#' a row divides by its sum and that sum is unknown.
+#'
+#' The methods that read their bounds off the data read them off the data they
+#' have. `"pctl"` and `"cr"` work their bounds out from the complete scores, and
+#' the categorical `"pctl"` bounds come from the cells of the complete rows, so
+#' the bounds are the ones the same call would produce with the missing
+#' observations dropped.
+#'
+#' A missing exposure is a different matter, and `"cr"` refuses one with an
+#' error of class `propensity_missing_value_error`. Its bounds come from the
+#' exposure groups, and a unit that belongs to neither leaves them undefined.
+#' Remove or impute the missing exposure values first. `"cr"` also refuses
+#' exposure groups whose propensity score distributions do not overlap, with an
+#' error of class `propensity_no_overlap_error`, since there is then no common
+#' range to bound the scores to.
+#'
 #' ## The truncation record
 #'
 #' A `ps_trunc` records which units were winsorized as positions among the
@@ -219,8 +242,10 @@ ps_trunc.default <- function(
     if (is.null(upper)) {
       upper <- 0.95
     }
-    lb <- quantile(ps, probs = lower)
-    ub <- quantile(ps, probs = upper)
+    check_quantile_probs(lower, upper)
+    check_lower_upper(lower, upper)
+    lb <- quantile(ps, probs = lower, na.rm = TRUE)
+    ub <- quantile(ps, probs = upper, na.rm = TRUE)
     meta_list$lower_pctl <- lower
     meta_list$upper_pctl <- upper
   } else {
@@ -230,18 +255,26 @@ ps_trunc.default <- function(
         error_class = "propensity_missing_arg_error"
       )
     }
+    check_exposure_complete(.exposure, method)
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
       .reference_level = .reference_level
     )
-    ps_treat <- ps[.exposure == 1]
-    ps_untrt <- ps[.exposure == 0]
+    # A score that arrived missing is not one this function can place against a
+    # bound, so it takes no part in working the bounds out. Dropping it here
+    # gives the bounds the same call would produce with the observation absent.
+    observed <- !is.na(ps)
+    ps_treat <- ps[observed & .exposure == 1]
+    ps_untrt <- ps[observed & .exposure == 0]
     lb <- min(ps_treat)
     ub <- max(ps_untrt)
+    check_common_range(lb, ub)
   }
 
-  # winsorize
+  # Winsorize. A missing score compares as neither below the lower bound nor
+  # above the upper one, so `which()` leaves it out of the pinned positions and
+  # it stays missing in the result: it is not a score this function bounded.
   pinned_low <- which(ps < lb)
   pinned_high <- which(ps > ub)
   truncated_idx <- sort(c(pinned_low, pinned_high))
@@ -305,6 +338,15 @@ ps_trunc.matrix <- function(
   n <- nrow(ps)
   k <- ncol(ps)
 
+  # Renormalizing a row divides by its sum, which is unknown when one of its
+  # scores is missing, so a row with a missing cell comes back missing whatever
+  # the bounds are. It is not a row this function pinned to a bound, and it takes
+  # no part in the bounds either. Both rules below decide membership with a test
+  # read across the row, which answers `TRUE` off an observed cell that happens
+  # to be out of bounds however the missing one is treated, so the incomplete
+  # rows are taken out of the record explicitly.
+  complete_rows <- !apply(ps, 1, anyNA)
+
   if (method == "ps") {
     # Symmetric truncation
     if (is.null(lower)) {
@@ -321,7 +363,9 @@ ps_trunc.matrix <- function(
     }
 
     # Track which values were truncated
-    truncated_idx <- which(apply(ps, 1, function(x) any(x < delta)))
+    truncated_idx <- which(
+      complete_rows & apply(ps, 1, function(x) any(x < delta))
+    )
 
     # Apply truncation and renormalize
     ps_trunc <- ps
@@ -345,17 +389,21 @@ ps_trunc.matrix <- function(
       upper <- 0.99
     } # Default percentile
 
-    # Calculate thresholds based on the distribution of all propensity scores
-    all_ps_vals <- as.vector(ps)
+    # Calculate thresholds based on the distribution of all propensity scores,
+    # taken from the rows this function can renormalize.
+    all_ps_vals <- as.vector(ps[complete_rows, , drop = FALSE])
     lower_threshold <- quantile(all_ps_vals, probs = lower)
     upper_threshold <- quantile(all_ps_vals, probs = upper)
 
     # Track which rows had values truncated
-    truncated_idx <- which(apply(
-      ps,
-      1,
-      function(x) any(x < lower_threshold | x > upper_threshold)
-    ))
+    truncated_idx <- which(
+      complete_rows &
+        apply(
+          ps,
+          1,
+          function(x) any(x < lower_threshold | x > upper_threshold)
+        )
+    )
 
     # Apply truncation and renormalize
     ps_trunc <- ps
@@ -460,6 +508,36 @@ ps_trunc.ps_trunc <- function(
     warning_class = "propensity_already_modified_warning"
   )
   ps
+}
+
+# The common range is the region both exposure groups reach, which is empty when
+# the lowest score among the focal units sits above the highest among the
+# reference ones. Winsorizing to a crossed pair of bounds pins every score to the
+# bound on the far side of the other, and records a common range the groups do
+# not have.
+check_common_range <- function(lb, ub, call = rlang::caller_env()) {
+  if (lb <= ub) {
+    return(invisible(TRUE))
+  }
+
+  # The bounds are propensity scores read off the data, so they arrive at full
+  # double precision and say nothing a reader can use past the first few digits.
+  lb_shown <- signif(lb, 3)
+  ub_shown <- signif(ub, 3)
+
+  abort(
+    c(
+      "The exposure groups' propensity score distributions do not overlap.",
+      x = "The lowest score among the focal units is {.val {lb_shown}}, above
+           the highest among the reference units, {.val {ub_shown}}.",
+      i = "{.code method = 'cr'} bounds the scores to the region both groups
+           reach, and these groups reach none in common.",
+      i = "Refit the propensity score model, or truncate with
+           {.code method = 'ps'} or {.code method = 'pctl'}."
+    ),
+    call = call,
+    error_class = "propensity_no_overlap_error"
+  )
 }
 
 new_ps_trunc <- function(x, meta) {

@@ -155,3 +155,43 @@
       Error in `ps_trim()`:
       ! For `method = 'cr'`, must supply `.exposure`.
 
+# ps_trim() refuses an exposure with missing values
+
+    Code
+      expr
+    Condition <propensity_missing_value_error>
+      Error in `ps_trim()`:
+      ! `.exposure` must not have missing values for method "pref".
+      x 1 exposure value is missing.
+      i The cutoffs are read off the exposure groups, and a unit that belongs to neither leaves them undefined.
+      i Remove or impute the missing exposure values.
+
+# ps_trim() requires lower below upper for the pctl and pref methods
+
+    Code
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trim()`:
+      ! `lower` must be smaller than `upper`
+      x `lower` is 0.9 and `upper` is 0.1
+
+# ps_trim() refuses percentile bounds outside the unit interval
+
+    Code
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trim()`:
+      ! For `method = 'pctl'`, `lower` and `upper` must be between 0 and 1.
+      x `lower` is -0.1 and `upper` is 0.95.
+      i The bounds are quantile probabilities rather than propensity scores, so each must lie in [0, 1].
+
+# ps_trim() refuses a bound that is missing
+
+    Code
+      expr
+    Condition <propensity_missing_value_error>
+      Error in `ps_trim()`:
+      ! `lower` must not be missing.
+      i Each bound is read into the comparison that decides what happens to a propensity score, and a missing bound decides nothing.
+      i Supply a value, or leave the argument unset to take the default for this method.
+

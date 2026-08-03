@@ -588,7 +588,37 @@ resolve_binary_propensity <- function(
   )
 }
 
+# `lower` and `upper` are read into comparisons that decide which units to keep
+# or pin, and a missing bound answers neither `TRUE` nor `FALSE`, so the first
+# comparison it reaches raises a bare error about a missing value and names
+# nothing the caller wrote.
+check_bounds_not_missing <- function(
+  lower,
+  upper,
+  call = rlang::caller_env()
+) {
+  missing_bounds <- c("lower", "upper")[c(anyNA(lower), anyNA(upper))]
+
+  if (length(missing_bounds) == 0) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.arg {missing_bounds}} must not be missing.",
+      i = "Each bound is read into the comparison that decides what happens to a
+           propensity score, and a missing bound decides nothing.",
+      i = "Supply a value, or leave the argument unset to take the default for
+           this method."
+    ),
+    call = call,
+    error_class = "propensity_missing_value_error"
+  )
+}
+
 check_lower_upper <- function(lower, upper, call = rlang::caller_env()) {
+  check_bounds_not_missing(lower, upper, call = call)
+
   if (lower >= upper) {
     abort(
       c(
@@ -601,6 +631,61 @@ check_lower_upper <- function(lower, upper, call = rlang::caller_env()) {
   }
 
   invisible(TRUE)
+}
+
+# The percentile methods read their cutoffs off `quantile()`, whose `probs`
+# argument is not one `ps_trim()` or `ps_trunc()` takes. A bound outside the unit
+# interval is refused here so the caller is told about the argument they wrote
+# rather than about one they cannot reach.
+check_quantile_probs <- function(lower, upper, call = rlang::caller_env()) {
+  check_bounds_not_missing(lower, upper, call = call)
+
+  in_unit_interval <- function(x) x >= 0 && x <= 1
+
+  if (in_unit_interval(lower) && in_unit_interval(upper)) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "For {.code method = 'pctl'}, {.arg lower} and {.arg upper} must be
+       between 0 and 1.",
+      x = "{.arg lower} is {lower} and {.arg upper} is {upper}.",
+      i = "The bounds are quantile probabilities rather than propensity scores,
+           so each must lie in [0, 1]."
+    ),
+    call = call,
+    error_class = "propensity_range_error"
+  )
+}
+
+# A cutoff read off the exposure groups is undefined for a unit that belongs to
+# neither, and the rule then comes out missing rather than absent: every score
+# compares as outside a missing bound, or as inside one, so the whole sample is
+# trimmed or the recorded bounds are never applied. The missing exposure is
+# reported instead.
+check_exposure_complete <- function(
+  .exposure,
+  method,
+  call = rlang::caller_env()
+) {
+  n_missing <- sum(is.na(.exposure))
+
+  if (n_missing == 0) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.arg .exposure} must not have missing values for method {.val {method}}.",
+      x = "{n_missing} exposure value{?s} {?is/are} missing.",
+      i = "The cutoffs are read off the exposure groups, and a unit that belongs
+           to neither leaves them undefined.",
+      i = "Remove or impute the missing exposure values."
+    ),
+    call = call,
+    error_class = "propensity_missing_value_error"
+  )
 }
 
 check_lengths_match <- function(

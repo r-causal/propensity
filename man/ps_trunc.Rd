@@ -114,6 +114,30 @@ weights), the result is no longer a propensity score.
 \strong{Combining behavior}: Combining \code{ps_trunc} objects with \code{c()} requires
 matching truncation parameters. Mismatched parameters produce a warning and
 return a plain numeric vector.
+\subsection{Missing values}{
+
+A propensity score that arrives missing is not one this function pinned to a
+bound, so it takes no part in the truncation record: it never joins
+\code{truncated_idx}, and \code{\link[=is_unit_truncated]{is_unit_truncated()}} reports \code{FALSE} for it. The value
+stays missing in the result. For a matrix of categorical propensity scores, a
+row with a missing cell comes back missing throughout, because renormalizing
+a row divides by its sum and that sum is unknown.
+
+The methods that read their bounds off the data read them off the data they
+have. \code{"pctl"} and \code{"cr"} work their bounds out from the complete scores, and
+the categorical \code{"pctl"} bounds come from the cells of the complete rows, so
+the bounds are the ones the same call would produce with the missing
+observations dropped.
+
+A missing exposure is a different matter, and \code{"cr"} refuses one with an
+error of class \code{propensity_missing_value_error}. Its bounds come from the
+exposure groups, and a unit that belongs to neither leaves them undefined.
+Remove or impute the missing exposure values first. \code{"cr"} also refuses
+exposure groups whose propensity score distributions do not overlap, with an
+error of class \code{propensity_no_overlap_error}, since there is then no common
+range to bound the scores to.
+}
+
 \subsection{The truncation record}{
 
 A \code{ps_trunc} records which units were winsorized as positions among the

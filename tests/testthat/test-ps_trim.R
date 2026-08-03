@@ -997,8 +997,6 @@ test_that("ps_trim names `.exposure` when the method requires one", {
 # that read a cutoff off the scores read it off the scores they have.
 
 test_that("ps_trim() does not record a score that arrived missing as trimmed", {
-  testthat::skip("awaiting implementation")
-
   trimmed <- ps_trim(
     c(0.2, 0.5, NA, 0.7),
     method = "ps",
@@ -1015,8 +1013,6 @@ test_that("ps_trim() does not record a score that arrived missing as trimmed", {
 })
 
 test_that("ps_trim() takes its adaptive cutoff from the complete scores", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.01, 0.2, 0.5, NA, 0.7, 0.99)
 
   # The cutoff comes from the mean and the maximum of 1 / (e (1 - e)), both of
@@ -1035,8 +1031,6 @@ test_that("ps_trim() takes its adaptive cutoff from the complete scores", {
 })
 
 test_that("ps_trim() takes its percentile cutoffs from the complete scores", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
 
   # `quantile()` refuses a missing value unless it is told to drop it, so the
@@ -1055,8 +1049,6 @@ test_that("ps_trim() takes its percentile cutoffs from the complete scores", {
 })
 
 test_that("ps_trim() takes its common range from the complete scores", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
   z <- c(0, 0, 1, 1, 1, 0)
 
@@ -1081,8 +1073,6 @@ test_that("ps_trim() takes its common range from the complete scores", {
 })
 
 test_that("ps_trim() leaves a missing score out of the preference record", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.05, 0.2, 0.5, NA, 0.7, 0.95)
   z <- c(0, 0, 0, 1, 1, 1)
 
@@ -1098,8 +1088,6 @@ test_that("ps_trim() leaves a missing score out of the preference record", {
 })
 
 test_that("ps_trim() refuses an exposure with missing values", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.1, 0.2, 0.6, 0.7, 0.8, 0.9)
   z <- c(0, 0, 0, 1, 1, NA)
   z_factor <- factor(c("a", "a", "a", "b", "b", NA))
@@ -1146,8 +1134,6 @@ test_that("ps_trim() refuses an exposure with missing values", {
 # Bounds validation ---------------------------------------------------------
 
 test_that("ps_trim() requires lower below upper for the pctl and pref methods", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.4, 0.6, 0.8)
   z <- c(0, 0, 1, 1)
 
@@ -1184,8 +1170,6 @@ test_that("ps_trim() requires lower below upper for the pctl and pref methods", 
 })
 
 test_that("ps_trim() refuses percentile bounds outside the unit interval", {
-  testthat::skip("awaiting implementation")
-
   ps <- c(0.2, 0.4, 0.6, 0.8)
 
   # For the percentile method the bounds are probabilities. `quantile()`
@@ -1206,4 +1190,40 @@ test_that("ps_trim() refuses percentile bounds outside the unit interval", {
   expect_s3_class(high, "propensity_error")
 
   expect_propensity_error(ps_trim(ps, method = "pctl", lower = -0.1))
+})
+
+test_that("ps_trim() refuses a bound that is missing", {
+  ps <- c(0.2, 0.4, 0.6, 0.8)
+
+  # A missing bound answers neither `TRUE` nor `FALSE` in the comparison that
+  # decides which scores to keep, so the rule comes out as a bare base error
+  # about a missing value rather than as an answer.
+  fixed <- rlang::catch_cnd(
+    ps_trim(ps, method = "ps", lower = NA),
+    classes = "condition"
+  )
+  expect_s3_class(fixed, "error")
+  expect_s3_class(fixed, "propensity_error")
+
+  pctl <- rlang::catch_cnd(
+    ps_trim(ps, method = "pctl", upper = NA),
+    classes = "condition"
+  )
+  expect_s3_class(pctl, "error")
+  expect_s3_class(pctl, "propensity_error")
+
+  pref <- rlang::catch_cnd(
+    ps_trim(
+      ps,
+      method = "pref",
+      lower = NA,
+      .exposure = c(0, 0, 1, 1),
+      .focal_level = 1
+    ),
+    classes = "condition"
+  )
+  expect_s3_class(pref, "error")
+  expect_s3_class(pref, "propensity_error")
+
+  expect_propensity_error(ps_trim(ps, method = "ps", lower = NA))
 })

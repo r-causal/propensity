@@ -1,5 +1,45 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_trim()` and `ps_trunc()` now follow one policy for a propensity score
+  that arrives missing: it joins neither the retained nor the modified
+  positions, `is_unit_trimmed()` and `is_unit_truncated()` report `FALSE` for
+  it, and the value propagates as `NA`. A matrix row with a missing cell passes
+  through `ps_trim()` unchanged and comes back missing throughout from
+  `ps_trunc()`, which has to divide by the row sum to renormalize. The
+  `"adaptive"`, `"pctl"`, `"cr"`, and `"optimal"` cutoffs are now worked out
+  from the complete scores or rows, so each is the cutoff the same call would
+  produce with the missing observations dropped; `"pref"` continues to center
+  its preference scores on the proportion exposed across the whole sample, which
+  is a fact about the exposure rather than about the scores. Previously
+  `ps_trim()` recorded an arrived-missing score as one it had trimmed under
+  `method = "ps"` and `method = "pref"`, `ps_trunc()` recorded a matrix row it
+  could not renormalize as one it had pinned to a bound whenever an observed
+  cell of that row fell outside them, a matrix row with a missing cell was
+  blanked out by `ps_trim()` and its observed scores lost with it, and the
+  `"adaptive"`, `"pctl"`, `"cr"`, and `"optimal"` methods either raised a bare
+  base error or trimmed the whole sample.
+
+* `ps_trim(method = "pref")`, `ps_trim(method = "cr")`, and
+  `ps_trunc(method = "cr")` now refuse an exposure with missing values, with an
+  error of class `propensity_missing_value_error`. Their cutoffs come from the
+  exposure groups, and a unit that belongs to neither left every cutoff missing,
+  which trimmed the whole sample without a word or recorded bounds that were
+  never applied.
+
+* `ps_trim()` now requires `lower` below `upper` for `method = "pctl"` and
+  `method = "pref"`, and `ps_trunc()` for `method = "pctl"`, with the error of
+  class `propensity_range_error` that `method = "ps"` already raised. Bounds the
+  wrong way around describe an empty interval, so every unit fell outside it.
+  Percentile bounds outside `[0, 1]` are refused with the same class, naming the
+  valid range rather than passing the bare `quantile()` error about `probs`, an
+  argument neither function takes.
+
+* `ps_trunc(method = "cr")` now refuses exposure groups whose propensity score
+  distributions do not overlap, with an error of class
+  `propensity_no_overlap_error`. The bounds crossed, every score was pinned to
+  the bound on the far side of the other, and the result reported a common range
+  the groups did not have.
+
 * `ps_trim()` and `ps_trunc()` now accept a propensity score matrix or data
   frame with `method` left at its default. The generic offers every method and
   the matrix methods matched against the two each supports, so the unevaluated
