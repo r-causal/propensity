@@ -1,5 +1,38 @@
 # propensity 0.1.0.9000 (development version)
 
+* New `tidy()`, `glance()`, and `augment()` methods describe an `ipw()` result in
+  the three shapes broom defines: one row per estimate, one row for the fit, and
+  one row per observation. Each is registered against the generic the generics
+  package owns, and all three generics are re-exported here, so the verbs are
+  available from propensity itself without loading broom. The generics and tibble
+  packages move from Suggests to Imports and are now hard dependencies.
+
+* `tidy()` returns the estimates as a tibble under the column names broom
+  conventions use, `term`, `estimate`, `std.error`, `statistic`, and `p.value`,
+  with `comparison` naming the contrast on a categorical exposure. `conf.int`
+  adds the `conf.low` and `conf.high` bounds, `conf.level` reports them at a
+  level other than the one the result was fit at by rebuilding them from the
+  estimate and its standard error, and `exponentiate` puts the `log(rr)` and
+  `log(or)` rows on their natural scale exactly as the result's own
+  `as.data.frame()` method does. Nothing is dropped and nothing is re-estimated.
+
+* `glance()` returns one row describing the fit rather than its estimates: the
+  estimand the weights target, the number of observations the standard errors
+  were estimated from, and the residual degrees of freedom of the stacked
+  M-estimation system, which are those observations less the parameters the
+  system solves for. A result reporting several effect measures, or several
+  comparisons of a categorical exposure, still returns exactly one row.
+  `se_method = "linearization"` stacks nothing and records no parameter count, so
+  the observations are the outcome model's and the degrees of freedom are `NA`.
+
+* `augment()` returns the data the outcome model was fit on with the propensity
+  score, the weights, the fitted values, and the residuals attached as
+  dot-prefixed columns, one row per observation and nothing dropped. A
+  categorical exposure carries a probability for every level and so gets one
+  `.propensity_<level>` column per level in place of `.propensity`. Pass the
+  modeling data to `data` to carry those columns on a frame that also holds the
+  covariates the outcome formula left out.
+
 * `wt_entropy()` is documented as computing entropy weights, which tilt the
   propensity score by its own entropy in the sense of Zhou, Matsouaka, and
   Thomas (2020). The package overview called them entropy balancing weights, and
