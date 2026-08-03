@@ -1390,3 +1390,163 @@ test_that("ps_calibrate accepts a one-dimensional array of propensity scores", {
     tolerance = 1e-12
   )
 })
+
+# Naming the propensity scores `.propensity` ----------------------------------
+
+# The weight functions read the propensity scores from `.propensity` and this
+# one reads them from `ps`, so a call written against one is refused by the
+# other in both directions. The tests below pin the scores under the new name,
+# the deprecated shim that keeps the old name working for a release, and the
+# refusal to read both names at once. The positional pin comes first: whatever
+# else the rename moves, it must not move what a call that names nothing
+# returns.
+#
+# Unlike `ps_trim()` and `ps_trunc()`, `ps_calibrate()` is a plain function
+# rather than a generic, so there is no dispatch to preserve. What stands in
+# for the dispatch pins is the refusal of a matrix of scores, which names the
+# argument and so has to follow the rename.
+
+calib_rename_scores <- function() {
+  c(0.10, 0.18, 0.27, 0.35, 0.44, 0.52, 0.61, 0.69, 0.78, 0.86, 0.92, 0.96)
+}
+
+calib_rename_exposure <- function() {
+  c(0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1)
+}
+
+# Smoothing is turned off so the calibration curve is a logistic regression of
+# the exposure on the scores, which the test can fit for itself as an oracle.
+calib_rename_positional <- function() {
+  ps_calibrate(
+    calib_rename_scores(),
+    calib_rename_exposure(),
+    method = "logistic",
+    smooth = FALSE
+  )
+}
+
+test_that("ps_calibrate() calibrates a positional vector of scores", {
+  testthat::skip("awaiting implementation")
+
+  out <- calib_rename_positional()
+
+  expect_s3_class(out, "ps_calib")
+  expect_length(out, 12)
+
+  oracle_data <- data.frame(
+    treat = calib_rename_exposure(),
+    ps = calib_rename_scores()
+  )
+  oracle <- glm(treat ~ ps, data = oracle_data, family = binomial)
+  expect_equal(
+    as.numeric(out),
+    unname(predict(oracle, type = "response"))
+  )
+
+  meta <- ps_calib_meta(out)
+  expect_equal(meta$method, "logistic")
+  expect_false(meta$smooth)
+})
+
+test_that("ps_calibrate() reads the propensity scores from .propensity", {
+  testthat::skip("awaiting implementation")
+
+  expect_equal(
+    ps_calibrate(
+      .propensity = calib_rename_scores(),
+      .exposure = calib_rename_exposure(),
+      method = "logistic",
+      smooth = FALSE
+    ),
+    calib_rename_positional()
+  )
+})
+
+test_that("ps_calibrate() deprecates the propensity scores under ps", {
+  testthat::skip("awaiting implementation")
+
+  with_always_deprecated({
+    expect_warning(
+      ps_calibrate(
+        ps = calib_rename_scores(),
+        .exposure = calib_rename_exposure(),
+        method = "logistic",
+        smooth = FALSE
+      ),
+      class = "lifecycle_warning_deprecated"
+    )
+  })
+
+  # The old name still has to reach the same calibration, not merely warn. The
+  # deprecation is pinned above, so it is silenced here rather than repeated.
+  withr::local_options(lifecycle_verbosity = "quiet")
+  expect_equal(
+    ps_calibrate(
+      ps = calib_rename_scores(),
+      .exposure = calib_rename_exposure(),
+      method = "logistic",
+      smooth = FALSE
+    ),
+    calib_rename_positional()
+  )
+})
+
+test_that("ps_calibrate() refuses the propensity scores under both names", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(lifecycle_verbosity = "quiet")
+
+  # The condition subclass is the shim's to choose; what this pins is that the
+  # refusal is one of the package's own errors and that it names both spellings,
+  # so the caller can see which one to drop.
+  err <- expect_error(
+    ps_calibrate(
+      .propensity = calib_rename_scores(),
+      ps = calib_rename_scores(),
+      .exposure = calib_rename_exposure(),
+      method = "logistic",
+      smooth = FALSE
+    ),
+    class = "propensity_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_match(msg, "`ps`", fixed = TRUE)
+})
+
+test_that("ps_calibrate() names .propensity when refusing a matrix of scores", {
+  testthat::skip("awaiting implementation")
+
+  err <- expect_error(
+    ps_calibrate(
+      .propensity = matrix(calib_rename_scores(), nrow = 6),
+      .exposure = calib_rename_exposure()[1:6],
+      method = "logistic",
+      smooth = FALSE
+    ),
+    class = "propensity_type_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_false(grepl("`ps`", msg, fixed = TRUE))
+})
+
+test_that("ps_calibrate() names .propensity in the length mismatch error", {
+  testthat::skip("awaiting implementation")
+
+  err <- expect_error(
+    ps_calibrate(
+      .propensity = calib_rename_scores(),
+      .exposure = calib_rename_exposure()[-1],
+      method = "logistic",
+      smooth = FALSE
+    ),
+    class = "propensity_length_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_false(grepl("`ps`", msg, fixed = TRUE))
+})

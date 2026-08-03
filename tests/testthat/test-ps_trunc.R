@@ -1289,3 +1289,180 @@ test_that("casting between ps_trunc objects describing the same truncation succe
   expect_equal(ps_trunc_meta(out)$lower_bound, 0.1)
   expect_equal(ps_trunc_meta(out)$upper_bound, 0.9)
 })
+
+# Naming the propensity scores `.propensity` ----------------------------------
+
+# The weight functions read the propensity scores from `.propensity` and these
+# read them from `ps`, so a call written against one is refused by the other in
+# both directions. The tests below pin the scores under the new name, the
+# deprecated shim that keeps the old name working for a release, and the
+# refusal to read both names at once. The positional pin comes first: whatever
+# else the rename moves, it must not move what a call that names nothing
+# returns.
+
+trunc_rename_scores <- function() {
+  c(0.05, 0.15, 0.35, 0.5, 0.65, 0.85, 0.95)
+}
+
+trunc_rename_positional <- function() {
+  ps_trunc(trunc_rename_scores(), method = "ps", lower = 0.2, upper = 0.8)
+}
+
+# A categorical propensity score matrix whose rows sum to 1, small enough that
+# the bounded cells can be read off it.
+trunc_rename_matrix <- function() {
+  m <- rbind(
+    c(0.70, 0.20, 0.10),
+    c(0.20, 0.60, 0.20),
+    c(0.10, 0.30, 0.60),
+    c(0.50, 0.30, 0.20),
+    c(0.30, 0.40, 0.30),
+    c(0.25, 0.35, 0.40)
+  )
+  colnames(m) <- c("a", "b", "c")
+  m
+}
+
+trunc_rename_exposure <- function() {
+  factor(c("a", "b", "c", "a", "b", "c"), levels = c("a", "b", "c"))
+}
+
+test_that("ps_trunc() bounds a positional vector of scores at the cutoffs", {
+  testthat::skip("awaiting implementation")
+
+  out <- trunc_rename_positional()
+
+  expect_s3_class(out, "ps_trunc")
+  expect_equal(as.numeric(out), c(0.2, 0.2, 0.35, 0.5, 0.65, 0.8, 0.8))
+
+  meta <- ps_trunc_meta(out)
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, 0.2)
+  expect_equal(meta$upper_bound, 0.8)
+  expect_equal(meta$truncated_idx, c(1L, 2L, 6L, 7L))
+  expect_equal(meta$n_obs, 7L)
+})
+
+test_that("ps_trunc() reads the propensity scores from .propensity", {
+  testthat::skip("awaiting implementation")
+
+  expect_equal(
+    ps_trunc(
+      .propensity = trunc_rename_scores(),
+      method = "ps",
+      lower = 0.2,
+      upper = 0.8
+    ),
+    trunc_rename_positional()
+  )
+})
+
+test_that("ps_trunc() deprecates the propensity scores under ps", {
+  testthat::skip("awaiting implementation")
+
+  with_always_deprecated({
+    expect_warning(
+      ps_trunc(
+        ps = trunc_rename_scores(),
+        method = "ps",
+        lower = 0.2,
+        upper = 0.8
+      ),
+      class = "lifecycle_warning_deprecated"
+    )
+  })
+
+  # The old name still has to reach the same bounding, not merely warn. The
+  # deprecation is pinned above, so it is silenced here rather than repeated.
+  withr::local_options(lifecycle_verbosity = "quiet")
+  expect_equal(
+    ps_trunc(
+      ps = trunc_rename_scores(),
+      method = "ps",
+      lower = 0.2,
+      upper = 0.8
+    ),
+    trunc_rename_positional()
+  )
+})
+
+test_that("ps_trunc() refuses the propensity scores under both names", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(lifecycle_verbosity = "quiet")
+
+  # The condition subclass is the shim's to choose; what this pins is that the
+  # refusal is one of the package's own errors and that it names both spellings,
+  # so the caller can see which one to drop.
+  err <- expect_error(
+    ps_trunc(
+      .propensity = trunc_rename_scores(),
+      ps = trunc_rename_scores(),
+      method = "ps",
+      lower = 0.2,
+      upper = 0.8
+    ),
+    class = "propensity_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_match(msg, "`ps`", fixed = TRUE)
+})
+
+test_that("ps_trunc() dispatches on a matrix supplied as .propensity", {
+  testthat::skip("awaiting implementation")
+
+  out <- ps_trunc(
+    .propensity = trunc_rename_matrix(),
+    .exposure = trunc_rename_exposure(),
+    method = "ps",
+    lower = 0.15
+  )
+
+  expect_s3_class(out, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_equal(
+    out,
+    ps_trunc(
+      trunc_rename_matrix(),
+      .exposure = trunc_rename_exposure(),
+      method = "ps",
+      lower = 0.15
+    )
+  )
+})
+
+test_that("ps_trunc() dispatches on a data frame supplied as .propensity", {
+  testthat::skip("awaiting implementation")
+
+  out <- ps_trunc(
+    .propensity = as.data.frame(trunc_rename_matrix()),
+    .exposure = trunc_rename_exposure(),
+    method = "ps",
+    lower = 0.15
+  )
+
+  expect_s3_class(out, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  expect_equal(
+    out,
+    ps_trunc(
+      as.data.frame(trunc_rename_matrix()),
+      .exposure = trunc_rename_exposure(),
+      method = "ps",
+      lower = 0.15
+    )
+  )
+})
+
+test_that("ps_trunc() names .propensity in the out-of-range error", {
+  testthat::skip("awaiting implementation")
+
+  err <- expect_error(
+    ps_trunc(.propensity = c(-1, 0.5), method = "ps", lower = 0.2, upper = 0.8),
+    class = "propensity_range_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_false(grepl("`ps`", msg, fixed = TRUE))
+})

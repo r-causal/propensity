@@ -791,3 +791,156 @@ test_that("ipw() continuous results are unchanged", {
 
   expect_ipw_pin(ipw(mods$ps_mod, mods$outcome_mod), ipw_pins_continuous$ate)
 })
+
+# Naming the propensity scores `.propensity` ----------------------------------
+
+# The weight functions read the propensity scores from `.propensity` and this
+# one reads them from `ps`, so a call written against one is refused by the
+# other in both directions. The tests below pin the scores under the new name,
+# the deprecated shim that keeps the old name working for a release, and the
+# refusal to read both names at once. The positional pin comes first: whatever
+# else the rename moves, it must not move what a call that names nothing
+# returns.
+#
+# Every call that spells the scores `ps` names `estimand` as well. Once the
+# first formal is `.propensity`, an argument written `ps = x` no longer fills
+# it, so a second argument left positional would be read as the scores rather
+# than as the estimand.
+
+tilt_rename_scores <- function() {
+  c(0.10, 0.25, 0.40, 0.55, 0.70, 0.85)
+}
+
+tilt_rename_positional <- function() {
+  ps_tilt(tilt_rename_scores(), "ato")
+}
+
+# A categorical propensity score matrix whose rows sum to 1.
+tilt_rename_matrix <- function() {
+  m <- rbind(
+    c(0.70, 0.20, 0.10),
+    c(0.20, 0.60, 0.20),
+    c(0.10, 0.30, 0.60),
+    c(0.50, 0.30, 0.20)
+  )
+  colnames(m) <- c("a", "b", "c")
+  m
+}
+
+test_that("ps_tilt() tilts a positional vector of scores under the ato tilt", {
+  testthat::skip("awaiting implementation")
+
+  out <- tilt_rename_positional()
+
+  # The overlap tilt is e(1 - e), which the test writes out rather than reading
+  # back from the function it is pinning.
+  scores <- tilt_rename_scores()
+  expect_equal(out, scores * (1 - scores))
+
+  # The return contract: a plain double, unnamed, one element per observation.
+  expect_type(out, "double")
+  expect_null(names(out))
+  expect_length(out, length(scores))
+})
+
+test_that("ps_tilt() reads the propensity scores from .propensity", {
+  testthat::skip("awaiting implementation")
+
+  expect_equal(
+    ps_tilt(.propensity = tilt_rename_scores(), estimand = "ato"),
+    tilt_rename_positional()
+  )
+})
+
+test_that("ps_tilt() deprecates the propensity scores under ps", {
+  testthat::skip("awaiting implementation")
+
+  with_always_deprecated({
+    expect_warning(
+      ps_tilt(ps = tilt_rename_scores(), estimand = "ato"),
+      class = "lifecycle_warning_deprecated"
+    )
+  })
+
+  # The old name still has to reach the same tilt, not merely warn. The
+  # deprecation is pinned above, so it is silenced here rather than repeated.
+  withr::local_options(lifecycle_verbosity = "quiet")
+  expect_equal(
+    ps_tilt(ps = tilt_rename_scores(), estimand = "ato"),
+    tilt_rename_positional()
+  )
+})
+
+test_that("ps_tilt() refuses the propensity scores under both names", {
+  testthat::skip("awaiting implementation")
+
+  withr::local_options(lifecycle_verbosity = "quiet")
+
+  # The condition subclass is the shim's to choose; what this pins is that the
+  # refusal is one of the package's own errors and that it names both spellings,
+  # so the caller can see which one to drop. The generic empties its dots before
+  # dispatching, so the shim has to read both names ahead of that check or the
+  # refusal arrives as a complaint about dots instead.
+  err <- expect_error(
+    ps_tilt(
+      .propensity = tilt_rename_scores(),
+      ps = tilt_rename_scores(),
+      estimand = "ato"
+    ),
+    class = "propensity_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_match(msg, "`ps`", fixed = TRUE)
+})
+
+test_that("ps_tilt() dispatches on a matrix supplied as .propensity", {
+  testthat::skip("awaiting implementation")
+
+  expect_equal(
+    ps_tilt(.propensity = tilt_rename_matrix(), estimand = "ato"),
+    ps_tilt(tilt_rename_matrix(), "ato")
+  )
+  expect_equal(
+    ps_tilt(
+      .propensity = tilt_rename_matrix(),
+      estimand = "att",
+      .focal_level = "b"
+    ),
+    tilt_rename_matrix()[, "b"],
+    ignore_attr = TRUE
+  )
+})
+
+test_that("ps_tilt() dispatches on a data frame supplied as .propensity", {
+  testthat::skip("awaiting implementation")
+
+  expect_equal(
+    ps_tilt(
+      .propensity = as.data.frame(tilt_rename_matrix()),
+      estimand = "ato"
+    ),
+    ps_tilt(tilt_rename_matrix(), "ato")
+  )
+})
+
+test_that("ps_tilt() names .propensity when refusing an unused .focal_level", {
+  testthat::skip("awaiting implementation")
+
+  # One of the seven messages that spell the argument inside this file, chosen
+  # because it reaches the numeric method rather than the shared range check the
+  # trimming and truncation pins already cover.
+  err <- expect_error(
+    ps_tilt(
+      .propensity = tilt_rename_scores(),
+      estimand = "ate",
+      .focal_level = "a"
+    ),
+    class = "propensity_tilt_focal_error"
+  )
+
+  msg <- conditionMessage(err)
+  expect_match(msg, "`.propensity`", fixed = TRUE)
+  expect_false(grepl("`ps`", msg, fixed = TRUE))
+})
