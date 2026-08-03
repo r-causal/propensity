@@ -974,17 +974,30 @@ vec_arith.ps_trunc.integer <- function(op, x, y, ...) {
 }
 
 # Combining / Casting
+
+# How a truncation is described, as opposed to which units it pinned: the
+# method, the bounds it applied, and the percentiles those bounds came from. A
+# bound is read off the scores for every method but `"ps"`, so two objects that
+# agree on the method can still have been bounded at different places.
+trunc_parameters <- function(meta) {
+  fields <- c(
+    "method",
+    "lower_bound",
+    "upper_bound",
+    "lower_pctl",
+    "upper_pctl"
+  )
+
+  rlang::set_names(lapply(fields, function(field) meta[[field]]), fields)
+}
+
 #' @export
 vec_ptype2.ps_trunc.ps_trunc <- function(x, y, ...) {
   x_meta <- ps_trunc_meta(x)
   y_meta <- ps_trunc_meta(y)
 
   # Check if truncation parameters match
-  if (
-    !identical(x_meta$lower_bound, y_meta$lower_bound) ||
-      !identical(x_meta$upper_bound, y_meta$upper_bound) ||
-      !identical(x_meta$method, y_meta$method)
-  ) {
+  if (!identical(trunc_parameters(x_meta), trunc_parameters(y_meta))) {
     warn_incompatible_metadata(
       x,
       y,
@@ -993,13 +1006,13 @@ vec_ptype2.ps_trunc.ps_trunc <- function(x, y, ...) {
     return(double())
   }
 
-  # If parameters match, return ps_trunc prototype
-  ps_trunc(
-    double(),
-    method = x_meta$method,
-    lower = x_meta$lower_bound,
-    upper = x_meta$upper_bound
-  )
+  # The prototype carries the description of the truncation across and holds no
+  # observations, so it names no positions: it is shared by inputs whose
+  # observations are appended one after another, and the positions either record
+  # names would describe units from the other input. Truncating an empty vector
+  # again would work the bounds out from scores that are not there, and the rule
+  # defined against the exposure has none to be handed.
+  new_ps_trunc(double(), meta = drop_trunc_record(x_meta))
 }
 
 #' @export
@@ -1037,18 +1050,23 @@ vec_cast.double.ps_trunc <- function(x, to, ...) {
   vec_data(x)
 }
 
-#' @export
-vec_cast.ps_trunc.double <- function(x, to, ...) {
-  new_ps_trunc(
-    x,
-    meta = list(
-      method = "unknown",
-      lower_bound = NA,
-      upper_bound = NA,
+# A cast returns the values it was handed in the type it was handed, and the
+# truncation is part of that type, so the description comes from the target. The
+# values are the ones arriving, so the positions are written for them: none of
+# them was pinned to a bound on the way here.
+trunc_meta_for_cast <- function(to, x) {
+  c(
+    drop_trunc_record(ps_trunc_meta(to)),
+    list(
       truncated_idx = integer(0),
       n_obs = length(x)
     )
   )
+}
+
+#' @export
+vec_cast.ps_trunc.double <- function(x, to, ...) {
+  new_ps_trunc(x, meta = trunc_meta_for_cast(to, x))
 }
 
 #' @export
@@ -1066,34 +1084,32 @@ vec_ptype2.ps_trunc.psw <- function(x, y, ...) {
 #' @export
 vec_cast.character.ps_trunc <- function(x, to, ...) as.character(vec_data(x))
 
+# Propensity scores lie strictly between 0 and 1, so meeting an integer in the
+# integers would round every one of them away. The common type is the one that
+# holds both sets of values.
 #' @export
 vec_ptype2.ps_trunc.integer <- function(x, y, ...) {
-  warn_class_downgrade("ps_trunc", "integer")
-  integer()
+  warn_class_downgrade("ps_trunc")
+  double()
 }
 
 #' @export
 vec_ptype2.integer.ps_trunc <- function(x, y, ...) {
-  warn_class_downgrade("ps_trunc", "integer")
-  integer()
+  warn_class_downgrade("ps_trunc")
+  double()
 }
 
 #' @export
-vec_cast.integer.ps_trunc <- function(x, to, ...) as.integer(vec_data(x))
+vec_cast.integer.ps_trunc <- function(x, to, ...) {
+  # A propensity score has no integer to be, so vctrs' own check reports the
+  # loss rather than silently rounding it away.
+  vec_cast(vec_data(x), integer(), x_arg = "ps_trunc")
+}
 
 #' @export
 vec_cast.ps_trunc.integer <- function(x, to, ...) {
   xx <- as.double(x)
-  new_ps_trunc(
-    xx,
-    meta = list(
-      method = "unknown",
-      lower_bound = NA,
-      upper_bound = NA,
-      truncated_idx = integer(0),
-      n_obs = length(xx)
-    )
-  )
+  new_ps_trunc(xx, meta = trunc_meta_for_cast(to, xx))
 }
 
 #' @export

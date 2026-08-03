@@ -172,14 +172,14 @@ test_that("Combining & casting ps_trunc => correct ptype2, cast behavior", {
   expect_type(out_cast, "double")
   expect_identical(out_cast, c(0.2, 0.6, 0.8))
 
-  # 4) Casting double -> ps_trunc => new default meta
+  # 4) Casting double -> ps_trunc => the truncation of the target
   new_vals <- runif(3)
   out_ps_trunc <- vctrs::vec_cast(new_vals, to = obj)
   expect_s3_class(out_ps_trunc, "ps_trunc")
   meta_new <- ps_trunc_meta(out_ps_trunc)
-  expect_equal(meta_new$method, "unknown") # per your code
-  expect_true(is.na(meta_new$lower_bound))
-  expect_true(is.na(meta_new$upper_bound))
+  expect_equal(meta_new$method, "ps")
+  expect_equal(meta_new$lower_bound, 0.2)
+  expect_equal(meta_new$upper_bound, 0.8)
 })
 
 test_that("wt_atm.numeric calls atm_binary() for binary .exposure, returns psw", {
@@ -987,8 +987,6 @@ trunc_combine_fixture <- function() {
 }
 
 test_that("combining ps_trunc objects keeps the bounds given to the truncation", {
-  testthat::skip("awaiting implementation")
-
   fixture <- trunc_combine_fixture()
   truncated <- ps_trunc(fixture$ps, method = "ps", lower = 0.1, upper = 0.9)
 
@@ -1006,8 +1004,6 @@ test_that("combining ps_trunc objects keeps the bounds given to the truncation",
 })
 
 test_that("combining pctl ps_trunc objects keeps the bounds the truncation found", {
-  testthat::skip("awaiting implementation")
-
   fixture <- trunc_combine_fixture()
   truncated <- ps_trunc(fixture$ps, method = "pctl")
   original <- ps_trunc_meta(truncated)
@@ -1033,8 +1029,6 @@ test_that("combining pctl ps_trunc objects keeps the bounds the truncation found
 })
 
 test_that("combining cr ps_trunc objects keeps the common range", {
-  testthat::skip("awaiting implementation")
-
   fixture <- trunc_combine_fixture()
   truncated <- ps_trunc(
     fixture$ps,
@@ -1059,8 +1053,6 @@ test_that("combining cr ps_trunc objects keeps the common range", {
 })
 
 test_that("casting a double to a ps_trunc keeps the truncation of the target", {
-  testthat::skip("awaiting implementation")
-
   to <- ps_trunc(
     c(0.05, 0.3, 0.5, 0.95),
     method = "ps",
@@ -1083,8 +1075,6 @@ test_that("casting a double to a ps_trunc keeps the truncation of the target", {
 })
 
 test_that("combining a ps_trunc with an integer keeps the propensity scores", {
-  testthat::skip("awaiting implementation")
-
   x <- ps_trunc(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
 
   # Propensity scores lie strictly between 0 and 1, so a combination that meets
@@ -1096,8 +1086,6 @@ test_that("combining a ps_trunc with an integer keeps the propensity scores", {
 })
 
 test_that("casting a ps_trunc to integer refuses rather than rounds", {
-  testthat::skip("awaiting implementation")
-
   x <- ps_trunc(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
 
   expect_error(

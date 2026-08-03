@@ -195,3 +195,23 @@
       i Each bound is read into the comparison that decides what happens to a propensity score, and a missing bound decides nothing.
       i Supply a value, or leave the argument unset to take the default for this method.
 
+# combining pctl ps_trim objects trimmed at different quantiles warns
+
+    Code
+      out <- vec_c(x, y)
+    Condition <propensity_coercion_warning>
+      Warning in `vec_ptype2.ps_trim.ps_trim()`:
+      Converting ps_trim to numeric: different trimming parameters
+      i Metadata cannot be preserved when combining incompatible objects
+      i Use identical objects or explicitly cast to numeric to avoid this warning
+
+# combining a ps_trim with an integer keeps the propensity scores
+
+    Code
+      out <- vec_c(x, 1L)
+    Condition <propensity_class_downgrade_warning>
+      Warning in `vec_ptype2.ps_trim.integer()`:
+      Converting ps_trim to numeric
+      i Class-specific attributes and metadata have been dropped
+      i Use explicit casting to numeric to avoid this warning
+

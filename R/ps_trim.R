@@ -1075,17 +1075,33 @@ vec_arith.ps_trim.list <- function(op, x, y, ...) {
   stop_incompatible_op(op, x, y)
 }
 
+# How a trimming is described, as opposed to which units it touched: the
+# method, the bounds it was given, and the cutoffs it settled on. A cutoff is
+# read off the scores, so two objects that agree on the method and the bounds
+# can still have been trimmed at different places.
+trim_parameters <- function(meta) {
+  fields <- c(
+    "method",
+    "lower",
+    "upper",
+    "cutoff",
+    "q_lower",
+    "q_upper",
+    "P",
+    "cr_lower",
+    "cr_upper"
+  )
+
+  rlang::set_names(lapply(fields, function(field) meta[[field]]), fields)
+}
+
 #' @export
 vec_ptype2.ps_trim.ps_trim <- function(x, y, ...) {
   x_meta <- ps_trim_meta(x)
   y_meta <- ps_trim_meta(y)
 
   # Check if trim parameters match
-  if (
-    !identical(x_meta$lower, y_meta$lower) ||
-      !identical(x_meta$upper, y_meta$upper) ||
-      !identical(x_meta$method, y_meta$method)
-  ) {
+  if (!identical(trim_parameters(x_meta), trim_parameters(y_meta))) {
     warn_incompatible_metadata(
       x,
       y,
@@ -1104,24 +1120,13 @@ vec_ptype2.ps_trim.ps_trim <- function(x, y, ...) {
     return(double())
   }
 
-  # If parameters match, return ps_trim prototype
-  # The actual index combining will happen in vec_c
-  # Handle missing metadata gracefully
-  if (
-    is.null(x_meta$method) || is.null(x_meta$lower) || is.null(x_meta$upper)
-  ) {
-    # Return basic ps_trim if metadata is incomplete. The prototype is shared by
-    # inputs whose observations are appended one after another, so the positions
-    # either record names would describe units from the other input.
-    new_trimmed_ps(double(), ps_trim_meta = drop_trim_record(x_meta))
-  } else {
-    ps_trim(
-      double(),
-      method = x_meta$method,
-      lower = x_meta$lower,
-      upper = x_meta$upper
-    )
-  }
+  # The prototype carries the description of the trimming across and holds no
+  # observations, so it names no positions: it is shared by inputs whose
+  # observations are appended one after another, and the positions either record
+  # names would describe units from the other input. Trimming an empty vector
+  # again would work the cutoffs out from scores that are not there, and the
+  # rules defined against the exposure have none to be handed.
+  new_trimmed_ps(double(), ps_trim_meta = drop_trim_record(x_meta))
 }
 #' @export
 vec_ptype2.ps_trim.double <- function(x, y, ...) {
@@ -1158,18 +1163,24 @@ vec_cast.double.ps_trim <- function(x, to, ...) {
   vec_data(x)
 }
 
-#' @export
-vec_cast.ps_trim.double <- function(x, to, ...) {
-  # create a default ps_trim with no trimming
-  new_trimmed_ps(
-    x,
-    ps_trim_meta = list(
-      method = "unknown",
+# A cast returns the values it was handed in the type it was handed, and the
+# trimming is part of that type, so the description comes from the target. The
+# values are the ones arriving, so the positions are written for them: none of
+# them was removed on the way here.
+trim_meta_for_cast <- function(to, x) {
+  c(
+    drop_trim_record(ps_trim_meta(to)),
+    list(
       keep_idx = seq_along(x),
       trimmed_idx = integer(0),
       n_obs = length(x)
     )
   )
+}
+
+#' @export
+vec_cast.ps_trim.double <- function(x, to, ...) {
+  new_trimmed_ps(x, ps_trim_meta = trim_meta_for_cast(to, x))
 }
 
 #' @export
@@ -1187,15 +1198,18 @@ vec_ptype2.ps_trim.psw <- function(x, y, ...) {
 #' @export
 vec_cast.character.ps_trim <- function(x, to, ...) as.character(vec_data(x))
 
+# Propensity scores lie strictly between 0 and 1, so meeting an integer in the
+# integers would round every one of them away. The common type is the one that
+# holds both sets of values.
 #' @export
 vec_ptype2.ps_trim.integer <- function(x, y, ...) {
-  warn_class_downgrade("ps_trim", "integer")
-  integer()
+  warn_class_downgrade("ps_trim")
+  double()
 }
 #' @export
 vec_ptype2.integer.ps_trim <- function(x, y, ...) {
-  warn_class_downgrade("ps_trim", "integer")
-  integer()
+  warn_class_downgrade("ps_trim")
+  double()
 }
 
 #' @export
@@ -1211,21 +1225,15 @@ vec_ptype2.ps_trunc.ps_trim <- function(x, y, ...) {
 
 #' @export
 vec_cast.integer.ps_trim <- function(x, to, ...) {
-  as.integer(vec_data(x))
+  # A propensity score has no integer to be, so vctrs' own check reports the
+  # loss rather than silently rounding it away.
+  vec_cast(vec_data(x), integer(), x_arg = "ps_trim")
 }
 
 #' @export
 vec_cast.ps_trim.integer <- function(x, to, ...) {
   xx <- as.double(x)
-  new_trimmed_ps(
-    xx,
-    ps_trim_meta = list(
-      method = "unknown",
-      keep_idx = seq_along(xx),
-      trimmed_idx = integer(0),
-      n_obs = length(xx)
-    )
-  )
+  new_trimmed_ps(xx, ps_trim_meta = trim_meta_for_cast(to, xx))
 }
 
 #' @export

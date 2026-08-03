@@ -445,17 +445,21 @@ test_that("Casting ps_trim -> double => underlying numeric data", {
   expect_equal(casted, c(0.2, NA, 0.9))
 })
 
-test_that("Casting double -> ps_trim => minimal ps_trim object", {
+test_that("Casting double -> ps_trim keeps the trimming of the target", {
   base_vec <- c(0.1, 0.7, NA, 0.4)
-  # If we do vec_cast(base_vec, ps_trim())
-  # => calls vec_cast.ps_trim.double
-  ps_t <- vec_cast(base_vec, to = structure(double(), class = "ps_trim"))
+  to <- ps_trim(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  # A cast returns the values it was given in the type it was given, and the
+  # trimming is part of that type.
+  ps_t <- vec_cast(base_vec, to = to)
   expect_s3_class(ps_t, "ps_trim")
-  # The meta is "unknown" method or similar
   meta <- attr(ps_t, "ps_trim_meta")
-  expect_equal(meta$method, "unknown")
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower, 0.1)
+  expect_equal(meta$upper, 0.9)
   expect_equal(meta$keep_idx, seq_along(base_vec))
   expect_length(meta$trimmed_idx, 0)
+  expect_equal(meta$n_obs, length(base_vec))
 })
 
 test_that("Casting integer->ps_trim likewise uses new_trimmed_ps", {
@@ -1249,8 +1253,6 @@ trim_combine_fixture <- function() {
 }
 
 test_that("combining adaptive ps_trim objects keeps the cutoff the trimming found", {
-  testthat::skip("awaiting implementation")
-
   fixture <- trim_combine_fixture()
   trimmed <- ps_trim(fixture$ps, method = "adaptive")
   meta <- ps_trim_meta(trimmed)
@@ -1270,8 +1272,6 @@ test_that("combining adaptive ps_trim objects keeps the cutoff the trimming foun
 })
 
 test_that("combining pctl ps_trim objects keeps the quantiles the trimming found", {
-  testthat::skip("awaiting implementation")
-
   fixture <- trim_combine_fixture()
   trimmed <- ps_trim(fixture$ps, method = "pctl")
   meta <- ps_trim_meta(trimmed)
@@ -1297,9 +1297,27 @@ test_that("combining pctl ps_trim objects keeps the quantiles the trimming found
   expect_null(combined_meta$n_obs)
 })
 
-test_that("combining pref ps_trim objects keeps the exposure prevalence", {
-  testthat::skip("awaiting implementation")
+test_that("combining pctl ps_trim objects trimmed at different quantiles warns", {
+  # Same method and same percentiles, different scores, so the quantiles those
+  # percentiles landed on differ. A shared prototype would report one object's
+  # cutoffs over the other object's units, so there is no shared type to combine
+  # in.
+  x <- ps_trim(c(0.1, 0.3, 0.5, 0.7, 0.9), method = "pctl")
+  y <- ps_trim(c(0.2, 0.4, 0.5, 0.6, 0.8), method = "pctl")
 
+  expect_false(identical(
+    ps_trim_meta(x)$q_lower,
+    ps_trim_meta(y)$q_lower
+  ))
+
+  combined <- expect_propensity_warning(vec_c(x, y))
+
+  expect_type(combined, "double")
+  expect_false(inherits(combined, "ps_trim"))
+  expect_equal(combined, c(as.numeric(x), as.numeric(y)))
+})
+
+test_that("combining pref ps_trim objects keeps the exposure prevalence", {
   fixture <- trim_combine_fixture()
   trimmed <- ps_trim(
     fixture$ps,
@@ -1326,8 +1344,6 @@ test_that("combining pref ps_trim objects keeps the exposure prevalence", {
 })
 
 test_that("combining cr ps_trim objects keeps the common range", {
-  testthat::skip("awaiting implementation")
-
   fixture <- trim_combine_fixture()
   trimmed <- ps_trim(fixture$ps, method = "cr", .exposure = fixture$exposure)
   meta <- ps_trim_meta(trimmed)
@@ -1347,8 +1363,6 @@ test_that("combining cr ps_trim objects keeps the common range", {
 })
 
 test_that("combining refit ps_trim objects keeps the refit flag", {
-  testthat::skip("awaiting implementation")
-
   set.seed(5)
   n <- 40
   x <- rnorm(n)
@@ -1369,8 +1383,6 @@ test_that("combining refit ps_trim objects keeps the refit flag", {
 })
 
 test_that("combining a ps_trim with an integer keeps the propensity scores", {
-  testthat::skip("awaiting implementation")
-
   x <- ps_trim(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
 
   # Propensity scores lie strictly between 0 and 1, so a combination that meets
@@ -1382,8 +1394,6 @@ test_that("combining a ps_trim with an integer keeps the propensity scores", {
 })
 
 test_that("casting a ps_trim to integer refuses rather than rounds", {
-  testthat::skip("awaiting implementation")
-
   x <- ps_trim(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
 
   expect_error(

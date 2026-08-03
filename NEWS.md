@@ -1,5 +1,35 @@
 # propensity 0.1.0.9000 (development version)
 
+* Combining `ps_trim` objects trimmed the same way, or `ps_trunc` objects
+  truncated the same way, now keeps the description of that trimming or
+  truncation on the result. The prototype the combination is built on carries
+  the metadata across instead of trimming or truncating an empty vector again,
+  which had no scores to read a cutoff off and no exposure to be handed:
+  `method = "pctl"` came back with missing quantiles, `ps_trim(method = "pref")`
+  and `ps_trunc(method = "cr")` raised an error about a missing `.exposure`
+  argument the caller had not omitted, `ps_trunc(method = "pctl")` failed the
+  cast against the prototype it had just built, and the refit flag set by
+  `ps_refit()` was dropped. The result still carries no record of which units
+  were modified, since concatenation appends one set of observations to another.
+
+* Casting a numeric or integer vector to `ps_trim` or `ps_trunc` now returns it
+  under the trimming or truncation of the target, and records the positions for
+  the values arriving. Previously the result reported `method = "unknown"` and,
+  for `ps_trunc`, missing bounds, whatever it had been cast to.
+
+* Two `ps_trim` objects are now compatible for combining only if they agree on
+  the cutoffs their trimming settled on, matching the rule `ps_trunc` already
+  applied to its bounds. Two objects trimmed with the same method and the same
+  percentiles can still have been trimmed at different scores, and the result
+  would have reported one object's cutoffs over the other object's units.
+  Incompatible objects warn and combine as numeric, as other metadata mismatches
+  do.
+
+* Combining a `ps_trim` or a `ps_trunc` with an integer vector now gives a
+  numeric result holding the propensity scores, rather than an integer vector of
+  zeros and ones. Casting either class to integer now raises a lossy-cast error
+  instead of rounding every score away, as `psw` already did.
+
 * `ps_trim()` and `ps_trunc()` now follow one policy for a propensity score
   that arrives missing: it joins neither the retained nor the modified
   positions, `is_unit_trimmed()` and `is_unit_truncated()` report `FALSE` for

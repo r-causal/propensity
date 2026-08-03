@@ -93,3 +93,13 @@
       i `method = 'cr'` bounds the scores to the region both groups reach, and these groups reach none in common.
       i Refit the propensity score model, or truncate with `method = 'ps'` or `method = 'pctl'`.
 
+# combining a ps_trunc with an integer keeps the propensity scores
+
+    Code
+      out <- vec_c(x, 1L)
+    Condition <propensity_class_downgrade_warning>
+      Warning in `vec_ptype2.ps_trunc.integer()`:
+      Converting ps_trunc to numeric
+      i Class-specific attributes and metadata have been dropped
+      i Use explicit casting to numeric to avoid this warning
+
