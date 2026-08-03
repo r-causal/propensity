@@ -965,3 +965,143 @@ test_that("ps_trunc() keeps every score within the common range it records", {
   expect_true(all(as.numeric(truncated) >= meta$lower_bound))
   expect_true(all(as.numeric(truncated) <= meta$upper_bound))
 })
+
+# Combining truncated propensity scores --------------------------------------
+
+# Two `ps_trunc` objects are combined through the prototype they share. The
+# prototype stands for the truncation that produced them, so it carries the
+# method and the bounds that method settled on. A bound read off the scores
+# cannot be worked out again from a prototype that holds none, so it is carried
+# across rather than recomputed. The prototype describes no observations, so it
+# names no positions and the combined result has no record.
+
+trunc_combine_fixture <- function() {
+  set.seed(4)
+  n <- 40
+  x <- rnorm(n, sd = 2)
+
+  list(
+    ps = plogis(x),
+    exposure = rbinom(n, 1, plogis(x))
+  )
+}
+
+test_that("combining ps_trunc objects keeps the bounds given to the truncation", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trunc_combine_fixture()
+  truncated <- ps_trunc(fixture$ps, method = "ps", lower = 0.1, upper = 0.9)
+
+  combined <- expect_silent(c(truncated[1:20], truncated[21:40]))
+  meta <- ps_trunc_meta(combined)
+
+  expect_s3_class(combined, "ps_trunc")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(truncated))
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, 0.1)
+  expect_equal(meta$upper_bound, 0.9)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+})
+
+test_that("combining pctl ps_trunc objects keeps the bounds the truncation found", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trunc_combine_fixture()
+  truncated <- ps_trunc(fixture$ps, method = "pctl")
+  original <- ps_trunc_meta(truncated)
+
+  # The bounds come from the scores, and a prototype holds none, so a prototype
+  # that works them out again reports missing bounds. Read back as the bounds
+  # the truncation used, they no longer describe the scores being combined.
+  combined <- expect_silent(c(truncated[1:20], truncated[21:40]))
+  meta <- ps_trunc_meta(combined)
+
+  expect_s3_class(combined, "ps_trunc")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(truncated))
+  expect_equal(meta$method, "pctl")
+  expect_equal(meta$lower_pctl, 0.05)
+  expect_equal(meta$upper_pctl, 0.95)
+  expect_false(is.na(meta$lower_bound))
+  expect_false(is.na(meta$upper_bound))
+  expect_equal(meta$lower_bound, original$lower_bound)
+  expect_equal(meta$upper_bound, original$upper_bound)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+})
+
+test_that("combining cr ps_trunc objects keeps the common range", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trunc_combine_fixture()
+  truncated <- ps_trunc(
+    fixture$ps,
+    method = "cr",
+    .exposure = fixture$exposure
+  )
+  original <- ps_trunc_meta(truncated)
+
+  # The common range is defined against the exposure, which a prototype built by
+  # truncating again would have to be handed and is not.
+  combined <- expect_silent(c(truncated[1:20], truncated[21:40]))
+  meta <- ps_trunc_meta(combined)
+
+  expect_s3_class(combined, "ps_trunc")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(truncated))
+  expect_equal(meta$method, "cr")
+  expect_equal(meta$lower_bound, original$lower_bound)
+  expect_equal(meta$upper_bound, original$upper_bound)
+  expect_null(meta$truncated_idx)
+  expect_null(meta$n_obs)
+})
+
+test_that("casting a double to a ps_trunc keeps the truncation of the target", {
+  testthat::skip("awaiting implementation")
+
+  to <- ps_trunc(
+    c(0.05, 0.3, 0.5, 0.95),
+    method = "ps",
+    lower = 0.1,
+    upper = 0.9
+  )
+
+  # A cast returns the values it was given in the type it was given, and the
+  # bounds are part of that type.
+  out <- vec_cast(c(0.3, 0.4), to = to)
+  meta <- ps_trunc_meta(out)
+
+  expect_s3_class(out, "ps_trunc")
+  expect_equal(as.numeric(out), c(0.3, 0.4))
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, 0.1)
+  expect_equal(meta$upper_bound, 0.9)
+  expect_equal(meta$truncated_idx, integer(0))
+  expect_equal(meta$n_obs, 2L)
+})
+
+test_that("combining a ps_trunc with an integer keeps the propensity scores", {
+  testthat::skip("awaiting implementation")
+
+  x <- ps_trunc(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  # Propensity scores lie strictly between 0 and 1, so a combination that meets
+  # an integer in the integers is every score rounded away.
+  combined <- expect_propensity_warning(vec_c(x, 1L))
+
+  expect_type(combined, "double")
+  expect_equal(combined, c(0.2, 0.5, 0.85, 1))
+})
+
+test_that("casting a ps_trunc to integer refuses rather than rounds", {
+  testthat::skip("awaiting implementation")
+
+  x <- ps_trunc(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  expect_error(
+    vec_cast(x, integer()),
+    class = "vctrs_error_cast_lossy"
+  )
+})

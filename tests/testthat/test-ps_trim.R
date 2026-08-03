@@ -1227,3 +1227,167 @@ test_that("ps_trim() refuses a bound that is missing", {
 
   expect_propensity_error(ps_trim(ps, method = "ps", lower = NA))
 })
+
+# Combining trimmed propensity scores ----------------------------------------
+
+# Two `ps_trim` objects are combined through the prototype they share. The
+# prototype stands for the trimming that produced them, so it carries the method
+# and the cutoffs that method settled on. A cutoff read off the scores cannot be
+# worked out again from a prototype that holds none, so it is carried across
+# rather than recomputed. The prototype describes no observations, so it names no
+# positions and the combined result has no record.
+
+trim_combine_fixture <- function() {
+  set.seed(4)
+  n <- 40
+  x <- rnorm(n, sd = 2)
+
+  list(
+    ps = plogis(x),
+    exposure = rbinom(n, 1, plogis(x))
+  )
+}
+
+test_that("combining adaptive ps_trim objects keeps the cutoff the trimming found", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trim_combine_fixture()
+  trimmed <- ps_trim(fixture$ps, method = "adaptive")
+  meta <- ps_trim_meta(trimmed)
+
+  combined <- expect_silent(c(trimmed[1:20], trimmed[21:40]))
+  combined_meta <- ps_trim_meta(combined)
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(trimmed))
+  expect_equal(combined_meta$method, "adaptive")
+  expect_gt(meta$cutoff, 0)
+  expect_equal(combined_meta$cutoff, meta$cutoff)
+  expect_null(combined_meta$keep_idx)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$n_obs)
+})
+
+test_that("combining pctl ps_trim objects keeps the quantiles the trimming found", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trim_combine_fixture()
+  trimmed <- ps_trim(fixture$ps, method = "pctl")
+  meta <- ps_trim_meta(trimmed)
+
+  combined <- expect_silent(c(trimmed[1:20], trimmed[21:40]))
+  combined_meta <- ps_trim_meta(combined)
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(trimmed))
+  expect_equal(combined_meta$method, "pctl")
+  expect_equal(combined_meta$lower, 0.05)
+  expect_equal(combined_meta$upper, 0.95)
+
+  # The quantiles come from the scores, and a prototype holds none, so a
+  # prototype that works them out again reports a missing cutoff instead.
+  expect_false(is.na(combined_meta$q_lower))
+  expect_false(is.na(combined_meta$q_upper))
+  expect_equal(combined_meta$q_lower, meta$q_lower)
+  expect_equal(combined_meta$q_upper, meta$q_upper)
+  expect_null(combined_meta$keep_idx)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$n_obs)
+})
+
+test_that("combining pref ps_trim objects keeps the exposure prevalence", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trim_combine_fixture()
+  trimmed <- ps_trim(
+    fixture$ps,
+    method = "pref",
+    .exposure = fixture$exposure
+  )
+  meta <- ps_trim_meta(trimmed)
+
+  # The preference scale is defined against the exposure, which a prototype
+  # built by trimming again would have to be handed and is not.
+  combined <- expect_silent(c(trimmed[1:20], trimmed[21:40]))
+  combined_meta <- ps_trim_meta(combined)
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(trimmed))
+  expect_equal(combined_meta$method, "pref")
+  expect_equal(combined_meta$lower, 0.3)
+  expect_equal(combined_meta$upper, 0.7)
+  expect_equal(combined_meta$P, meta$P)
+  expect_null(combined_meta$keep_idx)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$n_obs)
+})
+
+test_that("combining cr ps_trim objects keeps the common range", {
+  testthat::skip("awaiting implementation")
+
+  fixture <- trim_combine_fixture()
+  trimmed <- ps_trim(fixture$ps, method = "cr", .exposure = fixture$exposure)
+  meta <- ps_trim_meta(trimmed)
+
+  combined <- expect_silent(c(trimmed[1:20], trimmed[21:40]))
+  combined_meta <- ps_trim_meta(combined)
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_equal(as.numeric(combined), as.numeric(trimmed))
+  expect_equal(combined_meta$method, "cr")
+  expect_equal(combined_meta$cr_lower, meta$cr_lower)
+  expect_equal(combined_meta$cr_upper, meta$cr_upper)
+  expect_null(combined_meta$keep_idx)
+  expect_null(combined_meta$trimmed_idx)
+  expect_null(combined_meta$n_obs)
+})
+
+test_that("combining refit ps_trim objects keeps the refit flag", {
+  testthat::skip("awaiting implementation")
+
+  set.seed(5)
+  n <- 40
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  model <- glm(z ~ x, family = binomial)
+
+  trimmed <- ps_trim(unname(fitted(model)), lower = 0.2, upper = 0.8)
+  refit <- ps_refit(trimmed, model)
+  expect_true(is_refit(refit))
+
+  # Refitting is part of what produced these scores rather than a position among
+  # them, so it means the same thing at any length.
+  combined <- expect_silent(c(refit[1:20], refit[21:40]))
+
+  expect_s3_class(combined, "ps_trim")
+  expect_length(combined, 40)
+  expect_true(is_refit(combined))
+})
+
+test_that("combining a ps_trim with an integer keeps the propensity scores", {
+  testthat::skip("awaiting implementation")
+
+  x <- ps_trim(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  # Propensity scores lie strictly between 0 and 1, so a combination that meets
+  # an integer in the integers is every score rounded away.
+  combined <- expect_propensity_warning(vec_c(x, 1L))
+
+  expect_type(combined, "double")
+  expect_equal(combined, c(0.2, 0.5, 0.85, 1))
+})
+
+test_that("casting a ps_trim to integer refuses rather than rounds", {
+  testthat::skip("awaiting implementation")
+
+  x <- ps_trim(c(0.2, 0.5, 0.85), method = "ps", lower = 0.1, upper = 0.9)
+
+  expect_error(
+    vec_cast(x, integer()),
+    class = "vctrs_error_cast_lossy"
+  )
+})
