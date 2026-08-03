@@ -5,7 +5,7 @@
     Condition <propensity_range_error>
       Error in `wt_ate()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is -0.1 and 3.3
+      i The range of `.propensity` is -0.1 and 3.3
 
 # the refusal of an absent level names the levels the exposure takes
 
@@ -82,7 +82,7 @@
     Condition <propensity_range_error>
       Error in `wt_entropy()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is -0.1 and 3.3
+      i The range of `.propensity` is -0.1 and 3.3
 
 # wt_entropy works with ps_trim objects
 
@@ -149,7 +149,7 @@
     Condition <propensity_range_error>
       Error in `wt_ate()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is -0.1 and 1.1
+      i The range of `.propensity` is -0.1 and 1.1
 
 ---
 
@@ -158,7 +158,7 @@
     Condition <propensity_range_error>
       Error in `wt_att()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is 0.0 and 1.0
+      i The range of `.propensity` is 0.0 and 1.0
 
 ---
 
@@ -298,7 +298,7 @@
     Condition <propensity_range_error>
       Error in `wt_ate()`:
       ! The propensity score must be between 0 and 1.
-      i The range of `ps` is 0.5 and 1.5
+      i The range of `.propensity` is 0.5 and 1.5
 
 # GLM methods error appropriately
 

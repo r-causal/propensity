@@ -2,11 +2,12 @@
 #'
 #' `ps_trunc()` bounds extreme propensity scores to fixed limits, replacing
 #' out-of-range values with the boundary value (a form of *winsorizing*). The
-#' result is a vector or matrix of the same length and dimensions as `ps`, with
-#' no observations removed. This contrasts with [ps_trim()], which sets extreme
-#' values to `NA` (effectively removing those observations from analysis).
+#' result is a vector or matrix of the same length and dimensions as
+#' `.propensity`, with no observations removed. This contrasts with [ps_trim()],
+#' which sets extreme values to `NA` (effectively removing those observations
+#' from analysis).
 #'
-#' @param ps A numeric vector of propensity scores between 0 and 1 (binary
+#' @param .propensity A numeric vector of propensity scores between 0 and 1 (binary
 #'   exposures), or a matrix/data.frame where each column contains propensity
 #'   scores for one level of a categorical exposure. A data frame truncated for
 #'   a binary exposure is reduced to a single column: the second column of a two
@@ -27,7 +28,8 @@
 #'     categorical exposures, quantiles are computed across all columns.
 #'   * `"cr"`: Truncate to the common range of propensity scores across
 #'     exposure groups (binary exposures only). Bounds are
-#'     `[min(ps[focal]), max(ps[reference])]`. Requires `.exposure`.
+#'     `[min(.propensity[focal]), max(.propensity[reference])]`. Requires
+#'     `.exposure`.
 #'
 #'   For categorical exposures, only `"ps"` and `"pctl"` are supported.
 #' @param lower,upper Bounds for truncation. Interpretation depends on `method`:
@@ -52,13 +54,16 @@
 #'   higher level, which is `1` for a 0/1 exposure, `TRUE` for a logical one,
 #'   and the second of the two levels a factor or character exposure takes.
 #'   Levels a factor declares but never takes are not candidates. Naming any
-#'   other level reverses the coding, so `ps` must then hold the probability of
-#'   the named level.
+#'   other level reverses the coding, so `.propensity` must then hold the
+#'   probability of the named level.
 #' @param .reference_level The value of `.exposure` representing the reference
 #'   (control) group. Naming it makes the exposure's other level focal, with
-#'   the same consequence for `ps`, and a level the exposure never takes is an
-#'   error. Automatically detected if not supplied.
+#'   the same consequence for `.propensity`, and a level the exposure never
+#'   takes is an error. Automatically detected if not supplied.
 #' @param ... Additional arguments passed to methods.
+#' @param ps `r lifecycle::badge("deprecated")` Use `.propensity` instead. A
+#'   call that names `ps` must name the arguments after it as well, since a
+#'   positional argument binds to `.propensity`.
 #'
 #' @details
 #' Unlike [ps_trim()], truncation preserves all observations. No `NA` values
@@ -191,7 +196,7 @@
 #'
 #' @export
 ps_trunc <- function(
-  ps,
+  .propensity,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
@@ -200,14 +205,21 @@ ps_trunc <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
-  UseMethod("ps_trunc")
+  .propensity <- handle_propensity_deprecation(
+    rlang::maybe_missing(.propensity),
+    ps,
+    "ps_trunc"
+  )
+
+  UseMethod("ps_trunc", .propensity)
 }
 
 #' @export
 ps_trunc.default <- function(
-  ps,
+  .propensity,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
@@ -216,8 +228,10 @@ ps_trunc.default <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
   method <- rlang::arg_match(method)
   meta_list <- list(method = method)
 
@@ -233,7 +247,7 @@ ps_trunc.default <- function(
   .reference_level <- focal_params$.reference_level
   check_focal_levels(.focal_level, .reference_level)
 
-  check_ps_range(ps)
+  check_ps_range(.propensity)
 
   if (method == "ps") {
     if (is.null(lower)) {
@@ -255,8 +269,8 @@ ps_trunc.default <- function(
     }
     check_quantile_probs(lower, upper)
     check_lower_upper(lower, upper)
-    lb <- quantile(ps, probs = lower, na.rm = TRUE)
-    ub <- quantile(ps, probs = upper, na.rm = TRUE)
+    lb <- quantile(.propensity, probs = lower, na.rm = TRUE)
+    ub <- quantile(.propensity, probs = upper, na.rm = TRUE)
     meta_list$lower_pctl <- lower
     meta_list$upper_pctl <- upper
   } else {
@@ -275,9 +289,9 @@ ps_trunc.default <- function(
     # A score that arrived missing is not one this function can place against a
     # bound, so it takes no part in working the bounds out. Dropping it here
     # gives the bounds the same call would produce with the observation absent.
-    observed <- !is.na(ps)
-    ps_treat <- ps[observed & .exposure == 1]
-    ps_untrt <- ps[observed & .exposure == 0]
+    observed <- !is.na(.propensity)
+    ps_treat <- .propensity[observed & .exposure == 1]
+    ps_untrt <- .propensity[observed & .exposure == 0]
     lb <- min(ps_treat)
     ub <- max(ps_untrt)
     check_common_range(lb, ub)
@@ -286,12 +300,12 @@ ps_trunc.default <- function(
   # Winsorize. A missing score compares as neither below the lower bound nor
   # above the upper one, so `which()` leaves it out of the pinned positions and
   # it stays missing in the result: it is not a score this function bounded.
-  pinned_low <- which(ps < lb)
-  pinned_high <- which(ps > ub)
+  pinned_low <- which(.propensity < lb)
+  pinned_high <- which(.propensity > ub)
   truncated_idx <- sort(c(pinned_low, pinned_high))
 
-  ps[pinned_low] <- lb
-  ps[pinned_high] <- ub
+  .propensity[pinned_low] <- lb
+  .propensity[pinned_high] <- ub
 
   meta <- c(
     meta_list,
@@ -299,16 +313,16 @@ ps_trunc.default <- function(
       lower_bound = lb,
       upper_bound = ub,
       truncated_idx = truncated_idx,
-      n_obs = length(ps)
+      n_obs = length(.propensity)
     )
   )
 
-  new_ps_trunc(ps, meta)
+  new_ps_trunc(.propensity, meta)
 }
 
 #' @export
 ps_trunc.matrix <- function(
-  ps,
+  .propensity,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
@@ -317,8 +331,11 @@ ps_trunc.matrix <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
   # The generic offers every method, so match against that full set and then
   # reject the ones the categorical path does not define.
   method <- rlang::arg_match(method, values = c("ps", "pctl", "cr"))
@@ -344,10 +361,14 @@ ps_trunc.matrix <- function(
   .exposure <- transform_exposure_categorical(.exposure)
 
   # Validate matrix
-  ps <- check_ps_matrix(ps, .exposure, call = rlang::current_env())
+  .propensity <- check_ps_matrix(
+    .propensity,
+    .exposure,
+    call = rlang::current_env()
+  )
 
-  n <- nrow(ps)
-  k <- ncol(ps)
+  n <- nrow(.propensity)
+  k <- ncol(.propensity)
 
   # Renormalizing a row divides by its sum, which is unknown when one of its
   # scores is missing, so a row with a missing cell comes back missing whatever
@@ -356,7 +377,7 @@ ps_trunc.matrix <- function(
   # read across the row, which answers `TRUE` off an observed cell that happens
   # to be out of bounds however the missing one is treated, so the incomplete
   # rows are taken out of the record explicitly.
-  complete_rows <- !apply(ps, 1, anyNA)
+  complete_rows <- !apply(.propensity, 1, anyNA)
 
   if (method == "ps") {
     # Symmetric truncation
@@ -375,11 +396,11 @@ ps_trunc.matrix <- function(
 
     # Track which values were truncated
     truncated_idx <- which(
-      complete_rows & apply(ps, 1, function(x) any(x < delta))
+      complete_rows & apply(.propensity, 1, function(x) any(x < delta))
     )
 
     # Apply truncation and renormalize
-    ps_trunc <- ps
+    ps_trunc <- .propensity
     for (i in 1:n) {
       row_vals <- ps_trunc[i, ]
       # Clamp values below delta
@@ -402,7 +423,7 @@ ps_trunc.matrix <- function(
 
     # Calculate thresholds based on the distribution of all propensity scores,
     # taken from the rows this function can renormalize.
-    all_ps_vals <- as.vector(ps[complete_rows, , drop = FALSE])
+    all_ps_vals <- as.vector(.propensity[complete_rows, , drop = FALSE])
     lower_threshold <- quantile(all_ps_vals, probs = lower)
     upper_threshold <- quantile(all_ps_vals, probs = upper)
 
@@ -410,14 +431,14 @@ ps_trunc.matrix <- function(
     truncated_idx <- which(
       complete_rows &
         apply(
-          ps,
+          .propensity,
           1,
           function(x) any(x < lower_threshold | x > upper_threshold)
         )
     )
 
     # Apply truncation and renormalize
-    ps_trunc <- ps
+    ps_trunc <- .propensity
     for (i in 1:n) {
       row_vals <- ps_trunc[i, ]
       # Clamp values outside thresholds
@@ -451,7 +472,7 @@ ps_trunc.matrix <- function(
 
 #' @export
 ps_trunc.data.frame <- function(
-  ps,
+  .propensity,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
@@ -460,15 +481,18 @@ ps_trunc.data.frame <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
   # For categorical exposures, convert to matrix and call matrix method
   if (!is.null(.exposure)) {
     exposure_type <- detect_exposure_type(.exposure)
     if (exposure_type == "categorical") {
-      ps_matrix <- as.matrix(ps)
+      ps_matrix <- as.matrix(.propensity)
       return(ps_trunc.matrix(
-        ps = ps_matrix,
+        .propensity = ps_matrix,
         method = method,
         lower = lower,
         upper = upper,
@@ -478,10 +502,10 @@ ps_trunc.data.frame <- function(
     }
   }
 
-  ps_vec <- binary_ps_column(ps, "ps_trunc")
+  ps_vec <- binary_ps_column(.propensity, "ps_trunc")
 
   ps_trunc.default(
-    ps = ps_vec,
+    .propensity = ps_vec,
     method = method,
     lower = lower,
     upper = upper,
@@ -496,7 +520,7 @@ ps_trunc.data.frame <- function(
 
 #' @export
 ps_trunc.ps_trunc <- function(
-  ps,
+  .propensity,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
@@ -505,13 +529,16 @@ ps_trunc.ps_trunc <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
   warn(
     "Propensity scores have already been truncated. Returning original object.",
     warning_class = "propensity_already_modified_warning"
   )
-  ps
+  .propensity
 }
 
 # The common range is the region both exposure groups reach, which is empty when

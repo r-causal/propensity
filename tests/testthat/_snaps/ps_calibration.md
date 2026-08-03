@@ -4,7 +4,7 @@
       expr
     Condition <propensity_type_error>
       Error in `ps_calibrate()`:
-      ! `ps` must be a numeric vector.
+      ! `.propensity` must be a numeric vector.
 
 # errors for out-of-range ps
 
@@ -12,7 +12,7 @@
       expr
     Condition <propensity_range_error>
       Error in `ps_calibrate()`:
-      ! `ps` values must be between 0 and 1.
+      ! `.propensity` values must be between 0 and 1.
 
 ---
 
@@ -20,7 +20,7 @@
       expr
     Condition <propensity_range_error>
       Error in `ps_calibrate()`:
-      ! `ps` values must be between 0 and 1.
+      ! `.propensity` values must be between 0 and 1.
 
 # errors when ps and .exposure have different lengths
 
@@ -28,7 +28,7 @@
       expr
     Condition <propensity_length_error>
       Error in `ps_calibrate()`:
-      ! Propensity score vector `ps` must be the same length as `.exposure`.
+      ! Propensity score vector `.propensity` must be the same length as `.exposure`.
 
 # error handling for ambiguous treatment coding
 
@@ -45,7 +45,7 @@
       expr
     Condition <propensity_already_calibrated_error>
       Error in `ps_calibrate()`:
-      ! `ps` is already calibrated. Cannot calibrate already calibrated propensity scores.
+      ! `.propensity` is already calibrated. Cannot calibrate already calibrated propensity scores.
 
 # method parameter validation works
 
@@ -88,7 +88,7 @@
       expr
     Condition <propensity_type_error>
       Error in `ps_calibrate()`:
-      ! `ps` must be a numeric vector.
+      ! `.propensity` must be a numeric vector.
       x It is <matrix> with 2 dimensions.
       i Calibration reads one propensity score per observation. Calibrate the columns of a matrix of scores one at a time.
 

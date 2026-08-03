@@ -7,7 +7,7 @@
 #' `NA`. After trimming, refit the propensity score model on the retained
 #' observations with [ps_refit()].
 #'
-#' @param ps A numeric vector of propensity scores in (0, 1) for binary
+#' @param .propensity A numeric vector of propensity scores in (0, 1) for binary
 #'   exposures, or a matrix / data frame where each column gives the propensity
 #'   score for one level of a categorical exposure. A data frame trimmed for a
 #'   binary exposure is reduced to a single column: the second column of a two
@@ -66,13 +66,16 @@
 #'   defaults to its higher level, which is `1` for a 0/1 exposure, `TRUE` for
 #'   a logical one, and the second of the two levels a factor or character
 #'   exposure takes. Levels a factor declares but never takes are not
-#'   candidates. Naming any other level reverses the coding, so `ps` must then
-#'   hold the probability of the named level.
+#'   candidates. Naming any other level reverses the coding, so `.propensity`
+#'   must then hold the probability of the named level.
 #' @param .reference_level The value of `.exposure` representing the reference
 #'   (control) group. Naming it makes the exposure's other level focal, with
-#'   the same consequence for `ps`, and a level the exposure never takes is an
-#'   error. Automatically detected if not supplied.
+#'   the same consequence for `.propensity`, and a level the exposure never
+#'   takes is an error. Automatically detected if not supplied.
 #' @param ... Additional arguments passed to methods.
+#' @param ps `r lifecycle::badge("deprecated")` Use `.propensity` instead. A
+#'   call that names `ps` must name the arguments after it as well, since a
+#'   positional argument binds to `.propensity`.
 #'
 #' @details
 #' ## How trimming works
@@ -250,7 +253,7 @@
 #'
 #' @export
 ps_trim <- function(
-  ps,
+  .propensity,
   method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
   lower = NULL,
   upper = NULL,
@@ -259,14 +262,21 @@ ps_trim <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
-  UseMethod("ps_trim")
+  .propensity <- handle_propensity_deprecation(
+    rlang::maybe_missing(.propensity),
+    ps,
+    "ps_trim"
+  )
+
+  UseMethod("ps_trim", .propensity)
 }
 
 #' @export
 ps_trim.default <- function(
-  ps,
+  .propensity,
   method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
   lower = NULL,
   upper = NULL,
@@ -275,8 +285,10 @@ ps_trim.default <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
   method <- rlang::arg_match(method)
 
   # Optimal trimming is defined over the rows of a propensity score matrix, so
@@ -291,7 +303,7 @@ ps_trim.default <- function(
     )
   }
 
-  check_ps_range(ps)
+  check_ps_range(.propensity)
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -344,7 +356,7 @@ ps_trim.default <- function(
     }
   }
 
-  n <- length(ps)
+  n <- length(.propensity)
   meta_list <- list(method = method, lower = lower, upper = upper)
 
   # A score that arrived missing is not one this function can place against a
@@ -352,13 +364,13 @@ ps_trim.default <- function(
   # record. Every rule below compares scores with `which()`, which leaves a
   # missing comparison out of the retained positions on its own; the trimmed
   # positions are then everything else that was observed.
-  observed <- !is.na(ps)
+  observed <- !is.na(.propensity)
 
   # Decide which indices are kept
   if (method == "ps") {
-    keep_idx <- which(ps >= lower & ps <= upper)
+    keep_idx <- which(.propensity >= lower & .propensity <= upper)
   } else if (method == "adaptive") {
-    sum_wt <- 1 / (ps[observed] * (1 - ps[observed]))
+    sum_wt <- 1 / (.propensity[observed] * (1 - .propensity[observed]))
     k <- 2 * mean(sum_wt) - max(sum_wt)
 
     if (k >= 0) {
@@ -373,13 +385,13 @@ ps_trim.default <- function(
       cutoff <- 0.5 - sqrt(0.25 - 1 / lambda)
     }
     meta_list$cutoff <- cutoff
-    keep_idx <- which(pmin(ps, 1 - ps) > cutoff)
+    keep_idx <- which(pmin(.propensity, 1 - .propensity) > cutoff)
   } else if (method == "pctl") {
-    q_lower <- quantile(ps, probs = lower, na.rm = TRUE)
-    q_upper <- quantile(ps, probs = upper, na.rm = TRUE)
+    q_lower <- quantile(.propensity, probs = lower, na.rm = TRUE)
+    q_upper <- quantile(.propensity, probs = upper, na.rm = TRUE)
     meta_list$q_lower <- q_lower
     meta_list$q_upper <- q_upper
-    keep_idx <- which(ps >= q_lower & ps <= q_upper)
+    keep_idx <- which(.propensity >= q_lower & .propensity <= q_upper)
   } else if (method == "pref") {
     if (is.null(.exposure)) {
       abort(
@@ -394,7 +406,7 @@ ps_trim.default <- function(
       .reference_level = .reference_level
     )
     prop_exposure <- mean(.exposure)
-    pref_score <- plogis(qlogis(ps) - qlogis(prop_exposure))
+    pref_score <- plogis(qlogis(.propensity) - qlogis(prop_exposure))
     meta_list$P <- prop_exposure
     keep_idx <- which(pref_score >= lower & pref_score <= upper)
   } else if (method == "cr") {
@@ -410,20 +422,20 @@ ps_trim.default <- function(
       .focal_level = .focal_level,
       .reference_level = .reference_level
     )
-    ps_treat <- ps[observed & .exposure == 1]
-    ps_untrt <- ps[observed & .exposure == 0]
+    ps_treat <- .propensity[observed & .exposure == 1]
+    ps_untrt <- .propensity[observed & .exposure == 0]
     cr_lower <- min(ps_treat)
     cr_upper <- max(ps_untrt)
     meta_list$cr_lower <- cr_lower
     meta_list$cr_upper <- cr_upper
 
-    keep_idx <- which(ps >= cr_lower & ps <= cr_upper)
+    keep_idx <- which(.propensity >= cr_lower & .propensity <= cr_upper)
   }
 
   trimmed_idx <- setdiff(seq_len(n), c(keep_idx, which(!observed)))
 
   # Replace trimmed entries with NA
-  ps_na <- ps
+  ps_na <- .propensity
   ps_na[trimmed_idx] <- NA_real_
 
   new_trimmed_ps(
@@ -441,7 +453,7 @@ ps_trim.default <- function(
 
 #' @export
 ps_trim.matrix <- function(
-  ps,
+  .propensity,
   method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
   lower = NULL,
   upper = NULL,
@@ -450,8 +462,11 @@ ps_trim.matrix <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
   # The generic offers every method, so match against that full set and then
   # reject the ones the categorical path does not define.
   method <- rlang::arg_match(
@@ -480,17 +495,21 @@ ps_trim.matrix <- function(
   .exposure <- transform_exposure_categorical(.exposure)
 
   # Validate matrix
-  ps <- check_ps_matrix(ps, .exposure, call = rlang::current_env())
+  .propensity <- check_ps_matrix(
+    .propensity,
+    .exposure,
+    call = rlang::current_env()
+  )
 
-  n <- nrow(ps)
-  k <- ncol(ps)
+  n <- nrow(.propensity)
+  k <- ncol(.propensity)
 
   # A row with a missing score has no complete probability vector to place
   # against a threshold, so it takes no part in working the threshold out and no
   # part in the record. Both rules below compare rows with `which()`, which
   # leaves a missing comparison out of the retained positions on its own, and the
   # group-preservation reset falls back to the complete rows for the same reason.
-  incomplete_rows <- which(apply(ps, 1, anyNA))
+  incomplete_rows <- which(apply(.propensity, 1, anyNA))
   complete_rows <- setdiff(seq_len(n), incomplete_rows)
 
   # Initialize metadata
@@ -513,7 +532,7 @@ ps_trim.matrix <- function(
     }
 
     # Apply symmetric trimming rule: keep if min(propensity scores) > delta
-    keep_idx <- which(apply(ps, 1, function(x) min(x) > delta))
+    keep_idx <- which(apply(.propensity, 1, function(x) min(x) > delta))
 
     # Check if all treatment groups are preserved
     if (length(unique(.exposure[keep_idx])) < k) {
@@ -529,7 +548,7 @@ ps_trim.matrix <- function(
     # optimal
     # Multi-category optimal trimming (Yang et al., 2016)
     # Calculate sum of inverse propensity scores
-    sum_inv_ps <- rowSums(1 / ps)
+    sum_inv_ps <- rowSums(1 / .propensity)
     sum_inv_complete <- sum_inv_ps[complete_rows]
 
     # Define trimming function
@@ -590,7 +609,7 @@ ps_trim.matrix <- function(
   trimmed_idx <- setdiff(seq_len(n), c(keep_idx, incomplete_rows))
 
   # Replace trimmed entries with NA
-  ps_na <- ps
+  ps_na <- .propensity
   ps_na[trimmed_idx, ] <- NA_real_
 
   new_trimmed_ps(
@@ -608,7 +627,7 @@ ps_trim.matrix <- function(
 
 #' @export
 ps_trim.data.frame <- function(
-  ps,
+  .propensity,
   method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
   lower = NULL,
   upper = NULL,
@@ -617,15 +636,18 @@ ps_trim.data.frame <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
   # For categorical exposures, convert to matrix and call matrix method
   if (!is.null(.exposure)) {
     exposure_type <- detect_exposure_type(.exposure)
     if (exposure_type == "categorical") {
-      ps_matrix <- as.matrix(ps)
+      ps_matrix <- as.matrix(.propensity)
       return(ps_trim.matrix(
-        ps = ps_matrix,
+        .propensity = ps_matrix,
         method = method,
         lower = lower,
         upper = upper,
@@ -635,10 +657,10 @@ ps_trim.data.frame <- function(
     }
   }
 
-  ps_vec <- binary_ps_column(ps, "ps_trim")
+  ps_vec <- binary_ps_column(.propensity, "ps_trim")
 
   ps_trim.default(
-    ps = ps_vec,
+    .propensity = ps_vec,
     method = method,
     lower = lower,
     upper = upper,
@@ -653,7 +675,7 @@ ps_trim.data.frame <- function(
 
 #' @export
 ps_trim.ps_trim <- function(
-  ps,
+  .propensity,
   method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
   lower = NULL,
   upper = NULL,
@@ -662,13 +684,16 @@ ps_trim.ps_trim <- function(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
   warn(
     "Propensity scores have already been trimmed. Returning original object.",
     warning_class = "propensity_already_modified_warning"
   )
-  ps
+  .propensity
 }
 
 new_trimmed_ps <- function(x, ps_trim_meta = list()) {

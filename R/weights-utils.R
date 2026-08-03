@@ -118,6 +118,57 @@ handle_focal_deprecation <- function(
   list(.focal_level = .focal_level, .reference_level = .reference_level)
 }
 
+# The propensity score argument was named `ps` in ps_trim(), ps_trunc(),
+# ps_calibrate(), and ps_tilt() before it was standardized as `.propensity`, the
+# name the weight functions already read it under. The two spellings are
+# resolved here: a call that supplies both is refused, the old one signals its
+# deprecation, and the scores come back either way.
+handle_propensity_deprecation <- function(
+  .propensity,
+  ps,
+  fn_name,
+  call = rlang::caller_env()
+) {
+  if (!lifecycle::is_present(ps)) {
+    return(.propensity)
+  }
+
+  if (!rlang::is_missing(.propensity)) {
+    abort(
+      c(
+        "The propensity scores must be supplied once.",
+        x = "They arrived under both {.arg .propensity} and {.arg ps}.",
+        i = "{.arg ps} is deprecated; supply the scores as {.arg .propensity}.",
+        i = "An argument given by position binds to {.arg .propensity}, so a \\
+        call that names {.arg ps} must name the arguments after it as well."
+      ),
+      error_class = "propensity_duplicate_arg_error",
+      call = call
+    )
+  }
+
+  lifecycle::deprecate_warn(
+    "0.2.0",
+    paste0(fn_name, "(ps)"),
+    paste0(fn_name, "(.propensity)")
+  )
+
+  ps
+}
+
+# `UseMethod()` matches the arguments of the original call against the formals
+# of the method, so scores the generic read out of the deprecated `ps` do not
+# reach the method under `.propensity`. Each method reads the old name for
+# itself, and silently: the generic has already signaled the deprecation for
+# this call and refused one that names the scores twice.
+read_method_propensity <- function(.propensity, ps) {
+  if (lifecycle::is_present(ps)) {
+    return(ps)
+  }
+
+  .propensity
+}
+
 # A named level is one level. Both the binary coding and the categorical column
 # lookup compare the exposure against the level elementwise, so a level holding
 # more than one value recycles across the observations and sorts them into
@@ -440,6 +491,8 @@ check_call_arg <- function(call, error_call = rlang::caller_env()) {
   )
 }
 
+# The refusal names `.propensity`, which is what every function that reads
+# propensity scores calls the argument they arrive in.
 check_ps_range <- function(ps, call = rlang::caller_env()) {
   if (is.matrix(ps) || is.data.frame(ps)) {
     # For matrices/data frames, check all values
@@ -453,7 +506,7 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
       abort(
         c(
           "All propensity scores must be between 0 and 1.",
-          i = "The range of values in {.arg ps} is \\
+          i = "The range of values in {.arg .propensity} is \\
         {format(range(ps_vals, na.rm = TRUE), nsmall = 1, digits = 1)}"
         ),
         call = call,
@@ -471,7 +524,7 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
       abort(
         c(
           "The propensity score must be between 0 and 1.",
-          i = "The range of {.arg ps} is \\
+          i = "The range of {.arg .propensity} is \\
         {format(range(ps, na.rm = TRUE), nsmall = 1, digits = 1)}"
         ),
         call = call,
@@ -892,15 +945,10 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
 # in the weight calculation, so the endpoints are rejected rather than carried
 # through as infinite weights.
 #
-# `arg` names the argument the scores arrived in, which is `.propensity` for the
-# weight functions and `ps` for ps_tilt(). The binary path's refusal names its
-# argument, and reporting a bare range says nothing about what the caller has to
-# correct.
-check_ps_matrix_range <- function(
-  ps_matrix,
-  arg = ".propensity",
-  call = rlang::caller_env()
-) {
+# The refusal names `.propensity`, the argument every function that reads
+# propensity scores takes them in; reporting a bare range says nothing about
+# what the caller has to correct.
+check_ps_matrix_range <- function(ps_matrix, call = rlang::caller_env()) {
   ps_vals <- as.numeric(ps_matrix)
   non_na_vals <- ps_vals[!is.na(ps_vals)]
 
@@ -913,7 +961,7 @@ check_ps_matrix_range <- function(
         "All propensity scores must be between 0 and 1.",
         i = "The bounds are exclusive: a score of exactly 0 or 1 leaves the \\
         weight undefined.",
-        i = "The range of values in {.arg {arg}} is \\
+        i = "The range of values in {.arg .propensity} is \\
         {format(range(non_na_vals), nsmall = 1, digits = 1)}"
       ),
       call = call,

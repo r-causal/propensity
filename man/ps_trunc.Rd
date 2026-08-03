@@ -5,7 +5,7 @@
 \title{Truncate (Winsorize) Propensity Scores}
 \usage{
 ps_trunc(
-  ps,
+  .propensity,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
@@ -14,11 +14,12 @@ ps_trunc(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 )
 }
 \arguments{
-\item{ps}{A numeric vector of propensity scores between 0 and 1 (binary
+\item{.propensity}{A numeric vector of propensity scores between 0 and 1 (binary
 exposures), or a matrix/data.frame where each column contains propensity
 scores for one level of a categorical exposure. A data frame truncated for
 a binary exposure is reduced to a single column: the second column of a two
@@ -38,7 +39,8 @@ The \code{lower} and \code{upper} arguments specify quantile probabilities. For
 categorical exposures, quantiles are computed across all columns.
 \item \code{"cr"}: Truncate to the common range of propensity scores across
 exposure groups (binary exposures only). Bounds are
-\verb{[min(ps[focal]), max(ps[reference])]}. Requires \code{.exposure}.
+\verb{[min(.propensity[focal]), max(.propensity[reference])]}. Requires
+\code{.exposure}.
 }
 
 For categorical exposures, only \code{"ps"} and \code{"pctl"} are supported.}
@@ -71,19 +73,23 @@ takes is an error. With no level named, a binary exposure defaults to its
 higher level, which is \code{1} for a 0/1 exposure, \code{TRUE} for a logical one,
 and the second of the two levels a factor or character exposure takes.
 Levels a factor declares but never takes are not candidates. Naming any
-other level reverses the coding, so \code{ps} must then hold the probability of
-the named level.}
+other level reverses the coding, so \code{.propensity} must then hold the
+probability of the named level.}
 
 \item{.reference_level}{The value of \code{.exposure} representing the reference
 (control) group. Naming it makes the exposure's other level focal, with
-the same consequence for \code{ps}, and a level the exposure never takes is an
-error. Automatically detected if not supplied.}
+the same consequence for \code{.propensity}, and a level the exposure never
+takes is an error. Automatically detected if not supplied.}
 
 \item{...}{Additional arguments passed to methods.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
+
+\item{ps}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.propensity} instead. A
+call that names \code{ps} must name the arguments after it as well, since a
+positional argument binds to \code{.propensity}.}
 }
 \value{
 A \code{ps_trunc} object (a numeric vector for binary exposures, or a
@@ -95,9 +101,10 @@ observations those positions describe).
 \description{
 \code{ps_trunc()} bounds extreme propensity scores to fixed limits, replacing
 out-of-range values with the boundary value (a form of \emph{winsorizing}). The
-result is a vector or matrix of the same length and dimensions as \code{ps}, with
-no observations removed. This contrasts with \code{\link[=ps_trim]{ps_trim()}}, which sets extreme
-values to \code{NA} (effectively removing those observations from analysis).
+result is a vector or matrix of the same length and dimensions as
+\code{.propensity}, with no observations removed. This contrasts with \code{\link[=ps_trim]{ps_trim()}},
+which sets extreme values to \code{NA} (effectively removing those observations
+from analysis).
 }
 \details{
 Unlike \code{\link[=ps_trim]{ps_trim()}}, truncation preserves all observations. No \code{NA} values

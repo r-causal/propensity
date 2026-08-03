@@ -828,8 +828,6 @@ tilt_rename_matrix <- function() {
 }
 
 test_that("ps_tilt() tilts a positional vector of scores under the ato tilt", {
-  testthat::skip("awaiting implementation")
-
   out <- tilt_rename_positional()
 
   # The overlap tilt is e(1 - e), which the test writes out rather than reading
@@ -844,8 +842,6 @@ test_that("ps_tilt() tilts a positional vector of scores under the ato tilt", {
 })
 
 test_that("ps_tilt() reads the propensity scores from .propensity", {
-  testthat::skip("awaiting implementation")
-
   expect_equal(
     ps_tilt(.propensity = tilt_rename_scores(), estimand = "ato"),
     tilt_rename_positional()
@@ -853,8 +849,6 @@ test_that("ps_tilt() reads the propensity scores from .propensity", {
 })
 
 test_that("ps_tilt() deprecates the propensity scores under ps", {
-  testthat::skip("awaiting implementation")
-
   with_always_deprecated({
     expect_warning(
       ps_tilt(ps = tilt_rename_scores(), estimand = "ato"),
@@ -872,8 +866,6 @@ test_that("ps_tilt() deprecates the propensity scores under ps", {
 })
 
 test_that("ps_tilt() refuses the propensity scores under both names", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(lifecycle_verbosity = "quiet")
 
   # The condition subclass is the shim's to choose; what this pins is that the
@@ -896,8 +888,6 @@ test_that("ps_tilt() refuses the propensity scores under both names", {
 })
 
 test_that("ps_tilt() dispatches on a matrix supplied as .propensity", {
-  testthat::skip("awaiting implementation")
-
   expect_equal(
     ps_tilt(.propensity = tilt_rename_matrix(), estimand = "ato"),
     ps_tilt(tilt_rename_matrix(), "ato")
@@ -914,8 +904,6 @@ test_that("ps_tilt() dispatches on a matrix supplied as .propensity", {
 })
 
 test_that("ps_tilt() dispatches on a data frame supplied as .propensity", {
-  testthat::skip("awaiting implementation")
-
   expect_equal(
     ps_tilt(
       .propensity = as.data.frame(tilt_rename_matrix()),
@@ -926,8 +914,6 @@ test_that("ps_tilt() dispatches on a data frame supplied as .propensity", {
 })
 
 test_that("ps_tilt() names .propensity when refusing an unused .focal_level", {
-  testthat::skip("awaiting implementation")
-
   # One of the seven messages that spell the argument inside this file, chosen
   # because it reaches the numeric method rather than the shared range check the
   # trimming and truncation pins already cover.

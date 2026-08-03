@@ -2238,8 +2238,6 @@ trim_rename_exposure <- function() {
 }
 
 test_that("ps_trim() trims a positional vector of scores at the cutoffs", {
-  testthat::skip("awaiting implementation")
-
   out <- trim_rename_positional()
 
   expect_s3_class(out, "ps_trim")
@@ -2255,8 +2253,6 @@ test_that("ps_trim() trims a positional vector of scores at the cutoffs", {
 })
 
 test_that("ps_trim() reads the propensity scores from .propensity", {
-  testthat::skip("awaiting implementation")
-
   expect_equal(
     ps_trim(
       .propensity = trim_rename_scores(),
@@ -2269,8 +2265,6 @@ test_that("ps_trim() reads the propensity scores from .propensity", {
 })
 
 test_that("ps_trim() deprecates the propensity scores under ps", {
-  testthat::skip("awaiting implementation")
-
   with_always_deprecated({
     expect_warning(
       ps_trim(
@@ -2293,8 +2287,6 @@ test_that("ps_trim() deprecates the propensity scores under ps", {
 })
 
 test_that("ps_trim() refuses the propensity scores under both names", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(lifecycle_verbosity = "quiet")
 
   # The condition subclass is the shim's to choose; what this pins is that the
@@ -2317,8 +2309,6 @@ test_that("ps_trim() refuses the propensity scores under both names", {
 })
 
 test_that("ps_trim() dispatches on a matrix supplied as .propensity", {
-  testthat::skip("awaiting implementation")
-
   out <- ps_trim(
     .propensity = trim_rename_matrix(),
     .exposure = trim_rename_exposure(),
@@ -2340,8 +2330,6 @@ test_that("ps_trim() dispatches on a matrix supplied as .propensity", {
 })
 
 test_that("ps_trim() dispatches on a data frame supplied as .propensity", {
-  testthat::skip("awaiting implementation")
-
   out <- ps_trim(
     .propensity = as.data.frame(trim_rename_matrix()),
     .exposure = trim_rename_exposure(),
@@ -2362,8 +2350,6 @@ test_that("ps_trim() dispatches on a data frame supplied as .propensity", {
 })
 
 test_that("ps_trim() names .propensity in the out-of-range error", {
-  testthat::skip("awaiting implementation")
-
   err <- expect_error(
     ps_trim(.propensity = c(-1, 0.5), method = "ps", lower = 0.2, upper = 0.8),
     class = "propensity_range_error"

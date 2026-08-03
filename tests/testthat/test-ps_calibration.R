@@ -1426,8 +1426,6 @@ calib_rename_positional <- function() {
 }
 
 test_that("ps_calibrate() calibrates a positional vector of scores", {
-  testthat::skip("awaiting implementation")
-
   out <- calib_rename_positional()
 
   expect_s3_class(out, "ps_calib")
@@ -1449,8 +1447,6 @@ test_that("ps_calibrate() calibrates a positional vector of scores", {
 })
 
 test_that("ps_calibrate() reads the propensity scores from .propensity", {
-  testthat::skip("awaiting implementation")
-
   expect_equal(
     ps_calibrate(
       .propensity = calib_rename_scores(),
@@ -1463,8 +1459,6 @@ test_that("ps_calibrate() reads the propensity scores from .propensity", {
 })
 
 test_that("ps_calibrate() deprecates the propensity scores under ps", {
-  testthat::skip("awaiting implementation")
-
   with_always_deprecated({
     expect_warning(
       ps_calibrate(
@@ -1492,8 +1486,6 @@ test_that("ps_calibrate() deprecates the propensity scores under ps", {
 })
 
 test_that("ps_calibrate() refuses the propensity scores under both names", {
-  testthat::skip("awaiting implementation")
-
   withr::local_options(lifecycle_verbosity = "quiet")
 
   # The condition subclass is the shim's to choose; what this pins is that the
@@ -1516,8 +1508,6 @@ test_that("ps_calibrate() refuses the propensity scores under both names", {
 })
 
 test_that("ps_calibrate() names .propensity when refusing a matrix of scores", {
-  testthat::skip("awaiting implementation")
-
   err <- expect_error(
     ps_calibrate(
       .propensity = matrix(calib_rename_scores(), nrow = 6),
@@ -1534,8 +1524,6 @@ test_that("ps_calibrate() names .propensity when refusing a matrix of scores", {
 })
 
 test_that("ps_calibrate() names .propensity in the length mismatch error", {
-  testthat::skip("awaiting implementation")
-
   err <- expect_error(
     ps_calibrate(
       .propensity = calib_rename_scores(),

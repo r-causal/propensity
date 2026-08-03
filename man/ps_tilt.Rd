@@ -4,12 +4,19 @@
 \alias{ps_tilt}
 \title{Propensity score tilting functions}
 \usage{
-ps_tilt(ps, estimand, ..., .focal_level = NULL)
+ps_tilt(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+)
 }
 \arguments{
-\item{ps}{Propensity scores. A numeric vector of \eqn{P(Z = \text{focal} \mid
-X)} for a binary exposure, or a matrix or data frame with one column per
-exposure level, named for that level, for a categorical exposure.}
+\item{.propensity}{Propensity scores. A numeric vector of
+\eqn{P(Z = \text{focal} \mid X)} for a binary exposure, or a matrix or data
+frame with one column per exposure level, named for that level, for a
+categorical exposure.}
 
 \item{estimand}{One of \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or
 \code{"entropy"}.}
@@ -17,16 +24,21 @@ exposure level, named for that level, for a categorical exposure.}
 \item{...}{These dots are for future extensions and must be empty.}
 
 \item{.focal_level}{The exposure level the \code{"att"} and \code{"atu"} tilts target,
-matched against the column names of \code{ps}. A column named for the level
-exactly wins; failing that, a \code{.pred_} prefix is stripped, so \code{.pred_a}
-matches the level \code{a}. Required for those two estimands with a categorical
-\code{ps}, and accepted nowhere else: a numeric \code{ps} is already the probability
-of the focal level, and the remaining tilts treat every level alike.}
+matched against the column names of \code{.propensity}. A column named for the
+level exactly wins; failing that, a \code{.pred_} prefix is stripped, so
+\code{.pred_a} matches the level \code{a}. Required for those two estimands with a
+categorical \code{.propensity}, and accepted nowhere else: a numeric
+\code{.propensity} is already the probability of the focal level, and the
+remaining tilts treat every level alike.}
+
+\item{ps}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.propensity} instead. A
+call that names \code{ps} must name the arguments after it as well, since a
+positional argument binds to \code{.propensity}.}
 }
 \value{
 A plain double vector, unnamed, with one element per observation: the
-length of \code{ps} for the numeric method, and the number of rows of \code{ps} for
-the matrix and data frame methods.
+length of \code{.propensity} for the numeric method, and the number of rows of
+\code{.propensity} for the matrix and data frame methods.
 }
 \description{
 Every estimand this package supports targets a population whose covariate
@@ -65,19 +77,20 @@ weight by a marginal quantity that does not depend on the covariates, and
 }
 
 \section{Propensity score range}{
-Every propensity score in \code{ps} must lie strictly inside \eqn{(0, 1)}, the
-same requirement \code{\link[=wt_ate]{wt_ate()}} and the rest of the weight family impose before
-they tilt. The bound holds for a matrix or data frame \code{ps} entry by entry,
-and each row must sum to one on top of it. A fitted model that separates the
-exposure can return a probability of exactly zero or one; those scores have
-no weight to divide and are rejected here rather than tilted.
+Every propensity score in \code{.propensity} must lie strictly inside
+\eqn{(0, 1)}, the same requirement \code{\link[=wt_ate]{wt_ate()}} and the rest of the weight
+family impose before they tilt. The bound holds for a matrix or data frame
+\code{.propensity} entry by entry, and each row must sum to one on top of it. A
+fitted model that separates the exposure can return a probability of exactly
+zero or one; those scores have no weight to divide and are rejected here
+rather than tilted.
 
 A missing propensity score gives a missing tilt under every estimand,
 \code{"ate"} included, so an observation whose propensity score is unknown never
-counts toward a tilted mean. A numeric \code{ps} propagates \code{NA} position by
-position, and a matrix \code{ps} gives \code{NA} for any row holding one: a probability
-vector with a missing entry is not one this can tilt on, whichever level the
-tilt reads.
+counts toward a tilted mean. A numeric \code{.propensity} propagates \code{NA} position
+by position, and a matrix \code{.propensity} gives \code{NA} for any row holding one: a
+probability vector with a missing entry is not one this can tilt on,
+whichever level the tilt reads.
 }
 
 \section{Modified propensity scores}{

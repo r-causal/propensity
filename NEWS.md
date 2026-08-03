@@ -1,5 +1,20 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_trim()`, `ps_trunc()`, `ps_calibrate()`, and `ps_tilt()` now take the
+  propensity scores in `.propensity`, the name the weight functions already read
+  them under. These four called the argument `ps`, so a call written against one
+  family was refused by the other. The old name still works and is deprecated:
+  supplying `ps` warns and reaches the same result, supplying both `ps` and
+  `.propensity` is an error naming the two spellings, and `ps` will be removed in
+  a future release. One consequence is inherent to the rename: a call that names
+  `ps` and leaves a later argument positional, such as
+  `ps_trim(ps = x, "adaptive")`, binds the positional argument to `.propensity`
+  rather than to `method`, and is then refused for supplying the scores twice. A
+  call that names `ps` must name the arguments after it as well. The error the
+  weight functions raise for a propensity score outside (0, 1) now names
+  `.propensity` too, which is what those functions have always called the
+  argument it reports on.
+
 * `ps_refit()` now refits a model whose formula transforms a term, such as
   `z ~ log(x)` or a spline basis, without being handed the data. The default
   `.data` came from the stored model frame, which holds each term already

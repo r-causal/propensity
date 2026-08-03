@@ -81,21 +81,21 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #' true treatment probabilities. This can improve the accuracy of inverse
 #' probability weights derived from a misspecified propensity score model.
 #'
-#' @param ps A numeric vector of propensity scores in `[0, 1]`. Unlike the rest
-#'   of the package, calibration accepts scores of exactly 0 and exactly 1,
-#'   since repairing scores a model pushed to the ends of the interval is part
-#'   of what calibration is for. The logistic calibration curve maps them back
-#'   inside the interval; isotonic calibration can return a score at an
-#'   endpoint when its pooled block is pure, and such scores are rejected by
-#'   the weight functions. Must not already be calibrated.
+#' @param .propensity A numeric vector of propensity scores in `[0, 1]`. Unlike
+#'   the rest of the package, calibration accepts scores of exactly 0 and
+#'   exactly 1, since repairing scores a model pushed to the ends of the
+#'   interval is part of what calibration is for. The logistic calibration curve
+#'   maps them back inside the interval; isotonic calibration can return a score
+#'   at an endpoint when its pooled block is pure, and such scores are rejected
+#'   by the weight functions. Must not already be calibrated.
 #' @param .exposure A binary vector of observed treatment assignments, the same
-#'   length as `ps`.
+#'   length as `.propensity`.
 #' @param method Calibration method. One of:
 #'   \describe{
 #'     \item{`"logistic"`}{(Default) Logistic calibration, also called Platt
-#'       scaling. Fits a logistic regression of `.exposure` on `ps`, yielding
-#'       a smooth, parametric correction. Works well with small samples and
-#'       when the bias in `ps` is approximately monotone.}
+#'       scaling. Fits a logistic regression of `.exposure` on `.propensity`,
+#'       yielding a smooth, parametric correction. Works well with small
+#'       samples and when the bias in `.propensity` is approximately monotone.}
 #'     \item{`"isoreg"`}{Isotonic regression. Fits a non-parametric,
 #'       monotone step function. More flexible than logistic calibration
 #'       because it makes no distributional assumption, but needs larger
@@ -103,13 +103,13 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   }
 #' @param smooth Logical. When `method = "logistic"`, controls the form of the
 #'   calibration model. If `TRUE` (default), fits a GAM with a spline on
-#'   `ps` via [mgcv::gam()]; if `FALSE`, fits a simple logistic regression
-#'   via [stats::glm()]. Ignored when `method = "isoreg"`. A spline needs
-#'   enough distinct scores to place its knots, so with fewer than 10 distinct
-#'   values of `ps` among the observations the fit reads, those with both a
-#'   score and an exposure recorded, the fit falls back to logistic regression
-#'   without a spline. The fallback is announced and recorded in the returned
-#'   metadata.
+#'   `.propensity` via [mgcv::gam()]; if `FALSE`, fits a simple logistic
+#'   regression via [stats::glm()]. Ignored when `method = "isoreg"`. A spline
+#'   needs enough distinct scores to place its knots, so with fewer than 10
+#'   distinct values of `.propensity` among the observations the fit reads,
+#'   those with both a score and an exposure recorded, the fit falls back to
+#'   logistic regression without a spline. The fallback is announced and
+#'   recorded in the returned metadata.
 #' @param .focal_level The value of `.exposure` representing the focal group
 #'   (typically the treated group). Every binary coding honors it: 0/1 numeric,
 #'   logical, two-level factor, and two-level character exposures are all coded
@@ -118,14 +118,17 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   which is `1` for a 0/1 exposure, `TRUE` for a logical one, and the second
 #'   of the two levels a factor or character exposure takes. Levels a factor
 #'   declares but never takes are not candidates. Naming any other level
-#'   reverses the coding, so `ps` must then hold the probability of the named
-#'   level.
+#'   reverses the coding, so `.propensity` must then hold the probability of
+#'   the named level.
 #' @param .reference_level The value of `.exposure` representing the reference
 #'   group (typically the control group). Naming it makes the exposure's other
-#'   level focal, with the same consequence for `ps`, and a level the exposure
-#'   never takes is an error. Automatically detected if not supplied.
+#'   level focal, with the same consequence for `.propensity`, and a level the
+#'   exposure never takes is an error. Automatically detected if not supplied.
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
+#' @param ps `r lifecycle::badge("deprecated")` Use `.propensity` instead. A
+#'   call that names `ps` must name the arguments after it as well, since a
+#'   positional argument binds to `.propensity`.
 #'
 #' @details
 #' Calibration is useful when the propensity score model is correctly
@@ -155,7 +158,7 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #' The calibrated scores are returned as a `ps_calib` object, which can be
 #' passed directly to weight functions such as [wt_ate()].
 #'
-#' @return A `ps_calib` vector the same length as `ps`. The attribute
+#' @return A `ps_calib` vector the same length as `.propensity`. The attribute
 #'   `ps_calib_meta` stores calibration metadata (method and whether
 #'   smoothing was applied). Use [is_ps_calibrated()] to test whether an
 #'   object has been calibrated.
@@ -199,15 +202,21 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #' @importFrom stats glm binomial predict
 #' @export
 ps_calibrate <- function(
-  ps,
+  .propensity,
   .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 ) {
+  .propensity <- handle_propensity_deprecation(
+    rlang::maybe_missing(.propensity),
+    ps,
+    "ps_calibrate"
+  )
   method <- rlang::arg_match(method)
 
   # Handle deprecation
@@ -221,20 +230,20 @@ ps_calibrate <- function(
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
   check_focal_levels(.focal_level, .reference_level)
-  # Check that ps is numeric and in valid range
+  # Check that the propensity scores are numeric and in valid range
   # A one-dimensional array holds one score per observation, which is the shape
   # calibration reads, so its dimension is dropped the way the weight functions
   # already drop it. Two or more dimensions hold something else.
-  if (length(dim(ps)) == 1L) {
-    dim(ps) <- NULL
+  if (length(dim(.propensity)) == 1L) {
+    dim(.propensity) <- NULL
   }
 
-  if (!is.null(dim(ps))) {
+  if (!is.null(dim(.propensity))) {
     abort(
       c(
-        "{.arg ps} must be a numeric vector.",
-        x = "It is {.cls {class(ps)[[1]]}} with \\
-        {length(dim(ps))} dimension{?s}.",
+        "{.arg .propensity} must be a numeric vector.",
+        x = "It is {.cls {class(.propensity)[[1]]}} with \\
+        {length(dim(.propensity))} dimension{?s}.",
         i = "Calibration reads one propensity score per observation. Calibrate
              the columns of a matrix of scores one at a time."
       ),
@@ -242,16 +251,16 @@ ps_calibrate <- function(
     )
   }
 
-  if (!is.numeric(ps)) {
+  if (!is.numeric(.propensity)) {
     abort(
-      "`ps` must be a numeric vector.",
+      "{.arg .propensity} must be a numeric vector.",
       error_class = "propensity_type_error"
     )
   }
 
-  if (is_ps_calibrated(ps)) {
+  if (is_ps_calibrated(.propensity)) {
     abort(
-      "`ps` is already calibrated. Cannot calibrate already calibrated propensity scores.",
+      "{.arg .propensity} is already calibrated. Cannot calibrate already calibrated propensity scores.",
       error_class = "propensity_already_calibrated_error"
     )
   }
@@ -260,7 +269,7 @@ ps_calibrate <- function(
   # and trimmed or truncated scores reach the numeric routes through their
   # common type with a number, which announces a conversion the caller never
   # asked for. Reading them once here keeps the rest of the function numeric.
-  ps_numeric <- as.numeric(ps)
+  ps_numeric <- as.numeric(.propensity)
 
   # The range accepted here is the closed interval, not the open one
   # `check_ps_range()` enforces everywhere else. Trimming and weighting divide
@@ -273,7 +282,7 @@ ps_calibrate <- function(
   # functions in turn.
   if (any(ps_numeric < 0 | ps_numeric > 1, na.rm = TRUE)) {
     abort(
-      "`ps` values must be between 0 and 1.",
+      "{.arg .propensity} values must be between 0 and 1.",
       error_class = "propensity_range_error"
     )
   }
@@ -285,9 +294,10 @@ ps_calibrate <- function(
     .reference_level = .reference_level
   )
 
-  if (length(ps) != length(.exposure)) {
+  if (length(.propensity) != length(.exposure)) {
     abort(
-      "Propensity score vector `ps` must be the same length as `.exposure`.",
+      "Propensity score vector {.arg .propensity} must be the same length as \\
+      {.arg .exposure}.",
       error_class = "propensity_length_error"
     )
   }
@@ -392,7 +402,7 @@ ps_calibrate <- function(
     calib_ps_valid[is_trt] <- p1[is_trt]
 
     # Map back to full vector with NAs
-    calib_ps <- numeric(length(ps))
+    calib_ps <- numeric(length(.propensity))
     calib_ps[!na_idx] <- calib_ps_valid
     if (any(na_idx)) {
       calib_ps[na_idx] <- NA

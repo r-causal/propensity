@@ -69,7 +69,7 @@
 # ps_trim handles edge cases consistently with PSweight
 
     Code
-      out <- ps_trim(ps = ps_matrix, .exposure = trt, method = "ps", lower = 0.06)
+      out <- ps_trim(.propensity = ps_matrix, .exposure = trt, method = "ps", lower = 0.06)
     Condition <propensity_no_data_warning>
       Warning in `ps_trim()`:
       One or more groups removed after trimming; returning original data
@@ -77,7 +77,8 @@
 # ps_refit errors when all observations are trimmed for categorical
 
     Code
-      out <- ps_trim(ps = ps_matrix, .exposure = exposure, method = "ps", lower = 0.3)
+      out <- ps_trim(.propensity = ps_matrix, .exposure = exposure, method = "ps",
+        lower = 0.3)
     Condition <propensity_no_data_warning>
       Warning in `ps_trim()`:
       One or more groups removed after trimming; returning original data
@@ -85,7 +86,7 @@
 ---
 
     Code
-      out <- ps_trim(ps = ps_matrix_extreme, .exposure = exposure, method = "ps",
+      out <- ps_trim(.propensity = ps_matrix_extreme, .exposure = exposure, method = "ps",
         lower = 0.02)
     Condition <propensity_no_data_warning>
       Warning in `ps_trim()`:
@@ -102,7 +103,8 @@
 # ps_refit handles minimal data for categorical exposures
 
     Code
-      out <- ps_trim(ps = ps_matrix, .exposure = test_data$trt, method = "ps", lower = 0.25)
+      out <- ps_trim(.propensity = ps_matrix, .exposure = test_data$trt, method = "ps",
+      lower = 0.25)
     Condition <propensity_no_data_warning>
       Warning in `ps_trim()`:
       One or more groups removed after trimming; returning original data

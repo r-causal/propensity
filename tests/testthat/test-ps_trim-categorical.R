@@ -303,7 +303,7 @@ test_that("ps_trim symmetric trimming matches PSweight for categorical exposures
 
   # Our approach
   our_result <- ps_trim(
-    ps = ps_matrix_psw,
+    .propensity = ps_matrix_psw,
     .exposure = psdata$trt_3cat,
     method = "ps",
     lower = 0.1
@@ -383,7 +383,7 @@ test_that("ps_trim optimal trimming matches PSweight for multi-category", {
   }
 
   our_optimal <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = test_data$trt,
     method = "optimal"
   )
@@ -441,7 +441,7 @@ test_that("ps_trim handles edge cases consistently with PSweight", {
 
   our_trim <- expect_propensity_warning(
     ps_trim(
-      ps = ps_matrix,
+      .propensity = ps_matrix,
       .exposure = trt,
       method = "ps",
       lower = 0.06
@@ -495,7 +495,7 @@ test_that("ps_refit works with categorical propensity score trimming", {
 
   # Apply trimming
   trimmed_ps <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = test_data$trt,
     method = "ps",
     lower = 0.15
@@ -545,7 +545,7 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
   # Apply very strict trimming
   expect_propensity_warning(
     ps_trim(
-      ps = ps_matrix,
+      .propensity = ps_matrix,
       .exposure = exposure,
       method = "ps",
       lower = 0.3 # This will trim everything
@@ -563,7 +563,7 @@ test_that("ps_refit errors when all observations are trimmed for categorical", {
 
   trimmed_extreme <- expect_propensity_warning(
     ps_trim(
-      ps = ps_matrix_extreme,
+      .propensity = ps_matrix_extreme,
       .exposure = exposure,
       method = "ps",
       lower = 0.02
@@ -617,7 +617,7 @@ test_that("ps_refit handles optimal trimming for categorical exposures", {
 
   # Apply optimal trimming
   trimmed_ps <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = test_data$trt,
     method = "optimal"
   )
@@ -664,7 +664,7 @@ test_that("ps_refit preserves column names and order for categorical", {
 
   # Apply trimming
   trimmed_ps <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = test_data$trt,
     method = "ps",
     lower = 0.1
@@ -708,7 +708,7 @@ test_that("ps_refit handles minimal data for categorical exposures", {
   # Apply aggressive trimming to leave minimal data
   trimmed_ps <- expect_propensity_warning(
     ps_trim(
-      ps = ps_matrix,
+      .propensity = ps_matrix,
       .exposure = test_data$trt,
       method = "ps",
       lower = 0.25 # This should trim many observations
@@ -737,7 +737,7 @@ test_that("wt_ate warns when using trimmed but not refitted categorical PS", {
 
   # Apply trimming
   trimmed_ps <- ps_trim(
-    ps = ps_matrix,
+    .propensity = ps_matrix,
     .exposure = exposure,
     method = "ps",
     lower = 0.2
