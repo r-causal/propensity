@@ -14,7 +14,10 @@
 # produced from, carried through in full, with the propensity score, the weights,
 # the fitted values, and the residuals added as dot-prefixed columns. It reads the
 # two models the result holds, so the columns describe the fit and not the frame
-# they are attached to.
+# they are attached to. On the default path the source frame is the outcome
+# model's own frame less the `(weights)` column `model.frame()` records, which
+# leaves `.weights` as the single weight column; a frame supplied through `data`
+# is carried exactly as it arrives, any weight column of its own included.
 #
 # Coverage spans every route that builds an `ipw` object: a binary glm exposure
 # under both standard error methods, a categorical exposure through
@@ -249,6 +252,19 @@ expect_glance_matches_fit <- function(glanced, result) {
   )
 
   invisible(glanced)
+}
+
+# The source frame of the default `augment()` path: the outcome model's own
+# model frame less the `(weights)` column `model.frame()` records. The weights
+# are already reported as `.weights`, the `psw` vector the outcome model was fit
+# with, which carries its estimand and its class; keeping the model frame's plain
+# numeric copy beside it would name the same weight twice and leave the frame
+# ambiguous about which column is an observation's weight. A frame supplied
+# through `data` is the caller's own and is carried as it arrives, so a weight
+# column a user keeps in their data stays where they put it.
+augment_source_frame <- function(outcome_mod) {
+  mf <- stats::model.frame(outcome_mod)
+  mf[names(mf) != "(weights)"]
 }
 
 # The augment column contract: every column of the source frame, in its own
@@ -819,10 +835,18 @@ test_that("augment() adds the fit's own columns to the outcome model frame", {
   # With no `data`, the source is the frame the outcome model was fit from,
   # which is the default broom's own `augment.lm` uses. That frame holds the
   # response, the terms of the outcome formula, and the `(weights)` column
-  # `model.frame()` names, and none of the three is dropped here.
+  # `model.frame()` names. The variables of the formula are carried through; the
+  # `(weights)` column is not, because the weights are reported as `.weights`,
+  # and a frame naming an observation's weight twice would leave the two columns
+  # to be told apart by name alone.
   mf <- stats::model.frame(mods$outcome_mod)
   expect_named(mf, c("y", "z", "(weights)"))
-  expect_augment_contract(augmented, mf, res)
+  expect_augment_contract(
+    augmented,
+    augment_source_frame(mods$outcome_mod),
+    res
+  )
+  expect_false("(weights)" %in% names(augmented))
 
   expect_identical(
     augmented$.propensity,
@@ -862,7 +886,11 @@ test_that("augment() carries the weights of a non-default estimand", {
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
 
   augmented <- augment(res)
-  expect_augment_contract(augmented, stats::model.frame(mods$outcome_mod), res)
+  expect_augment_contract(
+    augmented,
+    augment_source_frame(mods$outcome_mod),
+    res
+  )
 
   # The weights are the ones the outcome model was fit with, so they record the
   # estimand this fit targets rather than the ATE the other fixtures use, and
@@ -900,7 +928,7 @@ test_that("augment() differences a factor outcome on the scale it was fit on", {
   res <- ipw(mods$ps_mod, outcome_mod, se_method = "mestimation")
 
   augmented <- augment(res)
-  mf <- stats::model.frame(outcome_mod)
+  mf <- augment_source_frame(outcome_mod)
   expect_augment_contract(augmented, mf, res)
 
   # the response arrives as the factor the frame holds, unconverted
@@ -929,7 +957,7 @@ test_that("augment() returns the same frame on both standard error methods", {
   expect_null(linearization$fit)
   expect_augment_contract(
     augment(linearization),
-    stats::model.frame(mods$outcome_mod),
+    augment_source_frame(mods$outcome_mod),
     linearization
   )
   expect_identical(augment(linearization), augment(mestimation))
@@ -954,7 +982,7 @@ test_that("augment() adds one propensity column per categorical level", {
   propensity_cols <- paste0(".propensity_", lvls)
   expect_augment_contract(
     augmented,
-    stats::model.frame(mods$outcome_mod),
+    augment_source_frame(mods$outcome_mod),
     res,
     propensity_cols = propensity_cols
   )
@@ -989,7 +1017,11 @@ test_that("augment() reports the fitted exposure for a continuous exposure", {
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
   augmented <- augment(res)
-  expect_augment_contract(augmented, stats::model.frame(mods$outcome_mod), res)
+  expect_augment_contract(
+    augmented,
+    augment_source_frame(mods$outcome_mod),
+    res
+  )
 
   # For a continuous exposure the propensity model predicts the conditional mean
   # of the exposure, and that is what this package calls the propensity score:
@@ -1048,6 +1080,33 @@ test_that("augment(data = ) returns that data with the fit's columns added", {
   for (nm in c(".propensity", ".weights", ".fitted", ".resid")) {
     expect_identical(augmented[[nm]], default[[nm]])
   }
+})
+
+test_that("augment(data = ) keeps a weight column the supplied data holds", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The default path leaves `(weights)` out of the frame it builds for itself,
+  # which is a decision about that frame and about no other. A frame supplied
+  # through `data` is the caller's own, so a column of theirs survives whatever
+  # it happens to be named, including the name the default path declines to
+  # carry. Dropping it would delete a user's data for matching a name.
+  user_weights <- as.double(
+    stats::model.weights(stats::model.frame(mods$outcome_mod))
+  )
+  user_frame <- dat
+  user_frame[["(weights)"]] <- user_weights
+
+  augmented <- augment(res, data = user_frame)
+  expect_augment_contract(augmented, user_frame, res)
+
+  # The user's column arrives verbatim, as the doubles they held rather than as
+  # a copy of `.weights`, and the two sit side by side.
+  expect_identical(augmented[["(weights)"]], user_weights)
+  expect_s3_class(augmented$.weights, "psw")
+  expect_identical(estimand(augmented$.weights), "ate")
 })
 
 test_that("augment(data = ) drops .resid when the data omits the outcome", {
