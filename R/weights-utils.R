@@ -85,19 +85,30 @@ detect_exposure_type <- function(.exposure) {
   exposure_type
 }
 
+# lifecycle decides whether a deprecation belongs to the caller or to the
+# package that raised it from `user_env`, and says so: one it judges indirect
+# carries a bullet naming this package and asking the reader to report an issue
+# against it. A helper that signals a deprecation on another function's behalf
+# therefore has to name the frame that function was called from, which is one
+# further out than its own caller. That is the frame the default names, which is
+# also the default lifecycle's own signalling functions carry. A route that
+# reaches this helper from deeper than the function whose argument was
+# deprecated names the frame it was entered on, the way it already names `call`.
 handle_focal_deprecation <- function(
   .focal_level,
   .reference_level,
   .treated,
   .untreated,
-  fn_name
+  fn_name,
+  user_env = rlang::caller_env(2)
 ) {
   # Handle deprecation warnings and parameter mapping
   if (!is.null(.treated)) {
     lifecycle::deprecate_warn(
       "0.1.0",
       paste0(fn_name, "(.treated)"),
-      paste0(fn_name, "(.focal_level)")
+      paste0(fn_name, "(.focal_level)"),
+      user_env = user_env
     )
     if (is.null(.focal_level)) {
       .focal_level <- .treated
@@ -108,7 +119,8 @@ handle_focal_deprecation <- function(
     lifecycle::deprecate_warn(
       "0.1.0",
       paste0(fn_name, "(.untreated)"),
-      paste0(fn_name, "(.reference_level)")
+      paste0(fn_name, "(.reference_level)"),
+      user_env = user_env
     )
     if (is.null(.reference_level)) {
       .reference_level <- .untreated
@@ -116,6 +128,42 @@ handle_focal_deprecation <- function(
   }
 
   list(.focal_level = .focal_level, .reference_level = .reference_level)
+}
+
+# The categorical path reads one column of propensity scores per exposure level
+# and never resolves a focal level, so an argument naming one describes a coding
+# it does not use. Dropping such an argument silently leaves the caller believing
+# the modification honored it.
+check_no_focal_levels <- function(
+  .focal_level,
+  .reference_level,
+  .treated,
+  .untreated,
+  call = rlang::caller_env()
+) {
+  supplied <- c(
+    ".focal_level" = !is.null(.focal_level),
+    ".reference_level" = !is.null(.reference_level),
+    ".treated" = !is.null(.treated),
+    ".untreated" = !is.null(.untreated)
+  )
+
+  if (!any(supplied)) {
+    return(invisible(NULL))
+  }
+
+  named <- names(supplied)[supplied]
+  abort(
+    c(
+      "{.arg {named}} {?is/are} not supported for categorical exposures.",
+      x = "A categorical exposure is described by one column of scores per
+           level, so no level is treated as focal and none as reference.",
+      i = "Drop {.arg {named}}, or supply a binary exposure and a single column
+           of scores."
+    ),
+    error_class = "propensity_unsupported_arg_error",
+    call = call
+  )
 }
 
 # The propensity score argument was named `ps` in ps_trim(), ps_trunc(),
@@ -127,9 +175,24 @@ handle_propensity_deprecation <- function(
   .propensity,
   ps,
   fn_name,
-  call = rlang::caller_env()
+  call = rlang::caller_env(),
+  user_env = rlang::caller_env(2)
 ) {
   if (!lifecycle::is_present(ps)) {
+    # Neither name was supplied, so there are no scores to modify. Dispatch
+    # would report the formal it could not evaluate, which names an argument the
+    # caller may have written under the other spelling.
+    if (rlang::is_missing(.propensity)) {
+      abort(
+        c(
+          "{.arg .propensity} must be supplied.",
+          i = "It holds the propensity scores {.fun {fn_name}} modifies."
+        ),
+        error_class = "propensity_missing_arg_error",
+        call = call
+      )
+    }
+
     return(.propensity)
   }
 
@@ -150,7 +213,8 @@ handle_propensity_deprecation <- function(
   lifecycle::deprecate_warn(
     "0.2.0",
     paste0(fn_name, "(ps)"),
-    paste0(fn_name, "(.propensity)")
+    paste0(fn_name, "(.propensity)"),
+    user_env = user_env
   )
 
   ps
@@ -610,6 +674,41 @@ check_sigma <- function(
     )
   }
 
+  # The density reads the spread as it arrives, so a value that cannot scale one
+  # is reported rather than evaluated: a negative spread comes back as `NaN`
+  # under a base R warning about them, a zero comes back infinite, and an
+  # unbounded one comes back as no density at all. A spread that is missing for
+  # one observation leaves that observation's weight missing, the way a missing
+  # score does; one missing for every observation describes no density anywhere.
+  absent <- is.na(.sigma) & !is.nan(.sigma)
+  if (all(absent)) {
+    abort(
+      c(
+        "{.arg .sigma} must hold at least one standard deviation.",
+        x = "Every value is missing.",
+        i = "{.arg .sigma} spreads the conditional density of the exposure,
+             which needs a width to be evaluated at."
+      ),
+      error_class = "propensity_sigma_error",
+      call = call
+    )
+  }
+
+  supplied <- .sigma[!absent]
+  unusable <- supplied[!is.finite(supplied) | supplied <= 0]
+  if (length(unusable) > 0) {
+    abort(
+      c(
+        "{.arg .sigma} must hold positive, finite standard deviations.",
+        x = "It holds {.val {unique(unusable)}}.",
+        i = "{.arg .sigma} spreads the conditional density of the exposure, and
+             a width at or below zero, or without a bound, spreads nothing."
+      ),
+      error_class = "propensity_sigma_error",
+      call = call
+    )
+  }
+
   invisible(.sigma)
 }
 
@@ -738,6 +837,43 @@ check_exposure_complete <- function(
     ),
     call = call,
     error_class = "propensity_missing_value_error"
+  )
+}
+
+# The common range runs from the lowest score among the focal units to the
+# highest among the reference units, so each bound needs at least one observed
+# score in its own group. Over none of them `min()` returns `Inf` and `max()`
+# returns `-Inf`, both under a base R warning, and the bounds then cross: the
+# group with no scores to read a bound off is reported as distributions that do
+# not overlap, or leaves a range no unit falls inside.
+check_cr_groups_observed <- function(
+  focal_scores,
+  reference_scores,
+  call = rlang::caller_env()
+) {
+  empty <- c(
+    "focal" = length(focal_scores) == 0,
+    "reference" = length(reference_scores) == 0
+  )
+
+  if (!any(empty)) {
+    return(invisible(TRUE))
+  }
+
+  groups <- names(empty)[empty]
+  abort(
+    c(
+      "For {.code method = 'cr'}, every exposure group must hold at least one
+       observed propensity score.",
+      x = "No score is observed among the {groups} units.",
+      i = "The bounds are the lowest score among the focal units and the highest
+           among the reference units, and a group with no observed score has
+           neither to give.",
+      i = "Remove or impute the missing propensity scores, or bound the scores
+           with {.code method = 'ps'} or {.code method = 'pctl'}."
+    ),
+    call = call,
+    error_class = "propensity_no_data_error"
   )
 }
 
@@ -979,12 +1115,16 @@ calculate_weight_from_modified_ps <- function(
   weight_fn,
   modification_type = c("trim", "trunc", "calib"),
   ...,
-  call = rlang::caller_env()
+  call = rlang::caller_env(),
+  user_env = rlang::caller_env(2)
 ) {
   # `weight_fn` is a numeric method invoked through a local symbol, so its own
   # frame deparses as `weight_fn()`. The default is the dispatching method's
   # frame, which is handed down so that conditions raised inside the weight
-  # machinery name the weight function the user called.
+  # machinery name the weight function the user called. `user_env` is handed
+  # down for the same reason: the numeric method is reached from here rather
+  # than from the caller who wrote the deprecated argument, so its own caller
+  # would attribute the deprecation to this package.
   check_call_arg(call, error_call = rlang::caller_env())
 
   modification_type <- rlang::arg_match(modification_type)
@@ -1002,6 +1142,7 @@ calculate_weight_from_modified_ps <- function(
       .propensity,
       .exposure = .exposure,
       call = call,
+      user_env = user_env,
       ...
     )
   } else {
@@ -1013,6 +1154,7 @@ calculate_weight_from_modified_ps <- function(
       numeric_ps,
       .exposure = .exposure,
       call = call,
+      user_env = user_env,
       ...
     )
   }
@@ -1277,7 +1419,8 @@ handle_data_frame_weight_calculation <- function(
   .untreated = NULL,
   fn_name,
   ...,
-  call = rlang::caller_env()
+  call = rlang::caller_env(),
+  user_env = rlang::caller_env(2)
 ) {
   # The default is the frame of the data frame method this was called from,
   # which is the frame the generic dispatched into and so the one that names the
@@ -1309,7 +1452,8 @@ handle_data_frame_weight_calculation <- function(
     .reference_level,
     .treated,
     .untreated,
-    fn_name
+    fn_name,
+    user_env = user_env
   )
   check_focal_levels(
     focal_params$.focal_level,
@@ -1442,7 +1586,8 @@ prepare_glm_weight_args <- function(
   .treated,
   .untreated,
   fn_name,
-  call = rlang::caller_env()
+  call = rlang::caller_env(),
+  user_env = rlang::caller_env(2)
 ) {
   .exposure <- extract_exposure_from_glm(glm_obj, .exposure)
   exposure_type <- match_exposure_type(
@@ -1457,7 +1602,8 @@ prepare_glm_weight_args <- function(
     .reference_level,
     .treated,
     .untreated,
-    fn_name
+    fn_name,
+    user_env = user_env
   )
   check_focal_levels(
     focal_params$.focal_level,

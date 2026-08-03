@@ -1,3 +1,20 @@
+valid_trunc_matrix_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a", "b", "c"))
+  # every row sums to 1 and no cell falls below 0.01, so the default threshold
+  # leaves the scores as they are
+  ps_matrix <- rbind(
+    c(0.50, 0.30, 0.20),
+    c(0.30, 0.50, 0.20),
+    c(0.20, 0.30, 0.50),
+    c(0.40, 0.40, 0.20),
+    c(0.25, 0.35, 0.40),
+    c(0.34, 0.33, 0.33)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
 test_that("ps_trunc works with matrix propensity scores", {
   # Create test data
   set.seed(123)
@@ -344,8 +361,10 @@ test_that("ps_trunc with method='pctl' works for categorical exposures", {
 
   # The thresholds should be based on the overall distribution
   all_ps_vals <- as.vector(ps_matrix)
-  expected_lower <- quantile(all_ps_vals, 0.05)
-  expected_upper <- quantile(all_ps_vals, 0.95)
+  # `quantile()` names its result for the probability it was asked for; the
+  # bound is recorded without that name.
+  expected_lower <- unname(quantile(all_ps_vals, 0.05))
+  expected_upper <- unname(quantile(all_ps_vals, 0.95))
   expect_equal(meta$lower_bound, expected_lower)
   expect_equal(meta$upper_bound, expected_upper)
 })
@@ -588,23 +607,6 @@ test_that("a matrix with the wrong number of columns names ps_trunc", {
   )
 })
 
-valid_trunc_matrix_fixture <- function() {
-  exposure <- factor(c("a", "b", "c", "a", "b", "c"))
-  # every row sums to 1 and no cell falls below 0.01, so the default threshold
-  # leaves the scores as they are
-  ps_matrix <- rbind(
-    c(0.50, 0.30, 0.20),
-    c(0.30, 0.50, 0.20),
-    c(0.20, 0.30, 0.50),
-    c(0.40, 0.40, 0.20),
-    c(0.25, 0.35, 0.40),
-    c(0.34, 0.33, 0.33)
-  )
-  colnames(ps_matrix) <- levels(exposure)
-
-  list(exposure = exposure, ps_matrix = ps_matrix)
-}
-
 test_that("ps_trunc truncates a matrix with the method left at its default", {
   fixture <- valid_trunc_matrix_fixture()
 
@@ -614,7 +616,13 @@ test_that("ps_trunc truncates a matrix with the method left at its default", {
   # was handed.
   truncated <- ps_trunc(fixture$ps_matrix, .exposure = fixture$exposure)
 
-  expect_s3_class(truncated, c("ps_trunc_matrix", "ps_trunc", "matrix"))
+  # The whole chain, in order: a test that any one of these is inherited holds
+  # for a matrix result that lost the class it was given.
+  expect_s3_class(
+    truncated,
+    c("ps_trunc_matrix", "ps_trunc", "matrix"),
+    exact = TRUE
+  )
   expect_equal(ps_trunc_meta(truncated)$method, "ps")
   expect_equal(dim(truncated), dim(fixture$ps_matrix))
 })
@@ -851,8 +859,6 @@ four_level_trunc_fixture <- function() {
 }
 
 test_that("ps_trunc() names the threshold and the limit it reached", {
-  skip("awaiting implementation")
-
   fixture <- four_level_trunc_fixture()
 
   cnd <- rlang::catch_cnd(
@@ -875,8 +881,6 @@ test_that("ps_trunc() names the threshold and the limit it reached", {
 })
 
 test_that("ps_trunc() validates the percentiles it bounds a matrix at", {
-  skip("awaiting implementation")
-
   fixture <- valid_trunc_matrix_fixture()
 
   # Bounds that cross pin every score to the bound on the far side of the
@@ -910,8 +914,6 @@ test_that("ps_trunc() validates the percentiles it bounds a matrix at", {
 })
 
 test_that("ps_trunc() records a matrix's percentile bounds without their quantile names", {
-  skip("awaiting implementation")
-
   fixture <- valid_trunc_matrix_fixture()
   truncated <- ps_trunc(
     fixture$ps_matrix,
@@ -930,8 +932,6 @@ test_that("ps_trunc() records a matrix's percentile bounds without their quantil
 })
 
 test_that("ps_trunc() refuses focal levels on the categorical path", {
-  skip("awaiting implementation")
-
   fixture <- valid_trunc_matrix_fixture()
   scores <- as.data.frame(fixture$ps_matrix)
   trunc_with <- function(...) {

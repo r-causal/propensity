@@ -12,7 +12,9 @@
       expr
     Condition <propensity_range_error>
       Error in `ps_trim()`:
-      ! Invalid trimming threshold (delta >= 1/k).
+      ! The trimming threshold must fall below 1/k, for k columns of propensity scores.
+      x `lower` is 0.35, and 1/k is 0.3333333 for the 3 columns the scores hold.
+      i No row summing to one can hold every score above 1/k, so a threshold there leaves no rule to apply.
 
 # ps_trim errors for unsupported methods with categorical
 

@@ -6076,8 +6076,6 @@ test_that("`.sigma` applies only to continuous exposures", {
 })
 
 test_that("`.sigma` must hold usable standard deviations", {
-  skip("awaiting implementation")
-
   fixture <- continuous_sigma_fixture()
   n <- length(fixture$exposure)
   spread <- function(sigma) {
@@ -6114,8 +6112,6 @@ test_that("`.sigma` must hold usable standard deviations", {
 # ---- deprecations are attributed to the caller ------------------------------
 
 test_that("the .treated deprecation is attributed to the caller", {
-  skip("awaiting implementation")
-
   messages <- deprecation_warnings_from_user(
     quote(wt_ate(truncated, exposure, .treated = 1)),
     list(

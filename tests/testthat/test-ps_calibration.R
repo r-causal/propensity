@@ -1542,8 +1542,6 @@ test_that("ps_calibrate() names .propensity in the length mismatch error", {
 # What a refused cast says, and what the fallback needs ------------------------
 
 test_that("casting between differently calibrated ps_calib objects names the disagreement", {
-  skip("awaiting implementation")
-
   x <- calib_vctrs_fixture()
 
   # Built directly so the spline fit, and with it mgcv, stays out of a test
@@ -1577,8 +1575,6 @@ test_that("casting between differently calibrated ps_calib objects names the dis
 })
 
 test_that("ps_calibrate() falls back to a straight line without reaching for mgcv", {
-  skip("awaiting implementation")
-
   # Five distinct scores are too few to place the knots of a spline, so the
   # fallback fits a logistic regression and mgcv takes no part in the
   # calibration. Checking for the package before working that out refuses the
@@ -1608,8 +1604,6 @@ test_that("ps_calibrate() falls back to a straight line without reaching for mgc
 })
 
 test_that("ps_calibrate() names the propensity scores it was not given", {
-  skip("awaiting implementation")
-
   err <- expect_error(
     ps_calibrate(.exposure = c(0, 1, 0, 1)),
     class = "propensity_missing_arg_error"

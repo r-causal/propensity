@@ -309,22 +309,17 @@ ps_calibrate <- function(
   na_idx <- is.na(ps_numeric) | is.na(.exposure)
 
   # Perform calibration based on method
-  calib_model <- NULL
   if (method == "logistic") {
+    # The units the fit reads: those with both a score and an exposure.
+    calib_data <- data.frame(
+      treat = .exposure[!na_idx],
+      ps = ps_numeric[!na_idx]
+    )
+
     if (smooth) {
-      # Check if mgcv is available for smooth calibration
-      rlang::check_installed(
-        "mgcv",
-        reason = "for smooth calibration using GAM (Generalized Additive Model)."
-      )
-
-      # Create data frame for GAM fitting (only non-NA values)
-      calib_data <- data.frame(
-        treat = .exposure[!na_idx],
-        ps = ps_numeric[!na_idx]
-      )
-
-      # Check if we have enough unique values for smoothing (like probably does)
+      # Whether a spline can be placed is settled before mgcv is asked for.
+      # Deciding the other way round refuses the call over a package the
+      # calibration it goes on to perform takes no part in.
       n_unique <- length(unique(calib_data$ps))
       if (n_unique < 10) {
         # Fall back to simple logistic regression if too few unique values.
@@ -334,34 +329,27 @@ ps_calibrate <- function(
         alert_info(
           "{n_unique} distinct propensity score{?s} {?is/are} too few to place the knots of a spline, so calibration falls back to logistic regression without one."
         )
-        calib_model <- stats::glm(
-          treat ~ ps,
-          data = calib_data,
-          family = stats::binomial()
-        )
-      } else {
-        # Fit GAM with smooth spline: treat ~ s(ps)
-        calib_model <- mgcv::gam(
-          treat ~ s(ps),
-          data = calib_data,
-          family = "binomial"
-        )
       }
     }
 
-    if (!smooth) {
-      # Reached either because smoothing was never asked for or because the
-      # fallback above turned it off, in which case the model is already fit.
-      if (is.null(calib_model)) {
-        calib_model <- stats::glm(
-          treat ~ ps,
-          data = data.frame(
-            treat = .exposure[!na_idx],
-            ps = ps_numeric[!na_idx]
-          ),
-          family = stats::binomial()
-        )
-      }
+    if (smooth) {
+      rlang::check_installed(
+        "mgcv",
+        reason = "for smooth calibration using GAM (Generalized Additive Model)."
+      )
+
+      # Fit GAM with smooth spline: treat ~ s(ps)
+      calib_model <- mgcv::gam(
+        treat ~ s(ps),
+        data = calib_data,
+        family = "binomial"
+      )
+    } else {
+      calib_model <- stats::glm(
+        treat ~ ps,
+        data = calib_data,
+        family = stats::binomial()
+      )
     }
 
     if (isFALSE(calib_model$converged)) {
@@ -535,9 +523,11 @@ vec_arith.numeric.ps_calib <- function(op, x, y, ...) {
 # them, so it reads them directly instead of routing through the common type of
 # the two sides, which for a calibrated vector and a number is the numeric
 # downgrade. Recycling still goes through vctrs, so sizes with no common size
-# have no answer rather than the one base R recycling would invent.
-ps_calib_compare <- function(e1, e2) {
-  args <- vctrs::vec_recycle_common(e1, e2)
+# have no answer rather than the one base R recycling would invent. The refusal
+# is reported against the comparison the user wrote rather than against this
+# helper, which they have no way to reach.
+ps_calib_compare <- function(e1, e2, call = rlang::caller_env()) {
+  args <- vctrs::vec_recycle_common(e1, e2, .call = call)
 
   if (inherits(args[[1]], "ps_calib")) {
     args[[1]] <- vctrs::vec_data(args[[1]])
@@ -585,16 +575,23 @@ ps_calib_compare <- function(e1, e2) {
   args[[1]] != args[[2]]
 }
 
+# How a calibration is described: the curve it was fit with and whether that
+# curve was smoothed. A `ps_calib` carries no positional record, so this is the
+# whole of its metadata, and it is read through one helper so that the combine
+# and the cast compare the same thing.
+calib_parameters <- function(meta) {
+  fields <- c("method", "smooth")
+
+  rlang::set_names(lapply(fields, function(field) meta[[field]]), fields)
+}
+
 #' @export
 vec_ptype2.ps_calib.ps_calib <- function(x, y, ...) {
   x_meta <- ps_calib_meta(x)
   y_meta <- ps_calib_meta(y)
 
   # Check if calibration parameters match
-  if (
-    !identical(x_meta$method, y_meta$method) ||
-      !identical(x_meta$smooth, y_meta$smooth)
-  ) {
+  if (!identical(calib_parameters(x_meta), calib_parameters(y_meta))) {
     warn_incompatible_metadata(
       x,
       y,
@@ -619,17 +616,29 @@ vec_ptype2.double.ps_calib <- function(x, y, ...) {
   double()
 }
 
+# A cast returns the values it was handed in the type it was handed, and a
+# `ps_calib`'s type is the whole description of the calibration. That is the
+# comparison `vec_ptype2()` already makes when it refuses to find a common type,
+# so the cast makes it too.
+#
+# `vec_ptype_full()` names the method but not whether the fit was smoothed, so
+# two types that differ only in that render identically and the refusal would
+# read as a type that cannot be converted to itself. What disagrees is named
+# alongside them, the way the combine names it.
 #' @export
 vec_cast.ps_calib.ps_calib <- function(x, to, ...) {
   # Check if metadata matches
   x_meta <- ps_calib_meta(x)
   to_meta <- ps_calib_meta(to)
 
-  if (
-    !identical(x_meta$method, to_meta$method) ||
-      !identical(x_meta$smooth, to_meta$smooth)
-  ) {
-    vctrs::stop_incompatible_cast(x, to, x_arg = "", to_arg = "")
+  if (!identical(calib_parameters(x_meta), calib_parameters(to_meta))) {
+    vctrs::stop_incompatible_cast(
+      x,
+      to,
+      x_arg = "",
+      to_arg = "",
+      details = "different calibration parameters"
+    )
   }
 
   # Return x as-is if metadata matches

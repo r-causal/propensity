@@ -1,3 +1,20 @@
+valid_trim_matrix_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a", "b", "c"))
+  # every row sums to 1 and no cell falls below 0.1, so the default threshold
+  # trims nothing and leaves all three groups in place
+  ps_matrix <- rbind(
+    c(0.50, 0.30, 0.20),
+    c(0.30, 0.50, 0.20),
+    c(0.20, 0.30, 0.50),
+    c(0.40, 0.40, 0.20),
+    c(0.25, 0.35, 0.40),
+    c(0.34, 0.33, 0.33)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
 test_that("ps_trim works with matrix propensity scores for symmetric trimming", {
   # Create test data
   set.seed(123)
@@ -969,23 +986,6 @@ test_that("a matrix with the wrong number of columns names ps_trim", {
   )
 })
 
-valid_trim_matrix_fixture <- function() {
-  exposure <- factor(c("a", "b", "c", "a", "b", "c"))
-  # every row sums to 1 and no cell falls below 0.1, so the default threshold
-  # trims nothing and leaves all three groups in place
-  ps_matrix <- rbind(
-    c(0.50, 0.30, 0.20),
-    c(0.30, 0.50, 0.20),
-    c(0.20, 0.30, 0.50),
-    c(0.40, 0.40, 0.20),
-    c(0.25, 0.35, 0.40),
-    c(0.34, 0.33, 0.33)
-  )
-  colnames(ps_matrix) <- levels(exposure)
-
-  list(exposure = exposure, ps_matrix = ps_matrix)
-}
-
 test_that("ps_trim trims a matrix with the method left at its default", {
   fixture <- valid_trim_matrix_fixture()
 
@@ -994,7 +994,13 @@ test_that("ps_trim trims a matrix with the method left at its default", {
   # the first of those rather than failing to match the vector it was handed.
   trimmed <- ps_trim(fixture$ps_matrix, .exposure = fixture$exposure)
 
-  expect_s3_class(trimmed, c("ps_trim_matrix", "ps_trim", "matrix"))
+  # The whole chain, in order: a test that any one of these is inherited holds
+  # for a matrix result that lost the class it was given.
+  expect_s3_class(
+    trimmed,
+    c("ps_trim_matrix", "ps_trim", "matrix"),
+    exact = TRUE
+  )
   expect_equal(ps_trim_meta(trimmed)$method, "ps")
   expect_equal(dim(trimmed), dim(fixture$ps_matrix))
 })
@@ -1180,8 +1186,6 @@ four_level_trim_fixture <- function() {
 }
 
 test_that("ps_trim() names the threshold and the limit it reached", {
-  skip("awaiting implementation")
-
   fixture <- four_level_trim_fixture()
 
   cnd <- rlang::catch_cnd(
@@ -1206,8 +1210,6 @@ test_that("ps_trim() names the threshold and the limit it reached", {
 })
 
 test_that("ps_trim() refuses focal levels on the categorical path", {
-  skip("awaiting implementation")
-
   fixture <- valid_trim_matrix_fixture()
   scores <- as.data.frame(fixture$ps_matrix)
   trim_with <- function(...) {

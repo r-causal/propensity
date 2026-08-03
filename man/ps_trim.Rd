@@ -222,6 +222,13 @@ one set of observations to another and the prototype it builds the result
 from holds no positions to lose. The values, the class, and the method and
 its cutoffs are untouched either way.
 
+Printing a \code{ps_trim} column inside a tibble takes the same route: a tibble
+prints the first few rows and slices the column to get them, so a column
+longer than what is shown raises the record-drop warning as it is printed.
+The warning is truthful, and it describes the vector built for the display
+rather than the column, which is unchanged. Print \code{as.numeric()} of the
+column, or widen the print with \code{options(pillar.print_max)}, to avoid it.
+
 A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a \code{ps_trim} by subassignment carries it
 across the length change. \code{\link[=is_unit_trimmed]{is_unit_trimmed()}} and \code{\link[=ps_refit]{ps_refit()}} therefore

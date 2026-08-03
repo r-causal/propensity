@@ -1,5 +1,80 @@
 # propensity 0.1.0.9000 (development version)
 
+* A deprecated argument now reports the call that supplied it. lifecycle decides
+  whether a deprecation belongs to the caller or to the package that raised it,
+  and the warnings for `.treated`, `.untreated`, and `ps` were raised from
+  helpers that named no calling environment, so every one of them arrived with a
+  bullet asking the reader to report an issue against propensity for an argument
+  they had written themselves.
+
+* `wt_ate()` and `wt_cens()` now refuse a `.sigma` that holds a value at or
+  below zero, a value without a bound, or nothing but missing values, with an
+  error of class `propensity_sigma_error`. A standard deviation reached
+  `dnorm()` as it arrived: a negative one came back as `NaN` weights under a
+  base R warning about them, a zero came back as infinite weights, and a missing
+  one came back missing.
+
+* `ps_trim()`, `ps_trunc()`, `ps_calibrate()`, and `ps_tilt()` now name
+  `.propensity` when they are called without propensity scores, with an error of
+  class `propensity_missing_arg_error`. Dispatch reported base R's missing
+  argument message, which names the formal rather than the two spellings the
+  scores may arrive under.
+
+* `ps_trim()` and `ps_trunc()` now name the threshold they were given and the
+  `1/k` the width of a propensity score matrix imposes on it. The refusal read
+  `Invalid trimming threshold (delta >= 1/k)`, which left the caller to work out
+  both numbers, one of which was their own.
+
+* `ps_trim()` and `ps_trunc()` now refuse `method = "cr"` when one exposure
+  group has no observed propensity score, with an error of class
+  `propensity_no_data_error`. The bounds are the lowest score among the focal
+  units and the highest among the reference units, and over none of them `min()`
+  and `max()` returned `Inf` and `-Inf` under a base R warning: `ps_trim()` then
+  trimmed every unit, and `ps_trunc()` reported distributions that do not
+  overlap, which describes a different problem.
+
+* `ps_trunc()` now validates the percentiles it bounds a matrix of categorical
+  propensity scores at, as it already did for a vector. Bounds that crossed
+  pinned every score to the bound on the far side of the other, and a
+  probability outside the unit interval was refused in base R's words about
+  `quantile()`, an argument the caller never wrote.
+
+* `ps_trim()` and `ps_trunc()` no longer record a bound the method never read.
+  `method = "adaptive"` and `method = "cr"` announce that `lower` and `upper` are
+  ignored and then work their cutoffs out from the scores, but the ignored bounds
+  were kept in the metadata, so two trimmings that ran the same rule to the same
+  cutoff described themselves differently and combining them warned and fell back
+  to numeric.
+
+* The percentile cutoffs `ps_trim()` and `ps_trunc()` record are no longer named
+  for the probability they were read at. `quantile()` names its result `"5%"` or
+  `"95%"`, which says nothing about the cutoff and reappeared wherever the cutoff
+  was printed or compared.
+
+* `ps_trim()` and `ps_trunc()` now refuse `.focal_level`, `.reference_level`,
+  `.treated`, and `.untreated` on the categorical path, with an error of class
+  `propensity_unsupported_arg_error` naming the argument. A categorical exposure
+  is described by one column of scores per level, so no level is treated as
+  focal; the arguments were declared and never read, and the data frame method
+  dropped them on the way to the matrix method.
+
+* Refusing to cast one `ps_calib` to another now names the disagreement, as the
+  `ps_trim` and `ps_trunc` casts already do. A `ps_calib` is printed with its
+  method but not with whether the fit was smoothed, so two types that differ
+  only in that rendered identically and the refusal read as a type that cannot
+  be converted to itself.
+
+* `ps_calibrate(smooth = TRUE)` no longer requires mgcv when it is going to fall
+  back to a straight line. Whether enough distinct propensity scores are present
+  to place the knots of a spline is now settled first, so a calibration that
+  fits a logistic regression is no longer refused over a package it takes no
+  part in.
+
+* Printing a `ps_trim` column inside a tibble is documented as slicing the
+  column for display, which raises the record-drop warning. The warning is
+  truthful and describes the vector built for the display; the column is
+  unchanged.
+
 * `ps_trim()`, `ps_trunc()`, `ps_calibrate()`, and `ps_tilt()` now take the
   propensity scores in `.propensity`, the name the weight functions already read
   them under. These four called the argument `ps`, so a call written against one
@@ -58,10 +133,9 @@
 * `ps_calibrate()` now says so when `smooth = TRUE` cannot be honored. A spline
   needs enough distinct propensity scores to place its knots, so with fewer
   than 10 among the observations it reads, those with both a score and an
-  exposure recorded, the fit falls back to logistic regression without one.
-  The returned
-  metadata recorded the fallback, but nothing at the point of the call said the
-  spline that was asked for was never fit. The announcement respects
+  exposure recorded, the fit falls back to logistic regression without one. The
+  returned metadata recorded the fallback, but nothing at the point of the call
+  said the spline that was asked for was never fit. The announcement respects
   `options(propensity.quiet)`, and the threshold is now documented.
 
 * The propensity scores `ps_calibrate()` accepts are documented as the closed
@@ -88,7 +162,7 @@
   with more than one column failed a length check that compared its cells
   against the observations in `.exposure` and reported the mismatch as a length
   problem, which said nothing about the shape. A one-dimensional array is still
-  accepted, as it is elsewhere in the package.
+  accepted, as the weight functions accept it.
 
 * The unused `ps_calib_matrix` class is removed, along with its
   `is_ps_calibrated()` and `print()` methods. No calibration route ever
@@ -110,9 +184,10 @@
   vector.
 
 * Combining a `ps_calib` with an integer vector now gives a numeric result
-  holding the calibrated scores, rather than failing to find a common type at
-  all, and casting a `ps_calib` to integer raises a lossy-cast error rather than
-  refusing outright. This is the answer `ps_trim`, `ps_trunc`, and `psw` already
+  holding the calibrated scores, and casting a `ps_calib` to integer now raises
+  a lossy-cast error. The combination found no common type for the two and
+  refused to run at all, and the cast refused without naming what an integer
+  would have cost. This is the answer `ps_trim`, `ps_trunc`, and `psw` already
   give.
 
 * Casting a numeric or integer vector to a `ps_calib` now carries the

@@ -932,8 +932,6 @@ test_that("ps_tilt() names .propensity when refusing an unused .focal_level", {
 })
 
 test_that("ps_tilt() names the propensity scores it was not given", {
-  skip("awaiting implementation")
-
   err <- expect_error(
     ps_tilt(estimand = "ate"),
     class = "propensity_missing_arg_error"

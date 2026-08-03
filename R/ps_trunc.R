@@ -229,7 +229,8 @@ ps_trunc.default <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  ps = lifecycle::deprecated()
+  ps = lifecycle::deprecated(),
+  user_env = rlang::caller_env()
 ) {
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
   method <- rlang::arg_match(method)
@@ -241,7 +242,8 @@ ps_trunc.default <- function(
     .reference_level,
     .treated,
     .untreated,
-    "ps_trunc"
+    "ps_trunc",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
@@ -269,11 +271,14 @@ ps_trunc.default <- function(
     }
     check_quantile_probs(lower, upper)
     check_lower_upper(lower, upper)
-    lb <- quantile(.propensity, probs = lower, na.rm = TRUE)
-    ub <- quantile(.propensity, probs = upper, na.rm = TRUE)
+    # `quantile()` names its result for the probability it was asked for, which
+    # says nothing about the bound and reappears wherever the bound is printed
+    # or compared.
+    lb <- unname(quantile(.propensity, probs = lower, na.rm = TRUE))
+    ub <- unname(quantile(.propensity, probs = upper, na.rm = TRUE))
     meta_list$lower_pctl <- lower
     meta_list$upper_pctl <- upper
-  } else {
+  } else if (method == "cr") {
     if (is.null(.exposure)) {
       abort(
         "For {.code method = 'cr'}, must supply {.arg .exposure}.",
@@ -292,6 +297,7 @@ ps_trunc.default <- function(
     observed <- !is.na(.propensity)
     ps_treat <- .propensity[observed & .exposure == 1]
     ps_untrt <- .propensity[observed & .exposure == 0]
+    check_cr_groups_observed(ps_treat, ps_untrt)
     lb <- min(ps_treat)
     ub <- max(ps_untrt)
     check_common_range(lb, ub)
@@ -349,6 +355,13 @@ ps_trunc.matrix <- function(
     )
   }
 
+  check_no_focal_levels(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated
+  )
+
   # Validate exposure for categorical
   if (is.null(.exposure)) {
     abort(
@@ -386,10 +399,21 @@ ps_trunc.matrix <- function(
     } # Default threshold
     delta <- lower # Use lower as delta for consistency
 
-    # Validate delta
+    # A threshold at or above 1/k cannot be met by every column of a row that
+    # sums to one, so there is no truncation rule left to apply. Both numbers
+    # are facts about this call: the threshold supplied and the limit the width
+    # of the matrix imposes on it.
     if (delta >= 1 / k) {
+      limit <- format(1 / k, digits = 7)
       abort(
-        "Invalid truncation threshold (delta >= 1/k).",
+        c(
+          "The truncation threshold must fall below 1/k, for k columns of
+           propensity scores.",
+          x = "{.arg lower} is {.val {delta}}, and 1/k is {limit} for the {k}
+               column{?s} the scores hold.",
+          i = "No row summing to one can hold every score above 1/k, so a
+               threshold there leaves no rule to apply."
+        ),
         error_class = "propensity_range_error"
       )
     }
@@ -400,13 +424,13 @@ ps_trunc.matrix <- function(
     )
 
     # Apply truncation and renormalize
-    ps_trunc <- .propensity
+    bounded <- .propensity
     for (i in 1:n) {
-      row_vals <- ps_trunc[i, ]
+      row_vals <- bounded[i, ]
       # Clamp values below delta
       row_vals[row_vals < delta] <- delta
       # Renormalize to sum to 1
-      ps_trunc[i, ] <- row_vals / sum(row_vals)
+      bounded[i, ] <- row_vals / sum(row_vals)
     }
 
     lower_bound <- delta
@@ -420,12 +444,16 @@ ps_trunc.matrix <- function(
     if (is.null(upper)) {
       upper <- 0.99
     } # Default percentile
+    check_quantile_probs(lower, upper)
+    check_lower_upper(lower, upper)
 
     # Calculate thresholds based on the distribution of all propensity scores,
-    # taken from the rows this function can renormalize.
+    # taken from the rows this function can renormalize. `quantile()` names its
+    # result for the probability it was asked for, which says nothing about the
+    # bound and reappears wherever the bound is printed or compared.
     all_ps_vals <- as.vector(.propensity[complete_rows, , drop = FALSE])
-    lower_threshold <- quantile(all_ps_vals, probs = lower)
-    upper_threshold <- quantile(all_ps_vals, probs = upper)
+    lower_threshold <- unname(quantile(all_ps_vals, probs = lower))
+    upper_threshold <- unname(quantile(all_ps_vals, probs = upper))
 
     # Track which rows had values truncated
     truncated_idx <- which(
@@ -438,14 +466,14 @@ ps_trunc.matrix <- function(
     )
 
     # Apply truncation and renormalize
-    ps_trunc <- .propensity
+    bounded <- .propensity
     for (i in 1:n) {
-      row_vals <- ps_trunc[i, ]
+      row_vals <- bounded[i, ]
       # Clamp values outside thresholds
       row_vals[row_vals < lower_threshold] <- lower_threshold
       row_vals[row_vals > upper_threshold] <- upper_threshold
       # Renormalize to sum to 1
-      ps_trunc[i, ] <- row_vals / sum(row_vals)
+      bounded[i, ] <- row_vals / sum(row_vals)
     }
 
     lower_bound <- lower_threshold
@@ -467,7 +495,7 @@ ps_trunc.matrix <- function(
     meta$upper_pctl <- upper
   }
 
-  new_ps_trunc(ps_trunc, meta)
+  new_ps_trunc(bounded, meta)
 }
 
 #' @export
@@ -491,13 +519,20 @@ ps_trunc.data.frame <- function(
     exposure_type <- detect_exposure_type(.exposure)
     if (exposure_type == "categorical") {
       ps_matrix <- as.matrix(.propensity)
+      # The focal arguments travel on so that the matrix method refuses them.
+      # Dropping them here would leave the caller believing the truncation
+      # honored a coding the categorical path never reads.
       return(ps_trunc.matrix(
         .propensity = ps_matrix,
         method = method,
         lower = lower,
         upper = upper,
         .exposure = .exposure,
-        ...
+        .focal_level = .focal_level,
+        .reference_level = .reference_level,
+        ...,
+        .treated = .treated,
+        .untreated = .untreated
       ))
     }
   }
@@ -514,7 +549,8 @@ ps_trunc.data.frame <- function(
     .reference_level = .reference_level,
     ...,
     .treated = .treated,
-    .untreated = .untreated
+    .untreated = .untreated,
+    user_env = rlang::caller_env()
   )
 }
 

@@ -169,6 +169,13 @@
 #' from holds no positions to lose. The values, the class, and the method and
 #' its cutoffs are untouched either way.
 #'
+#' Printing a `ps_trim` column inside a tibble takes the same route: a tibble
+#' prints the first few rows and slices the column to get them, so a column
+#' longer than what is shown raises the record-drop warning as it is printed.
+#' The warning is truthful, and it describes the vector built for the display
+#' rather than the column, which is unchanged. Print `as.numeric()` of the
+#' column, or widen the print with `options(pillar.print_max)`, to avoid it.
+#'
 #' A record can also outlive the observations it describes, because it travels
 #' by routes vctrs does not see: growing a `ps_trim` by subassignment carries it
 #' across the length change. [is_unit_trimmed()] and [ps_refit()] therefore
@@ -286,7 +293,8 @@ ps_trim.default <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  ps = lifecycle::deprecated()
+  ps = lifecycle::deprecated(),
+  user_env = rlang::caller_env()
 ) {
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
   method <- rlang::arg_match(method)
@@ -311,7 +319,8 @@ ps_trim.default <- function(
     .reference_level,
     .treated,
     .untreated,
-    "ps_trim"
+    "ps_trim",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
@@ -357,7 +366,16 @@ ps_trim.default <- function(
   }
 
   n <- length(.propensity)
-  meta_list <- list(method = method, lower = lower, upper = upper)
+
+  # A bound the method never reads describes nothing about the trimming it did,
+  # and recording it would leave two trimmings that ran the same rule to the same
+  # cutoff describing themselves differently, which is enough for a combine to
+  # report different parameters and fall back to numeric.
+  meta_list <- if (method %in% c("adaptive", "cr")) {
+    list(method = method)
+  } else {
+    list(method = method, lower = lower, upper = upper)
+  }
 
   # A score that arrived missing is not one this function can place against a
   # cutoff, so it takes no part in working the cutoff out and no part in the
@@ -387,8 +405,11 @@ ps_trim.default <- function(
     meta_list$cutoff <- cutoff
     keep_idx <- which(pmin(.propensity, 1 - .propensity) > cutoff)
   } else if (method == "pctl") {
-    q_lower <- quantile(.propensity, probs = lower, na.rm = TRUE)
-    q_upper <- quantile(.propensity, probs = upper, na.rm = TRUE)
+    # `quantile()` names its result for the probability it was asked for, which
+    # says nothing about the cutoff and reappears wherever the cutoff is printed
+    # or compared.
+    q_lower <- unname(quantile(.propensity, probs = lower, na.rm = TRUE))
+    q_upper <- unname(quantile(.propensity, probs = upper, na.rm = TRUE))
     meta_list$q_lower <- q_lower
     meta_list$q_upper <- q_upper
     keep_idx <- which(.propensity >= q_lower & .propensity <= q_upper)
@@ -424,6 +445,7 @@ ps_trim.default <- function(
     )
     ps_treat <- .propensity[observed & .exposure == 1]
     ps_untrt <- .propensity[observed & .exposure == 0]
+    check_cr_groups_observed(ps_treat, ps_untrt)
     cr_lower <- min(ps_treat)
     cr_upper <- max(ps_untrt)
     meta_list$cr_lower <- cr_lower
@@ -483,6 +505,13 @@ ps_trim.matrix <- function(
     )
   }
 
+  check_no_focal_levels(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated
+  )
+
   # Validate exposure for categorical
   if (is.null(.exposure)) {
     abort(
@@ -523,10 +552,20 @@ ps_trim.matrix <- function(
     delta <- lower # Use lower as delta for consistency
 
     # A threshold at or above 1/k cannot be met by every column of a row that
-    # sums to one, so there is no trimming rule left to apply.
+    # sums to one, so there is no trimming rule left to apply. Both numbers are
+    # facts about this call: the threshold supplied and the limit the width of
+    # the matrix imposes on it.
     if (delta >= 1 / k) {
+      limit <- format(1 / k, digits = 7)
       abort(
-        "Invalid trimming threshold (delta >= 1/k).",
+        c(
+          "The trimming threshold must fall below 1/k, for k columns of
+           propensity scores.",
+          x = "{.arg lower} is {.val {delta}}, and 1/k is {limit} for the {k}
+               column{?s} the scores hold.",
+          i = "No row summing to one can hold every score above 1/k, so a
+               threshold there leaves no rule to apply."
+        ),
         error_class = "propensity_range_error"
       )
     }
@@ -646,13 +685,20 @@ ps_trim.data.frame <- function(
     exposure_type <- detect_exposure_type(.exposure)
     if (exposure_type == "categorical") {
       ps_matrix <- as.matrix(.propensity)
+      # The focal arguments travel on so that the matrix method refuses them.
+      # Dropping them here would leave the caller believing the trimming honored
+      # a coding the categorical path never reads.
       return(ps_trim.matrix(
         .propensity = ps_matrix,
         method = method,
         lower = lower,
         upper = upper,
         .exposure = .exposure,
-        ...
+        .focal_level = .focal_level,
+        .reference_level = .reference_level,
+        ...,
+        .treated = .treated,
+        .untreated = .untreated
       ))
     }
   }
@@ -669,7 +715,8 @@ ps_trim.data.frame <- function(
     .reference_level = .reference_level,
     ...,
     .treated = .treated,
-    .untreated = .untreated
+    .untreated = .untreated,
+    user_env = rlang::caller_env()
   )
 }
 

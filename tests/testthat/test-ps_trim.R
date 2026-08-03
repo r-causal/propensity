@@ -2363,15 +2363,11 @@ test_that("ps_trim() names .propensity in the out-of-range error", {
 # Bounds, groups, and arguments the trimming cannot use ------------------------
 
 test_that("ps_trim() names the propensity scores it was not given", {
-  skip("awaiting implementation")
-
   err <- expect_error(ps_trim(), class = "propensity_missing_arg_error")
   expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
 })
 
 test_that("the ps deprecation is attributed to the caller", {
-  skip("awaiting implementation")
-
   messages <- deprecation_warnings_from_user(
     quote(ps_trim(ps = scores, method = "ps", lower = 0.2, upper = 0.8)),
     list(scores = trim_rename_scores())
@@ -2388,8 +2384,6 @@ cr_missing_group_scores <- function() {
 }
 
 test_that("ps_trim() refuses a common range read off no scores", {
-  skip("awaiting implementation")
-
   # The lower bound is the lowest score among the focal units. Over no scores
   # `min()` returns `Inf` under a base R warning, which reads as a range no unit
   # falls inside, so every unit is trimmed instead.
@@ -2419,8 +2413,6 @@ test_that("ps_trim() refuses a common range read off no scores", {
 })
 
 test_that("ps_trim() drops the bounds an adaptive trimming ignores", {
-  skip("awaiting implementation")
-
   set.seed(11)
   ps <- runif(60, 0.02, 0.98)
 

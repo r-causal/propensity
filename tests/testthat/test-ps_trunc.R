@@ -1456,15 +1456,11 @@ test_that("ps_trunc() names .propensity in the out-of-range error", {
 # Bounds, groups, and the record they leave -----------------------------------
 
 test_that("ps_trunc() names the propensity scores it was not given", {
-  skip("awaiting implementation")
-
   err <- expect_error(ps_trunc(), class = "propensity_missing_arg_error")
   expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
 })
 
 test_that("ps_trunc() refuses a common range read off no scores", {
-  skip("awaiting implementation")
-
   scores <- c(NA, NA, 0.4, 0.55, 0.7)
 
   # The lower bound is the lowest score among the focal units. Over no scores
@@ -1489,8 +1485,6 @@ test_that("ps_trunc() refuses a common range read off no scores", {
 })
 
 test_that("ps_trunc() records the percentile bounds without their quantile names", {
-  skip("awaiting implementation")
-
   set.seed(12)
   truncated <- ps_trunc(runif(40, 0.02, 0.98), method = "pctl")
   meta <- ps_trunc_meta(truncated)
@@ -1503,8 +1497,6 @@ test_that("ps_trunc() records the percentile bounds without their quantile names
 })
 
 test_that("the truncation record names each unit once", {
-  skip("awaiting implementation")
-
   # The record is built from the units pinned to the lower bound and those
   # pinned to the upper one, so it holds each position once and in order
   # whatever the method read its bounds off.

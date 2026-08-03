@@ -362,7 +362,8 @@ wt_ate.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -373,7 +374,8 @@ wt_ate.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_ate"
+    "wt_ate",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
@@ -663,7 +665,8 @@ wt_att.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -674,7 +677,8 @@ wt_att.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_att"
+    "wt_att",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
@@ -857,7 +861,8 @@ wt_atu.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -868,7 +873,8 @@ wt_atu.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_atu"
+    "wt_atu",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
@@ -1051,7 +1057,8 @@ wt_atm.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -1062,7 +1069,8 @@ wt_atm.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_atm"
+    "wt_atm",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
@@ -1238,7 +1246,8 @@ wt_ato.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -1249,7 +1258,8 @@ wt_ato.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_ato"
+    "wt_ato",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
@@ -1424,7 +1434,8 @@ wt_entropy.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
   rlang::check_dots_empty(call = call)
@@ -1435,7 +1446,8 @@ wt_entropy.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_entropy"
+    "wt_entropy",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
@@ -1640,7 +1652,8 @@ wt_cens.numeric <- function(
   ...,
   .treated = NULL,
   .untreated = NULL,
-  call = rlang::current_env()
+  call = rlang::current_env(),
+  user_env = rlang::caller_env()
 ) {
   check_call_arg(call)
 
@@ -1652,7 +1665,8 @@ wt_cens.numeric <- function(
     .reference_level,
     .treated,
     .untreated,
-    "wt_cens"
+    "wt_cens",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
