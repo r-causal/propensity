@@ -93,7 +93,7 @@ Each weight function targets a different population:
 | **ATU** | Untreated units | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md) (alias: [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)) |
 | **ATO** | Overlap population | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
 | **ATM** | Matched population | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
-| **Entropy** | Entropy-balanced population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| **Entropy** | Entropy-tilted population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
 
 ATO and ATM weights are bounded by construction, making them a good
 alternative when ATE weights are highly variable.

@@ -43,8 +43,17 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
 
 - .data:
 
-  A data frame. If `NULL` (the default), the data are extracted from
-  `model` via [model.frame()](https://rdrr.io/r/stats/model.frame.html).
+  A data frame with one row per observation in `trimmed_ps`, in the same
+  order. If `NULL` (the default), the data are recovered from `model`:
+  its [model.frame()](https://rdrr.io/r/stats/model.frame.html) when
+  that already holds every variable the refit reads, and otherwise the
+  data the model names, restricted by row name to the rows the model
+  analyzed. A model fit without a data argument names none, and its
+  variables are read out of the formula's environment instead. A formula
+  that transforms a term, such as `z ~ log(x)` or a spline basis, stores
+  that term already computed, so only the underlying variables let the
+  transformation be recomputed from the retained rows. Pass `.data` when
+  the data the model was fit on can no longer be reached.
 
 - ...:
 
@@ -57,6 +66,34 @@ A `ps_trim` object with re-estimated propensity scores for retained
 observations and `NA` for trimmed observations. Use
 [`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md)
 to confirm refitting was applied.
+
+## Details
+
+### Composing with a `subset`
+
+A `subset` in the original call has already chosen the sample the
+propensity scores are about, and the trimming record indexes that sample
+rather than every row the data carry. Refitting narrows that sample
+further, to the retained rows, so the original `subset` is dropped from
+the call rather than put to work a second time on rows it was never
+about. A `subset` passed through `...` is an instruction of its own and
+is honored.
+
+### Arguments read from outside the formula
+
+`weights`, `offset`, and `na.action` in the original call are
+re-evaluated against the retained rows. A `weights` or `offset` naming a
+column of the data the model was fit on is read from that column and
+follows the retained rows, whether the data are recovered from `model`
+or passed to `.data`. A vector held outside the data cannot follow them:
+it keeps the length it had and raises an error about differing variable
+lengths.
+
+Scores predicted from a fit with `na.action = na.exclude` are padded
+back to the full length of the data, so they describe more observations
+than the fit read and the trimming record indexes a sample the model
+never analyzed. `ps_refit()` refuses such scores. Trim scores from a fit
+whose `na.action` drops those rows instead.
 
 ## See also
 

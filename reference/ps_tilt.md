@@ -15,12 +15,18 @@ rows and cannot be reached by filtering.
 ## Usage
 
 ``` r
-ps_tilt(ps, estimand, ..., .focal_level = NULL)
+ps_tilt(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+)
 ```
 
 ## Arguments
 
-- ps:
+- .propensity:
 
   Propensity scores. A numeric vector of \\P(Z = \text{focal} \mid X)\\
   for a binary exposure, or a matrix or data frame with one column per
@@ -37,18 +43,24 @@ ps_tilt(ps, estimand, ..., .focal_level = NULL)
 - .focal_level:
 
   The exposure level the `"att"` and `"atu"` tilts target, matched
-  against the column names of `ps`. A column named for the level exactly
-  wins; failing that, a `.pred_` prefix is stripped, so `.pred_a`
-  matches the level `a`. Required for those two estimands with a
-  categorical `ps`, and accepted nowhere else: a numeric `ps` is already
-  the probability of the focal level, and the remaining tilts treat
-  every level alike.
+  against the column names of `.propensity`. A column named for the
+  level exactly wins; failing that, a `.pred_` prefix is stripped, so
+  `.pred_a` matches the level `a`. Required for those two estimands with
+  a categorical `.propensity`, and accepted nowhere else: a numeric
+  `.propensity` is already the probability of the focal level, and the
+  remaining tilts treat every level alike.
+
+- ps:
+
+  **\[deprecated\]** Use `.propensity` instead. A call that names `ps`
+  must name the arguments after it as well, since a positional argument
+  binds to `.propensity`.
 
 ## Value
 
 A plain double vector, unnamed, with one element per observation: the
-length of `ps` for the numeric method, and the number of rows of `ps`
-for the matrix and data frame methods.
+length of `.propensity` for the numeric method, and the number of rows
+of `.propensity` for the matrix and data frame methods.
 
 ## Tilting functions
 
@@ -78,22 +90,21 @@ reuses the `"ate"` formula, so neither has an entry here.
 
 ## Propensity score range
 
-A numeric `ps` must lie strictly inside \\(0, 1)\\, the same requirement
+Every propensity score in `.propensity` must lie strictly inside \\(0,
+1)\\, the same requirement
 [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-and the rest of the weight family impose before they tilt. A matrix or
-data frame `ps` may hold an exact zero or one, as the categorical weight
-path allows, provided each row sums to one. Only the entropy tilt needs
-the boundary resolved: \\0 \log 0\\ is the one indeterminate whose limit
-the arithmetic does not reach on its own, and a zero is treated as
-`.Machine$double.eps` so that it contributes nothing. The other tilts
-already return their limit there.
+and the rest of the weight family impose before they tilt. The bound
+holds for a matrix or data frame `.propensity` entry by entry, and each
+row must sum to one on top of it. A fitted model that separates the
+exposure can return a probability of exactly zero or one; those scores
+have no weight to divide and are rejected here rather than tilted.
 
 A missing propensity score gives a missing tilt under every estimand,
 `"ate"` included, so an observation whose propensity score is unknown
-never counts toward a tilted mean. A numeric `ps` propagates `NA`
-position by position, and a matrix `ps` gives `NA` for any row holding
-one: a probability vector with a missing entry is not one this can tilt
-on, whichever level the tilt reads.
+never counts toward a tilted mean. A numeric `.propensity` propagates
+`NA` position by position, and a matrix `.propensity` gives `NA` for any
+row holding one: a probability vector with a missing entry is not one
+this can tilt on, whichever level the tilt reads.
 
 ## Modified propensity scores
 

@@ -241,13 +241,14 @@ re-attaches the original variable's attributes to the shortened result, so
 weights built on trimmed propensity scores come back out of every outcome
 model fit on them still carrying a record written for rows that are no
 longer there.</p>
-<p>Honesty therefore lives at query time. <code><a href="is_unit_trimmed.html">is_unit_trimmed()</a></code> answers by
-position, so it checks that the record covers the vector it is given and
-raises an error of class <code>propensity_missing_meta_error</code> when it does not,
-or when weights marked as trimmed carry no record at all, rather than name
-trimmed units at stale positions. <code><a href="is_refit.html">is_refit()</a></code> reads a single flag rather
-than a position, so it answers from any record present and refuses only when
-the record is absent entirely.</p>
+<p>Honesty therefore lives at query time. <code><a href="is_unit_trimmed.html">is_unit_trimmed()</a></code> and
+<code><a href="is_unit_truncated.html">is_unit_truncated()</a></code> answer by position, so each checks that the record
+covers the vector it is given and raises an error of class
+<code>propensity_missing_meta_error</code> when it does not, or when weights marked as
+modified carry no record at all, rather than name modified units at stale
+positions. <code><a href="is_refit.html">is_refit()</a></code> reads a single flag rather than a position, so it
+answers from any record present and refuses only when the record is absent
+entirely.</p>
 <p>The result of any of these operations stays a <code>psw</code> and keeps every other
 attribute, including its stabilized, trimmed, truncated, and calibrated
 status, and the attributes describing a categorical exposure, which name the

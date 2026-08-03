@@ -11,7 +11,7 @@ model on the retained observations with
 
 ``` r
 ps_trim(
-  ps,
+  .propensity,
   method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
   lower = NULL,
   upper = NULL,
@@ -20,17 +20,27 @@ ps_trim(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 )
 ```
 
 ## Arguments
 
-- ps:
+- .propensity:
 
   A numeric vector of propensity scores in (0, 1) for binary exposures,
   or a matrix / data frame where each column gives the propensity score
-  for one level of a categorical exposure.
+  for one level of a categorical exposure. A data frame trimmed for a
+  binary exposure is reduced to a single column: the second column of a
+  two column data frame, which is the probability of the second level in
+  the layout model predictions come in, and the first column otherwise.
+  The column taken is announced; `options(propensity.quiet = TRUE)`
+  silences the announcement. A matrix is held to the same open interval
+  as a vector, so a score of exactly 0 or 1 in any cell is refused and a
+  separated multinomial fit cannot be repaired by trimming it; see
+  **Propensity scores at 0 and 1** in
+  [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md).
 
 - method:
 
@@ -57,7 +67,15 @@ ps_trim(
   - **`"cr"`**: Common range (clinical equipoise). Trims to the overlap
     region of the propensity score distributions across exposure groups.
     Requires `.exposure`. Binary exposures only. The `lower` and `upper`
-    arguments are ignored.
+    arguments are ignored. When the two distributions do not overlap at
+    all, so that the lowest score among the focal units sits above the
+    highest among the reference units, the overlap region is empty and
+    every observed unit is trimmed. That is a truthful record of an
+    empty region rather than an error, and it differs deliberately from
+    [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md),
+    which refuses the same data with an error of class
+    `propensity_no_overlap_error` because there is no range left to
+    bound the scores to.
 
   - **`"optimal"`**: Multi-category optimal trimming (Yang et al.,
     2016). Categorical exposures only. Requires `.exposure`.
@@ -69,8 +87,16 @@ ps_trim(
   Numeric thresholds whose interpretation depends on `method`:
 
   - `"ps"`: absolute propensity score bounds (defaults: 0.1, 0.9). For
-    categorical exposures, only `lower` is used as the symmetric
-    threshold.
+    categorical exposures, only `lower` is used, as the symmetric
+    threshold delta, and it defaults to 0.1. That default deliberately
+    differs from the 0.01 threshold
+    [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
+    uses for categorical exposures: trimming discards the units it
+    selects, so its default follows common-support trimming practice,
+    whereas truncation keeps every unit and only pins the most extreme
+    scores back. With `k` exposure levels, a threshold of `1/k` or
+    larger cannot be met by every column of a row that sums to one, and
+    is an error.
 
   - `"pctl"`: quantile probabilities (defaults: 0.05, 0.95).
 
@@ -89,16 +115,20 @@ ps_trim(
   The value of `.exposure` representing the focal (treated) group, used
   by `"pref"` and `"cr"`. Every binary coding honors it: 0/1 numeric,
   logical, two-level factor, and two-level character exposures are all
-  coded with the named level as focal. With no level named, a binary
-  exposure defaults to its higher level, which is `1` for a 0/1 exposure
-  and `TRUE` for a logical one. Naming any other level reverses the
-  coding, so `ps` must then hold the probability of the named level.
+  coded with the named level as focal, and a level the exposure never
+  takes is an error. With no level named, a binary exposure defaults to
+  its higher level, which is `1` for a 0/1 exposure, `TRUE` for a
+  logical one, and the second of the two levels a factor or character
+  exposure takes. Levels a factor declares but never takes are not
+  candidates. Naming any other level reverses the coding, so
+  `.propensity` must then hold the probability of the named level.
 
 - .reference_level:
 
   The value of `.exposure` representing the reference (control) group.
   Naming it makes the exposure's other level focal, with the same
-  consequence for `ps`. Automatically detected if not supplied.
+  consequence for `.propensity`, and a level the exposure never takes is
+  an error. Automatically detected if not supplied.
 
 - ...:
 
@@ -111,6 +141,12 @@ ps_trim(
 - .untreated:
 
   **\[deprecated\]** Use `.reference_level` instead.
+
+- ps:
+
+  **\[deprecated\]** Use `.propensity` instead. A call that names `ps`
+  must name the arguments after it as well, since a positional argument
+  binds to `.propensity`.
 
 ## Value
 
@@ -193,6 +229,36 @@ Use
 to inspect the trimming metadata, including the method, cutoffs, and
 which observations were retained or trimmed.
 
+### Missing values
+
+A propensity score that arrives missing is not one this function
+removed, so it takes no part in the trimming record: it joins neither
+the retained nor the trimmed positions, and
+[`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
+reports `FALSE` for it. The value propagates as `NA` into the result.
+For a matrix of categorical propensity scores, a row with a missing cell
+comes back exactly as it arrived, since there is no complete probability
+vector to place against a threshold.
+
+The methods that read a cutoff off the scores read it off the scores
+they have. `"adaptive"`, `"pctl"`, `"cr"`, and `"optimal"` all work
+their cutoffs out from the complete scores or rows, so the cutoff is the
+one the same call would produce with the missing observations dropped.
+
+`"pref"` centers its preference scores on the proportion exposed across
+the whole sample, which is a fact about the exposure rather than about
+the scores, so a unit whose propensity score is missing still counts
+toward it and the cutoff is not the one the shorter call would produce.
+That unit's own preference score is missing, which leaves it outside
+both the retained and the trimmed positions like any other missing
+score.
+
+A missing exposure is a different matter, and `"pref"` and `"cr"` refuse
+one with an error of class `propensity_missing_value_error`. Their
+cutoffs come from the exposure groups, and a unit that belongs to
+neither leaves them undefined. Remove or impute the missing exposure
+values first.
+
 ### The trimming record
 
 A `ps_trim` records which units were trimmed as positions among the
@@ -221,6 +287,14 @@ prototype it builds the result from holds no positions to lose. The
 values, the class, and the method and its cutoffs are untouched either
 way.
 
+Printing a `ps_trim` column inside a tibble takes the same route: a
+tibble prints the first few rows and slices the column to get them, so a
+column longer than what is shown raises the record-drop warning as it is
+printed. The warning is truthful, and it describes the vector built for
+the display rather than the column, which is unchanged. Print
+[`as.numeric()`](https://rdrr.io/r/base/numeric.html) of the column, or
+widen the print with `options(pillar.print_max)`, to avoid it.
+
 A record can also outlive the observations it describes, because it
 travels by routes vctrs does not see: growing a `ps_trim` by
 subassignment carries it across the length change.
@@ -245,6 +319,13 @@ answers from those positions and names the wrong units, and
 refits on the wrong rows. Subsetting with `[` is handed the subscript
 and re-indexes, so reorder with `[`, or put the propensity scores in the
 order you want before trimming them.
+
+Casting a numeric vector into a `ps_trim` with
+[`vctrs::vec_cast()`](https://vctrs.r-lib.org/reference/vec_cast.html)
+is a type operation and not a trimming. The result is described by the
+method and cutoffs of the target and records that none of the arriving
+values was trimmed, so it can hold scores outside those cutoffs,
+including 0 and 1. Call `ps_trim()` on the scores to trim them.
 
 ## References
 
@@ -288,7 +369,7 @@ ps <- predict(fit, type = "response")
 # Fixed threshold trimming (default)
 trimmed <- ps_trim(ps, method = "ps", lower = 0.1, upper = 0.9)
 trimmed
-#> <ps_trim; trimmed 44 of [300]>
+#> <ps_trim; trimmed 44 of 300[300]>
 #>         1         2         3         4         5         6         7         8 
 #> 0.1780112 0.4934483 0.8725819 0.1353577 0.4025855 0.4752489 0.6683913 0.3506150 
 #>         9        10        11        12        13        14        15        16 
@@ -372,7 +453,7 @@ sum(is_unit_trimmed(trimmed))
 
 # Data-driven adaptive trimming
 ps_trim(ps, method = "adaptive")
-#> <ps_trim; trimmed 44 of [300]>
+#> <ps_trim; trimmed 44 of 300[300]>
 #>         1         2         3         4         5         6         7         8 
 #> 0.1780112 0.4934483 0.8725819 0.1353577 0.4025855 0.4752489 0.6683913 0.3506150 
 #>         9        10        11        12        13        14        15        16 
@@ -452,7 +533,7 @@ ps_trim(ps, method = "adaptive")
 
 # Quantile-based trimming at 5th and 95th percentiles
 ps_trim(ps, method = "pctl")
-#> <ps_trim; trimmed 30 of [300]>
+#> <ps_trim; trimmed 30 of 300[300]>
 #>          1          2          3          4          5          6          7 
 #> 0.17801124 0.49344831 0.87258189 0.13535765 0.40258554 0.47524889 0.66839132 
 #>          8          9         10         11         12         13         14 

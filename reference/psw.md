@@ -213,10 +213,12 @@ them still carrying a record written for rows that are no longer there.
 
 Honesty therefore lives at query time.
 [`is_unit_trimmed()`](https://r-causal.github.io/propensity/reference/is_unit_trimmed.md)
-answers by position, so it checks that the record covers the vector it
+and
+[`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
+answer by position, so each checks that the record covers the vector it
 is given and raises an error of class `propensity_missing_meta_error`
-when it does not, or when weights marked as trimmed carry no record at
-all, rather than name trimmed units at stale positions.
+when it does not, or when weights marked as modified carry no record at
+all, rather than name modified units at stale positions.
 [`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md)
 reads a single flag rather than a position, so it answers from any
 record present and refuses only when the record is absent entirely.

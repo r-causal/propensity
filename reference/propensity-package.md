@@ -29,7 +29,7 @@ Calculate propensity score weights for different causal estimands:
   Average treatment effect for the overlap population (ATO) weights
 
 - [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md):
-  Entropy balancing weights
+  Entropy weights for the entropy-tilted population
 
 - [`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md):
   Censoring weights

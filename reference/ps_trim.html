@@ -52,7 +52,7 @@ observations with <code><a href="ps_refit.html">ps_refit()</a></code>.</p>
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">ps_trim</span><span class="op">(</span></span>
-<span>  <span class="va">ps</span>,</span>
+<span>  <span class="va">.propensity</span>,</span>
 <span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ps"</span>, <span class="st">"adaptive"</span>, <span class="st">"pctl"</span>, <span class="st">"pref"</span>, <span class="st">"cr"</span>, <span class="st">"optimal"</span><span class="op">)</span>,</span>
 <span>  lower <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  upper <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -61,7 +61,8 @@ observations with <code><a href="ps_refit.html">ps_refit()</a></code>.</p>
 <span>  .reference_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  .untreated <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  ps <span class="op">=</span> <span class="fu">lifecycle</span><span class="fu">::</span><span class="fu"><a href="https://lifecycle.r-lib.org/reference/deprecated.html" class="external-link">deprecated</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -69,10 +70,18 @@ observations with <code><a href="ps_refit.html">ps_refit()</a></code>.</p>
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
 
 
-<dl><dt id="arg-ps">ps<a class="anchor" aria-label="anchor" href="#arg-ps"></a></dt>
+<dl><dt id="arg--propensity">.propensity<a class="anchor" aria-label="anchor" href="#arg--propensity"></a></dt>
 <dd><p>A numeric vector of propensity scores in (0, 1) for binary
 exposures, or a matrix / data frame where each column gives the propensity
-score for one level of a categorical exposure.</p></dd>
+score for one level of a categorical exposure. A data frame trimmed for a
+binary exposure is reduced to a single column: the second column of a two
+column data frame, which is the probability of the second level in the
+layout model predictions come in, and the first column otherwise. The
+column taken is announced; <code>options(propensity.quiet = TRUE)</code> silences the
+announcement. A matrix is held to the same open interval as a vector, so a
+score of exactly 0 or 1 in any cell is refused and a separated multinomial
+fit cannot be repaired by trimming it; see <strong>Propensity scores at 0 and 1</strong>
+in <code><a href="wt_ate.html">wt_ate()</a></code>.</p></dd>
 
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
@@ -93,7 +102,13 @@ to the preference scale (Walker et al., 2013) and trims outside
 <li><p><strong><code>"cr"</code></strong>: Common range (clinical equipoise). Trims to the overlap
 region of the propensity score distributions across exposure groups.
 Requires <code>.exposure</code>. Binary exposures only. The <code>lower</code> and <code>upper</code>
-arguments are ignored.</p></li>
+arguments are ignored. When the two distributions do not overlap at all,
+so that the lowest score among the focal units sits above the highest
+among the reference units, the overlap region is empty and every observed
+unit is trimmed. That is a truthful record of an empty region rather than
+an error, and it differs deliberately from <code><a href="ps_trunc.html">ps_trunc()</a></code>, which refuses
+the same data with an error of class <code>propensity_no_overlap_error</code>
+because there is no range left to bound the scores to.</p></li>
 <li><p><strong><code>"optimal"</code></strong>: Multi-category optimal trimming (Yang et al., 2016).
 Categorical exposures only. Requires <code>.exposure</code>.</p></li>
 </ul><p>For categorical exposures, only <code>"ps"</code> and <code>"optimal"</code> are supported.</p></dd>
@@ -102,7 +117,14 @@ Categorical exposures only. Requires <code>.exposure</code>.</p></li>
 <dt id="arg-lower-upper">lower, upper<a class="anchor" aria-label="anchor" href="#arg-lower-upper"></a></dt>
 <dd><p>Numeric thresholds whose interpretation depends on
 <code>method</code>:</p><ul><li><p><code>"ps"</code>: absolute propensity score bounds (defaults: 0.1, 0.9). For
-categorical exposures, only <code>lower</code> is used as the symmetric threshold.</p></li>
+categorical exposures, only <code>lower</code> is used, as the symmetric threshold
+delta, and it defaults to 0.1. That default deliberately differs from the
+0.01 threshold <code><a href="ps_trunc.html">ps_trunc()</a></code> uses for categorical exposures: trimming
+discards the units it selects, so its default follows common-support
+trimming practice, whereas truncation keeps every unit and only pins the
+most extreme scores back. With <code>k</code> exposure levels, a threshold of <code>1/k</code>
+or larger cannot be met by every column of a row that sums to one, and is
+an error.</p></li>
 <li><p><code>"pctl"</code>: quantile probabilities (defaults: 0.05, 0.95).</p></li>
 <li><p><code>"pref"</code>: preference score bounds (defaults: 0.3, 0.7).</p></li>
 <li><p><code>"adaptive"</code>, <code>"cr"</code>, <code>"optimal"</code>: ignored (thresholds are data-driven).</p></li>
@@ -119,16 +141,20 @@ methods.</p></dd>
 <dd><p>The value of <code>.exposure</code> representing the focal
 (treated) group, used by <code>"pref"</code> and <code>"cr"</code>. Every binary coding honors
 it: 0/1 numeric, logical, two-level factor, and two-level character
-exposures are all coded with the named level as focal. With no level
-named, a binary exposure defaults to its higher level, which is <code>1</code> for a
-0/1 exposure and <code>TRUE</code> for a logical one. Naming any other level reverses
-the coding, so <code>ps</code> must then hold the probability of the named level.</p></dd>
+exposures are all coded with the named level as focal, and a level the
+exposure never takes is an error. With no level named, a binary exposure
+defaults to its higher level, which is <code>1</code> for a 0/1 exposure, <code>TRUE</code> for
+a logical one, and the second of the two levels a factor or character
+exposure takes. Levels a factor declares but never takes are not
+candidates. Naming any other level reverses the coding, so <code>.propensity</code>
+must then hold the probability of the named level.</p></dd>
 
 
 <dt id="arg--reference-level">.reference_level<a class="anchor" aria-label="anchor" href="#arg--reference-level"></a></dt>
 <dd><p>The value of <code>.exposure</code> representing the reference
 (control) group. Naming it makes the exposure's other level focal, with
-the same consequence for <code>ps</code>. Automatically detected if not supplied.</p></dd>
+the same consequence for <code>.propensity</code>, and a level the exposure never
+takes is an error. Automatically detected if not supplied.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -141,6 +167,12 @@ the same consequence for <code>ps</code>. Automatically detected if not supplied
 
 <dt id="arg--untreated">.untreated<a class="anchor" aria-label="anchor" href="#arg--untreated"></a></dt>
 <dd><p><a href="https://lifecycle.r-lib.org/articles/stages.html#deprecated" class="external-link"><img src="figures/lifecycle-deprecated.svg" alt="[Deprecated]"></a> Use <code>.reference_level</code> instead.</p></dd>
+
+
+<dt id="arg-ps">ps<a class="anchor" aria-label="anchor" href="#arg-ps"></a></dt>
+<dd><p><a href="https://lifecycle.r-lib.org/articles/stages.html#deprecated" class="external-link"><img src="figures/lifecycle-deprecated.svg" alt="[Deprecated]"></a> Use <code>.propensity</code> instead. A
+call that names <code>ps</code> must name the arguments after it as well, since a
+positional argument binds to <code>.propensity</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -210,6 +242,33 @@ cutoffs, and which observations were retained or trimmed.</p>
 </div>
 
 <div class="section">
+<h3 id="missing-values">Missing values<a class="anchor" aria-label="anchor" href="#missing-values"></a></h3>
+
+
+<p>A propensity score that arrives missing is not one this function removed, so
+it takes no part in the trimming record: it joins neither the retained nor
+the trimmed positions, and <code><a href="is_unit_trimmed.html">is_unit_trimmed()</a></code> reports <code>FALSE</code> for it. The
+value propagates as <code>NA</code> into the result. For a matrix of categorical
+propensity scores, a row with a missing cell comes back exactly as it
+arrived, since there is no complete probability vector to place against a
+threshold.</p>
+<p>The methods that read a cutoff off the scores read it off the scores they
+have. <code>"adaptive"</code>, <code>"pctl"</code>, <code>"cr"</code>, and <code>"optimal"</code> all work their cutoffs
+out from the complete scores or rows, so the cutoff is the one the same call
+would produce with the missing observations dropped.</p>
+<p><code>"pref"</code> centers its preference scores on the proportion exposed across the
+whole sample, which is a fact about the exposure rather than about the
+scores, so a unit whose propensity score is missing still counts toward it
+and the cutoff is not the one the shorter call would produce. That unit's own
+preference score is missing, which leaves it outside both the retained and
+the trimmed positions like any other missing score.</p>
+<p>A missing exposure is a different matter, and <code>"pref"</code> and <code>"cr"</code> refuse one
+with an error of class <code>propensity_missing_value_error</code>. Their cutoffs come
+from the exposure groups, and a unit that belongs to neither leaves them
+undefined. Remove or impute the missing exposure values first.</p>
+</div>
+
+<div class="section">
 <h3 id="the-trimming-record">The trimming record<a class="anchor" aria-label="anchor" href="#the-trimming-record"></a></h3>
 
 
@@ -231,6 +290,12 @@ Combining with <code><a href="https://rdrr.io/r/base/c.html" class="external-lin
 one set of observations to another and the prototype it builds the result
 from holds no positions to lose. The values, the class, and the method and
 its cutoffs are untouched either way.</p>
+<p>Printing a <code>ps_trim</code> column inside a tibble takes the same route: a tibble
+prints the first few rows and slices the column to get them, so a column
+longer than what is shown raises the record-drop warning as it is printed.
+The warning is truthful, and it describes the vector built for the display
+rather than the column, which is unchanged. Print <code><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric()</a></code> of the
+column, or widen the print with <code>options(pillar.print_max)</code>, to avoid it.</p>
 <p>A record can also outlive the observations it describes, because it travels
 by routes vctrs does not see: growing a <code>ps_trim</code> by subassignment carries it
 across the length change. <code><a href="is_unit_trimmed.html">is_unit_trimmed()</a></code> and <code><a href="ps_refit.html">ps_refit()</a></code> therefore
@@ -247,6 +312,11 @@ answers from those positions and names the wrong units, and <code><a href="ps_re
 refits on the wrong rows. Subsetting with <code>[</code> is handed the subscript and
 re-indexes, so reorder with <code>[</code>, or put the propensity scores in the order
 you want before trimming them.</p>
+<p>Casting a numeric vector into a <code>ps_trim</code> with <code><a href="https://vctrs.r-lib.org/reference/vec_cast.html" class="external-link">vctrs::vec_cast()</a></code> is a type
+operation and not a trimming. The result is described by the method and
+cutoffs of the target and records that none of the arriving values was
+trimmed, so it can hold scores outside those cutoffs, including 0 and 1.
+Call <code>ps_trim()</code> on the scores to trim them.</p>
 </div>
 
     </div>
@@ -283,7 +353,7 @@ with multi-level treatments. <em>Biometrics</em>, 72(4), 1055–1065.</p>
 <span class="r-in"><span><span class="co"># Fixed threshold trimming (default)</span></span></span>
 <span class="r-in"><span><span class="va">trimmed</span> <span class="op">&lt;-</span> <span class="fu">ps_trim</span><span class="op">(</span><span class="va">ps</span>, method <span class="op">=</span> <span class="st">"ps"</span>, lower <span class="op">=</span> <span class="fl">0.1</span>, upper <span class="op">=</span> <span class="fl">0.9</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">trimmed</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;ps_trim; trimmed 44 of [300]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;ps_trim; trimmed 44 of 300[300]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         1         2         3         4         5         6         7         8 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 0.1780112 0.4934483 0.8725819 0.1353577 0.4025855 0.4752489 0.6683913 0.3506150 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         9        10        11        12        13        14        15        16 </span>
@@ -367,7 +437,7 @@ with multi-level treatments. <em>Biometrics</em>, 72(4), 1055–1065.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Data-driven adaptive trimming</span></span></span>
 <span class="r-in"><span><span class="fu">ps_trim</span><span class="op">(</span><span class="va">ps</span>, method <span class="op">=</span> <span class="st">"adaptive"</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;ps_trim; trimmed 44 of [300]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;ps_trim; trimmed 44 of 300[300]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         1         2         3         4         5         6         7         8 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 0.1780112 0.4934483 0.8725819 0.1353577 0.4025855 0.4752489 0.6683913 0.3506150 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         9        10        11        12        13        14        15        16 </span>
@@ -447,7 +517,7 @@ with multi-level treatments. <em>Biometrics</em>, 72(4), 1055–1065.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Quantile-based trimming at 5th and 95th percentiles</span></span></span>
 <span class="r-in"><span><span class="fu">ps_trim</span><span class="op">(</span><span class="va">ps</span>, method <span class="op">=</span> <span class="st">"pctl"</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;ps_trim; trimmed 30 of [300]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;ps_trim; trimmed 30 of 300[300]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>          1          2          3          4          5          6          7 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 0.17801124 0.49344831 0.87258189 0.13535765 0.40258554 0.47524889 0.66839132 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>          8          9         10         11         12         13         14 </span>

@@ -473,6 +473,19 @@ model. The outcome model weights must match the values implied by the
 propensity score model; a mismatch errors, on both standard error
 methods.
 
+For a continuous exposure that requirement fixes the spread of the
+conditional density.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+stacks a single pooled residual variance alongside the propensity score
+coefficients, so the weights it rebuilds are the ones
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+produces with its pooled default. Weights built with an
+observation-level `.sigma`, such as `influence(model)$sigma`, are a
+different function of the data with no counterpart in the stacked
+system, and the consistency check refuses them. Refit the weights
+without `.sigma` to use
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
+
 The propensity score model must not separate the exposure. A model whose
 covariates predict the exposure without error has no finite maximum
 likelihood estimate, and the propensity scores its coefficients imply
@@ -492,6 +505,20 @@ rejected, since that alone leaves the unit's own weight undefined, and a
 softmax column for a level the unit was not assigned may reach zero
 without the fit being refused. A continuous exposure has no saturating
 inverse link and is not checked.
+
+The weight functions apply a stricter rule to the propensity scores they
+are handed: a categorical matrix holding an exact 0 or 1 anywhere is
+refused, whichever level the cell belongs to. A separated
+[`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) fit is
+therefore stopped where its weights are built rather than here, and
+neither
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+nor
+[`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
+offers a way past that, since both validate a categorical matrix under
+the same open interval. See **Propensity scores at 0 and 1** in
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+for the remedy.
 
 The propensity score model must also be fit without case weights, since
 the stacked propensity score equations are unweighted and a weighted fit

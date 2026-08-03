@@ -140,7 +140,7 @@ Each estimand targets a different population:
 | ATU | Untreated (reference) group | [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
 | ATO | Overlap population | [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
 | ATM | Matched population | [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
-| Entropy | Entropy-balanced population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
+| Entropy | Entropy-tilted population | [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md) |
 
 [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
 is an alias for

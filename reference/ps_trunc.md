@@ -3,7 +3,7 @@
 `ps_trunc()` bounds extreme propensity scores to fixed limits, replacing
 out-of-range values with the boundary value (a form of *winsorizing*).
 The result is a vector or matrix of the same length and dimensions as
-`ps`, with no observations removed. This contrasts with
+`.propensity`, with no observations removed. This contrasts with
 [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md),
 which sets extreme values to `NA` (effectively removing those
 observations from analysis).
@@ -12,7 +12,7 @@ observations from analysis).
 
 ``` r
 ps_trunc(
-  ps,
+  .propensity,
   method = c("ps", "pctl", "cr"),
   lower = NULL,
   upper = NULL,
@@ -21,17 +21,27 @@ ps_trunc(
   .reference_level = NULL,
   ...,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 )
 ```
 
 ## Arguments
 
-- ps:
+- .propensity:
 
-  A numeric vector of propensity scores between 0 and 1 (binary
-  exposures), or a matrix/data.frame where each column contains
-  propensity scores for one level of a categorical exposure.
+  A numeric vector of propensity scores in (0, 1) (binary exposures), or
+  a matrix/data.frame where each column contains propensity scores for
+  one level of a categorical exposure. A data frame truncated for a
+  binary exposure is reduced to a single column: the second column of a
+  two column data frame, which is the probability of the second level in
+  the layout model predictions come in, and the first column otherwise.
+  The column taken is announced; `options(propensity.quiet = TRUE)`
+  silences the announcement. A matrix is held to the same open interval
+  as a vector, so a score of exactly 0 or 1 in any cell is refused and a
+  separated multinomial fit cannot be repaired by truncating it; see
+  **Propensity scores at 0 and 1** in
+  [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md).
 
 - method:
 
@@ -49,7 +59,16 @@ ps_trunc(
 
   - `"cr"`: Truncate to the common range of propensity scores across
     exposure groups (binary exposures only). Bounds are
-    `[min(ps[focal]), max(ps[reference])]`. Requires `.exposure`.
+    `[min(.propensity[focal]), max(.propensity[reference])]`. Requires
+    `.exposure`. When those bounds cross, so that the two distributions
+    do not overlap at all, there is no common range to bound the scores
+    to and the call errors with class `propensity_no_overlap_error`.
+    That differs deliberately from
+    [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md),
+    which trims every observed unit in the same situation, a truthful
+    record of an empty overlap region.
+
+  For categorical exposures, only `"ps"` and `"pctl"` are supported.
 
 - lower, upper:
 
@@ -57,7 +76,15 @@ ps_trunc(
 
   - `method = "ps"`: Propensity score values (defaults: 0.1 and 0.9).
     For categorical exposures, `lower` is the truncation threshold delta
-    (default: 0.01); `upper` is ignored.
+    (default: 0.01) and `upper` is ignored. That default deliberately
+    differs from the 0.1 threshold
+    [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+    uses for categorical exposures: truncation keeps every unit and only
+    pins the most extreme scores back to the threshold, so its default
+    is a gentle winsorization, whereas trimming discards the units it
+    selects and follows common-support trimming practice. With `k`
+    exposure levels, a threshold of `1/k` or larger cannot be met by
+    every column of a row that sums to one, and is an error.
 
   - `method = "pctl"`: Quantile probabilities (defaults: 0.05 and 0.95;
     categorical defaults: 0.01 and 0.99).
@@ -75,16 +102,20 @@ ps_trunc(
   The value of `.exposure` representing the focal (treated) group, used
   by `"cr"`. Every binary coding honors it: 0/1 numeric, logical,
   two-level factor, and two-level character exposures are all coded with
-  the named level as focal. With no level named, a binary exposure
-  defaults to its higher level, which is `1` for a 0/1 exposure and
-  `TRUE` for a logical one. Naming any other level reverses the coding,
-  so `ps` must then hold the probability of the named level.
+  the named level as focal, and a level the exposure never takes is an
+  error. With no level named, a binary exposure defaults to its higher
+  level, which is `1` for a 0/1 exposure, `TRUE` for a logical one, and
+  the second of the two levels a factor or character exposure takes.
+  Levels a factor declares but never takes are not candidates. Naming
+  any other level reverses the coding, so `.propensity` must then hold
+  the probability of the named level.
 
 - .reference_level:
 
   The value of `.exposure` representing the reference (control) group.
   Naming it makes the exposure's other level focal, with the same
-  consequence for `ps`. Automatically detected if not supplied.
+  consequence for `.propensity`, and a level the exposure never takes is
+  an error. Automatically detected if not supplied.
 
 - ...:
 
@@ -97,6 +128,12 @@ ps_trunc(
 - .untreated:
 
   **\[deprecated\]** Use `.reference_level` instead.
+
+- ps:
+
+  **\[deprecated\]** Use `.propensity` instead. A call that names `ps`
+  must name the arguments after it as well, since a positional argument
+  binds to `.propensity`.
 
 ## Value
 
@@ -131,6 +168,28 @@ return plain numeric vectors. Once propensity scores are transformed
 [`c()`](https://rdrr.io/r/base/c.html) requires matching truncation
 parameters. Mismatched parameters produce a warning and return a plain
 numeric vector.
+
+### Missing values
+
+A propensity score that arrives missing is not one this function pinned
+to a bound, so it takes no part in the truncation record: it never joins
+`truncated_idx`, and
+[`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
+reports `FALSE` for it. The value stays missing in the result. For a
+matrix of categorical propensity scores, a row with a missing cell comes
+back missing throughout, because renormalizing a row divides by its sum
+and that sum is unknown.
+
+The methods that read their bounds off the data read them off the data
+they have. `"pctl"` and `"cr"` work their bounds out from the complete
+scores, and the categorical `"pctl"` bounds come from the cells of the
+complete rows, so the bounds are the ones the same call would produce
+with the missing observations dropped.
+
+A missing exposure is a different matter, and `"cr"` refuses one with an
+error of class `propensity_missing_value_error`. Its bounds come from
+the exposure groups, and a unit that belongs to neither leaves them
+undefined. Remove or impute the missing exposure values first.
 
 ### The truncation record
 
@@ -178,6 +237,14 @@ old one, and
 answers from those positions and names the wrong units. Subsetting with
 `[` is handed the subscript and re-indexes, so reorder with `[`, or put
 the propensity scores in the order you want before truncating them.
+
+Casting a numeric vector into a `ps_trunc` with
+[`vctrs::vec_cast()`](https://vctrs.r-lib.org/reference/vec_cast.html)
+is a type operation and not a truncation. The result is described by the
+method and bounds of the target and records that none of the arriving
+values was pinned to a bound, so it can hold scores outside those
+bounds, including 0 and 1. Call `ps_trunc()` on the scores to truncate
+them.
 
 ## References
 
@@ -266,7 +333,7 @@ ps_t
 
 # Truncate at the 1st and 99th percentiles
 ps_trunc(ps, method = "pctl", lower = 0.01, upper = 0.99)
-#> <ps_trunc{[0.0900660672917143,0.912020808232711], method=pctl}[200]>
+#> <ps_trunc{[0.0901,0.912], method=pctl}[200]>
 #>          1          2          3          4          5          6          7 
 #> 0.29130945 0.57075108 0.85905610 0.24188201 0.49930600 0.55675915 0.70111217 
 #>          8          9         10         11         12         13         14 

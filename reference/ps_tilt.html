@@ -66,17 +66,24 @@ filtering.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">ps_tilt</span><span class="op">(</span><span class="va">ps</span>, <span class="va">estimand</span>, <span class="va">...</span>, .focal_level <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">ps_tilt</span><span class="op">(</span></span>
+<span>  <span class="va">.propensity</span>,</span>
+<span>  <span class="va">estimand</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  ps <span class="op">=</span> <span class="fu">lifecycle</span><span class="fu">::</span><span class="fu"><a href="https://lifecycle.r-lib.org/reference/deprecated.html" class="external-link">deprecated</a></span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
 
 
-<dl><dt id="arg-ps">ps<a class="anchor" aria-label="anchor" href="#arg-ps"></a></dt>
-<dd><p>Propensity scores. A numeric vector of \(P(Z = \text{focal} \mid
-X)\) for a binary exposure, or a matrix or data frame with one column per
-exposure level, named for that level, for a categorical exposure.</p></dd>
+<dl><dt id="arg--propensity">.propensity<a class="anchor" aria-label="anchor" href="#arg--propensity"></a></dt>
+<dd><p>Propensity scores. A numeric vector of
+\(P(Z = \text{focal} \mid X)\) for a binary exposure, or a matrix or data
+frame with one column per exposure level, named for that level, for a
+categorical exposure.</p></dd>
 
 
 <dt id="arg-estimand">estimand<a class="anchor" aria-label="anchor" href="#arg-estimand"></a></dt>
@@ -90,18 +97,25 @@ exposure level, named for that level, for a categorical exposure.</p></dd>
 
 <dt id="arg--focal-level">.focal_level<a class="anchor" aria-label="anchor" href="#arg--focal-level"></a></dt>
 <dd><p>The exposure level the <code>"att"</code> and <code>"atu"</code> tilts target,
-matched against the column names of <code>ps</code>. A column named for the level
-exactly wins; failing that, a <code>.pred_</code> prefix is stripped, so <code>.pred_a</code>
-matches the level <code>a</code>. Required for those two estimands with a categorical
-<code>ps</code>, and accepted nowhere else: a numeric <code>ps</code> is already the probability
-of the focal level, and the remaining tilts treat every level alike.</p></dd>
+matched against the column names of <code>.propensity</code>. A column named for the
+level exactly wins; failing that, a <code>.pred_</code> prefix is stripped, so
+<code>.pred_a</code> matches the level <code>a</code>. Required for those two estimands with a
+categorical <code>.propensity</code>, and accepted nowhere else: a numeric
+<code>.propensity</code> is already the probability of the focal level, and the
+remaining tilts treat every level alike.</p></dd>
+
+
+<dt id="arg-ps">ps<a class="anchor" aria-label="anchor" href="#arg-ps"></a></dt>
+<dd><p><a href="https://lifecycle.r-lib.org/articles/stages.html#deprecated" class="external-link"><img src="figures/lifecycle-deprecated.svg" alt="[Deprecated]"></a> Use <code>.propensity</code> instead. A
+call that names <code>ps</code> must name the arguments after it as well, since a
+positional argument binds to <code>.propensity</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A plain double vector, unnamed, with one element per observation: the
-length of <code>ps</code> for the numeric method, and the number of rows of <code>ps</code> for
-the matrix and data frame methods.</p>
+length of <code>.propensity</code> for the numeric method, and the number of rows of
+<code>.propensity</code> for the matrix and data frame methods.</p>
     </div>
     <div class="section level2">
     <h2 id="tilting-functions">Tilting functions<a class="anchor" aria-label="anchor" href="#tilting-functions"></a></h2>
@@ -116,20 +130,19 @@ weight by a marginal quantity that does not depend on the covariates, and
     </div>
     <div class="section level2">
     <h2 id="propensity-score-range">Propensity score range<a class="anchor" aria-label="anchor" href="#propensity-score-range"></a></h2>
-    <p>A numeric <code>ps</code> must lie strictly inside \((0, 1)\), the same requirement
-<code><a href="wt_ate.html">wt_ate()</a></code> and the rest of the weight family impose before they tilt. A
-matrix or data frame <code>ps</code> may hold an exact zero or one, as the categorical
-weight path allows, provided each row sums to one. Only the entropy tilt
-needs the boundary resolved: \(0 \log 0\) is the one indeterminate whose
-limit the arithmetic does not reach on its own, and a zero is treated as
-<code>.Machine$double.eps</code> so that it contributes nothing. The other tilts already
-return their limit there.</p>
+    <p>Every propensity score in <code>.propensity</code> must lie strictly inside
+\((0, 1)\), the same requirement <code><a href="wt_ate.html">wt_ate()</a></code> and the rest of the weight
+family impose before they tilt. The bound holds for a matrix or data frame
+<code>.propensity</code> entry by entry, and each row must sum to one on top of it. A
+fitted model that separates the exposure can return a probability of exactly
+zero or one; those scores have no weight to divide and are rejected here
+rather than tilted.</p>
 <p>A missing propensity score gives a missing tilt under every estimand,
 <code>"ate"</code> included, so an observation whose propensity score is unknown never
-counts toward a tilted mean. A numeric <code>ps</code> propagates <code>NA</code> position by
-position, and a matrix <code>ps</code> gives <code>NA</code> for any row holding one: a probability
-vector with a missing entry is not one this can tilt on, whichever level the
-tilt reads.</p>
+counts toward a tilted mean. A numeric <code>.propensity</code> propagates <code>NA</code> position
+by position, and a matrix <code>.propensity</code> gives <code>NA</code> for any row holding one: a
+probability vector with a missing entry is not one this can tilt on,
+whichever level the tilt reads.</p>
     </div>
     <div class="section level2">
     <h2 id="modified-propensity-scores">Modified propensity scores<a class="anchor" aria-label="anchor" href="#modified-propensity-scores"></a></h2>

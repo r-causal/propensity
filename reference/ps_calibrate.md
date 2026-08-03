@@ -9,28 +9,34 @@ model.
 
 ``` r
 ps_calibrate(
-  ps,
+  .propensity,
   .exposure,
   method = c("logistic", "isoreg"),
   smooth = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
   .treated = NULL,
-  .untreated = NULL
+  .untreated = NULL,
+  ps = lifecycle::deprecated()
 )
 ```
 
 ## Arguments
 
-- ps:
+- .propensity:
 
-  A numeric vector of propensity scores between 0 and 1. Must not
-  already be calibrated.
+  A numeric vector of propensity scores in `[0, 1]`. Unlike the rest of
+  the package, calibration accepts scores of exactly 0 and exactly 1,
+  since repairing scores a model pushed to the ends of the interval is
+  part of what calibration is for. The logistic calibration curve maps
+  them back inside the interval; isotonic calibration can return a score
+  at an endpoint when its pooled block is pure, and such scores are
+  rejected by the weight functions. Must not already be calibrated.
 
 - .exposure:
 
   A binary vector of observed treatment assignments, the same length as
-  `ps`.
+  `.propensity`.
 
 - method:
 
@@ -39,9 +45,9 @@ ps_calibrate(
   `"logistic"`
 
   :   (Default) Logistic calibration, also called Platt scaling. Fits a
-      logistic regression of `.exposure` on `ps`, yielding a smooth,
-      parametric correction. Works well with small samples and when the
-      bias in `ps` is approximately monotone.
+      logistic regression of `.exposure` on `.propensity`, yielding a
+      smooth, parametric correction. Works well with small samples and
+      when the bias in `.propensity` is approximately monotone.
 
   `"isoreg"`
 
@@ -54,27 +60,36 @@ ps_calibrate(
 
   Logical. When `method = "logistic"`, controls the form of the
   calibration model. If `TRUE` (default), fits a GAM with a spline on
-  `ps` via [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html); if
-  `FALSE`, fits a simple logistic regression via
+  `.propensity` via
+  [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html); if `FALSE`,
+  fits a simple logistic regression via
   [`stats::glm()`](https://rdrr.io/r/stats/glm.html). Ignored when
-  `method = "isoreg"`.
+  `method = "isoreg"`. A spline needs enough distinct scores to place
+  its knots, so with fewer than 10 distinct values of `.propensity`
+  among the observations the fit reads, those with both a score and an
+  exposure recorded, the fit falls back to logistic regression without a
+  spline. The fallback is announced and recorded in the returned
+  metadata.
 
 - .focal_level:
 
   The value of `.exposure` representing the focal group (typically the
   treated group). Every binary coding honors it: 0/1 numeric, logical,
   two-level factor, and two-level character exposures are all coded with
-  the named level as focal. With no level named, the exposure defaults
-  to its higher level, which is `1` for a 0/1 exposure and `TRUE` for a
-  logical one. Naming any other level reverses the coding, so `ps` must
-  then hold the probability of the named level.
+  the named level as focal, and a level the exposure never takes is an
+  error. With no level named, the exposure defaults to its higher level,
+  which is `1` for a 0/1 exposure, `TRUE` for a logical one, and the
+  second of the two levels a factor or character exposure takes. Levels
+  a factor declares but never takes are not candidates. Naming any other
+  level reverses the coding, so `.propensity` must then hold the
+  probability of the named level.
 
 - .reference_level:
 
   The value of `.exposure` representing the reference group (typically
   the control group). Naming it makes the exposure's other level focal,
-  with the same consequence for `ps`. Automatically detected if not
-  supplied.
+  with the same consequence for `.propensity`, and a level the exposure
+  never takes is an error. Automatically detected if not supplied.
 
 - .treated:
 
@@ -84,9 +99,15 @@ ps_calibrate(
 
   **\[deprecated\]** Use `.reference_level` instead.
 
+- ps:
+
+  **\[deprecated\]** Use `.propensity` instead. A call that names `ps`
+  must name the arguments after it as well, since a positional argument
+  binds to `.propensity`.
+
 ## Value
 
-A `ps_calib` vector the same length as `ps`. The attribute
+A `ps_calib` vector the same length as `.propensity`. The attribute
 `ps_calib_meta` stores calibration metadata (method and whether
 smoothing was applied). Use
 [`is_ps_calibrated()`](https://r-causal.github.io/propensity/reference/is_ps_calibrated.md)
@@ -111,6 +132,17 @@ reshapes the entire distribution of scores.
 - Use `"isoreg"` when you suspect a non-smooth or irregular relationship
   between estimated and true probabilities and have a sufficiently large
   sample.
+
+**Missing values:** A unit with a missing exposure tells the calibration
+model nothing, so it is dropped from the fit. What happens to that unit
+afterwards depends on the method. Logistic calibration, smoothed or not,
+fits a curve from propensity score to calibrated score and reads every
+unit off it, so a unit with a missing exposure but an observed score is
+still calibrated. Isotonic calibration fits separately within each
+exposure group and reads each unit from the fit for the group it belongs
+to; a unit with a missing exposure belongs to neither group and is
+returned as `NA`. Under both methods a missing propensity score yields a
+missing calibrated score.
 
 The calibrated scores are returned as a `ps_calib` object, which can be
 passed directly to weight functions such as

@@ -84,8 +84,17 @@ The model is refit via <a href="https://rdrr.io/r/stats/update.html" class="exte
 
 
 <dt id="arg--data">.data<a class="anchor" aria-label="anchor" href="#arg--data"></a></dt>
-<dd><p>A data frame. If <code>NULL</code> (the default), the data are extracted
-from <code>model</code> via <a href="https://rdrr.io/r/stats/model.frame.html" class="external-link">model.frame()</a>.</p></dd>
+<dd><p>A data frame with one row per observation in <code>trimmed_ps</code>, in
+the same order. If <code>NULL</code> (the default), the data are recovered from
+<code>model</code>: its <a href="https://rdrr.io/r/stats/model.frame.html" class="external-link">model.frame()</a> when that already holds
+every variable the refit reads, and otherwise the data the model names,
+restricted by row name to the rows the model analyzed. A model fit without
+a data argument names none, and its variables are read out of the formula's
+environment instead. A formula that transforms a term, such as <code>z ~ log(x)</code>
+or a spline basis, stores that term already computed, so only the
+underlying variables let the transformation be recomputed from the retained
+rows. Pass <code>.data</code> when the data the model was fit on can no longer be
+reached.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -97,6 +106,39 @@ from <code>model</code> via <a href="https://rdrr.io/r/stats/model.frame.html" c
     <p>A <code>ps_trim</code> object with re-estimated propensity scores for retained
 observations and <code>NA</code> for trimmed observations. Use <code><a href="is_refit.html">is_refit()</a></code> to
 confirm refitting was applied.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+
+<div class="section">
+<h3 id="composing-with-a-subset">Composing with a <code>subset</code><a class="anchor" aria-label="anchor" href="#composing-with-a-subset"></a></h3>
+
+
+<p>A <code>subset</code> in the original call has already chosen the sample the propensity
+scores are about, and the trimming record indexes that sample rather than
+every row the data carry. Refitting narrows that sample further, to the
+retained rows, so the original <code>subset</code> is dropped from the call rather than
+put to work a second time on rows it was never about. A <code>subset</code> passed
+through <code>...</code> is an instruction of its own and is honored.</p>
+</div>
+
+<div class="section">
+<h3 id="arguments-read-from-outside-the-formula">Arguments read from outside the formula<a class="anchor" aria-label="anchor" href="#arguments-read-from-outside-the-formula"></a></h3>
+
+
+<p><code>weights</code>, <code>offset</code>, and <code>na.action</code> in the original call are re-evaluated
+against the retained rows. A <code>weights</code> or <code>offset</code> naming a column of the
+data the model was fit on is read from that column and follows the retained
+rows, whether the data are recovered from <code>model</code> or passed to <code>.data</code>. A
+vector held outside the data cannot follow them: it keeps the length it had
+and raises an error about differing variable lengths.</p>
+<p>Scores predicted from a fit with <code>na.action = na.exclude</code> are padded back to
+the full length of the data, so they describe more observations than the fit
+read and the trimming record indexes a sample the model never analyzed.
+<code>ps_refit()</code> refuses such scores. Trim scores from a fit whose <code>na.action</code>
+drops those rows instead.</p>
+</div>
+
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

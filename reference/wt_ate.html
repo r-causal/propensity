@@ -11,16 +11,17 @@ units with the most overlap.
 wt_ato(): Average Treatment Effect for the Overlap Population –
 weights proportional to overlap.
 wt_entropy(): Entropy-weighted Average Treatment Effect –
-an entropy-balanced population.
+the entropy-tilted population.
 wt_cens(): Inverse probability of censoring weights – uses the
 same formula as wt_ate() but labels the estimand "uncensored". Use
 these to adjust for censoring in survival analysis, not for treatment
-weighting.
+weighting. Remaining uncensored is a two-level event, so wt_cens()
+supports binary and continuous exposures only.
 
 
 .propensity accepts a numeric vector of predicted probabilities, a
-data.frame of per-level probabilities, a fitted glm object, or a
-modified propensity score created by ps_trim(), ps_trunc(),
+data.frame or matrix of per-level probabilities, a fitted glm object, or
+a modified propensity score created by ps_trim(), ps_trunc(),
 ps_refit(), or ps_calibrate().
 All functions return a psw object – a numeric vector that tracks the
 estimand, stabilization status, and any trimming or truncation applied.'><meta property="og:description" content='Compute inverse probability weights for causal inference under different
@@ -35,16 +36,17 @@ units with the most overlap.
 wt_ato(): Average Treatment Effect for the Overlap Population –
 weights proportional to overlap.
 wt_entropy(): Entropy-weighted Average Treatment Effect –
-an entropy-balanced population.
+the entropy-tilted population.
 wt_cens(): Inverse probability of censoring weights – uses the
 same formula as wt_ate() but labels the estimand "uncensored". Use
 these to adjust for censoring in survival analysis, not for treatment
-weighting.
+weighting. Remaining uncensored is a two-level event, so wt_cens()
+supports binary and continuous exposures only.
 
 
 .propensity accepts a numeric vector of predicted probabilities, a
-data.frame of per-level probabilities, a fitted glm object, or a
-modified propensity score created by ps_trim(), ps_trunc(),
+data.frame or matrix of per-level probabilities, a fitted glm object, or
+a modified propensity score created by ps_trim(), ps_trunc(),
 ps_refit(), or ps_calibrate().
 All functions return a psw object – a numeric vector that tracks the
 estimand, stabilization status, and any trimming or truncation applied.'><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
@@ -93,14 +95,15 @@ units with the most overlap.</p></li>
 <li><p><code>wt_ato()</code>: <strong>Average Treatment Effect for the Overlap Population</strong> –
 weights proportional to overlap.</p></li>
 <li><p><code>wt_entropy()</code>: <strong>Entropy-weighted Average Treatment Effect</strong> –
-an entropy-balanced population.</p></li>
+the entropy-tilted population.</p></li>
 <li><p><code>wt_cens()</code>: <strong>Inverse probability of censoring weights</strong> – uses the
 same formula as <code>wt_ate()</code> but labels the estimand <code>"uncensored"</code>. Use
 these to adjust for censoring in survival analysis, not for treatment
-weighting.</p></li>
+weighting. Remaining uncensored is a two-level event, so <code>wt_cens()</code>
+supports binary and continuous exposures only.</p></li>
 </ul><p><code>.propensity</code> accepts a numeric vector of predicted probabilities, a
-<code>data.frame</code> of per-level probabilities, a fitted <code>glm</code> object, or a
-modified propensity score created by <code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_trunc.html">ps_trunc()</a></code>,
+<code>data.frame</code> or matrix of per-level probabilities, a fitted <code>glm</code> object, or
+a modified propensity score created by <code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_trunc.html">ps_trunc()</a></code>,
 <code><a href="ps_refit.html">ps_refit()</a></code>, or <code><a href="ps_calibrate.html">ps_calibrate()</a></code>.</p>
 <p>All functions return a <code><a href="psw.html">psw</a></code> object – a numeric vector that tracks the
 estimand, stabilization status, and any trimming or truncation applied.</p>
@@ -273,7 +276,7 @@ estimand, stabilization status, and any trimming or truncation applied.</p>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
 <span>  .sigma <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .reference_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -288,7 +291,7 @@ estimand, stabilization status, and any trimming or truncation applied.</p>
 <span>  <span class="va">.propensity</span>,</span>
 <span>  <span class="va">.exposure</span>,</span>
 <span>  .sigma <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
+<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .reference_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -306,8 +309,11 @@ estimand, stabilization status, and any trimming or truncation applied.</p>
 
 <dl><dt id="arg--propensity">.propensity<a class="anchor" aria-label="anchor" href="#arg--propensity"></a></dt>
 <dd><p>Propensity scores in one of several forms:</p><ul><li><p>A <strong>numeric vector</strong> of predicted probabilities (binary/continuous).</p></li>
-<li><p>A <strong>data frame</strong> or matrix with one column per exposure level
-(categorical), or two columns for binary (see <code>.propensity_col</code>).</p></li>
+<li><p>A <strong>data frame</strong> or <strong>matrix</strong> with one column per exposure level. Both
+shapes are read the same way, for categorical exposures and for binary
+ones alike, including the default choice of column described under
+<code>.propensity_col</code>. That argument is itself a formal of the data frame
+methods only, so selecting a column by name means passing a data frame.</p></li>
 <li><p>A fitted <strong><code>glm</code></strong> object – fitted values are extracted automatically.</p></li>
 <li><p>A modified propensity score created by <code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_trunc.html">ps_trunc()</a></code>,
 <code><a href="ps_refit.html">ps_refit()</a></code>, or <code><a href="ps_calibrate.html">ps_calibrate()</a></code>.</p></li>
@@ -316,9 +322,12 @@ level, so a numeric vector must be supplied on the scale of whichever
 level <code>.focal_level</code> or <code>.reference_level</code> resolves to. The <code>glm</code> methods
 derive it from the fitted values, which give the probability of the
 response's second level, and subtract them from one when the resolved
-focal level is the first level instead. The data frame methods reduce to a
-single column and read it on the same scale; see <code>.propensity_col</code> for how
-that column is chosen.</p></dd>
+focal level is the first level instead. A data frame or matrix reduces to
+a single column, read on the same scale; see <code>.propensity_col</code> for how
+that column is chosen. A matrix reduces by those same defaults, but
+<code>.propensity_col</code> belongs to the data frame methods alone, so a matrix
+whose column you want to name has to be converted with <code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code>
+first.</p></dd>
 
 
 <dt id="arg--exposure">.exposure<a class="anchor" aria-label="anchor" href="#arg--exposure"></a></dt>
@@ -326,37 +335,53 @@ that column is chosen.</p></dd>
 numeric 0/1 vector, logical, or two-level factor. For categorical
 exposures, a factor or character vector. For continuous exposures, a
 numeric vector. Optional when <code>.propensity</code> is a <code>glm</code> object (extracted
-from the model).</p></dd>
+from the model). Missing values are not counted as a level of their own,
+and are carried through to the weights as missing.</p></dd>
 
 
 <dt id="arg--sigma">.sigma<a class="anchor" aria-label="anchor" href="#arg--sigma"></a></dt>
-<dd><p>Numeric vector of observation-level standard deviations for
-continuous exposures (e.g., <code>influence(model)$sigma</code>). Extracted
-automatically when <code>.propensity</code> is a <code>glm</code> object.</p></dd>
+<dd><p>Observation-level standard deviations of the conditional
+density for continuous exposures, one per observation (e.g.,
+<code>influence(model)$sigma</code>). Optional: with none supplied, including when
+<code>.propensity</code> is a <code>glm</code> object, the conditional density uses the pooled
+residual standard deviation of <code>.exposure</code> around <code>.propensity</code>. Weights
+built with an observation-level <code>.sigma</code> cannot be used with <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code>; see
+<strong>Continuous exposures</strong> in Details.</p>
+<p>Must be numeric, holding either a single standard deviation or one per
+observation, and applies only to continuous exposures. <code>.sigma</code> sits in
+the third position, which is where a value meant for <code>exposure_type</code>
+arrives when it is supplied without a name, so anything else is refused
+with an error of class <code>propensity_sigma_error</code>.</p></dd>
 
 
 <dt id="arg-exposure-type">exposure_type<a class="anchor" aria-label="anchor" href="#arg-exposure-type"></a></dt>
 <dd><p>Type of exposure: <code>"auto"</code> (default), <code>"binary"</code>,
 <code>"categorical"</code>, or <code>"continuous"</code>. <code>"auto"</code> detects the type from
-<code>.exposure</code>.</p></dd>
+<code>.exposure</code>. Not every weight function answers every type; see <strong>Exposure
+types</strong> in Details for which does which. Naming a type a function does not
+support, or supplying an exposure detection reads as one, is an error of
+class <code>propensity_wt_not_supported_error</code>.</p></dd>
 
 
 <dt id="arg--focal-level">.focal_level<a class="anchor" aria-label="anchor" href="#arg--focal-level"></a></dt>
 <dd><p>The value of <code>.exposure</code> representing the focal
 (treated) group. Every binary coding honors it: 0/1 numeric, logical,
 two-level factor, and two-level character exposures are all coded with the
-named level as focal. With no level named, a binary exposure defaults to
-its higher level, which is <code>1</code> for a 0/1 exposure and <code>TRUE</code> for a logical
-one. Naming any other level reverses the coding, so <code>.propensity</code> must
-then hold the probability of the named level. Required for <code>wt_att()</code> and
-<code>wt_atu()</code> with categorical exposures.</p></dd>
+named level as focal, and a level the exposure never takes is an error.
+With no level named, a binary exposure defaults to its higher level, which
+is <code>1</code> for a 0/1 exposure, <code>TRUE</code> for a logical one, and the second of the
+two levels a factor or character exposure takes. Levels a factor declares
+but never takes are not candidates. Naming any other level reverses the
+coding, so <code>.propensity</code> must then hold the probability of the named
+level. Required for <code>wt_att()</code> and <code>wt_atu()</code> with categorical exposures.</p></dd>
 
 
 <dt id="arg--reference-level">.reference_level<a class="anchor" aria-label="anchor" href="#arg--reference-level"></a></dt>
 <dd><p>The value of <code>.exposure</code> representing the reference
 (control) group. For a binary exposure, naming it makes the exposure's
-other level focal, with the same consequence for <code>.propensity</code>.
-Automatically detected if not supplied.</p></dd>
+other level focal, with the same consequence for <code>.propensity</code>, and a
+level the exposure never takes is an error. Automatically detected if not
+supplied.</p></dd>
 
 
 <dt id="arg-stabilize">stabilize<a class="anchor" aria-label="anchor" href="#arg-stabilize"></a></dt>
@@ -367,7 +392,9 @@ treatment probability (binary) or density (continuous). Only supported by
 
 <dt id="arg-stabilization-score">stabilization_score<a class="anchor" aria-label="anchor" href="#arg-stabilization-score"></a></dt>
 <dd><p>Optional stabilization multiplier to use instead
-of the default (the marginal mean of <code>.exposure</code>). Either a single value
+of the default described under <strong>Stabilization</strong>: the marginal mean of
+<code>.exposure</code>, or its marginal normal density for a continuous exposure.
+Either a single value
 applied to every weight or a numeric vector holding one value per
 observation, which is multiplied into the weights observation by
 observation. Every value must be positive and finite, and any other length
@@ -426,8 +453,11 @@ these attributes:</p><ul><li><p><code>estimand</code>: character, e.g. <code>"at
 
 <p>All weight functions support binary exposures. <code>wt_ate()</code> and <code>wt_cens()</code>
 also support continuous exposures. All except <code>wt_cens()</code> support
-categorical exposures.</p><ul><li><p><strong>Binary</strong>: <code>.exposure</code> is a two-level vector (e.g., 0/1, logical, or a
-two-level factor). <code>.propensity</code> is a numeric vector of P(treatment | X).</p></li>
+categorical exposures; naming a categorical exposure to <code>wt_cens()</code>, or
+handing it one detection reads as categorical, is an error of class
+<code>propensity_wt_not_supported_error</code>.</p><ul><li><p><strong>Binary</strong>: <code>.exposure</code> is a two-level vector (e.g., 0/1, logical, or a
+two-level factor). <code>.propensity</code> is a numeric vector of P(treatment | X),
+or a matrix or data frame holding it in one of its columns.</p></li>
 <li><p><strong>Categorical</strong>: <code>.exposure</code> is a factor or character vector with 3+
 levels. <code>.propensity</code> must be a matrix or data frame with one column per
 level, where rows sum to 1.</p></li>
@@ -443,10 +473,12 @@ ratio; stabilization is strongly recommended.</p></li>
 
 <p>Setting <code>stabilize = TRUE</code> multiplies the base weight by an estimate of
 P(A) (binary) or f_A(A) (continuous), reducing variance. When no
-<code>stabilization_score</code> is supplied, the marginal mean of <code>.exposure</code> is
-used. Stabilization is supported for ATE and censoring weights
-(<code>wt_ate()</code> and <code>wt_cens()</code>) and is strongly recommended for continuous
-exposures.</p>
+<code>stabilization_score</code> is supplied, that estimate is the marginal mean of
+<code>.exposure</code> for a binary or categorical exposure, and for a continuous
+exposure the marginal normal density evaluated at the population mean and
+standard deviation of <code>.exposure</code>. Stabilization is supported for ATE and
+censoring weights (<code>wt_ate()</code> and <code>wt_cens()</code>) and is strongly recommended
+for continuous exposures.</p>
 </div>
 
 <div class="section">
@@ -465,6 +497,34 @@ for weight diagnostics and visualization.</p>
 </div>
 
 <div class="section">
+<h3 id="propensity-scores-at-and-">Propensity scores at 0 and 1<a class="anchor" aria-label="anchor" href="#propensity-scores-at-and-"></a></h3>
+
+
+<p>Propensity scores must lie strictly inside (0, 1), since a score at either
+endpoint leaves the weight undefined. A score of exactly 0 or 1 is refused
+with an error of class <code>propensity_range_error</code>. For a categorical exposure
+that rule reads every cell of the matrix rather than only the column holding
+each unit's observed level, which is the same open interval the binary path
+enforces on the single score and its complement.</p>
+<p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> applies a narrower rule to the propensity scores it rebuilds from its
+own propensity score model. For a categorical exposure it refuses only a
+probability of exactly zero at the level a unit was actually assigned, since
+that alone leaves the unit's own weight undefined, and a column for a level
+the unit was not assigned may reach zero without the fit being refused. The
+difference is deliberate: the weight functions can refuse a matrix that holds
+nothing <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> would have objected to. The weights still have to be built
+before <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> can be reached, so the refusal here is the one to resolve.</p>
+<p><code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> reaches the endpoints readily. Under separation the
+softmax puts the probability at a unit's assigned level at exactly 1 in
+double precision, and the columns for the other levels can underflow to
+exactly 0. Trimming is no way around the refusal: <code><a href="ps_trim.html">ps_trim()</a></code> and
+<code><a href="ps_trunc.html">ps_trunc()</a></code> validate a categorical matrix under the same open interval and
+refuse it before either reaches a threshold. Bound the fitted probabilities
+away from 0 and 1 yourself, renormalizing each row to sum to 1, or refit the
+propensity score model so that it does not separate.</p>
+</div>
+
+<div class="section">
 <h3 id="weight-formulas">Weight formulas<a class="anchor" aria-label="anchor" href="#weight-formulas"></a></h3>
 
 <div class="section">
@@ -478,7 +538,11 @@ for weight diagnostics and visualization.</p>
 <li><p><strong>ATM</strong>: \(w = \frac{\min(e(X), 1-e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}\)</p></li>
 <li><p><strong>ATO</strong>: \(w = A \cdot (1-e(X)) + (1-A) \cdot e(X)\)</p></li>
 <li><p><strong>Entropy</strong>: \(w = \frac{h(e(X))}{A \cdot e(X) + (1-A) \cdot (1-e(X))}\), where \(h(e) = -[e \log(e) + (1-e) \log(1-e)]\)</p></li>
-</ul></div>
+</ul><p>The entropy weight tilts the propensity score by \(h(e)\), the entropy of
+the score itself, in the sense of Zhou, Matsouaka, and Thomas (2020). It is
+not entropy balancing, which solves for weights that satisfy exact covariate
+moment constraints rather than tilting a fitted propensity score.</p>
+</div>
 
 <div class="section">
 <h4 id="continuous-exposures">Continuous exposures<a class="anchor" aria-label="anchor" href="#continuous-exposures"></a></h4>
@@ -488,6 +552,19 @@ for weight diagnostics and visualization.</p>
 \(w = f_A(A) / f_{A|X}(A \mid X)\), where \(f_A\) is the marginal
 density and \(f_{A|X}\) is the conditional density (both assumed
 normal). Only <code>wt_ate()</code> and <code>wt_cens()</code> support continuous exposures.</p>
+<p>The marginal density is evaluated at the population mean and standard
+deviation of <code>.exposure</code>. The conditional density is centered on
+<code>.propensity</code> and spread by the propensity model's residual standard
+deviation. That spread is the pooled residual standard deviation
+\(\sqrt{\mathrm{mean}((A - \hat{A})^2)}\) unless <code>.sigma</code> supplies an
+observation-level standard deviation for each unit, which the <code>glm</code> methods
+do not do on their own.</p>
+<p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> models the conditional density with a single pooled residual
+variance, estimated jointly with the rest of the parameter vector. Weights
+built with an observation-level <code>.sigma</code> therefore have no counterpart in
+that estimating equation, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> rejects them in its weight consistency
+check. Build weights with the pooled default when the outcome model is
+headed for <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code>.</p>
 </div>
 
 <div class="section">
@@ -732,11 +809,9 @@ g-computation estimate to the same target population.</p></li>
 <span class="r-in"><span><span class="va">exposure</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">0</span>, <span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_df</span>, <span class="va">exposure</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[4]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.111111 1.428571 1.428571 1.111111</span>
 <span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_df</span>, <span class="va">exposure</span>, .propensity_col <span class="op">=</span> <span class="st">"treated"</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[4]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.111111 1.428571 1.428571 1.111111</span>
