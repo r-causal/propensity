@@ -295,10 +295,15 @@ test_that("ipw() routes a gaussian-family glm ps model identically to lm", {
     res_lm$estimates$estimate,
     tolerance = 1e-8
   )
+  # The two propensity fits give identical coefficients but not bitwise
+  # identical fitted values, so the weights they build differ in their last
+  # bits. The numerically differentiated sandwich amplifies that, leaving the
+  # standard errors equal to about eight significant figures rather than
+  # exactly.
   expect_equal(
     res_glm$estimates$std.err,
     res_lm$estimates$std.err,
-    tolerance = 1e-8
+    tolerance = 1e-6
   )
 })
 
@@ -744,6 +749,40 @@ test_that("the continuous weight-consistency error names no focal level", {
   # possible cause" in test-ipw-mestimation.R.
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_false(grepl("focal", msg, fixed = TRUE))
+
+  # The spread of the conditional density is a continuous-only cause, and the
+  # one users meet on the way from weights built with observation-level
+  # standard deviations.
+  expect_match(msg, ".sigma", fixed = TRUE)
+})
+
+test_that("ipw() refuses continuous weights built with an observation-level `.sigma`", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+
+  # `ipw()` stacks a single pooled residual variance, so weights spread by the
+  # model's leave-one-out standard deviations are not a function of the stacked
+  # parameters at any value and cannot survive the consistency check.
+  sigma_wts <- wt_ate(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    .sigma = influence(ps_mod)$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  outcome_mod <- lm(yc ~ A, data = dat, weights = sigma_wts)
+
+  expect_error(
+    ipw(ps_mod, outcome_mod),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+
+  # The same weights without `.sigma` take the pooled default and are accepted,
+  # so the refusal is about the spread rather than anything else in the fit.
+  pooled_wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  pooled_outcome_mod <- lm(yc ~ A, data = dat, weights = pooled_wts)
+  expect_s3_class(ipw(ps_mod, pooled_outcome_mod), "ipw")
 })
 
 # ---- propensity model class validation --------------------------------------

@@ -68,6 +68,35 @@
   any other exposure, so naming the level the fit treats as the reference now
   reads the complement of the fitted values there as well.
 
+* Continuous exposure weights are now the ratio of two fully normalized normal
+  densities, and `.sigma` sets the spread of the conditional density one
+  observation at a time. Both densities were evaluated as standard normal
+  ordinates at z-scores, which drops the `1/sigma` factor that makes a normal
+  density integrate to one, and the conditional spread was the pooled residual
+  standard deviation in every case, so `.sigma` was documented and accepted but
+  never read: no value of it changed a single weight. The weight values change,
+  and stabilized weights now sit closer to a mean of one.
+
+* The `glm` methods of `wt_ate()` and `wt_cens()` no longer extract
+  `influence(model)$sigma` for a continuous exposure. The conditional density
+  uses the pooled residual standard deviation of the exposure around the fitted
+  values unless `.sigma` names observation-level ones. The extraction had no
+  effect on the result while `.sigma` was ignored, and now that `.sigma` is read
+  it would silently make every model route a leave-one-out calculation, which is
+  a different estimator from the one the numeric route computes from the same
+  fitted values. Pass `.sigma = influence(model)$sigma` to ask for those
+  standard deviations.
+
+* `ipw()` accepts continuous weights built with the pooled default alone. Its
+  stacked estimating equations carry a single pooled residual variance
+  alongside the propensity score coefficients, so weights spread by
+  observation-level standard deviations are a different function of the data
+  with no counterpart in that system and cannot be reproduced at any parameter
+  value. The weight consistency check refuses them, and its message now names
+  `.sigma` as a cause. Estimates and standard errors for weights built the
+  supported way are unchanged, since the normalization rescales those weights
+  by a constant.
+
 * `ps_calibrate()` documents the focal level contract its `.exposure` coding
   actually follows, matching the weight functions: every binary coding honors
   `.focal_level`, an exposure with no level named defaults to its higher level,

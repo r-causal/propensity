@@ -229,9 +229,13 @@ numeric vector. Optional when \code{.propensity} is a \code{glm} object (extract
 from the model). Missing values are not counted as a level of their own,
 and are carried through to the weights as missing.}
 
-\item{.sigma}{Numeric vector of observation-level standard deviations for
-continuous exposures (e.g., \code{influence(model)$sigma}). Extracted
-automatically when \code{.propensity} is a \code{glm} object.}
+\item{.sigma}{Observation-level standard deviations of the conditional
+density for continuous exposures, one per observation (e.g.,
+\code{influence(model)$sigma}). Optional: with none supplied, including when
+\code{.propensity} is a \code{glm} object, the conditional density uses the pooled
+residual standard deviation of \code{.exposure} around \code{.propensity}. Weights
+built with an observation-level \code{.sigma} cannot be used with \code{\link[=ipw]{ipw()}}; see
+\strong{Continuous exposures} in Details.}
 
 \item{exposure_type}{Type of exposure: \code{"auto"} (default), \code{"binary"},
 \code{"categorical"}, or \code{"continuous"}. \code{"auto"} detects the type from
@@ -259,7 +263,9 @@ treatment probability (binary) or density (continuous). Only supported by
 \code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in Details.}
 
 \item{stabilization_score}{Optional stabilization multiplier to use instead
-of the default (the marginal mean of \code{.exposure}). Either a single value
+of the default described under \strong{Stabilization}: the marginal mean of
+\code{.exposure}, or its marginal normal density for a continuous exposure.
+Either a single value
 applied to every weight or a numeric vector holding one value per
 observation, which is multiplied into the weights observation by
 observation. Every value must be positive and finite, and any other length
@@ -356,10 +362,12 @@ ratio; stabilization is strongly recommended.
 
 Setting \code{stabilize = TRUE} multiplies the base weight by an estimate of
 P(A) (binary) or f_A(A) (continuous), reducing variance. When no
-\code{stabilization_score} is supplied, the marginal mean of \code{.exposure} is
-used. Stabilization is supported for ATE and censoring weights
-(\code{wt_ate()} and \code{wt_cens()}) and is strongly recommended for continuous
-exposures.
+\code{stabilization_score} is supplied, that estimate is the marginal mean of
+\code{.exposure} for a binary or categorical exposure, and for a continuous
+exposure the marginal normal density evaluated at the population mean and
+standard deviation of \code{.exposure}. Stabilization is supported for ATE and
+censoring weights (\code{wt_ate()} and \code{wt_cens()}) and is strongly recommended
+for continuous exposures.
 }
 
 \subsection{Handling extreme weights}{
@@ -400,6 +408,21 @@ Weights use the density ratio
 \eqn{w = f_A(A) / f_{A|X}(A \mid X)}, where \eqn{f_A} is the marginal
 density and \eqn{f_{A|X}} is the conditional density (both assumed
 normal). Only \code{wt_ate()} and \code{wt_cens()} support continuous exposures.
+
+The marginal density is evaluated at the population mean and standard
+deviation of \code{.exposure}. The conditional density is centered on
+\code{.propensity} and spread by the propensity model's residual standard
+deviation. That spread is the pooled residual standard deviation
+\eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies an
+observation-level standard deviation for each unit, which the \code{glm} methods
+do not do on their own.
+
+\code{\link[=ipw]{ipw()}} models the conditional density with a single pooled residual
+variance, estimated jointly with the rest of the parameter vector. Weights
+built with an observation-level \code{.sigma} therefore have no counterpart in
+that estimating equation, and \code{ipw()} rejects them in its weight consistency
+check. Build weights with the pooled default when the outcome model is
+headed for \code{ipw()}.
 }
 
 \subsection{Categorical exposures}{

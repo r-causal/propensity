@@ -49,10 +49,12 @@
 #'
 #' Setting `stabilize = TRUE` multiplies the base weight by an estimate of
 #' P(A) (binary) or f_A(A) (continuous), reducing variance. When no
-#' `stabilization_score` is supplied, the marginal mean of `.exposure` is
-#' used. Stabilization is supported for ATE and censoring weights
-#' (`wt_ate()` and `wt_cens()`) and is strongly recommended for continuous
-#' exposures.
+#' `stabilization_score` is supplied, that estimate is the marginal mean of
+#' `.exposure` for a binary or categorical exposure, and for a continuous
+#' exposure the marginal normal density evaluated at the population mean and
+#' standard deviation of `.exposure`. Stabilization is supported for ATE and
+#' censoring weights (`wt_ate()` and `wt_cens()`) and is strongly recommended
+#' for continuous exposures.
 #'
 #' ## Handling extreme weights
 #'
@@ -89,6 +91,21 @@
 #' \eqn{w = f_A(A) / f_{A|X}(A \mid X)}, where \eqn{f_A} is the marginal
 #' density and \eqn{f_{A|X}} is the conditional density (both assumed
 #' normal). Only `wt_ate()` and `wt_cens()` support continuous exposures.
+#'
+#' The marginal density is evaluated at the population mean and standard
+#' deviation of `.exposure`. The conditional density is centered on
+#' `.propensity` and spread by the propensity model's residual standard
+#' deviation. That spread is the pooled residual standard deviation
+#' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies an
+#' observation-level standard deviation for each unit, which the `glm` methods
+#' do not do on their own.
+#'
+#' [ipw()] models the conditional density with a single pooled residual
+#' variance, estimated jointly with the rest of the parameter vector. Weights
+#' built with an observation-level `.sigma` therefore have no counterpart in
+#' that estimating equation, and `ipw()` rejects them in its weight consistency
+#' check. Build weights with the pooled default when the outcome model is
+#' headed for `ipw()`.
 #'
 #' ### Categorical exposures
 #'
@@ -129,9 +146,13 @@
 #' @param exposure_type Type of exposure: `"auto"` (default), `"binary"`,
 #'   `"categorical"`, or `"continuous"`. `"auto"` detects the type from
 #'   `.exposure`.
-#' @param .sigma Numeric vector of observation-level standard deviations for
-#'   continuous exposures (e.g., `influence(model)$sigma`). Extracted
-#'   automatically when `.propensity` is a `glm` object.
+#' @param .sigma Observation-level standard deviations of the conditional
+#'   density for continuous exposures, one per observation (e.g.,
+#'   `influence(model)$sigma`). Optional: with none supplied, including when
+#'   `.propensity` is a `glm` object, the conditional density uses the pooled
+#'   residual standard deviation of `.exposure` around `.propensity`. Weights
+#'   built with an observation-level `.sigma` cannot be used with [ipw()]; see
+#'   **Continuous exposures** in Details.
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
 #' @param .focal_level The value of `.exposure` representing the focal
@@ -154,7 +175,9 @@
 #'   treatment probability (binary) or density (continuous). Only supported by
 #'   `wt_ate()` and `wt_cens()`. See **Stabilization** in Details.
 #' @param stabilization_score Optional stabilization multiplier to use instead
-#'   of the default (the marginal mean of `.exposure`). Either a single value
+#'   of the default described under **Stabilization**: the marginal mean of
+#'   `.exposure`, or its marginal normal density for a continuous exposure.
+#'   Either a single value
 #'   applied to every weight or a numeric vector holding one value per
 #'   observation, which is multiplied into the weights observation by
 #'   observation. Every value must be positive and finite, and any other length
@@ -487,11 +510,6 @@ wt_ate.glm <- function(
     call = call
   )
 
-  # For continuous exposures, extract sigma if not provided
-  if (is.null(.sigma) && args$exposure_type == "continuous") {
-    .sigma <- stats::influence(.propensity)$sigma
-  }
-
   # Call the numeric method
   wt_ate.numeric(
     .propensity = args$propensity,
@@ -547,29 +565,30 @@ ate_continuous <- function(
   stabilize = FALSE,
   stabilization_score = NULL
 ) {
-  # Compute population mean & variance of A
-  un_mean <- mean(.exposure, na.rm = TRUE)
-  # sum(A−μ)^2 / n
-  un_var <- mean((.exposure - un_mean)^2, na.rm = TRUE)
+  # Both densities below are normal densities in the exposure's own units, so
+  # both carry the 1/sigma factor that makes them integrate to one.
 
-  # compute population residual variance E[(A − E[A|X])^2]
-  # sum(residual^2) / n
-  cond_var <- mean((.exposure - .propensity)^2, na.rm = TRUE)
+  # The conditional density f_{A|X}(A_i | X_i) is the one the propensity model
+  # estimates, so its spread is that model's residual standard deviation: the
+  # observation-level `.sigma` when the caller supplies one, the pooled residual
+  # standard deviation otherwise.
+  sigma_i <- if (is.null(.sigma)) {
+    sqrt(mean((.exposure - .propensity)^2, na.rm = TRUE))
+  } else {
+    .sigma
+  }
 
-  # standardize into Z-scores
-  z_num <- (.exposure - un_mean) / sqrt(un_var)
-  z_den <- (.exposure - .propensity) / sqrt(cond_var)
-
-  # evaluate standard normal densities on those Z's
-  # f_A(A_i)
-  f_num <- stats::dnorm(z_num)
-  # f_{A|X}(A_i | X_i)
-  f_den <- stats::dnorm(z_den)
+  f_den <- stats::dnorm(.exposure, mean = .propensity, sd = sigma_i)
 
   # build base weight = 1 / f_{A|X}
   wt <- 1 / f_den
 
   if (isTRUE(stabilize) && is.null(stabilization_score)) {
+    # The marginal density f_A(A_i) uses the exposure's population moments.
+    un_mean <- mean(.exposure, na.rm = TRUE)
+    un_var <- mean((.exposure - un_mean)^2, na.rm = TRUE)
+
+    f_num <- stats::dnorm(.exposure, mean = un_mean, sd = sqrt(un_var))
     wt <- wt * f_num
   } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
     wt <- wt * stabilization_score
@@ -1661,11 +1680,6 @@ wt_cens.glm <- function(
     fn_name = "wt_cens",
     call = call
   )
-
-  # For continuous exposures, extract sigma if not provided
-  if (is.null(.sigma) && args$exposure_type == "continuous") {
-    .sigma <- stats::influence(.propensity)$sigma
-  }
 
   # Call the numeric method
   wt_cens.numeric(

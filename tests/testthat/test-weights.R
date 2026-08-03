@@ -1486,17 +1486,16 @@ test_that("glm weights resolve the deprecated `.untreated` to the same reference
 
 test_that("ATE works for continuous cases", {
   denom_model <- lm(mpg ~ gear + am + carb, data = mtcars)
+  model_sigma <- influence(denom_model)$sigma
 
-  # Compute population variances
+  # The marginal density uses the exposure's population moments.
   un_mean <- mean(mtcars$mpg)
-  un_var <- mean((mtcars$mpg - un_mean)^2)
-  cond_var <- mean((mtcars$mpg - predict(denom_model))^2)
+  un_sd <- sqrt(mean((mtcars$mpg - un_mean)^2))
 
-  # Compute z-scores and densities
-  z_num <- (mtcars$mpg - un_mean) / sqrt(un_var)
-  z_den <- (mtcars$mpg - predict(denom_model)) / sqrt(cond_var)
-  f_num <- dnorm(z_num)
-  f_den <- dnorm(z_den)
+  # Both densities are normal densities in the exposure's own units, and the
+  # conditional one is spread by the supplied observation-level `.sigma`.
+  f_num <- dnorm(mtcars$mpg, mean = un_mean, sd = un_sd)
+  f_den <- dnorm(mtcars$mpg, mean = predict(denom_model), sd = model_sigma)
 
   # Expected weights
   wts <- 1 / f_den
@@ -1507,29 +1506,25 @@ test_that("ATE works for continuous cases", {
     weights <- wt_ate(
       predict(denom_model),
       .exposure = mtcars$mpg,
-      .sigma = influence(denom_model)$sigma,
+      .sigma = model_sigma,
       exposure_type = "continuous"
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )
 
-  expect_equal(weights, psw(wts, "ate"), tolerance = 0.01)
+  expect_equal(weights, psw(wts, "ate"))
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
     stabilized_weights <- wt_ate(
       predict(denom_model),
       .exposure = mtcars$mpg,
-      .sigma = influence(denom_model)$sigma,
+      .sigma = model_sigma,
       stabilize = TRUE,
     ),
     "Treating `.exposure` as continuous"
   )
 
-  expect_equal(
-    stabilized_weights,
-    psw(stb_wts, "ate", stabilized = TRUE),
-    tolerance = 0.01
-  )
+  expect_equal(stabilized_weights, psw(stb_wts, "ate", stabilized = TRUE))
 })
 
 test_that("stabilized weights use P(A=1) and P(A=0) as numerators", {
@@ -5532,7 +5527,6 @@ continuous_marginal_density <- function(exposure) {
 }
 
 test_that("continuous ATE weights respond to `.sigma`", {
-  testthat::skip("awaiting implementation")
   fixture <- continuous_sigma_fixture()
   n <- length(fixture$exposure)
 
@@ -5565,7 +5559,6 @@ test_that("continuous ATE weights respond to `.sigma`", {
 })
 
 test_that("stabilized continuous ATE weights are the normalized density ratio at `.sigma`", {
-  testthat::skip("awaiting implementation")
   fixture <- continuous_sigma_fixture()
 
   f_num <- continuous_marginal_density(fixture$exposure)
@@ -5598,7 +5591,6 @@ test_that("stabilized continuous ATE weights are the normalized density ratio at
 })
 
 test_that("unstabilized continuous ATE weights invert the normalized conditional density", {
-  testthat::skip("awaiting implementation")
   fixture <- continuous_sigma_fixture()
 
   f_den <- dnorm(
@@ -5622,7 +5614,6 @@ test_that("unstabilized continuous ATE weights invert the normalized conditional
 })
 
 test_that("continuous ATE weights fall back to the pooled residual standard deviation", {
-  testthat::skip("awaiting implementation")
   fixture <- continuous_sigma_fixture()
   n <- length(fixture$exposure)
 
@@ -5663,46 +5654,50 @@ test_that("continuous ATE weights fall back to the pooled residual standard devi
   )
 })
 
-test_that("wt_ate() on a gaussian model builds continuous weights on the model's sigmas", {
-  testthat::skip("awaiting implementation")
+test_that("wt_ate() on a gaussian model pools the residual standard deviation unless `.sigma` says otherwise", {
   fixture <- continuous_sigma_fixture()
   n <- length(fixture$exposure)
   model_data <- data.frame(a = fixture$exposure, x = seq_len(n))
   model <- glm(a ~ x, data = model_data, family = gaussian())
-  model_sigma <- influence(model)$sigma
+  pooled_sd <- sqrt(mean((fixture$exposure - fitted(model))^2))
+  f_num <- continuous_marginal_density(fixture$exposure)
 
+  # A model carries no observation-level standard deviations of its own into
+  # the weights, so the model route is the numeric route on its fitted values.
   from_model <- wt_ate(model, exposure_type = "continuous", stabilize = TRUE)
   from_numeric <- wt_ate(
     fitted(model),
     fixture$exposure,
-    .sigma = model_sigma,
     exposure_type = "continuous",
     stabilize = TRUE
   )
   expect_equal(as.numeric(from_model), as.numeric(from_numeric))
-
-  f_num <- continuous_marginal_density(fixture$exposure)
   expect_equal(
     as.numeric(from_model),
+    as.numeric(
+      f_num / dnorm(fixture$exposure, mean = fitted(model), sd = pooled_sd)
+    )
+  )
+
+  # The model's leave-one-out standard deviations are available as an opt-in,
+  # and asking for them changes the weights.
+  model_sigma <- influence(model)$sigma
+  from_sigma <- wt_ate(
+    model,
+    .sigma = model_sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_equal(
+    as.numeric(from_sigma),
     as.numeric(
       f_num / dnorm(fixture$exposure, mean = fitted(model), sd = model_sigma)
     )
   )
-
-  # The extracted standard deviations are what the weights are built on, so
-  # substituting a different set changes them.
-  flat <- wt_ate(
-    fitted(model),
-    fixture$exposure,
-    .sigma = rep(1, n),
-    exposure_type = "continuous",
-    stabilize = TRUE
-  )
-  expect_false(identical(as.numeric(from_model), as.numeric(flat)))
+  expect_false(identical(as.numeric(from_model), as.numeric(from_sigma)))
 })
 
 test_that("continuous `.sigma` weights record the usual psw metadata", {
-  testthat::skip("awaiting implementation")
   fixture <- continuous_sigma_fixture()
 
   stabilized <- wt_ate(

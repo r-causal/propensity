@@ -283,6 +283,15 @@
 #' model. The outcome model weights must match the values implied by the
 #' propensity score model; a mismatch errors, on both standard error methods.
 #'
+#' For a continuous exposure that requirement fixes the spread of the
+#' conditional density. `ipw()` stacks a single pooled residual variance
+#' alongside the propensity score coefficients, so the weights it rebuilds are
+#' the ones [wt_ate()] produces with its pooled default. Weights built with an
+#' observation-level `.sigma`, such as `influence(model)$sigma`, are a different
+#' function of the data with no counterpart in the stacked system, and the
+#' consistency check refuses them. Refit the weights without `.sigma` to use
+#' `ipw()`.
+#'
 #' The propensity score model must not separate the exposure. A model whose
 #' covariates predict the exposure without error has no finite maximum likelihood
 #' estimate, and the propensity scores its coefficients imply reach exactly zero
