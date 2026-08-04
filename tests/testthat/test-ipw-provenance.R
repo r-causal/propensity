@@ -14,22 +14,31 @@
 # either registers into base's table whichever package declares it; `ipw` is
 # causalgenerics' own generic and `tidy` is the generics package's, so a method
 # for either registers into the table of the package that defines it, again
-# whichever package declares the method. Reading these tables reports which
-# package owns a method independently of what is on the search path. It does
-# not, on its own, prove a method is gone: `UseMethod()` searches the
-# environment the generic was called from as well as the registration table, so
-# a method left in `asNamespace("propensity")` but no longer registered still
-# serves every call made from inside propensity. The absence checks below
-# therefore pair a table read with a namespace read. A wrong entry in this map
-# cannot pass silently, because the same map serves the presence assertions
-# further down.
+# whichever package declares the method. The six accessors all reach stats'
+# table by one route or the other: `coef`, `vcov`, `confint`, and `df.residual`
+# are named in `.knownS3Generics` as stats', and `nobs` and `weights` are not
+# named there but resolve to closures of stats' namespace, which is the same
+# table. Reading these tables reports which package owns a method independently
+# of what is on the search path. It does not, on its own, prove a method is
+# gone: `UseMethod()` searches the environment the generic was called from as
+# well as the registration table, so a method left in
+# `asNamespace("propensity")` but no longer registered still serves every call
+# made from inside propensity. The absence checks below therefore pair a table
+# read with a namespace read. A wrong entry in this map cannot pass silently,
+# because the same map serves the presence assertions further down.
 ipw_generic_namespaces <- c(
   print = "base",
   as.data.frame = "base",
   ipw = "causalgenerics",
   tidy = "generics",
   glance = "generics",
-  augment = "generics"
+  augment = "generics",
+  coef = "stats",
+  vcov = "stats",
+  confint = "stats",
+  nobs = "stats",
+  df.residual = "stats",
+  weights = "stats"
 )
 
 # Package that owns the method registered for one generic and class, or NA when
@@ -139,6 +148,24 @@ ipw_moved_objects <- c(
 # Methods of the shared result class, as classes named by their generic.
 ipw_result_methods <- c(print = "ipw", as.data.frame = "ipw")
 
+# The accessors of the shared result class, which causalgenerics owns for the
+# same reason it owns `print()`: they read the fields the class contracts to
+# hold and must answer identically whichever package fitted the result.
+# propensity supplies the covariance they report rather than methods of its own,
+# so a method of any of these appearing here would be propensity's answer
+# competing with the shared one. `vcov.ipw_model` belongs to the component model
+# subclass the M-estimation path wraps its models in, and is upstream for the
+# same reason.
+ipw_accessor_methods <- c(
+  coef = "ipw",
+  vcov = "ipw",
+  confint = "ipw",
+  nobs = "ipw",
+  df.residual = "ipw",
+  weights = "ipw",
+  vcov = "ipw_model"
+)
+
 # Methods of the shared result class that propensity owns rather than inherits.
 # causalgenerics defines no tidier, so the broom methods for the class are
 # propensity's, and a user reaching them through `broom::tidy()` must land in
@@ -234,6 +261,15 @@ test_that("causalgenerics supplies the ipw result class methods", {
   expect_identical(
     owners,
     c(print.ipw = "causalgenerics", as.data.frame.ipw = "causalgenerics")
+  )
+})
+
+test_that("causalgenerics supplies the ipw result class accessors", {
+  owners <- ipw_method_owners(ipw_accessor_methods)
+
+  expect_identical(
+    owners,
+    stats::setNames(rep("causalgenerics", length(owners)), names(owners))
   )
 })
 
