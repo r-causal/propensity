@@ -15,13 +15,13 @@
 A one-row \link[tibble:tibble]{tibble} with the columns:
 \describe{
 \item{\code{estimand}}{The estimand the weights target, such as \code{"ate"}.}
-\item{\code{nobs}}{The number of observations the standard errors were estimated
-from: the observations the stacked estimating equations were solved on
-under M-estimation, and the observations the outcome model was fit on
-under linearization.}
+\item{\code{nobs}}{The number of observations the outcome model was fit on,
+which is also what the stacked estimating equations are solved on under
+M-estimation. Reported by \code{\link[stats:nobs]{stats::nobs()}}.}
 \item{\code{df.residual}}{The residual degrees of freedom of the stacked
 estimating equations, \code{nobs} less the number of parameters the system
-solves for. \code{NA} under linearization, which records no parameter count.}
+solves for. \code{NA} under linearization, which records no parameter count.
+Reported by \code{\link[stats:df.residual]{stats::df.residual()}}.}
 }
 }
 \description{

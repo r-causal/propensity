@@ -271,6 +271,20 @@ test_that("causalgenerics supplies the ipw result class accessors", {
     owners,
     stats::setNames(rep("causalgenerics", length(owners)), names(owners))
   )
+
+  # The registration tables above cannot see a method defined in propensity's
+  # namespace but registered nowhere, and `UseMethod()` finds one of those for
+  # every call made from inside propensity. Pairing the table read with a
+  # namespace read is what the moved-objects test does, for the same reason.
+  survivors <- vapply(
+    names(owners),
+    exists,
+    logical(1),
+    envir = asNamespace("propensity"),
+    inherits = FALSE
+  )
+
+  expect_identical(names(owners)[survivors], character())
 })
 
 test_that("no definition of the moved ipw objects survives in propensity", {

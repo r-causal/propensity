@@ -470,6 +470,10 @@ test_that("the accessors label a categorical fit by effect and comparison", {
   expect_identical(names(coef(res)), labels)
   expect_identical(anyDuplicated(names(coef(res))), 0L)
   expect_identical(rownames(confint(res)), labels)
+
+  # The count is of the fixture rather than of the six rows the effects table
+  # holds, which the agreement with `glance()` above does not distinguish.
+  expect_identical(nobs(res), 700L)
 })
 
 test_that("the accessors read a continuous exposure fit", {

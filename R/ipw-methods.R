@@ -60,11 +60,12 @@ ipw.multinom <- function(
     .focal_level = .focal_level
   )
   fit <- ipw_mestimation(spec, conf_level = conf_level)
+  components <- ipw_component_models(wt_mod, outcome_mod, fit)
 
   new_ipw(
     estimand = spec$estimand,
-    wt_mod = wt_mod,
-    outcome_mod = outcome_mod,
+    wt_mod = components$wt_mod,
+    outcome_mod = components$outcome_mod,
     estimates = fit$estimates,
     se_method = "mestimation",
     fit = fit$fit
