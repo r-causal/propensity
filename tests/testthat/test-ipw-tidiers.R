@@ -19,6 +19,15 @@
 # leaves `.weights` as the single weight column; a frame supplied through `data`
 # is carried exactly as it arrives, any weight column of its own included.
 #
+# A result reports its effects in one of two readings, and `tidy()` reports the
+# one the result records unless the call names the other through `effects`. The
+# marginal reading is the table of causal contrasts above; the conditional
+# reading is the outcome model's coefficient surface, one row per coefficient,
+# with the standard errors of the block of the joint sandwich that accounts for
+# the weights having been estimated from the same data. `glance()` and
+# `augment()` describe the fit and its observations rather than its estimates,
+# and neither changes with the reading.
+#
 # Coverage spans every route that builds an `ipw` object: a binary glm exposure
 # under both standard error methods, a categorical exposure through
 # nnet::multinom, and a continuous exposure through lm.
@@ -74,11 +83,15 @@ sim_tidy_continuous <- function(seed = 2024, n = 600) {
 # models serves the M-estimation and the linearization paths, the latter being
 # restricted to marginal outcome models. `estimand` picks the weighting scheme,
 # so a fit reporting something other than the ATE is available here rather than
-# through a second fixture.
+# through a second fixture. `outcome_link` picks the link of a binary outcome
+# model, which is what the conditional reading exponentiates on: a log link puts
+# the coefficients on the log risk scale, where the default logit link puts them
+# on the log odds scale, and both are scales an exponential undoes.
 fit_tidy_binary_models <- function(
   dat,
   outcome_family = "binomial",
-  estimand = "ate"
+  estimand = "ate",
+  outcome_link = "logit"
 ) {
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wt_fun <- if (estimand == "att") wt_att else wt_ate
@@ -92,7 +105,7 @@ fit_tidy_binary_models <- function(
     glm(
       fmla,
       data = dat,
-      family = quasibinomial(),
+      family = quasibinomial(link = outcome_link),
       weights = wts,
       control = glm.control(epsilon = 1e-14, maxit = 200)
     )
@@ -201,6 +214,64 @@ expect_tidy_contract <- function(
     expect_identical(tidied$conf.low, estimates$ci.lower)
     expect_identical(tidied$conf.high, estimates$ci.upper)
   }
+  invisible(tidied)
+}
+
+# The conditional reading of a result, read off the accessors rather than off the
+# tidier: the outcome model's coefficients, the standard errors the joint block
+# implies, and the normal statistics those two make. Reading them from the
+# accessors is what keeps the tidied table and the printed one the same numbers,
+# which is also why the p-value takes the form causalgenerics prints this reading
+# with, `2 * pnorm(-abs(z))`, rather than the `2 * (1 - pnorm(abs(z)))` the
+# marginal estimates table was built with, a form that loses its significant
+# digits in the far tail.
+conditional_expectations <- function(result, conf_level = 0.95) {
+  estimate <- stats::coef(result, effects = "conditional")
+  std_error <- sqrt(diag(stats::vcov(result, effects = "conditional")))
+  statistic <- estimate / std_error
+  limits <- stats::confint(result, level = conf_level, effects = "conditional")
+
+  list(
+    term = names(estimate),
+    estimate = unname(estimate),
+    std.error = unname(std_error),
+    statistic = unname(statistic),
+    p.value = unname(2 * stats::pnorm(-abs(statistic))),
+    conf.low = unname(limits[, 1L]),
+    conf.high = unname(limits[, 2L])
+  )
+}
+
+# Assert the whole contract of the conditional reading against the result it was
+# read from: the columns of the marginal reading in the same order, so that the
+# two tables stack, holding one row per coefficient of the outcome model.
+expect_conditional_tidy_contract <- function(
+  tidied,
+  result,
+  conf_int = FALSE,
+  conf_level = 0.95
+) {
+  expected <- conditional_expectations(result, conf_level)
+
+  expect_s3_class(tidied, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
+  expect_named(tidied, tidy_names(conf_int))
+  expect_identical(nrow(tidied), length(expected$term))
+  expect_identical(tidied$term, expected$term)
+  expect_identical(tidied$estimate, expected$estimate)
+  expect_identical(tidied$std.error, expected$std.error)
+  expect_equal(tidied$statistic, expected$statistic, tolerance = 1e-12)
+  expect_equal(tidied$p.value, expected$p.value, tolerance = 1e-12)
+  if (conf_int) {
+    expect_identical(tidied$conf.low, expected$conf.low)
+    expect_identical(tidied$conf.high, expected$conf.high)
+  }
+
+  # A column of a tibble is addressed by its position, so the names the
+  # accessors label their vectors with belong to `term` and to nothing else.
+  for (nm in setdiff(names(tidied), "term")) {
+    expect_null(names(tidied[[nm]]))
+  }
+
   invisible(tidied)
 }
 
@@ -1148,6 +1219,459 @@ test_that("augment() rejects an argument that lands in the dots", {
   # as though they were predictions for the frame supplied.
   expect_error(
     augment(res, newdata = dat),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+# ---- the presentation mode ---------------------------------------------------
+
+# `tidy()` reports the reading the result records unless `effects` names the
+# other one for the call. The conditional reading is a coefficient table of the
+# outcome model, which makes it the reading a `tidy()` method of any other model
+# would return, so it takes the same columns in the same order as the marginal
+# reading and the two stack. Its standard errors are the ones the joint
+# estimation of the weights and the outcome implies, read through the accessors
+# that report them, rather than the ones the outcome model computed for itself
+# while treating the weights it was fit with as fixed.
+
+test_that("tidy() reports the outcome model's coefficients conditionally", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  tidied <- tidy(res, effects = "conditional")
+
+  # One row per coefficient of the outcome model in place of the three effect
+  # measures the marginal reading of the same result reports, in the columns that
+  # reading uses.
+  expect_conditional_tidy_contract(tidied, res)
+  expect_identical(tidied$term, names(coef(mods$outcome_mod)))
+  expect_identical(tidied$term, c("(Intercept)", "z"))
+  expect_identical(tidied$estimate, unname(coef(mods$outcome_mod)))
+  expect_identical(tidy(res)$term, c("rd", "log(rr)", "log(or)"))
+
+  expect_conditional_tidy_contract(
+    tidy(res, conf.int = TRUE, effects = "conditional"),
+    res,
+    conf_int = TRUE
+  )
+})
+
+test_that("tidy() reports the corrected standard errors conditionally", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  tidied <- tidy(res, conf.int = TRUE, effects = "conditional")
+
+  # The standard errors are the diagonal of the block the stacked system leaves
+  # for the outcome model, which is what the accessor reports and what the
+  # printed reading of the same result tabulates.
+  expect_identical(
+    tidied$std.error,
+    unname(sqrt(diag(vcov(res, effects = "conditional"))))
+  )
+
+  # That block is not the covariance the outcome model computed for itself: that
+  # one treats the estimated weights as fixed and reports an uncertainty the
+  # coefficients do not have. The two are far enough apart here that a tidier
+  # reading the model instead of the result would be caught by the difference
+  # rather than by rounding.
+  naive <- unname(sqrt(diag(vcov(mods$outcome_mod))))
+  expect_false(isTRUE(all.equal(tidied$std.error, naive, tolerance = 1e-3)))
+
+  # Everything built from the standard error follows it there.
+  expect_false(isTRUE(all.equal(
+    tidied$statistic,
+    tidied$estimate / naive,
+    tolerance = 1e-3
+  )))
+  expect_false(isTRUE(all.equal(
+    tidied$conf.low,
+    tidied$estimate - qnorm(0.975) * naive,
+    tolerance = 1e-3
+  )))
+})
+
+test_that("tidy() follows the reading the result records", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  built <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    se_method = "mestimation",
+    effects = "conditional"
+  )
+
+  # `effects = NULL`, the default, is the reading the result itself records, so a
+  # result built in the conditional one tidies to that table with nothing named
+  # at the call site, and so does a result moved there afterwards.
+  expect_conditional_tidy_contract(tidy(built), built)
+  expect_identical(tidy(built), tidy(res, effects = "conditional"))
+  expect_identical(
+    tidy(as_conditional(res)),
+    tidy(res, effects = "conditional")
+  )
+
+  # Naming a reading at the call site answers in it, in both directions, which is
+  # what keeps the marginal table reachable from a result that presents the other
+  # one.
+  expect_identical(tidy(as_conditional(res), effects = "marginal"), tidy(res))
+  expect_identical(
+    tidy(as_conditional(res), conf.int = TRUE, effects = "marginal"),
+    tidy(res, conf.int = TRUE)
+  )
+  expect_identical(tidy(res, effects = "marginal"), tidy(res))
+
+  # Naming one also leaves the result where it was, so the next call with nothing
+  # named answers in the stored reading.
+  expect_identical(res$effects, "marginal")
+})
+
+test_that("tidy() rebuilds the conditional interval at the level asked for", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  at_default <- tidy(res, conf.int = TRUE, effects = "conditional")
+  at_90 <- tidy(res, conf.int = TRUE, conf.level = 0.9, effects = "conditional")
+  expect_conditional_tidy_contract(
+    at_90,
+    res,
+    conf_int = TRUE,
+    conf_level = 0.9
+  )
+
+  # The bounds the result stores describe the effects of the other reading, so
+  # there are none to serve here and the limits are built at whatever level the
+  # call asked for.
+  half <- qnorm(0.95) * at_90$std.error
+  expect_equal(at_90$conf.low, at_90$estimate - half, tolerance = 1e-10)
+  expect_equal(at_90$conf.high, at_90$estimate + half, tolerance = 1e-10)
+  expect_true(all(at_90$conf.low > at_default$conf.low))
+  expect_true(all(at_90$conf.high < at_default$conf.high))
+
+  # The level governs bounds that were asked for and nothing else, and it is
+  # validated in this reading as in the other one.
+  expect_identical(
+    tidy(res, conf.level = 0.9, effects = "conditional"),
+    tidy(res, effects = "conditional")
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, conf.level = 1, effects = "conditional"),
+    class = "propensity_conf_level_error"
+  )
+})
+
+test_that("tidy() has no conditional reading of a linearization fit", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  # Nothing was solved jointly here, so there is no corrected block for the
+  # standard errors of a coefficient table to come from. A tidied row is its
+  # estimate and its inference together, so the absence is reported rather than
+  # filled in with the covariance the outcome model computed for itself, and it
+  # is reported whether or not the call asked for bounds.
+  expect_null(res$fit)
+  expect_error(
+    tidy(res, effects = "conditional"),
+    class = "causalgenerics_no_conditional_vcov"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, effects = "conditional"),
+    class = "causalgenerics_no_conditional_vcov"
+  )
+  expect_error(
+    tidy(as_conditional(res)),
+    class = "causalgenerics_no_conditional_vcov"
+  )
+
+  # The marginal reading of the same result is untouched by the absence, whether
+  # it is the reading the result records or the one the call names.
+  expect_tidy_contract(tidy(res), res)
+  expect_tidy_contract(tidy(as_conditional(res), effects = "marginal"), res)
+})
+
+test_that("tidy() reports one conditional row per categorical coefficient", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_categorical()
+  mods <- fit_tidy_categorical_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  tidied <- tidy(res, conf.int = TRUE, effects = "conditional")
+  expect_conditional_tidy_contract(tidied, res, conf_int = TRUE)
+  expect_identical(tidied$term, c("(Intercept)", "ab", "ac"))
+
+  # The comparison column belongs to the marginal reading, which reports every
+  # effect measure once per contrast of levels. A coefficient is not such a
+  # contrast, so the conditional table carries no such column and reports three
+  # rows where the marginal reading of the same result reports six.
+  expect_named(tidied, tidy_names(conf_int = TRUE))
+  expect_identical(nrow(tidied), 3L)
+  expect_identical(nrow(tidy(res, conf.int = TRUE)), 6L)
+})
+
+test_that("tidy() reports the conditional reading of a continuous fit", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_continuous()
+  mods <- fit_tidy_continuous_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  tidied <- tidy(res, conf.int = TRUE, effects = "conditional")
+  expect_conditional_tidy_contract(tidied, res, conf_int = TRUE)
+
+  # The marginal reading of a continuous exposure is the one slope row; the
+  # conditional one is the marginal structural model it came from, intercept
+  # included.
+  expect_identical(tidied$term, c("(Intercept)", "A"))
+  expect_identical(tidy(res)$term, "slope")
+  expect_false(isTRUE(all.equal(
+    tidied$std.error,
+    unname(sqrt(diag(vcov(mods$outcome_mod)))),
+    tolerance = 1e-3
+  )))
+
+  # The outcome model of this fixture has an identity link, so its coefficients
+  # are on the outcome's own scale and there is nothing for an exponential to
+  # undo.
+  expect_identical(family(mods$outcome_mod)$link, "identity")
+  expect_error(
+    tidy(res, exponentiate = TRUE, effects = "conditional"),
+    class = "propensity_exponentiate_error"
+  )
+})
+
+# The conditional reading exponentiates by the link of the outcome model rather
+# than by the labels of the rows, which is the one place the two readings differ
+# in what `exponentiate` means. The marginal reading exponentiates the rows it
+# labels as ratios and relabels them; a coefficient table has no such labels, and
+# every coefficient of a log odds or log risk model is on the scale an
+# exponential undoes, the intercept with the rest.
+#
+# What is done to the other columns is broom's convention, which
+# `broom:::exponentiate()` implements for `tidy.lm()`, `tidy.glm()`, and every
+# other method that takes the argument: the estimate and, when they were asked
+# for, the interval bounds are exponentiated, and the standard error, the
+# statistic, and the p-value are left describing the link scale. There is no
+# delta-method rescaling of the standard error and no renaming of a term.
+
+test_that("tidy(exponentiate = TRUE) exponentiates every conditional row", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  expect_identical(family(mods$outcome_mod)$link, "logit")
+  plain <- tidy(res, conf.int = TRUE, effects = "conditional")
+  expo <- tidy(
+    res,
+    conf.int = TRUE,
+    exponentiate = TRUE,
+    effects = "conditional"
+  )
+
+  # The intercept is a log odds here and is exponentiated with the rest, where
+  # the marginal reading of the same result leaves its risk difference row alone.
+  expect_named(expo, tidy_names(conf_int = TRUE))
+  expect_identical(expo$term, plain$term)
+  expect_equal(expo$estimate, exp(plain$estimate), tolerance = 1e-12)
+  expect_equal(expo$conf.low, exp(plain$conf.low), tolerance = 1e-12)
+  expect_equal(expo$conf.high, exp(plain$conf.high), tolerance = 1e-12)
+
+  # The inference columns describe the link scale estimate and stay there.
+  expect_identical(expo$std.error, plain$std.error)
+  expect_identical(expo$statistic, plain$statistic)
+  expect_identical(expo$p.value, plain$p.value)
+  expect_false(isTRUE(all.equal(
+    expo$std.error,
+    expo$estimate * plain$std.error,
+    tolerance = 1e-6
+  )))
+
+  # The transformation does not depend on bounds having been asked for, so a call
+  # that asked for none still returns the exponentiated estimates.
+  bare <- tidy(res, exponentiate = TRUE, effects = "conditional")
+  expect_named(bare, tidy_names())
+  expect_identical(bare$estimate, expo$estimate)
+  expect_identical(bare$term, plain$term)
+
+  # The policy belongs to the reading rather than to the argument that named it,
+  # so a result that records the conditional reading exponentiates the same way.
+  expect_identical(
+    tidy(as_conditional(res), conf.int = TRUE, exponentiate = TRUE),
+    expo
+  )
+
+  # The marginal reading of the same result keeps the policy it had: the ratio
+  # rows exponentiated and relabeled, the risk difference row untouched.
+  expect_identical(
+    tidy(as_conditional(res), exponentiate = TRUE, effects = "marginal"),
+    tidy(res, exponentiate = TRUE)
+  )
+  expect_identical(tidy(res, exponentiate = TRUE)$term, c("rd", "rr", "or"))
+})
+
+test_that("tidy(exponentiate = TRUE) exponentiates a log link conditionally", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat, outcome_link = "log")
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # A log link outcome model reports log risks rather than log odds, and the
+  # policy follows the link rather than the effect measure a reading of the
+  # result happens to name, so this table exponentiates exactly as the logit one
+  # does.
+  expect_identical(family(mods$outcome_mod)$link, "log")
+  plain <- tidy(res, conf.int = TRUE, effects = "conditional")
+  expo <- tidy(
+    res,
+    conf.int = TRUE,
+    exponentiate = TRUE,
+    effects = "conditional"
+  )
+
+  expect_identical(expo$term, plain$term)
+  expect_equal(expo$estimate, exp(plain$estimate), tolerance = 1e-12)
+  expect_equal(expo$conf.low, exp(plain$conf.low), tolerance = 1e-12)
+  expect_equal(expo$conf.high, exp(plain$conf.high), tolerance = 1e-12)
+  expect_identical(expo$std.error, plain$std.error)
+  expect_identical(expo$statistic, plain$statistic)
+  expect_identical(expo$p.value, plain$p.value)
+})
+
+test_that("tidy(exponentiate = TRUE) rejects an identity link conditionally", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat, outcome_family = "gaussian")
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The coefficients of an identity link model are on the outcome's own scale,
+  # and an exponential of one of them is a number that describes nothing. The
+  # request is refused rather than answered with it, whichever way the reading
+  # was arrived at and whether or not bounds were asked for.
+  expect_identical(family(mods$outcome_mod)$link, "identity")
+  expect_error(
+    tidy(res, exponentiate = TRUE, effects = "conditional"),
+    class = "propensity_exponentiate_error"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, exponentiate = TRUE, effects = "conditional"),
+    class = "propensity_exponentiate_error"
+  )
+  expect_error(
+    tidy(as_conditional(res), exponentiate = TRUE),
+    class = "propensity_exponentiate_error"
+  )
+
+  # There is nothing to refuse without the argument, so the reading itself is
+  # reported as it is on any other link.
+  expect_conditional_tidy_contract(
+    tidy(res, conf.int = TRUE, effects = "conditional"),
+    res,
+    conf_int = TRUE
+  )
+
+  # The refusal belongs to the conditional reading. The marginal reading of the
+  # same result reports a difference in means, which is a row this argument has
+  # always left alone rather than one it refuses.
+  expect_identical(tidy(res, exponentiate = TRUE), tidy(res))
+  expect_identical(
+    tidy(as_conditional(res), exponentiate = TRUE, effects = "marginal"),
+    tidy(res)
+  )
+})
+
+test_that("tidy() rejects an effects value naming neither reading", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  # The argument belongs to the accessors, which resolve it and reject a value
+  # that names neither reading. Validating it here as well would leave two
+  # validators to keep in step, so the value goes to theirs and the condition
+  # they raise is the one that reaches the caller.
+  expect_error(
+    tidy(res, effects = "banana"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, effects = c("marginal", "conditional")),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, effects = 1),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, effects = NA_character_),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+
+  # The value is rejected before the reading it names is looked for, so a result
+  # that presents one reading answers a nonsense request the same way.
+  expect_error(
+    tidy(as_conditional(res), effects = "banana"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+
+  # `effects` follows the dots, where an abbreviation of it does not match. A
+  # partial name is an argument left in the dots rather than a silent request for
+  # a reading.
+  expect_error(
+    tidy(res, effect = "conditional"),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("glance() reports the same row in either reading", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # `glance()` describes the fit rather than its estimates: what it targets and
+  # how much information went into it, neither of which is a reading of those
+  # estimates. The row is the same row whichever reading the result presents, and
+  # the reading is not an argument this method takes.
+  expect_identical(glance(as_conditional(res)), glance(res))
+  expect_identical(
+    glance(ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      se_method = "mestimation",
+      effects = "conditional"
+    )),
+    glance(res)
+  )
+  expect_error(
+    glance(res, effects = "conditional"),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("augment() returns the same frame in either reading", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # `augment()` works per observation and reads the two models the result holds,
+  # neither of which the reading changes, so the frame is the same on either
+  # reading, whichever source frame it is carried on.
+  expect_identical(augment(as_conditional(res)), augment(res))
+  expect_identical(
+    augment(as_conditional(res), data = dat),
+    augment(res, data = dat)
+  )
+  expect_error(
+    augment(res, effects = "conditional"),
     class = "rlib_error_dots_nonempty"
   )
 })
