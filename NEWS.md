@@ -21,6 +21,26 @@
   `vcov()` and `confint()`, and prints the coefficients under a note saying the
   standard errors are not reported.
 
+* `tidy()` gains an `effects` argument, which reads a result in the reading it
+  names rather than in the one the result records: `"conditional"` returns the
+  outcome model's coefficient surface, one row per coefficient, in the columns
+  and the order the marginal table of causal contrasts uses, so rows of the two
+  stack. Its standard errors are the block of the joint sandwich the accessors
+  report, which keeps the tidied table and the printed one the same numbers, and
+  a linearization fit stacks no such system and so errors rather than reporting
+  the covariance the outcome model computed for itself. `NULL`, the default,
+  follows the reading the result records. `glance()` and `augment()` describe the
+  fit and its observations rather than its estimates and report the same thing in
+  either reading.
+
+* In the conditional reading, `exponentiate` follows the link of the outcome
+  model rather than the labels of the rows, a coefficient table having none to
+  pick out: a `logit` or a `log` link puts every coefficient on a scale an
+  exponential undoes, and the estimate and, when they were asked for, the
+  interval bounds move to the natural scale while the standard error, the
+  statistic, and the p-value stay describing the link scale. Every other link
+  errors rather than exponentiating coefficients that are not on such a scale.
+
 * An `ipw()` result now answers the standard model accessors: `coef()` and
   `confint()` for the reported effects, `vcov()` for their covariance, `nobs()`
   and `df.residual()` for the counts describing the fit, and `weights()` for the

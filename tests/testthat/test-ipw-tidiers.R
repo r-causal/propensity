@@ -1588,6 +1588,48 @@ test_that("tidy(exponentiate = TRUE) rejects an identity link conditionally", {
   )
 })
 
+test_that("tidy(exponentiate = TRUE) rejects the other binary links", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+
+  # A probit and a cloglog link are the other two links a binary outcome model
+  # of this estimator can be fit with. Both put their coefficients on a scale of
+  # their own rather than on a log one, so both are refused for the same reason
+  # the identity link is: the policy is an allowlist of the two links an
+  # exponential undoes rather than a list of the ones it does not.
+  for (link in c("probit", "cloglog")) {
+    mods <- fit_tidy_binary_models(dat, outcome_link = link)
+    res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+    expect_identical(family(mods$outcome_mod)$link, link)
+
+    expect_error(
+      tidy(res, exponentiate = TRUE, effects = "conditional"),
+      class = "propensity_exponentiate_error"
+    )
+    expect_error(
+      tidy(res, conf.int = TRUE, exponentiate = TRUE, effects = "conditional"),
+      class = "propensity_exponentiate_error"
+    )
+    expect_error(
+      tidy(as_conditional(res), exponentiate = TRUE),
+      class = "propensity_exponentiate_error"
+    )
+
+    # There is nothing to refuse without the argument, so the reading itself is
+    # reported as it is on any other link.
+    expect_conditional_tidy_contract(
+      tidy(res, conf.int = TRUE, effects = "conditional"),
+      res,
+      conf_int = TRUE
+    )
+
+    # The refusal belongs to the conditional reading. The marginal reading of
+    # the same result reports ratio measures whatever the link of the model they
+    # were computed from, and exponentiates them as it always has.
+    expect_identical(tidy(res, exponentiate = TRUE)$term, c("rd", "rr", "or"))
+  }
+})
+
 test_that("tidy() rejects an effects value naming neither reading", {
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
