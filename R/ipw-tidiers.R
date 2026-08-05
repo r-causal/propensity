@@ -187,13 +187,13 @@ check_conf_level <- function(
 #' @return A one-row [tibble][tibble::tibble] with the columns:
 #' \describe{
 #'   \item{`estimand`}{The estimand the weights target, such as `"ate"`.}
-#'   \item{`nobs`}{The number of observations the standard errors were estimated
-#'     from: the observations the stacked estimating equations were solved on
-#'     under M-estimation, and the observations the outcome model was fit on
-#'     under linearization.}
+#'   \item{`nobs`}{The number of observations the outcome model was fit on,
+#'     which is also what the stacked estimating equations are solved on under
+#'     M-estimation. Reported by [stats::nobs()].}
 #'   \item{`df.residual`}{The residual degrees of freedom of the stacked
 #'     estimating equations, `nobs` less the number of parameters the system
-#'     solves for. `NA` under linearization, which records no parameter count.}
+#'     solves for. `NA` under linearization, which records no parameter count.
+#'     Reported by [stats::df.residual()].}
 #' }
 #'
 #' @examples
@@ -218,22 +218,15 @@ check_conf_level <- function(
 glance.ipw <- function(x, ...) {
   rlang::check_dots_empty()
 
-  # The counts describe whatever produced the standard errors. That is the
-  # stacked estimating equations when the result holds a fit, and the outcome
-  # model alone otherwise, which leaves no parameter count to spend the
-  # observations against.
-  if (is.null(x$fit)) {
-    nobs <- as.integer(stats::nobs(x$outcome_mod))
-    df_residual <- NA_integer_
-  } else {
-    nobs <- as.integer(stats::nobs(x$fit))
-    df_residual <- as.integer(stats::df.residual(x$fit))
-  }
-
+  # Both counts are the result class' own accessors, so the number `glance()`
+  # reports and the number `nobs()` or `df.residual()` reports are the same
+  # number rather than two readings that agree by construction. The accessors
+  # also settle what a result whose `fit` nothing can be read from reports: the
+  # residual degrees of freedom are missing, and the rest of the summary stands.
   tibble::tibble(
     estimand = x$estimand,
-    nobs = nobs,
-    df.residual = df_residual
+    nobs = stats::nobs(x),
+    df.residual = stats::df.residual(x)
   )
 }
 

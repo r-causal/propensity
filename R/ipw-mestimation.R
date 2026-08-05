@@ -1953,7 +1953,33 @@ ipw_mestimation <- function(
     warn_ipw_degenerate_se(estimates, call = call)
   }
 
-  list(estimates = estimates, fit = solved$fit)
+  # The blocks the component models are reported under. The stacked system
+  # estimates the propensity score model, the outcome model, and the effects
+  # together, so each model's covariance here accounts for the others having been
+  # estimated from the same data and is not the one its own fitting routine
+  # reports.
+  vc <- stats::vcov(solved$fit)
+
+  list(
+    estimates = estimates,
+    fit = solved$fit,
+    ps_vcov = ipw_component_vcov(vc, layout, "ps"),
+    outcome_vcov = ipw_component_vcov(vc, layout, "out")
+  )
+}
+
+# The component models an M-estimation result holds: the models the user
+# supplied, each carrying its block of the joint sandwich, so that `vcov()` on
+# either reports the covariance the stacked system implies rather than the one
+# the model's own fitting routine does. Wrapping adds a class and an attribute
+# and changes nothing else, so predictions, coefficients, and model frames are
+# read from the wrapped model exactly as from the model itself. The models the
+# user holds are untouched.
+ipw_component_models <- function(wt_mod, outcome_mod, fit) {
+  list(
+    wt_mod = new_ipw_model(wt_mod, fit$ps_vcov),
+    outcome_mod = new_ipw_model(outcome_mod, fit$outcome_vcov)
+  )
 }
 
 # Run the solve, holding back the two reports deli makes about it in its own
@@ -2263,7 +2289,8 @@ ipw_mestimation_estimates <- function(
   call = rlang::caller_env()
 ) {
   co <- stats::coef(fit)
-  se <- sqrt(diag(stats::vcov(fit)))
+  vc <- stats::vcov(fit)
+  se <- sqrt(diag(vc))
 
   # A continuous exposure reports the marginal structural model exposure
   # coefficient, addressed by its outcome-block theta position; binary and
@@ -2313,7 +2340,46 @@ ipw_mestimation_estimates <- function(
     )
   }
 
+  # The covariance of the reported effects, taken from the same rows and columns
+  # of the sandwich the standard errors came from. The effect measures are
+  # transformations of one another's marginal means, so they covary, and that
+  # part of the fit is recoverable from nowhere else in the result. The block
+  # arrives under the theta names, which are not unique across blocks and read as
+  # seeds rather than as effects, so it is relabeled the way every surface of the
+  # result labels its rows.
+  attr(out, "ipw_vcov") <- ipw_vcov_block(vc, idx, ipw_effect_labels(out))
+
   out
+}
+
+# The labels every surface of a result keys its effects by: the effect measure
+# on its own, or the effect measure and the comparison together where a
+# categorical exposure reports one row per comparison.
+ipw_effect_labels <- function(estimates) {
+  if (is.null(estimates[["comparison"]])) {
+    estimates$effect
+  } else {
+    paste(estimates$effect, estimates$comparison)
+  }
+}
+
+# A square block of the joint sandwich, relabeled on both margins. Blocks are
+# addressed by position because theta names are not unique across blocks, and
+# the labels a block is read under belong to whatever reads it rather than to
+# the seed the solver was started from.
+ipw_vcov_block <- function(vc, idx, labels) {
+  block <- vc[idx, idx, drop = FALSE]
+  dimnames(block) <- list(labels, labels)
+  block
+}
+
+# The block of the joint sandwich belonging to one component model, under the
+# names that model calls its own parameters. Those names come from the layout,
+# which seeds each block from the fitted model it stands for, rather than from
+# the solved fit.
+ipw_component_vcov <- function(vc, layout, block) {
+  idx <- layout$idx[[block]]
+  ipw_vcov_block(vc, idx, names(layout$init)[idx])
 }
 
 # Number of contrast blocks the estimates table holds: one per non-reference

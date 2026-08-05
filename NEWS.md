@@ -1,5 +1,26 @@
 # propensity 0.1.0.9000 (development version)
 
+* An `ipw()` result now answers the standard model accessors: `coef()` and
+  `confint()` for the reported effects, `vcov()` for their covariance, `nobs()`
+  and `df.residual()` for the counts describing the fit, and `weights()` for the
+  `psw` vector the outcome model was fit with. The methods belong to
+  causalgenerics, which owns the shared result class; what propensity supplies is
+  the covariance of the effects it reports, recorded on the estimates table.
+  Coefficients are named for the effect measure, and for the effect measure and
+  the comparison together where a categorical exposure reports one row per
+  comparison. `glance()` reports the counts through the same accessors, so the
+  two surfaces cannot disagree. This raises the causalgenerics requirement to
+  0.1.0.9000.
+
+* Under `se_method = "mestimation"` the `wt_mod` and `outcome_mod` an `ipw()`
+  result holds now carry their block of the joint sandwich, so `vcov()` on either
+  reports a covariance that accounts for the whole system having been estimated
+  from the same data rather than the one the model's own fitting routine reports.
+  The models passed to `ipw()` are left as they were fit, and everything else
+  about the stored copies is unchanged, so predictions and coefficients read the
+  same from either. Linearization stacks no such system, so its component models
+  are stored exactly as they arrived.
+
 * New `tidy()`, `glance()`, and `augment()` methods describe an `ipw()` result in
   the three shapes broom defines: one row per estimate, one row for the fit, and
   one row per observation. Each is registered against the generic the generics

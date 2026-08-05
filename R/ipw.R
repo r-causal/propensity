@@ -350,6 +350,23 @@
 #'     estimand parameters.}
 #' }
 #'
+#'   The result answers the standard model accessors, which causalgenerics
+#'   registers for the shared class: [stats::coef()] and [stats::confint()] for
+#'   the reported effects, [stats::vcov()] for their covariance,
+#'   [stats::nobs()] and [stats::df.residual()] for the counts describing the
+#'   fit, and [stats::weights()] for the [psw()] vector the outcome model was
+#'   fit with. Coefficients are named for the effect measure, and for the effect
+#'   measure and the comparison together where a categorical exposure reports
+#'   one row per comparison.
+#'
+#'   Under `se_method = "mestimation"` the stored `wt_mod` and `outcome_mod` are
+#'   the models supplied, carrying their block of the joint sandwich. Calling
+#'   [stats::vcov()] on either reports a covariance that accounts for the whole
+#'   system having been estimated from the same data, rather than the one the
+#'   model's own fitting routine reports. The models supplied are left as they
+#'   were fit. Linearization solves no such system, so its component models are
+#'   stored unchanged.
+#'
 #' @examples
 #' # Simulate data with a confounder, binary exposure, and binary outcome
 #' set.seed(123)
@@ -419,9 +436,9 @@
 #'
 #' @name ipw-methods
 #' @exportS3Method causalgenerics::ipw glm
-#' @importFrom causalgenerics new_ipw
-#' @importFrom stats dnorm family formula model.frame model.matrix model.weights
-#' @importFrom stats pnorm predict qnorm var
+#' @importFrom causalgenerics new_ipw new_ipw_model
+#' @importFrom stats cov dnorm family formula model.frame model.matrix
+#' @importFrom stats model.weights pnorm predict qnorm var
 ipw.glm <- function(
   wt_mod,
   outcome_mod,
@@ -485,10 +502,11 @@ ipw.glm <- function(
       ps_link = ps_link
     )
     fit <- ipw_mestimation(spec, conf_level = conf_level)
+    components <- ipw_component_models(wt_mod, outcome_mod, fit)
     return(new_ipw(
       estimand = spec$estimand,
-      wt_mod = wt_mod,
-      outcome_mod = outcome_mod,
+      wt_mod = components$wt_mod,
+      outcome_mod = components$outcome_mod,
       estimates = fit$estimates,
       se_method = "mestimation",
       fit = fit$fit
@@ -760,11 +778,12 @@ ipw_continuous_estimate <- function(
     call = call
   )
   fit <- ipw_mestimation(spec, conf_level = conf_level, call = call)
+  components <- ipw_component_models(wt_mod, outcome_mod, fit)
 
   new_ipw(
     estimand = spec$estimand,
-    wt_mod = wt_mod,
-    outcome_mod = outcome_mod,
+    wt_mod = components$wt_mod,
+    outcome_mod = components$outcome_mod,
     estimates = fit$estimates,
     se_method = "mestimation",
     fit = fit$fit
@@ -1789,7 +1808,8 @@ calculate_estimates <- function(
   ### RISK DIFFERENCE (raw scale)
   # --------------------------------
   # Influence = (l1 - l0)
-  rd_var <- var(lin_vars$l1 - lin_vars$l0) / n
+  rd_inf <- lin_vars$l1 - lin_vars$l0
+  rd_var <- var(rd_inf) / n
 
   rd_est <- marginal_means$mu1 - marginal_means$mu0
   rd_se <- sqrt(rd_var)
@@ -1802,21 +1822,21 @@ calculate_estimates <- function(
 
   # for continuous outcomes, only return difference
   if (linear_regression) {
-    return(
-      data.frame(
-        effect = "diff",
-        estimate = rd_est,
+    estimates <- data.frame(
+      effect = "diff",
+      estimate = rd_est,
 
-        # variances are on the same scale as 'estimate':
-        # variance = c(rd_var, log_rr_var, log_or_var),
-        std.err = rd_se,
-        z = rd_z,
-        ci.lower = rd_ci_lower,
-        ci.upper = rd_ci_upper,
-        conf.level = conf_level,
-        p.value = rd_p
-      )
+      # variances are on the same scale as 'estimate':
+      # variance = c(rd_var, log_rr_var, log_or_var),
+      std.err = rd_se,
+      z = rd_z,
+      ci.lower = rd_ci_lower,
+      ci.upper = rd_ci_upper,
+      conf.level = conf_level,
+      p.value = rd_p
     )
+
+    return(ipw_attach_influence_vcov(estimates, cbind(diff = rd_inf), n))
   }
 
   ### RISK RATIO (log scale)
@@ -1866,7 +1886,7 @@ calculate_estimates <- function(
   or_z <- log_or_est / log_or_se
   or_p <- 2 * (1 - pnorm(abs(or_z)))
 
-  data.frame(
+  estimates <- data.frame(
     effect = c("rd", "log(rr)", "log(or)"),
     # For RD, the estimate is raw. For RR and OR, the estimate is log-scale:
     estimate = c(rd_est, log_rr_est, log_or_est),
@@ -1881,6 +1901,24 @@ calculate_estimates <- function(
     conf.level = conf_level,
     p.value = c(rd_p, rr_p, or_p)
   )
+
+  ipw_attach_influence_vcov(
+    estimates,
+    cbind(rd = rd_inf, "log(rr)" = log_rr_inf, "log(or)" = log_or_inf),
+    n
+  )
+}
+
+# The covariance of the reported effects on the linearization path. There is no
+# stacked system here, so it comes from the influence functions the standard
+# errors themselves come from: each effect measure's variance is the variance of
+# its influence function over n, and the covariance of two of them is the
+# covariance of theirs over the same n. The diagonal therefore reproduces the
+# reported standard errors, and the off-diagonal records that the effect
+# measures are transformations of the same pair of marginal means.
+ipw_attach_influence_vcov <- function(estimates, influence, n) {
+  attr(estimates, "ipw_vcov") <- cov(influence) / n
+  estimates
 }
 
 # accounts for dependence introduced by weights

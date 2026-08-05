@@ -168,6 +168,23 @@ three of them take propensity-specific values:
 estimating equations, including the propensity score, outcome, and
 estimand parameters.}
 }
+
+The result answers the standard model accessors, which causalgenerics
+registers for the shared class: \code{\link[stats:coef]{stats::coef()}} and \code{\link[stats:confint]{stats::confint()}} for
+the reported effects, \code{\link[stats:vcov]{stats::vcov()}} for their covariance,
+\code{\link[stats:nobs]{stats::nobs()}} and \code{\link[stats:df.residual]{stats::df.residual()}} for the counts describing the
+fit, and \code{\link[stats:weights]{stats::weights()}} for the \code{\link[=psw]{psw()}} vector the outcome model was
+fit with. Coefficients are named for the effect measure, and for the effect
+measure and the comparison together where a categorical exposure reports
+one row per comparison.
+
+Under \code{se_method = "mestimation"} the stored \code{wt_mod} and \code{outcome_mod} are
+the models supplied, carrying their block of the joint sandwich. Calling
+\code{\link[stats:vcov]{stats::vcov()}} on either reports a covariance that accounts for the whole
+system having been estimated from the same data, rather than the one the
+model's own fitting routine reports. The models supplied are left as they
+were fit. Linearization solves no such system, so its component models are
+stored unchanged.
 }
 \description{
 The \code{multinom} method estimates causal effects for a categorical exposure
