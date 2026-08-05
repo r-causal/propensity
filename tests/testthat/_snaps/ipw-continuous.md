@@ -5,6 +5,7 @@
     Output
       Inverse Probability Weight Estimator
       Estimand: ATE 
+      Effects: marginal (population-averaged) 
       
       Weight Estimator:
         Call: lm(formula = A ~ x1 + x2, data = dat) 
@@ -12,7 +13,7 @@
       Outcome Model:
         Call: lm(formula = msm_fmla, data = dat, weights = wts) 
       
-      Estimates:
+      Marginal estimates:
             estimate  std.err      z ci.lower ci.upper conf.level   p.value    
       slope 0.679126 0.037942 17.899  0.60476  0.75349       0.95 < 2.2e-16 ***
       ---

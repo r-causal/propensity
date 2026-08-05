@@ -15,3 +15,20 @@ test_that("the exported tidier generics are the ones generics owns", {
   expect_identical(propensity::glance, generics::glance)
   expect_identical(propensity::augment, generics::augment)
 })
+
+# The two generics that move a result between its readings belong to
+# causalgenerics, which owns the result class and the `effects` field they set.
+# Re-exporting them is what lets a user who has loaded only propensity write
+# `as_conditional(res)` unqualified on a result `ipw()` built.
+
+test_that("propensity exports the presentation mode generics", {
+  expect_contains(
+    getNamespaceExports("propensity"),
+    c("as_marginal", "as_conditional")
+  )
+})
+
+test_that("the exported mode generics are the ones causalgenerics owns", {
+  expect_identical(propensity::as_marginal, causalgenerics::as_marginal)
+  expect_identical(propensity::as_conditional, causalgenerics::as_conditional)
+})

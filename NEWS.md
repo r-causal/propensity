@@ -1,5 +1,26 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` gains an `effects` argument on every method, which records the reading
+  the result it builds presents: `"marginal"`, the default, for the
+  population-averaged causal contrasts every method reported before, or
+  `"conditional"` for the outcome model's coefficient surface. Both surfaces are
+  computed whichever value is named, so the argument settles which one the result
+  presents and nothing else. `as_marginal()` and `as_conditional()`, which move a
+  result between the two readings afterwards, are re-exported here, so a result
+  can be flipped without loading causalgenerics. A printed result names its
+  reading beside the estimand and again over the table it decides.
+
+* In the conditional reading, `coef()` reports the outcome model's coefficients,
+  and `vcov()` and `confint()` report them against the block of the joint
+  sandwich that every route stacking estimating equations attaches to the outcome
+  model: `se_method = "mestimation"` for a binary exposure, and the categorical
+  and continuous routes. These are the coefficients of the weighted outcome model
+  with the uncertainty of estimating the weights carried into them, rather than
+  the ones the model's own fitting routine reports. A linearization fit stacks no
+  such system and so has no such block: its conditional reading errors from
+  `vcov()` and `confint()`, and prints the coefficients under a note saying the
+  standard errors are not reported.
+
 * An `ipw()` result now answers the standard model accessors: `coef()` and
   `confint()` for the reported effects, `vcov()` for their covariance, `nobs()`
   and `df.residual()` for the counts describing the fit, and `weights()` for the

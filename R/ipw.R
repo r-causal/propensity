@@ -109,6 +109,25 @@
 #'   `"mestimation"`. For a binary or categorical exposure, both methods require
 #'   an outcome model that can represent a baseline, so a numeric no-intercept
 #'   coding such as `y ~ z - 1` errors on either.
+#' @param effects The presentation mode the result records, either `"marginal"`
+#'   (the default) or `"conditional"`. The marginal reading reports the
+#'   population-averaged causal contrasts; the conditional reading reports the
+#'   outcome model's coefficient surface. Both surfaces are computed whichever
+#'   mode is named, so the argument settles which one the result presents and
+#'   nothing else. [causalgenerics::as_marginal()] and
+#'   [causalgenerics::as_conditional()] move a result between the two readings
+#'   afterwards, and the accessors take an `effects` argument of their own for a
+#'   single call.
+#'
+#'   The covariance the conditional reading reports is the outcome block of the
+#'   jointly estimated sandwich, which every route that stacks estimating
+#'   equations attaches to the outcome model it stores:
+#'   `se_method = "mestimation"` for a binary exposure, and the categorical and
+#'   continuous routes, which run on M-estimation alone. A linearization fit
+#'   stacks no such system and records no such block, so [stats::vcov()] and
+#'   [stats::confint()] error on its conditional reading, and printing it writes
+#'   the coefficients under a note saying the standard errors are not reported
+#'   rather than beside the ones the outcome model computed for itself.
 #' @param ... These dots are for future extensions and must be empty. They
 #'   separate the two models from the remaining arguments, which must therefore
 #'   be supplied by name. Anything left in them, such as a `.data` argument
@@ -357,7 +376,9 @@
 #'   fit, and [stats::weights()] for the [psw()] vector the outcome model was
 #'   fit with. Coefficients are named for the effect measure, and for the effect
 #'   measure and the comparison together where a categorical exposure reports
-#'   one row per comparison.
+#'   one row per comparison. Which surface [stats::coef()], [stats::vcov()], and
+#'   [stats::confint()] report follows the presentation mode the result records,
+#'   described under `effects` above.
 #'
 #'   Under `se_method = "mestimation"` the stored `wt_mod` and `outcome_mod` are
 #'   the models supplied, carrying their block of the joint sandwich. Calling
@@ -447,10 +468,12 @@ ipw.glm <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization")
+  se_method = c("mestimation", "linearization"),
+  effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   se_method <- rlang::arg_match(se_method)
+  effects <- rlang::arg_match(effects)
   assert_class(wt_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
   check_ipw_ps_response(wt_mod)
@@ -466,7 +489,8 @@ ipw.glm <- function(
       estimand = estimand,
       ps_link = ps_link,
       conf_level = conf_level,
-      se_method = se_method
+      se_method = se_method,
+      effects = effects
     ))
   }
 
@@ -509,7 +533,8 @@ ipw.glm <- function(
       outcome_mod = components$outcome_mod,
       estimates = fit$estimates,
       se_method = "mestimation",
-      fit = fit$fit
+      fit = fit$fit,
+      effects = effects
     ))
   }
 
@@ -705,7 +730,8 @@ ipw.glm <- function(
     outcome_mod = outcome_mod,
     estimates = estimates,
     se_method = "linearization",
-    fit = NULL
+    fit = NULL,
+    effects = effects
   )
 }
 
@@ -721,6 +747,7 @@ ipw_continuous_estimate <- function(
   ps_link = NULL,
   conf_level = 0.95,
   se_method = "mestimation",
+  effects = "marginal",
   call = rlang::caller_env()
 ) {
   # Before the class guard below, which reports a matrix-response fit as the
@@ -786,7 +813,8 @@ ipw_continuous_estimate <- function(
     outcome_mod = components$outcome_mod,
     estimates = fit$estimates,
     se_method = "mestimation",
-    fit = fit$fit
+    fit = fit$fit,
+    effects = effects
   )
 }
 
@@ -1780,7 +1808,8 @@ ipw.default <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization")
+  se_method = c("mestimation", "linearization"),
+  effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   abort(
