@@ -100,15 +100,15 @@ rows of several results stack into one table.</p>
 <dd><p>The estimand the weights target, such as <code>"ate"</code>.</p></dd>
 
 <dt><code>nobs</code></dt>
-<dd><p>The number of observations the standard errors were estimated
-from: the observations the stacked estimating equations were solved on
-under M-estimation, and the observations the outcome model was fit on
-under linearization.</p></dd>
+<dd><p>The number of observations the outcome model was fit on,
+which is also what the stacked estimating equations are solved on under
+M-estimation. Reported by <code><a href="https://rdrr.io/r/stats/nobs.html" class="external-link">stats::nobs()</a></code>.</p></dd>
 
 <dt><code>df.residual</code></dt>
 <dd><p>The residual degrees of freedom of the stacked
 estimating equations, <code>nobs</code> less the number of parameters the system
-solves for. <code>NA</code> under linearization, which records no parameter count.</p></dd>
+solves for. <code>NA</code> under linearization, which records no parameter count.
+Reported by <code><a href="https://rdrr.io/r/stats/df.residual.html" class="external-link">stats::df.residual()</a></code>.</p></dd>
 
 
 </dl></div>

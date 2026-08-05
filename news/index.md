@@ -2,6 +2,39 @@
 
 ## propensity 0.1.0.9000 (development version)
 
+- An
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  result now answers the standard model accessors:
+  [`coef()`](https://rdrr.io/r/stats/coef.html) and
+  [`confint()`](https://rdrr.io/r/stats/confint.html) for the reported
+  effects, [`vcov()`](https://rdrr.io/r/stats/vcov.html) for their
+  covariance, [`nobs()`](https://rdrr.io/r/stats/nobs.html) and
+  [`df.residual()`](https://rdrr.io/r/stats/df.residual.html) for the
+  counts describing the fit, and
+  [`weights()`](https://rdrr.io/r/stats/weights.html) for the `psw`
+  vector the outcome model was fit with. The methods belong to
+  causalgenerics, which owns the shared result class; what propensity
+  supplies is the covariance of the effects it reports, recorded on the
+  estimates table. Coefficients are named for the effect measure, and
+  for the effect measure and the comparison together where a categorical
+  exposure reports one row per comparison.
+  [`glance()`](https://generics.r-lib.org/reference/glance.html) reports
+  the counts through the same accessors, so the two surfaces cannot
+  disagree. This raises the causalgenerics requirement to 0.1.0.9000.
+
+- Under `se_method = "mestimation"` the `wt_mod` and `outcome_mod` an
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  result holds now carry their block of the joint sandwich, so
+  [`vcov()`](https://rdrr.io/r/stats/vcov.html) on either reports a
+  covariance that accounts for the whole system having been estimated
+  from the same data rather than the one the model’s own fitting routine
+  reports. The models passed to
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  are left as they were fit, and everything else about the stored copies
+  is unchanged, so predictions and coefficients read the same from
+  either. Linearization stacks no such system, so its component models
+  are stored exactly as they arrived.
+
 - New [`tidy()`](https://generics.r-lib.org/reference/tidy.html),
   [`glance()`](https://generics.r-lib.org/reference/glance.html), and
   [`augment()`](https://generics.r-lib.org/reference/augment.html)

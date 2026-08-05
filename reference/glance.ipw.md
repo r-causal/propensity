@@ -51,16 +51,17 @@ with the columns:
 
 - `nobs`:
 
-  The number of observations the standard errors were estimated from:
-  the observations the stacked estimating equations were solved on under
-  M-estimation, and the observations the outcome model was fit on under
-  linearization.
+  The number of observations the outcome model was fit on, which is also
+  what the stacked estimating equations are solved on under
+  M-estimation. Reported by
+  [`stats::nobs()`](https://rdrr.io/r/stats/nobs.html).
 
 - `df.residual`:
 
   The residual degrees of freedom of the stacked estimating equations,
   `nobs` less the number of parameters the system solves for. `NA` under
-  linearization, which records no parameter count.
+  linearization, which records no parameter count. Reported by
+  [`stats::df.residual()`](https://rdrr.io/r/stats/df.residual.html).
 
 ## See also
 

@@ -265,6 +265,30 @@ propensity-specific values:
   equations, including the propensity score, outcome, and estimand
   parameters.
 
+The result answers the standard model accessors, which causalgenerics
+registers for the shared class:
+[`stats::coef()`](https://rdrr.io/r/stats/coef.html) and
+[`stats::confint()`](https://rdrr.io/r/stats/confint.html) for the
+reported effects, [`stats::vcov()`](https://rdrr.io/r/stats/vcov.html)
+for their covariance,
+[`stats::nobs()`](https://rdrr.io/r/stats/nobs.html) and
+[`stats::df.residual()`](https://rdrr.io/r/stats/df.residual.html) for
+the counts describing the fit, and
+[`stats::weights()`](https://rdrr.io/r/stats/weights.html) for the
+[`psw()`](https://r-causal.github.io/propensity/reference/psw.md) vector
+the outcome model was fit with. Coefficients are named for the effect
+measure, and for the effect measure and the comparison together where a
+categorical exposure reports one row per comparison.
+
+Under `se_method = "mestimation"` the stored `wt_mod` and `outcome_mod`
+are the models supplied, carrying their block of the joint sandwich.
+Calling [`stats::vcov()`](https://rdrr.io/r/stats/vcov.html) on either
+reports a covariance that accounts for the whole system having been
+estimated from the same data, rather than the one the model's own
+fitting routine reports. The models supplied are left as they were fit.
+Linearization solves no such system, so its component models are stored
+unchanged.
+
 ## Workflow
 
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
@@ -598,8 +622,8 @@ result
 as.data.frame(result, exponentiate = TRUE)
 #>   effect  estimate    std.err        z    ci.lower  ci.upper conf.level
 #> 1     rd 0.1423042 0.07020402 2.027009 0.004706801 0.2799015       0.95
-#> 2     rr 1.3235458 0.14219501 1.971337 1.001618515 1.7489427       0.95
-#> 3     or 1.7742759 0.28670966 1.999906 1.011517580 3.1122097       0.95
+#> 2     rr 1.3235458 0.14219501 1.971337 1.001618514 1.7489427       0.95
+#> 3     or 1.7742759 0.28670966 1.999906 1.011517578 3.1122097       0.95
 #>      p.value
 #> 1 0.04266153
 #> 2 0.04868533

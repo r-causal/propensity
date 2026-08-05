@@ -314,7 +314,22 @@ estimating equations, including the propensity score, outcome, and
 estimand parameters.</p></dd>
 
 
-</dl></div>
+</dl><p>The result answers the standard model accessors, which causalgenerics
+registers for the shared class: <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">stats::coef()</a></code> and <code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code> for
+the reported effects, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code> for their covariance,
+<code><a href="https://rdrr.io/r/stats/nobs.html" class="external-link">stats::nobs()</a></code> and <code><a href="https://rdrr.io/r/stats/df.residual.html" class="external-link">stats::df.residual()</a></code> for the counts describing the
+fit, and <code><a href="https://rdrr.io/r/stats/weights.html" class="external-link">stats::weights()</a></code> for the <code><a href="psw.html">psw()</a></code> vector the outcome model was
+fit with. Coefficients are named for the effect measure, and for the effect
+measure and the comparison together where a categorical exposure reports
+one row per comparison.</p>
+<p>Under <code>se_method = "mestimation"</code> the stored <code>wt_mod</code> and <code>outcome_mod</code> are
+the models supplied, carrying their block of the joint sandwich. Calling
+<code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code> on either reports a covariance that accounts for the whole
+system having been estimated from the same data, rather than the one the
+model's own fitting routine reports. The models supplied are left as they
+were fit. Linearization solves no such system, so its component models are
+stored unchanged.</p>
+    </div>
     <div class="section level2">
     <h2 id="workflow">Workflow<a class="anchor" aria-label="anchor" href="#workflow"></a></h2>
     <p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> is designed around a three-step workflow:</p><ol><li><p>Fit a propensity score model (e.g., logistic regression of exposure on
@@ -554,8 +569,8 @@ weighting.</p></div>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span>, exponentiate <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   effect  estimate    std.err        z    ci.lower  ci.upper conf.level</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1     rd 0.1423042 0.07020402 2.027009 0.004706801 0.2799015       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2     rr 1.3235458 0.14219501 1.971337 1.001618515 1.7489427       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3     or 1.7742759 0.28670966 1.999906 1.011517580 3.1122097       0.95</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2     rr 1.3235458 0.14219501 1.971337 1.001618514 1.7489427       0.95</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3     or 1.7742759 0.28670966 1.999906 1.011517578 3.1122097       0.95</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>      p.value</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1 0.04266153</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2 0.04868533</span>
