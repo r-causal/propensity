@@ -701,3 +701,379 @@ test_that("a result with no covariance answers every accessor but vcov()", {
   expect_identical(glanced[["nobs"]], nobs(bare))
   expect_identical(glanced[["df.residual"]], NA_integer_)
 })
+
+# ---- the presentation mode ---------------------------------------------------
+
+# A result reports its effects in one of two readings, recorded in the `effects`
+# field the result class contracts to hold. The marginal reading is the causal
+# contrast estimates every route reported before the field existed; the
+# conditional reading presents the outcome model's coefficient surface. Both
+# surfaces exist on every result, so the field says which one is presented rather
+# than which one was computed, and `ipw()` takes an `effects` argument that says
+# which one the result it builds should record.
+#
+# What propensity owes the two readings is the argument on every route and the
+# corrected covariance the conditional one reports. The reading itself, the
+# accessors that report it, and the generics that move a result between the two
+# are causalgenerics'.
+
+# One result from each of the four routes that builds an `ipw` object: a binary
+# glm exposure under each standard error method, a categorical exposure through
+# nnet::multinom, and a continuous exposure through lm. The tests that assert
+# something of every route fit their models once here rather than once per route.
+fit_base_all_routes <- function() {
+  binary <- fit_base_binary_models(sim_base_binary())
+  categorical <- fit_base_categorical_models(sim_base_categorical())
+  continuous <- fit_base_continuous_models(sim_base_continuous())
+
+  list(
+    mestimation = ipw(
+      binary$ps_mod,
+      binary$outcome_mod,
+      se_method = "mestimation"
+    ),
+    linearization = ipw(
+      binary$ps_mod,
+      binary$outcome_mod,
+      se_method = "linearization"
+    ),
+    categorical = ipw(categorical$ps_mod, categorical$outcome_mod),
+    continuous = ipw(continuous$ps_mod, continuous$outcome_mod)
+  )
+}
+
+# The result an `effects` argument builds, against the same result built without
+# the argument and moved to that reading afterwards. The field records which
+# reading is presented rather than which one was computed, so naming a reading at
+# construction settles the field and nothing else: the same estimates, the same
+# covariance attached to them, and the same component models, wrapper included.
+# Asserting only the field and the surface it selects would leave a construction
+# that computed just the named reading, skipping the marginal estimates or the
+# covariance because they are not the ones on show, passing every test here.
+#
+# `fit` is excluded because two solves are not comparable. The M-estimator deli
+# returns carries the closures of the call that produced it, each with its own
+# environment, so two solves of one system agree in every number they report and
+# are identical in none of them. What the exclusion gives up is asserted against
+# the default build elsewhere in this file.
+expect_ipw_built_as <- function(result, expected) {
+  expect_identical(result$effects, expected$effects)
+
+  # Before the comparison below, which draws its fields from `expected` and would
+  # otherwise pass over a field the construction dropped entirely.
+  expect_identical(names(result), names(expected))
+
+  comparable <- setdiff(names(expected), "fit")
+  expect_identical(result[comparable], expected[comparable])
+
+  invisible(result)
+}
+
+test_that("every route defaults to the marginal reading and round-trips", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  results <- fit_base_all_routes()
+
+  # Marginal is what every route reported before the mode was a field, so a call
+  # that names no mode still reports it.
+  expect_identical(
+    vapply(results, function(res) res$effects, character(1)),
+    stats::setNames(rep("marginal", length(results)), names(results))
+  )
+
+  # Both readings exist on every result, so moving to the other one records the
+  # move and reads nothing else, and moving back is the result that went in
+  # rather than a rebuild of it.
+  flipped <- lapply(results, causalgenerics::as_conditional)
+  expect_identical(
+    vapply(flipped, function(res) res$effects, character(1)),
+    stats::setNames(rep("conditional", length(results)), names(results))
+  )
+  expect_identical(lapply(flipped, causalgenerics::as_marginal), results)
+
+  # Asking for the reading a result already records says what asking once said.
+  expect_identical(lapply(flipped, causalgenerics::as_conditional), flipped)
+  expect_identical(lapply(results, causalgenerics::as_marginal), results)
+})
+
+test_that("a binary mestimation fit records the reading it was built in", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat)
+
+  base <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  res <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    se_method = "mestimation",
+    effects = "conditional"
+  )
+
+  # Building in the conditional reading is building the result and recording the
+  # reading, so it is the default build moved to that reading and nothing else.
+  # The stacked system is solved either way, so the corrected block still reaches
+  # the component models and the marginal estimates are still there to present.
+  expect_ipw_built_as(res, causalgenerics::as_conditional(base))
+  expect_s3_class(res$outcome_mod, "ipw_model")
+  expect_identical(vcov(res), vcov(res$outcome_mod))
+
+  # The reading is a field of the result rather than something the accessors are
+  # told at each call, so a result built in the conditional one reports it with
+  # nothing named at the call site.
+  expect_identical(coef(res), coef(mods$outcome_mod))
+
+  # Naming the default is the other half of the argument, and it has to build the
+  # result that leaving the argument out builds.
+  named <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    se_method = "mestimation",
+    effects = "marginal"
+  )
+  expect_ipw_built_as(named, causalgenerics::as_marginal(base))
+  expect_identical(names(coef(named)), c("rd", "log(rr)", "log(or)"))
+})
+
+test_that("a binary linearization fit records the reading it was built in", {
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat)
+
+  base <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+  res <- ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    se_method = "linearization",
+    effects = "conditional"
+  )
+
+  # The argument records the reading on a path that solves no stacked system, so
+  # it is threaded through the construction rather than through whatever the
+  # standard errors were computed by.
+  expect_ipw_built_as(res, causalgenerics::as_conditional(base))
+  expect_null(res$fit)
+  expect_identical(coef(res), coef(mods$outcome_mod))
+
+  # Nothing was solved jointly here whichever reading was asked for, so this
+  # stays the one route whose component models are exactly as they were fit. A
+  # construction that wrapped them because the conditional reading wants a
+  # covariance would be claiming a correction that was never computed.
+  expect_false(inherits(res$outcome_mod, "ipw_model"))
+  expect_false(inherits(res$wt_mod, "ipw_model"))
+})
+
+test_that("a categorical fit records the reading it was built in", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_base_categorical()
+  mods <- fit_base_categorical_models(dat)
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod, effects = "conditional")
+
+  # The conditional reading is of the outcome model, which has one coefficient
+  # per non-reference exposure level rather than the six rows the marginal
+  # reading of this fit reports.
+  expect_identical(res$effects, "conditional")
+  expect_identical(coef(res), coef(mods$outcome_mod))
+  expect_identical(names(coef(res)), c("(Intercept)", "ab", "ac"))
+})
+
+test_that("a continuous fit records the reading it was built in", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_continuous()
+  mods <- fit_base_continuous_models(dat)
+
+  base <- ipw(mods$ps_mod, mods$outcome_mod)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, effects = "conditional")
+
+  # This route stacks the estimating equations too, so the same thing has to hold
+  # of it: the argument records the reading and leaves the rest of the result
+  # where the default build puts it, corrected block included.
+  expect_ipw_built_as(res, causalgenerics::as_conditional(base))
+  expect_s3_class(res$outcome_mod, "ipw_model")
+  expect_identical(coef(res), coef(mods$outcome_mod))
+  expect_identical(names(coef(res)), c("(Intercept)", "A"))
+})
+
+test_that("an invalid effects value errors", {
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat)
+
+  err <- expect_error(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      se_method = "linearization",
+      effects = "both"
+    ),
+    class = "rlang_error"
+  )
+
+  # The message names the two readings, which is what tells a rejection of the
+  # value apart from a rejection of the argument itself.
+  expect_match(conditionMessage(err), "marginal", fixed = TRUE)
+  expect_match(conditionMessage(err), "conditional", fixed = TRUE)
+})
+
+test_that("the effects argument reports the other reading for one call", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  expect_identical(res$effects, "marginal")
+  expect_identical(coef(res, effects = "conditional"), coef(mods$outcome_mod))
+  expect_identical(vcov(res, effects = "conditional"), vcov(res$outcome_mod))
+
+  # Naming a reading at the call site answers in it and leaves the result where
+  # it was, so the next call with nothing named answers in the stored one.
+  expect_identical(res$effects, "marginal")
+  expect_identical(
+    coef(res),
+    stats::setNames(res$estimates$estimate, base_effect_labels(res))
+  )
+})
+
+test_that("a mestimation fit reports its corrected block conditionally", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  conditional <- causalgenerics::as_conditional(res)
+
+  # The covariance the conditional reading reports is the outcome block of the
+  # stacked sandwich, which this path attaches to the model itself, rather than
+  # anything derived from it here.
+  covariance <- vcov(conditional)
+  expect_identical(covariance, vcov(res$outcome_mod))
+  expect_identical(
+    dimnames(covariance),
+    list(
+      names(coef(mods$outcome_mod)),
+      names(coef(mods$outcome_mod))
+    )
+  )
+
+  # It is not the covariance the outcome model computed for itself, which treats
+  # the estimated weights as fixed and reports an uncertainty the coefficients do
+  # not have.
+  expect_false(isTRUE(all.equal(
+    covariance,
+    vcov(mods$outcome_mod),
+    check.attributes = FALSE
+  )))
+
+  # The limits are built from that block at every level, since the ones the
+  # result stores belong to the effects the other reading reports.
+  interval <- confint(conditional)
+  expect_identical(rownames(interval), names(coef(mods$outcome_mod)))
+  expect_identical(colnames(interval), c("2.5 %", "97.5 %"))
+})
+
+test_that("a continuous fit reports its corrected block conditionally", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_continuous()
+  mods <- fit_base_continuous_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  conditional <- causalgenerics::as_conditional(res)
+
+  # This route stacks the estimating equations too, so its outcome model carries
+  # the joint block and the conditional reading has a covariance to report.
+  expect_s3_class(res$outcome_mod, "ipw_model")
+  expect_identical(vcov(conditional), vcov(res$outcome_mod))
+  expect_identical(
+    rownames(vcov(conditional)),
+    names(coef(mods$outcome_mod))
+  )
+})
+
+test_that("a linearization fit has no covariance for the conditional reading", {
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+  conditional <- causalgenerics::as_conditional(res)
+
+  # Nothing was solved jointly here, so there is no corrected block to report and
+  # the model's own covariance is not a substitute for one. The absence is
+  # reported as an absence rather than filled in.
+  expect_error(
+    vcov(conditional),
+    class = "causalgenerics_no_conditional_vcov"
+  )
+  expect_error(
+    confint(conditional),
+    class = "causalgenerics_no_conditional_vcov"
+  )
+
+  # The coefficients need no such block and come back in either reading.
+  expect_identical(coef(conditional), coef(mods$outcome_mod))
+})
+
+test_that("a conditional mestimation result prints the model's coefficients", {
+  skip_if_not_installed("deli")
+
+  # testthat 3e pins the output width but not the number of significant digits,
+  # and `printCoefmat()` wraps its table past 80 columns under a larger `digits`,
+  # which splits the rows this test reads by position.
+  withr::local_options(digits = 7)
+
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+  out <- capture.output(print(causalgenerics::as_conditional(res)))
+
+  # The reading is named twice, because the two readings are different tables of
+  # different numbers: once beside the estimand and once over the table.
+  expect_true(any(grepl(
+    "Effects: conditional (outcome model)",
+    out,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl("Marginal estimates:", out, fixed = TRUE)))
+
+  header <- which(startsWith(out, "Conditional estimates (outcome model):"))
+  expect_length(header, 1L)
+
+  # The corrected block is there, so the coefficients are reported beside the
+  # standard errors it implies rather than on their own.
+  expect_true(grepl("Std. Error", out[[header + 1L]], fixed = TRUE))
+  expect_false(any(grepl(
+    "Standard errors are not reported",
+    out,
+    fixed = TRUE
+  )))
+
+  # The rows are the outcome model's coefficients rather than the effect
+  # measures the marginal reading of the same result tabulates.
+  labels <- names(coef(mods$outcome_mod))
+  rows <- out[seq(header + 2L, header + 1L + length(labels))]
+  expect_identical(sub(" .*$", "", rows), labels)
+})
+
+test_that("a conditional linearization result prints a note in place of errors", {
+  withr::local_options(digits = 7)
+
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+  conditional <- causalgenerics::as_conditional(res)
+
+  # `print()` is the view of whatever a caller is holding, so a result whose
+  # conditional reading has no covariance to report is still printable. Refusing
+  # here would leave a result that cannot be looked at at all.
+  out <- expect_no_error(capture.output(print(conditional)))
+
+  header <- which(startsWith(out, "Conditional estimates (outcome model):"))
+  expect_length(header, 1L)
+
+  # The coefficients on their own, under a note saying what is missing, rather
+  # than beside the standard errors the model computed for itself: a column of
+  # those under this heading would be read as the corrected ones.
+  expect_identical(trimws(out[[header + 1L]]), "Estimate")
+  expect_false(any(grepl("Std. Error", out, fixed = TRUE)))
+  expect_true(any(grepl(
+    "Standard errors are not reported",
+    out,
+    fixed = TRUE
+  )))
+  expect_length(grep("covariance", out, fixed = TRUE), 1L)
+})
