@@ -102,6 +102,7 @@
 <span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_mod</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
+<span><span class="co">#&gt; Effects: marginal (population-averaged) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Weight Estimator:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = z ~ x1, family = binomial(), data = dat) </span></span>
@@ -109,7 +110,7 @@
 <span><span class="co">#&gt; Outcome Model:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Estimates:</span></span>
+<span><span class="co">#&gt; Marginal estimates:</span></span>
 <span><span class="co">#&gt;         estimate  std.err      z  ci.lower ci.upper conf.level p.value  </span></span>
 <span><span class="co">#&gt; rd      0.142304 0.070204 2.0270 0.0047068  0.27990       0.95 0.04266 *</span></span>
 <span><span class="co">#&gt; log(rr) 0.280314 0.142195 1.9713 0.0016172  0.55901       0.95 0.04869 *</span></span>

@@ -7,7 +7,15 @@ The values are the ones the result already holds: tidy() renames and
 selects rather than re-estimating anything. The one exception is the
 confidence interval, which is rebuilt from the estimate and its standard
 error when the requested conf.level differs from the level the result was
-fit at."><meta property="og:description" content="tidy() returns the estimates of an ipw() result as a tibble using the
+fit at.
+A result reports its effects in one of two readings, and tidy() returns the
+one the result records unless effects names the other for the call. The
+marginal reading is the table of causal contrasts described above. The
+conditional reading is the outcome model's coefficient surface: one row per
+coefficient, with the standard errors of the block of the joint estimation
+that carries the uncertainty of having estimated the weights from the same
+data. Both readings return the same columns in the same order, so their rows
+stack."><meta property="og:description" content="tidy() returns the estimates of an ipw() result as a tibble using the
 column names broom conventions use. There is one row per effect measure, and
 one row per effect measure per comparison for a categorical exposure, in the
 order the result stores them. Nothing is dropped.
@@ -15,7 +23,15 @@ The values are the ones the result already holds: tidy() renames and
 selects rather than re-estimating anything. The one exception is the
 confidence interval, which is rebuilt from the estimate and its standard
 error when the requested conf.level differs from the level the result was
-fit at."><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
+fit at.
+A result reports its effects in one of two readings, and tidy() returns the
+one the result records unless effects names the other for the call. The
+marginal reading is the table of causal contrasts described above. The
+conditional reading is the outcome model's coefficient surface: one row per
+coefficient, with the standard errors of the block of the joint estimation
+that carries the uncertainty of having estimated the weights from the same
+data. Both readings return the same columns in the same order, so their rows
+stack."><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -59,12 +75,27 @@ selects rather than re-estimating anything. The one exception is the
 confidence interval, which is rebuilt from the estimate and its standard
 error when the requested <code>conf.level</code> differs from the level the result was
 fit at.</p>
+<p>A result reports its effects in one of two readings, and <code><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy()</a></code> returns the
+one the result records unless <code>effects</code> names the other for the call. The
+marginal reading is the table of causal contrasts described above. The
+conditional reading is the outcome model's coefficient surface: one row per
+coefficient, with the standard errors of the block of the joint estimation
+that carries the uncertainty of having estimated the weights from the same
+data. Both readings return the same columns in the same order, so their rows
+stack.</p>
     </div>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="co"># S3 method for class 'ipw'</span></span>
-<span><span class="fu"><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy</a></span><span class="op">(</span><span class="va">x</span>, conf.int <span class="op">=</span> <span class="cn">FALSE</span>, conf.level <span class="op">=</span> <span class="fl">0.95</span>, exponentiate <span class="op">=</span> <span class="cn">FALSE</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy</a></span><span class="op">(</span></span>
+<span>  <span class="va">x</span>,</span>
+<span>  conf.int <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  conf.level <span class="op">=</span> <span class="fl">0.95</span>,</span>
+<span>  exponentiate <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  effects <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -97,11 +128,37 @@ This behaves exactly as it does in
 rows have their estimate and bounds exponentiated and their <code>term</code> relabeled
 to <code>rr</code> and <code>or</code>, while every other row is left alone. The standard error,
 the test statistic, and the p-value describe the log scale estimate and stay
-there.</p></dd>
+there.</p>
+<p>The conditional reading has no rows labeled as ratios to pick out, so the
+link of the outcome model settles the question there: a <code>logit</code> link puts
+every coefficient on the log odds scale and a <code>log</code> link puts every
+coefficient on the log risk scale, and both are scales an exponential
+undoes. The estimate and, when they were asked for, the interval bounds are
+exponentiated, no term is relabeled, and the standard error, the test
+statistic, and the p-value describe the link scale and stay there. Every
+other link errors rather than exponentiating coefficients that are not on
+such a scale.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>These dots are for future extensions and must be empty.</p></dd>
+
+
+<dt id="arg-effects">effects<a class="anchor" aria-label="anchor" href="#arg-effects"></a></dt>
+<dd><p>The reading to report, either <code>"marginal"</code> or <code>"conditional"</code>.
+<code>NULL</code>, the default, reports the reading the result records; any other value
+overrides it for the one call and leaves the result as it is. The marginal
+reading reports the population-averaged causal contrasts; the conditional
+reading reports the outcome model's coefficient surface. <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_marginal()</a></code> and
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_conditional()</a></code> move a result between the two readings.</p>
+<p>The covariance the conditional reading reports is the outcome block of the
+jointly estimated sandwich, which every route that stacks estimating
+equations attaches to the outcome model it stores:
+<code>se_method = "mestimation"</code> for a binary exposure, and the categorical and
+continuous routes, which run on M-estimation alone. A linearization fit
+stacks no such system and records no such block, so its conditional reading
+errors rather than reporting the covariance the outcome model computed for
+itself, which treats the estimated weights as fixed.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -131,13 +188,22 @@ Categorical exposures only.</p></dd>
 <code>conf.int</code> is <code>TRUE</code>.</p></dd>
 
 
-</dl></div>
+</dl><p>The conditional reading returns those columns in that order, holding one row
+per coefficient of the outcome model: <code>term</code> is the coefficient's name,
+<code>estimate</code> is the coefficient, <code>std.error</code> is the square root of the diagonal
+of the corrected covariance, <code>statistic</code> is the estimate over that standard
+error, and <code>p.value</code> is the two-sided normal p-value of the statistic. There
+is no <code>comparison</code> column, because a coefficient is not a contrast of exposure
+levels, and the bounds are built at the level <code>conf.level</code> asks for, the
+stored ones belonging to the effects the marginal reading reports.</p>
+    </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> for the estimator, <code><a href="glance.ipw.html">glance()</a></code> for a one-row
 summary of the fit, <code><a href="augment.ipw.html">augment()</a></code> for its per-observation
-columns, and <code><a href="https://r-causal.github.io/causalgenerics/reference/new_ipw.html" class="external-link">as.data.frame()</a></code> for the
-result's own columns.</p></div>
+columns, <code><a href="https://r-causal.github.io/causalgenerics/reference/new_ipw.html" class="external-link">as.data.frame()</a></code> for the result's own
+columns, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_marginal()</a></code> and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_conditional()</a></code> for the reading a result
+records.</p></div>
     </div>
 
     <div class="section level2">
@@ -172,6 +238,15 @@ result's own columns.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> rd       0.142    0.070<span style="text-decoration: underline;">2</span>      2.03  0.042<span style="text-decoration: underline;">7</span>   0.026<span style="text-decoration: underline;">8</span>     0.258</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> rr       1.32     0.142       1.97  0.048<span style="text-decoration: underline;">7</span>   1.05       1.67 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> or       1.77     0.287       2.00  0.045<span style="text-decoration: underline;">5</span>   1.11       2.84 </span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># The outcome model's coefficients, with the standard errors the joint</span></span></span>
+<span class="r-in"><span><span class="co"># estimation of the weights and the outcome implies</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy</a></span><span class="op">(</span><span class="va">result</span>, conf.int <span class="op">=</span> <span class="cn">TRUE</span>, effects <span class="op">=</span> <span class="st">"conditional"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 2 × 7</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   term        estimate std.error statistic p.value conf.low conf.high</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>          <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>    <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> (Intercept)   -<span style="color: #BB0000;">0.242</span>     0.205     -<span style="color: #BB0000;">1.18</span>  0.239   -<span style="color: #BB0000;">0.645</span>      0.161</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> z              0.573     0.287      2.00  0.045<span style="text-decoration: underline;">5</span>   0.011<span style="text-decoration: underline;">5</span>     1.14 </span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

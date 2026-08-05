@@ -113,6 +113,7 @@ result <- ipw(ps_mod, outcome_mod)
 result
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
 #> 
 #> Weight Estimator:
 #>   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
@@ -120,7 +121,7 @@ result
 #> Outcome Model:
 #>   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) 
 #> 
-#> Estimates:
+#> Marginal estimates:
 #>         estimate std.err      z ci.lower ci.upper conf.level  p.value   
 #> rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **
 #> log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **
@@ -373,6 +374,7 @@ log odds ratio:
 result
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
 #> 
 #> Weight Estimator:
 #>   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
@@ -380,7 +382,7 @@ result
 #> Outcome Model:
 #>   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) 
 #> 
-#> Estimates:
+#> Marginal estimates:
 #>         estimate std.err      z ci.lower ci.upper conf.level  p.value   
 #> rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **
 #> log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **
@@ -401,8 +403,8 @@ as.data.frame(result)
 #> 3 log(or) 1.3288426 0.4617580 2.877790 0.4238136 2.2338717       0.95
 #>       p.value
 #> 1 0.002006669
-#> 2 0.005327738
-#> 3 0.004004714
+#> 2 0.005327737
+#> 3 0.004004715
 ```
 
 Use `exponentiate = TRUE` to get risk ratios and odds ratios on their
@@ -415,11 +417,11 @@ as.data.frame(result, exponentiate = TRUE)
 #>   effect  estimate   std.err        z  ci.lower  ci.upper conf.level
 #> 1     rd 0.3199973 0.1035844 3.089243 0.1169757 0.5230189       0.95
 #> 2     rr 1.9964559 0.2481136 2.786520 1.2276230 3.2467918       0.95
-#> 3     or 3.7766699 0.4617580 2.877790 1.5277768 9.3359421       0.95
+#> 3     or 3.7766699 0.4617580 2.877790 1.5277767 9.3359422       0.95
 #>       p.value
 #> 1 0.002006669
-#> 2 0.005327738
-#> 3 0.004004714
+#> 2 0.005327737
+#> 3 0.004004715
 ```
 
 ### Continuous outcomes
@@ -437,6 +439,7 @@ outcome_cont <- lm(y_cont ~ z, data = dat, weights = wts)
 ipw(ps_mod, outcome_cont)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
 #> 
 #> Weight Estimator:
 #>   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
@@ -444,7 +447,7 @@ ipw(ps_mod, outcome_cont)
 #> Outcome Model:
 #>   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) 
 #> 
-#> Estimates:
+#> Marginal estimates:
 #>      estimate std.err     z ci.lower ci.upper conf.level   p.value    
 #> diff  0.92737 0.20395 4.547  0.52763   1.3271       0.95 5.443e-06 ***
 #> ---

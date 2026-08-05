@@ -5,6 +5,8 @@ to see their documentation.
 
 - causalgenerics:
 
+  [`as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html),
+  [`as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html),
   [`estimand()`](https://r-causal.github.io/causalgenerics/reference/causal-weights.html),
   [`estimand<-()`](https://r-causal.github.io/causalgenerics/reference/causal-weights.html),
   [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html),

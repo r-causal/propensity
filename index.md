@@ -58,6 +58,7 @@ outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 ipw(ps_mod, outcome_mod)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
 #> 
 #> Weight Estimator:
 #>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) 
@@ -65,7 +66,7 @@ ipw(ps_mod, outcome_mod)
 #> Outcome Model:
 #>   Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) 
 #> 
-#> Estimates:
+#> Marginal estimates:
 #>         estimate  std.err      z  ci.lower ci.upper conf.level p.value  
 #> rd      0.142304 0.070204 2.0270 0.0047068  0.27990       0.95 0.04266 *
 #> log(rr) 0.280314 0.142195 1.9713 0.0016172  0.55901       0.95 0.04869 *

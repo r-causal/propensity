@@ -136,7 +136,8 @@ either propensity score model, such as a robust or an additive fit, errors.</p>
 <span>  ps_link <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  conf_level <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  se_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mestimation"</span>, <span class="st">"linearization"</span><span class="op">)</span>,</span>
-<span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  effects <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"marginal"</span>, <span class="st">"conditional"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'lm'</span></span>
@@ -148,7 +149,8 @@ either propensity score model, such as a robust or an additive fit, errors.</p>
 <span>  estimand <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  ps_link <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  conf_level <span class="op">=</span> <span class="fl">0.95</span>,</span>
-<span>  se_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mestimation"</span>, <span class="st">"linearization"</span><span class="op">)</span></span>
+<span>  se_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mestimation"</span>, <span class="st">"linearization"</span><span class="op">)</span>,</span>
+<span>  effects <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"marginal"</span>, <span class="st">"conditional"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'glm'</span></span>
@@ -160,7 +162,8 @@ either propensity score model, such as a robust or an additive fit, errors.</p>
 <span>  estimand <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  ps_link <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  conf_level <span class="op">=</span> <span class="fl">0.95</span>,</span>
-<span>  se_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mestimation"</span>, <span class="st">"linearization"</span><span class="op">)</span></span>
+<span>  se_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mestimation"</span>, <span class="st">"linearization"</span><span class="op">)</span>,</span>
+<span>  effects <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"marginal"</span>, <span class="st">"conditional"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -292,6 +295,27 @@ or <code>atu</code> estimand, the focal exposure level. If <code>NULL</code>, it
 the <code>focal_category</code> attribute of the weights in <code>outcome_mod</code>. An explicit
 value overrides the attribute.</p></dd>
 
+
+<dt id="arg-effects">effects<a class="anchor" aria-label="anchor" href="#arg-effects"></a></dt>
+<dd><p>The presentation mode the result records, either <code>"marginal"</code>
+(the default) or <code>"conditional"</code>. The marginal reading reports the
+population-averaged causal contrasts; the conditional reading reports the
+outcome model's coefficient surface. Both surfaces are computed whichever
+mode is named, so the argument settles which one the result presents and
+nothing else. <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">causalgenerics::as_marginal()</a></code> and
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">causalgenerics::as_conditional()</a></code> move a result between the two readings
+afterwards, and the accessors take an <code>effects</code> argument of their own for a
+single call.</p>
+<p>The covariance the conditional reading reports is the outcome block of the
+jointly estimated sandwich, which every route that stacks estimating
+equations attaches to the outcome model it stores:
+<code>se_method = "mestimation"</code> for a binary exposure, and the categorical and
+continuous routes, which run on M-estimation alone. A linearization fit
+stacks no such system and records no such block, so <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code> and
+<code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code> error on its conditional reading, and printing it writes
+the coefficients under a note saying the standard errors are not reported
+rather than beside the ones the outcome model computed for itself.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -321,7 +345,9 @@ the reported effects, <code><a href="https://rdrr.io/r/stats/vcov.html" class="e
 fit, and <code><a href="https://rdrr.io/r/stats/weights.html" class="external-link">stats::weights()</a></code> for the <code><a href="psw.html">psw()</a></code> vector the outcome model was
 fit with. Coefficients are named for the effect measure, and for the effect
 measure and the comparison together where a categorical exposure reports
-one row per comparison.</p>
+one row per comparison. Which surface <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">stats::coef()</a></code>, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code>, and
+<code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code> report follows the presentation mode the result records,
+described under <code>effects</code> above.</p>
 <p>Under <code>se_method = "mestimation"</code> the stored <code>wt_mod</code> and <code>outcome_mod</code> are
 the models supplied, carrying their block of the joint sandwich. Calling
 <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code> on either reports a covariance that accounts for the whole
@@ -550,6 +576,7 @@ weighting.</p></div>
 <span class="r-in"><span><span class="va">result</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Inverse Probability Weight Estimator</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Estimand: ATE </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Effects: marginal (population-averaged) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Weight Estimator:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) </span>
@@ -557,7 +584,7 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Outcome Model:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Estimates:</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         estimate  std.err      z  ci.lower ci.upper conf.level p.value  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> rd      0.142304 0.070204 2.0270 0.0047068  0.27990       0.95 0.04266 *</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 0.280314 0.142195 1.9713 0.0016172  0.55901       0.95 0.04869 *</span>
@@ -569,8 +596,8 @@ weighting.</p></div>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span>, exponentiate <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   effect  estimate    std.err        z    ci.lower  ci.upper conf.level</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1     rd 0.1423042 0.07020402 2.027009 0.004706801 0.2799015       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2     rr 1.3235458 0.14219501 1.971337 1.001618514 1.7489427       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3     or 1.7742759 0.28670966 1.999906 1.011517578 3.1122097       0.95</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2     rr 1.3235458 0.14219501 1.971337 1.001618515 1.7489427       0.95</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3     or 1.7742759 0.28670966 1.999906 1.011517580 3.1122097       0.95</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>      p.value</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1 0.04266153</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2 0.04868533</span>
@@ -583,6 +610,7 @@ weighting.</p></div>
 <span class="r-in"><span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_cont</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Inverse Probability Weight Estimator</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Estimand: ATE </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Effects: marginal (population-averaged) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Weight Estimator:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) </span>
@@ -590,7 +618,7 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Outcome Model:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Estimates:</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>      estimate std.err      z ci.lower ci.upper conf.level   p.value    </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> diff  0.90057 0.13661 6.5923  0.63282   1.1683       0.95 4.331e-11 ***</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ---</span>
@@ -613,6 +641,7 @@ weighting.</p></div>
 <span class="r-in"><span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_cont</span>, <span class="va">msm</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Inverse Probability Weight Estimator</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Estimand: ATE </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Effects: marginal (population-averaged) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Weight Estimator:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: lm(formula = a ~ x1, data = dat) </span>
@@ -620,7 +649,7 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Outcome Model:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: lm(formula = y_dose ~ a, data = dat, weights = wts_cont) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Estimates:</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>       estimate  std.err      z ci.lower ci.upper conf.level   p.value    </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> slope 0.371450 0.084413 4.4004    0.206   0.5369       0.95 1.081e-05 ***</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ---</span>
@@ -641,6 +670,7 @@ weighting.</p></div>
 <span class="r-in"><span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_cat</span>, <span class="va">outcome_cat</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Inverse Probability Weight Estimator</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Estimand: ATE </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Effects: marginal (population-averaged) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Weight Estimator:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: nnet::multinom(formula = a ~ x1, data = dat_cat, trace = FALSE) </span>
@@ -649,7 +679,7 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: glm(formula = y ~ a, family = quasibinomial(), data = dat_cat, </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     weights = wts_cat) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Estimates:</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                estimate  std.err      z ci.lower ci.upper conf.level  p.value</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> rd b vs a      0.170980 0.067926 2.5171 0.037847  0.30411       0.95 0.011831</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) b vs a 0.387821 0.160396 2.4179 0.073451  0.70219       0.95 0.015610</span>

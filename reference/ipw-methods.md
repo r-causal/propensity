@@ -58,7 +58,8 @@ ipw(
   ps_link = NULL,
   conf_level = 0.95,
   se_method = c("mestimation", "linearization"),
-  .focal_level = NULL
+  .focal_level = NULL,
+  effects = c("marginal", "conditional")
 )
 
 # S3 method for class 'lm'
@@ -70,7 +71,8 @@ ipw(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization")
+  se_method = c("mestimation", "linearization"),
+  effects = c("marginal", "conditional")
 )
 
 # S3 method for class 'glm'
@@ -82,7 +84,8 @@ ipw(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization")
+  se_method = c("mestimation", "linearization"),
+  effects = c("marginal", "conditional")
 )
 ```
 
@@ -234,6 +237,32 @@ ipw(
   `focal_category` attribute of the weights in `outcome_mod`. An
   explicit value overrides the attribute.
 
+- effects:
+
+  The presentation mode the result records, either `"marginal"` (the
+  default) or `"conditional"`. The marginal reading reports the
+  population-averaged causal contrasts; the conditional reading reports
+  the outcome model's coefficient surface. Both surfaces are computed
+  whichever mode is named, so the argument settles which one the result
+  presents and nothing else.
+  [`causalgenerics::as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+  and
+  [`causalgenerics::as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+  move a result between the two readings afterwards, and the accessors
+  take an `effects` argument of their own for a single call.
+
+  The covariance the conditional reading reports is the outcome block of
+  the jointly estimated sandwich, which every route that stacks
+  estimating equations attaches to the outcome model it stores:
+  `se_method = "mestimation"` for a binary exposure, and the categorical
+  and continuous routes, which run on M-estimation alone. A
+  linearization fit stacks no such system and records no such block, so
+  [`stats::vcov()`](https://rdrr.io/r/stats/vcov.html) and
+  [`stats::confint()`](https://rdrr.io/r/stats/confint.html) error on
+  its conditional reading, and printing it writes the coefficients under
+  a note saying the standard errors are not reported rather than beside
+  the ones the outcome model computed for itself.
+
 ## Value
 
 Methods of
@@ -278,7 +307,12 @@ the counts describing the fit, and
 [`psw()`](https://r-causal.github.io/propensity/reference/psw.md) vector
 the outcome model was fit with. Coefficients are named for the effect
 measure, and for the effect measure and the comparison together where a
-categorical exposure reports one row per comparison.
+categorical exposure reports one row per comparison. Which surface
+[`stats::coef()`](https://rdrr.io/r/stats/coef.html),
+[`stats::vcov()`](https://rdrr.io/r/stats/vcov.html), and
+[`stats::confint()`](https://rdrr.io/r/stats/confint.html) report
+follows the presentation mode the result records, described under
+`effects` above.
 
 Under `se_method = "mestimation"` the stored `wt_mod` and `outcome_mod`
 are the models supplied, carrying their block of the joint sandwich.
@@ -603,6 +637,7 @@ result <- ipw(ps_mod, outcome_mod)
 result
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
 #> 
 #> Weight Estimator:
 #>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) 
@@ -610,7 +645,7 @@ result
 #> Outcome Model:
 #>   Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) 
 #> 
-#> Estimates:
+#> Marginal estimates:
 #>         estimate  std.err      z  ci.lower ci.upper conf.level p.value  
 #> rd      0.142304 0.070204 2.0270 0.0047068  0.27990       0.95 0.04266 *
 #> log(rr) 0.280314 0.142195 1.9713 0.0016172  0.55901       0.95 0.04869 *
@@ -622,8 +657,8 @@ result
 as.data.frame(result, exponentiate = TRUE)
 #>   effect  estimate    std.err        z    ci.lower  ci.upper conf.level
 #> 1     rd 0.1423042 0.07020402 2.027009 0.004706801 0.2799015       0.95
-#> 2     rr 1.3235458 0.14219501 1.971337 1.001618514 1.7489427       0.95
-#> 3     or 1.7742759 0.28670966 1.999906 1.011517578 3.1122097       0.95
+#> 2     rr 1.3235458 0.14219501 1.971337 1.001618515 1.7489427       0.95
+#> 3     or 1.7742759 0.28670966 1.999906 1.011517580 3.1122097       0.95
 #>      p.value
 #> 1 0.04266153
 #> 2 0.04868533
@@ -636,6 +671,7 @@ outcome_cont <- lm(y_cont ~ z, data = dat, weights = wts)
 ipw(ps_mod, outcome_cont)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
 #> 
 #> Weight Estimator:
 #>   Call: glm(formula = z ~ x1, family = binomial(), data = dat) 
@@ -643,7 +679,7 @@ ipw(ps_mod, outcome_cont)
 #> Outcome Model:
 #>   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) 
 #> 
-#> Estimates:
+#> Marginal estimates:
 #>      estimate std.err      z ci.lower ci.upper conf.level   p.value    
 #> diff  0.90057 0.13661 6.5923  0.63282   1.1683       0.95 4.331e-11 ***
 #> ---
@@ -666,6 +702,7 @@ msm <- lm(y_dose ~ a, data = dat, weights = wts_cont)
 ipw(ps_cont, msm)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
 #> 
 #> Weight Estimator:
 #>   Call: lm(formula = a ~ x1, data = dat) 
@@ -673,7 +710,7 @@ ipw(ps_cont, msm)
 #> Outcome Model:
 #>   Call: lm(formula = y_dose ~ a, data = dat, weights = wts_cont) 
 #> 
-#> Estimates:
+#> Marginal estimates:
 #>       estimate  std.err      z ci.lower ci.upper conf.level   p.value    
 #> slope 0.371450 0.084413 4.4004    0.206   0.5369       0.95 1.081e-05 ***
 #> ---
@@ -694,6 +731,7 @@ outcome_cat <- glm(y ~ a, data = dat_cat, family = quasibinomial(), weights = wt
 ipw(ps_cat, outcome_cat)
 #> Inverse Probability Weight Estimator
 #> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
 #> 
 #> Weight Estimator:
 #>   Call: nnet::multinom(formula = a ~ x1, data = dat_cat, trace = FALSE) 
@@ -702,7 +740,7 @@ ipw(ps_cat, outcome_cat)
 #>   Call: glm(formula = y ~ a, family = quasibinomial(), data = dat_cat, 
 #>     weights = wts_cat) 
 #> 
-#> Estimates:
+#> Marginal estimates:
 #>                estimate  std.err      z ci.lower ci.upper conf.level  p.value
 #> rd b vs a      0.170980 0.067926 2.5171 0.037847  0.30411       0.95 0.011831
 #> log(rr) b vs a 0.387821 0.160396 2.4179 0.073451  0.70219       0.95 0.015610

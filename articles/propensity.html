@@ -150,6 +150,7 @@ method instead:</p>
 <span><span class="va">result</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
+<span><span class="co">#&gt; Effects: marginal (population-averaged) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Weight Estimator:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
@@ -157,7 +158,7 @@ method instead:</p>
 <span><span class="co">#&gt; Outcome Model:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Estimates:</span></span>
+<span><span class="co">#&gt; Marginal estimates:</span></span>
 <span><span class="co">#&gt;         estimate std.err      z ci.lower ci.upper conf.level  p.value   </span></span>
 <span><span class="co">#&gt; rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **</span></span>
 <span><span class="co">#&gt; log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **</span></span>
@@ -390,6 +391,7 @@ measures: the risk difference, log risk ratio, and log odds ratio:</p>
 <code class="sourceCode R"><span><span class="va">result</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
+<span><span class="co">#&gt; Effects: marginal (population-averaged) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Weight Estimator:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
@@ -397,7 +399,7 @@ measures: the risk difference, log risk ratio, and log odds ratio:</p>
 <span><span class="co">#&gt; Outcome Model:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Estimates:</span></span>
+<span><span class="co">#&gt; Marginal estimates:</span></span>
 <span><span class="co">#&gt;         estimate std.err      z ci.lower ci.upper conf.level  p.value   </span></span>
 <span><span class="co">#&gt; rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **</span></span>
 <span><span class="co">#&gt; log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **</span></span>
@@ -414,8 +416,8 @@ frame:</p>
 <span><span class="co">#&gt; 3 log(or) 1.3288426 0.4617580 2.877790 0.4238136 2.2338717       0.95</span></span>
 <span><span class="co">#&gt;       p.value</span></span>
 <span><span class="co">#&gt; 1 0.002006669</span></span>
-<span><span class="co">#&gt; 2 0.005327738</span></span>
-<span><span class="co">#&gt; 3 0.004004714</span></span></code></pre></div>
+<span><span class="co">#&gt; 2 0.005327737</span></span>
+<span><span class="co">#&gt; 3 0.004004715</span></span></code></pre></div>
 <p>Use <code>exponentiate = TRUE</code> to get risk ratios and odds
 ratios on their natural scale. The standard errors, z-statistics, and
 p-values stay on the log scale:</p>
@@ -424,11 +426,11 @@ p-values stay on the log scale:</p>
 <span><span class="co">#&gt;   effect  estimate   std.err        z  ci.lower  ci.upper conf.level</span></span>
 <span><span class="co">#&gt; 1     rd 0.3199973 0.1035844 3.089243 0.1169757 0.5230189       0.95</span></span>
 <span><span class="co">#&gt; 2     rr 1.9964559 0.2481136 2.786520 1.2276230 3.2467918       0.95</span></span>
-<span><span class="co">#&gt; 3     or 3.7766699 0.4617580 2.877790 1.5277768 9.3359421       0.95</span></span>
+<span><span class="co">#&gt; 3     or 3.7766699 0.4617580 2.877790 1.5277767 9.3359422       0.95</span></span>
 <span><span class="co">#&gt;       p.value</span></span>
 <span><span class="co">#&gt; 1 0.002006669</span></span>
-<span><span class="co">#&gt; 2 0.005327738</span></span>
-<span><span class="co">#&gt; 3 0.004004714</span></span></code></pre></div>
+<span><span class="co">#&gt; 2 0.005327737</span></span>
+<span><span class="co">#&gt; 3 0.004004715</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="continuous-outcomes">Continuous outcomes<a class="anchor" aria-label="anchor" href="#continuous-outcomes"></a>
@@ -442,6 +444,7 @@ difference. Use <code><a href="https://rdrr.io/r/stats/lm.html" class="external-
 <span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_cont</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
 <span><span class="co">#&gt; Estimand: ATE </span></span>
+<span><span class="co">#&gt; Effects: marginal (population-averaged) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Weight Estimator:</span></span>
 <span><span class="co">#&gt;   Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) </span></span>
@@ -449,7 +452,7 @@ difference. Use <code><a href="https://rdrr.io/r/stats/lm.html" class="external-
 <span><span class="co">#&gt; Outcome Model:</span></span>
 <span><span class="co">#&gt;   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Estimates:</span></span>
+<span><span class="co">#&gt; Marginal estimates:</span></span>
 <span><span class="co">#&gt;      estimate std.err     z ci.lower ci.upper conf.level   p.value    </span></span>
 <span><span class="co">#&gt; diff  0.92737 0.20395 4.547  0.52763   1.3271       0.95 5.443e-06 ***</span></span>
 <span><span class="co">#&gt; ---</span></span>

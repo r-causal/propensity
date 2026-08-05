@@ -15,11 +15,28 @@ confidence interval, which is rebuilt from the estimate and its standard
 error when the requested `conf.level` differs from the level the result
 was fit at.
 
+A result reports its effects in one of two readings, and
+[`tidy()`](https://generics.r-lib.org/reference/tidy.html) returns the
+one the result records unless `effects` names the other for the call.
+The marginal reading is the table of causal contrasts described above.
+The conditional reading is the outcome model's coefficient surface: one
+row per coefficient, with the standard errors of the block of the joint
+estimation that carries the uncertainty of having estimated the weights
+from the same data. Both readings return the same columns in the same
+order, so their rows stack.
+
 ## Usage
 
 ``` r
 # S3 method for class 'ipw'
-tidy(x, conf.int = FALSE, conf.level = 0.95, exponentiate = FALSE, ...)
+tidy(
+  x,
+  conf.int = FALSE,
+  conf.level = 0.95,
+  exponentiate = FALSE,
+  ...,
+  effects = NULL
+)
 ```
 
 ## Arguments
@@ -56,9 +73,41 @@ tidy(x, conf.int = FALSE, conf.level = 0.95, exponentiate = FALSE, ...)
   other row is left alone. The standard error, the test statistic, and
   the p-value describe the log scale estimate and stay there.
 
+  The conditional reading has no rows labeled as ratios to pick out, so
+  the link of the outcome model settles the question there: a `logit`
+  link puts every coefficient on the log odds scale and a `log` link
+  puts every coefficient on the log risk scale, and both are scales an
+  exponential undoes. The estimate and, when they were asked for, the
+  interval bounds are exponentiated, no term is relabeled, and the
+  standard error, the test statistic, and the p-value describe the link
+  scale and stay there. Every other link errors rather than
+  exponentiating coefficients that are not on such a scale.
+
 - ...:
 
   These dots are for future extensions and must be empty.
+
+- effects:
+
+  The reading to report, either `"marginal"` or `"conditional"`. `NULL`,
+  the default, reports the reading the result records; any other value
+  overrides it for the one call and leaves the result as it is. The
+  marginal reading reports the population-averaged causal contrasts; the
+  conditional reading reports the outcome model's coefficient surface.
+  [`as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+  and
+  [`as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+  move a result between the two readings.
+
+  The covariance the conditional reading reports is the outcome block of
+  the jointly estimated sandwich, which every route that stacks
+  estimating equations attaches to the outcome model it stores:
+  `se_method = "mestimation"` for a binary exposure, and the categorical
+  and continuous routes, which run on M-estimation alone. A
+  linearization fit stacks no such system and records no such block, so
+  its conditional reading errors rather than reporting the covariance
+  the outcome model computed for itself, which treats the estimated
+  weights as fixed.
 
 ## Value
 
@@ -95,6 +144,16 @@ row per estimate and the columns:
 
   The interval bounds. Present only when `conf.int` is `TRUE`.
 
+The conditional reading returns those columns in that order, holding one
+row per coefficient of the outcome model: `term` is the coefficient's
+name, `estimate` is the coefficient, `std.error` is the square root of
+the diagonal of the corrected covariance, `statistic` is the estimate
+over that standard error, and `p.value` is the two-sided normal p-value
+of the statistic. There is no `comparison` column, because a coefficient
+is not a contrast of exposure levels, and the bounds are built at the
+level `conf.level` asks for, the stored ones belonging to the effects
+the marginal reading reports.
+
 ## See also
 
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
@@ -102,9 +161,13 @@ for the estimator,
 [`glance()`](https://r-causal.github.io/propensity/reference/glance.ipw.md)
 for a one-row summary of the fit,
 [`augment()`](https://r-causal.github.io/propensity/reference/augment.ipw.md)
-for its per-observation columns, and
+for its per-observation columns,
 [`as.data.frame()`](https://r-causal.github.io/causalgenerics/reference/new_ipw.html)
-for the result's own columns.
+for the result's own columns, and
+[`as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+and
+[`as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+for the reading a result records.
 
 ## Examples
 
@@ -139,4 +202,13 @@ tidy(result, conf.int = TRUE, conf.level = 0.9, exponentiate = TRUE)
 #> 1 rd       0.142    0.0702      2.03  0.0427   0.0268     0.258
 #> 2 rr       1.32     0.142       1.97  0.0487   1.05       1.67 
 #> 3 or       1.77     0.287       2.00  0.0455   1.11       2.84 
+
+# The outcome model's coefficients, with the standard errors the joint
+# estimation of the weights and the outcome implies
+tidy(result, conf.int = TRUE, effects = "conditional")
+#> # A tibble: 2 × 7
+#>   term        estimate std.error statistic p.value conf.low conf.high
+#>   <chr>          <dbl>     <dbl>     <dbl>   <dbl>    <dbl>     <dbl>
+#> 1 (Intercept)   -0.242     0.205     -1.18  0.239   -0.645      0.161
+#> 2 z              0.573     0.287      2.00  0.0455   0.0115     1.14 
 ```
