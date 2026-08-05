@@ -23,10 +23,12 @@ ipw.multinom <- function(
   ps_link = NULL,
   conf_level = 0.95,
   se_method = c("mestimation", "linearization"),
-  .focal_level = NULL
+  .focal_level = NULL,
+  effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   se_method <- rlang::arg_match(se_method)
+  effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
 
   # ps_link overrides the link of a binomial glm propensity model on the binary
@@ -68,7 +70,8 @@ ipw.multinom <- function(
     outcome_mod = components$outcome_mod,
     estimates = fit$estimates,
     se_method = "mestimation",
-    fit = fit$fit
+    fit = fit$fit,
+    effects = effects
   )
 }
 
@@ -94,10 +97,12 @@ ipw.lm <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization")
+  se_method = c("mestimation", "linearization"),
+  effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   se_method <- rlang::arg_match(se_method)
+  effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
 
   ipw_continuous_estimate(
@@ -107,6 +112,7 @@ ipw.lm <- function(
     estimand = estimand,
     ps_link = ps_link,
     conf_level = conf_level,
-    se_method = se_method
+    se_method = se_method,
+    effects = effects
   )
 }

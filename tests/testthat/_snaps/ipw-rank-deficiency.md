@@ -36,6 +36,7 @@
     Output
       Inverse Probability Weight Estimator
       Estimand: ATE 
+      Effects: marginal (population-averaged) 
       
       Weight Estimator:
         Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
@@ -44,7 +45,7 @@
         Call: glm(formula = y0 ~ z + x1, family = quasibinomial(), data = dat, 
           weights = wts) 
       
-      Estimates:
+      Marginal estimates:
                 estimate    std.err          z ci.lower ci.upper conf.level   p.value
       rd      6.5625e-01 <degenerate> <degenerate>  0.65625  0.65625       0.95 < 2.2e-16
       log(rr) 1.9344e+01 <degenerate> <degenerate> 19.34407 19.34407       0.95 < 2.2e-16
@@ -102,6 +103,7 @@
     Output
       Inverse Probability Weight Estimator
       Estimand: ATE 
+      Effects: marginal (population-averaged) 
       
       Weight Estimator:
         Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
@@ -109,7 +111,7 @@
       Outcome Model:
         Call: lm(formula = yconst ~ z, data = dat, weights = wts) 
       
-      Estimates:
+      Marginal estimates:
              estimate    std.err          z ci.lower ci.upper conf.level   p.value
       diff 1.0000e+00 <degenerate> <degenerate>        1        1       0.95 < 2.2e-16
               

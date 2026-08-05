@@ -5,6 +5,7 @@
     Output
       Inverse Probability Weight Estimator
       Estimand: ATE 
+      Effects: marginal (population-averaged) 
       
       Weight Estimator:
         Call: nnet::multinom(formula = a ~ x1 + x2, data = dat, trace = FALSE, 
@@ -14,7 +15,7 @@
         Call: glm(formula = fmla, family = quasibinomial(), data = dat, weights = wts, 
           control = glm.control(epsilon = 1e-14, maxit = 200)) 
       
-      Estimates:
+      Marginal estimates:
                      estimate std.err    z ci.lower ci.upper conf.level p.value    
       rd b vs a        0.0819  0.0504 1.63  -0.0168    0.181       0.95 0.10388    
       log(rr) b vs a   0.1689  0.1046 1.61  -0.0362    0.374       0.95 0.10654    

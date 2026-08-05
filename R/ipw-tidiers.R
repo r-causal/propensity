@@ -12,6 +12,15 @@
 #' error when the requested `conf.level` differs from the level the result was
 #' fit at.
 #'
+#' A result reports its effects in one of two readings, and `tidy()` returns the
+#' one the result records unless `effects` names the other for the call. The
+#' marginal reading is the table of causal contrasts described above. The
+#' conditional reading is the outcome model's coefficient surface: one row per
+#' coefficient, with the standard errors of the block of the joint estimation
+#' that carries the uncertainty of having estimated the weights from the same
+#' data. Both readings return the same columns in the same order, so their rows
+#' stack.
+#'
 #' @param x An `ipw` object, as returned by [ipw()].
 #' @param conf.int Logical. Should the confidence interval bounds be returned in
 #'   the `conf.low` and `conf.high` columns? Defaults to `FALSE`.
@@ -29,7 +38,32 @@
 #'   to `rr` and `or`, while every other row is left alone. The standard error,
 #'   the test statistic, and the p-value describe the log scale estimate and stay
 #'   there.
+#'
+#'   The conditional reading has no rows labeled as ratios to pick out, so the
+#'   link of the outcome model settles the question there: a `logit` link puts
+#'   every coefficient on the log odds scale and a `log` link puts every
+#'   coefficient on the log risk scale, and both are scales an exponential
+#'   undoes. The estimate and, when they were asked for, the interval bounds are
+#'   exponentiated, no term is relabeled, and the standard error, the test
+#'   statistic, and the p-value describe the link scale and stay there. Every
+#'   other link errors rather than exponentiating coefficients that are not on
+#'   such a scale.
 #' @param ... These dots are for future extensions and must be empty.
+#' @param effects The reading to report, either `"marginal"` or `"conditional"`.
+#'   `NULL`, the default, reports the reading the result records; any other value
+#'   overrides it for the one call and leaves the result as it is. The marginal
+#'   reading reports the population-averaged causal contrasts; the conditional
+#'   reading reports the outcome model's coefficient surface. [as_marginal()] and
+#'   [as_conditional()] move a result between the two readings.
+#'
+#'   The covariance the conditional reading reports is the outcome block of the
+#'   jointly estimated sandwich, which every route that stacks estimating
+#'   equations attaches to the outcome model it stores:
+#'   `se_method = "mestimation"` for a binary exposure, and the categorical and
+#'   continuous routes, which run on M-estimation alone. A linearization fit
+#'   stacks no such system and records no such block, so its conditional reading
+#'   errors rather than reporting the covariance the outcome model computed for
+#'   itself, which treats the estimated weights as fixed.
 #'
 #' @return A [tibble][tibble::tibble] with one row per estimate and the columns:
 #' \describe{
@@ -44,6 +78,15 @@
 #'   \item{`conf.low`, `conf.high`}{The interval bounds. Present only when
 #'     `conf.int` is `TRUE`.}
 #' }
+#'
+#' The conditional reading returns those columns in that order, holding one row
+#' per coefficient of the outcome model: `term` is the coefficient's name,
+#' `estimate` is the coefficient, `std.error` is the square root of the diagonal
+#' of the corrected covariance, `statistic` is the estimate over that standard
+#' error, and `p.value` is the two-sided normal p-value of the statistic. There
+#' is no `comparison` column, because a coefficient is not a contrast of exposure
+#' levels, and the bounds are built at the level `conf.level` asks for, the
+#' stored ones belonging to the effects the marginal reading reports.
 #'
 #' @examples
 #' set.seed(123)
@@ -63,10 +106,15 @@
 #' # A 90% interval, with the ratio measures on their natural scale
 #' tidy(result, conf.int = TRUE, conf.level = 0.9, exponentiate = TRUE)
 #'
+#' # The outcome model's coefficients, with the standard errors the joint
+#' # estimation of the weights and the outcome implies
+#' tidy(result, conf.int = TRUE, effects = "conditional")
+#'
 #' @seealso [ipw()] for the estimator, [`glance()`][glance.ipw()] for a one-row
 #'   summary of the fit, [`augment()`][augment.ipw()] for its per-observation
-#'   columns, and [`as.data.frame()`][causalgenerics::new_ipw()] for the
-#'   result's own columns.
+#'   columns, [`as.data.frame()`][causalgenerics::new_ipw()] for the result's own
+#'   columns, and [as_marginal()] and [as_conditional()] for the reading a result
+#'   records.
 #'
 #' @exportS3Method generics::tidy ipw
 tidy.ipw <- function(
@@ -74,11 +122,50 @@ tidy.ipw <- function(
   conf.int = FALSE,
   conf.level = 0.95,
   exponentiate = FALSE,
-  ...
+  ...,
+  effects = NULL
 ) {
   rlang::check_dots_empty()
   check_conf_level(conf.level)
 
+  # The accessors own the `effects` argument, so the estimates of the reading
+  # this call reports come from one before anything here branches on a reading.
+  # That call resolves a `NULL` against the reading the result records and
+  # refuses a value naming neither, on every route a result can have been built
+  # by; validating the value here as well would leave two validators to keep in
+  # step.
+  estimate <- stats::coef(x, effects = effects)
+
+  # The value has been through that check by the time this reads it, so this
+  # settles which reading was asked for rather than checking it a second time.
+  reading <- if (is.null(effects)) ipw_stored_effects(x) else effects
+  if (reading == "conditional") {
+    return(tidy_ipw_conditional(
+      x,
+      estimate = estimate,
+      conf.int = conf.int,
+      conf.level = conf.level,
+      exponentiate = exponentiate
+    ))
+  }
+
+  tidy_ipw_marginal(
+    x,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate
+  )
+}
+
+# The reading a result records. A result built before the field existed carries
+# none, and marginal is the reading every method produced then.
+ipw_stored_effects <- function(x) {
+  if (is.null(x$effects)) "marginal" else x$effects
+}
+
+# The marginal reading: the result's own table of causal contrasts, renamed and
+# selected into the broom columns.
+tidy_ipw_marginal <- function(x, conf.int, conf.level, exponentiate) {
   if (conf.int) {
     x$estimates <- recompute_ipw_interval(x$estimates, conf.level)
   }
@@ -107,6 +194,100 @@ tidy.ipw <- function(
   }
 
   tibble::as_tibble(out)
+}
+
+# The conditional reading: the outcome model's coefficient surface, in the
+# columns the marginal reading uses so that the two tables stack. The estimates
+# arrive from the accessor that resolved the reading, and the rest of the row is
+# read through the accessors beside it, which is what keeps this table and the
+# printed reading of the same result the same numbers.
+tidy_ipw_conditional <- function(
+  x,
+  estimate,
+  conf.int,
+  conf.level,
+  exponentiate,
+  call = rlang::caller_env()
+) {
+  # A row is its estimate and its inference together, so the corrected
+  # covariance is read whether or not bounds were asked for. A result that
+  # stacked no estimating equations records none, and the error the accessor
+  # raises for that is the answer here rather than the covariance the outcome
+  # model computed for itself, which treats the estimated weights as fixed.
+  covariance <- stats::vcov(x, effects = "conditional")
+
+  # A column of a tibble is addressed by its position, so the names the
+  # accessors label their vectors with belong to `term` and to nothing else.
+  std_error <- unname(sqrt(diag(covariance)))
+  statistic <- unname(estimate) / std_error
+
+  out <- list(
+    term = names(estimate),
+    estimate = unname(estimate),
+    std.error = std_error,
+    statistic = statistic,
+    # The form causalgenerics prints this reading with, which keeps its
+    # significant digits in the far tail where `2 * (1 - pnorm(abs(z)))` loses
+    # them.
+    p.value = 2 * stats::pnorm(-abs(statistic))
+  )
+
+  if (conf.int) {
+    # The bounds the result stores describe the effects of the other reading, so
+    # there are none to prefer here and the accessor builds them at whatever
+    # level the call asked for.
+    limits <- stats::confint(x, level = conf.level, effects = "conditional")
+    out$conf.low <- unname(limits[, 1L])
+    out$conf.high <- unname(limits[, 2L])
+  }
+
+  if (exponentiate) {
+    check_exponentiate_link(x$outcome_mod, call = call)
+
+    # Broom's convention, which every method taking the argument follows: the
+    # estimate and, when they were asked for, the bounds move to the natural
+    # scale, and the columns describing the link scale estimate stay there.
+    out$estimate <- exp(out$estimate)
+    if (conf.int) {
+      out$conf.low <- exp(out$conf.low)
+      out$conf.high <- exp(out$conf.high)
+    }
+  }
+
+  tibble::as_tibble(out)
+}
+
+# The conditional reading has no rows labeled as ratios to pick out, so the link
+# of the outcome model settles whether there is anything for an exponential to
+# undo: a logit link puts every coefficient on the log odds scale and a log link
+# puts every coefficient on the log risk scale, and a coefficient on any other
+# scale exponentiates to a number describing nothing.
+check_exponentiate_link <- function(outcome_mod, call = rlang::caller_env()) {
+  # An lm is a gaussian identity model, which is how the outcome family check
+  # reads one too.
+  link <- if (inherits(outcome_mod, "glm")) {
+    outcome_mod$family$link
+  } else {
+    "identity"
+  }
+  exponentiable <- c("logit", "log")
+
+  if (!link %in% exponentiable) {
+    abort(
+      c(
+        "{.arg exponentiate} needs coefficients on a scale an exponential \\
+        undoes.",
+        x = "The outcome model was fit with the {.val {link}} link, whose \\
+        coefficients are not on such a scale.",
+        i = "Only {.val {exponentiable}} links exponentiate in the conditional \\
+        reading."
+      ),
+      error_class = "propensity_exponentiate_error",
+      call = call
+    )
+  }
+
+  invisible(link)
 }
 
 # The estimates table with its interval expressed at `conf_level`. The stored

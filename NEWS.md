@@ -1,5 +1,46 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` gains an `effects` argument on every method, which records the reading
+  the result it builds presents: `"marginal"`, the default, for the
+  population-averaged causal contrasts every method reported before, or
+  `"conditional"` for the outcome model's coefficient surface. Both surfaces are
+  computed whichever value is named, so the argument settles which one the result
+  presents and nothing else. `as_marginal()` and `as_conditional()`, which move a
+  result between the two readings afterwards, are re-exported here, so a result
+  can be flipped without loading causalgenerics. A printed result names its
+  reading beside the estimand and again over the table it decides.
+
+* In the conditional reading, `coef()` reports the outcome model's coefficients,
+  and `vcov()` and `confint()` report them against the block of the joint
+  sandwich that every route stacking estimating equations attaches to the outcome
+  model: `se_method = "mestimation"` for a binary exposure, and the categorical
+  and continuous routes. These are the coefficients of the weighted outcome model
+  with the uncertainty of estimating the weights carried into them, rather than
+  the ones the model's own fitting routine reports. A linearization fit stacks no
+  such system and so has no such block: its conditional reading errors from
+  `vcov()` and `confint()`, and prints the coefficients under a note saying the
+  standard errors are not reported.
+
+* `tidy()` gains an `effects` argument, which reads a result in the reading it
+  names rather than in the one the result records: `"conditional"` returns the
+  outcome model's coefficient surface, one row per coefficient, in the columns
+  and the order the marginal table of causal contrasts uses, so rows of the two
+  stack. Its standard errors are the block of the joint sandwich the accessors
+  report, which keeps the tidied table and the printed one the same numbers, and
+  a linearization fit stacks no such system and so errors rather than reporting
+  the covariance the outcome model computed for itself. `NULL`, the default,
+  follows the reading the result records. `glance()` and `augment()` describe the
+  fit and its observations rather than its estimates and report the same thing in
+  either reading.
+
+* In the conditional reading, `exponentiate` follows the link of the outcome
+  model rather than the labels of the rows, a coefficient table having none to
+  pick out: a `logit` or a `log` link puts every coefficient on a scale an
+  exponential undoes, and the estimate and, when they were asked for, the
+  interval bounds move to the natural scale while the standard error, the
+  statistic, and the p-value stay describing the link scale. Every other link
+  errors rather than exponentiating coefficients that are not on such a scale.
+
 * An `ipw()` result now answers the standard model accessors: `coef()` and
   `confint()` for the reported effects, `vcov()` for their covariance, `nobs()`
   and `df.residual()` for the counts describing the fit, and `weights()` for the

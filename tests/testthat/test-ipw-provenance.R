@@ -11,14 +11,18 @@
 
 # The namespace whose S3 methods table records registrations for each generic.
 # `print` and `as.data.frame` are both in `.knownS3Generics`, so a method for
-# either registers into base's table whichever package declares it; `ipw` is
-# causalgenerics' own generic and `tidy` is the generics package's, so a method
-# for either registers into the table of the package that defines it, again
-# whichever package declares the method. The six accessors all reach stats'
-# table by one route or the other: `coef`, `vcov`, `confint`, and `df.residual`
-# are named in `.knownS3Generics` as stats', and `nobs` and `weights` are not
-# named there but resolve to closures of stats' namespace, which is the same
-# table. Reading these tables reports which package owns a method independently
+# either registers into base's table whichever package declares it; `ipw`,
+# `as_marginal`, and `as_conditional` are causalgenerics' own generics and
+# `tidy` is the generics package's, so a method for any of them registers into
+# the table of the package that defines it, again whichever package declares the
+# method. The six accessors all reach stats' table by one route or the other:
+# `coef`, `vcov`, `confint`, and `df.residual` are named in `.knownS3Generics`
+# as stats', and `nobs` and `weights` are not named there but resolve to
+# closures of stats' namespace, which is the same table. The two mode generics
+# reach no stats table at all, because stats defines nothing of either name;
+# looking for them there would report every result class as having no method
+# rather than reporting who owns one.
+# Reading these tables reports which package owns a method independently
 # of what is on the search path. It does not, on its own, prove a method is
 # gone: `UseMethod()` searches the environment the generic was called from as
 # well as the registration table, so a method left in
@@ -30,6 +34,8 @@ ipw_generic_namespaces <- c(
   print = "base",
   as.data.frame = "base",
   ipw = "causalgenerics",
+  as_marginal = "causalgenerics",
+  as_conditional = "causalgenerics",
   tidy = "generics",
   glance = "generics",
   augment = "generics",
@@ -156,6 +162,13 @@ ipw_result_methods <- c(print = "ipw", as.data.frame = "ipw")
 # competing with the shared one. `vcov.ipw_model` belongs to the component model
 # subclass the M-estimation path wraps its models in, and is upstream for the
 # same reason.
+#
+# `as_marginal()` and `as_conditional()` move a result between the two readings
+# the accessors report, and are upstream for the same reason again: two packages
+# each registering `as_conditional.ipw()` would collide in the shared method
+# table, and a caller would then get whichever was installed last rather than
+# the contract. propensity records the reading a result is built in through the
+# `effects` field rather than through a method of its own.
 ipw_accessor_methods <- c(
   coef = "ipw",
   vcov = "ipw",
@@ -163,7 +176,9 @@ ipw_accessor_methods <- c(
   nobs = "ipw",
   df.residual = "ipw",
   weights = "ipw",
-  vcov = "ipw_model"
+  vcov = "ipw_model",
+  as_marginal = "ipw",
+  as_conditional = "ipw"
 )
 
 # Methods of the shared result class that propensity owns rather than inherits.
@@ -403,41 +418,45 @@ test_that("an ipw result prints its labelled sections and model calls", {
   expect_identical(class(res), "ipw")
 
   out <- capture.output(print(res))
-  expect_length(out, 16L)
+  expect_length(out, 17L)
 
   expect_identical(out[[1]], "Inverse Probability Weight Estimator")
   expect_identical(out[[2]], "Estimand: ATE ")
-  expect_identical(out[[3]], "")
-  expect_identical(out[[4]], "Weight Estimator:")
+
+  # The reading the result presents is a fact about the result, so it is named
+  # beside the estimand as well as over the table it decides.
+  expect_identical(out[[3]], "Effects: marginal (population-averaged) ")
+  expect_identical(out[[4]], "")
+  expect_identical(out[[5]], "Weight Estimator:")
   expect_identical(
-    out[[5]],
+    out[[6]],
     paste0(
       "  Call: ",
       paste(deparse(stats::getCall(res$wt_mod)), collapse = "\n"),
       " "
     )
   )
-  expect_identical(out[[6]], "")
-  expect_identical(out[[7]], "Outcome Model:")
+  expect_identical(out[[7]], "")
+  expect_identical(out[[8]], "Outcome Model:")
   expect_identical(
-    out[[8]],
+    out[[9]],
     paste0(
       "  Call: ",
       paste(deparse(stats::getCall(res$outcome_mod)), collapse = "\n"),
       " "
     )
   )
-  expect_identical(out[[9]], "")
-  expect_identical(out[[10]], "Estimates:")
+  expect_identical(out[[10]], "")
+  expect_identical(out[[11]], "Marginal estimates:")
 
   # The printed call is the model's own, not a class label.
-  expect_true(grepl("glm(formula = z ~ x1", out[[5]], fixed = TRUE))
-  expect_true(grepl("glm(formula = y ~ z", out[[8]], fixed = TRUE))
+  expect_true(grepl("glm(formula = z ~ x1", out[[6]], fixed = TRUE))
+  expect_true(grepl("glm(formula = y ~ z", out[[9]], fixed = TRUE))
 
   # `printCoefmat()` formats the seven numeric columns and takes the effect
   # names as row labels.
   expect_identical(
-    strsplit(trimws(out[[11]]), " +")[[1]],
+    strsplit(trimws(out[[12]]), " +")[[1]],
     c(
       "estimate",
       "std.err",
@@ -448,10 +467,10 @@ test_that("an ipw result prints its labelled sections and model calls", {
       "p.value"
     )
   )
-  expect_identical(sub(" .*$", "", out[seq(12, 14)]), res$estimates$effect)
+  expect_identical(sub(" .*$", "", out[seq(13, 15)]), res$estimates$effect)
 
-  expect_identical(out[[15]], "---")
-  expect_true(startsWith(out[[16]], "Signif. codes:"))
+  expect_identical(out[[16]], "---")
+  expect_true(startsWith(out[[17]], "Signif. codes:"))
 })
 
 test_that("an ipw result prints a weighting object with no call as a class label", {
@@ -461,14 +480,14 @@ test_that("an ipw result prints a weighting object with no call as a class label
   # print() works for any weighting object.
   res$wt_mod <- structure(list(), class = c("weighting_object", "list"))
   expect_identical(
-    capture.output(print(res))[[5]],
+    capture.output(print(res))[[6]],
     "  Call: <weighting_object/list> "
   )
 
   # An object that cannot be subset at all reaches the same fallback, by way of
   # the guard around `stats::getCall()` rather than a `NULL` return.
   res$wt_mod <- 1
-  expect_identical(capture.output(print(res))[[5]], "  Call: <numeric> ")
+  expect_identical(capture.output(print(res))[[6]], "  Call: <numeric> ")
 })
 
 test_that("printing an ipw result returns it invisibly", {

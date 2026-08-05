@@ -4,7 +4,14 @@
 \alias{tidy.ipw}
 \title{Tidy an inverse probability weighted result}
 \usage{
-\method{tidy}{ipw}(x, conf.int = FALSE, conf.level = 0.95, exponentiate = FALSE, ...)
+\method{tidy}{ipw}(
+  x,
+  conf.int = FALSE,
+  conf.level = 0.95,
+  exponentiate = FALSE,
+  ...,
+  effects = NULL
+)
 }
 \arguments{
 \item{x}{An \code{ipw} object, as returned by \code{\link[=ipw]{ipw()}}.}
@@ -26,9 +33,35 @@ This behaves exactly as it does in
 rows have their estimate and bounds exponentiated and their \code{term} relabeled
 to \code{rr} and \code{or}, while every other row is left alone. The standard error,
 the test statistic, and the p-value describe the log scale estimate and stay
-there.}
+there.
+
+The conditional reading has no rows labeled as ratios to pick out, so the
+link of the outcome model settles the question there: a \code{logit} link puts
+every coefficient on the log odds scale and a \code{log} link puts every
+coefficient on the log risk scale, and both are scales an exponential
+undoes. The estimate and, when they were asked for, the interval bounds are
+exponentiated, no term is relabeled, and the standard error, the test
+statistic, and the p-value describe the link scale and stay there. Every
+other link errors rather than exponentiating coefficients that are not on
+such a scale.}
 
 \item{...}{These dots are for future extensions and must be empty.}
+
+\item{effects}{The reading to report, either \code{"marginal"} or \code{"conditional"}.
+\code{NULL}, the default, reports the reading the result records; any other value
+overrides it for the one call and leaves the result as it is. The marginal
+reading reports the population-averaged causal contrasts; the conditional
+reading reports the outcome model's coefficient surface. \code{\link[=as_marginal]{as_marginal()}} and
+\code{\link[=as_conditional]{as_conditional()}} move a result between the two readings.
+
+The covariance the conditional reading reports is the outcome block of the
+jointly estimated sandwich, which every route that stacks estimating
+equations attaches to the outcome model it stores:
+\code{se_method = "mestimation"} for a binary exposure, and the categorical and
+continuous routes, which run on M-estimation alone. A linearization fit
+stacks no such system and records no such block, so its conditional reading
+errors rather than reporting the covariance the outcome model computed for
+itself, which treats the estimated weights as fixed.}
 }
 \value{
 A \link[tibble:tibble]{tibble} with one row per estimate and the columns:
@@ -44,6 +77,15 @@ Categorical exposures only.}
 \item{\code{conf.low}, \code{conf.high}}{The interval bounds. Present only when
 \code{conf.int} is \code{TRUE}.}
 }
+
+The conditional reading returns those columns in that order, holding one row
+per coefficient of the outcome model: \code{term} is the coefficient's name,
+\code{estimate} is the coefficient, \code{std.error} is the square root of the diagonal
+of the corrected covariance, \code{statistic} is the estimate over that standard
+error, and \code{p.value} is the two-sided normal p-value of the statistic. There
+is no \code{comparison} column, because a coefficient is not a contrast of exposure
+levels, and the bounds are built at the level \code{conf.level} asks for, the
+stored ones belonging to the effects the marginal reading reports.
 }
 \description{
 \code{tidy()} returns the estimates of an \code{\link[=ipw]{ipw()}} result as a tibble using the
@@ -56,6 +98,15 @@ selects rather than re-estimating anything. The one exception is the
 confidence interval, which is rebuilt from the estimate and its standard
 error when the requested \code{conf.level} differs from the level the result was
 fit at.
+
+A result reports its effects in one of two readings, and \code{tidy()} returns the
+one the result records unless \code{effects} names the other for the call. The
+marginal reading is the table of causal contrasts described above. The
+conditional reading is the outcome model's coefficient surface: one row per
+coefficient, with the standard errors of the block of the joint estimation
+that carries the uncertainty of having estimated the weights from the same
+data. Both readings return the same columns in the same order, so their rows
+stack.
 }
 \examples{
 set.seed(123)
@@ -75,10 +126,15 @@ tidy(result)
 # A 90\% interval, with the ratio measures on their natural scale
 tidy(result, conf.int = TRUE, conf.level = 0.9, exponentiate = TRUE)
 
+# The outcome model's coefficients, with the standard errors the joint
+# estimation of the weights and the outcome implies
+tidy(result, conf.int = TRUE, effects = "conditional")
+
 }
 \seealso{
 \code{\link[=ipw]{ipw()}} for the estimator, \code{\link[=glance.ipw]{glance()}} for a one-row
 summary of the fit, \code{\link[=augment.ipw]{augment()}} for its per-observation
-columns, and \code{\link[causalgenerics:new_ipw]{as.data.frame()}} for the
-result's own columns.
+columns, \code{\link[causalgenerics:new_ipw]{as.data.frame()}} for the result's own
+columns, and \code{\link[=as_marginal]{as_marginal()}} and \code{\link[=as_conditional]{as_conditional()}} for the reading a result
+records.
 }

@@ -16,7 +16,8 @@
   ps_link = NULL,
   conf_level = 0.95,
   se_method = c("mestimation", "linearization"),
-  .focal_level = NULL
+  .focal_level = NULL,
+  effects = c("marginal", "conditional")
 )
 
 \method{ipw}{lm}(
@@ -27,7 +28,8 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization")
+  se_method = c("mestimation", "linearization"),
+  effects = c("marginal", "conditional")
 )
 
 \method{ipw}{glm}(
@@ -38,7 +40,8 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization")
+  se_method = c("mestimation", "linearization"),
+  effects = c("marginal", "conditional")
 )
 }
 \arguments{
@@ -151,6 +154,26 @@ coding such as \code{y ~ z - 1} errors on either.}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
 the \code{focal_category} attribute of the weights in \code{outcome_mod}. An explicit
 value overrides the attribute.}
+
+\item{effects}{The presentation mode the result records, either \code{"marginal"}
+(the default) or \code{"conditional"}. The marginal reading reports the
+population-averaged causal contrasts; the conditional reading reports the
+outcome model's coefficient surface. Both surfaces are computed whichever
+mode is named, so the argument settles which one the result presents and
+nothing else. \code{\link[causalgenerics:as_marginal]{causalgenerics::as_marginal()}} and
+\code{\link[causalgenerics:as_conditional]{causalgenerics::as_conditional()}} move a result between the two readings
+afterwards, and the accessors take an \code{effects} argument of their own for a
+single call.
+
+The covariance the conditional reading reports is the outcome block of the
+jointly estimated sandwich, which every route that stacks estimating
+equations attaches to the outcome model it stores:
+\code{se_method = "mestimation"} for a binary exposure, and the categorical and
+continuous routes, which run on M-estimation alone. A linearization fit
+stacks no such system and records no such block, so \code{\link[stats:vcov]{stats::vcov()}} and
+\code{\link[stats:confint]{stats::confint()}} error on its conditional reading, and printing it writes
+the coefficients under a note saying the standard errors are not reported
+rather than beside the ones the outcome model computed for itself.}
 }
 \value{
 Methods of \code{ipw()} return an S3 object of class \code{ipw}. That result
@@ -176,7 +199,9 @@ the reported effects, \code{\link[stats:vcov]{stats::vcov()}} for their covarian
 fit, and \code{\link[stats:weights]{stats::weights()}} for the \code{\link[=psw]{psw()}} vector the outcome model was
 fit with. Coefficients are named for the effect measure, and for the effect
 measure and the comparison together where a categorical exposure reports
-one row per comparison.
+one row per comparison. Which surface \code{\link[stats:coef]{stats::coef()}}, \code{\link[stats:vcov]{stats::vcov()}}, and
+\code{\link[stats:confint]{stats::confint()}} report follows the presentation mode the result records,
+described under \code{effects} above.
 
 Under \code{se_method = "mestimation"} the stored \code{wt_mod} and \code{outcome_mod} are
 the models supplied, carrying their block of the joint sandwich. Calling

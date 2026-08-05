@@ -2,6 +2,14 @@
 #' @export
 causalgenerics::ipw
 
+#' @importFrom causalgenerics as_marginal
+#' @export
+causalgenerics::as_marginal
+
+#' @importFrom causalgenerics as_conditional
+#' @export
+causalgenerics::as_conditional
+
 #' @importFrom causalgenerics is_causal_wt
 #' @export
 causalgenerics::is_causal_wt
