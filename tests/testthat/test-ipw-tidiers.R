@@ -2414,3 +2414,161 @@ test_that("augment() returns the same frame in either reading", {
     class = "rlib_error_dots_nonempty"
   )
 })
+
+# ---- the argument shape mice's pooling calls the tidier with ----------------
+#
+# `mice::pool()` reaches the tidier through `summary.mira()`, which calls every
+# fit with `tidy(fit, effects = "fixed", parametric = TRUE, exponentiate = FALSE)`.
+# Two of those arguments are ones this method has no use for. `parametric`
+# distinguishes a parametric coefficient table from a smooth one in the models
+# mice was written against, and an ipw result reports one table either way.
+# `"fixed"` names the fixed effects of a mixed model, which for a result that
+# reports one reading at a time is the reading the result records.
+#
+# So the method accepts both and reports what it would have reported without
+# them: `parametric` is taken and ignored, and `"fixed"` resolves to the
+# result's own reading rather than naming a third one. The dots stay closed, so
+# every other stray argument is still refused.
+
+test_that("tidy() accepts the argument shape mice's pooling calls it with", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  expect_identical(
+    tidy(res, effects = "fixed", parametric = TRUE, exponentiate = FALSE),
+    tidy(res)
+  )
+
+  # A result recording the conditional reading reports that one, because
+  # `"fixed"` asks for the reading the result records rather than for a
+  # particular one of the two.
+  conditional <- as_conditional(res)
+  expect_identical(
+    tidy(
+      conditional,
+      effects = "fixed",
+      parametric = TRUE,
+      exponentiate = FALSE
+    ),
+    tidy(conditional)
+  )
+
+  # The two readings are genuinely different tables, so the agreement above is
+  # with each result's own reading rather than with one table twice.
+  expect_false(identical(tidy(conditional), tidy(res)))
+})
+
+test_that("tidy() takes parametric on its own and reports without it", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  expect_identical(tidy(res, parametric = TRUE), tidy(res))
+
+  # Whatever it is given, since nothing is read from it.
+  expect_identical(tidy(res, parametric = FALSE), tidy(res))
+  expect_identical(tidy(res, parametric = NULL), tidy(res))
+
+  # It composes with the arguments the method does read.
+  expect_identical(
+    tidy(res, conf.int = TRUE, parametric = TRUE),
+    tidy(res, conf.int = TRUE)
+  )
+})
+
+test_that("a stray argument other than parametric is still refused", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # A regression guard on the dots, which stay closed. Naming one argument the
+  # method tolerates does not open them to the next one, and a misspelling of an
+  # argument the method does read is still a misspelling.
+  expect_error(tidy(res, banana = TRUE), class = "rlib_error_dots_nonempty")
+  expect_error(
+    tidy(res, parametric = TRUE, banana = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+  expect_error(
+    tidy(res, parametic = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, exponentate = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+
+  # A prefix of `parametric` is refused too, which is what fixes where the
+  # argument sits. R partial-matches a name against formals before the dots but
+  # never against formals after them, so an argument placed before the dots
+  # would answer to every prefix of its name and quietly take a call that meant
+  # something else. These pin it after the dots, where the full name is the only
+  # name that reaches it.
+  expect_error(tidy(res, param = TRUE), class = "rlib_error_dots_nonempty")
+  expect_error(tidy(res, parame = TRUE), class = "rlib_error_dots_nonempty")
+})
+
+test_that("the tolerance for parametric belongs to tidy() alone", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # `mice::pool()` passes `parametric` to the tidier and to nothing else: it
+  # reads the other two verbs through their own calls, which name no such
+  # argument. So the tolerance stays where the need for it is, and the sibling
+  # methods keep refusing what they always refused.
+  expect_error(
+    glance(res, parametric = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+  expect_error(
+    augment(res, parametric = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("accepting fixed does not widen what effects otherwise accepts", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The two readings answer as they did before, on a result recording either.
+  expect_identical(tidy(res, effects = "marginal"), tidy(res))
+  expect_identical(
+    tidy(res, effects = "conditional"),
+    tidy(as_conditional(res))
+  )
+  expect_identical(tidy(as_conditional(res), effects = "marginal"), tidy(res))
+
+  # `"fixed"` is the only name added. Every other value naming neither reading
+  # is still refused by the accessors, under their condition.
+  expect_error(
+    tidy(res, effects = "both"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, effects = "random"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, effects = "fixe"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, effects = c("fixed", "marginal")),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+
+  # The accessors themselves keep refusing `"fixed"`: the alias belongs to the
+  # tidier, which is what mice calls, rather than to the surface underneath it.
+  expect_error(
+    coef(res, effects = "fixed"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+})
