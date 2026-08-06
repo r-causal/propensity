@@ -63,6 +63,33 @@ plain numeric copy of the same values does not. The default frame therefore
 leaves \code{(weights)} out. A frame supplied through \code{data} is the caller's own
 and is carried as it arrives, so a weight column they hold stays where they
 put it, whatever it is named.
+
+A column is an answer per observation only while the fit it is read from and
+the frame it is carried on describe the same observations, so three things are
+refused rather than reported. A result whose propensity score model and
+outcome model were fit to different rows is refused, because the propensity
+score of one observation would arrive beside the fitted value of another. Two
+models of the same data most often part this way over missing values, each
+dropping the rows a variable of its own is missing on. What is compared is the
+number of observations each model produced an answer for and, when the outcome
+model's frame names the exposure, the exposure values of the two model frames
+position by position, reading a factor and the numbers its labels spell as one
+encoding of one exposure. Exposure values that disagree prove the two models
+hold different observations; exposure values that agree prove nothing, since
+two different sets of rows are free to carry the same sequence of values, and
+two encodings that cannot be read onto each other, such as a factor of \code{"a"}
+and \code{"b"} against a recoding of it as 0 and 1, prove nothing either way.
+The check is one-sided in that direction on purpose: it refuses only what it
+can prove, which is also why it never refuses a fit whose models do line up,
+however the rows of either are labeled. A frame
+that already holds a column this call would add is refused as well, because
+the fit's column has nowhere to go: added beside the frame's, the two would be
+told apart by nothing, and written over it, the frame's data would be gone.
+Which names are in the way depends on the fit and the frame, \code{.resid} being
+among them only for a frame it would be added to and the propensity columns
+being the ones the propensity score model produced. Last, a result whose
+outcome model was fit without weights is refused under the class \code{\link[=ipw]{ipw()}}
+refuses the same fact with: \code{.weights} has nothing to report for such a fit.
 }
 \examples{
 set.seed(123)

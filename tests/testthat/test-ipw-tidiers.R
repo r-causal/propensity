@@ -181,12 +181,19 @@ fit_tidy_continuous_models <- function(dat, outcome_family = "gaussian") {
 # the same count and different rows. The weights come from a propensity score
 # model of the complete data, which gives the outcome model a weight for every
 # row it keeps whichever rows those are.
+#
+# The exposure is made to alternate rather than left as the simulated draw.
+# Dropping one row from a frame shifts every row after it up by one, so a
+# sequence that alternates disagrees with itself at every shifted position,
+# which is what makes two frames of different rows provably different rather
+# than different only if the draw happened not to repeat itself across the gap.
 fit_tidy_misaligned_models <- function(
   dat,
   ps_row = integer(),
   outcome_row = integer()
 ) {
   withr::local_seed(825)
+  dat$z <- rep(c(0L, 1L), length.out = nrow(dat))
   dat$xp <- rnorm(nrow(dat))
   dat$xo <- rnorm(nrow(dat))
   dat$xp[ps_row] <- NA
@@ -202,6 +209,85 @@ fit_tidy_misaligned_models <- function(
     outcome_mod = glm(
       y ~ z + xo,
       data = dat,
+      family = quasibinomial(),
+      weights = wts
+    )
+  )
+}
+
+# A pair of models fit to frames whose rows were renumbered from 1, which is what
+# a frame arrives with when the rows missing a value were dropped before either
+# model was fit rather than by the models themselves. `drop_row` names the row
+# each model's frame is missing, so the two frames carry the same row labels
+# whether or not they hold the same observations: equal labels for equal rows
+# when the two arguments agree, and equal labels for different rows when they do
+# not. The exposure alternates for the reason the fixture above sets it to.
+#
+# `ps_factor` holds the exposure of the propensity score model's data as a factor
+# of the labels `"0"` and `"1"`, leaving the two frames recording one exposure in
+# two encodings, as a fit of a factor exposure against an outcome model of the
+# numbers behind it does.
+fit_tidy_renumbered_models <- function(
+  dat,
+  ps_drop,
+  outcome_drop,
+  ps_factor = FALSE
+) {
+  dat$z <- rep(c(0L, 1L), length.out = nrow(dat))
+
+  renumber <- function(rows) {
+    frame <- dat[-rows, ]
+    rownames(frame) <- NULL
+    frame
+  }
+  ps_data <- renumber(ps_drop)
+  outcome_data <- renumber(outcome_drop)
+
+  if (ps_factor) {
+    ps_data$z <- factor(ps_data$z)
+  }
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(glm(z ~ x1 + x2, data = outcome_data, family = binomial()))
+  )
+
+  list(
+    ps_mod = glm(z ~ x1 + x2, data = ps_data, family = binomial()),
+    outcome_mod = glm(
+      y ~ z,
+      data = outcome_data,
+      family = quasibinomial(),
+      weights = wts
+    )
+  )
+}
+
+# A pair of models describing the same rows in the same order under different row
+# labels. The propensity score model is fit to the frame holding the missing
+# values and drops those rows itself, which leaves its frame labeled around the
+# gaps; the outcome model is fit to the same rows with their labels renumbered
+# from 1, as a frame filtered before fitting arrives. This is the shape of an
+# analysis that dropped incomplete rows in the pipeline rather than in the
+# models, and there is nothing wrong with it.
+fit_tidy_relabeled_models <- function(dat, na_rows) {
+  withr::local_seed(825)
+  dat$xp <- rnorm(nrow(dat))
+  dat$xp[na_rows] <- NA
+
+  complete <- dat[!is.na(dat$xp), ]
+  rownames(complete) <- NULL
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(glm(z ~ x1 + x2, data = complete, family = binomial()))
+  )
+
+  list(
+    ps_mod = glm(z ~ x1 + xp, data = dat, family = binomial()),
+    outcome_mod = glm(
+      y ~ z,
+      data = complete,
       family = quasibinomial(),
       weights = wts
     )
@@ -1286,6 +1372,9 @@ test_that("augment(data = ) rejects data holding a column augment adds", {
     augment(res, data = collide),
     class = "propensity_augment_column_error"
   )
+
+  # the refusal names the column in the way and what to do about it
+  expect_propensity_error(augment(res, data = collide))
 })
 
 test_that("augment(data = ) names every column of the data it clashes with", {
@@ -1311,6 +1400,9 @@ test_that("augment(data = ) names every column of the data it clashes with", {
   expect_match(msg, ".propensity", fixed = TRUE)
   expect_match(msg, ".weights", fixed = TRUE)
   expect_match(msg, ".fitted", fixed = TRUE)
+
+  # the sentence the three names are reported in
+  expect_propensity_error(augment(res, data = collide))
 })
 
 test_that("augment(data = ) counts a .resid column only when it adds one", {
@@ -1360,6 +1452,9 @@ test_that("augment(data = ) clashes on the level columns of a categorical fit", 
     augment(res, data = collide),
     class = "propensity_augment_column_error"
   )
+
+  # the refusal names the level column rather than `.propensity`
+  expect_propensity_error(augment(res, data = collide))
 
   # `.propensity` is not one of them on this route. No column of that name is
   # added, so a column of the caller's carrying it is theirs to keep, which is
@@ -1421,6 +1516,9 @@ test_that("augment() rejects a result whose models saw different counts", {
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "\\b599\\b")
   expect_match(msg, "\\b600\\b")
+
+  # the sentence the two counts are reported in
+  expect_propensity_error(augment(res))
 })
 
 test_that("augment() rejects a result whose models saw different rows", {
@@ -1429,17 +1527,170 @@ test_that("augment() rejects a result whose models saw different rows", {
   res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
 
   # Each model dropped one row and they dropped different ones, so the counts
-  # agree and the rows do not. A count is all that a column of the right length
-  # proves; the row names the two models kept are what says whether the
-  # observation in a row of one is the observation in that row of the other.
-  ps_rows <- names(stats::predict(mods$ps_mod, type = "response"))
-  outcome_rows <- rownames(stats::model.frame(mods$outcome_mod))
-  expect_identical(length(ps_rows), length(outcome_rows))
-  expect_false(identical(ps_rows, outcome_rows))
+  # agree and the observations do not. A count is all that a column of the right
+  # length proves; what says whether the observation in a row of one frame is
+  # the observation in that row of the other is the data, and the exposure is
+  # the variable both frames hold.
+  ps_frame <- stats::model.frame(mods$ps_mod)
+  outcome_frame <- stats::model.frame(mods$outcome_mod)
+  expect_identical(nrow(ps_frame), nrow(outcome_frame))
+  expect_false(identical(ps_frame$z, outcome_frame$z))
 
   expect_error(
     augment(res),
     class = "propensity_augment_alignment_error"
+  )
+
+  # the refusal reports observations that agree in number and not in identity
+  expect_propensity_error(augment(res))
+})
+
+test_that("augment() rejects models of different rows carrying equal labels", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_renumbered_models(dat, ps_drop = 7, outcome_drop = 12)
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # Both frames were renumbered from 1 before either model was fit, so the two
+  # carry exactly the same row labels while holding different observations. A
+  # label records where a row came from and survives nothing that renumbers it,
+  # so agreeing labels are no evidence of agreeing rows and this fit has to be
+  # caught by the data itself.
+  ps_frame <- stats::model.frame(mods$ps_mod)
+  outcome_frame <- stats::model.frame(mods$outcome_mod)
+  expect_identical(rownames(ps_frame), rownames(outcome_frame))
+  expect_identical(rownames(outcome_frame), as.character(1:599))
+  expect_false(identical(ps_frame$z, outcome_frame$z))
+
+  expect_error(
+    augment(res),
+    class = "propensity_augment_alignment_error"
+  )
+})
+
+test_that("augment() carries a factor exposure against its numeric encoding", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  factor_dat <- dat
+  factor_dat$z <- factor(dat$z)
+
+  # The propensity score model was fit to the exposure as a factor and the
+  # outcome model to the 0/1 numbers those labels spell, which is a pair
+  # `ipw()` builds a result from. The two frames record one exposure in two
+  # encodings and describe the same rows, so the columns read from either belong
+  # beside the columns read from the other, and a comparison that read `"0"`
+  # against 0 as a disagreement would refuse a fit with nothing wrong with it.
+  ps_mod <- glm(z ~ x1 + x2, data = factor_dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  res <- ipw(ps_mod, outcome_mod)
+
+  augmented <- augment(res)
+  expect_augment_contract(augmented, augment_source_frame(outcome_mod), res)
+
+  # The encoding of the exposure the propensity score model was fit to is not
+  # something the reported columns depend on, so the frame is the one the same
+  # fit of the numeric exposure returns, column for column.
+  numeric_mods <- fit_tidy_binary_models(dat)
+  numeric_res <- ipw(numeric_mods$ps_mod, numeric_mods$outcome_mod)
+  expect_identical(augmented, augment(numeric_res))
+})
+
+test_that("augment() carries an exposure recoded past what a number reads", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  labeled <- dat
+  labeled$z <- factor(ifelse(dat$z == 1, "b", "a"), levels = c("a", "b"))
+
+  # Here the two encodings are a factor of `"a"` and `"b"` against the 0 and 1 a
+  # user recoded it to. The labels spell no numbers, so nothing lines the two up
+  # position by position: their values differ at every position while their
+  # observations agree at all of them. A comparison that cannot tell those apart
+  # has proven nothing, and proving nothing is not a reason to refuse.
+  ps_mod <- glm(z ~ x1 + x2, data = labeled, family = binomial())
+  ps_labels <- as.character(stats::model.frame(ps_mod)$z)
+  expect_true(anyNA(suppressWarnings(as.numeric(ps_labels))))
+
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  res <- ipw(ps_mod, outcome_mod)
+
+  augmented <- augment(res)
+  expect_augment_contract(augmented, augment_source_frame(outcome_mod), res)
+  expect_identical(
+    augmented$.propensity,
+    unname(stats::predict(ps_mod, type = "response"))
+  )
+})
+
+test_that("augment() rejects a factor exposure of rows the numbers deny", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_renumbered_models(
+    dat,
+    ps_drop = 7,
+    outcome_drop = 12,
+    ps_factor = TRUE
+  )
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # The same two encodings as the fit above, over rows that are not the same
+  # rows. Reading the labels as the numbers they spell is what makes the two
+  # frames comparable, and once they are comparable the alternating exposure
+  # shows the shift between them. An encoding the values can be read through is
+  # no reason to stop looking at the values.
+  ps_frame <- stats::model.frame(mods$ps_mod)
+  outcome_frame <- stats::model.frame(mods$outcome_mod)
+  expect_s3_class(ps_frame$z, "factor")
+  expect_identical(rownames(ps_frame), rownames(outcome_frame))
+  expect_false(identical(
+    as.numeric(as.character(ps_frame$z)),
+    as.numeric(outcome_frame$z)
+  ))
+
+  expect_error(
+    augment(res),
+    class = "propensity_augment_alignment_error"
+  )
+})
+
+test_that("augment() carries models of the same rows carrying different labels", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_relabeled_models(dat, na_rows = c(7, 12, 400))
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # The propensity score model dropped the three incomplete rows itself and is
+  # labeled around the gaps; the outcome model was fit to the same rows after
+  # they had been renumbered from 1. The two describe the same 597 observations
+  # in the same order, which is what makes the columns of one belong beside the
+  # columns of the other, and their labels disagree throughout, which is nothing.
+  ps_frame <- stats::model.frame(mods$ps_mod)
+  outcome_frame <- stats::model.frame(mods$outcome_mod)
+  expect_identical(nrow(ps_frame), 597L)
+  expect_identical(rownames(outcome_frame), as.character(1:597))
+  expect_false(identical(rownames(ps_frame), rownames(outcome_frame)))
+  expect_identical(ps_frame$z, outcome_frame$z)
+
+  augmented <- augment(res)
+  expect_augment_contract(
+    augmented,
+    augment_source_frame(mods$outcome_mod),
+    res
+  )
+  expect_identical(nrow(augmented), 597L)
+  expect_identical(
+    augmented$.propensity,
+    unname(stats::predict(mods$ps_mod, type = "response"))
   )
 })
 
@@ -1493,6 +1744,9 @@ test_that("augment() rejects a result whose outcome model has no weights", {
     augment(res),
     class = "propensity_ipw_weights_missing_error"
   )
+
+  # the refusal says what an ipw() outcome model is fit with
+  expect_propensity_error(augment(res))
 })
 
 # ---- the presentation mode ---------------------------------------------------

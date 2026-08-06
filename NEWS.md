@@ -98,6 +98,38 @@
   with them. Pass the modeling data to `data` to carry those columns on a frame
   that also holds the covariates the outcome formula left out.
 
+* `augment()` refuses a result whose propensity score model and outcome model
+  were fit to different rows, with an error of class
+  `propensity_augment_alignment_error`, rather than reporting one observation's
+  propensity score beside another observation's fitted value. Two models of the
+  same data most often part this way over missing values, each dropping the rows
+  a variable of its own is missing on. What is compared is the number of
+  observations each model produced an answer for and, when the outcome model's
+  frame names the exposure, the exposure values of the two model frames position
+  by position, reading a factor and the numbers its labels spell as one encoding
+  of one exposure. Exposure values that disagree prove the two models hold
+  different observations; exposure values that agree prove nothing, two different
+  sets of rows being free to carry the same sequence of values, and two encodings
+  that cannot be read onto each other, such as a factor of `"a"` and `"b"`
+  against a recoding of it as 0 and 1, prove nothing either way. The check is
+  one-sided in that direction deliberately: it refuses only what it can prove,
+  which is why a fit whose models do describe the same observations is never
+  refused, however the rows of either frame are labeled.
+
+* `augment()` refuses a frame that already holds a column it would add, with an
+  error of class `propensity_augment_column_error` naming every column that
+  clashes. Such a frame previously returned one naming the same column twice, and
+  a `.resid` column of the caller's was written over whenever the frame also held
+  the outcome to difference. The names in the way are the ones the call would
+  actually add, so `.resid` is among them only for a frame it would be added to,
+  and the propensity columns of a categorical fit are the `.propensity_<level>`
+  columns rather than `.propensity`.
+
+* `augment()` refuses a result whose outcome model was fit without weights, under
+  `propensity_ipw_weights_missing_error`, the class `ipw()` reports the same fact
+  under. An `ipw()` outcome model is weighted by construction, so `.weights` has
+  nothing to report for a result built around one that is not.
+
 * `wt_entropy()` is documented as computing entropy weights, which tilt the
   propensity score by its own entropy in the sense of Zhou, Matsouaka, and
   Thomas (2020). The package overview called them entropy balancing weights, and
