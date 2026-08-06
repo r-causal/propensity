@@ -10,7 +10,8 @@
   conf.level = 0.95,
   exponentiate = FALSE,
   ...,
-  effects = NULL
+  effects = NULL,
+  parametric = NULL
 )
 }
 \arguments{
@@ -55,6 +56,14 @@ reading reports the population-averaged causal contrasts; the conditional
 reading reports the outcome model's coefficient surface. \code{\link[=as_marginal]{as_marginal()}} and
 \code{\link[=as_conditional]{as_conditional()}} move a result between the two readings.
 
+\code{"fixed"} is also accepted, and asks for the reading the result records,
+exactly as \code{NULL} does. It is the name mixed models give the effects that
+are not random, and \code{\link[mice:pool]{mice::pool()}} asks every tidier it calls for it. A
+result reports one reading at a time and neither of them is random, so the
+name resolves to whichever one the result records. The accessors do not
+accept it: it is spelled here, where multiple imputation reaches the
+result, rather than in the surface underneath.
+
 The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
@@ -63,6 +72,14 @@ continuous routes, which run on M-estimation alone. A linearization fit
 stacks no such system and records no such block, so its conditional reading
 errors rather than reporting the covariance the outcome model computed for
 itself, which treats the estimated weights as fixed.}
+
+\item{parametric}{Accepted and ignored. \code{\link[mice:pool]{mice::pool()}} passes
+\code{parametric = TRUE} to every tidier it calls, to ask the models it was
+written against for their parametric coefficient table rather than for a
+smooth term. An \code{ipw} result reports one table, and the inference it
+reports is already parametric, so there is nothing for the argument to
+select and nothing is read from it. It is here so that a result can be
+pooled across multiply imputed datasets.}
 }
 \value{
 A \link[tibble:tibble]{tibble} with one row per estimate and the columns:

@@ -67,6 +67,14 @@
 #'   reading reports the outcome model's coefficient surface. [as_marginal()] and
 #'   [as_conditional()] move a result between the two readings.
 #'
+#'   `"fixed"` is also accepted, and asks for the reading the result records,
+#'   exactly as `NULL` does. It is the name mixed models give the effects that
+#'   are not random, and [mice::pool()] asks every tidier it calls for it. A
+#'   result reports one reading at a time and neither of them is random, so the
+#'   name resolves to whichever one the result records. The accessors do not
+#'   accept it: it is spelled here, where multiple imputation reaches the
+#'   result, rather than in the surface underneath.
+#'
 #'   The covariance the conditional reading reports is the outcome block of the
 #'   jointly estimated sandwich, which every route that stacks estimating
 #'   equations attaches to the outcome model it stores:
@@ -75,6 +83,13 @@
 #'   stacks no such system and records no such block, so its conditional reading
 #'   errors rather than reporting the covariance the outcome model computed for
 #'   itself, which treats the estimated weights as fixed.
+#' @param parametric Accepted and ignored. [mice::pool()] passes
+#'   `parametric = TRUE` to every tidier it calls, to ask the models it was
+#'   written against for their parametric coefficient table rather than for a
+#'   smooth term. An `ipw` result reports one table, and the inference it
+#'   reports is already parametric, so there is nothing for the argument to
+#'   select and nothing is read from it. It is here so that a result can be
+#'   pooled across multiply imputed datasets.
 #'
 #' @return A [tibble][tibble::tibble] with one row per estimate and the columns:
 #' \describe{
@@ -134,9 +149,18 @@ tidy.ipw <- function(
   conf.level = 0.95,
   exponentiate = FALSE,
   ...,
-  effects = NULL
+  effects = NULL,
+  parametric = NULL
 ) {
   rlang::check_dots_empty()
+
+  # `"fixed"` is the reading the result records, which is what `NULL` asks for,
+  # so it is resolved here and the accessors below never see it. Compared
+  # exactly rather than matched loosely, so that a value close to it is still
+  # refused by the accessors that own the argument.
+  if (identical(effects, "fixed")) {
+    effects <- NULL
+  }
 
   # The marginal reading, which is the result's own coercion surface read as a
   # tibble. It is built before anything branches on a reading because the three
