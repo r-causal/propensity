@@ -3143,3 +3143,25 @@ test_that("the intercept-only outcome rejection reads in the user's terms", {
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
   )
 })
+
+# ---- the contrast column a binary exposure has no use for -------------------
+
+test_that("ipw() binary stores no contrast column under either name", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  # A binary exposure compares one pair of levels and keys its rows by the
+  # effect measure alone. Both routes are pinned here because linearization is
+  # available for a binary exposure alone, a categorical or continuous exposure
+  # refusing it, so this is the only fixture that can hold the two routes to the
+  # same table shape.
+  results <- list(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "mestimation"),
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+  )
+  for (res in results) {
+    expect_false("contrast" %in% names(res$estimates))
+    expect_false("comparison" %in% names(res$estimates))
+  }
+})

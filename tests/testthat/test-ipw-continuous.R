@@ -1041,3 +1041,20 @@ test_that("a plain continuous propensity response is still accepted", {
 
   expect_s3_class(ipw(mods$ps_mod, mods$outcome_mod, .data = dat), "ipw")
 })
+
+# ---- the contrast column a continuous exposure has no use for ---------------
+
+test_that("ipw() continuous stores no contrast column under either name", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+
+  # A continuous exposure has no pair of levels to name, so its rows are keyed
+  # by the effect measure alone and the stored table carries no column for a
+  # pair, under the canonical name or under the one it replaces.
+  for (family in c("gaussian", "binomial")) {
+    mods <- fit_continuous_models(dat, outcome_family = family)
+    est <- ipw(mods$ps_mod, mods$outcome_mod)$estimates
+    expect_false("contrast" %in% names(est))
+    expect_false("comparison" %in% names(est))
+  }
+})

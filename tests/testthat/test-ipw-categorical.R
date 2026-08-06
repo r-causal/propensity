@@ -2029,3 +2029,107 @@ test_that("ipw() multinom accepts every argument supplied by name", {
 
   expect_equal(named$estimates, baseline$estimates)
 })
+
+# ---- the contrast column the estimates table stores -------------------------
+#
+# `contrast` is the name every surface of an ipw result gives the column that
+# says which pair of exposure levels a row compares. The frame the result stores
+# names it the same way, so a reader of the object and a reader of any surface
+# built from it are reading one column under one name.
+
+# The six labels a three-level exposure with a binomial outcome keys its effects
+# by: the effect measure and the pair of levels it compares, together. Written
+# out rather than pasted from the estimates table, because the code that pastes
+# them is part of what these tests pin.
+cat_effect_labels <- c(
+  "rd b vs a",
+  "log(rr) b vs a",
+  "log(or) b vs a",
+  "rd c vs a",
+  "log(rr) c vs a",
+  "log(or) c vs a"
+)
+
+test_that("ipw() categorical stores its level pairs in a contrast column", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  est <- ipw(mods$ps_mod, mods$outcome_mod)$estimates
+
+  expect_true("contrast" %in% names(est))
+  expect_false("comparison" %in% names(est))
+
+  # The column qualifies the effect measure, so it follows it.
+  expect_identical(names(est)[seq(1, 2)], c("effect", "contrast"))
+  expect_equal(est$contrast, rep(c("b vs a", "c vs a"), each = 3))
+
+  # A gaussian outcome reports one difference per pair rather than three effect
+  # measures, and names the pairs the same way.
+  mods_g <- fit_categorical_models(dat, "ate", outcome_family = "gaussian")
+  est_g <- ipw(mods_g$ps_mod, mods_g$outcome_mod)$estimates
+  expect_false("comparison" %in% names(est_g))
+  expect_equal(est_g$contrast, c("b vs a", "c vs a"))
+})
+
+test_that("a categorical fit keys its stored covariance by effect and contrast", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  est <- ipw(mods$ps_mod, mods$outcome_mod)$estimates
+
+  # The labels are built by reading the contrast column off the table by name,
+  # so they travel with the name that column is written under. Renaming the
+  # column without the code that reads it leaves that code with nothing to find
+  # and collapses these six labels to the three effect measures, each used twice
+  # across the two pairs.
+  covariance <- attr(est, "ipw_vcov", exact = TRUE)
+  expect_identical(
+    dimnames(covariance),
+    list(cat_effect_labels, cat_effect_labels)
+  )
+  expect_identical(anyDuplicated(dimnames(covariance)[[1]]), 0L)
+
+  # The labels are the table's own two columns, so the block stays keyed to the
+  # rows it was taken from.
+  expect_identical(paste(est$effect, est$contrast), cat_effect_labels)
+})
+
+test_that("a categorical fit names its coefficients by effect and contrast", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  # An interop guard rather than a new contract. causalgenerics builds these
+  # names and reads either name the stored column can carry, so this holds
+  # before propensity writes `contrast` itself. It is here to catch a native
+  # write that changes what the accessors report.
+  expect_identical(names(coef(res)), cat_effect_labels)
+  expect_identical(anyDuplicated(names(coef(res))), 0L)
+  expect_identical(rownames(vcov(res)), cat_effect_labels)
+})
+
+test_that("the categorical output surfaces name the contrast column contrast", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  # Interop guards rather than new contracts. Both surfaces are built upstream
+  # and emit `contrast` whichever name the stored column carries, so these hold
+  # before propensity writes `contrast` itself. They are here to catch a native
+  # write that changes what either surface reports.
+  df <- as.data.frame(res)
+  expect_identical(names(df)[seq(1, 2)], c("term", "contrast"))
+  expect_false("comparison" %in% names(df))
+  expect_identical(df$contrast, rep(c("b vs a", "c vs a"), each = 3))
+
+  tidied <- tidy(res)
+  expect_identical(names(tidied)[seq(1, 2)], c("term", "contrast"))
+  expect_false("comparison" %in% names(tidied))
+  expect_identical(tidied$contrast, df$contrast)
+})
