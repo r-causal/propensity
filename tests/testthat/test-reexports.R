@@ -54,3 +54,18 @@ test_that("the exported causal generics are the ones causalgenerics owns", {
   expect_identical(propensity::`estimand<-`, causalgenerics::`estimand<-`)
   expect_identical(propensity::is_causal_wt, causalgenerics::is_causal_wt)
 })
+
+# `pool_ipw()` combines the results fitted to each of a set of multiply imputed
+# datasets into one. It belongs to causalgenerics, which owns the result class it
+# reads and the pooled class it returns. Re-exporting it is what lets a user who
+# has loaded only propensity finish the multiple-imputation workflow in the
+# package the fitting happened in, rather than reaching for a second namespace
+# for the last step of it.
+
+test_that("propensity exports the pooling verb", {
+  expect_contains(getNamespaceExports("propensity"), "pool_ipw")
+})
+
+test_that("the exported pooling verb is the one causalgenerics owns", {
+  expect_identical(propensity::pool_ipw, causalgenerics::pool_ipw)
+})

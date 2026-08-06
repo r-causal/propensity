@@ -305,3 +305,78 @@ test_that("mice::pool() combines a conditional reading by coefficient", {
   expect_true(all(is.finite(summarized$estimate)))
   expect_true(all(is.finite(summarized$std.error)))
 })
+
+# ---- pool_ipw(), the verb this package recommends ---------------------------
+#
+# `mice::pool()` above combines the results through the tidier, by the rules it
+# applies to any analysis it is given. `pool_ipw()` combines them knowing what
+# they are: it reads the results themselves rather than a tidied table of them,
+# so the effect labels survive, a categorical result keeps the contrast each row
+# reports, and the complete-data degrees of freedom fall back to the outcome
+# models when a result records none of its own. This is the path the
+# documentation teaches; the one above is the interop.
+
+test_that("pool_ipw() combines ipw results fitted to imputed data", {
+  skip_if_not_installed("mice", "3.18.0")
+  skip_if_not_installed("deli")
+  imp <- mice_impute(mice_binary_data(), seed = 1)
+  fits <- fit_mice_binary(imp)
+
+  pooled <- pool_ipw(fits)
+
+  # `mice::with()` returns a `mira`, which the pooling takes directly rather
+  # than asking the caller to unwrap it first.
+  expect_s3_class(pooled, "ipw_pooled")
+  expect_identical(pooled$m, 3L)
+  expect_identical(pooled$estimand, "ate")
+
+  tidied <- tidy(pooled)
+  expect_identical(nrow(tidied), 3L)
+  expect_identical(tidied$term, c("rd", "log(rr)", "log(or)"))
+  expect_true(all(is.finite(tidied$estimate)))
+  expect_true(all(is.finite(tidied$std.error)))
+  expect_true(all(is.finite(tidied$df)))
+
+  expect_identical(glance(pooled)$m, 3L)
+})
+
+test_that("pool_ipw() keeps the contrast labels of a categorical result", {
+  skip_if_not_installed("mice", "3.18.0")
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  imp <- mice_impute(mice_categorical_data(), seed = 2)
+  fits <- fit_mice_categorical(imp)
+
+  tidied <- tidy(pool_ipw(fits))
+
+  # The labels reach the pooled table rather than being reconstructed from row
+  # order, which is what reading the results themselves buys over reading a
+  # tidied table of them.
+  expect_identical(nrow(tidied), 6L)
+  expect_identical(names(tidied)[seq(1, 2)], c("term", "contrast"))
+  expect_identical(
+    tidied$term,
+    rep(c("rd", "log(rr)", "log(or)"), times = 2)
+  )
+  expect_identical(
+    tidied$contrast,
+    rep(c("b vs a", "c vs a"), each = 3)
+  )
+})
+
+test_that("pool_ipw() reports degrees of freedom a linearization fit lacks", {
+  skip_if_not_installed("mice", "3.18.0")
+  skip_if_not_installed("deli")
+  imp <- mice_impute(mice_binary_data(), seed = 1)
+  fits <- fit_mice_binary(imp, se_method = "linearization")
+
+  # The results record no residual degrees of freedom, which is what leaves
+  # `mice::pool()` above reporting none unless it is told them. The pooling that
+  # reads the results falls back to the outcome models, so the caller is not
+  # asked for a number the objects already hold.
+  expect_identical(df.residual(fits$analyses[[1]]), NA_integer_)
+
+  tidied <- tidy(pool_ipw(fits))
+  expect_true(all(is.finite(tidied$df)))
+  expect_true(is.finite(glance(pool_ipw(fits))$dfcom))
+})

@@ -2572,3 +2572,218 @@ test_that("accepting fixed does not widen what effects otherwise accepts", {
     class = "causalgenerics_invalid_argument_effects"
   )
 })
+
+# ---- the tidiers of a pooled result -----------------------------------------
+#
+# `pool_ipw()` combines the results fitted to each of a set of multiply imputed
+# datasets into one object of class `ipw_pooled`, which carries its own coercion
+# surface. The tidiers of that object stand to it as the tidiers of a single
+# result stand to theirs: `tidy()` is the coercion surface read as a tibble, and
+# `glance()` describes the pooled fit rather than its estimates.
+#
+# The pooling has already happened by the time either verb sees the object.
+# Neither re-pools, and the arguments they take are the arguments the table is
+# reported with: an interval, the level it is reported at, and the scale the
+# ratio rows are put on.
+
+# Three results from the same data-generating process with a small shift between
+# them, which is what a set of imputations of one dataset looks like to the
+# pooling: the same effects, estimated slightly differently. Small and seeded,
+# because what is under test is the shape of the pooled table rather than the
+# precision of any estimate.
+pooled_binary_fit <- function(shift, n = 300) {
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y <- rbinom(n, 1, plogis(-0.4 + 0.9 * z + 0.5 * x1 + shift))
+  dat <- data.frame(x1, z, y)
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  dat$w <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = w
+  )
+  ipw(ps_mod, outcome_mod)
+}
+
+fit_pooled_binary <- function(seed = 2024) {
+  withr::local_seed(seed)
+  pool_ipw(lapply(c(0, 0.05, -0.05), pooled_binary_fit))
+}
+
+pooled_categorical_fit <- function(shift, n = 300) {
+  x1 <- rnorm(n)
+  eta_b <- -0.2 + 0.5 * x1 + shift
+  eta_c <- 0.1 - 0.4 * x1
+  den <- 1 + exp(eta_b) + exp(eta_c)
+  u <- runif(n)
+  a <- factor(
+    ifelse(u < 1 / den, "a", ifelse(u < (1 + exp(eta_b)) / den, "b", "c")),
+    levels = c("a", "b", "c")
+  )
+  y <- rbinom(n, 1, plogis(-0.3 + 0.4 * (a == "b") + 0.8 * (a == "c")))
+  dat <- data.frame(x1, a, y)
+  ps_mod <- nnet::multinom(a ~ x1, data = dat, trace = FALSE)
+  dat$w <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "probs"),
+      dat$a,
+      exposure_type = "categorical"
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a,
+    data = dat,
+    family = quasibinomial(),
+    weights = w
+  )
+  ipw(ps_mod, outcome_mod)
+}
+
+fit_pooled_categorical <- function(seed = 2025) {
+  withr::local_seed(seed)
+  pool_ipw(lapply(c(0, 0.05, -0.05), pooled_categorical_fit))
+}
+
+# The same contract `expect_tidy_wraps_frame()` asserts of a single result,
+# against the pooled coercion surface and the three arguments it shares with the
+# tidier. `conf.level` is swept here rather than pinned separately, because a
+# pooled frame reports the level the pooling stored rather than a fixed default,
+# so passing it through is the only way the two surfaces can be held together at
+# a level other than that one.
+expect_pooled_tidy_wraps_frame <- function(
+  pooled,
+  conf.int = FALSE,
+  conf.level = NULL,
+  exponentiate = FALSE
+) {
+  expected <- tibble::as_tibble(as.data.frame(
+    pooled,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate
+  ))
+  attr(expected, "ipw_vcov") <- NULL
+
+  tidied <- tidy(
+    pooled,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate
+  )
+  expect_s3_class(tidied, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
+  expect_identical(tidied, expected)
+  expect_null(attr(tidied, "ipw_vcov", exact = TRUE))
+
+  invisible(tidied)
+}
+
+test_that("tidy() reports a pooled binary result as a tibble", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # The attribute is on the frame to be dropped in the first place, which is
+  # what makes its absence from the tibble a fact about the tidier.
+  expect_false(is.null(
+    attr(as.data.frame(pooled), "ipw_vcov", exact = TRUE)
+  ))
+
+  expect_pooled_tidy_wraps_frame(pooled)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE, conf.level = 0.8)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE, exponentiate = TRUE)
+  expect_pooled_tidy_wraps_frame(
+    pooled,
+    conf.int = TRUE,
+    conf.level = 0.8,
+    exponentiate = TRUE
+  )
+  expect_pooled_tidy_wraps_frame(pooled, exponentiate = TRUE)
+})
+
+test_that("tidy() reports a pooled categorical result as a tibble", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_categorical()
+
+  expect_pooled_tidy_wraps_frame(pooled)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE, exponentiate = TRUE)
+
+  # The column naming the contrast a row reports travels into the tibble beside
+  # the term it qualifies, which is where the pooled frame puts it.
+  tidied <- tidy(pooled)
+  expect_identical(names(tidied)[seq(1, 2)], c("term", "contrast"))
+  expect_identical(
+    tidied$contrast,
+    rep(c("b vs a", "c vs a"), each = 3)
+  )
+})
+
+test_that("the tidied pooled table carries no covariance under any arguments", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # Swept rather than left to the cases above, because the attribute is dropped
+  # by the tidier on every path rather than by whichever argument happened to
+  # have been passed. The frame carries it on some of these and not others.
+  grid <- expand.grid(
+    conf.int = c(FALSE, TRUE),
+    exponentiate = c(FALSE, TRUE)
+  )
+  for (i in seq_len(nrow(grid))) {
+    tidied <- tidy(
+      pooled,
+      conf.int = grid$conf.int[[i]],
+      exponentiate = grid$exponentiate[[i]]
+    )
+    expect_null(attr(tidied, "ipw_vcov", exact = TRUE))
+  }
+})
+
+test_that("glance() describes a pooled fit in one row", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  glanced <- glance(pooled)
+  expect_s3_class(glanced, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
+  expect_identical(nrow(glanced), 1L)
+  expect_named(glanced, c("estimand", "nobs", "m", "dfcom"))
+
+  # The row describes the pooled fit rather than its estimates: what was
+  # targeted, how many observations the smallest of the pooled results was
+  # estimated from, how many results were pooled, and the complete-data degrees
+  # of freedom the adjustment used. Read off the object rather than restated, so
+  # the row and the object it describes cannot disagree.
+  expect_identical(glanced$estimand, pooled$estimand)
+  expect_identical(glanced$nobs, pooled$nobs)
+  expect_identical(glanced$m, pooled$m)
+  expect_identical(glanced$dfcom, pooled$dfcom)
+
+  # The types are part of the contract: a count is an integer and the
+  # complete-data degrees of freedom are a double, which the Barnard-Rubin
+  # adjustment can return a fractional value for.
+  expect_type(glanced$estimand, "character")
+  expect_type(glanced$nobs, "integer")
+  expect_type(glanced$m, "integer")
+  expect_type(glanced$dfcom, "double")
+})
+
+test_that("glance() describes a pooled fit in one row whatever it reports", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_categorical()
+
+  # Six effects, three measures for each of two contrasts, and still one row:
+  # the row describes the fit rather than its estimates, so it does not grow
+  # with them.
+  expect_identical(nrow(tidy(pooled)), 6L)
+  expect_identical(nrow(glance(pooled)), 1L)
+  expect_named(glance(pooled), c("estimand", "nobs", "m", "dfcom"))
+  expect_identical(glance(pooled)$m, 3L)
+})
