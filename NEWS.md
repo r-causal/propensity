@@ -112,9 +112,10 @@
   sets of rows being free to carry the same sequence of values, and two encodings
   that cannot be read onto each other, such as a factor of `"a"` and `"b"`
   against a recoding of it as 0 and 1, prove nothing either way. The check is
-  one-sided in that direction deliberately: it refuses only what it can prove,
-  which is why a fit whose models do describe the same observations is never
-  refused, however the rows of either frame are labeled.
+  one-sided in that direction deliberately: it refuses only what it can prove, so
+  a fit whose models do describe the same observations is never refused over the
+  labels the rows of either frame carry or the encoding its exposure is written
+  in.
 
 * `augment()` refuses a frame that already holds a column it would add, with an
   error of class `propensity_augment_column_error` naming every column that

@@ -148,7 +148,13 @@ account for the uncertainty of estimating the propensity scores.
 with an intercept; a covariate-adjusted outcome model requires
 \code{"mestimation"}. For a binary or categorical exposure, both methods require
 an outcome model that can represent a baseline, so a numeric no-intercept
-coding such as \code{y ~ z - 1} errors on either.}
+coding such as \code{y ~ z - 1} errors on either. The standard errors of the
+conditional reading described under \code{effects} require \code{"mestimation"}
+as well: the
+linearization route stores its outcome model unwrapped, so \code{\link[stats:vcov]{stats::vcov()}},
+\code{\link[stats:confint]{stats::confint()}}, and \code{\link[=tidy.ipw]{tidy()}} refuse
+\code{effects = "conditional"} there with a classed error rather than reporting
+the covariance the outcome model computed for itself.}
 
 \item{.focal_level}{For the categorical (\code{multinom}) method with the \code{att}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
@@ -285,6 +291,11 @@ with \code{\link[=wt_att]{wt_att()}} or \code{\link[=wt_atu]{wt_atu()}} on the o
 correct for the reversed roles, and \code{ipw()} rejects them rather than
 correcting them as though the roles matched. To target the other level,
 relevel the exposure so that it sorts second and refit both models.
+
+The estimand a weighted outcome model was fit for is not necessarily the one a
+tool that averages its per-row predictions reports, so see \strong{Standardizing
+model predictions} in \code{\link[=ps_tilt]{ps_tilt()}} before taking such an average of a model fit
+for anything other than \code{"ate"}.
 }
 
 \section{Effect measures}{
@@ -363,6 +374,11 @@ for an exposure-only outcome model. A covariate-adjusted outcome model (any
 term beyond the exposure, including covariates, interactions, or transformed
 terms) errors on the linearization path and requires
 \code{se_method = "mestimation"}, which stacks adjusted outcome models correctly.
+The conditional reading is restricted the same way: linearization stacks no
+system, so the outcome model it stores carries no block of one, and the
+standard errors that reading reports are refused with a classed error rather
+than replaced by the covariance the outcome model computed for itself, which
+treats the estimated weights as fixed.
 
 The linearization outcome model must also carry an intercept, which is a
 stricter requirement than the M-estimation path imposes. Under a numeric

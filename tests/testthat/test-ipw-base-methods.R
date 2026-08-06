@@ -484,6 +484,11 @@ test_that("a stabilized fit spends an observation on its stabilizer", {
     se_method = "mestimation"
   )
 
+  # The weights the result reports are the stabilized vector the outcome model
+  # was fit with, so the stabilization travels with the fit rather than living
+  # only in the fixture.
+  expect_identical(weights(res), stabilized$wts)
+
   # The stabilizer is solved for rather than held fixed, so it is a parameter of
   # the stacked system and sits between the propensity score block and the
   # outcome block. Everything else the system solves for is what the
@@ -503,7 +508,7 @@ test_that("a stabilized fit spends an observation on its stabilizer", {
   # The row that parameter answers is the mean of the centered exposure, whose
   # root is the marginal exposure probability, so the solved value is the
   # proportion exposed rather than anything the weights were scaled by
-  # approximately. The solver reaches it to within one unit in the last place, a
+  # approximately. The solver reaches it to within two units in the last place, a
   # measured 1.1e-16 on this fixture, so the comparison carries a tolerance
   # rather than asking for the same double.
   expect_equal(res$fit@theta[["stab_pi"]], mean(dat$z), tolerance = 1e-12)

@@ -453,11 +453,12 @@ glance.ipw <- function(x, ...) {
 #' two encodings that cannot be read onto each other, such as a factor of `"a"`
 #' and `"b"` against a recoding of it as 0 and 1, prove nothing either way.
 #' The check is one-sided in that direction on purpose: it refuses only what it
-#' can prove, which is also why it never refuses a fit whose models do line up,
-#' however the rows of either are labeled. A frame
-#' that already holds a column this call would add is refused as well, because
-#' the fit's column has nowhere to go: added beside the frame's, the two would be
-#' told apart by nothing, and written over it, the frame's data would be gone.
+#' can prove, so a fit whose models do line up is never refused over the labels
+#' the rows of either frame carry or the encoding its exposure is written in. A
+#' frame that already holds a column this call would add is refused as well,
+#' because the fit's column has nowhere to go: added beside the frame's, the two
+#' would be told apart by nothing, and written over it, the frame's data would be
+#' gone.
 #' Which names are in the way depends on the fit and the frame, `.resid` being
 #' among them only for a frame it would be added to and the propensity columns
 #' being the ones the propensity score model produced. Last, a result whose
@@ -645,7 +646,8 @@ check_augment_weights <- function(weights, call = rlang::caller_env()) {
 # model frames proves they hold different observations, while an exposure that
 # agrees proves nothing, two different sets of rows being free to carry the same
 # sequence of exposure values. Refusing only what can be proven is what keeps a
-# fit whose models do line up from ever being refused.
+# fit whose models do line up from being refused over how either frame labels its
+# rows or writes its exposure down.
 check_augment_alignment <- function(
   wt_mod,
   propensity,
