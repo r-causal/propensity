@@ -199,9 +199,9 @@
 #'
 #' For a categorical exposure, the same measures are reported for each
 #' non-reference level against the reference (first) factor level. The estimates
-#' table gains a `comparison` column identifying each contrast (for example
-#' `"b vs a"`), so a K-level exposure produces one block of measures per
-#' non-reference level.
+#' table gains a `contrast` column naming the pair of levels each row compares
+#' (for example `"b vs a"`), so a K-level exposure produces one block of
+#' measures per non-reference level.
 #'
 #' For a continuous exposure, `ipw()` reports the single exposure coefficient of
 #' the weighted marginal structural outcome model. Its label follows the outcome
@@ -391,8 +391,8 @@
 #'   [stats::nobs()] and [stats::df.residual()] for the counts describing the
 #'   fit, and [stats::weights()] for the [psw()] vector the outcome model was
 #'   fit with. Coefficients are named for the effect measure, and for the effect
-#'   measure and the comparison together where a categorical exposure reports
-#'   one row per comparison. Which surface [stats::coef()], [stats::vcov()], and
+#'   measure and the contrast together where a categorical exposure reports one
+#'   row per contrast. Which surface [stats::coef()], [stats::vcov()], and
 #'   [stats::confint()] report follows the presentation mode the result records,
 #'   described under `effects` above.
 #'

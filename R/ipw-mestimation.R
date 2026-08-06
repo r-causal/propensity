@@ -2057,14 +2057,14 @@ ipw_degenerate_se <- function(estimate, std.err) {
 
 # The rows of an estimates table whose standard errors carry that signature,
 # labeled as the table labels them: a categorical exposure names the effect and
-# the comparison together, and the other exposure types name the effect alone.
+# the contrast together, and the other exposure types name the effect alone.
 ipw_degenerate_se_rows <- function(estimates) {
   degenerate <- ipw_degenerate_se(estimates$estimate, estimates$std.err)
 
-  labels <- if (is.null(estimates$comparison)) {
+  labels <- if (is.null(estimates$contrast)) {
     estimates$effect
   } else {
-    paste(estimates$effect, "for", estimates$comparison)
+    paste(estimates$effect, "for", estimates$contrast)
   }
 
   labels[degenerate]
@@ -2115,8 +2115,8 @@ warn_ipw_degenerate_se <- function(estimates, call = rlang::caller_env()) {
 # it is the inference around them that is empty.
 #
 # The row labels come from the estimates table rather than from the spec, so a
-# categorical exposure names the effect and the comparison together and the
-# other exposure types name the effect alone.
+# categorical exposure names the effect and the contrast together and the other
+# exposure types name the effect alone.
 warn_ipw_unsolved <- function(estimates, call = rlang::caller_env()) {
   affected <- ipw_degenerate_se_rows(estimates)
 
@@ -2301,7 +2301,7 @@ ipw_mestimation_estimates <- function(
     effect <- ipw_continuous_effect_label(spec$outcome$link, call = call)
   } else {
     idx <- layout$idx$contrast
-    effect <- rep(spec$contrasts, times = ipw_n_comparisons(spec))
+    effect <- rep(spec$contrasts, times = ipw_n_contrasts(spec))
   }
 
   estimate <- unname(co[idx])
@@ -2325,17 +2325,17 @@ ipw_mestimation_estimates <- function(
   )
 
   # A categorical exposure contributes one contrast per non-reference level, so
-  # the table gains a comparison column, placed immediately after effect, that
-  # names each contrast. Binary and continuous exposures keep the eight-column
-  # contract with no comparison column.
+  # the table gains a contrast column, placed immediately after effect, that
+  # names each one. Binary and continuous exposures keep the eight-column
+  # contract with no contrast column.
   if (identical(spec$exposure_type, "categorical")) {
-    comparison <- rep(
-      ipw_comparison_labels(spec),
+    contrast <- rep(
+      ipw_contrast_labels(spec),
       each = length(spec$contrasts)
     )
     out <- cbind(
       out["effect"],
-      comparison = comparison,
+      contrast = contrast,
       out[setdiff(names(out), "effect")]
     )
   }
@@ -2353,18 +2353,21 @@ ipw_mestimation_estimates <- function(
 }
 
 # The labels every surface of a result keys its effects by: the effect measure
-# on its own, or the effect measure and the comparison together where a
-# categorical exposure reports one row per comparison.
+# on its own, or the effect measure and the contrast together where a
+# categorical exposure reports one row per contrast.
 #
 # causalgenerics holds a function of the same name and the same rule, and the
 # duplication is deliberate: that copy labels what the accessors present, and
 # this one labels what is stored, so the block a result carries is keyed the
 # moment it is built rather than at whatever later point something reads it.
+# That copy also reads the column a result stored under either name, because it
+# reads frames built by any version of this package; this one reads only frames
+# this package has just built, so it reads the one name they carry.
 ipw_effect_labels <- function(estimates) {
-  if (is.null(estimates[["comparison"]])) {
+  if (is.null(estimates[["contrast"]])) {
     estimates$effect
   } else {
-    paste(estimates$effect, estimates$comparison)
+    paste(estimates$effect, estimates$contrast)
   }
 }
 
@@ -2389,7 +2392,7 @@ ipw_component_vcov <- function(vc, layout, block) {
 
 # Number of contrast blocks the estimates table holds: one per non-reference
 # level for a categorical exposure, a single block otherwise.
-ipw_n_comparisons <- function(spec) {
+ipw_n_contrasts <- function(spec) {
   if (identical(spec$exposure_type, "categorical")) {
     spec$ps$k - 1L
   } else {

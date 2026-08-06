@@ -5,7 +5,7 @@
 #' linearization method is not available for categorical exposures. For a
 #' K-level exposure, effects are reported for each non-reference level against
 #' the reference (first) factor level, and the estimates table gains a
-#' `comparison` column identifying the contrast.
+#' `contrast` column naming the pair of levels each row compares.
 #'
 #' @param .focal_level For the categorical (`multinom`) method with the `att`
 #'   or `atu` estimand, the focal exposure level. If `NULL`, it is taken from
@@ -85,7 +85,7 @@ ipw.multinom <- function(
 #' exposure term, and the reported effect is that single coefficient: `"slope"`
 #' for an identity-link outcome, `"log(or)"` for a logit-link outcome, and
 #' `"log(rr)"` for a log-link outcome. The estimates table keeps the eight-column
-#' contract with no comparison column.
+#' contract with no contrast column.
 #'
 #' @name ipw-methods
 #' @exportS3Method causalgenerics::ipw lm

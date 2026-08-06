@@ -326,13 +326,13 @@ new_tidy_ipw <- function(ps_mod, outcome_mod) {
 
 # ---- expected shape ----------------------------------------------------------
 
-# The broom column contract. `comparison` is the categorical extra column and
+# The broom column contract. `contrast` is the categorical extra column and
 # sits immediately after `term`, following the precedent broom sets with the
 # `y.level` column of `tidy.multinom`. The interval bounds close the frame.
-tidy_names <- function(conf_int = FALSE, comparison = FALSE) {
+tidy_names <- function(conf_int = FALSE, contrast = FALSE) {
   nms <- c("term", "estimate", "std.error", "statistic", "p.value")
-  if (comparison) {
-    nms <- append(nms, "comparison", after = 1L)
+  if (contrast) {
+    nms <- append(nms, "contrast", after = 1L)
   }
   if (conf_int) {
     nms <- c(nms, "conf.low", "conf.high")
@@ -347,19 +347,19 @@ expect_tidy_contract <- function(
   tidied,
   result,
   conf_int = FALSE,
-  comparison = FALSE
+  contrast = FALSE
 ) {
   estimates <- result$estimates
   expect_s3_class(tidied, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
-  expect_named(tidied, tidy_names(conf_int, comparison))
+  expect_named(tidied, tidy_names(conf_int, contrast))
   expect_identical(nrow(tidied), nrow(estimates))
   expect_identical(tidied$term, estimates$effect)
   expect_identical(tidied$estimate, estimates$estimate)
   expect_identical(tidied$std.error, estimates$std.err)
   expect_identical(tidied$statistic, estimates$z)
   expect_identical(tidied$p.value, estimates$p.value)
-  if (comparison) {
-    expect_identical(tidied$comparison, estimates$comparison)
+  if (contrast) {
+    expect_identical(tidied$contrast, estimates$contrast)
   }
   if (conf_int) {
     expect_identical(tidied$conf.low, estimates$ci.lower)
@@ -634,21 +634,21 @@ test_that("tidy() returns the broom columns for a binary linearization fit", {
 
 # ---- categorical exposure ----------------------------------------------------
 
-test_that("tidy() keeps the comparison column after term for a categorical fit", {
+test_that("tidy() keeps the contrast column after term for a categorical fit", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-  expect_tidy_contract(tidy(res), res, comparison = TRUE)
+  expect_tidy_contract(tidy(res), res, contrast = TRUE)
 
   tidied <- tidy(res, conf.int = TRUE)
-  expect_tidy_contract(tidied, res, conf_int = TRUE, comparison = TRUE)
+  expect_tidy_contract(tidied, res, conf_int = TRUE, contrast = TRUE)
 
-  # every effect of every comparison keeps its own row, in the stored order
+  # every effect of every contrast keeps its own row, in the stored order
   expect_identical(tidied$term, rep(c("rd", "log(rr)", "log(or)"), times = 2))
-  expect_identical(tidied$comparison, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(tidied$contrast, rep(c("b vs a", "c vs a"), each = 3))
 })
 
 # ---- continuous exposure -----------------------------------------------------
@@ -661,7 +661,7 @@ test_that("tidy() returns the single slope row for a continuous exposure fit", {
 
   tidied <- tidy(res, conf.int = TRUE)
 
-  # a continuous exposure carries no comparison column
+  # a continuous exposure carries no contrast column
   expect_tidy_contract(tidied, res, conf_int = TRUE)
   expect_identical(tidied$term, "slope")
 })
@@ -685,7 +685,7 @@ test_that("tidy() returns the log odds ratio row for a continuous logit fit", {
 # equivalence is pinned once per exposure type, because each type reaches the
 # coercion surface with a table of its own shape: a binary exposure with the
 # three effect measures, a categorical one with those measures once per
-# comparison and the column naming it, and a continuous one with a single row.
+# contrast and the column naming it, and a continuous one with a single row.
 #
 # The frame carries the covariance of the effects it reports as an attribute.
 # The tibble does not: a tidied table is its columns, and a covariance is not
@@ -998,7 +998,7 @@ test_that("tidy(exponentiate = TRUE) matches as.data.frame on a binary fit", {
   expect_identical(tidied$conf.high, df$conf.high)
 })
 
-test_that("tidy(exponentiate = TRUE) relabels ratio rows per comparison", {
+test_that("tidy(exponentiate = TRUE) relabels ratio rows per contrast", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
@@ -1009,9 +1009,9 @@ test_that("tidy(exponentiate = TRUE) relabels ratio rows per comparison", {
   tidied <- tidy(res, conf.int = TRUE, exponentiate = TRUE)
 
   expect_identical(tidied$term, rep(c("rd", "rr", "or"), times = 2))
-  expect_identical(tidied$comparison, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(tidied$contrast, rep(c("b vs a", "c vs a"), each = 3))
   expect_identical(tidied$term, df$term)
-  expect_identical(tidied$comparison, df$comparison)
+  expect_identical(tidied$contrast, df$contrast)
   expect_identical(tidied$estimate, df$estimate)
   expect_identical(tidied$conf.low, df$conf.low)
   expect_identical(tidied$conf.high, df$conf.high)
@@ -2106,7 +2106,7 @@ test_that("tidy() reports one conditional row per categorical coefficient", {
   expect_conditional_tidy_contract(tidied, res, conf_int = TRUE)
   expect_identical(tidied$term, c("(Intercept)", "ab", "ac"))
 
-  # The comparison column belongs to the marginal reading, which reports every
+  # The contrast column belongs to the marginal reading, which reports every
   # effect measure once per contrast of levels. A coefficient is not such a
   # contrast, so the conditional table carries no such column and reports three
   # rows where the marginal reading of the same result reports six.

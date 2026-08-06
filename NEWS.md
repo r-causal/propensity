@@ -1,5 +1,13 @@
 # propensity 0.1.0.9000 (development version)
 
+* The column naming the contrast on a categorical `ipw()` result is now called
+  `contrast` in the estimates table the result stores, where it was called
+  `comparison`. `contrast` is the name every surface of a result already
+  reported, so `tidy()`, `as.data.frame()`, and the printed table are unchanged
+  and only the stored frame moves; code reading `result$estimates$comparison`
+  needs updating. Results built by earlier versions stay readable, because
+  causalgenerics accepts either name when it reads a stored frame.
+
 * The marginal reading of `tidy()` is now the result's own `as.data.frame()`
   table read as a tibble rather than a second assembly of the same columns. The
   rows, the columns, their order, and their values are the same as before, and
@@ -68,8 +76,8 @@
   causalgenerics, which owns the shared result class; what propensity supplies is
   the covariance of the effects it reports, recorded on the estimates table.
   Coefficients are named for the effect measure, and for the effect measure and
-  the comparison together where a categorical exposure reports one row per
-  comparison. `glance()` reports the counts through the same accessors, so the
+  the contrast together where a categorical exposure reports one row per
+  contrast. `glance()` reports the counts through the same accessors, so the
   two surfaces cannot disagree. This raises the causalgenerics requirement to
   0.1.0.9000.
 
@@ -91,7 +99,7 @@
 
 * `tidy()` returns the estimates as a tibble under the column names broom
   conventions use, `term`, `estimate`, `std.error`, `statistic`, and `p.value`,
-  with `comparison` naming the contrast on a categorical exposure. `conf.int`
+  with `contrast` naming the contrast on a categorical exposure. `conf.int`
   adds the `conf.low` and `conf.high` bounds, `conf.level` reports them at a
   level other than the one the result was fit at by rebuilding them from the
   estimate and its standard error, and `exponentiate` puts the `log(rr)` and
@@ -103,7 +111,7 @@
   were estimated from, and the residual degrees of freedom of the stacked
   M-estimation system, which are those observations less the parameters the
   system solves for. A result reporting several effect measures, or several
-  comparisons of a categorical exposure, still returns exactly one row.
+  contrasts of a categorical exposure, still returns exactly one row.
   `se_method = "linearization"` stacks nothing and records no parameter count, so
   the observations are the outcome model's and the degrees of freedom are `NA`.
 

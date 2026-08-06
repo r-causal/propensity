@@ -6,8 +6,8 @@
 #
 # That attribute is a square matrix of the reported effects, in the row order of
 # `estimates` and labeled the way `print()` labels its rows: the effect measure
-# on its own, or the effect measure and the comparison together where a
-# categorical exposure reports one row per comparison. Its diagonal is the square
+# on its own, or the effect measure and the contrast together where a
+# categorical exposure reports one row per contrast. Its diagonal is the square
 # of the standard errors the result already reports, which is what keeps the
 # matrix and the estimates table describing the same fit. Its off-diagonal is the
 # part that cannot be recovered from the estimates table, and it is a real
@@ -194,10 +194,10 @@ fit_base_continuous_models <- function(dat, outcome_family = "gaussian") {
 # that could agree with the wrong thing.
 base_effect_labels <- function(result) {
   estimates <- result$estimates
-  if (is.null(estimates[["comparison"]])) {
+  if (is.null(estimates[["contrast"]])) {
     estimates$effect
   } else {
-    paste(estimates$effect, estimates$comparison)
+    paste(estimates$effect, estimates$contrast)
   }
 }
 
@@ -351,14 +351,14 @@ test_that("a stabilized binary fit records the covariance of its effects", {
   expect_identical(rownames(covariance), c("rd", "log(rr)", "log(or)"))
 })
 
-test_that("a categorical fit labels its covariance by effect and comparison", {
+test_that("a categorical fit labels its covariance by effect and contrast", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_base_categorical()
   mods <- fit_base_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-  # Three effect measures for each of two comparisons, and neither part of a
+  # Three effect measures for each of two contrasts, and neither part of a
   # label identifies a row on its own, so the label is both together.
   covariance <- expect_ipw_vcov_contract(res)
   labels <- c(
@@ -372,8 +372,8 @@ test_that("a categorical fit labels its covariance by effect and comparison", {
   expect_identical(rownames(covariance), labels)
   expect_identical(anyDuplicated(labels), 0L)
 
-  # The comparisons share the reference level's marginal mean, so the covariance
-  # spans the whole table rather than being block diagonal by comparison.
+  # The contrasts share the reference level's marginal mean, so the covariance
+  # spans the whole table rather than being block diagonal by contrast.
   across <- covariance[seq(1, 3), seq(4, 6)]
   expect_true(all(is.finite(across)))
   expect_true(all(across != 0))
@@ -528,7 +528,7 @@ test_that("the accessors read a binary linearization fit", {
   expect_identical(df.residual(res), NA_integer_)
 })
 
-test_that("the accessors label a categorical fit by effect and comparison", {
+test_that("the accessors label a categorical fit by effect and contrast", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_base_categorical()
@@ -537,7 +537,7 @@ test_that("the accessors label a categorical fit by effect and comparison", {
 
   expect_ipw_accessor_contract(res, mods$wts)
 
-  labels <- paste(res$estimates$effect, res$estimates$comparison)
+  labels <- paste(res$estimates$effect, res$estimates$contrast)
   expect_identical(names(coef(res)), labels)
   expect_identical(anyDuplicated(names(coef(res))), 0L)
   expect_identical(rownames(confint(res)), labels)

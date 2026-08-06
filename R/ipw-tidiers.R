@@ -3,7 +3,7 @@
 #' @description
 #' `tidy()` returns the estimates of an [ipw()] result as a tibble using the
 #' column names broom conventions use. There is one row per effect measure, and
-#' one row per effect measure per comparison for a categorical exposure, in the
+#' one row per effect measure per contrast for a categorical exposure, in the
 #' order the result stores them. Nothing is dropped.
 #'
 #' Those columns are the ones the result's own coercion surface reports, so the
@@ -80,7 +80,7 @@
 #' \describe{
 #'   \item{`term`}{The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
 #'     `"diff"`, or `"slope"`.}
-#'   \item{`comparison`}{The contrast the row reports, such as `"b vs a"`.
+#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"`.
 #'     Categorical exposures only.}
 #'   \item{`estimate`}{The estimated effect.}
 #'   \item{`std.error`}{The standard error of the estimate.}
@@ -95,7 +95,7 @@
 #' `estimate` is the coefficient, `std.error` is the square root of the diagonal
 #' of the corrected covariance, `statistic` is the estimate over that standard
 #' error, and `p.value` is the two-sided normal p-value of the statistic. There
-#' is no `comparison` column, because a coefficient is not a contrast of exposure
+#' is no `contrast` column, because a coefficient is not a contrast of exposure
 #' levels, and the bounds are built at the level `conf.level` asks for, the
 #' stored ones belonging to the effects the marginal reading reports.
 #'
@@ -289,7 +289,7 @@ check_exponentiate_link <- function(outcome_mod, call = rlang::caller_env()) {
 #' `glance()` describes an [ipw()] result rather than its estimates: one row
 #' naming the estimand and counting the observations and the residual degrees of
 #' freedom of the system the standard errors came from. A fit reporting several
-#' effect measures, or several comparisons of a categorical exposure, still
+#' effect measures, or several contrasts of a categorical exposure, still
 #' returns exactly one row.
 #'
 #' Under M-estimation that system is the stacked estimating equations, which

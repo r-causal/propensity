@@ -69,7 +69,7 @@ A \link[tibble:tibble]{tibble} with one row per estimate and the columns:
 \describe{
 \item{\code{term}}{The effect measure, such as \code{"rd"}, \code{"log(rr)"}, \code{"log(or)"},
 \code{"diff"}, or \code{"slope"}.}
-\item{\code{comparison}}{The contrast the row reports, such as \code{"b vs a"}.
+\item{\code{contrast}}{The contrast the row reports, such as \code{"b vs a"}.
 Categorical exposures only.}
 \item{\code{estimate}}{The estimated effect.}
 \item{\code{std.error}}{The standard error of the estimate.}
@@ -84,14 +84,14 @@ per coefficient of the outcome model: \code{term} is the coefficient's name,
 \code{estimate} is the coefficient, \code{std.error} is the square root of the diagonal
 of the corrected covariance, \code{statistic} is the estimate over that standard
 error, and \code{p.value} is the two-sided normal p-value of the statistic. There
-is no \code{comparison} column, because a coefficient is not a contrast of exposure
+is no \code{contrast} column, because a coefficient is not a contrast of exposure
 levels, and the bounds are built at the level \code{conf.level} asks for, the
 stored ones belonging to the effects the marginal reading reports.
 }
 \description{
 \code{tidy()} returns the estimates of an \code{\link[=ipw]{ipw()}} result as a tibble using the
 column names broom conventions use. There is one row per effect measure, and
-one row per effect measure per comparison for a categorical exposure, in the
+one row per effect measure per contrast for a categorical exposure, in the
 order the result stores them. Nothing is dropped.
 
 Those columns are the ones the result's own coercion surface reports, so the

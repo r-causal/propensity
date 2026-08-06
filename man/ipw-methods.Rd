@@ -204,8 +204,8 @@ the reported effects, \code{\link[stats:vcov]{stats::vcov()}} for their covarian
 \code{\link[stats:nobs]{stats::nobs()}} and \code{\link[stats:df.residual]{stats::df.residual()}} for the counts describing the
 fit, and \code{\link[stats:weights]{stats::weights()}} for the \code{\link[=psw]{psw()}} vector the outcome model was
 fit with. Coefficients are named for the effect measure, and for the effect
-measure and the comparison together where a categorical exposure reports
-one row per comparison. Which surface \code{\link[stats:coef]{stats::coef()}}, \code{\link[stats:vcov]{stats::vcov()}}, and
+measure and the contrast together where a categorical exposure reports one
+row per contrast. Which surface \code{\link[stats:coef]{stats::coef()}}, \code{\link[stats:vcov]{stats::vcov()}}, and
 \code{\link[stats:confint]{stats::confint()}} report follows the presentation mode the result records,
 described under \code{effects} above.
 
@@ -224,7 +224,7 @@ outcome model. Standard errors are computed by M-estimation; the
 linearization method is not available for categorical exposures. For a
 K-level exposure, effects are reported for each non-reference level against
 the reference (first) factor level, and the estimates table gains a
-\code{comparison} column identifying the contrast.
+\code{contrast} column naming the pair of levels each row compares.
 
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
@@ -235,7 +235,7 @@ continuous exposures. The marginal structural model must contain exactly one
 exposure term, and the reported effect is that single coefficient: \code{"slope"}
 for an identity-link outcome, \code{"log(or)"} for a logit-link outcome, and
 \code{"log(rr)"} for a log-link outcome. The estimates table keeps the eight-column
-contract with no comparison column.
+contract with no contrast column.
 
 \code{ipw()} is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
@@ -313,9 +313,9 @@ A continuous outcome (\code{\link[stats:lm]{stats::lm()}} or \code{\link[stats:g
 
 For a categorical exposure, the same measures are reported for each
 non-reference level against the reference (first) factor level. The estimates
-table gains a \code{comparison} column identifying each contrast (for example
-\code{"b vs a"}), so a K-level exposure produces one block of measures per
-non-reference level.
+table gains a \code{contrast} column naming the pair of levels each row compares
+(for example \code{"b vs a"}), so a K-level exposure produces one block of
+measures per non-reference level.
 
 For a continuous exposure, \code{ipw()} reports the single exposure coefficient of
 the weighted marginal structural outcome model. Its label follows the outcome

@@ -150,11 +150,10 @@ test_that("ipw() continuous labels the effect by the outcome link", {
   skip_if_not_installed("deli")
   dat <- sim_continuous()
 
-  # identity link: a single slope, the eight-column contract, no comparison
+  # identity link: a single slope, the eight-column contract, no contrast
   mods_g <- fit_continuous_models(dat, outcome_family = "gaussian")
   res_g <- ipw(mods_g$ps_mod, mods_g$outcome_mod)
   expect_named(res_g$estimates, estimates_columns)
-  expect_false("comparison" %in% names(res_g$estimates))
   expect_equal(nrow(res_g$estimates), 1L)
   expect_equal(res_g$estimates$effect, "slope")
   expect_true(all(res_g$estimates$conf.level == 0.95))
@@ -163,7 +162,6 @@ test_that("ipw() continuous labels the effect by the outcome link", {
   mods_b <- fit_continuous_models(dat, outcome_family = "binomial")
   res_b <- ipw(mods_b$ps_mod, mods_b$outcome_mod)
   expect_named(res_b$estimates, estimates_columns)
-  expect_false("comparison" %in% names(res_b$estimates))
   expect_equal(nrow(res_b$estimates), 1L)
   expect_equal(res_b$estimates$effect, "log(or)")
 })
