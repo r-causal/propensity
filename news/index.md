@@ -2,6 +2,32 @@
 
 ## propensity 0.1.0.9000 (development version)
 
+- The marginal reading of
+  [`tidy()`](https://generics.r-lib.org/reference/tidy.html) is now the
+  result’s own
+  [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html) table
+  read as a tibble rather than a second assembly of the same columns.
+  The rows, the columns, their order, and their values are the same as
+  before, and the covariance of the effects that frame attaches as an
+  attribute is the one thing the tibble does not carry, a tidied table
+  being its columns. The interval rebuilder and the confidence level
+  validator this method kept for itself go with the second assembly.
+
+- [`tidy()`](https://generics.r-lib.org/reference/tidy.html) now refuses
+  a bad `conf.int`, `conf.level`, or `exponentiate` under the
+  causalgenerics condition naming the argument at fault, such as
+  `causalgenerics_invalid_argument_conf.level`, rather than under a
+  class of this package’s own. These are the three arguments the method
+  shares with
+  [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html), which
+  is where they are now validated, in both readings and before either is
+  assembled, so one value cannot be well formed in one reading of a
+  result and refused in the other. Code catching
+  `propensity_conf_level_error` by name needs updating. The levels
+  `conf.level` accepts are unchanged, while `conf.int` and
+  `exponentiate` now take a single `TRUE` or `FALSE` and nothing else,
+  where a bare `if` had accepted anything it could read as one.
+
 - [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
   gains an `effects` argument on every method, which records the reading
   the result it builds presents: `"marginal"`, the default, for the
@@ -140,6 +166,48 @@
   model was fit with, so the class and the estimand they record travel
   with them. Pass the modeling data to `data` to carry those columns on
   a frame that also holds the covariates the outcome formula left out.
+
+- [`augment()`](https://generics.r-lib.org/reference/augment.html)
+  refuses a result whose propensity score model and outcome model were
+  fit to different rows, with an error of class
+  `propensity_augment_alignment_error`, rather than reporting one
+  observation’s propensity score beside another observation’s fitted
+  value. Two models of the same data most often part this way over
+  missing values, each dropping the rows a variable of its own is
+  missing on. What is compared is the number of observations each model
+  produced an answer for and, when the outcome model’s frame names the
+  exposure, the exposure values of the two model frames position by
+  position, reading a factor and the numbers its labels spell as one
+  encoding of one exposure. Exposure values that disagree prove the two
+  models hold different observations; exposure values that agree prove
+  nothing, two different sets of rows being free to carry the same
+  sequence of values, and two encodings that cannot be read onto each
+  other, such as a factor of `"a"` and `"b"` against a recoding of it as
+  0 and 1, prove nothing either way. The check is one-sided in that
+  direction deliberately: it refuses only what it can prove, so a fit
+  whose models do describe the same observations is never refused over
+  the labels the rows of either frame carry or the encoding its exposure
+  is written in.
+
+- [`augment()`](https://generics.r-lib.org/reference/augment.html)
+  refuses a frame that already holds a column it would add, with an
+  error of class `propensity_augment_column_error` naming every column
+  that clashes. Such a frame previously returned one naming the same
+  column twice, and a `.resid` column of the caller’s was written over
+  whenever the frame also held the outcome to difference. The names in
+  the way are the ones the call would actually add, so `.resid` is among
+  them only for a frame it would be added to, and the propensity columns
+  of a categorical fit are the `.propensity_<level>` columns rather than
+  `.propensity`.
+
+- [`augment()`](https://generics.r-lib.org/reference/augment.html)
+  refuses a result whose outcome model was fit without weights, under
+  `propensity_ipw_weights_missing_error`, the class
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  reports the same fact under. An
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  outcome model is weighted by construction, so `.weights` has nothing
+  to report for a result built around one that is not.
 
 - [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   is documented as computing entropy weights, which tilt the propensity

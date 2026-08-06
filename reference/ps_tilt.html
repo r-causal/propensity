@@ -129,6 +129,31 @@ weight by a marginal quantity that does not depend on the covariates, and
 <code><a href="wt_ate.html">wt_cens()</a></code> reuses the <code>"ate"</code> formula, so neither has an entry here.</p>
     </div>
     <div class="section level2">
+    <h2 id="standardizing-model-predictions">Standardizing model predictions<a class="anchor" aria-label="anchor" href="#standardizing-model-predictions"></a></h2>
+    <p>A g-computation estimate averages an outcome model's per-row counterfactual
+predictions, and where those predictions vary from row to row it is the
+weights of that average that standardize the estimate to a target population.
+The tilt is those weights, which is what the second example below supplies by
+hand. An average taken with equal weight standardizes a covariate-adjusted
+outcome model to the whole sample, so such a model targets the ATE however its
+own fitting weights were built: fit for a non-<code>"ate"</code> estimand and averaged
+that way, it reports the full-sample contrast rather than the one it was
+weighted for. Tools that average per-row model predictions, such as the
+<code>avg_comparisons()</code> function in the marginaleffects package, average with
+equal weight unless they are told otherwise, and the remedy is to hand them
+the tilt as the weights of the average: <code>ps_tilt(ps, "att")</code> for a binary
+exposure and <code>ps_tilt(ps, "att", .focal_level = "b")</code> for a categorical one.</p>
+<p>The requirement is easy to miss because an outcome model saturated in the
+exposure hides it. Such a model predicts one value per exposure level, so
+every average of its predictions returns the same contrast, and there the
+estimand is settled by the weights the model was fit with rather than by the
+weights of the average: a model fit with <code><a href="wt_ate.html">wt_att()</a></code> weights reports the ATT
+whether the average is taken with equal weight or with the tilt. The two
+averages come apart at the first covariate the outcome model adjusts for,
+where the predictions vary from row to row and the weights the average is
+taken under are what decides the population the estimate describes.</p>
+    </div>
+    <div class="section level2">
     <h2 id="propensity-score-range">Propensity score range<a class="anchor" aria-label="anchor" href="#propensity-score-range"></a></h2>
     <p>Every propensity score in <code>.propensity</code> must lie strictly inside
 \((0, 1)\), the same requirement <code><a href="wt_ate.html">wt_ate()</a></code> and the rest of the weight

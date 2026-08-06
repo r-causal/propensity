@@ -8,12 +8,23 @@ is one row per effect measure, and one row per effect measure per
 comparison for a categorical exposure, in the order the result stores
 them. Nothing is dropped.
 
-The values are the ones the result already holds:
-[`tidy()`](https://generics.r-lib.org/reference/tidy.html) renames and
-selects rather than re-estimating anything. The one exception is the
-confidence interval, which is rebuilt from the estimate and its standard
-error when the requested `conf.level` differs from the level the result
-was fit at.
+Those columns are the ones the result's own coercion surface reports, so
+the marginal reading is
+[`as.data.frame()`](https://r-causal.github.io/causalgenerics/reference/new_ipw.html)
+read as a tibble rather than a second assembly of the same table. The
+values are the ones the result already holds, nothing being
+re-estimated: the confidence interval is the only thing rebuilt, and
+only when the requested `conf.level` differs from the level the result
+was fit at. The one thing the frame carries that the tibble does not is
+the covariance of the effects it attaches as an attribute, a tidied
+table being its columns.
+
+`conf.int`, `conf.level`, and `exponentiate` are the arguments this
+method shares with that surface, so the surface validates them, in both
+readings and before either is assembled. A value it refuses is reported
+under the causalgenerics condition naming the argument at fault, which
+is what keeps one argument of one method from being well formed in one
+reading of a result and refused in the other.
 
 A result reports its effects in one of two readings, and
 [`tidy()`](https://generics.r-lib.org/reference/tidy.html) returns the
@@ -60,7 +71,8 @@ tidy(
   `estimate +/- qnorm(1 - (1 - conf.level) / 2) * std.error`, which is
   the interval
   [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
-  itself reports. Ignored when `conf.int` is `FALSE`.
+  itself reports. Not used when `conf.int` is `FALSE`, though it must
+  still be a valid level.
 
 - exponentiate:
 

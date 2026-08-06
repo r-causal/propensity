@@ -286,7 +286,13 @@ account for the uncertainty of estimating the propensity scores.
 with an intercept; a covariate-adjusted outcome model requires
 <code>"mestimation"</code>. For a binary or categorical exposure, both methods require
 an outcome model that can represent a baseline, so a numeric no-intercept
-coding such as <code>y ~ z - 1</code> errors on either.</p></dd>
+coding such as <code>y ~ z - 1</code> errors on either. The standard errors of the
+conditional reading described under <code>effects</code> require <code>"mestimation"</code>
+as well: the
+linearization route stores its outcome model unwrapped, so <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code>,
+<code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code>, and <code><a href="tidy.ipw.html">tidy()</a></code> refuse
+<code>effects = "conditional"</code> there with a classed error rather than reporting
+the covariance the outcome model computed for itself.</p></dd>
 
 
 <dt id="arg--focal-level">.focal_level<a class="anchor" aria-label="anchor" href="#arg--focal-level"></a></dt>
@@ -380,6 +386,10 @@ with <code><a href="wt_ate.html">wt_att()</a></code> or <code><a href="wt_ate.ht
 correct for the reversed roles, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> rejects them rather than
 correcting them as though the roles matched. To target the other level,
 relevel the exposure so that it sorts second and refit both models.</p>
+<p>The estimand a weighted outcome model was fit for is not necessarily the one a
+tool that averages its per-row predictions reports, so see <strong>Standardizing
+model predictions</strong> in <code><a href="ps_tilt.html">ps_tilt()</a></code> before taking such an average of a model fit
+for anything other than <code>"ate"</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="effect-measures">Effect measures<a class="anchor" aria-label="anchor" href="#effect-measures"></a></h2>
@@ -447,7 +457,12 @@ functions are those of the Hajek weighted-mean estimator; the two agree only
 for an exposure-only outcome model. A covariate-adjusted outcome model (any
 term beyond the exposure, including covariates, interactions, or transformed
 terms) errors on the linearization path and requires
-<code>se_method = "mestimation"</code>, which stacks adjusted outcome models correctly.</p>
+<code>se_method = "mestimation"</code>, which stacks adjusted outcome models correctly.
+The conditional reading is restricted the same way: linearization stacks no
+system, so the outcome model it stores carries no block of one, and the
+standard errors that reading reports are refused with a classed error rather
+than replaced by the covariance the outcome model computed for itself, which
+treats the estimated weights as fixed.</p>
 <p>The linearization outcome model must also carry an intercept, which is a
 stricter requirement than the M-estimation path imposes. Under a numeric
 coding such as <code>y ~ z - 1</code> the linear predictor under no exposure is fixed at
@@ -594,14 +609,10 @@ weighting.</p></div>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Exponentiate log-RR and log-OR to get RR and OR</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span>, exponentiate <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   effect  estimate    std.err        z    ci.lower  ci.upper conf.level</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1     rd 0.1423042 0.07020402 2.027009 0.004706801 0.2799015       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2     rr 1.3235458 0.14219501 1.971337 1.001618515 1.7489427       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3     or 1.7742759 0.28670966 1.999906 1.011517580 3.1122097       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>      p.value</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1 0.04266153</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2 0.04868533</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3 0.04551042</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   term  estimate  std.error statistic    p.value</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1   rd 0.1423042 0.07020402  2.027009 0.04266153</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2   rr 1.3235458 0.14219501  1.971337 0.04868533</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3   or 1.7742759 0.28670966  1.999906 0.04551042</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Continuous outcome example</span></span></span>
 <span class="r-in"><span><span class="va">y_cont</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">+</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="va">z</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span></span>

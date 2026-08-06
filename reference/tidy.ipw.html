@@ -3,11 +3,20 @@
 column names broom conventions use. There is one row per effect measure, and
 one row per effect measure per comparison for a categorical exposure, in the
 order the result stores them. Nothing is dropped.
-The values are the ones the result already holds: tidy() renames and
-selects rather than re-estimating anything. The one exception is the
-confidence interval, which is rebuilt from the estimate and its standard
-error when the requested conf.level differs from the level the result was
-fit at.
+Those columns are the ones the result's own coercion surface reports, so the
+marginal reading is as.data.frame() read as a
+tibble rather than a second assembly of the same table. The values are the
+ones the result already holds, nothing being re-estimated: the confidence
+interval is the only thing rebuilt, and only when the requested conf.level
+differs from the level the result was fit at. The one thing the frame carries
+that the tibble does not is the covariance of the effects it attaches as an
+attribute, a tidied table being its columns.
+conf.int, conf.level, and exponentiate are the arguments this method
+shares with that surface, so the surface validates them, in both readings and
+before either is assembled. A value it refuses is reported under the
+causalgenerics condition naming the argument at fault, which is what keeps one
+argument of one method from being well formed in one reading of a result and
+refused in the other.
 A result reports its effects in one of two readings, and tidy() returns the
 one the result records unless effects names the other for the call. The
 marginal reading is the table of causal contrasts described above. The
@@ -19,11 +28,20 @@ stack."><meta property="og:description" content="tidy() returns the estimates of
 column names broom conventions use. There is one row per effect measure, and
 one row per effect measure per comparison for a categorical exposure, in the
 order the result stores them. Nothing is dropped.
-The values are the ones the result already holds: tidy() renames and
-selects rather than re-estimating anything. The one exception is the
-confidence interval, which is rebuilt from the estimate and its standard
-error when the requested conf.level differs from the level the result was
-fit at.
+Those columns are the ones the result's own coercion surface reports, so the
+marginal reading is as.data.frame() read as a
+tibble rather than a second assembly of the same table. The values are the
+ones the result already holds, nothing being re-estimated: the confidence
+interval is the only thing rebuilt, and only when the requested conf.level
+differs from the level the result was fit at. The one thing the frame carries
+that the tibble does not is the covariance of the effects it attaches as an
+attribute, a tidied table being its columns.
+conf.int, conf.level, and exponentiate are the arguments this method
+shares with that surface, so the surface validates them, in both readings and
+before either is assembled. A value it refuses is reported under the
+causalgenerics condition naming the argument at fault, which is what keeps one
+argument of one method from being well formed in one reading of a result and
+refused in the other.
 A result reports its effects in one of two readings, and tidy() returns the
 one the result records unless effects names the other for the call. The
 marginal reading is the table of causal contrasts described above. The
@@ -70,11 +88,20 @@ stack."><meta property="og:image" content="https://r-causal.github.io/propensity
 column names broom conventions use. There is one row per effect measure, and
 one row per effect measure per comparison for a categorical exposure, in the
 order the result stores them. Nothing is dropped.</p>
-<p>The values are the ones the result already holds: <code><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy()</a></code> renames and
-selects rather than re-estimating anything. The one exception is the
-confidence interval, which is rebuilt from the estimate and its standard
-error when the requested <code>conf.level</code> differs from the level the result was
-fit at.</p>
+<p>Those columns are the ones the result's own coercion surface reports, so the
+marginal reading is <code><a href="https://r-causal.github.io/causalgenerics/reference/new_ipw.html" class="external-link">as.data.frame()</a></code> read as a
+tibble rather than a second assembly of the same table. The values are the
+ones the result already holds, nothing being re-estimated: the confidence
+interval is the only thing rebuilt, and only when the requested <code>conf.level</code>
+differs from the level the result was fit at. The one thing the frame carries
+that the tibble does not is the covariance of the effects it attaches as an
+attribute, a tidied table being its columns.</p>
+<p><code>conf.int</code>, <code>conf.level</code>, and <code>exponentiate</code> are the arguments this method
+shares with that surface, so the surface validates them, in both readings and
+before either is assembled. A value it refuses is reported under the
+causalgenerics condition naming the argument at fault, which is what keeps one
+argument of one method from being well formed in one reading of a result and
+refused in the other.</p>
 <p>A result reports its effects in one of two readings, and <code><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy()</a></code> returns the
 one the result records unless <code>effects</code> names the other for the call. The
 marginal reading is the table of causal contrasts described above. The
@@ -117,7 +144,8 @@ between 0 and 1. Defaults to <code>0.95</code>, which is this method's own defau
 rather than the level <code>x</code> was fit at. When the two differ, the bounds are
 recomputed as the normal approximation
 <code>estimate +/- qnorm(1 - (1 - conf.level) / 2) * std.error</code>, which is the
-interval <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> itself reports. Ignored when <code>conf.int</code> is <code>FALSE</code>.</p></dd>
+interval <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> itself reports. Not used when <code>conf.int</code> is <code>FALSE</code>, though
+it must still be a valid level.</p></dd>
 
 
 <dt id="arg-exponentiate">exponentiate<a class="anchor" aria-label="anchor" href="#arg-exponentiate"></a></dt>
