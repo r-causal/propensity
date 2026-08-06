@@ -6,11 +6,21 @@
 #' one row per effect measure per comparison for a categorical exposure, in the
 #' order the result stores them. Nothing is dropped.
 #'
-#' The values are the ones the result already holds: `tidy()` renames and
-#' selects rather than re-estimating anything. The one exception is the
-#' confidence interval, which is rebuilt from the estimate and its standard
-#' error when the requested `conf.level` differs from the level the result was
-#' fit at.
+#' Those columns are the ones the result's own coercion surface reports, so the
+#' marginal reading is [`as.data.frame()`][causalgenerics::new_ipw()] read as a
+#' tibble rather than a second assembly of the same table. The values are the
+#' ones the result already holds, nothing being re-estimated: the confidence
+#' interval is the only thing rebuilt, and only when the requested `conf.level`
+#' differs from the level the result was fit at. The one thing the frame carries
+#' that the tibble does not is the covariance of the effects it attaches as an
+#' attribute, a tidied table being its columns.
+#'
+#' `conf.int`, `conf.level`, and `exponentiate` are the arguments this method
+#' shares with that surface, so the surface validates them, in both readings and
+#' before either is assembled. A value it refuses is reported under the
+#' causalgenerics condition naming the argument at fault, which is what keeps one
+#' argument of one method from being well formed in one reading of a result and
+#' refused in the other.
 #'
 #' A result reports its effects in one of two readings, and `tidy()` returns the
 #' one the result records unless `effects` names the other for the call. The
@@ -29,7 +39,8 @@
 #'   rather than the level `x` was fit at. When the two differ, the bounds are
 #'   recomputed as the normal approximation
 #'   `estimate +/- qnorm(1 - (1 - conf.level) / 2) * std.error`, which is the
-#'   interval [ipw()] itself reports. Ignored when `conf.int` is `FALSE`.
+#'   interval [ipw()] itself reports. Not used when `conf.int` is `FALSE`, though
+#'   it must still be a valid level.
 #' @param exponentiate Logical. Should the estimate and its bounds be
 #'   exponentiated on the rows reported on the log scale? Defaults to `FALSE`.
 #'   This behaves exactly as it does in
@@ -126,7 +137,21 @@ tidy.ipw <- function(
   effects = NULL
 ) {
   rlang::check_dots_empty()
-  check_conf_level(conf.level)
+
+  # The marginal reading, which is the result's own coercion surface read as a
+  # tibble. It is built before anything branches on a reading because the three
+  # arguments the two surfaces share are validated there, and one argument of one
+  # method cannot be well formed in one reading of a result and refused in the
+  # other.
+  #
+  # The conditional reading answers from the accessors and so discards the frame,
+  # which costs a table of a few rows: nothing is refit to build it.
+  frame <- as.data.frame(
+    x,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate
+  )
 
   # The accessors own the `effects` argument, so the estimates of the reading
   # this call reports come from one before anything here branches on a reading.
@@ -149,51 +174,19 @@ tidy.ipw <- function(
     ))
   }
 
-  tidy_ipw_marginal(
-    x,
-    conf.int = conf.int,
-    conf.level = conf.level,
-    exponentiate = exponentiate
-  )
+  # The covariance of the effects the frame attaches is the one thing that does
+  # not travel: it is an attribute rather than a column, and a tidied table is
+  # its columns.
+  out <- tibble::as_tibble(frame)
+  attr(out, "ipw_vcov") <- NULL
+
+  out
 }
 
 # The reading a result records. A result built before the field existed carries
 # none, and marginal is the reading every method produced then.
 ipw_stored_effects <- function(x) {
   if (is.null(x$effects)) "marginal" else x$effects
-}
-
-# The marginal reading: the result's own table of causal contrasts, renamed and
-# selected into the broom columns.
-tidy_ipw_marginal <- function(x, conf.int, conf.level, exponentiate) {
-  if (conf.int) {
-    x$estimates <- recompute_ipw_interval(x$estimates, conf.level)
-  }
-
-  # Exponentiation is the result's own contract, so the coercion method applies
-  # it, to whichever interval this call settled on.
-  estimates <- as.data.frame(x, exponentiate = exponentiate)
-
-  out <- list(
-    term = estimates$effect,
-    estimate = estimates$estimate,
-    std.error = estimates$std.err,
-    statistic = estimates$z,
-    p.value = estimates$p.value
-  )
-
-  # A categorical exposure reports each effect measure once per contrast, and
-  # the column naming the contrast follows the term it qualifies.
-  if (!is.null(estimates[["comparison"]])) {
-    out <- append(out, list(comparison = estimates$comparison), after = 1L)
-  }
-
-  if (conf.int) {
-    out$conf.low <- estimates$ci.lower
-    out$conf.high <- estimates$ci.upper
-  }
-
-  tibble::as_tibble(out)
 }
 
 # The conditional reading: the outcome model's coefficient surface, in the
@@ -288,58 +281,6 @@ check_exponentiate_link <- function(outcome_mod, call = rlang::caller_env()) {
   }
 
   invisible(link)
-}
-
-# The estimates table with its interval expressed at `conf_level`. The stored
-# bounds are returned untouched when they already describe that level, so a
-# request for the level the result was fit at reports the result's own numbers
-# rather than a recomputation that merely agrees with them.
-recompute_ipw_interval <- function(estimates, conf_level) {
-  stored <- estimates[["conf.level"]]
-  if (!is.null(stored) && isTRUE(all(stored == conf_level))) {
-    return(estimates)
-  }
-
-  half_width <- stats::qnorm(1 - (1 - conf_level) / 2) * estimates$std.err
-  estimates$ci.lower <- estimates$estimate - half_width
-  estimates$ci.upper <- estimates$estimate + half_width
-  estimates$conf.level <- conf_level
-
-  estimates
-}
-
-check_conf_level <- function(
-  conf.level,
-  arg = rlang::caller_arg(conf.level),
-  call = rlang::caller_env()
-) {
-  valid <- is.numeric(conf.level) &&
-    length(conf.level) == 1L &&
-    !is.na(conf.level) &&
-    conf.level > 0 &&
-    conf.level < 1
-
-  if (!valid) {
-    # An empty value has nothing for `{.val}` to print, so it is described by
-    # its type instead.
-    supplied <- if (length(conf.level) == 0) {
-      "You supplied {.obj_type_friendly {conf.level}}."
-    } else {
-      "You supplied {.val {conf.level}}."
-    }
-
-    abort(
-      c(
-        "{.arg {arg}} must be a single number between 0 and 1.",
-        x = supplied,
-        i = "Use {.code {arg} = 0.95} for a 95% interval."
-      ),
-      error_class = "propensity_conf_level_error",
-      call = call
-    )
-  }
-
-  invisible(conf.level)
 }
 
 #' Glance at an inverse probability weighted result

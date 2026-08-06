@@ -1,5 +1,25 @@
 # propensity 0.1.0.9000 (development version)
 
+* The marginal reading of `tidy()` is now the result's own `as.data.frame()`
+  table read as a tibble rather than a second assembly of the same columns. The
+  rows, the columns, their order, and their values are the same as before, and
+  the covariance of the effects that frame attaches as an attribute is the one
+  thing the tibble does not carry, a tidied table being its columns. The
+  interval rebuilder and the confidence level validator this method kept for
+  itself go with the second assembly.
+
+* `tidy()` now refuses a bad `conf.int`, `conf.level`, or `exponentiate` under
+  the causalgenerics condition naming the argument at fault, such as
+  `causalgenerics_invalid_argument_conf.level`, rather than under a class of this
+  package's own. These are the three arguments the method shares with
+  `as.data.frame()`, which is where they are now validated, in both readings and
+  before either is assembled, so one value cannot be well formed in one reading
+  of a result and refused in the other. Code catching
+  `propensity_conf_level_error` by name needs updating. The levels `conf.level`
+  accepts are unchanged, while `conf.int` and `exponentiate` now take a single
+  `TRUE` or `FALSE` and nothing else, where a bare `if` had accepted anything it
+  could read as one.
+
 * `ipw()` gains an `effects` argument on every method, which records the reading
   the result it builds presents: `"marginal"`, the default, for the
   population-averaged causal contrasts every method reported before, or

@@ -24,7 +24,8 @@ between 0 and 1. Defaults to \code{0.95}, which is this method's own default
 rather than the level \code{x} was fit at. When the two differ, the bounds are
 recomputed as the normal approximation
 \verb{estimate +/- qnorm(1 - (1 - conf.level) / 2) * std.error}, which is the
-interval \code{\link[=ipw]{ipw()}} itself reports. Ignored when \code{conf.int} is \code{FALSE}.}
+interval \code{\link[=ipw]{ipw()}} itself reports. Not used when \code{conf.int} is \code{FALSE}, though
+it must still be a valid level.}
 
 \item{exponentiate}{Logical. Should the estimate and its bounds be
 exponentiated on the rows reported on the log scale? Defaults to \code{FALSE}.
@@ -93,11 +94,21 @@ column names broom conventions use. There is one row per effect measure, and
 one row per effect measure per comparison for a categorical exposure, in the
 order the result stores them. Nothing is dropped.
 
-The values are the ones the result already holds: \code{tidy()} renames and
-selects rather than re-estimating anything. The one exception is the
-confidence interval, which is rebuilt from the estimate and its standard
-error when the requested \code{conf.level} differs from the level the result was
-fit at.
+Those columns are the ones the result's own coercion surface reports, so the
+marginal reading is \code{\link[causalgenerics:new_ipw]{as.data.frame()}} read as a
+tibble rather than a second assembly of the same table. The values are the
+ones the result already holds, nothing being re-estimated: the confidence
+interval is the only thing rebuilt, and only when the requested \code{conf.level}
+differs from the level the result was fit at. The one thing the frame carries
+that the tibble does not is the covariance of the effects it attaches as an
+attribute, a tidied table being its columns.
+
+\code{conf.int}, \code{conf.level}, and \code{exponentiate} are the arguments this method
+shares with that surface, so the surface validates them, in both readings and
+before either is assembled. A value it refuses is reported under the
+causalgenerics condition naming the argument at fault, which is what keeps one
+argument of one method from being well formed in one reading of a result and
+refused in the other.
 
 A result reports its effects in one of two readings, and \code{tidy()} returns the
 one the result records unless \code{effects} names the other for the call. The
