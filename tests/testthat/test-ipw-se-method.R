@@ -444,8 +444,8 @@ test_that("as.data.frame(exponentiate = TRUE) matches across SE methods", {
 
   # Both paths relabel the ratio rows and share point estimates on the natural
   # scale (standard errors stay on the log scale and may differ by method).
-  expect_equal(df_m$effect, c("rd", "rr", "or"))
-  expect_equal(df_l$effect, c("rd", "rr", "or"))
+  expect_equal(df_m$term, c("rd", "rr", "or"))
+  expect_equal(df_l$term, c("rd", "rr", "or"))
   expect_equal(df_m$estimate, df_l$estimate, tolerance = 1e-8)
 })
 

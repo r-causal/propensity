@@ -755,14 +755,17 @@ test_that("a healthy fit of a small-unit outcome reports no collapse", {
 test_that("a small-unit outcome keeps an informative test statistic", {
   skip_if_not_installed("deli")
   mods <- small_scale_outcome_fit()
-  est <- as.data.frame(ipw(mods$ps_mod, mods$out, se_method = "mestimation"))
+  est <- as.data.frame(
+    ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
+    conf.int = TRUE
+  )
 
   # the fit the report would have to be about: every number in the table near
   # machine precision, and an interval that excludes zero
   expect_lt(abs(est$estimate), 1e-8)
-  expect_lt(est$std.err, 1e-8)
-  expect_gt(abs(est$z), 3)
-  expect_gt(est$ci.lower, 0)
+  expect_lt(est$std.error, 1e-8)
+  expect_gt(abs(est$statistic), 3)
+  expect_gt(est$conf.low, 0)
 })
 
 # ---- a standard error of exactly zero ---------------------------------------
@@ -822,12 +825,12 @@ test_that("the degenerate signature reads the test statistic, not the scale", {
 
 degenerate_se_z <- function(res) {
   est <- as.data.frame(res)
-  max(abs(est$estimate) / est$std.err)
+  max(abs(est$estimate) / est$std.error)
 }
 
 degenerate_se_min_z <- function(res) {
   est <- as.data.frame(res)
-  min(abs(est$estimate) / est$std.err)
+  min(abs(est$estimate) / est$std.error)
 }
 
 test_that("healthy fits clear the degenerate-standard-error threshold by orders", {

@@ -625,9 +625,20 @@ test_that("as.data.frame(exponentiate = TRUE) relabels ratios per comparison", {
 
   df <- as.data.frame(res, exponentiate = TRUE)
 
+  # The frame reports the effect measure under `term`, and `comparison` follows
+  # the term it qualifies. The bounds are not columns of it: they arrive only
+  # when `conf.int` asks for them.
+  expect_named(
+    df,
+    c("term", "comparison", "estimate", "std.error", "statistic", "p.value")
+  )
+
   # the ratio rows are relabelled while the comparison column is preserved
-  expect_equal(df$effect, rep(c("rd", "rr", "or"), times = 2))
+  expect_equal(df$term, rep(c("rd", "rr", "or"), times = 2))
   expect_equal(df$comparison, rep(c("b vs a", "c vs a"), each = 3))
+
+  # the standard error describes the log scale estimate and stays there
+  expect_equal(df$std.error, as.data.frame(res)$std.error)
 })
 
 # ---- a transformed exposure in the outcome formula ---------------------------

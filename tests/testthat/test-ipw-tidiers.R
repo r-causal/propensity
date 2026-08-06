@@ -1,9 +1,13 @@
-# Tests for the broom tidiers on `ipw` results. `tidy()` reshapes the object's
-# `estimates` table into the column names the tidymodels broom developer guide
+# Tests for the broom tidiers on `ipw` results. `tidy()` reports the object's
+# `estimates` table under the column names the tidymodels broom developer guide
 # specifies, one row per estimate, adding interval bounds only when asked for
-# them. The values themselves are the object's own: the tidier renames and
-# selects, and recomputes only when a requested confidence level differs from
-# the one the fit stored.
+# them. The values themselves are the object's own: nothing is re-estimated, and
+# the interval is recomputed only when a requested confidence level differs from
+# the one the fit stored. Those columns are the ones the result's own coercion
+# surface reports, so the marginal reading of the tidier is that surface read as
+# a tibble rather than a second assembly of the same table, and the two are
+# pinned against each other as such. The covariance of the effects the frame
+# attaches is the one thing that does not travel: a tidied table is its columns.
 #
 # `glance()` describes the fit rather than its estimates: a single row naming the
 # estimand and counting the observations and the residual degrees of freedom of
@@ -364,6 +368,34 @@ expect_tidy_contract <- function(
   invisible(tidied)
 }
 
+# The marginal reading is the result's own coercion surface read as a tibble:
+# the same columns holding the same values, for either setting of the two
+# arguments this sweeps, `conf.int` and `exponentiate`. The third argument the
+# two surfaces share, `conf.level`, is pinned by value beside the interval it
+# governs. What the tibble does not carry is the
+# covariance of the effects the frame attaches. That covariance is an attribute
+# rather than a column, and a tidied table is its columns, so `tidy()` reports
+# none, and the pin says so rather than leaving the absence to be inferred from
+# the columns agreeing.
+expect_tidy_wraps_frame <- function(
+  result,
+  conf.int = FALSE,
+  exponentiate = FALSE
+) {
+  expected <- tibble::as_tibble(as.data.frame(
+    result,
+    conf.int = conf.int,
+    exponentiate = exponentiate
+  ))
+  attr(expected, "ipw_vcov") <- NULL
+
+  tidied <- tidy(result, conf.int = conf.int, exponentiate = exponentiate)
+  expect_identical(tidied, expected)
+  expect_null(attr(tidied, "ipw_vcov", exact = TRUE))
+
+  invisible(tidied)
+}
+
 # The conditional reading of a result, read off the accessors rather than off the
 # tidier: the outcome model's coefficients, the standard errors the joint block
 # implies, and the normal statistics those two make. Reading them from the
@@ -645,6 +677,74 @@ test_that("tidy() returns the log odds ratio row for a continuous logit fit", {
   expect_identical(tidied$term, "log(or)")
 })
 
+# ---- the frame the marginal reading wraps ------------------------------------
+
+# The marginal reading and the result's own coercion surface report the same
+# table, so the tidier is that surface read as a tibble rather than a second
+# assembly of the same columns that has to be kept in step with it by hand. The
+# equivalence is pinned once per exposure type, because each type reaches the
+# coercion surface with a table of its own shape: a binary exposure with the
+# three effect measures, a categorical one with those measures once per
+# comparison and the column naming it, and a continuous one with a single row.
+#
+# The frame carries the covariance of the effects it reports as an attribute.
+# The tibble does not: a tidied table is its columns, and a covariance is not
+# one of them.
+
+test_that("tidy() reports the coercion surface of a binary fit as a tibble", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The attribute is on the frame to be dropped in the first place, which is
+  # what makes its absence from the tibble a fact about the tidier.
+  expect_false(is.null(
+    attr(as.data.frame(res, conf.int = TRUE), "ipw_vcov", exact = TRUE)
+  ))
+
+  expect_tidy_wraps_frame(res)
+  expect_tidy_wraps_frame(res, conf.int = TRUE)
+
+  # An exponentiated frame reports estimates the covariance no longer describes
+  # and so carries none of its own. The tibble carries none either way.
+  expect_null(
+    attr(as.data.frame(res, exponentiate = TRUE), "ipw_vcov", exact = TRUE)
+  )
+  expect_tidy_wraps_frame(res, conf.int = TRUE, exponentiate = TRUE)
+})
+
+test_that("tidy() reports the coercion surface of a categorical fit as a tibble", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_categorical()
+  mods <- fit_tidy_categorical_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_false(is.null(
+    attr(as.data.frame(res, conf.int = TRUE), "ipw_vcov", exact = TRUE)
+  ))
+
+  expect_tidy_wraps_frame(res)
+  expect_tidy_wraps_frame(res, conf.int = TRUE)
+  expect_tidy_wraps_frame(res, conf.int = TRUE, exponentiate = TRUE)
+})
+
+test_that("tidy() reports the coercion surface of a continuous fit as a tibble", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_continuous()
+  mods <- fit_tidy_continuous_models(dat, outcome_family = "binomial")
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_false(is.null(
+    attr(as.data.frame(res, conf.int = TRUE), "ipw_vcov", exact = TRUE)
+  ))
+
+  expect_tidy_wraps_frame(res)
+  expect_tidy_wraps_frame(res, conf.int = TRUE)
+  expect_tidy_wraps_frame(res, conf.int = TRUE, exponentiate = TRUE)
+})
+
 # ---- confidence level --------------------------------------------------------
 
 test_that("tidy() recomputes the interval at a non-default conf.level", {
@@ -715,34 +815,103 @@ test_that("tidy() rejects a conf.level that is not one number inside (0, 1)", {
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
 
+  # The condition is the one the result's own coercion surface raises for the
+  # same value, which is where the marginal reading takes the argument.
+  # Validating it under a class of this package's own would report one refusal
+  # under two names depending on which surface the user reached it through.
+  #
   # The endpoints are excluded: a level of 0 or 1 has no normal-approximation
   # interval to report.
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = 1),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = 0),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = c(0.9, 0.95)),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = NA_real_),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = NULL),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
 
   # The level is validated whether or not bounds were asked for, so a bad value
   # is reported rather than quietly going unused.
   expect_error(
     tidy(res, conf.level = "0.95"),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
+  )
+})
+
+test_that("tidy() rejects the argument values the coercion surface refuses", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The three arguments `tidy()` shares with the result's own coercion surface
+  # are refused there under a class naming the argument, and the marginal
+  # reading takes them to that surface. The conditional reading answers from
+  # the accessors instead, so it validates them itself, and it has to reach the
+  # same conditions: one argument of one method cannot be well formed in one
+  # reading of a result and not in the other.
+  readings <- list(
+    marginal = res,
+    conditional = as_conditional(res)
+  )
+
+  for (reading in readings) {
+    expect_error(
+      tidy(reading, conf.int = NA),
+      class = "causalgenerics_invalid_argument_conf.int"
+    )
+    expect_error(
+      tidy(reading, conf.int = c(TRUE, TRUE)),
+      class = "causalgenerics_invalid_argument_conf.int"
+    )
+    expect_error(
+      tidy(reading, exponentiate = NA),
+      class = "causalgenerics_invalid_argument_exponentiate"
+    )
+    expect_error(
+      tidy(reading, exponentiate = "yes"),
+      class = "causalgenerics_invalid_argument_exponentiate"
+    )
+    expect_error(
+      tidy(reading, conf.level = 95),
+      class = "causalgenerics_invalid_argument_conf.level"
+    )
+    expect_error(
+      tidy(reading, conf.int = TRUE, conf.level = 95),
+      class = "causalgenerics_invalid_argument_conf.level"
+    )
+  }
+
+  # Naming the reading at the call site reaches the same refusals as recording
+  # it does, the value being refused before either reading is assembled.
+  expect_error(
+    tidy(res, conf.int = NA, effects = "conditional"),
+    class = "causalgenerics_invalid_argument_conf.int"
+  )
+  expect_error(
+    tidy(res, exponentiate = NA, effects = "conditional"),
+    class = "causalgenerics_invalid_argument_exponentiate"
+  )
+  expect_error(
+    tidy(res, conf.level = 95, effects = "conditional"),
+    class = "causalgenerics_invalid_argument_conf.level"
+  )
+  expect_error(
+    tidy(as_conditional(res), conf.int = NA, effects = "marginal"),
+    class = "causalgenerics_invalid_argument_conf.int"
   )
 })
 
@@ -814,17 +983,19 @@ test_that("tidy(exponentiate = TRUE) matches as.data.frame on a binary fit", {
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
 
   # `exponentiate` is documented as behaving exactly as it does in
-  # `as.data.frame.ipw`, so the two surfaces must agree column for column.
-  df <- as.data.frame(res, exponentiate = TRUE)
+  # `as.data.frame.ipw`, so the two surfaces must agree column for column. The
+  # bounds are a column of that frame only when it was asked for them, which is
+  # the same rule the tidier follows.
+  df <- as.data.frame(res, conf.int = TRUE, exponentiate = TRUE)
   tidied <- tidy(res, conf.int = TRUE, exponentiate = TRUE)
 
-  expect_identical(tidied$term, df$effect)
+  expect_identical(tidied$term, df$term)
   expect_identical(tidied$estimate, df$estimate)
-  expect_identical(tidied$std.error, df$std.err)
-  expect_identical(tidied$statistic, df$z)
+  expect_identical(tidied$std.error, df$std.error)
+  expect_identical(tidied$statistic, df$statistic)
   expect_identical(tidied$p.value, df$p.value)
-  expect_identical(tidied$conf.low, df$ci.lower)
-  expect_identical(tidied$conf.high, df$ci.upper)
+  expect_identical(tidied$conf.low, df$conf.low)
+  expect_identical(tidied$conf.high, df$conf.high)
 })
 
 test_that("tidy(exponentiate = TRUE) relabels ratio rows per comparison", {
@@ -834,16 +1005,16 @@ test_that("tidy(exponentiate = TRUE) relabels ratio rows per comparison", {
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-  df <- as.data.frame(res, exponentiate = TRUE)
+  df <- as.data.frame(res, conf.int = TRUE, exponentiate = TRUE)
   tidied <- tidy(res, conf.int = TRUE, exponentiate = TRUE)
 
   expect_identical(tidied$term, rep(c("rd", "rr", "or"), times = 2))
   expect_identical(tidied$comparison, rep(c("b vs a", "c vs a"), each = 3))
-  expect_identical(tidied$term, df$effect)
+  expect_identical(tidied$term, df$term)
   expect_identical(tidied$comparison, df$comparison)
   expect_identical(tidied$estimate, df$estimate)
-  expect_identical(tidied$conf.low, df$ci.lower)
-  expect_identical(tidied$conf.high, df$ci.upper)
+  expect_identical(tidied$conf.low, df$conf.low)
+  expect_identical(tidied$conf.high, df$conf.high)
 })
 
 test_that("tidy(exponentiate = TRUE) relabels the continuous log odds ratio", {
@@ -1890,7 +2061,7 @@ test_that("tidy() rebuilds the conditional interval at the level asked for", {
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = 1, effects = "conditional"),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
 })
 
