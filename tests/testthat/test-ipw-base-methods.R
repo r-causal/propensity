@@ -82,17 +82,24 @@ sim_base_continuous <- function(seed = 2024, n = 600) {
 # models serves the M-estimation and the linearization paths, the latter being
 # restricted to marginal outcome models. `estimand` picks the weighting scheme,
 # so a fit reporting something other than the ATE is available here rather than
-# through a second fixture.
+# through a second fixture. `stabilize` scales the ATE weights by the marginal
+# exposure probability, which the stacked system solves for as a parameter of
+# its own rather than holding fixed. Stabilization is defined for the ATE alone,
+# so the ATT branch takes no such argument.
 fit_base_binary_models <- function(
   dat,
   outcome_family = "binomial",
-  estimand = "ate"
+  estimand = "ate",
+  stabilize = FALSE
 ) {
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
-  wt_fun <- if (estimand == "att") wt_att else wt_ate
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
-    wt_fun(ps_mod)
+    if (estimand == "att") {
+      wt_att(ps_mod)
+    } else {
+      wt_ate(ps_mod, stabilize = stabilize)
+    }
   )
   outcome_var <- if (outcome_family == "binomial") "y" else "yc"
   fmla <- stats::reformulate("z", response = outcome_var)
@@ -329,6 +336,21 @@ test_that("a binary att fit records the covariance of its effects", {
   expect_identical(rownames(covariance), c("rd", "log(rr)", "log(or)"))
 })
 
+test_that("a stabilized binary fit records the covariance of its effects", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_binary()
+  mods <- fit_base_binary_models(dat, stabilize = TRUE)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # Stabilizing the weights adds a parameter to the stacked system, so the
+  # sandwich the covariance is read off is a wider matrix than the unstabilized
+  # fit's. What the estimates table is owed is unchanged: the covariance of the
+  # three effect measures it reports, carrying their standard errors.
+  expect_true(is_stabilized(mods$wts))
+  covariance <- expect_ipw_vcov_contract(res)
+  expect_identical(rownames(covariance), c("rd", "log(rr)", "log(or)"))
+})
+
 test_that("a categorical fit labels its covariance by effect and comparison", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
@@ -441,6 +463,55 @@ test_that("the accessors read a binary mestimation fit", {
   # spent on.
   expect_identical(nobs(res), 600L)
   expect_identical(df.residual(res), 600L - as.integer(res$fit@n_params))
+})
+
+test_that("a stabilized fit spends an observation on its stabilizer", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_binary()
+  stabilized <- fit_base_binary_models(dat, stabilize = TRUE)
+  unstabilized <- fit_base_binary_models(dat)
+  expect_true(is_stabilized(stabilized$wts))
+  expect_false(is_stabilized(unstabilized$wts))
+
+  res <- ipw(
+    stabilized$ps_mod,
+    stabilized$outcome_mod,
+    se_method = "mestimation"
+  )
+  base <- ipw(
+    unstabilized$ps_mod,
+    unstabilized$outcome_mod,
+    se_method = "mestimation"
+  )
+
+  # The weights the result reports are the stabilized vector the outcome model
+  # was fit with, so the stabilization travels with the fit rather than living
+  # only in the fixture.
+  expect_identical(weights(res), stabilized$wts)
+
+  # The stabilizer is solved for rather than held fixed, so it is a parameter of
+  # the stacked system and sits between the propensity score block and the
+  # outcome block. Everything else the system solves for is what the
+  # unstabilized fit solves for, in the same order.
+  theta_names <- names(res$fit@theta)
+  expect_identical(theta_names[[4]], "stab_pi")
+  expect_identical(theta_names[-4], names(base$fit@theta))
+
+  # An observation is spent on that parameter, so the counts describing the fit
+  # report one fewer residual degree of freedom than the unstabilized fit of the
+  # same data does.
+  expect_identical(as.integer(res$fit@n_params), 11L)
+  expect_identical(nobs(res), 600L)
+  expect_identical(df.residual(res), 589L)
+  expect_identical(df.residual(res), df.residual(base) - 1L)
+
+  # The row that parameter answers is the mean of the centered exposure, whose
+  # root is the marginal exposure probability, so the solved value is the
+  # proportion exposed rather than anything the weights were scaled by
+  # approximately. The solver reaches it to within two units in the last place, a
+  # measured 1.1e-16 on this fixture, so the comparison carries a tolerance
+  # rather than asking for the same double.
+  expect_equal(res$fit@theta[["stab_pi"]], mean(dat$z), tolerance = 1e-12)
 })
 
 test_that("the accessors read a binary linearization fit", {

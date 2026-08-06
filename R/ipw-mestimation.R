@@ -2355,6 +2355,11 @@ ipw_mestimation_estimates <- function(
 # The labels every surface of a result keys its effects by: the effect measure
 # on its own, or the effect measure and the comparison together where a
 # categorical exposure reports one row per comparison.
+#
+# causalgenerics holds a function of the same name and the same rule, and the
+# duplication is deliberate: that copy labels what the accessors present, and
+# this one labels what is stored, so the block a result carries is keyed the
+# moment it is built rather than at whatever later point something reads it.
 ipw_effect_labels <- function(estimates) {
   if (is.null(estimates[["comparison"]])) {
     estimates$effect

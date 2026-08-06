@@ -317,16 +317,16 @@ test_that("exponentiate=TRUE in as.data.frame.ipw transforms log(rr), log(or)", 
   df_exp <- as.data.frame(ipw_res, exponentiate = TRUE)
 
   # The log scale has "log(rr)", "log(or)"
-  expect_true(any(df_log$effect == "log(rr)"))
-  expect_true(any(df_log$effect == "log(or)"))
+  expect_true(any(df_log$term == "log(rr)"))
+  expect_true(any(df_log$term == "log(or)"))
 
   # Exponentiated scale => "rr", "or"
-  expect_true(any(df_exp$effect == "rr"))
-  expect_true(any(df_exp$effect == "or"))
+  expect_true(any(df_exp$term == "rr"))
+  expect_true(any(df_exp$term == "or"))
 
   # "rd" should remain the same in both
-  rd_log <- df_log[df_log$effect == "rd", "estimate"]
-  rd_exp <- df_exp[df_exp$effect == "rd", "estimate"]
+  rd_log <- df_log[df_log$term == "rd", "estimate"]
+  rd_exp <- df_exp[df_exp$term == "rd", "estimate"]
   expect_equal(rd_log, rd_exp)
 })
 

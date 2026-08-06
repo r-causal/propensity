@@ -498,68 +498,108 @@ test_that("printing an ipw result returns it invisibly", {
   expect_identical(print(res), res)
 })
 
-test_that("as.data.frame() on an ipw result returns the estimates component", {
+test_that("as.data.frame() on an ipw result returns the estimates in tidy columns", {
   res <- fit_ipw_binary(sim_ipw_binary())
   df <- as.data.frame(res)
+  estimates <- res$estimates
 
   expect_s3_class(df, "data.frame")
   expect_named(
     df,
+    c("term", "estimate", "std.error", "statistic", "p.value")
+  )
+  expect_identical(df$term, c("rd", "log(rr)", "log(or)"))
+
+  # The values are the result's own, renamed rather than recomputed.
+  expect_identical(df$estimate, estimates$estimate)
+  expect_identical(df$std.error, estimates$std.err)
+  expect_identical(df$statistic, estimates$z)
+  expect_identical(df$p.value, estimates$p.value)
+
+  # The bounds are not columns of the default frame: they arrive, under the
+  # names the broom column conventions use, only when `conf.int` asks for them.
+  # The level they were built at is an argument rather than a column, and is
+  # reported by neither frame.
+  bounded <- as.data.frame(res, conf.int = TRUE)
+  expect_named(
+    bounded,
     c(
-      "effect",
+      "term",
       "estimate",
-      "std.err",
-      "z",
-      "ci.lower",
-      "ci.upper",
-      "conf.level",
-      "p.value"
+      "std.error",
+      "statistic",
+      "p.value",
+      "conf.low",
+      "conf.high"
     )
   )
-  expect_equal(df, res$estimates)
-  expect_identical(df$effect, c("rd", "log(rr)", "log(or)"))
+  expect_identical(bounded$conf.low, estimates$ci.lower)
+  expect_identical(bounded$conf.high, estimates$ci.upper)
+
+  # The covariance of the reported effects travels with the frame, since it is
+  # recoverable from nothing else the frame carries.
+  expect_identical(
+    attr(df, "ipw_vcov", exact = TRUE),
+    attr(estimates, "ipw_vcov", exact = TRUE)
+  )
 
   # `row.names` reaches `base::as.data.frame()`.
   named <- as.data.frame(res, row.names = c("a", "b", "c"))
   expect_identical(rownames(named), c("a", "b", "c"))
 
   # `optional` is part of the signature `base::as.data.frame()` requires. The
-  # data frame method ignores it, so it must be accepted and leave the
-  # estimates untouched rather than error or reshape them.
-  expect_equal(as.data.frame(res, optional = TRUE), res$estimates)
+  # data frame method ignores it, so it must be accepted and leave the frame
+  # untouched rather than error or reshape it.
+  expect_identical(as.data.frame(res, optional = TRUE), df)
 
-  # `...` passes through to `base::as.data.frame()`. An argument the data frame
-  # method does not use is absorbed there, not rejected as unused here.
-  expect_equal(as.data.frame(res, stringsAsFactors = FALSE), res$estimates)
+  # An argument the method does not use is absorbed by the dots, not rejected
+  # as unused here.
+  expect_identical(as.data.frame(res, stringsAsFactors = FALSE), df)
 })
 
 test_that("exponentiating an ipw result transforms only the estimate and bounds", {
   res <- fit_ipw_binary(sim_ipw_binary())
-  log_scale <- as.data.frame(res)
-  exp_scale <- as.data.frame(res, exponentiate = TRUE)
+  log_scale <- as.data.frame(res, conf.int = TRUE)
+  exp_scale <- as.data.frame(res, conf.int = TRUE, exponentiate = TRUE)
 
-  ratio <- log_scale$effect %in% c("log(rr)", "log(or)")
+  ratio <- log_scale$term %in% c("log(rr)", "log(or)")
 
-  expect_identical(exp_scale$effect, c("rd", "rr", "or"))
+  expect_identical(exp_scale$term, c("rd", "rr", "or"))
   expect_equal(exp_scale$estimate[ratio], exp(log_scale$estimate[ratio]))
-  expect_equal(exp_scale$ci.lower[ratio], exp(log_scale$ci.lower[ratio]))
-  expect_equal(exp_scale$ci.upper[ratio], exp(log_scale$ci.upper[ratio]))
+  expect_equal(exp_scale$conf.low[ratio], exp(log_scale$conf.low[ratio]))
+  expect_equal(exp_scale$conf.high[ratio], exp(log_scale$conf.high[ratio]))
 
-  # The standard error, z statistic, and p-value stay on the log scale.
-  expect_identical(exp_scale$std.err, log_scale$std.err)
-  expect_identical(exp_scale$z, log_scale$z)
+  # The standard error, test statistic, and p-value stay on the log scale.
+  expect_identical(exp_scale$std.error, log_scale$std.error)
+  expect_identical(exp_scale$statistic, log_scale$statistic)
   expect_identical(exp_scale$p.value, log_scale$p.value)
-  expect_identical(exp_scale$conf.level, log_scale$conf.level)
 
-  # The risk difference row is untouched, label included.
-  expect_equal(exp_scale[!ratio, ], log_scale[!ratio, ])
+  # The covariance describes the effects on the log scale, so a frame that has
+  # moved any of them off it carries none.
+  expect_false(is.null(attr(log_scale, "ipw_vcov", exact = TRUE)))
+  expect_null(attr(exp_scale, "ipw_vcov", exact = TRUE))
+
+  # The risk difference row is untouched, label included. Subsetting rows
+  # carries the covariance of the whole table along with the row it kept, so it
+  # is set aside here rather than compared as though it described that row.
+  on_log_scale <- log_scale
+  attr(on_log_scale, "ipw_vcov") <- NULL
+  expect_equal(exp_scale[!ratio, ], on_log_scale[!ratio, ])
 })
 
 test_that("exponentiating a difference-only ipw result changes nothing", {
   res <- fit_ipw_binary(sim_ipw_binary(), outcome = "continuous")
+  plain <- as.data.frame(res, conf.int = TRUE)
+  exponentiated <- as.data.frame(res, conf.int = TRUE, exponentiate = TRUE)
 
-  expect_identical(as.data.frame(res)$effect, "diff")
-  expect_equal(as.data.frame(res, exponentiate = TRUE), as.data.frame(res))
+  expect_identical(plain$term, "diff")
+
+  # No row of this table is on a log scale, so every column arrives as it was.
+  # The covariance is the one thing the exponentiated frame drops, and it drops
+  # it whether or not any row moved.
+  expect_null(attr(exponentiated, "ipw_vcov", exact = TRUE))
+  attr(plain, "ipw_vcov") <- NULL
+  expect_equal(exponentiated, plain)
 })
 
 test_that("a categorical ipw result keeps its comparison column through both surfaces", {
@@ -567,15 +607,15 @@ test_that("a categorical ipw result keeps its comparison column through both sur
   res <- fit_ipw_categorical(sim_ipw_categorical())
 
   df <- as.data.frame(res)
-  expect_identical(names(df)[seq(1, 2)], c("effect", "comparison"))
+  expect_identical(names(df)[seq(1, 2)], c("term", "comparison"))
   expect_identical(df$comparison, rep(c("b vs a", "c vs a"), each = 3))
 
   exp_scale <- as.data.frame(res, exponentiate = TRUE)
-  ratio <- df$effect %in% c("log(rr)", "log(or)")
-  expect_identical(exp_scale$effect, rep(c("rd", "rr", "or"), times = 2))
+  ratio <- df$term %in% c("log(rr)", "log(or)")
+  expect_identical(exp_scale$term, rep(c("rd", "rr", "or"), times = 2))
   expect_identical(exp_scale$comparison, df$comparison)
   expect_equal(exp_scale$estimate[ratio], exp(df$estimate[ratio]))
-  expect_identical(exp_scale$std.err, df$std.err)
+  expect_identical(exp_scale$std.error, df$std.error)
 
   # print() keys the rows by effect and comparison together and drops the
   # character comparison column from the matrix it formats.

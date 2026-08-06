@@ -6,11 +6,21 @@
 #' one row per effect measure per comparison for a categorical exposure, in the
 #' order the result stores them. Nothing is dropped.
 #'
-#' The values are the ones the result already holds: `tidy()` renames and
-#' selects rather than re-estimating anything. The one exception is the
-#' confidence interval, which is rebuilt from the estimate and its standard
-#' error when the requested `conf.level` differs from the level the result was
-#' fit at.
+#' Those columns are the ones the result's own coercion surface reports, so the
+#' marginal reading is [`as.data.frame()`][causalgenerics::new_ipw()] read as a
+#' tibble rather than a second assembly of the same table. The values are the
+#' ones the result already holds, nothing being re-estimated: the confidence
+#' interval is the only thing rebuilt, and only when the requested `conf.level`
+#' differs from the level the result was fit at. The one thing the frame carries
+#' that the tibble does not is the covariance of the effects it attaches as an
+#' attribute, a tidied table being its columns.
+#'
+#' `conf.int`, `conf.level`, and `exponentiate` are the arguments this method
+#' shares with that surface, so the surface validates them, in both readings and
+#' before either is assembled. A value it refuses is reported under the
+#' causalgenerics condition naming the argument at fault, which is what keeps one
+#' argument of one method from being well formed in one reading of a result and
+#' refused in the other.
 #'
 #' A result reports its effects in one of two readings, and `tidy()` returns the
 #' one the result records unless `effects` names the other for the call. The
@@ -29,7 +39,8 @@
 #'   rather than the level `x` was fit at. When the two differ, the bounds are
 #'   recomputed as the normal approximation
 #'   `estimate +/- qnorm(1 - (1 - conf.level) / 2) * std.error`, which is the
-#'   interval [ipw()] itself reports. Ignored when `conf.int` is `FALSE`.
+#'   interval [ipw()] itself reports. Not used when `conf.int` is `FALSE`, though
+#'   it must still be a valid level.
 #' @param exponentiate Logical. Should the estimate and its bounds be
 #'   exponentiated on the rows reported on the log scale? Defaults to `FALSE`.
 #'   This behaves exactly as it does in
@@ -126,7 +137,21 @@ tidy.ipw <- function(
   effects = NULL
 ) {
   rlang::check_dots_empty()
-  check_conf_level(conf.level)
+
+  # The marginal reading, which is the result's own coercion surface read as a
+  # tibble. It is built before anything branches on a reading because the three
+  # arguments the two surfaces share are validated there, and one argument of one
+  # method cannot be well formed in one reading of a result and refused in the
+  # other.
+  #
+  # The conditional reading answers from the accessors and so discards the frame,
+  # which costs a table of a few rows: nothing is refit to build it.
+  frame <- as.data.frame(
+    x,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate
+  )
 
   # The accessors own the `effects` argument, so the estimates of the reading
   # this call reports come from one before anything here branches on a reading.
@@ -149,51 +174,19 @@ tidy.ipw <- function(
     ))
   }
 
-  tidy_ipw_marginal(
-    x,
-    conf.int = conf.int,
-    conf.level = conf.level,
-    exponentiate = exponentiate
-  )
+  # The covariance of the effects the frame attaches is the one thing that does
+  # not travel: it is an attribute rather than a column, and a tidied table is
+  # its columns.
+  out <- tibble::as_tibble(frame)
+  attr(out, "ipw_vcov") <- NULL
+
+  out
 }
 
 # The reading a result records. A result built before the field existed carries
 # none, and marginal is the reading every method produced then.
 ipw_stored_effects <- function(x) {
   if (is.null(x$effects)) "marginal" else x$effects
-}
-
-# The marginal reading: the result's own table of causal contrasts, renamed and
-# selected into the broom columns.
-tidy_ipw_marginal <- function(x, conf.int, conf.level, exponentiate) {
-  if (conf.int) {
-    x$estimates <- recompute_ipw_interval(x$estimates, conf.level)
-  }
-
-  # Exponentiation is the result's own contract, so the coercion method applies
-  # it, to whichever interval this call settled on.
-  estimates <- as.data.frame(x, exponentiate = exponentiate)
-
-  out <- list(
-    term = estimates$effect,
-    estimate = estimates$estimate,
-    std.error = estimates$std.err,
-    statistic = estimates$z,
-    p.value = estimates$p.value
-  )
-
-  # A categorical exposure reports each effect measure once per contrast, and
-  # the column naming the contrast follows the term it qualifies.
-  if (!is.null(estimates[["comparison"]])) {
-    out <- append(out, list(comparison = estimates$comparison), after = 1L)
-  }
-
-  if (conf.int) {
-    out$conf.low <- estimates$ci.lower
-    out$conf.high <- estimates$ci.upper
-  }
-
-  tibble::as_tibble(out)
 }
 
 # The conditional reading: the outcome model's coefficient surface, in the
@@ -288,58 +281,6 @@ check_exponentiate_link <- function(outcome_mod, call = rlang::caller_env()) {
   }
 
   invisible(link)
-}
-
-# The estimates table with its interval expressed at `conf_level`. The stored
-# bounds are returned untouched when they already describe that level, so a
-# request for the level the result was fit at reports the result's own numbers
-# rather than a recomputation that merely agrees with them.
-recompute_ipw_interval <- function(estimates, conf_level) {
-  stored <- estimates[["conf.level"]]
-  if (!is.null(stored) && isTRUE(all(stored == conf_level))) {
-    return(estimates)
-  }
-
-  half_width <- stats::qnorm(1 - (1 - conf_level) / 2) * estimates$std.err
-  estimates$ci.lower <- estimates$estimate - half_width
-  estimates$ci.upper <- estimates$estimate + half_width
-  estimates$conf.level <- conf_level
-
-  estimates
-}
-
-check_conf_level <- function(
-  conf.level,
-  arg = rlang::caller_arg(conf.level),
-  call = rlang::caller_env()
-) {
-  valid <- is.numeric(conf.level) &&
-    length(conf.level) == 1L &&
-    !is.na(conf.level) &&
-    conf.level > 0 &&
-    conf.level < 1
-
-  if (!valid) {
-    # An empty value has nothing for `{.val}` to print, so it is described by
-    # its type instead.
-    supplied <- if (length(conf.level) == 0) {
-      "You supplied {.obj_type_friendly {conf.level}}."
-    } else {
-      "You supplied {.val {conf.level}}."
-    }
-
-    abort(
-      c(
-        "{.arg {arg}} must be a single number between 0 and 1.",
-        x = supplied,
-        i = "Use {.code {arg} = 0.95} for a 95% interval."
-      ),
-      error_class = "propensity_conf_level_error",
-      call = call
-    )
-  }
-
-  invisible(conf.level)
 }
 
 #' Glance at an inverse probability weighted result
@@ -437,6 +378,34 @@ glance.ipw <- function(x, ...) {
 #' and is carried as it arrives, so a weight column they hold stays where they
 #' put it, whatever it is named.
 #'
+#' A column is an answer per observation only while the fit it is read from and
+#' the frame it is carried on describe the same observations, so three things are
+#' refused rather than reported. A result whose propensity score model and
+#' outcome model were fit to different rows is refused, because the propensity
+#' score of one observation would arrive beside the fitted value of another. Two
+#' models of the same data most often part this way over missing values, each
+#' dropping the rows a variable of its own is missing on. What is compared is the
+#' number of observations each model produced an answer for and, when the outcome
+#' model's frame names the exposure, the exposure values of the two model frames
+#' position by position, reading a factor and the numbers its labels spell as one
+#' encoding of one exposure. Exposure values that disagree prove the two models
+#' hold different observations; exposure values that agree prove nothing, since
+#' two different sets of rows are free to carry the same sequence of values, and
+#' two encodings that cannot be read onto each other, such as a factor of `"a"`
+#' and `"b"` against a recoding of it as 0 and 1, prove nothing either way.
+#' The check is one-sided in that direction on purpose: it refuses only what it
+#' can prove, so a fit whose models do line up is never refused over the labels
+#' the rows of either frame carry or the encoding its exposure is written in. A
+#' frame that already holds a column this call would add is refused as well,
+#' because the fit's column has nowhere to go: added beside the frame's, the two
+#' would be told apart by nothing, and written over it, the frame's data would be
+#' gone.
+#' Which names are in the way depends on the fit and the frame, `.resid` being
+#' among them only for a frame it would be added to and the propensity columns
+#' being the ones the propensity score model produced. Last, a result whose
+#' outcome model was fit without weights is refused under the class [ipw()]
+#' refuses the same fact with: `.weights` has nothing to report for such a fit.
+#'
 #' @param x An `ipw` object, as returned by [ipw()].
 #' @param data A data frame with one row for each observation the fit used, or
 #'   `NULL`, the default, to use the outcome model's own model frame. That frame
@@ -495,37 +464,56 @@ augment.ipw <- function(x, data = NULL, ...) {
 
   outcome_frame <- stats::model.frame(x$outcome_mod)
   weights <- stats::model.weights(outcome_frame)
+  check_augment_weights(weights)
 
-  if (is.null(data)) {
+  supplied <- !is.null(data)
+  if (supplied) {
+    assert_class(data, "data.frame")
+  } else {
     # The weights are reported as `.weights`, so the frame this method builds
     # for itself leaves out the numeric copy of them `model.frame()` records.
     # The drop belongs to this branch alone: a frame the caller supplies is
     # theirs, and a column of theirs is not deleted for matching a name.
     data <- outcome_frame[names(outcome_frame) != "(weights)"]
-  } else {
-    assert_class(data, "data.frame")
+  }
+
+  propensity <- augment_propensity_columns(x$wt_mod)
+  fitted <- unname(stats::predict(x$outcome_mod, type = "response"))
+  check_augment_alignment(x$wt_mod, propensity, fitted, outcome_frame)
+
+  if (supplied) {
     check_augment_rows(data, nrow(outcome_frame))
   }
 
-  fitted <- unname(stats::predict(x$outcome_mod, type = "response"))
+  # A residual is an observed outcome less a fitted value, so it belongs to a
+  # frame that holds the outcome and to no other.
+  response <- names(outcome_frame)[[
+    attr(stats::terms(x$outcome_mod), "response")
+  ]]
+  resid <- response %in% names(data)
+
+  # Which columns this call adds is a question about this fit and this frame:
+  # the propensity columns are the ones the propensity score model produced, and
+  # `.resid` is added only to a frame holding the outcome to difference.
+  check_augment_columns(
+    data,
+    c(names(propensity), ".weights", ".fitted", if (resid) ".resid"),
+    supplied = supplied
+  )
 
   columns <- c(
     as.list(data),
-    augment_propensity_columns(x$wt_mod),
+    propensity,
     list(
       .weights = weights,
       .fitted = fitted
     )
   )
 
-  # A residual is an observed outcome less a fitted value, so it belongs to a
-  # frame that holds the outcome and to no other. The outcome goes through the
-  # conversion the estimator itself uses, which is what puts the residual of a
-  # factor or logical outcome on the 0/1 scale its fitted values are on.
-  response <- names(outcome_frame)[[
-    attr(stats::terms(x$outcome_mod), "response")
-  ]]
-  if (response %in% names(data)) {
+  # The outcome goes through the conversion the estimator itself uses, which is
+  # what puts the residual of a factor or logical outcome on the 0/1 scale its
+  # fitted values are on.
+  if (resid) {
     columns$.resid <- ipw_outcome_numeric(data[[response]]) - fitted
   }
 
@@ -538,7 +526,8 @@ augment.ipw <- function(x, data = NULL, ...) {
 # The propensity score of each observation, as the columns it takes to hold it.
 # A binary or continuous exposure has one number per observation and so one
 # column; a categorical exposure has a probability for every level, and each
-# level gets a column of its own.
+# level gets a column of its own. A column of a tibble is addressed by its
+# position, so the observation names a prediction carries stop here.
 augment_propensity_columns <- function(wt_mod) {
   if (!inherits(wt_mod, "multinom")) {
     return(list(
@@ -563,6 +552,228 @@ augment_propensity_columns <- function(wt_mod) {
   )
 }
 
+# The outcome model of an ipw() result is fit with the estimated weights, so a
+# result reporting one that was not is a result built around something else.
+# `.weights` has nothing to report for such a fit, and the columns that remain
+# would describe an analysis the object does not name. The fact is the one
+# ipw() refuses the pair of models for, so it is reported under the class that
+# names it rather than under one naming which method noticed.
+check_augment_weights <- function(weights, call = rlang::caller_env()) {
+  if (!is.null(weights)) {
+    return(invisible(weights))
+  }
+
+  abort(
+    c(
+      "{.arg x} must hold an outcome model fit with propensity score weights.",
+      x = "The outcome model {.arg x} holds reports no weights.",
+      i = "An {.fun ipw} outcome model is weighted by construction. Refit it \\
+      with the weights the propensity score model implies, such as those \\
+      {.fun wt_ate} returns."
+    ),
+    error_class = "propensity_ipw_weights_missing_error",
+    call = call
+  )
+}
+
+# The propensity score column and the fitted values are read from two different
+# models, so they are an answer per observation only while both models describe
+# the same observations. Counts come from the fitted frames rather than from
+# `stats::nobs()`, which subtracts observations of weight zero and so would
+# report a fit that has any as shorter than the column it produces.
+#
+# What is checked beyond the counts is the exposure each model was fit to, and
+# the check is one-sided by design: an exposure that disagrees between the two
+# model frames proves they hold different observations, while an exposure that
+# agrees proves nothing, two different sets of rows being free to carry the same
+# sequence of exposure values. Refusing only what can be proven is what keeps a
+# fit whose models do line up from being refused over how either frame labels its
+# rows or writes its exposure down.
+check_augment_alignment <- function(
+  wt_mod,
+  propensity,
+  fitted,
+  outcome_frame,
+  call = rlang::caller_env()
+) {
+  n_outcome <- nrow(outcome_frame)
+  n_fitted <- length(fitted)
+
+  # Every propensity column holds one prediction per observation, so the first
+  # of them measures them all.
+  n_propensity <- length(propensity[[1L]])
+  counted <- n_propensity == n_outcome && n_fitted == n_outcome
+
+  exposure <- if (counted) {
+    augment_mismatched_exposure(wt_mod, outcome_frame)
+  }
+
+  if (counted && is.null(exposure)) {
+    return(invisible(propensity))
+  }
+
+  # Where the counts differ they say which model produced fewer answers; where
+  # they agree it is the exposure that shows the two apart, the count saying
+  # nothing on its own.
+  problem <- if (counted) {
+    c(
+      x = "Both models were fit to {n_outcome} observation{?s}, and the \\
+      {.val {exposure}} values in the two model frames disagree."
+    )
+  } else {
+    c(
+      x = "The propensity score model produced {n_propensity} propensity \\
+      score{?s}.",
+      x = "The outcome model was fit to {n_outcome} observation{?s}."
+    )
+  }
+
+  # A model whose answers outnumber the rows it was fit to was fit under
+  # `na.action = na.exclude`, which pads a prediction back to the length of the
+  # data the model was given. That padding is the disagreement here, and the
+  # counts above do not show it.
+  if (n_fitted != n_outcome) {
+    problem <- c(
+      problem,
+      x = "The outcome model predicts {n_fitted} value{?s} for the \\
+      {n_outcome} observation{?s} it was fit to."
+    )
+  }
+
+  abort(
+    c(
+      "{.arg x} must hold two models fit to the same rows.",
+      problem,
+      i = "Two models of the same data most often part this way over missing \\
+      values, each dropping the rows a variable of its own is missing on.",
+      i = "Refit both models on the rows that are complete on every variable \\
+      either model uses."
+    ),
+    error_class = "propensity_augment_alignment_error",
+    call = call
+  )
+}
+
+# The exposure, where the two model frames can be shown to hold different
+# observations of it, and `NULL` otherwise. Both models read the exposure from
+# the same column of the same data, so a position at which the two frames record
+# different exposure values is a position at which they describe different
+# observations, whatever the row labels of either say. Row labels are not
+# compared at all: they are a record of where a row came from, so a frame
+# renumbered by the pipeline that built it carries different labels for the same
+# observations, and two frames each renumbered from one carry the same labels for
+# different ones.
+#
+# Nothing is refit and nothing is predicted: the propensity score model's own
+# model frame holds the exposure it was fit to, after the rows it dropped, and
+# the outcome model's frame holds the same variable whenever the outcome formula
+# names it. A fit that offers neither, that offers two vectors of different
+# lengths, or that records the exposure in two encodings no comparison can line
+# up, offers nothing to compare, and the counts are then all there is.
+augment_mismatched_exposure <- function(wt_mod, outcome_frame) {
+  # A response written as anything but a bare variable, such as a transformation
+  # or a two-column count, deparses to more than one name and is not a column of
+  # the outcome model's frame under any name this could look up.
+  name <- tryCatch(fmla_extract_left_chr(wt_mod), error = function(e) NULL)
+  if (length(name) != 1L || !name %in% names(outcome_frame)) {
+    return(NULL)
+  }
+
+  exposure <- tryCatch(fmla_extract_left_vctr(wt_mod), error = function(e) NULL)
+  if (is.null(exposure)) {
+    return(NULL)
+  }
+
+  from_wt_mod <- augment_exposure_values(exposure)
+  from_outcome <- augment_exposure_values(outcome_frame[[name]])
+
+  # Two vectors of different lengths cannot be compared position by position. A
+  # propensity score model fit under `na.action = na.exclude` reaches this,
+  # its predictions being padded back to the rows its frame dropped.
+  if (length(from_wt_mod) != length(from_outcome)) {
+    return(NULL)
+  }
+
+  compared <- augment_exposure_bridge(from_wt_mod, from_outcome)
+  if (is.null(compared)) {
+    return(NULL)
+  }
+
+  if (
+    isTRUE(all.equal(compared[[1L]], compared[[2L]], check.attributes = FALSE))
+  ) {
+    return(NULL)
+  }
+
+  name
+}
+
+# The exposure read down to the values it records, so that one exposure held as
+# a factor and as the labels behind it, or as integers and as the doubles of the
+# same numbers, compares equal. A factor against the numbers those labels spell
+# is a further step, taken by the bridge below. Two frames recording one
+# exposure in two representations hold the same observations of it, and a check
+# that refuses only what it can prove has to read them as such.
+augment_exposure_values <- function(x) {
+  if (is.factor(x)) {
+    return(as.character(x))
+  }
+
+  if (is.logical(x)) {
+    return(as.integer(x))
+  }
+
+  as.vector(x)
+}
+
+# One exposure recorded in two encodings, as a pair of vectors a position by
+# position comparison can be made of, or `NULL` when the two encodings cannot be
+# lined up at all. Two frames of one column usually record it the same way and
+# there is nothing to bridge. Where they do not, the case to carry is a factor
+# against the numbers it labels, which `ipw()` itself accepts: a propensity score
+# model fit to `factor(z)` and an outcome model fit to the 0/1 `z` of the same
+# data were fit to one exposure, and reading the labels as the numbers they spell
+# is what lets the two meet.
+#
+# Labels spelling something other than numbers are the other side of that case:
+# an exposure held as "a" and "b" against a recoding of it as 0 and 1 is one
+# variable written two ways that no positional comparison can line up, its values
+# differing at every position while its observations may agree at all of them.
+# Refusing there would refuse a fit whose models describe the same rows, so the
+# comparison does not apply and the counts stand alone.
+augment_exposure_bridge <- function(x, y) {
+  if (is.character(x) == is.character(y)) {
+    return(list(x, y))
+  }
+
+  if (is.character(x)) {
+    x <- augment_exposure_numbers(x)
+  } else {
+    y <- augment_exposure_numbers(y)
+  }
+
+  if (is.null(x) || is.null(y)) {
+    return(NULL)
+  }
+
+  list(x, y)
+}
+
+# Labels read as the numbers they spell, or `NULL` when any of them spells
+# something else. A label that is not a number reads as `NA`, a value the
+# exposure never held, which would then compare unequal to whatever the other
+# frame records in that position and prove a disagreement that is the encoding's
+# and not the data's.
+augment_exposure_numbers <- function(x) {
+  numbers <- suppressWarnings(as.numeric(x))
+
+  if (any(is.na(numbers) & !is.na(x))) {
+    return(NULL)
+  }
+
+  numbers
+}
+
 check_augment_rows <- function(
   data,
   n_obs,
@@ -582,6 +793,47 @@ check_augment_rows <- function(
       {.code NULL} to use the outcome model's own frame."
     ),
     error_class = "propensity_augment_data_error",
+    call = call
+  )
+}
+
+# The dot-prefixed columns are additions, so a frame already holding one of
+# their names has nowhere for the fit's own column to go: added beside the
+# frame's column, the two would be told apart by nothing, and written over it,
+# the data the frame arrived with would be gone.
+check_augment_columns <- function(
+  data,
+  added,
+  supplied,
+  call = rlang::caller_env()
+) {
+  clashing <- intersect(added, names(data))
+  if (length(clashing) == 0) {
+    return(invisible(data))
+  }
+
+  # The remedy is the frame's own: a frame the caller supplied is theirs to
+  # rename, and the frame this method builds for itself is the outcome model's,
+  # whose columns are the variables that model was fit on.
+  remedy <- if (supplied) {
+    "Rename or drop {cli::qty(clashing)}{?it/them} in {.arg data}, or leave \\
+    {.arg data} as {.code NULL} to carry the fit's columns on the outcome \\
+    model's own frame."
+  } else {
+    "The frame is the outcome model's own, so {cli::qty(clashing)}{?that name \\
+    is a variable/those names are variables} its formula reads. Rename \\
+    {?it/them} in the data the model was fit to, or supply a frame through \\
+    {.arg data}."
+  }
+
+  abort(
+    c(
+      "{.fun augment} adds {cli::qty(clashing)}{?a column/columns} the frame \\
+      carrying {?it/them} already holds.",
+      x = "The frame already holds {.val {clashing}}.",
+      i = remedy
+    ),
+    error_class = "propensity_augment_column_error",
     call = call
   )
 }

@@ -108,7 +108,13 @@
 #'   with an intercept; a covariate-adjusted outcome model requires
 #'   `"mestimation"`. For a binary or categorical exposure, both methods require
 #'   an outcome model that can represent a baseline, so a numeric no-intercept
-#'   coding such as `y ~ z - 1` errors on either.
+#'   coding such as `y ~ z - 1` errors on either. The standard errors of the
+#'   conditional reading described under `effects` require `"mestimation"`
+#'   as well: the
+#'   linearization route stores its outcome model unwrapped, so [stats::vcov()],
+#'   [stats::confint()], and [`tidy()`][tidy.ipw()] refuse
+#'   `effects = "conditional"` there with a classed error rather than reporting
+#'   the covariance the outcome model computed for itself.
 #' @param effects The presentation mode the result records, either `"marginal"`
 #'   (the default) or `"conditional"`. The marginal reading reports the
 #'   population-averaged causal contrasts; the conditional reading reports the
@@ -173,6 +179,11 @@
 #' correct for the reversed roles, and `ipw()` rejects them rather than
 #' correcting them as though the roles matched. To target the other level,
 #' relevel the exposure so that it sorts second and refit both models.
+#'
+#' The estimand a weighted outcome model was fit for is not necessarily the one a
+#' tool that averages its per-row predictions reports, so see **Standardizing
+#' model predictions** in [ps_tilt()] before taking such an average of a model fit
+#' for anything other than `"ate"`.
 #'
 #' # Effect measures
 #'
@@ -249,6 +260,11 @@
 #' term beyond the exposure, including covariates, interactions, or transformed
 #' terms) errors on the linearization path and requires
 #' `se_method = "mestimation"`, which stacks adjusted outcome models correctly.
+#' The conditional reading is restricted the same way: linearization stacks no
+#' system, so the outcome model it stores carries no block of one, and the
+#' standard errors that reading reports are refused with a classed error rather
+#' than replaced by the covariance the outcome model computed for itself, which
+#' treats the estimated weights as fixed.
 #'
 #' The linearization outcome model must also carry an intercept, which is a
 #' stricter requirement than the M-estimation path imposes. Under a numeric

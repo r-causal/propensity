@@ -1,9 +1,13 @@
-# Tests for the broom tidiers on `ipw` results. `tidy()` reshapes the object's
-# `estimates` table into the column names the tidymodels broom developer guide
+# Tests for the broom tidiers on `ipw` results. `tidy()` reports the object's
+# `estimates` table under the column names the tidymodels broom developer guide
 # specifies, one row per estimate, adding interval bounds only when asked for
-# them. The values themselves are the object's own: the tidier renames and
-# selects, and recomputes only when a requested confidence level differs from
-# the one the fit stored.
+# them. The values themselves are the object's own: nothing is re-estimated, and
+# the interval is recomputed only when a requested confidence level differs from
+# the one the fit stored. Those columns are the ones the result's own coercion
+# surface reports, so the marginal reading of the tidier is that surface read as
+# a tibble rather than a second assembly of the same table, and the two are
+# pinned against each other as such. The covariance of the effects the frame
+# attaches is the one thing that does not travel: a tidied table is its columns.
 #
 # `glance()` describes the fit rather than its estimates: a single row naming the
 # estimand and counting the observations and the residual degrees of freedom of
@@ -173,6 +177,153 @@ fit_tidy_continuous_models <- function(dat, outcome_family = "gaussian") {
   list(ps_mod = ps_mod, outcome_mod = outcome_mod)
 }
 
+# A propensity score model and an outcome model fit to different rows. Each
+# argument names a row to blank out in a covariate one model uses and the other
+# does not, so the model using that covariate drops the row and the other keeps
+# it: a row blanked for the propensity score model alone leaves the two models
+# with different counts, and a different row blanked for each leaves them with
+# the same count and different rows. The weights come from a propensity score
+# model of the complete data, which gives the outcome model a weight for every
+# row it keeps whichever rows those are.
+#
+# The exposure is made to alternate rather than left as the simulated draw.
+# Dropping one row from a frame shifts every row after it up by one, so a
+# sequence that alternates disagrees with itself at every shifted position,
+# which is what makes two frames of different rows provably different rather
+# than different only if the draw happened not to repeat itself across the gap.
+fit_tidy_misaligned_models <- function(
+  dat,
+  ps_row = integer(),
+  outcome_row = integer()
+) {
+  withr::local_seed(825)
+  dat$z <- rep(c(0L, 1L), length.out = nrow(dat))
+  dat$xp <- rnorm(nrow(dat))
+  dat$xo <- rnorm(nrow(dat))
+  dat$xp[ps_row] <- NA
+  dat$xo[outcome_row] <- NA
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(glm(z ~ x1 + x2, data = dat, family = binomial()))
+  )
+
+  list(
+    ps_mod = glm(z ~ x1 + xp, data = dat, family = binomial()),
+    outcome_mod = glm(
+      y ~ z + xo,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts
+    )
+  )
+}
+
+# A pair of models fit to frames whose rows were renumbered from 1, which is what
+# a frame arrives with when the rows missing a value were dropped before either
+# model was fit rather than by the models themselves. `drop_row` names the row
+# each model's frame is missing, so the two frames carry the same row labels
+# whether or not they hold the same observations: equal labels for equal rows
+# when the two arguments agree, and equal labels for different rows when they do
+# not. The exposure alternates for the reason the fixture above sets it to.
+#
+# `ps_factor` holds the exposure of the propensity score model's data as a factor
+# of the labels `"0"` and `"1"`, leaving the two frames recording one exposure in
+# two encodings, as a fit of a factor exposure against an outcome model of the
+# numbers behind it does.
+fit_tidy_renumbered_models <- function(
+  dat,
+  ps_drop,
+  outcome_drop,
+  ps_factor = FALSE
+) {
+  dat$z <- rep(c(0L, 1L), length.out = nrow(dat))
+
+  renumber <- function(rows) {
+    frame <- dat[-rows, ]
+    rownames(frame) <- NULL
+    frame
+  }
+  ps_data <- renumber(ps_drop)
+  outcome_data <- renumber(outcome_drop)
+
+  if (ps_factor) {
+    ps_data$z <- factor(ps_data$z)
+  }
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(glm(z ~ x1 + x2, data = outcome_data, family = binomial()))
+  )
+
+  list(
+    ps_mod = glm(z ~ x1 + x2, data = ps_data, family = binomial()),
+    outcome_mod = glm(
+      y ~ z,
+      data = outcome_data,
+      family = quasibinomial(),
+      weights = wts
+    )
+  )
+}
+
+# A pair of models describing the same rows in the same order under different row
+# labels. The propensity score model is fit to the frame holding the missing
+# values and drops those rows itself, which leaves its frame labeled around the
+# gaps; the outcome model is fit to the same rows with their labels renumbered
+# from 1, as a frame filtered before fitting arrives. This is the shape of an
+# analysis that dropped incomplete rows in the pipeline rather than in the
+# models, and there is nothing wrong with it.
+fit_tidy_relabeled_models <- function(dat, na_rows) {
+  withr::local_seed(825)
+  dat$xp <- rnorm(nrow(dat))
+  dat$xp[na_rows] <- NA
+
+  complete <- dat[!is.na(dat$xp), ]
+  rownames(complete) <- NULL
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(glm(z ~ x1 + x2, data = complete, family = binomial()))
+  )
+
+  list(
+    ps_mod = glm(z ~ x1 + xp, data = dat, family = binomial()),
+    outcome_mod = glm(
+      y ~ z,
+      data = complete,
+      family = quasibinomial(),
+      weights = wts
+    )
+  )
+}
+
+# A result assembled around a pair of models without the checks `ipw()` makes on
+# the pair it is given. The estimator refuses two models fit to different rows
+# and refuses an outcome model fit without weights, so a result holding either
+# reaches a method only through the class's own constructor. `augment()` reads
+# the two models and never the estimates table, which is why the table here is
+# the shape of one rather than a fit's own.
+new_tidy_ipw <- function(ps_mod, outcome_mod) {
+  causalgenerics::new_ipw(
+    estimand = "ate",
+    wt_mod = ps_mod,
+    outcome_mod = outcome_mod,
+    estimates = data.frame(
+      effect = "rd",
+      estimate = 0,
+      std.err = 0,
+      z = 0,
+      ci.lower = 0,
+      ci.upper = 0,
+      conf.level = 0.95,
+      p.value = 1
+    ),
+    se_method = "linearization",
+    fit = NULL
+  )
+}
+
 # ---- expected shape ----------------------------------------------------------
 
 # The broom column contract. `comparison` is the categorical extra column and
@@ -214,6 +365,34 @@ expect_tidy_contract <- function(
     expect_identical(tidied$conf.low, estimates$ci.lower)
     expect_identical(tidied$conf.high, estimates$ci.upper)
   }
+  invisible(tidied)
+}
+
+# The marginal reading is the result's own coercion surface read as a tibble:
+# the same columns holding the same values, for either setting of the two
+# arguments this sweeps, `conf.int` and `exponentiate`. The third argument the
+# two surfaces share, `conf.level`, is pinned by value beside the interval it
+# governs. What the tibble does not carry is the
+# covariance of the effects the frame attaches. That covariance is an attribute
+# rather than a column, and a tidied table is its columns, so `tidy()` reports
+# none, and the pin says so rather than leaving the absence to be inferred from
+# the columns agreeing.
+expect_tidy_wraps_frame <- function(
+  result,
+  conf.int = FALSE,
+  exponentiate = FALSE
+) {
+  expected <- tibble::as_tibble(as.data.frame(
+    result,
+    conf.int = conf.int,
+    exponentiate = exponentiate
+  ))
+  attr(expected, "ipw_vcov") <- NULL
+
+  tidied <- tidy(result, conf.int = conf.int, exponentiate = exponentiate)
+  expect_identical(tidied, expected)
+  expect_null(attr(tidied, "ipw_vcov", exact = TRUE))
+
   invisible(tidied)
 }
 
@@ -498,6 +677,74 @@ test_that("tidy() returns the log odds ratio row for a continuous logit fit", {
   expect_identical(tidied$term, "log(or)")
 })
 
+# ---- the frame the marginal reading wraps ------------------------------------
+
+# The marginal reading and the result's own coercion surface report the same
+# table, so the tidier is that surface read as a tibble rather than a second
+# assembly of the same columns that has to be kept in step with it by hand. The
+# equivalence is pinned once per exposure type, because each type reaches the
+# coercion surface with a table of its own shape: a binary exposure with the
+# three effect measures, a categorical one with those measures once per
+# comparison and the column naming it, and a continuous one with a single row.
+#
+# The frame carries the covariance of the effects it reports as an attribute.
+# The tibble does not: a tidied table is its columns, and a covariance is not
+# one of them.
+
+test_that("tidy() reports the coercion surface of a binary fit as a tibble", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The attribute is on the frame to be dropped in the first place, which is
+  # what makes its absence from the tibble a fact about the tidier.
+  expect_false(is.null(
+    attr(as.data.frame(res, conf.int = TRUE), "ipw_vcov", exact = TRUE)
+  ))
+
+  expect_tidy_wraps_frame(res)
+  expect_tidy_wraps_frame(res, conf.int = TRUE)
+
+  # An exponentiated frame reports estimates the covariance no longer describes
+  # and so carries none of its own. The tibble carries none either way.
+  expect_null(
+    attr(as.data.frame(res, exponentiate = TRUE), "ipw_vcov", exact = TRUE)
+  )
+  expect_tidy_wraps_frame(res, conf.int = TRUE, exponentiate = TRUE)
+})
+
+test_that("tidy() reports the coercion surface of a categorical fit as a tibble", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_categorical()
+  mods <- fit_tidy_categorical_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_false(is.null(
+    attr(as.data.frame(res, conf.int = TRUE), "ipw_vcov", exact = TRUE)
+  ))
+
+  expect_tidy_wraps_frame(res)
+  expect_tidy_wraps_frame(res, conf.int = TRUE)
+  expect_tidy_wraps_frame(res, conf.int = TRUE, exponentiate = TRUE)
+})
+
+test_that("tidy() reports the coercion surface of a continuous fit as a tibble", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_continuous()
+  mods <- fit_tidy_continuous_models(dat, outcome_family = "binomial")
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_false(is.null(
+    attr(as.data.frame(res, conf.int = TRUE), "ipw_vcov", exact = TRUE)
+  ))
+
+  expect_tidy_wraps_frame(res)
+  expect_tidy_wraps_frame(res, conf.int = TRUE)
+  expect_tidy_wraps_frame(res, conf.int = TRUE, exponentiate = TRUE)
+})
+
 # ---- confidence level --------------------------------------------------------
 
 test_that("tidy() recomputes the interval at a non-default conf.level", {
@@ -568,34 +815,103 @@ test_that("tidy() rejects a conf.level that is not one number inside (0, 1)", {
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
 
+  # The condition is the one the result's own coercion surface raises for the
+  # same value, which is where the marginal reading takes the argument.
+  # Validating it under a class of this package's own would report one refusal
+  # under two names depending on which surface the user reached it through.
+  #
   # The endpoints are excluded: a level of 0 or 1 has no normal-approximation
   # interval to report.
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = 1),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = 0),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = c(0.9, 0.95)),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = NA_real_),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = NULL),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
 
   # The level is validated whether or not bounds were asked for, so a bad value
   # is reported rather than quietly going unused.
   expect_error(
     tidy(res, conf.level = "0.95"),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
+  )
+})
+
+test_that("tidy() rejects the argument values the coercion surface refuses", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The three arguments `tidy()` shares with the result's own coercion surface
+  # are refused there under a class naming the argument, and the marginal
+  # reading takes them to that surface. The conditional reading answers from
+  # the accessors instead, so it validates them itself, and it has to reach the
+  # same conditions: one argument of one method cannot be well formed in one
+  # reading of a result and not in the other.
+  readings <- list(
+    marginal = res,
+    conditional = as_conditional(res)
+  )
+
+  for (reading in readings) {
+    expect_error(
+      tidy(reading, conf.int = NA),
+      class = "causalgenerics_invalid_argument_conf.int"
+    )
+    expect_error(
+      tidy(reading, conf.int = c(TRUE, TRUE)),
+      class = "causalgenerics_invalid_argument_conf.int"
+    )
+    expect_error(
+      tidy(reading, exponentiate = NA),
+      class = "causalgenerics_invalid_argument_exponentiate"
+    )
+    expect_error(
+      tidy(reading, exponentiate = "yes"),
+      class = "causalgenerics_invalid_argument_exponentiate"
+    )
+    expect_error(
+      tidy(reading, conf.level = 95),
+      class = "causalgenerics_invalid_argument_conf.level"
+    )
+    expect_error(
+      tidy(reading, conf.int = TRUE, conf.level = 95),
+      class = "causalgenerics_invalid_argument_conf.level"
+    )
+  }
+
+  # Naming the reading at the call site reaches the same refusals as recording
+  # it does, the value being refused before either reading is assembled.
+  expect_error(
+    tidy(res, conf.int = NA, effects = "conditional"),
+    class = "causalgenerics_invalid_argument_conf.int"
+  )
+  expect_error(
+    tidy(res, exponentiate = NA, effects = "conditional"),
+    class = "causalgenerics_invalid_argument_exponentiate"
+  )
+  expect_error(
+    tidy(res, conf.level = 95, effects = "conditional"),
+    class = "causalgenerics_invalid_argument_conf.level"
+  )
+  expect_error(
+    tidy(as_conditional(res), conf.int = NA, effects = "marginal"),
+    class = "causalgenerics_invalid_argument_conf.int"
   )
 })
 
@@ -667,17 +983,19 @@ test_that("tidy(exponentiate = TRUE) matches as.data.frame on a binary fit", {
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
 
   # `exponentiate` is documented as behaving exactly as it does in
-  # `as.data.frame.ipw`, so the two surfaces must agree column for column.
-  df <- as.data.frame(res, exponentiate = TRUE)
+  # `as.data.frame.ipw`, so the two surfaces must agree column for column. The
+  # bounds are a column of that frame only when it was asked for them, which is
+  # the same rule the tidier follows.
+  df <- as.data.frame(res, conf.int = TRUE, exponentiate = TRUE)
   tidied <- tidy(res, conf.int = TRUE, exponentiate = TRUE)
 
-  expect_identical(tidied$term, df$effect)
+  expect_identical(tidied$term, df$term)
   expect_identical(tidied$estimate, df$estimate)
-  expect_identical(tidied$std.error, df$std.err)
-  expect_identical(tidied$statistic, df$z)
+  expect_identical(tidied$std.error, df$std.error)
+  expect_identical(tidied$statistic, df$statistic)
   expect_identical(tidied$p.value, df$p.value)
-  expect_identical(tidied$conf.low, df$ci.lower)
-  expect_identical(tidied$conf.high, df$ci.upper)
+  expect_identical(tidied$conf.low, df$conf.low)
+  expect_identical(tidied$conf.high, df$conf.high)
 })
 
 test_that("tidy(exponentiate = TRUE) relabels ratio rows per comparison", {
@@ -687,16 +1005,16 @@ test_that("tidy(exponentiate = TRUE) relabels ratio rows per comparison", {
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-  df <- as.data.frame(res, exponentiate = TRUE)
+  df <- as.data.frame(res, conf.int = TRUE, exponentiate = TRUE)
   tidied <- tidy(res, conf.int = TRUE, exponentiate = TRUE)
 
   expect_identical(tidied$term, rep(c("rd", "rr", "or"), times = 2))
   expect_identical(tidied$comparison, rep(c("b vs a", "c vs a"), each = 3))
-  expect_identical(tidied$term, df$effect)
+  expect_identical(tidied$term, df$term)
   expect_identical(tidied$comparison, df$comparison)
   expect_identical(tidied$estimate, df$estimate)
-  expect_identical(tidied$conf.low, df$ci.lower)
-  expect_identical(tidied$conf.high, df$ci.upper)
+  expect_identical(tidied$conf.low, df$conf.low)
+  expect_identical(tidied$conf.high, df$conf.high)
 })
 
 test_that("tidy(exponentiate = TRUE) relabels the continuous log odds ratio", {
@@ -1209,6 +1527,120 @@ test_that("augment(data = ) rejects data that is not one row per observation", {
   )
 })
 
+test_that("augment(data = ) rejects data holding a column augment adds", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  # `.fitted` is one of the columns the fit's answers are reported in, so a
+  # frame that already holds a column of that name has nowhere for the fit's own
+  # to go. Adding it beside the caller's would return a frame naming two columns
+  # `.fitted`, and writing over it would delete their data.
+  collide <- dat
+  collide$.fitted <- 0
+
+  expect_error(
+    augment(res, data = collide),
+    class = "propensity_augment_column_error"
+  )
+
+  # the refusal names the column in the way and what to do about it
+  expect_propensity_error(augment(res, data = collide))
+})
+
+test_that("augment(data = ) names every column of the data it clashes with", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  # A frame can clash on more than one column, and a report of one of them
+  # leaves the caller to rename that column and meet the next refusal. Every
+  # column that clashes is named at once. `.propensity` is among them here: a
+  # binary or continuous exposure reports its propensity score in the one column
+  # of that name, which is as much in the way as the other three.
+  collide <- dat
+  collide$.propensity <- 0.5
+  collide$.weights <- 1
+  collide$.fitted <- 0
+
+  err <- expect_error(
+    augment(res, data = collide),
+    class = "propensity_augment_column_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, ".propensity", fixed = TRUE)
+  expect_match(msg, ".weights", fixed = TRUE)
+  expect_match(msg, ".fitted", fixed = TRUE)
+
+  # the sentence the three names are reported in
+  expect_propensity_error(augment(res, data = collide))
+})
+
+test_that("augment(data = ) counts a .resid column only when it adds one", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "linearization")
+
+  # `.resid` is added only to a frame holding the outcome to difference, so
+  # whether a `.resid` column of the caller's is in the way depends on the frame
+  # it arrives in. A frame with no outcome column is given no residual, and the
+  # caller's column of that name goes through as any other column of theirs
+  # would.
+  covariates <- dat[c("x1", "x2", "z")]
+  covariates$.resid <- 0
+  expect_augment_contract(
+    augment(res, data = covariates),
+    covariates,
+    res,
+    resid = FALSE
+  )
+
+  # The same column in a frame that does hold the outcome is a column the
+  # residual would be written over.
+  with_outcome <- dat
+  with_outcome$.resid <- 0
+
+  expect_error(
+    augment(res, data = with_outcome),
+    class = "propensity_augment_column_error"
+  )
+})
+
+test_that("augment(data = ) clashes on the level columns of a categorical fit", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_categorical()
+  mods <- fit_tidy_categorical_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  # A categorical exposure widens `.propensity` into one column per level, so
+  # the propensity columns in the way of this fit are those, named for the
+  # levels the propensity score model holds.
+  collide <- dat
+  collide$.propensity_b <- 0
+
+  expect_error(
+    augment(res, data = collide),
+    class = "propensity_augment_column_error"
+  )
+
+  # the refusal names the level column rather than `.propensity`
+  expect_propensity_error(augment(res, data = collide))
+
+  # `.propensity` is not one of them on this route. No column of that name is
+  # added, so a column of the caller's carrying it is theirs to keep, which is
+  # what makes the clash a question about the columns this fit adds rather than
+  # about a fixed list of names.
+  kept <- dat
+  kept$.propensity <- 0
+  expect_augment_contract(
+    augment(res, data = kept),
+    kept,
+    res,
+    propensity_cols = paste0(".propensity_", mods$ps_mod$lev)
+  )
+})
+
 test_that("augment() rejects an argument that lands in the dots", {
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
@@ -1221,6 +1653,271 @@ test_that("augment() rejects an argument that lands in the dots", {
     augment(res, newdata = dat),
     class = "rlib_error_dots_nonempty"
   )
+})
+
+# ---- augment, results ipw() would not have built ------------------------------
+
+# `augment()` reads the two models a result holds and reports a column of each
+# beside the other, which is an answer per observation only while the two models
+# describe the same observations. `ipw()` checks that of the pair it is handed,
+# so the pairs here are assembled into results directly: two fit to different
+# rows, one fit to the same rows that the method has no reason to refuse, and
+# one whose outcome model carries no weights at all.
+
+test_that("augment() rejects a result whose models saw different counts", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_misaligned_models(dat, ps_row = 7)
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # The propensity score model dropped the row its covariate was missing on and
+  # the outcome model kept every row, so from the seventh row on the two models
+  # are describing different observations. Carrying the shorter column beside
+  # the longer ones would report one observation's propensity score against
+  # another's fitted value.
+  expect_identical(as.integer(stats::nobs(mods$ps_mod)), 599L)
+  expect_identical(nrow(stats::model.frame(mods$outcome_mod)), 600L)
+
+  err <- expect_error(
+    augment(res),
+    class = "propensity_augment_alignment_error"
+  )
+
+  # Both counts are reported: which model dropped rows is the first thing a
+  # reader needs, and the difference between the two is what says so.
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "\\b599\\b")
+  expect_match(msg, "\\b600\\b")
+
+  # the sentence the two counts are reported in
+  expect_propensity_error(augment(res))
+})
+
+test_that("augment() rejects a result whose models saw different rows", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_misaligned_models(dat, ps_row = 7, outcome_row = 12)
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # Each model dropped one row and they dropped different ones, so the counts
+  # agree and the observations do not. A count is all that a column of the right
+  # length proves; what says whether the observation in a row of one frame is
+  # the observation in that row of the other is the data, and the exposure is
+  # the variable both frames hold.
+  ps_frame <- stats::model.frame(mods$ps_mod)
+  outcome_frame <- stats::model.frame(mods$outcome_mod)
+  expect_identical(nrow(ps_frame), nrow(outcome_frame))
+  expect_false(identical(ps_frame$z, outcome_frame$z))
+
+  expect_error(
+    augment(res),
+    class = "propensity_augment_alignment_error"
+  )
+
+  # the refusal reports observations that agree in number and not in identity
+  expect_propensity_error(augment(res))
+})
+
+test_that("augment() rejects models of different rows carrying equal labels", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_renumbered_models(dat, ps_drop = 7, outcome_drop = 12)
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # Both frames were renumbered from 1 before either model was fit, so the two
+  # carry exactly the same row labels while holding different observations. A
+  # label records where a row came from and survives nothing that renumbers it,
+  # so agreeing labels are no evidence of agreeing rows and this fit has to be
+  # caught by the data itself.
+  ps_frame <- stats::model.frame(mods$ps_mod)
+  outcome_frame <- stats::model.frame(mods$outcome_mod)
+  expect_identical(rownames(ps_frame), rownames(outcome_frame))
+  expect_identical(rownames(outcome_frame), as.character(1:599))
+  expect_false(identical(ps_frame$z, outcome_frame$z))
+
+  expect_error(
+    augment(res),
+    class = "propensity_augment_alignment_error"
+  )
+})
+
+test_that("augment() carries a factor exposure against its numeric encoding", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  factor_dat <- dat
+  factor_dat$z <- factor(dat$z)
+
+  # The propensity score model was fit to the exposure as a factor and the
+  # outcome model to the 0/1 numbers those labels spell, which is a pair
+  # `ipw()` builds a result from. The two frames record one exposure in two
+  # encodings and describe the same rows, so the columns read from either belong
+  # beside the columns read from the other, and a comparison that read `"0"`
+  # against 0 as a disagreement would refuse a fit with nothing wrong with it.
+  ps_mod <- glm(z ~ x1 + x2, data = factor_dat, family = binomial())
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  res <- ipw(ps_mod, outcome_mod)
+
+  augmented <- augment(res)
+  expect_augment_contract(augmented, augment_source_frame(outcome_mod), res)
+
+  # The encoding of the exposure the propensity score model was fit to is not
+  # something the reported columns depend on, so the frame is the one the same
+  # fit of the numeric exposure returns, column for column.
+  numeric_mods <- fit_tidy_binary_models(dat)
+  numeric_res <- ipw(numeric_mods$ps_mod, numeric_mods$outcome_mod)
+  expect_identical(augmented, augment(numeric_res))
+})
+
+test_that("augment() carries an exposure recoded past what a number reads", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  labeled <- dat
+  labeled$z <- factor(ifelse(dat$z == 1, "b", "a"), levels = c("a", "b"))
+
+  # Here the two encodings are a factor of `"a"` and `"b"` against the 0 and 1 a
+  # user recoded it to. The labels spell no numbers, so nothing lines the two up
+  # position by position: their values differ at every position while their
+  # observations agree at all of them. A comparison that cannot tell those apart
+  # has proven nothing, and proving nothing is not a reason to refuse.
+  ps_mod <- glm(z ~ x1 + x2, data = labeled, family = binomial())
+  ps_labels <- as.character(stats::model.frame(ps_mod)$z)
+  expect_true(anyNA(suppressWarnings(as.numeric(ps_labels))))
+
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  res <- ipw(ps_mod, outcome_mod)
+
+  augmented <- augment(res)
+  expect_augment_contract(augmented, augment_source_frame(outcome_mod), res)
+  expect_identical(
+    augmented$.propensity,
+    unname(stats::predict(ps_mod, type = "response"))
+  )
+})
+
+test_that("augment() rejects a factor exposure of rows the numbers deny", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_renumbered_models(
+    dat,
+    ps_drop = 7,
+    outcome_drop = 12,
+    ps_factor = TRUE
+  )
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # The same two encodings as the fit above, over rows that are not the same
+  # rows. Reading the labels as the numbers they spell is what makes the two
+  # frames comparable, and once they are comparable the alternating exposure
+  # shows the shift between them. An encoding the values can be read through is
+  # no reason to stop looking at the values.
+  ps_frame <- stats::model.frame(mods$ps_mod)
+  outcome_frame <- stats::model.frame(mods$outcome_mod)
+  expect_s3_class(ps_frame$z, "factor")
+  expect_identical(rownames(ps_frame), rownames(outcome_frame))
+  expect_false(identical(
+    as.numeric(as.character(ps_frame$z)),
+    as.numeric(outcome_frame$z)
+  ))
+
+  expect_error(
+    augment(res),
+    class = "propensity_augment_alignment_error"
+  )
+})
+
+test_that("augment() carries models of the same rows carrying different labels", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_relabeled_models(dat, na_rows = c(7, 12, 400))
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # The propensity score model dropped the three incomplete rows itself and is
+  # labeled around the gaps; the outcome model was fit to the same rows after
+  # they had been renumbered from 1. The two describe the same 597 observations
+  # in the same order, which is what makes the columns of one belong beside the
+  # columns of the other, and their labels disagree throughout, which is nothing.
+  ps_frame <- stats::model.frame(mods$ps_mod)
+  outcome_frame <- stats::model.frame(mods$outcome_mod)
+  expect_identical(nrow(ps_frame), 597L)
+  expect_identical(rownames(outcome_frame), as.character(1:597))
+  expect_false(identical(rownames(ps_frame), rownames(outcome_frame)))
+  expect_identical(ps_frame$z, outcome_frame$z)
+
+  augmented <- augment(res)
+  expect_augment_contract(
+    augmented,
+    augment_source_frame(mods$outcome_mod),
+    res
+  )
+  expect_identical(nrow(augmented), 597L)
+  expect_identical(
+    augmented$.propensity,
+    unname(stats::predict(mods$ps_mod, type = "response"))
+  )
+})
+
+test_that("augment() carries a fit whose two models dropped the same row", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_misaligned_models(dat, ps_row = 7, outcome_row = 7)
+  res <- new_tidy_ipw(mods$ps_mod, mods$outcome_mod)
+
+  # Both models were missing a covariate on the same row, so both dropped it and
+  # both describe the same 599 observations. The rows they kept are numbered
+  # around the gap that leaves, which is what a fit of incomplete data looks
+  # like and is not a reason to refuse anything: what makes two models
+  # comparable is that they kept the same rows, not that those rows run from one
+  # to the number of them.
+  outcome_rows <- rownames(stats::model.frame(mods$outcome_mod))
+  expect_identical(outcome_rows, as.character(c(1:6, 8:600)))
+  expect_identical(
+    names(stats::predict(mods$ps_mod, type = "response")),
+    outcome_rows
+  )
+
+  augmented <- augment(res)
+  expect_augment_contract(
+    augmented,
+    augment_source_frame(mods$outcome_mod),
+    res
+  )
+  expect_identical(nrow(augmented), 599L)
+  expect_identical(
+    augmented$.propensity,
+    unname(stats::predict(mods$ps_mod, type = "response"))
+  )
+})
+
+test_that("augment() rejects a result whose outcome model has no weights", {
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  unweighted <- glm(y ~ z, data = dat, family = quasibinomial())
+  res <- new_tidy_ipw(mods$ps_mod, unweighted)
+
+  # The outcome model of an IPW result is a weighted one by construction, so a
+  # result reporting an outcome model with no weights to read is a result built
+  # around something else. `.weights` has nothing to hold, and a frame of the
+  # remaining columns would describe a fit the object does not name.
+  expect_null(stats::model.weights(stats::model.frame(unweighted)))
+
+  # The missing weights are the same fact `ipw()` refuses the pair for, so they
+  # are reported under the class that names that fact. Which method noticed it
+  # is not what a condition class is for.
+  expect_error(
+    augment(res),
+    class = "propensity_ipw_weights_missing_error"
+  )
+
+  # the refusal says what an ipw() outcome model is fit with
+  expect_propensity_error(augment(res))
 })
 
 # ---- the presentation mode ---------------------------------------------------
@@ -1364,7 +2061,7 @@ test_that("tidy() rebuilds the conditional interval at the level asked for", {
   )
   expect_error(
     tidy(res, conf.int = TRUE, conf.level = 1, effects = "conditional"),
-    class = "propensity_conf_level_error"
+    class = "causalgenerics_invalid_argument_conf.level"
   )
 })
 

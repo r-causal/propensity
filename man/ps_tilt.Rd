@@ -76,6 +76,32 @@ weight by a marginal quantity that does not depend on the covariates, and
 \code{wt_cens()} reuses the \code{"ate"} formula, so neither has an entry here.
 }
 
+\section{Standardizing model predictions}{
+A g-computation estimate averages an outcome model's per-row counterfactual
+predictions, and where those predictions vary from row to row it is the
+weights of that average that standardize the estimate to a target population.
+The tilt is those weights, which is what the second example below supplies by
+hand. An average taken with equal weight standardizes a covariate-adjusted
+outcome model to the whole sample, so such a model targets the ATE however its
+own fitting weights were built: fit for a non-\code{"ate"} estimand and averaged
+that way, it reports the full-sample contrast rather than the one it was
+weighted for. Tools that average per-row model predictions, such as the
+\code{avg_comparisons()} function in the marginaleffects package, average with
+equal weight unless they are told otherwise, and the remedy is to hand them
+the tilt as the weights of the average: \code{ps_tilt(ps, "att")} for a binary
+exposure and \code{ps_tilt(ps, "att", .focal_level = "b")} for a categorical one.
+
+The requirement is easy to miss because an outcome model saturated in the
+exposure hides it. Such a model predicts one value per exposure level, so
+every average of its predictions returns the same contrast, and there the
+estimand is settled by the weights the model was fit with rather than by the
+weights of the average: a model fit with \code{\link[=wt_att]{wt_att()}} weights reports the ATT
+whether the average is taken with equal weight or with the tilt. The two
+averages come apart at the first covariate the outcome model adjusts for,
+where the predictions vary from row to row and the weights the average is
+taken under are what decides the population the estimate describes.
+}
+
 \section{Propensity score range}{
 Every propensity score in \code{.propensity} must lie strictly inside
 \eqn{(0, 1)}, the same requirement \code{\link[=wt_ate]{wt_ate()}} and the rest of the weight

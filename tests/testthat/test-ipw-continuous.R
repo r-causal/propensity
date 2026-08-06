@@ -348,7 +348,11 @@ test_that("as.data.frame(exponentiate = TRUE) relabels the continuous log odds r
 
   df <- as.data.frame(res, exponentiate = TRUE)
   expect_equal(nrow(df), 1L)
-  expect_equal(df$effect, "or")
+  expect_named(
+    df,
+    c("term", "estimate", "std.error", "statistic", "p.value")
+  )
+  expect_equal(df$term, "or")
 })
 
 # ---- offset guard -----------------------------------------------------------
