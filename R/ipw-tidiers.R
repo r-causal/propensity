@@ -140,7 +140,9 @@
 #'   summary of the fit, [`augment()`][augment.ipw()] for its per-observation
 #'   columns, [`as.data.frame()`][causalgenerics::new_ipw()] for the result's own
 #'   columns, and [as_marginal()] and [as_conditional()] for the reading a result
-#'   records.
+#'   records. For results fitted to multiply imputed data, see the Multiple
+#'   imputation section of [ipw()], [pool_ipw()] for the pooling, and
+#'   [`tidy()`][tidy.ipw_pooled()] for what it returns.
 #'
 #' @exportS3Method generics::tidy ipw
 tidy.ipw <- function(
@@ -373,6 +375,184 @@ glance.ipw <- function(x, ...) {
     estimand = x$estimand,
     nobs = stats::nobs(x),
     df.residual = stats::df.residual(x)
+  )
+}
+
+#' Tidy a pooled inverse probability weighted result
+#'
+#' @description
+#' `tidy()` returns the estimates of a [pool_ipw()] result as a tibble using the
+#' column names broom conventions use. There is one row per effect measure, and
+#' one row per effect measure per contrast for a categorical exposure, in the
+#' order the pooled result stores them. Nothing is dropped.
+#'
+#' Those columns are the ones the pooled result's own coercion surface reports,
+#' so this method is that surface read as a tibble rather than a second assembly
+#' of the same table. The covariance of the effects the frame attaches is the one
+#' thing that does not travel: it is an attribute rather than a column, and a
+#' tidied table is its columns.
+#'
+#' The pooling has already happened by the time this method sees the result.
+#' Nothing here re-pools and no argument changes an estimate: they say how the
+#' table already in the object is reported, which is whether an interval comes
+#' with it, the level that interval is reported at, and the scale the ratio rows
+#' are put on.
+#'
+#' @param x An `ipw_pooled` object, as returned by [pool_ipw()].
+#' @param conf.int Logical. Should the confidence interval bounds be returned in
+#'   the `conf.low` and `conf.high` columns? Defaults to `FALSE`.
+#' @param conf.level The confidence level of the interval. `NULL`, the default,
+#'   reports the bounds at the level the pooled result stored, which is the level
+#'   its own intervals were built at. A number between 0 and 1 rebuilds them at
+#'   that level instead, from the estimate and its standard error referred to t
+#'   on the pooled degrees of freedom. Not used when `conf.int` is `FALSE`,
+#'   though it must still be a valid level.
+#' @param exponentiate Logical. Should the estimate and its bounds be
+#'   exponentiated on the rows reported on the log scale? Defaults to `FALSE`.
+#'   This behaves exactly as it does on the pooled result's own coercion surface:
+#'   in the marginal reading the `log(rr)` and `log(or)` rows have their estimate
+#'   and bounds exponentiated and their `term` relabeled to `rr` and `or`, and in
+#'   the conditional reading the outcome model's link settles the scale for every
+#'   row at once and no term is relabeled. In both readings the standard error,
+#'   the test statistic, and the p-value describe the log scale and stay there,
+#'   which is where the inference was done.
+#' @param ... These dots are for future extensions and must be empty.
+#'
+#' @return A [tibble][tibble::tibble] with one row per pooled estimate and the
+#'   columns:
+#' \describe{
+#'   \item{`term`}{The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
+#'     `"diff"`, or `"slope"`, or the coefficient name in the conditional
+#'     reading.}
+#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"`.
+#'     Categorical exposures only.}
+#'   \item{`estimate`}{The pooled point estimate.}
+#'   \item{`std.error`}{The pooled standard error.}
+#'   \item{`statistic`}{The test statistic, the estimate over its standard
+#'     error.}
+#'   \item{`df`}{The pooled degrees of freedom the statistic is referred to.
+#'     These carry the Barnard-Rubin small-sample adjustment, so the statistic is
+#'     referred to t on them rather than to the normal.}
+#'   \item{`p.value`}{The two-sided p-value of that statistic.}
+#'   \item{`conf.low`, `conf.high`}{The interval bounds. Present only when
+#'     `conf.int` is `TRUE`.}
+#' }
+#'
+#' @examplesIf requireNamespace("mice", quietly = TRUE)
+#' set.seed(2024)
+#' n <- 150
+#' x1 <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.3 * x1))
+#' y <- rbinom(n, 1, plogis(-0.4 + 0.9 * z + 0.5 * x1))
+#' dat <- data.frame(x1, z, y)
+#' dat$x1[rbinom(n, 1, 0.2) == 1] <- NA
+#'
+#' imp <- mice::mice(dat, m = 2, print = FALSE, seed = 1)
+#' fits <- with(imp, {
+#'   ps <- glm(z ~ x1, family = binomial())
+#'   w <- wt_ate(ps)
+#'   om <- glm(y ~ z, family = quasibinomial(), weights = w)
+#'   ipw(ps, om)
+#' })
+#'
+#' tidy(pool_ipw(fits))
+#'
+#' tidy(pool_ipw(fits), conf.int = TRUE, exponentiate = TRUE)
+#'
+#' @seealso [pool_ipw()] for the pooling, [`glance()`][glance.ipw_pooled()] for a
+#'   one-row summary of the pooled fit, and the Multiple imputation section of
+#'   [ipw()] for the workflow the two belong to.
+#'
+#' @exportS3Method generics::tidy ipw_pooled
+tidy.ipw_pooled <- function(
+  x,
+  conf.int = FALSE,
+  conf.level = NULL,
+  exponentiate = FALSE,
+  ...
+) {
+  rlang::check_dots_empty()
+
+  # The pooled result's own coercion surface, which validates the three
+  # arguments and builds the table. Reading it rather than rebuilding it is what
+  # keeps this method and the frame reporting the same numbers under the same
+  # names, exactly as the marginal reading of `tidy()` on a single result does.
+  frame <- as.data.frame(
+    x,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate
+  )
+
+  # The covariance of the effects the frame attaches is the one thing that does
+  # not travel: it is an attribute rather than a column, and a tidied table is
+  # its columns.
+  out <- tibble::as_tibble(frame)
+  attr(out, "ipw_vcov") <- NULL
+
+  out
+}
+
+#' Glance at a pooled inverse probability weighted result
+#'
+#' @description
+#' `glance()` describes a [pool_ipw()] result rather than its estimates: one row
+#' naming the estimand, counting the observations and the results that were
+#' pooled, and reporting the complete-data degrees of freedom the small-sample
+#' adjustment used. A pooled result reporting several effect measures, or several
+#' contrasts of a categorical exposure, still returns exactly one row.
+#'
+#' @param x An `ipw_pooled` object, as returned by [pool_ipw()].
+#' @param ... These dots are for future extensions and must be empty.
+#'
+#' @return A one-row [tibble][tibble::tibble] with the columns:
+#' \describe{
+#'   \item{`estimand`}{The causal estimand every pooled result targeted.}
+#'   \item{`nobs`}{The smallest number of observations any pooled result was
+#'     estimated from. The imputed datasets are the same size, so this is that
+#'     size unless a result was fitted on a subset of one. Reported by
+#'     [stats::nobs()].}
+#'   \item{`m`}{The number of results pooled.}
+#'   \item{`dfcom`}{The complete-data degrees of freedom the Barnard-Rubin
+#'     adjustment used.}
+#' }
+#'
+#' @examplesIf requireNamespace("mice", quietly = TRUE)
+#' set.seed(2024)
+#' n <- 150
+#' x1 <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.3 * x1))
+#' y <- rbinom(n, 1, plogis(-0.4 + 0.9 * z + 0.5 * x1))
+#' dat <- data.frame(x1, z, y)
+#' dat$x1[rbinom(n, 1, 0.2) == 1] <- NA
+#'
+#' imp <- mice::mice(dat, m = 2, print = FALSE, seed = 1)
+#' fits <- with(imp, {
+#'   ps <- glm(z ~ x1, family = binomial())
+#'   w <- wt_ate(ps)
+#'   om <- glm(y ~ z, family = quasibinomial(), weights = w)
+#'   ipw(ps, om)
+#' })
+#'
+#' glance(pool_ipw(fits))
+#'
+#' @seealso [pool_ipw()] for the pooling, [`tidy()`][tidy.ipw_pooled()] for the
+#'   pooled estimates, and the Multiple imputation section of [ipw()] for the
+#'   workflow the two belong to.
+#'
+#' @exportS3Method generics::glance ipw_pooled
+glance.ipw_pooled <- function(x, ...) {
+  rlang::check_dots_empty()
+
+  # The count is the pooled result class' own accessor, so the number
+  # `glance()` reports and the number `nobs()` reports are the same number
+  # rather than two readings that agree by construction, exactly as the summary
+  # of a single result reads its counts.
+  tibble::tibble(
+    estimand = x$estimand,
+    nobs = stats::nobs(x),
+    m = x$m,
+    dfcom = x$dfcom
   )
 }
 

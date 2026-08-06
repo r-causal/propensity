@@ -392,6 +392,72 @@ parameterization, so every no-intercept outcome model errors here. See \strong{M
 contract both methods impose.
 }
 
+\section{Multiple imputation}{
+With missing data, fit the whole analysis once per imputed dataset and pool
+the results. Everything the analysis needs is rebuilt inside a single
+expression, so each imputation gets its own propensity model, its own weights,
+and its own outcome model:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{imp <- mice::mice(dat, m = 20, print = FALSE)
+fits <- with(imp, \{
+  ps <- glm(z ~ x1 + x2, family = binomial())
+  w <- wt_ate(ps)
+  om <- glm(y ~ z, family = quasibinomial(), weights = w)
+  ipw(ps, om)
+\})
+pool_ipw(fits)
+}\if{html}{\out{</div>}}
+
+\code{\link[=pool_ipw]{pool_ipw()}} is the recommended verb. It reads the results themselves rather
+than a tidied table of them, so the effect labels survive, a categorical
+result keeps the contrast each row reports, and the complete-data degrees of
+freedom fall back to the outcome models whenever a result records none of its
+own. That fallback is written for the condition rather than for one route: a
+fit under \code{se_method = "linearization"} records none, and so does a result
+another package built on the same class from estimating equations that report
+no residual degrees of freedom. It also takes the smallest degrees of freedom
+across the pooled results, which is the conservative choice when they differ.
+\code{\link[=tidy.ipw_pooled]{tidy()}} and \code{\link[=glance.ipw_pooled]{glance()}} report
+what it returns.
+
+\code{mice::pool()} also works, for every exposure type, and is the right choice
+when a result has to travel through the same pipeline as other analyses. Four
+things are worth knowing about that route. It reaches the result through
+\code{\link[=tidy.ipw]{tidy()}}, which pools a categorical result grouped by \code{term} and
+\code{contrast} together, a grouping mice has supported since 3.15.0.
+\code{mice::pool()} groups correctly but its \code{summary()} prints only \code{term}, so a
+categorical pooled table shows each effect measure repeated with no contrast
+label beside it, and the labels have to be read off \code{pooled$pooled} instead.
+A result that records no complete-data degrees of freedom of its own, a fit
+under \code{se_method = "linearization"} among them, leaves the pooled degrees of
+freedom missing unless \code{dfcom} is passed explicitly, as in
+\code{mice::pool(fits, dfcom = df.residual(fits$analyses[[1]]$outcome_mod))}. Every
+result of that kind has to be told, where \code{\link[=pool_ipw]{pool_ipw()}} reads the outcome
+models for all of them unasked. That remedy is what the package's requirement
+of mice 3.18.0 or later is for: mice 3.17.0 introduced a regression in the
+\code{dfcom} argument of \code{pool()}, and 3.18.0 is the version that repairs it. And the \code{exponentiate} argument of
+\code{summary()} on a pooled \code{mipo} is not the one these methods take: a \code{mipo}
+records no scale for the rows it holds, so it exponentiates every one of them,
+returning a risk difference as its exponential and still labeling the row
+\code{rd}. \code{\link[=tidy.ipw_pooled]{tidy()}} and the pooled result's own frame
+exponentiate the rows reported on the log scale alone and relabel those.
+
+To pool the conditional reading, record it inside the same expression with
+\code{\link[=as_conditional]{as_conditional()}}, and the pooled result reports the outcome models'
+coefficients rather than the causal contrasts.
+
+The analysis belongs inside \code{with()} rather than outside it because the
+propensity score model has to be estimated once per imputation. Weights built
+from propensity scores averaged across imputations are identical in every
+imputation, which leaves no between-imputation variance for the weights to
+contribute and no per-imputation estimation for the corrected standard errors
+to account for; both components of the variance are lost. Fitting within each
+imputation keeps the uncertainty of having estimated the weights inside each
+result, and the pooling adds the uncertainty the imputation itself
+contributed. Leyrat et al. (2019) compare the approaches and recommend this
+one.
+}
+
 \section{Model requirements}{
 \code{ipw()} cannot yet account for propensity scores that were trimmed
 (\code{\link[=ps_trim]{ps_trim()}}), truncated (\code{\link[=ps_trunc]{ps_trunc()}}), or calibrated (\code{\link[=ps_calibrate]{ps_calibrate()}})
@@ -544,6 +610,11 @@ Kostouraki A, Hajage D, Rachet B, et al. On variance estimation of the
 inverse probability-of-treatment weighting estimator: A tutorial for
 different types of propensity score weights. \emph{Statistics in Medicine}.
 2024;43(13):2672--2694. \doi{10.1002/sim.10078}
+
+Leyrat C, Seaman SR, White IR, et al. Propensity score analysis with partially
+observed covariates: How should multiple imputation be used? \emph{Statistical
+Methods in Medical Research}. 2019;28(1):3--19.
+\doi{10.1177/0962280217713032}
 }
 \seealso{
 \code{\link[=wt_ate]{wt_ate()}}, \code{\link[=wt_att]{wt_att()}}, \code{\link[=wt_atu]{wt_atu()}}, \code{\link[=wt_atm]{wt_atm()}}, \code{\link[=wt_ato]{wt_ato()}}, \code{\link[=wt_entropy]{wt_entropy()}}

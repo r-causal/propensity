@@ -164,5 +164,7 @@ tidy(result, conf.int = TRUE, effects = "conditional")
 summary of the fit, \code{\link[=augment.ipw]{augment()}} for its per-observation
 columns, \code{\link[causalgenerics:new_ipw]{as.data.frame()}} for the result's own
 columns, and \code{\link[=as_marginal]{as_marginal()}} and \code{\link[=as_conditional]{as_conditional()}} for the reading a result
-records.
+records. For results fitted to multiply imputed data, see the Multiple
+imputation section of \code{\link[=ipw]{ipw()}}, \code{\link[=pool_ipw]{pool_ipw()}} for the pooling, and
+\code{\link[=tidy.ipw_pooled]{tidy()}} for what it returns.
 }

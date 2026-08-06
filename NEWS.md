@@ -1,14 +1,23 @@
 # propensity 0.1.0.9000 (development version)
 
-* `tidy()` now tolerates the two arguments `mice::pool()` passes every tidier it
-  calls, so an `ipw()` result can be fit once per imputed dataset and pooled by
+* `pool_ipw()` is now re-exported, so the whole multiple-imputation workflow can
+  be written without reaching for a second namespace for its last step: fit the
+  analysis once per imputed dataset inside `mice::with()`, then pool the results.
+  `tidy()` and `glance()` methods report what it returns, the first as the pooled
+  estimates in the columns broom conventions use, the second as one row
+  describing the pooled fit. `ipw()` gains a Multiple imputation section
+  documenting the workflow, why the propensity model belongs inside the
+  per-imputation expression, and how the pooling compares with `mice::pool()`.
+
+* `tidy()` now tolerates two of the arguments `mice::pool()` passes every tidier
+  it calls, so an `ipw()` result can be fit once per imputed dataset and pooled by
   Rubin's rules. `parametric` is accepted and ignored, and `effects = "fixed"`
   asks for the reading the result records, which is what `NULL` asks for. The
   dots stay closed, so every other stray argument is still refused, and the
   accessors underneath still accept only `"marginal"` and `"conditional"`. A
   categorical result pools grouped by `term` and `contrast` together, so each
   effect measure of each contrast is combined with itself rather than with its
-  neighbour.
+  neighbor.
 
 * The column naming the contrast on a categorical `ipw()` result is now called
   `contrast` in the estimates table the result stores, where it was called

@@ -2706,6 +2706,43 @@ test_that("tidy() reports a pooled binary result as a tibble", {
   expect_pooled_tidy_wraps_frame(pooled, exponentiate = TRUE)
 })
 
+test_that("tidy() reports a pooled interval at the level the pooling stored", {
+  skip_if_not_installed("deli")
+  withr::local_seed(2024)
+
+  # Pooled at a level other than 0.95 on purpose. The default `conf.level` of
+  # this method is `NULL`, which reports the level the pooled result stored
+  # rather than one of the tidier's own, and a fixture pooled at the usual level
+  # cannot tell the two apart.
+  pooled <- pool_ipw(
+    lapply(c(0, 0.05, -0.05), pooled_binary_fit),
+    conf_level = 0.8
+  )
+  expect_identical(unique(pooled$estimates$conf.level), 0.8)
+
+  tidied <- tidy(pooled, conf.int = TRUE)
+
+  # The 80% bounds, rebuilt here from the pooled estimate and its standard error
+  # referred to t on the pooled degrees of freedom, which is the interval the
+  # pooling itself builds.
+  estimates <- pooled$estimates
+  half <- qt(0.9, estimates$df) * estimates$std.err
+  expect_equal(tidied$conf.low, estimates$estimate - half, tolerance = 1e-10)
+  expect_equal(tidied$conf.high, estimates$estimate + half, tolerance = 1e-10)
+
+  # The same bounds the pooled frame reports under its own default, the two
+  # surfaces reading one stored level rather than each carrying a default.
+  frame <- as.data.frame(pooled, conf.int = TRUE)
+  expect_identical(tidied$conf.low, frame$conf.low)
+  expect_identical(tidied$conf.high, frame$conf.high)
+
+  # A level named for the call is the other reading, so the default is the
+  # stored one rather than 0.95 arrived at by another route.
+  at_95 <- tidy(pooled, conf.int = TRUE, conf.level = 0.95)
+  expect_true(all(at_95$conf.low < tidied$conf.low))
+  expect_true(all(at_95$conf.high > tidied$conf.high))
+})
+
 test_that("tidy() reports a pooled categorical result as a tibble", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
@@ -2765,6 +2802,11 @@ test_that("glance() describes a pooled fit in one row", {
   expect_identical(glanced$m, pooled$m)
   expect_identical(glanced$dfcom, pooled$dfcom)
 
+  # The count comes from the accessor rather than from the field beneath it, so
+  # the number this row reports and the number `nobs()` reports are the same
+  # number rather than two readings that agree by construction.
+  expect_identical(glanced$nobs, stats::nobs(pooled))
+
   # The types are part of the contract: a count is an integer and the
   # complete-data degrees of freedom are a double, which the Barnard-Rubin
   # adjustment can return a fractional value for.
@@ -2786,4 +2828,64 @@ test_that("glance() describes a pooled fit in one row whatever it reports", {
   expect_identical(nrow(glance(pooled)), 1L)
   expect_named(glance(pooled), c("estimand", "nobs", "m", "dfcom"))
   expect_identical(glance(pooled)$m, 3L)
+})
+
+test_that("the tidiers report a pooled conditional result", {
+  skip_if_not_installed("deli")
+  withr::local_seed(2024)
+  fits <- lapply(c(0, 0.05, -0.05), pooled_binary_fit)
+  pooled <- pool_ipw(fits, effects = "conditional")
+
+  # The pooled coercion surface read as a tibble, exactly as in the marginal
+  # reading: the reading the pooling was asked for is settled before either
+  # surface sees it.
+  expect_pooled_tidy_wraps_frame(pooled)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE)
+
+  # The conditional reading pools the outcome models' coefficients, so a term is
+  # a coefficient's name and there is no contrast column, a coefficient not
+  # being a contrast of exposure levels.
+  tidied <- tidy(pooled, conf.int = TRUE)
+  expect_identical(tidied$term, c("(Intercept)", "z"))
+  expect_named(
+    tidied,
+    c(
+      "term",
+      "estimate",
+      "std.error",
+      "statistic",
+      "df",
+      "p.value",
+      "conf.low",
+      "conf.high"
+    )
+  )
+
+  # `glance()` describes the pooled fit rather than its estimates, so the
+  # reading those estimates are in leaves the row it returns alone.
+  expect_identical(glance(pooled), glance(pool_ipw(fits)))
+})
+
+test_that("tidy() rejects an argument that lands in the pooled dots", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # The dots exist to match the generic. A misspelled argument absorbed there
+  # would otherwise return the stored interval as though it had been asked for.
+  expect_error(
+    tidy(pooled, bogus = 1),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("glance() rejects an argument that lands in the pooled dots", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # The dots exist to match the generic and carry nothing. An argument absorbed
+  # there would otherwise be silently ignored.
+  expect_error(
+    glance(pooled, bogus = 1),
+    class = "rlib_error_dots_nonempty"
+  )
 })
