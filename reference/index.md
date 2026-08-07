@@ -9,6 +9,9 @@
 - [`glance(`*`<ipw>`*`)`](https://r-causal.github.io/propensity/reference/glance.ipw.md)
   : Glance at an inverse probability weighted result
 
+- [`glance(`*`<ipw_pooled>`*`)`](https://r-causal.github.io/propensity/reference/glance.ipw_pooled.md)
+  : Glance at a pooled inverse probability weighted result
+
 - [`ipw(`*`<multinom>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
   [`ipw(`*`<lm>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
   [`ipw(`*`<glm>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
@@ -72,6 +75,9 @@
 
 - [`tidy(`*`<ipw>`*`)`](https://r-causal.github.io/propensity/reference/tidy.ipw.md)
   : Tidy an inverse probability weighted result
+
+- [`tidy(`*`<ipw_pooled>`*`)`](https://r-causal.github.io/propensity/reference/tidy.ipw_pooled.md)
+  : Tidy a pooled inverse probability weighted result
 
 - [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md)

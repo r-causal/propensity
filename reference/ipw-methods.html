@@ -5,7 +5,7 @@ outcome model. Standard errors are computed by M-estimation; the
 linearization method is not available for categorical exposures. For a
 K-level exposure, effects are reported for each non-reference level against
 the reference (first) factor level, and the estimates table gains a
-comparison column identifying the contrast.
+contrast column naming the pair of levels each row compares.
 The lm method estimates the causal dose-response effect for a continuous
 exposure from a fitted stats::lm() (or gaussian-family stats::glm())
 propensity score model of the exposure and a weighted marginal structural
@@ -15,7 +15,7 @@ continuous exposures. The marginal structural model must contain exactly one
 exposure term, and the reported effect is that single coefficient: "slope"
 for an identity-link outcome, "log(or)" for a logit-link outcome, and
 "log(rr)" for a log-link outcome. The estimates table keeps the eight-column
-contract with no comparison column.
+contract with no contrast column.
 ipw() is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
 and a fitted weighted outcome model; ipw() computes causal effect estimates
@@ -34,7 +34,7 @@ outcome model. Standard errors are computed by M-estimation; the
 linearization method is not available for categorical exposures. For a
 K-level exposure, effects are reported for each non-reference level against
 the reference (first) factor level, and the estimates table gains a
-comparison column identifying the contrast.
+contrast column naming the pair of levels each row compares.
 The lm method estimates the causal dose-response effect for a continuous
 exposure from a fitted stats::lm() (or gaussian-family stats::glm())
 propensity score model of the exposure and a weighted marginal structural
@@ -44,7 +44,7 @@ continuous exposures. The marginal structural model must contain exactly one
 exposure term, and the reported effect is that single coefficient: "slope"
 for an identity-link outcome, "log(or)" for a logit-link outcome, and
 "log(rr)" for a log-link outcome. The estimates table keeps the eight-column
-contract with no comparison column.
+contract with no contrast column.
 ipw() is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
 and a fitted weighted outcome model; ipw() computes causal effect estimates
@@ -98,7 +98,7 @@ outcome model. Standard errors are computed by M-estimation; the
 linearization method is not available for categorical exposures. For a
 K-level exposure, effects are reported for each non-reference level against
 the reference (first) factor level, and the estimates table gains a
-<code>comparison</code> column identifying the contrast.</p>
+<code>contrast</code> column naming the pair of levels each row compares.</p>
 <p>The <code>lm</code> method estimates the causal dose-response effect for a continuous
 exposure from a fitted <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">stats::lm()</a></code> (or gaussian-family <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code>)
 propensity score model of the exposure and a weighted marginal structural
@@ -108,7 +108,7 @@ continuous exposures. The marginal structural model must contain exactly one
 exposure term, and the reported effect is that single coefficient: <code>"slope"</code>
 for an identity-link outcome, <code>"log(or)"</code> for a logit-link outcome, and
 <code>"log(rr)"</code> for a log-link outcome. The estimates table keeps the eight-column
-contract with no comparison column.</p>
+contract with no contrast column.</p>
 <p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
 and a fitted weighted outcome model; <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> computes causal effect estimates
@@ -350,8 +350,8 @@ the reported effects, <code><a href="https://rdrr.io/r/stats/vcov.html" class="e
 <code><a href="https://rdrr.io/r/stats/nobs.html" class="external-link">stats::nobs()</a></code> and <code><a href="https://rdrr.io/r/stats/df.residual.html" class="external-link">stats::df.residual()</a></code> for the counts describing the
 fit, and <code><a href="https://rdrr.io/r/stats/weights.html" class="external-link">stats::weights()</a></code> for the <code><a href="psw.html">psw()</a></code> vector the outcome model was
 fit with. Coefficients are named for the effect measure, and for the effect
-measure and the comparison together where a categorical exposure reports
-one row per comparison. Which surface <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">stats::coef()</a></code>, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code>, and
+measure and the contrast together where a categorical exposure reports one
+row per contrast. Which surface <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">stats::coef()</a></code>, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code>, and
 <code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code> report follows the presentation mode the result records,
 described under <code>effects</code> above.</p>
 <p>Under <code>se_method = "mestimation"</code> the stored <code>wt_mod</code> and <code>outcome_mod</code> are
@@ -402,9 +402,9 @@ measures:</p><ul><li><p><code>rd</code>: Risk difference (marginal risk in expos
 <code>family = gaussian()</code>) returns only the difference in means (<code>diff</code>).</p>
 <p>For a categorical exposure, the same measures are reported for each
 non-reference level against the reference (first) factor level. The estimates
-table gains a <code>comparison</code> column identifying each contrast (for example
-<code>"b vs a"</code>), so a K-level exposure produces one block of measures per
-non-reference level.</p>
+table gains a <code>contrast</code> column naming the pair of levels each row compares
+(for example <code>"b vs a"</code>), so a K-level exposure produces one block of
+measures per non-reference level.</p>
 <p>For a continuous exposure, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> reports the single exposure coefficient of
 the weighted marginal structural outcome model. Its label follows the outcome
 link: <code>slope</code> for an identity link, <code>log(or)</code> for a logit link, and
@@ -473,6 +473,66 @@ rejection is broader than that mechanism: a saturated factor coding such as
 it, but the linearization influence functions are derived for the intercept
 parameterization, so every no-intercept outcome model errors here. See <strong>Model requirements</strong> for the baseline
 contract both methods impose.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="multiple-imputation">Multiple imputation<a class="anchor" aria-label="anchor" href="#multiple-imputation"></a></h2>
+    <p>With missing data, fit the whole analysis once per imputed dataset and pool
+the results. Everything the analysis needs is rebuilt inside a single
+expression, so each imputation gets its own propensity model, its own weights,
+and its own outcome model:</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="va">imp</span> <span class="op">&lt;-</span> <span class="fu">mice</span><span class="fu">::</span><span class="fu"><a href="https://amices.org/mice/reference/mice.html" class="external-link">mice</a></span><span class="op">(</span><span class="va">dat</span>, m <span class="op">=</span> <span class="fl">20</span>, print <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="va">fits</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/with.html" class="external-link">with</a></span><span class="op">(</span><span class="va">imp</span>, <span class="op">{</span></span>
+<span>  <span class="va">ps</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">z</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">w</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps</span><span class="op">)</span></span>
+<span>  <span class="va">om</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">z</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">quasibinomial</a></span><span class="op">(</span><span class="op">)</span>, weights <span class="op">=</span> <span class="va">w</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">om</span><span class="op">)</span></span>
+<span><span class="op">}</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/pool_ipw.html" class="external-link">pool_ipw</a></span><span class="op">(</span><span class="va">fits</span><span class="op">)</span></span></code></pre><p></p></div>
+<p><code><a href="https://r-causal.github.io/causalgenerics/reference/pool_ipw.html" class="external-link">pool_ipw()</a></code> is the recommended verb. It reads the results themselves rather
+than a tidied table of them, so the effect labels survive, a categorical
+result keeps the contrast each row reports, and the complete-data degrees of
+freedom fall back to the outcome models whenever a result records none of its
+own. That fallback is written for the condition rather than for one route: a
+fit under <code>se_method = "linearization"</code> records none, and so does a result
+another package built on the same class from estimating equations that report
+no residual degrees of freedom. It also takes the smallest degrees of freedom
+across the pooled results, which is the conservative choice when they differ.
+<code><a href="tidy.ipw_pooled.html">tidy()</a></code> and <code><a href="glance.ipw_pooled.html">glance()</a></code> report
+what it returns.</p>
+<p><code><a href="https://amices.org/mice/reference/pool.html" class="external-link">mice::pool()</a></code> also works, for every exposure type, and is the right choice
+when a result has to travel through the same pipeline as other analyses. Four
+things are worth knowing about that route. It reaches the result through
+<code><a href="tidy.ipw.html">tidy()</a></code>, which pools a categorical result grouped by <code>term</code> and
+<code>contrast</code> together, a grouping mice has supported since 3.15.0.
+<code><a href="https://amices.org/mice/reference/pool.html" class="external-link">mice::pool()</a></code> groups correctly but its <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> prints only <code>term</code>, so a
+categorical pooled table shows each effect measure repeated with no contrast
+label beside it, and the labels have to be read off <code>pooled$pooled</code> instead.
+A result that records no complete-data degrees of freedom of its own, a fit
+under <code>se_method = "linearization"</code> among them, leaves the pooled degrees of
+freedom missing unless <code>dfcom</code> is passed explicitly, as in
+<code>mice::pool(fits, dfcom = df.residual(fits$analyses[[1]]$outcome_mod))</code>. Every
+result of that kind has to be told, where <code><a href="https://r-causal.github.io/causalgenerics/reference/pool_ipw.html" class="external-link">pool_ipw()</a></code> reads the outcome
+models for all of them unasked. That remedy is what the package's requirement
+of mice 3.18.0 or later is for: mice 3.17.0 introduced a regression in the
+<code>dfcom</code> argument of <code>pool()</code>, and 3.18.0 is the version that repairs it. And the <code>exponentiate</code> argument of
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> on a pooled <code>mipo</code> is not the one these methods take: a <code>mipo</code>
+records no scale for the rows it holds, so it exponentiates every one of them,
+returning a risk difference as its exponential and still labeling the row
+<code>rd</code>. <code><a href="tidy.ipw_pooled.html">tidy()</a></code> and the pooled result's own frame
+exponentiate the rows reported on the log scale alone and relabel those.</p>
+<p>To pool the conditional reading, record it inside the same expression with
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_conditional()</a></code>, and the pooled result reports the outcome models'
+coefficients rather than the causal contrasts.</p>
+<p>The analysis belongs inside <code><a href="https://rdrr.io/r/base/with.html" class="external-link">with()</a></code> rather than outside it because the
+propensity score model has to be estimated once per imputation. Weights built
+from propensity scores averaged across imputations are identical in every
+imputation, which leaves no between-imputation variance for the weights to
+contribute and no per-imputation estimation for the corrected standard errors
+to account for; both components of the variance are lost. Fitting within each
+imputation keeps the uncertainty of having estimated the weights inside each
+result, and the pooling adds the uncertainty the imputation itself
+contributed. Leyrat et al. (2019) compare the approaches and recommend this
+one.</p>
     </div>
     <div class="section level2">
     <h2 id="model-requirements">Model requirements<a class="anchor" aria-label="anchor" href="#model-requirements"></a></h2>
@@ -558,6 +618,10 @@ Statistician</em>. 2002;56(1):29–38. <a href="https://doi.org/10.1198/00031300
 inverse probability-of-treatment weighting estimator: A tutorial for
 different types of propensity score weights. <em>Statistics in Medicine</em>.
 2024;43(13):2672–2694. <a href="https://doi.org/10.1002/sim.10078" class="external-link">doi:10.1002/sim.10078</a></p>
+<p>Leyrat C, Seaman SR, White IR, et al. Propensity score analysis with partially
+observed covariates: How should multiple imputation be used? <em>Statistical
+Methods in Medical Research</em>. 2019;28(1):3–19.
+<a href="https://doi.org/10.1177/0962280217713032" class="external-link">doi:10.1177/0962280217713032</a></p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

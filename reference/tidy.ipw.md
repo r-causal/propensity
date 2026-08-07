@@ -5,7 +5,7 @@ estimates of an
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
 result as a tibble using the column names broom conventions use. There
 is one row per effect measure, and one row per effect measure per
-comparison for a categorical exposure, in the order the result stores
+contrast for a categorical exposure, in the order the result stores
 them. Nothing is dropped.
 
 Those columns are the ones the result's own coercion surface reports, so
@@ -46,7 +46,8 @@ tidy(
   conf.level = 0.95,
   exponentiate = FALSE,
   ...,
-  effects = NULL
+  effects = NULL,
+  parametric = NULL
 )
 ```
 
@@ -111,6 +112,16 @@ tidy(
   [`as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
   move a result between the two readings.
 
+  `"fixed"` is also accepted, and asks for the reading the result
+  records, exactly as `NULL` does. It is the name mixed models give the
+  effects that are not random, and
+  [`mice::pool()`](https://amices.org/mice/reference/pool.html) asks
+  every tidier it calls for it. A result reports one reading at a time
+  and neither of them is random, so the name resolves to whichever one
+  the result records. The accessors do not accept it: it is spelled
+  here, where multiple imputation reaches the result, rather than in the
+  surface underneath.
+
   The covariance the conditional reading reports is the outcome block of
   the jointly estimated sandwich, which every route that stacks
   estimating equations attaches to the outcome model it stores:
@@ -120,6 +131,17 @@ tidy(
   its conditional reading errors rather than reporting the covariance
   the outcome model computed for itself, which treats the estimated
   weights as fixed.
+
+- parametric:
+
+  Accepted and ignored.
+  [`mice::pool()`](https://amices.org/mice/reference/pool.html) passes
+  `parametric = TRUE` to every tidier it calls, to ask the models it was
+  written against for their parametric coefficient table rather than for
+  a smooth term. An `ipw` result reports one table, and the inference it
+  reports is already parametric, so there is nothing for the argument to
+  select and nothing is read from it. It is here so that a result can be
+  pooled across multiply imputed datasets.
 
 ## Value
 
@@ -131,7 +153,7 @@ row per estimate and the columns:
   The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
   `"diff"`, or `"slope"`.
 
-- `comparison`:
+- `contrast`:
 
   The contrast the row reports, such as `"b vs a"`. Categorical
   exposures only.
@@ -161,7 +183,7 @@ row per coefficient of the outcome model: `term` is the coefficient's
 name, `estimate` is the coefficient, `std.error` is the square root of
 the diagonal of the corrected covariance, `statistic` is the estimate
 over that standard error, and `p.value` is the two-sided normal p-value
-of the statistic. There is no `comparison` column, because a coefficient
+of the statistic. There is no `contrast` column, because a coefficient
 is not a contrast of exposure levels, and the bounds are built at the
 level `conf.level` asks for, the stored ones belonging to the effects
 the marginal reading reports.
@@ -179,7 +201,13 @@ for the result's own columns, and
 [`as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
 and
 [`as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
-for the reading a result records.
+for the reading a result records. For results fitted to multiply imputed
+data, see the Multiple imputation section of
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html),
+[`pool_ipw()`](https://r-causal.github.io/causalgenerics/reference/pool_ipw.html)
+for the pooling, and
+[`tidy()`](https://r-causal.github.io/propensity/reference/tidy.ipw_pooled.md)
+for what it returns.
 
 ## Examples
 

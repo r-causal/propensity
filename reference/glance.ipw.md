@@ -6,8 +6,8 @@ an
 result rather than its estimates: one row naming the estimand and
 counting the observations and the residual degrees of freedom of the
 system the standard errors came from. A fit reporting several effect
-measures, or several comparisons of a categorical exposure, still
-returns exactly one row.
+measures, or several contrasts of a categorical exposure, still returns
+exactly one row.
 
 Under M-estimation that system is the stacked estimating equations,
 which hold the propensity score model, the outcome model, and the effect

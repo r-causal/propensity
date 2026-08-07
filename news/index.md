@@ -2,6 +2,49 @@
 
 ## propensity 0.1.0.9000 (development version)
 
+- [`pool_ipw()`](https://r-causal.github.io/causalgenerics/reference/pool_ipw.html)
+  is now re-exported, so the whole multiple-imputation workflow can be
+  written without reaching for a second namespace for its last step: fit
+  the analysis once per imputed dataset inside
+  [`mice::with()`](https://amices.org/mice/reference/with.mids.html),
+  then pool the results.
+  [`tidy()`](https://generics.r-lib.org/reference/tidy.html) and
+  [`glance()`](https://generics.r-lib.org/reference/glance.html) methods
+  report what it returns, the first as the pooled estimates in the
+  columns broom conventions use, the second as one row describing the
+  pooled fit.
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  gains a Multiple imputation section documenting the workflow, why the
+  propensity model belongs inside the per-imputation expression, and how
+  the pooling compares with
+  [`mice::pool()`](https://amices.org/mice/reference/pool.html).
+
+- [`tidy()`](https://generics.r-lib.org/reference/tidy.html) now
+  tolerates two of the arguments
+  [`mice::pool()`](https://amices.org/mice/reference/pool.html) passes
+  every tidier it calls, so an
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  result can be fit once per imputed dataset and pooled by Rubin’s
+  rules. `parametric` is accepted and ignored, and `effects = "fixed"`
+  asks for the reading the result records, which is what `NULL` asks
+  for. The dots stay closed, so every other stray argument is still
+  refused, and the accessors underneath still accept only `"marginal"`
+  and `"conditional"`. A categorical result pools grouped by `term` and
+  `contrast` together, so each effect measure of each contrast is
+  combined with itself rather than with its neighbor.
+
+- The column naming the contrast on a categorical
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  result is now called `contrast` in the estimates table the result
+  stores, where it was called `comparison`. `contrast` is the name every
+  surface of a result already reported, so
+  [`tidy()`](https://generics.r-lib.org/reference/tidy.html),
+  [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html), and
+  the printed table are unchanged and only the stored frame moves; code
+  reading `result$estimates$comparison` needs updating. Results built by
+  earlier versions stay readable, because causalgenerics accepts either
+  name when it reads a stored frame.
+
 - The marginal reading of
   [`tidy()`](https://generics.r-lib.org/reference/tidy.html) is now the
   result’s own
@@ -99,8 +142,8 @@
   causalgenerics, which owns the shared result class; what propensity
   supplies is the covariance of the effects it reports, recorded on the
   estimates table. Coefficients are named for the effect measure, and
-  for the effect measure and the comparison together where a categorical
-  exposure reports one row per comparison.
+  for the effect measure and the contrast together where a categorical
+  exposure reports one row per contrast.
   [`glance()`](https://generics.r-lib.org/reference/glance.html) reports
   the counts through the same accessors, so the two surfaces cannot
   disagree. This raises the causalgenerics requirement to 0.1.0.9000.
@@ -133,7 +176,7 @@
 - [`tidy()`](https://generics.r-lib.org/reference/tidy.html) returns the
   estimates as a tibble under the column names broom conventions use,
   `term`, `estimate`, `std.error`, `statistic`, and `p.value`, with
-  `comparison` naming the contrast on a categorical exposure. `conf.int`
+  `contrast` naming the contrast on a categorical exposure. `conf.int`
   adds the `conf.low` and `conf.high` bounds, `conf.level` reports them
   at a level other than the one the result was fit at by rebuilding them
   from the estimate and its standard error, and `exponentiate` puts the
@@ -148,8 +191,8 @@
   estimated from, and the residual degrees of freedom of the stacked
   M-estimation system, which are those observations less the parameters
   the system solves for. A result reporting several effect measures, or
-  several comparisons of a categorical exposure, still returns exactly
-  one row. `se_method = "linearization"` stacks nothing and records no
+  several contrasts of a categorical exposure, still returns exactly one
+  row. `se_method = "linearization"` stacks nothing and records no
   parameter count, so the observations are the outcome model’s and the
   degrees of freedom are `NA`.
 
@@ -1530,17 +1573,17 @@
   a fit whose exposure arm is all events, or all non-events, sends one
   past the range its log risk ratio or log odds ratio is defined on.
   Such a fit previously emitted base R’s unclassed `NaNs produced`,
-  which named neither the effect nor the comparison and which no handler
+  which named neither the effect nor the contrast and which no handler
   could select on. The warning now carries class
   `propensity_ipw_contrast_warning`, names the effect and, for a
-  categorical exposure, the comparison it belongs to, and reports once
-  per effect per comparison however often the solver revisits those
-  means. The estimates, the standard errors, and the convergence
-  behavior of every fit are unchanged. The warning follows the solver
-  rather than the reported estimates, so it is raised whenever the path
-  taken to the root leaves the range, finite differences for the bread
-  included; an effect defined at the root but within a finite difference
-  of the boundary is reported too.
+  categorical exposure, the contrast it belongs to, and reports once per
+  effect per contrast however often the solver revisits those means. The
+  estimates, the standard errors, and the convergence behavior of every
+  fit are unchanged. The warning follows the solver rather than the
+  reported estimates, so it is raised whenever the path taken to the
+  root leaves the range, finite differences for the bread included; an
+  effect defined at the root but within a finite difference of the
+  boundary is reported too.
 
 - The error
   [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
