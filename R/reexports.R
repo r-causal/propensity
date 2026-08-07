@@ -33,3 +33,7 @@ generics::glance
 #' @importFrom generics augment
 #' @export
 generics::augment
+
+#' @importFrom causalgenerics pool_ipw
+#' @export
+causalgenerics::pool_ipw

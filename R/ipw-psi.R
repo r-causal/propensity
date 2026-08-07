@@ -215,9 +215,9 @@ ipw_theta_layout <- function(spec, call = rlang::caller_env()) {
 
 # Labels for the contrast blocks a categorical exposure carries, one per
 # non-reference level in counterfactual order. The estimates table reports these
-# in its comparison column and the contrast diagnostics name the comparison they
+# in its contrast column and the contrast diagnostics name the contrast they
 # concern, so both read them from here rather than rebuilding the pairs.
-ipw_comparison_labels <- function(spec) {
+ipw_contrast_labels <- function(spec) {
   nonref <- names(spec$outcome$X_counterfactual)[-1]
   paste(nonref, "vs", spec$reference_level)
 }
@@ -250,10 +250,10 @@ ipw_contrast_defined <- function(form, mu) {
 # The marginal means are free parameters of theta, so the solver moves them
 # through values where the transform has nothing to return: a risk pushed past 1
 # has no logit and a risk pushed below 0 has no logarithm. Base signals an
-# unclassed "NaNs produced" there, naming neither the effect nor the comparison
-# it belongs to. `reporter` replaces that with a classed warning that names
-# both. The transform still runs on the same values and returns the same result,
-# so the numbers the solver sees are unchanged.
+# unclassed "NaNs produced" there, naming neither the effect nor the contrast it
+# belongs to. `reporter` replaces that with a classed warning that names both.
+# The transform still runs on the same values and returns the same result, so
+# the numbers the solver sees are unchanged.
 ipw_contrast_value <- function(form, mu_hi, mu_lo, reporter = NULL) {
   if (ipw_contrast_defined(form, mu_hi) && ipw_contrast_defined(form, mu_lo)) {
     return(ipw_contrast_transform(form, mu_hi, mu_lo))
@@ -266,15 +266,15 @@ ipw_contrast_value <- function(form, mu_hi, mu_lo, reporter = NULL) {
   suppressWarnings(ipw_contrast_transform(form, mu_hi, mu_lo))
 }
 
-# A reporter for the contrast block of one comparison, or of the single binary
-# comparison when `comparison` is NULL. The solver revisits the same
-# out-of-domain marginal means on every step and again on every column of the
-# bread, so each effect reports once for the fit the reporter was built for.
+# A reporter for one contrast block, or for the single binary contrast when
+# `contrast` is NULL. The solver revisits the same out-of-domain marginal means
+# on every step and again on every column of the bread, so each effect reports
+# once for the fit the reporter was built for.
 #
 # The init path builds no reporter. It seeds theta from the fitted models and
 # the solver evaluates psi at that seed, so anything undefined there is reported
 # from the psi block instead of twice.
-ipw_contrast_reporter <- function(comparison = NULL) {
+ipw_contrast_reporter <- function(contrast = NULL) {
   reported <- new.env(parent = emptyenv())
 
   function(form) {
@@ -283,11 +283,11 @@ ipw_contrast_reporter <- function(comparison = NULL) {
     }
     reported[[form]] <- TRUE
 
-    headline <- if (is.null(comparison)) {
+    headline <- if (is.null(contrast)) {
       "The {.val {form}} effect is undefined at the marginal means the solver \\
       reached."
     } else {
-      "The {.val {form}} effect for {.val {comparison}} is undefined at the \\
+      "The {.val {form}} effect for {.val {contrast}} is undefined at the \\
       marginal means the solver reached."
     }
     domain <- switch(
@@ -680,10 +680,10 @@ ipw_psi_categorical <- function(
   estimand <- spec$estimand
   tilted <- !identical(estimand, "ate")
   n <- spec$n
-  # One reporter per comparison, built once for the fit rather than once per
+  # One reporter per contrast, built once for the fit rather than once per
   # evaluation, so each undefined effect reports once however often the solver
   # revisits it. The labels are the ones the estimates table reports.
-  reporters <- lapply(ipw_comparison_labels(spec), ipw_contrast_reporter)
+  reporters <- lapply(ipw_contrast_labels(spec), ipw_contrast_reporter)
 
   function(theta) {
     th_ps <- theta[idx$ps]

@@ -12,6 +12,7 @@
 \alias{tidy}
 \alias{glance}
 \alias{augment}
+\alias{pool_ipw}
 \title{Objects exported from other packages}
 \keyword{internal}
 \description{
@@ -19,7 +20,7 @@ These objects are imported from other packages. Follow the links
 below to see their documentation.
 
 \describe{
-  \item{causalgenerics}{\code{\link[causalgenerics:as_conditional]{as_conditional()}}, \code{\link[causalgenerics:as_marginal]{as_marginal()}}, \code{\link[causalgenerics:estimand]{estimand()}}, \code{\link[causalgenerics:estimand<-]{estimand<-()}}, \code{\link[causalgenerics:ipw]{ipw()}}, \code{\link[causalgenerics:is_causal_wt]{is_causal_wt()}}}
+  \item{causalgenerics}{\code{\link[causalgenerics:as_conditional]{as_conditional()}}, \code{\link[causalgenerics:as_marginal]{as_marginal()}}, \code{\link[causalgenerics:estimand]{estimand()}}, \code{\link[causalgenerics:estimand<-]{estimand<-()}}, \code{\link[causalgenerics:ipw]{ipw()}}, \code{\link[causalgenerics:is_causal_wt]{is_causal_wt()}}, \code{\link[causalgenerics:pool_ipw]{pool_ipw()}}}
 
   \item{generics}{\code{\link[generics:augment]{augment()}}, \code{\link[generics:glance]{glance()}}, \code{\link[generics:tidy]{tidy()}}}
 }}

@@ -34,6 +34,7 @@ Suggests:
     knitr,
     MASS,
     mgcv,
+    mice (>= 3.18.0),
     nnet,
     parsnip,
     probably,

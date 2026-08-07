@@ -2577,7 +2577,7 @@ test_that("mestimation accepts a no-intercept outcome model adjusted for a covar
 # reaches values outside the range the contrast is defined on: a risk pushed a
 # hair past 1 has no logit and a risk pushed a hair below 0 has no logarithm.
 # Both cases signal base's unclassed "NaNs produced", which names neither the
-# contrast that degenerated nor the comparison it belongs to, and which no
+# effect measure that degenerated nor the contrast it belongs to, and which no
 # handler can select on.
 #
 # Measured at the two emission sites. A binary exposure whose exposed arm is
@@ -2736,11 +2736,11 @@ test_that("no bare base warning escapes a degenerate binary contrast", {
   expect_false(any(vapply(out$warnings, is_bare_warning, logical(1))))
 })
 
-test_that("a degenerate categorical contrast warning names its effect and comparison", {
+test_that("a degenerate categorical contrast warning names its effect and contrast", {
   skip_if_not_installed("deli")
   skip_if_not_installed("nnet")
   # One contrast of several degenerates here, so naming the effect alone would
-  # leave the user reading three comparisons to find it.
+  # leave the user reading three contrasts to find it.
   dat <- sim_categorical_arms(0)
   mods <- fit_categorical_arm_models(dat)
 

@@ -602,25 +602,25 @@ test_that("exponentiating a difference-only ipw result changes nothing", {
   expect_equal(exponentiated, plain)
 })
 
-test_that("a categorical ipw result keeps its comparison column through both surfaces", {
+test_that("a categorical ipw result keeps its contrast column through both surfaces", {
   skip_if_not_installed("nnet")
   res <- fit_ipw_categorical(sim_ipw_categorical())
 
   df <- as.data.frame(res)
-  expect_identical(names(df)[seq(1, 2)], c("term", "comparison"))
-  expect_identical(df$comparison, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(names(df)[seq(1, 2)], c("term", "contrast"))
+  expect_identical(df$contrast, rep(c("b vs a", "c vs a"), each = 3))
 
   exp_scale <- as.data.frame(res, exponentiate = TRUE)
   ratio <- df$term %in% c("log(rr)", "log(or)")
   expect_identical(exp_scale$term, rep(c("rd", "rr", "or"), times = 2))
-  expect_identical(exp_scale$comparison, df$comparison)
+  expect_identical(exp_scale$contrast, df$contrast)
   expect_equal(exp_scale$estimate[ratio], exp(df$estimate[ratio]))
   expect_identical(exp_scale$std.error, df$std.error)
 
-  # print() keys the rows by effect and comparison together and drops the
-  # character comparison column from the matrix it formats.
+  # print() keys the rows by effect and contrast together and drops the
+  # character contrast column from the matrix it formats.
   out <- capture.output(print(res))
   expect_true(any(grepl("rd b vs a", out, fixed = TRUE)))
   expect_true(any(grepl("log(or) c vs a", out, fixed = TRUE)))
-  expect_false(any(grepl("comparison", out, fixed = TRUE)))
+  expect_false(any(grepl("contrast", out, fixed = TRUE)))
 })

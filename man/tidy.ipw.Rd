@@ -10,7 +10,8 @@
   conf.level = 0.95,
   exponentiate = FALSE,
   ...,
-  effects = NULL
+  effects = NULL,
+  parametric = NULL
 )
 }
 \arguments{
@@ -55,6 +56,14 @@ reading reports the population-averaged causal contrasts; the conditional
 reading reports the outcome model's coefficient surface. \code{\link[=as_marginal]{as_marginal()}} and
 \code{\link[=as_conditional]{as_conditional()}} move a result between the two readings.
 
+\code{"fixed"} is also accepted, and asks for the reading the result records,
+exactly as \code{NULL} does. It is the name mixed models give the effects that
+are not random, and \code{\link[mice:pool]{mice::pool()}} asks every tidier it calls for it. A
+result reports one reading at a time and neither of them is random, so the
+name resolves to whichever one the result records. The accessors do not
+accept it: it is spelled here, where multiple imputation reaches the
+result, rather than in the surface underneath.
+
 The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
@@ -63,13 +72,21 @@ continuous routes, which run on M-estimation alone. A linearization fit
 stacks no such system and records no such block, so its conditional reading
 errors rather than reporting the covariance the outcome model computed for
 itself, which treats the estimated weights as fixed.}
+
+\item{parametric}{Accepted and ignored. \code{\link[mice:pool]{mice::pool()}} passes
+\code{parametric = TRUE} to every tidier it calls, to ask the models it was
+written against for their parametric coefficient table rather than for a
+smooth term. An \code{ipw} result reports one table, and the inference it
+reports is already parametric, so there is nothing for the argument to
+select and nothing is read from it. It is here so that a result can be
+pooled across multiply imputed datasets.}
 }
 \value{
 A \link[tibble:tibble]{tibble} with one row per estimate and the columns:
 \describe{
 \item{\code{term}}{The effect measure, such as \code{"rd"}, \code{"log(rr)"}, \code{"log(or)"},
 \code{"diff"}, or \code{"slope"}.}
-\item{\code{comparison}}{The contrast the row reports, such as \code{"b vs a"}.
+\item{\code{contrast}}{The contrast the row reports, such as \code{"b vs a"}.
 Categorical exposures only.}
 \item{\code{estimate}}{The estimated effect.}
 \item{\code{std.error}}{The standard error of the estimate.}
@@ -84,14 +101,14 @@ per coefficient of the outcome model: \code{term} is the coefficient's name,
 \code{estimate} is the coefficient, \code{std.error} is the square root of the diagonal
 of the corrected covariance, \code{statistic} is the estimate over that standard
 error, and \code{p.value} is the two-sided normal p-value of the statistic. There
-is no \code{comparison} column, because a coefficient is not a contrast of exposure
+is no \code{contrast} column, because a coefficient is not a contrast of exposure
 levels, and the bounds are built at the level \code{conf.level} asks for, the
 stored ones belonging to the effects the marginal reading reports.
 }
 \description{
 \code{tidy()} returns the estimates of an \code{\link[=ipw]{ipw()}} result as a tibble using the
 column names broom conventions use. There is one row per effect measure, and
-one row per effect measure per comparison for a categorical exposure, in the
+one row per effect measure per contrast for a categorical exposure, in the
 order the result stores them. Nothing is dropped.
 
 Those columns are the ones the result's own coercion surface reports, so the
@@ -147,5 +164,7 @@ tidy(result, conf.int = TRUE, effects = "conditional")
 summary of the fit, \code{\link[=augment.ipw]{augment()}} for its per-observation
 columns, \code{\link[causalgenerics:new_ipw]{as.data.frame()}} for the result's own
 columns, and \code{\link[=as_marginal]{as_marginal()}} and \code{\link[=as_conditional]{as_conditional()}} for the reading a result
-records.
+records. For results fitted to multiply imputed data, see the Multiple
+imputation section of \code{\link[=ipw]{ipw()}}, \code{\link[=pool_ipw]{pool_ipw()}} for the pooling, and
+\code{\link[=tidy.ipw_pooled]{tidy()}} for what it returns.
 }

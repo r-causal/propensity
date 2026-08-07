@@ -676,6 +676,54 @@ test_that("the collapsed standard error is reported once per fit", {
   expect_equal(seen, "propensity_ipw_degenerate_se_warning")
 })
 
+# The same collapse on a categorical exposure, where the rows the report names
+# are qualified by the pair of levels each one compares. The label is built by
+# reading that column off the estimates table by name, and it spells the labels
+# its own way rather than the way the covariance block and the accessors spell
+# theirs, so it is pinned separately from them: renaming the column without this
+# code leaves it with nothing to find, and every row collapses to a bare "diff"
+# naming neither pair.
+constant_outcome_categorical_fit <- function() {
+  dat <- rank_data()
+  dat$g <- factor(
+    ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
+    levels = c("a", "b", "c")
+  )
+  ps_mod <- nnet::multinom(g ~ x2, data = dat, trace = FALSE)
+  ps <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps) <- levels(dat$g)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps, dat$g, exposure_type = "categorical")
+  )
+  # the outcome separates the reference level from the other two, so it never
+  # varies within an arm and each contrast is a fixed 1
+  dat$yconst <- as.numeric(dat$g != "a")
+  out <- lm(yconst ~ g, data = dat, weights = wts)
+  list(ps_mod = ps_mod, out = out, dat = dat)
+}
+
+test_that("a categorical collapsed standard error names the pair each row compares", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  mods <- constant_outcome_categorical_fit()
+
+  w <- expect_warning(
+    res <- ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
+    class = "propensity_ipw_degenerate_se_warning"
+  )
+  msg <- rank_msg(w)
+  expect_match(msg, "diff for b vs a", fixed = TRUE)
+  expect_match(msg, "diff for c vs a", fixed = TRUE)
+
+  # And read off the table directly, the way the signature itself is pinned
+  # below, so the labels are held whether or not the report reaches a message.
+  expect_identical(
+    ipw_degenerate_se_rows(res$estimates),
+    c("diff for b vs a", "diff for c vs a")
+  )
+})
+
 test_that("a fit the solver could not pin down reports that rather than the collapse", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")

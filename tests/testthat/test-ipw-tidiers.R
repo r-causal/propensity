@@ -326,13 +326,13 @@ new_tidy_ipw <- function(ps_mod, outcome_mod) {
 
 # ---- expected shape ----------------------------------------------------------
 
-# The broom column contract. `comparison` is the categorical extra column and
+# The broom column contract. `contrast` is the categorical extra column and
 # sits immediately after `term`, following the precedent broom sets with the
 # `y.level` column of `tidy.multinom`. The interval bounds close the frame.
-tidy_names <- function(conf_int = FALSE, comparison = FALSE) {
+tidy_names <- function(conf_int = FALSE, contrast = FALSE) {
   nms <- c("term", "estimate", "std.error", "statistic", "p.value")
-  if (comparison) {
-    nms <- append(nms, "comparison", after = 1L)
+  if (contrast) {
+    nms <- append(nms, "contrast", after = 1L)
   }
   if (conf_int) {
     nms <- c(nms, "conf.low", "conf.high")
@@ -347,19 +347,19 @@ expect_tidy_contract <- function(
   tidied,
   result,
   conf_int = FALSE,
-  comparison = FALSE
+  contrast = FALSE
 ) {
   estimates <- result$estimates
   expect_s3_class(tidied, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
-  expect_named(tidied, tidy_names(conf_int, comparison))
+  expect_named(tidied, tidy_names(conf_int, contrast))
   expect_identical(nrow(tidied), nrow(estimates))
   expect_identical(tidied$term, estimates$effect)
   expect_identical(tidied$estimate, estimates$estimate)
   expect_identical(tidied$std.error, estimates$std.err)
   expect_identical(tidied$statistic, estimates$z)
   expect_identical(tidied$p.value, estimates$p.value)
-  if (comparison) {
-    expect_identical(tidied$comparison, estimates$comparison)
+  if (contrast) {
+    expect_identical(tidied$contrast, estimates$contrast)
   }
   if (conf_int) {
     expect_identical(tidied$conf.low, estimates$ci.lower)
@@ -634,21 +634,21 @@ test_that("tidy() returns the broom columns for a binary linearization fit", {
 
 # ---- categorical exposure ----------------------------------------------------
 
-test_that("tidy() keeps the comparison column after term for a categorical fit", {
+test_that("tidy() keeps the contrast column after term for a categorical fit", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-  expect_tidy_contract(tidy(res), res, comparison = TRUE)
+  expect_tidy_contract(tidy(res), res, contrast = TRUE)
 
   tidied <- tidy(res, conf.int = TRUE)
-  expect_tidy_contract(tidied, res, conf_int = TRUE, comparison = TRUE)
+  expect_tidy_contract(tidied, res, conf_int = TRUE, contrast = TRUE)
 
-  # every effect of every comparison keeps its own row, in the stored order
+  # every effect of every contrast keeps its own row, in the stored order
   expect_identical(tidied$term, rep(c("rd", "log(rr)", "log(or)"), times = 2))
-  expect_identical(tidied$comparison, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(tidied$contrast, rep(c("b vs a", "c vs a"), each = 3))
 })
 
 # ---- continuous exposure -----------------------------------------------------
@@ -661,7 +661,7 @@ test_that("tidy() returns the single slope row for a continuous exposure fit", {
 
   tidied <- tidy(res, conf.int = TRUE)
 
-  # a continuous exposure carries no comparison column
+  # a continuous exposure carries no contrast column
   expect_tidy_contract(tidied, res, conf_int = TRUE)
   expect_identical(tidied$term, "slope")
 })
@@ -685,7 +685,7 @@ test_that("tidy() returns the log odds ratio row for a continuous logit fit", {
 # equivalence is pinned once per exposure type, because each type reaches the
 # coercion surface with a table of its own shape: a binary exposure with the
 # three effect measures, a categorical one with those measures once per
-# comparison and the column naming it, and a continuous one with a single row.
+# contrast and the column naming it, and a continuous one with a single row.
 #
 # The frame carries the covariance of the effects it reports as an attribute.
 # The tibble does not: a tidied table is its columns, and a covariance is not
@@ -998,7 +998,7 @@ test_that("tidy(exponentiate = TRUE) matches as.data.frame on a binary fit", {
   expect_identical(tidied$conf.high, df$conf.high)
 })
 
-test_that("tidy(exponentiate = TRUE) relabels ratio rows per comparison", {
+test_that("tidy(exponentiate = TRUE) relabels ratio rows per contrast", {
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
@@ -1009,9 +1009,9 @@ test_that("tidy(exponentiate = TRUE) relabels ratio rows per comparison", {
   tidied <- tidy(res, conf.int = TRUE, exponentiate = TRUE)
 
   expect_identical(tidied$term, rep(c("rd", "rr", "or"), times = 2))
-  expect_identical(tidied$comparison, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(tidied$contrast, rep(c("b vs a", "c vs a"), each = 3))
   expect_identical(tidied$term, df$term)
-  expect_identical(tidied$comparison, df$comparison)
+  expect_identical(tidied$contrast, df$contrast)
   expect_identical(tidied$estimate, df$estimate)
   expect_identical(tidied$conf.low, df$conf.low)
   expect_identical(tidied$conf.high, df$conf.high)
@@ -2106,7 +2106,7 @@ test_that("tidy() reports one conditional row per categorical coefficient", {
   expect_conditional_tidy_contract(tidied, res, conf_int = TRUE)
   expect_identical(tidied$term, c("(Intercept)", "ab", "ac"))
 
-  # The comparison column belongs to the marginal reading, which reports every
+  # The contrast column belongs to the marginal reading, which reports every
   # effect measure once per contrast of levels. A coefficient is not such a
   # contrast, so the conditional table carries no such column and reports three
   # rows where the marginal reading of the same result reports six.
@@ -2411,6 +2411,481 @@ test_that("augment() returns the same frame in either reading", {
   )
   expect_error(
     augment(res, effects = "conditional"),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+# ---- the argument shape mice's pooling calls the tidier with ----------------
+#
+# `mice::pool()` reaches the tidier through `summary.mira()`, which calls every
+# fit with `tidy(fit, effects = "fixed", parametric = TRUE, exponentiate = FALSE)`.
+# Two of those arguments are ones this method has no use for. `parametric`
+# distinguishes a parametric coefficient table from a smooth one in the models
+# mice was written against, and an ipw result reports one table either way.
+# `"fixed"` names the fixed effects of a mixed model, which for a result that
+# reports one reading at a time is the reading the result records.
+#
+# So the method accepts both and reports what it would have reported without
+# them: `parametric` is taken and ignored, and `"fixed"` resolves to the
+# result's own reading rather than naming a third one. The dots stay closed, so
+# every other stray argument is still refused.
+
+test_that("tidy() accepts the argument shape mice's pooling calls it with", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  expect_identical(
+    tidy(res, effects = "fixed", parametric = TRUE, exponentiate = FALSE),
+    tidy(res)
+  )
+
+  # A result recording the conditional reading reports that one, because
+  # `"fixed"` asks for the reading the result records rather than for a
+  # particular one of the two.
+  conditional <- as_conditional(res)
+  expect_identical(
+    tidy(
+      conditional,
+      effects = "fixed",
+      parametric = TRUE,
+      exponentiate = FALSE
+    ),
+    tidy(conditional)
+  )
+
+  # The two readings are genuinely different tables, so the agreement above is
+  # with each result's own reading rather than with one table twice.
+  expect_false(identical(tidy(conditional), tidy(res)))
+})
+
+test_that("tidy() takes parametric on its own and reports without it", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  expect_identical(tidy(res, parametric = TRUE), tidy(res))
+
+  # Whatever it is given, since nothing is read from it.
+  expect_identical(tidy(res, parametric = FALSE), tidy(res))
+  expect_identical(tidy(res, parametric = NULL), tidy(res))
+
+  # It composes with the arguments the method does read.
+  expect_identical(
+    tidy(res, conf.int = TRUE, parametric = TRUE),
+    tidy(res, conf.int = TRUE)
+  )
+})
+
+test_that("a stray argument other than parametric is still refused", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # A regression guard on the dots, which stay closed. Naming one argument the
+  # method tolerates does not open them to the next one, and a misspelling of an
+  # argument the method does read is still a misspelling.
+  expect_error(tidy(res, banana = TRUE), class = "rlib_error_dots_nonempty")
+  expect_error(
+    tidy(res, parametric = TRUE, banana = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+  expect_error(
+    tidy(res, parametic = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, exponentate = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+
+  # A prefix of `parametric` is refused too, which is what fixes where the
+  # argument sits. R partial-matches a name against formals before the dots but
+  # never against formals after them, so an argument placed before the dots
+  # would answer to every prefix of its name and quietly take a call that meant
+  # something else. These pin it after the dots, where the full name is the only
+  # name that reaches it.
+  expect_error(tidy(res, param = TRUE), class = "rlib_error_dots_nonempty")
+  expect_error(tidy(res, parame = TRUE), class = "rlib_error_dots_nonempty")
+})
+
+test_that("the tolerance for parametric belongs to tidy() alone", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # `mice::pool()` passes `parametric` to the tidier and to nothing else: it
+  # reads the other two verbs through their own calls, which name no such
+  # argument. So the tolerance stays where the need for it is, and the sibling
+  # methods keep refusing what they always refused.
+  expect_error(
+    glance(res, parametric = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+  expect_error(
+    augment(res, parametric = TRUE),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("accepting fixed does not widen what effects otherwise accepts", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The two readings answer as they did before, on a result recording either.
+  expect_identical(tidy(res, effects = "marginal"), tidy(res))
+  expect_identical(
+    tidy(res, effects = "conditional"),
+    tidy(as_conditional(res))
+  )
+  expect_identical(tidy(as_conditional(res), effects = "marginal"), tidy(res))
+
+  # `"fixed"` is the only name added. Every other value naming neither reading
+  # is still refused by the accessors, under their condition.
+  expect_error(
+    tidy(res, effects = "both"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, effects = "random"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, effects = "fixe"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(res, effects = c("fixed", "marginal")),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+
+  # The accessors themselves keep refusing `"fixed"`: the alias belongs to the
+  # tidier, which is what mice calls, rather than to the surface underneath it.
+  expect_error(
+    coef(res, effects = "fixed"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+})
+
+# ---- the tidiers of a pooled result -----------------------------------------
+#
+# `pool_ipw()` combines the results fitted to each of a set of multiply imputed
+# datasets into one object of class `ipw_pooled`, which carries its own coercion
+# surface. The tidiers of that object stand to it as the tidiers of a single
+# result stand to theirs: `tidy()` is the coercion surface read as a tibble, and
+# `glance()` describes the pooled fit rather than its estimates.
+#
+# The pooling has already happened by the time either verb sees the object.
+# Neither re-pools, and the arguments they take are the arguments the table is
+# reported with: an interval, the level it is reported at, and the scale the
+# ratio rows are put on.
+
+# Three results from the same data-generating process with a small shift between
+# them, which is what a set of imputations of one dataset looks like to the
+# pooling: the same effects, estimated slightly differently. Small and seeded,
+# because what is under test is the shape of the pooled table rather than the
+# precision of any estimate.
+pooled_binary_fit <- function(shift, n = 300) {
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.3 * x1))
+  y <- rbinom(n, 1, plogis(-0.4 + 0.9 * z + 0.5 * x1 + shift))
+  dat <- data.frame(x1, z, y)
+  ps_mod <- glm(z ~ x1, data = dat, family = binomial())
+  dat$w <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod)
+  )
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = w
+  )
+  ipw(ps_mod, outcome_mod)
+}
+
+fit_pooled_binary <- function(seed = 2024) {
+  withr::local_seed(seed)
+  pool_ipw(lapply(c(0, 0.05, -0.05), pooled_binary_fit))
+}
+
+pooled_categorical_fit <- function(shift, n = 300) {
+  x1 <- rnorm(n)
+  eta_b <- -0.2 + 0.5 * x1 + shift
+  eta_c <- 0.1 - 0.4 * x1
+  den <- 1 + exp(eta_b) + exp(eta_c)
+  u <- runif(n)
+  a <- factor(
+    ifelse(u < 1 / den, "a", ifelse(u < (1 + exp(eta_b)) / den, "b", "c")),
+    levels = c("a", "b", "c")
+  )
+  y <- rbinom(n, 1, plogis(-0.3 + 0.4 * (a == "b") + 0.8 * (a == "c")))
+  dat <- data.frame(x1, a, y)
+  ps_mod <- nnet::multinom(a ~ x1, data = dat, trace = FALSE)
+  dat$w <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      predict(ps_mod, type = "probs"),
+      dat$a,
+      exposure_type = "categorical"
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a,
+    data = dat,
+    family = quasibinomial(),
+    weights = w
+  )
+  ipw(ps_mod, outcome_mod)
+}
+
+fit_pooled_categorical <- function(seed = 2025) {
+  withr::local_seed(seed)
+  pool_ipw(lapply(c(0, 0.05, -0.05), pooled_categorical_fit))
+}
+
+# The same contract `expect_tidy_wraps_frame()` asserts of a single result,
+# against the pooled coercion surface and the three arguments it shares with the
+# tidier. `conf.level` is swept here rather than pinned separately, because a
+# pooled frame reports the level the pooling stored rather than a fixed default,
+# so passing it through is the only way the two surfaces can be held together at
+# a level other than that one.
+expect_pooled_tidy_wraps_frame <- function(
+  pooled,
+  conf.int = FALSE,
+  conf.level = NULL,
+  exponentiate = FALSE
+) {
+  expected <- tibble::as_tibble(as.data.frame(
+    pooled,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate
+  ))
+  attr(expected, "ipw_vcov") <- NULL
+
+  tidied <- tidy(
+    pooled,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate
+  )
+  expect_s3_class(tidied, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
+  expect_identical(tidied, expected)
+  expect_null(attr(tidied, "ipw_vcov", exact = TRUE))
+
+  invisible(tidied)
+}
+
+test_that("tidy() reports a pooled binary result as a tibble", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # The attribute is on the frame to be dropped in the first place, which is
+  # what makes its absence from the tibble a fact about the tidier.
+  expect_false(is.null(
+    attr(as.data.frame(pooled), "ipw_vcov", exact = TRUE)
+  ))
+
+  expect_pooled_tidy_wraps_frame(pooled)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE, conf.level = 0.8)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE, exponentiate = TRUE)
+  expect_pooled_tidy_wraps_frame(
+    pooled,
+    conf.int = TRUE,
+    conf.level = 0.8,
+    exponentiate = TRUE
+  )
+  expect_pooled_tidy_wraps_frame(pooled, exponentiate = TRUE)
+})
+
+test_that("tidy() reports a pooled interval at the level the pooling stored", {
+  skip_if_not_installed("deli")
+  withr::local_seed(2024)
+
+  # Pooled at a level other than 0.95 on purpose. The default `conf.level` of
+  # this method is `NULL`, which reports the level the pooled result stored
+  # rather than one of the tidier's own, and a fixture pooled at the usual level
+  # cannot tell the two apart.
+  pooled <- pool_ipw(
+    lapply(c(0, 0.05, -0.05), pooled_binary_fit),
+    conf_level = 0.8
+  )
+  expect_identical(unique(pooled$estimates$conf.level), 0.8)
+
+  tidied <- tidy(pooled, conf.int = TRUE)
+
+  # The 80% bounds, rebuilt here from the pooled estimate and its standard error
+  # referred to t on the pooled degrees of freedom, which is the interval the
+  # pooling itself builds.
+  estimates <- pooled$estimates
+  half <- qt(0.9, estimates$df) * estimates$std.err
+  expect_equal(tidied$conf.low, estimates$estimate - half, tolerance = 1e-10)
+  expect_equal(tidied$conf.high, estimates$estimate + half, tolerance = 1e-10)
+
+  # The same bounds the pooled frame reports under its own default, the two
+  # surfaces reading one stored level rather than each carrying a default.
+  frame <- as.data.frame(pooled, conf.int = TRUE)
+  expect_identical(tidied$conf.low, frame$conf.low)
+  expect_identical(tidied$conf.high, frame$conf.high)
+
+  # A level named for the call is the other reading, so the default is the
+  # stored one rather than 0.95 arrived at by another route.
+  at_95 <- tidy(pooled, conf.int = TRUE, conf.level = 0.95)
+  expect_true(all(at_95$conf.low < tidied$conf.low))
+  expect_true(all(at_95$conf.high > tidied$conf.high))
+})
+
+test_that("tidy() reports a pooled categorical result as a tibble", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_categorical()
+
+  expect_pooled_tidy_wraps_frame(pooled)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE, exponentiate = TRUE)
+
+  # The column naming the contrast a row reports travels into the tibble beside
+  # the term it qualifies, which is where the pooled frame puts it.
+  tidied <- tidy(pooled)
+  expect_identical(names(tidied)[seq(1, 2)], c("term", "contrast"))
+  expect_identical(
+    tidied$contrast,
+    rep(c("b vs a", "c vs a"), each = 3)
+  )
+})
+
+test_that("the tidied pooled table carries no covariance under any arguments", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # Swept rather than left to the cases above, because the attribute is dropped
+  # by the tidier on every path rather than by whichever argument happened to
+  # have been passed. The frame carries it on some of these and not others.
+  grid <- expand.grid(
+    conf.int = c(FALSE, TRUE),
+    exponentiate = c(FALSE, TRUE)
+  )
+  for (i in seq_len(nrow(grid))) {
+    tidied <- tidy(
+      pooled,
+      conf.int = grid$conf.int[[i]],
+      exponentiate = grid$exponentiate[[i]]
+    )
+    expect_null(attr(tidied, "ipw_vcov", exact = TRUE))
+  }
+})
+
+test_that("glance() describes a pooled fit in one row", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  glanced <- glance(pooled)
+  expect_s3_class(glanced, c("tbl_df", "tbl", "data.frame"), exact = TRUE)
+  expect_identical(nrow(glanced), 1L)
+  expect_named(glanced, c("estimand", "nobs", "m", "dfcom"))
+
+  # The row describes the pooled fit rather than its estimates: what was
+  # targeted, how many observations the smallest of the pooled results was
+  # estimated from, how many results were pooled, and the complete-data degrees
+  # of freedom the adjustment used. Read off the object rather than restated, so
+  # the row and the object it describes cannot disagree.
+  expect_identical(glanced$estimand, pooled$estimand)
+  expect_identical(glanced$nobs, pooled$nobs)
+  expect_identical(glanced$m, pooled$m)
+  expect_identical(glanced$dfcom, pooled$dfcom)
+
+  # The count comes from the accessor rather than from the field beneath it, so
+  # the number this row reports and the number `nobs()` reports are the same
+  # number rather than two readings that agree by construction.
+  expect_identical(glanced$nobs, stats::nobs(pooled))
+
+  # The types are part of the contract: a count is an integer and the
+  # complete-data degrees of freedom are a double, which the Barnard-Rubin
+  # adjustment can return a fractional value for.
+  expect_type(glanced$estimand, "character")
+  expect_type(glanced$nobs, "integer")
+  expect_type(glanced$m, "integer")
+  expect_type(glanced$dfcom, "double")
+})
+
+test_that("glance() describes a pooled fit in one row whatever it reports", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_categorical()
+
+  # Six effects, three measures for each of two contrasts, and still one row:
+  # the row describes the fit rather than its estimates, so it does not grow
+  # with them.
+  expect_identical(nrow(tidy(pooled)), 6L)
+  expect_identical(nrow(glance(pooled)), 1L)
+  expect_named(glance(pooled), c("estimand", "nobs", "m", "dfcom"))
+  expect_identical(glance(pooled)$m, 3L)
+})
+
+test_that("the tidiers report a pooled conditional result", {
+  skip_if_not_installed("deli")
+  withr::local_seed(2024)
+  fits <- lapply(c(0, 0.05, -0.05), pooled_binary_fit)
+  pooled <- pool_ipw(fits, effects = "conditional")
+
+  # The pooled coercion surface read as a tibble, exactly as in the marginal
+  # reading: the reading the pooling was asked for is settled before either
+  # surface sees it.
+  expect_pooled_tidy_wraps_frame(pooled)
+  expect_pooled_tidy_wraps_frame(pooled, conf.int = TRUE)
+
+  # The conditional reading pools the outcome models' coefficients, so a term is
+  # a coefficient's name and there is no contrast column, a coefficient not
+  # being a contrast of exposure levels.
+  tidied <- tidy(pooled, conf.int = TRUE)
+  expect_identical(tidied$term, c("(Intercept)", "z"))
+  expect_named(
+    tidied,
+    c(
+      "term",
+      "estimate",
+      "std.error",
+      "statistic",
+      "df",
+      "p.value",
+      "conf.low",
+      "conf.high"
+    )
+  )
+
+  # `glance()` describes the pooled fit rather than its estimates, so the
+  # reading those estimates are in leaves the row it returns alone.
+  expect_identical(glance(pooled), glance(pool_ipw(fits)))
+})
+
+test_that("tidy() rejects an argument that lands in the pooled dots", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # The dots exist to match the generic. A misspelled argument absorbed there
+  # would otherwise return the stored interval as though it had been asked for.
+  expect_error(
+    tidy(pooled, bogus = 1),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("glance() rejects an argument that lands in the pooled dots", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # The dots exist to match the generic and carry nothing. An argument absorbed
+  # there would otherwise be silently ignored.
+  expect_error(
+    glance(pooled, bogus = 1),
     class = "rlib_error_dots_nonempty"
   )
 })
