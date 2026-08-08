@@ -4,7 +4,14 @@
 \alias{tidy.ipw_pooled}
 \title{Tidy a pooled inverse probability weighted result}
 \usage{
-\method{tidy}{ipw_pooled}(x, conf.int = FALSE, conf.level = NULL, exponentiate = FALSE, ...)
+\method{tidy}{ipw_pooled}(
+  x,
+  conf.int = FALSE,
+  conf.level = NULL,
+  exponentiate = FALSE,
+  ...,
+  effects = NULL
+)
 }
 \arguments{
 \item{x}{An \code{ipw_pooled} object, as returned by \code{\link[=pool_ipw]{pool_ipw()}}.}
@@ -30,6 +37,29 @@ the test statistic, and the p-value describe the log scale and stay there,
 which is where the inference was done.}
 
 \item{...}{These dots are for future extensions and must be empty.}
+
+\item{effects}{The reading to report, either \code{"marginal"} or \code{"conditional"}.
+\code{NULL}, the default, reports the reading the pooled result records; naming
+a reading reports that one for the one call and leaves the result as it is.
+The marginal reading reports the pooled causal contrasts; the conditional
+reading reports the pooled coefficients of the outcome models, which is the
+reading \code{exponentiate} above puts on the natural scale every row at once.
+\code{\link[=as_marginal]{as_marginal()}} and \code{\link[=as_conditional]{as_conditional()}} move a pooled result between the two
+readings for good rather than for a call.
+
+A reading the pooling could not compute is refused rather than reported
+under the other one's name. The conditional reading needs the covariance
+the joint estimation of the weights and the outcome implies, and a
+linearization fit stacks no such system and records no such block, so a set
+of those fits pools the marginal reading alone. A result pooled before both
+readings were kept holds only the one it was pooled in, and asking it for
+the other is refused the same way.
+
+\code{"fixed"} is not among the values this method takes, though
+\code{\link[=tidy.ipw]{tidy()}} on a single result accepts it. \code{\link[mice:pool]{mice::pool()}} asks
+for that reading from the tidier of each imputation's own fit, which is
+where the name arrives and where the tolerance for it belongs; nothing
+tidies a pooled result on its behalf.}
 }
 \value{
 A \link[tibble:tibble]{tibble} with one row per pooled estimate and the
@@ -39,7 +69,9 @@ columns:
 \code{"diff"}, or \code{"slope"}, or the coefficient name in the conditional
 reading.}
 \item{\code{contrast}}{The contrast the row reports, such as \code{"b vs a"}.
-Categorical exposures only.}
+Categorical exposures only, and among those only in the marginal reading:
+the conditional reading names each coefficient in \code{term} and returns no
+\code{contrast} column.}
 \item{\code{estimate}}{The pooled point estimate.}
 \item{\code{std.error}}{The pooled standard error.}
 \item{\code{statistic}}{The test statistic, the estimate over its standard
@@ -66,9 +98,22 @@ tidied table is its columns.
 
 The pooling has already happened by the time this method sees the result.
 Nothing here re-pools and no argument changes an estimate: they say how the
-table already in the object is reported, which is whether an interval comes
-with it, the level that interval is reported at, and the scale the ratio rows
-are put on.
+table already in the object is reported, which is which of the two readings
+it is, whether an interval comes with it, the level that interval is reported
+at, and the scale the ratio rows are put on.
+
+A pooled result reports its effects in one of two readings, and \code{tidy()}
+returns the one the result records unless \code{effects} names the other for the
+call. \code{\link[=pool_ipw]{pool_ipw()}} pools both readings of the results it is given, so naming
+one here reports a table the pooling already built rather than pooling again.
+The marginal reading is the table of pooled causal contrasts described above.
+The conditional reading is the outcome models' coefficient surface, pooled
+the same way: one row per coefficient, from the block of the joint estimation
+that carries the uncertainty of having estimated the weights from the same
+data. The two readings return the same columns in the same order, with one
+exception: the \code{contrast} column that names the pair of exposure levels a row
+compares belongs to the marginal reading of a categorical pool alone, and
+that pool's conditional reading returns the same table one column narrower.
 }
 \examples{
 \dontshow{if (requireNamespace("mice", quietly = TRUE)) withAutoprint(\{ # examplesIf}
@@ -91,10 +136,14 @@ fits <- with(imp, {
 tidy(pool_ipw(fits))
 
 tidy(pool_ipw(fits), conf.int = TRUE, exponentiate = TRUE)
+
+# The outcome models' coefficients, pooled the same way
+tidy(pool_ipw(fits), effects = "conditional")
 \dontshow{\}) # examplesIf}
 }
 \seealso{
 \code{\link[=pool_ipw]{pool_ipw()}} for the pooling, \code{\link[=glance.ipw_pooled]{glance()}} for a
-one-row summary of the pooled fit, and the Multiple imputation section of
-\code{\link[=ipw]{ipw()}} for the workflow the two belong to.
+one-row summary of the pooled fit, \code{\link[=as_marginal]{as_marginal()}} and \code{\link[=as_conditional]{as_conditional()}}
+for the reading a pooled result records, and the Multiple imputation
+section of \code{\link[=ipw]{ipw()}} for the workflow they belong to.
 }

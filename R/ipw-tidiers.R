@@ -394,9 +394,22 @@ glance.ipw <- function(x, ...) {
 #'
 #' The pooling has already happened by the time this method sees the result.
 #' Nothing here re-pools and no argument changes an estimate: they say how the
-#' table already in the object is reported, which is whether an interval comes
-#' with it, the level that interval is reported at, and the scale the ratio rows
-#' are put on.
+#' table already in the object is reported, which is which of the two readings
+#' it is, whether an interval comes with it, the level that interval is reported
+#' at, and the scale the ratio rows are put on.
+#'
+#' A pooled result reports its effects in one of two readings, and `tidy()`
+#' returns the one the result records unless `effects` names the other for the
+#' call. [pool_ipw()] pools both readings of the results it is given, so naming
+#' one here reports a table the pooling already built rather than pooling again.
+#' The marginal reading is the table of pooled causal contrasts described above.
+#' The conditional reading is the outcome models' coefficient surface, pooled
+#' the same way: one row per coefficient, from the block of the joint estimation
+#' that carries the uncertainty of having estimated the weights from the same
+#' data. The two readings return the same columns in the same order, with one
+#' exception: the `contrast` column that names the pair of exposure levels a row
+#' compares belongs to the marginal reading of a categorical pool alone, and
+#' that pool's conditional reading returns the same table one column narrower.
 #'
 #' @param x An `ipw_pooled` object, as returned by [pool_ipw()].
 #' @param conf.int Logical. Should the confidence interval bounds be returned in
@@ -417,6 +430,28 @@ glance.ipw <- function(x, ...) {
 #'   the test statistic, and the p-value describe the log scale and stay there,
 #'   which is where the inference was done.
 #' @param ... These dots are for future extensions and must be empty.
+#' @param effects The reading to report, either `"marginal"` or `"conditional"`.
+#'   `NULL`, the default, reports the reading the pooled result records; naming
+#'   a reading reports that one for the one call and leaves the result as it is.
+#'   The marginal reading reports the pooled causal contrasts; the conditional
+#'   reading reports the pooled coefficients of the outcome models, which is the
+#'   reading `exponentiate` above puts on the natural scale every row at once.
+#'   [as_marginal()] and [as_conditional()] move a pooled result between the two
+#'   readings for good rather than for a call.
+#'
+#'   A reading the pooling could not compute is refused rather than reported
+#'   under the other one's name. The conditional reading needs the covariance
+#'   the joint estimation of the weights and the outcome implies, and a
+#'   linearization fit stacks no such system and records no such block, so a set
+#'   of those fits pools the marginal reading alone. A result pooled before both
+#'   readings were kept holds only the one it was pooled in, and asking it for
+#'   the other is refused the same way.
+#'
+#'   `"fixed"` is not among the values this method takes, though
+#'   [`tidy()`][tidy.ipw()] on a single result accepts it. [mice::pool()] asks
+#'   for that reading from the tidier of each imputation's own fit, which is
+#'   where the name arrives and where the tolerance for it belongs; nothing
+#'   tidies a pooled result on its behalf.
 #'
 #' @return A [tibble][tibble::tibble] with one row per pooled estimate and the
 #'   columns:
@@ -425,7 +460,9 @@ glance.ipw <- function(x, ...) {
 #'     `"diff"`, or `"slope"`, or the coefficient name in the conditional
 #'     reading.}
 #'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"`.
-#'     Categorical exposures only.}
+#'     Categorical exposures only, and among those only in the marginal reading:
+#'     the conditional reading names each coefficient in `term` and returns no
+#'     `contrast` column.}
 #'   \item{`estimate`}{The pooled point estimate.}
 #'   \item{`std.error`}{The pooled standard error.}
 #'   \item{`statistic`}{The test statistic, the estimate over its standard
@@ -459,9 +496,13 @@ glance.ipw <- function(x, ...) {
 #'
 #' tidy(pool_ipw(fits), conf.int = TRUE, exponentiate = TRUE)
 #'
+#' # The outcome models' coefficients, pooled the same way
+#' tidy(pool_ipw(fits), effects = "conditional")
+#'
 #' @seealso [pool_ipw()] for the pooling, [`glance()`][glance.ipw_pooled()] for a
-#'   one-row summary of the pooled fit, and the Multiple imputation section of
-#'   [ipw()] for the workflow the two belong to.
+#'   one-row summary of the pooled fit, [as_marginal()] and [as_conditional()]
+#'   for the reading a pooled result records, and the Multiple imputation
+#'   section of [ipw()] for the workflow they belong to.
 #'
 #' @exportS3Method generics::tidy ipw_pooled
 tidy.ipw_pooled <- function(
@@ -469,19 +510,24 @@ tidy.ipw_pooled <- function(
   conf.int = FALSE,
   conf.level = NULL,
   exponentiate = FALSE,
-  ...
+  ...,
+  effects = NULL
 ) {
   rlang::check_dots_empty()
 
-  # The pooled result's own coercion surface, which validates the three
-  # arguments and builds the table. Reading it rather than rebuilding it is what
-  # keeps this method and the frame reporting the same numbers under the same
-  # names, exactly as the marginal reading of `tidy()` on a single result does.
+  # The pooled result's own coercion surface, which validates the four arguments
+  # and builds the table. Reading it rather than rebuilding it is what keeps
+  # this method and the frame reporting the same numbers under the same names,
+  # exactly as the marginal reading of `tidy()` on a single result does. It also
+  # owns `effects`, resolving a `NULL` against the reading the pooled result
+  # records and refusing both a value naming neither reading and a reading the
+  # pooling had nothing to compute from.
   frame <- as.data.frame(
     x,
     conf.int = conf.int,
     conf.level = conf.level,
-    exponentiate = exponentiate
+    exponentiate = exponentiate,
+    effects = effects
   )
 
   # The covariance of the effects the frame attaches is the one thing that does
