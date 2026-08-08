@@ -10,9 +10,21 @@ thing that does not travel: it is an attribute rather than a column, and a
 tidied table is its columns.
 The pooling has already happened by the time this method sees the result.
 Nothing here re-pools and no argument changes an estimate: they say how the
-table already in the object is reported, which is whether an interval comes
-with it, the level that interval is reported at, and the scale the ratio rows
-are put on."><meta property="og:description" content="tidy() returns the estimates of a pool_ipw() result as a tibble using the
+table already in the object is reported, which is which of the two readings
+it is, whether an interval comes with it, the level that interval is reported
+at, and the scale the ratio rows are put on.
+A pooled result reports its effects in one of two readings, and tidy()
+returns the one the result records unless effects names the other for the
+call. pool_ipw() pools both readings of the results it is given, so naming
+one here reports a table the pooling already built rather than pooling again.
+The marginal reading is the table of pooled causal contrasts described above.
+The conditional reading is the outcome models' coefficient surface, pooled
+the same way: one row per coefficient, from the block of the joint estimation
+that carries the uncertainty of having estimated the weights from the same
+data. The two readings return the same columns in the same order, with one
+exception: the contrast column that names the pair of exposure levels a row
+compares belongs to the marginal reading of a categorical pool alone, and
+that pool's conditional reading returns the same table one column narrower."><meta property="og:description" content="tidy() returns the estimates of a pool_ipw() result as a tibble using the
 column names broom conventions use. There is one row per effect measure, and
 one row per effect measure per contrast for a categorical exposure, in the
 order the pooled result stores them. Nothing is dropped.
@@ -23,9 +35,21 @@ thing that does not travel: it is an attribute rather than a column, and a
 tidied table is its columns.
 The pooling has already happened by the time this method sees the result.
 Nothing here re-pools and no argument changes an estimate: they say how the
-table already in the object is reported, which is whether an interval comes
-with it, the level that interval is reported at, and the scale the ratio rows
-are put on."><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
+table already in the object is reported, which is which of the two readings
+it is, whether an interval comes with it, the level that interval is reported
+at, and the scale the ratio rows are put on.
+A pooled result reports its effects in one of two readings, and tidy()
+returns the one the result records unless effects names the other for the
+call. pool_ipw() pools both readings of the results it is given, so naming
+one here reports a table the pooling already built rather than pooling again.
+The marginal reading is the table of pooled causal contrasts described above.
+The conditional reading is the outcome models' coefficient surface, pooled
+the same way: one row per coefficient, from the block of the joint estimation
+that carries the uncertainty of having estimated the weights from the same
+data. The two readings return the same columns in the same order, with one
+exception: the contrast column that names the pair of exposure levels a row
+compares belongs to the marginal reading of a categorical pool alone, and
+that pool's conditional reading returns the same table one column narrower."><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -71,15 +95,34 @@ thing that does not travel: it is an attribute rather than a column, and a
 tidied table is its columns.</p>
 <p>The pooling has already happened by the time this method sees the result.
 Nothing here re-pools and no argument changes an estimate: they say how the
-table already in the object is reported, which is whether an interval comes
-with it, the level that interval is reported at, and the scale the ratio rows
-are put on.</p>
+table already in the object is reported, which is which of the two readings
+it is, whether an interval comes with it, the level that interval is reported
+at, and the scale the ratio rows are put on.</p>
+<p>A pooled result reports its effects in one of two readings, and <code><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy()</a></code>
+returns the one the result records unless <code>effects</code> names the other for the
+call. <code><a href="https://r-causal.github.io/causalgenerics/reference/pool_ipw.html" class="external-link">pool_ipw()</a></code> pools both readings of the results it is given, so naming
+one here reports a table the pooling already built rather than pooling again.
+The marginal reading is the table of pooled causal contrasts described above.
+The conditional reading is the outcome models' coefficient surface, pooled
+the same way: one row per coefficient, from the block of the joint estimation
+that carries the uncertainty of having estimated the weights from the same
+data. The two readings return the same columns in the same order, with one
+exception: the <code>contrast</code> column that names the pair of exposure levels a row
+compares belongs to the marginal reading of a categorical pool alone, and
+that pool's conditional reading returns the same table one column narrower.</p>
     </div>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="co"># S3 method for class 'ipw_pooled'</span></span>
-<span><span class="fu"><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy</a></span><span class="op">(</span><span class="va">x</span>, conf.int <span class="op">=</span> <span class="cn">FALSE</span>, conf.level <span class="op">=</span> <span class="cn">NULL</span>, exponentiate <span class="op">=</span> <span class="cn">FALSE</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy</a></span><span class="op">(</span></span>
+<span>  <span class="va">x</span>,</span>
+<span>  conf.int <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  conf.level <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  exponentiate <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  effects <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -119,6 +162,29 @@ which is where the inference was done.</p></dd>
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>These dots are for future extensions and must be empty.</p></dd>
 
+
+<dt id="arg-effects">effects<a class="anchor" aria-label="anchor" href="#arg-effects"></a></dt>
+<dd><p>The reading to report, either <code>"marginal"</code> or <code>"conditional"</code>.
+<code>NULL</code>, the default, reports the reading the pooled result records; naming
+a reading reports that one for the one call and leaves the result as it is.
+The marginal reading reports the pooled causal contrasts; the conditional
+reading reports the pooled coefficients of the outcome models, which is the
+reading <code>exponentiate</code> above puts on the natural scale every row at once.
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_marginal()</a></code> and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_conditional()</a></code> move a pooled result between the two
+readings for good rather than for a call.</p>
+<p>A reading the pooling could not compute is refused rather than reported
+under the other one's name. The conditional reading needs the covariance
+the joint estimation of the weights and the outcome implies, and a
+linearization fit stacks no such system and records no such block, so a set
+of those fits pools the marginal reading alone. A result pooled before both
+readings were kept holds only the one it was pooled in, and asking it for
+the other is refused the same way.</p>
+<p><code>"fixed"</code> is not among the values this method takes, though
+<code><a href="tidy.ipw.html">tidy()</a></code> on a single result accepts it. <code><a href="https://amices.org/mice/reference/pool.html" class="external-link">mice::pool()</a></code> asks
+for that reading from the tidier of each imputation's own fit, which is
+where the name arrives and where the tolerance for it belongs; nothing
+tidies a pooled result on its behalf.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -130,7 +196,9 @@ reading.</p></dd>
 
 <dt><code>contrast</code></dt>
 <dd><p>The contrast the row reports, such as <code>"b vs a"</code>.
-Categorical exposures only.</p></dd>
+Categorical exposures only, and among those only in the marginal reading:
+the conditional reading names each coefficient in <code>term</code> and returns no
+<code>contrast</code> column.</p></dd>
 
 <dt><code>estimate</code></dt>
 <dd><p>The pooled point estimate.</p></dd>
@@ -159,8 +227,9 @@ referred to t on them rather than to the normal.</p></dd>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="https://r-causal.github.io/causalgenerics/reference/pool_ipw.html" class="external-link">pool_ipw()</a></code> for the pooling, <code><a href="glance.ipw_pooled.html">glance()</a></code> for a
-one-row summary of the pooled fit, and the Multiple imputation section of
-<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> for the workflow the two belong to.</p></div>
+one-row summary of the pooled fit, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_marginal()</a></code> and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">as_conditional()</a></code>
+for the reading a pooled result records, and the Multiple imputation
+section of <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> for the workflow they belong to.</p></div>
     </div>
 
     <div class="section level2">
@@ -200,6 +269,14 @@ one-row summary of the pooled fit, and the Multiple imputation section of
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> rd       0.152    0.081<span style="text-decoration: underline;">0</span>      1.88  134.  0.062<span style="text-decoration: underline;">5</span> -<span style="color: #BB0000;">0.008</span><span style="color: #BB0000; text-decoration: underline;">03</span>     0.312</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> rr       1.37     0.174       1.80  134.  0.073<span style="text-decoration: underline;">3</span>  0.970       1.93 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> or       1.85     0.332       1.85  134.  0.066<span style="text-decoration: underline;">8</span>  0.958       3.56 </span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># The outcome models' coefficients, pooled the same way</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">tidy</a></span><span class="op">(</span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/pool_ipw.html" class="external-link">pool_ipw</a></span><span class="op">(</span><span class="va">fits</span><span class="op">)</span>, effects <span class="op">=</span> <span class="st">"conditional"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 2 × 6</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   term        estimate std.error statistic    df p.value</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>          <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> (Intercept)   -<span style="color: #BB0000;">0.358</span>     0.246     -<span style="color: #BB0000;">1.46</span>  136.  0.148 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> z              0.614     0.332      1.85  134.  0.066<span style="text-decoration: underline;">8</span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

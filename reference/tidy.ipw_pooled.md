@@ -16,15 +16,38 @@ rather than a column, and a tidied table is its columns.
 
 The pooling has already happened by the time this method sees the
 result. Nothing here re-pools and no argument changes an estimate: they
-say how the table already in the object is reported, which is whether an
-interval comes with it, the level that interval is reported at, and the
-scale the ratio rows are put on.
+say how the table already in the object is reported, which is which of
+the two readings it is, whether an interval comes with it, the level
+that interval is reported at, and the scale the ratio rows are put on.
+
+A pooled result reports its effects in one of two readings, and
+[`tidy()`](https://generics.r-lib.org/reference/tidy.html) returns the
+one the result records unless `effects` names the other for the call.
+[`pool_ipw()`](https://r-causal.github.io/causalgenerics/reference/pool_ipw.html)
+pools both readings of the results it is given, so naming one here
+reports a table the pooling already built rather than pooling again. The
+marginal reading is the table of pooled causal contrasts described
+above. The conditional reading is the outcome models' coefficient
+surface, pooled the same way: one row per coefficient, from the block of
+the joint estimation that carries the uncertainty of having estimated
+the weights from the same data. The two readings return the same columns
+in the same order, with one exception: the `contrast` column that names
+the pair of exposure levels a row compares belongs to the marginal
+reading of a categorical pool alone, and that pool's conditional reading
+returns the same table one column narrower.
 
 ## Usage
 
 ``` r
 # S3 method for class 'ipw_pooled'
-tidy(x, conf.int = FALSE, conf.level = NULL, exponentiate = FALSE, ...)
+tidy(
+  x,
+  conf.int = FALSE,
+  conf.level = NULL,
+  exponentiate = FALSE,
+  ...,
+  effects = NULL
+)
 ```
 
 ## Arguments
@@ -64,6 +87,37 @@ tidy(x, conf.int = FALSE, conf.level = NULL, exponentiate = FALSE, ...)
 
   These dots are for future extensions and must be empty.
 
+- effects:
+
+  The reading to report, either `"marginal"` or `"conditional"`. `NULL`,
+  the default, reports the reading the pooled result records; naming a
+  reading reports that one for the one call and leaves the result as it
+  is. The marginal reading reports the pooled causal contrasts; the
+  conditional reading reports the pooled coefficients of the outcome
+  models, which is the reading `exponentiate` above puts on the natural
+  scale every row at once.
+  [`as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+  and
+  [`as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+  move a pooled result between the two readings for good rather than for
+  a call.
+
+  A reading the pooling could not compute is refused rather than
+  reported under the other one's name. The conditional reading needs the
+  covariance the joint estimation of the weights and the outcome
+  implies, and a linearization fit stacks no such system and records no
+  such block, so a set of those fits pools the marginal reading alone. A
+  result pooled before both readings were kept holds only the one it was
+  pooled in, and asking it for the other is refused the same way.
+
+  `"fixed"` is not among the values this method takes, though
+  [`tidy()`](https://r-causal.github.io/propensity/reference/tidy.ipw.md)
+  on a single result accepts it.
+  [`mice::pool()`](https://amices.org/mice/reference/pool.html) asks for
+  that reading from the tidier of each imputation's own fit, which is
+  where the name arrives and where the tolerance for it belongs; nothing
+  tidies a pooled result on its behalf.
+
 ## Value
 
 A [tibble](https://tibble.tidyverse.org/reference/tibble.html) with one
@@ -78,7 +132,9 @@ row per pooled estimate and the columns:
 - `contrast`:
 
   The contrast the row reports, such as `"b vs a"`. Categorical
-  exposures only.
+  exposures only, and among those only in the marginal reading: the
+  conditional reading names each coefficient in `term` and returns no
+  `contrast` column.
 
 - `estimate`:
 
@@ -111,10 +167,14 @@ row per pooled estimate and the columns:
 [`pool_ipw()`](https://r-causal.github.io/causalgenerics/reference/pool_ipw.html)
 for the pooling,
 [`glance()`](https://r-causal.github.io/propensity/reference/glance.ipw_pooled.md)
-for a one-row summary of the pooled fit, and the Multiple imputation
+for a one-row summary of the pooled fit,
+[`as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+and
+[`as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+for the reading a pooled result records, and the Multiple imputation
 section of
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
-for the workflow the two belong to.
+for the workflow they belong to.
 
 ## Examples
 
@@ -154,4 +214,12 @@ tidy(pool_ipw(fits), conf.int = TRUE, exponentiate = TRUE)
 #> 1 rd       0.152    0.0810      1.88  134.  0.0625 -0.00803     0.312
 #> 2 rr       1.37     0.174       1.80  134.  0.0733  0.970       1.93 
 #> 3 or       1.85     0.332       1.85  134.  0.0668  0.958       3.56 
+
+# The outcome models' coefficients, pooled the same way
+tidy(pool_ipw(fits), effects = "conditional")
+#> # A tibble: 2 × 6
+#>   term        estimate std.error statistic    df p.value
+#>   <chr>          <dbl>     <dbl>     <dbl> <dbl>   <dbl>
+#> 1 (Intercept)   -0.358     0.246     -1.46  136.  0.148 
+#> 2 z              0.614     0.332      1.85  134.  0.0668
 ```

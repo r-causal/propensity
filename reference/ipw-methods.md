@@ -566,6 +566,39 @@ with
 and the pooled result reports the outcome models' coefficients rather
 than the causal contrasts.
 
+Recording the reading beforehand is one route to it rather than the only
+one.
+[`pool_ipw()`](https://r-causal.github.io/causalgenerics/reference/pool_ipw.html)
+pools both readings of the results it is given, storing the one they
+record and keeping the other beside it, so
+[`as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+and
+[`as_conditional()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html)
+move a pooled result between them after the pooling and report a table
+the pooling already built rather than pooling a second time.
+[`tidy()`](https://r-causal.github.io/propensity/reference/tidy.ipw_pooled.md),
+[`stats::coef()`](https://rdrr.io/r/stats/coef.html),
+[`stats::vcov()`](https://rdrr.io/r/stats/vcov.html),
+[`stats::confint()`](https://rdrr.io/r/stats/confint.html), and the
+pooled result's own frame each take an `effects` argument naming a
+reading for the one call, which leaves the pooled result as it is.
+[`mice::pool()`](https://amices.org/mice/reference/pool.html) offers
+neither: it reaches a result through
+[`tidy()`](https://r-causal.github.io/propensity/reference/tidy.ipw.md)
+and returns a `mipo` holding the one table it asked for, so on that
+route the reading still has to be recorded before the pooling.
+
+A reading the pooling could not compute is refused rather than reported
+under the other one's name. The conditional reading needs the covariance
+the joint estimation of the weights and the outcome implies, and a fit
+under `se_method = "linearization"` stacks no such system and records no
+such block, so a set of those fits pools the marginal reading alone. The
+pooled result records why the other reading is missing, and asking for
+it, whether by flipping the result or by naming it for one call, errors
+with that recorded explanation under the classes
+`causalgenerics_pool_missing_surface_conditional` and
+`causalgenerics_pool_missing_surface`.
+
 The analysis belongs inside [`with()`](https://rdrr.io/r/base/with.html)
 rather than outside it because the propensity score model has to be
 estimated once per imputation. Weights built from propensity scores

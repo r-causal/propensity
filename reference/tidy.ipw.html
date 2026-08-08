@@ -23,8 +23,10 @@ marginal reading is the table of causal contrasts described above. The
 conditional reading is the outcome model's coefficient surface: one row per
 coefficient, with the standard errors of the block of the joint estimation
 that carries the uncertainty of having estimated the weights from the same
-data. Both readings return the same columns in the same order, so their rows
-stack."><meta property="og:description" content="tidy() returns the estimates of an ipw() result as a tibble using the
+data. The two readings return the same columns in the same order, with one
+exception: the contrast column that names the pair of exposure levels a row
+compares belongs to the marginal reading of a categorical result alone, and
+that result's conditional reading returns the same table one column narrower."><meta property="og:description" content="tidy() returns the estimates of an ipw() result as a tibble using the
 column names broom conventions use. There is one row per effect measure, and
 one row per effect measure per contrast for a categorical exposure, in the
 order the result stores them. Nothing is dropped.
@@ -48,8 +50,10 @@ marginal reading is the table of causal contrasts described above. The
 conditional reading is the outcome model's coefficient surface: one row per
 coefficient, with the standard errors of the block of the joint estimation
 that carries the uncertainty of having estimated the weights from the same
-data. Both readings return the same columns in the same order, so their rows
-stack."><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
+data. The two readings return the same columns in the same order, with one
+exception: the contrast column that names the pair of exposure levels a row
+compares belongs to the marginal reading of a categorical result alone, and
+that result's conditional reading returns the same table one column narrower."><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -108,8 +112,10 @@ marginal reading is the table of causal contrasts described above. The
 conditional reading is the outcome model's coefficient surface: one row per
 coefficient, with the standard errors of the block of the joint estimation
 that carries the uncertainty of having estimated the weights from the same
-data. Both readings return the same columns in the same order, so their rows
-stack.</p>
+data. The two readings return the same columns in the same order, with one
+exception: the <code>contrast</code> column that names the pair of exposure levels a row
+compares belongs to the marginal reading of a categorical result alone, and
+that result's conditional reading returns the same table one column narrower.</p>
     </div>
 
     <div class="section level2">
