@@ -2591,7 +2591,7 @@ test_that("accepting fixed does not widen what effects otherwise accepts", {
 # pooling: the same effects, estimated slightly differently. Small and seeded,
 # because what is under test is the shape of the pooled table rather than the
 # precision of any estimate.
-pooled_binary_fit <- function(shift, n = 300) {
+pooled_binary_fit <- function(shift, n = 300, se_method = "mestimation") {
   x1 <- rnorm(n)
   z <- rbinom(n, 1, plogis(0.3 * x1))
   y <- rbinom(n, 1, plogis(-0.4 + 0.9 * z + 0.5 * x1 + shift))
@@ -2607,12 +2607,24 @@ pooled_binary_fit <- function(shift, n = 300) {
     family = quasibinomial(),
     weights = w
   )
-  ipw(ps_mod, outcome_mod)
+  ipw(ps_mod, outcome_mod, se_method = se_method)
 }
 
 fit_pooled_binary <- function(seed = 2024) {
   withr::local_seed(seed)
   pool_ipw(lapply(c(0, 0.05, -0.05), pooled_binary_fit))
+}
+
+# The same three results on the standard error path that stacks no system. Their
+# outcome models record no corrected covariance, so only one of the two readings
+# has anything to pool, which is the case the pooling reports as unavailable.
+fit_pooled_linearization <- function(seed = 2026) {
+  withr::local_seed(seed)
+  pool_ipw(lapply(
+    c(0, 0.05, -0.05),
+    pooled_binary_fit,
+    se_method = "linearization"
+  ))
 }
 
 pooled_categorical_fit <- function(shift, n = 300) {
@@ -2888,4 +2900,178 @@ test_that("glance() rejects an argument that lands in the pooled dots", {
     glance(pooled, bogus = 1),
     class = "rlib_error_dots_nonempty"
   )
+})
+
+# ---- the reading a pooled result is reported in ------------------------------
+#
+# `pool_ipw()` pools both readings of the results it is given, records one of
+# them, and keeps the other in the `alternate` field. So which reading a pooled
+# result reports is settled after the pooling rather than by it:
+# `as_marginal()` and `as_conditional()` flip the whole object, and `effects`
+# names the other reading for one call. `tidy()` passes that argument to the
+# pooled coercion surface, where the flip happens, so the two routes report one
+# table rather than two assemblies of it.
+#
+# A reading the pooling could not produce is recorded as unavailable together
+# with the reason rather than left out, and asking for it reports that absence
+# rather than returning the reading that was pooled under the other one's name.
+
+test_that("tidy() reports the pooled reading the call names", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # The whole-object flip and the per-call argument are two routes to one table,
+  # which is what makes `effects` a way of reading a pooled result rather than a
+  # second pooling of it.
+  expect_identical(
+    tidy(pooled, effects = "conditional"),
+    tidy(as_conditional(pooled))
+  )
+
+  # The conditional reading pools the outcome models' coefficients, so a term is
+  # a coefficient's name rather than an effect measure, and there is no contrast
+  # column, a coefficient not being a contrast of exposure levels.
+  tidied <- tidy(pooled, effects = "conditional")
+  expect_identical(tidied$term, c("(Intercept)", "z"))
+  expect_identical(tidied$term, pooled$alternate$estimates$effect)
+  expect_named(
+    tidied,
+    c("term", "estimate", "std.error", "statistic", "df", "p.value")
+  )
+})
+
+test_that("tidy() defaults to the reading a marginal pool recorded", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # `NULL` is the reading the pooled result records rather than a reading of the
+  # tidier's own, and naming that reading is the same request. The three are
+  # pinned pairwise, so a default reaching the recorded reading by a different
+  # route than the named one would show up here.
+  expect_identical(pooled$effects, "marginal")
+  expect_identical(tidy(pooled, effects = "marginal"), tidy(pooled))
+  expect_identical(tidy(pooled, effects = NULL), tidy(pooled))
+  expect_identical(
+    tidy(pooled, effects = NULL),
+    tidy(pooled, effects = "marginal")
+  )
+
+  # The other reading is a genuinely different table, so the agreement above is
+  # with one reading rather than with a table that does not move.
+  expect_false(identical(tidy(pooled, effects = "conditional"), tidy(pooled)))
+})
+
+test_that("tidy() reports the marginal reading of a conditional pool", {
+  skip_if_not_installed("deli")
+  withr::local_seed(2024)
+  fits <- lapply(c(0, 0.05, -0.05), pooled_binary_fit)
+  pooled <- pool_ipw(fits, effects = "conditional")
+
+  expect_identical(pooled$effects, "conditional")
+  expect_identical(
+    tidy(pooled, effects = "marginal"),
+    tidy(as_marginal(pooled))
+  )
+
+  # The direction the argument reads in is not the direction the pooling was
+  # asked for: the marginal reading of a pool built in the other one is the
+  # table pooling the same results marginally returns.
+  expect_identical(tidy(pooled, effects = "marginal"), tidy(pool_ipw(fits)))
+  expect_identical(
+    tidy(pooled, effects = "marginal")$term,
+    c("rd", "log(rr)", "log(or)")
+  )
+})
+
+test_that("tidy() has no conditional reading of a linearization pool", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_linearization()
+
+  # Linearization stacks no system, so the outcome models record no corrected
+  # covariance and the conditional reading has nothing to pool. The pooling
+  # keeps the reason rather than the estimates, which is what the two-field
+  # `alternate` says.
+  expect_identical(names(pooled$alternate), c("effects", "reason"))
+  expect_error(
+    tidy(pooled, effects = "conditional"),
+    class = "causalgenerics_pool_missing_surface_conditional"
+  )
+  expect_error(
+    tidy(pooled, effects = "conditional"),
+    class = "causalgenerics_pool_missing_surface"
+  )
+
+  # Reported whether or not the call asked for bounds, a tidied row being its
+  # estimate and its inference together.
+  expect_error(
+    tidy(pooled, conf.int = TRUE, effects = "conditional"),
+    class = "causalgenerics_pool_missing_surface"
+  )
+
+  # The reading the pooling did produce is untouched by the absence of the
+  # other, whether it is the recorded reading or the one the call names.
+  expect_pooled_tidy_wraps_frame(pooled)
+  expect_identical(tidy(pooled, effects = "marginal"), tidy(pooled))
+})
+
+test_that("tidy() refuses an effects value naming neither pooled reading", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # `tidy.ipw()` takes `"fixed"` because `mice::pool()` reaches an analysis
+  # through the tidier and calls it with that value. It tidies the fits of the
+  # individual imputations, and nothing in mice tidies a pooled result, so the
+  # tolerance belongs to the method mice calls rather than to this one.
+  expect_error(
+    tidy(pooled, effects = "fixed"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+
+  # The rest of what names neither reading is refused under the same condition,
+  # so the value above is refused for naming no reading rather than for being
+  # one particular name.
+  expect_error(
+    tidy(pooled, effects = "banana"),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(pooled, effects = c("marginal", "conditional")),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+  expect_error(
+    tidy(pooled, conf.int = TRUE, effects = NA_character_),
+    class = "causalgenerics_invalid_argument_effects"
+  )
+})
+
+test_that("the pooled reading composes with the interval and the scale", {
+  skip_if_not_installed("deli")
+  pooled <- fit_pooled_binary()
+
+  # The reading is one of the things a call says about how the stored table is
+  # reported, beside whether bounds come with it and what scale the estimates
+  # are on, so the three are read together rather than one settling the table.
+  expect_identical(
+    tidy(pooled, effects = "conditional", conf.int = TRUE),
+    tidy(as_conditional(pooled), conf.int = TRUE)
+  )
+  expect_identical(
+    tidy(pooled, effects = "conditional", conf.int = TRUE, exponentiate = TRUE),
+    tidy(as_conditional(pooled), conf.int = TRUE, exponentiate = TRUE)
+  )
+
+  # Both arguments took effect: the bounds are there, and the estimates are the
+  # exponentials of the ones the same reading reports without the argument. The
+  # outcome model's link settles the scale for every row of a conditional
+  # reading at once, so no row is left behind and no term is relabeled.
+  plain <- tidy(pooled, effects = "conditional")
+  tidied <- tidy(
+    pooled,
+    effects = "conditional",
+    conf.int = TRUE,
+    exponentiate = TRUE
+  )
+  expect_true(all(c("conf.low", "conf.high") %in% names(tidied)))
+  expect_equal(tidied$estimate, exp(plain$estimate))
+  expect_identical(tidied$term, plain$term)
 })

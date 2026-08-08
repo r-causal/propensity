@@ -12,16 +12,16 @@
 # The namespace whose S3 methods table records registrations for each generic.
 # `print` and `as.data.frame` are both in `.knownS3Generics`, so a method for
 # either registers into base's table whichever package declares it; `ipw`,
-# `as_marginal`, and `as_conditional` are causalgenerics' own generics and
-# `tidy` is the generics package's, so a method for any of them registers into
-# the table of the package that defines it, again whichever package declares the
-# method. The six accessors all reach stats' table by one route or the other:
-# `coef`, `vcov`, `confint`, and `df.residual` are named in `.knownS3Generics`
-# as stats', and `nobs` and `weights` are not named there but resolve to
-# closures of stats' namespace, which is the same table. The two mode generics
-# reach no stats table at all, because stats defines nothing of either name;
-# looking for them there would report every result class as having no method
-# rather than reporting who owns one.
+# `as_marginal`, `as_conditional`, and `estimand` are causalgenerics' own
+# generics and `tidy` is the generics package's, so a method for any of them
+# registers into the table of the package that defines it, again whichever
+# package declares the method. The six accessors all reach stats' table by one
+# route or the other: `coef`, `vcov`, `confint`, and `df.residual` are named in
+# `.knownS3Generics` as stats', and `nobs` and `weights` are not named there but
+# resolve to closures of stats' namespace, which is the same table. The two mode
+# generics and `estimand()` reach no stats table at all, because stats defines
+# nothing of any of those names; looking for them there would report every
+# result class as having no method rather than reporting who owns one.
 # Reading these tables reports which package owns a method independently
 # of what is on the search path. It does not, on its own, prove a method is
 # gone: `UseMethod()` searches the environment the generic was called from as
@@ -36,6 +36,7 @@ ipw_generic_namespaces <- c(
   ipw = "causalgenerics",
   as_marginal = "causalgenerics",
   as_conditional = "causalgenerics",
+  estimand = "causalgenerics",
   tidy = "generics",
   glance = "generics",
   augment = "generics",
@@ -169,6 +170,12 @@ ipw_result_methods <- c(print = "ipw", as.data.frame = "ipw")
 # table, and a caller would then get whichever was installed last rather than
 # the contract. propensity records the reading a result is built in through the
 # `effects` field rather than through a method of its own.
+#
+# The pooled result class is upstream for the same reasons. `pool_ipw()` builds
+# it, pools both readings, and answers for the reading it holds, so the flips
+# and the estimand it reports are the pooling's own answers rather than ones a
+# downstream package supplies. propensity owns the tidiers of that class and
+# nothing else about it, exactly as it does for a single result.
 ipw_accessor_methods <- c(
   coef = "ipw",
   vcov = "ipw",
@@ -178,7 +185,10 @@ ipw_accessor_methods <- c(
   weights = "ipw",
   vcov = "ipw_model",
   as_marginal = "ipw",
-  as_conditional = "ipw"
+  as_conditional = "ipw",
+  as_marginal = "ipw_pooled",
+  as_conditional = "ipw_pooled",
+  estimand = "ipw_pooled"
 )
 
 # Methods of the shared result class that propensity owns rather than inherits.

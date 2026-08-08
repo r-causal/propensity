@@ -380,3 +380,57 @@ test_that("pool_ipw() reports degrees of freedom a linearization fit lacks", {
   expect_true(all(is.finite(tidied$df)))
   expect_true(is.finite(glance(pool_ipw(fits))$dfcom))
 })
+
+# ---- both readings of a pooled workflow -------------------------------------
+#
+# `pool_ipw()` pools both readings of the results it is given rather than the
+# one it is asked for, so the reading a pooled result reports can be changed
+# afterwards without pooling again. Where the results support only one reading
+# the other is recorded as unavailable together with the reason. These run the
+# whole imputation path rather than the pooling alone, which is where a reading
+# that survives the pooling but not the imputation loop would show up.
+
+test_that("pool_ipw() carries both readings of an mestimation workflow", {
+  skip_if_not_installed("mice", "3.18.0")
+  skip_if_not_installed("deli")
+  imp <- mice_impute(mice_binary_data(), seed = 1)
+  fits <- fit_mice_binary(imp)
+
+  pooled <- pool_ipw(fits)
+  conditional <- as_conditional(pooled)
+
+  # The conditional reading pools the outcome models' coefficients, so what it
+  # reports is named for them rather than for the effect measures the marginal
+  # reading contrasts. Read off the models the imputations were fitted with, so
+  # the names are the ones the workflow produced rather than ones restated here.
+  coefficients <- names(coef(fits$analyses[[1]]$outcome_mod))
+  expect_identical(conditional$effects, "conditional")
+  expect_identical(conditional$estimates$effect, coefficients)
+  expect_identical(estimand(conditional), estimand(pooled))
+
+  # Each reading is pooled once, so a flip changes which one the object reports
+  # rather than pooling again: the round trip returns the object it started
+  # from rather than one that agrees with it to within a re-estimate.
+  expect_identical(as_marginal(conditional), pooled)
+})
+
+test_that("pool_ipw() records the reading a linearization workflow lacks", {
+  skip_if_not_installed("mice", "3.18.0")
+  skip_if_not_installed("deli")
+  imp <- mice_impute(mice_binary_data(), seed = 1)
+  fits <- fit_mice_binary(imp, se_method = "linearization")
+
+  pooled <- pool_ipw(fits)
+
+  # The conditional reading reports the covariance the joint estimation of the
+  # weights and the outcome implies, and linearization stacks no such system, so
+  # the outcome models carry none and only the marginal reading pools. The
+  # unavailable reading is named and explained rather than left out, which is
+  # what lets a flip toward it say why it cannot happen.
+  expect_identical(pooled$effects, "marginal")
+  expect_identical(names(pooled$alternate), c("effects", "reason"))
+  expect_identical(pooled$alternate$effects, "conditional")
+  expect_type(pooled$alternate$reason, "character")
+  expect_length(pooled$alternate$reason, 1L)
+  expect_true(nzchar(pooled$alternate$reason))
+})
