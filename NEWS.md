@@ -1,5 +1,30 @@
 # propensity 0.1.0.9000 (development version)
 
+* `tidy()` on a pooled result gains an `effects` argument, which reports the
+  reading it names rather than the one the pooled result records: `"conditional"`
+  returns the pooled coefficients of the outcome models, one row per coefficient,
+  and `"marginal"` returns the pooled causal contrasts. `NULL`, the default,
+  follows the reading the pooled result records. The pooling has already happened
+  by the time the method sees the result, so naming a reading reports a table the
+  pooling built rather than pooling a second time, and the pooled result is left
+  as it is. `"fixed"` is not among the values it takes, since `mice::pool()` asks
+  for that reading from the tidier of each imputation's own fit rather than from
+  a pooled one.
+
+* `pool_ipw()` now pools both readings of the results it is given, storing the
+  one they record and keeping the other beside it, so `as_marginal()` and
+  `as_conditional()`, both re-exported here, move a pooled result between the two
+  readings after the pooling rather than only before it. A reading the pooling
+  could not compute is refused rather than reported under the other one's name:
+  the conditional reading needs the covariance the joint estimation of the
+  weights and the outcome implies, and a set of `se_method = "linearization"`
+  fits records none, so such a pool holds the marginal reading alone and asking
+  it for the other errors under the causalgenerics classes
+  `causalgenerics_pool_missing_surface_conditional` and
+  `causalgenerics_pool_missing_surface`, carrying the explanation the pooling
+  recorded. The Multiple imputation section of `ipw()` documents both routes to a
+  reading, the one taken before the pooling and the one taken after it.
+
 * `pool_ipw()` is now re-exported, so the whole multiple-imputation workflow can
   be written without reaching for a second namespace for its last step: fit the
   analysis once per imputed dataset inside `mice::with()`, then pool the results.
