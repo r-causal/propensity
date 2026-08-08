@@ -333,6 +333,29 @@
 #' [as_conditional()], and the pooled result reports the outcome models'
 #' coefficients rather than the causal contrasts.
 #'
+#' Recording the reading beforehand is one route to it rather than the only one.
+#' [pool_ipw()] pools both readings of the results it is given, storing the one
+#' they record and keeping the other beside it, so [as_marginal()] and
+#' [as_conditional()] move a pooled result between them after the pooling and
+#' report a table the pooling already built rather than pooling a second time.
+#' [`tidy()`][tidy.ipw_pooled()], [stats::coef()], [stats::vcov()],
+#' [stats::confint()], and the pooled result's own frame each take an `effects`
+#' argument naming a reading for the one call, which leaves the pooled result as
+#' it is. `mice::pool()` offers neither: it reaches a result through
+#' [`tidy()`][tidy.ipw()] and returns a `mipo` holding the one table it asked
+#' for, so on that route the reading still has to be recorded before the pooling.
+#'
+#' A reading the pooling could not compute is refused rather than reported under
+#' the other one's name. The conditional reading needs the covariance the joint
+#' estimation of the weights and the outcome implies, and a fit under
+#' `se_method = "linearization"` stacks no such system and records no such block,
+#' so a set of those fits pools the marginal reading alone. The pooled result
+#' records why the other reading is missing, and asking for it, whether by
+#' flipping the result or by naming it for one call, errors with that recorded
+#' explanation under the classes
+#' `causalgenerics_pool_missing_surface_conditional` and
+#' `causalgenerics_pool_missing_surface`.
+#'
 #' The analysis belongs inside `with()` rather than outside it because the
 #' propensity score model has to be estimated once per imputation. Weights built
 #' from propensity scores averaged across imputations are identical in every

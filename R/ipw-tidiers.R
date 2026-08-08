@@ -28,8 +28,10 @@
 #' conditional reading is the outcome model's coefficient surface: one row per
 #' coefficient, with the standard errors of the block of the joint estimation
 #' that carries the uncertainty of having estimated the weights from the same
-#' data. Both readings return the same columns in the same order, so their rows
-#' stack.
+#' data. The two readings return the same columns in the same order, with one
+#' exception: the `contrast` column that names the pair of exposure levels a row
+#' compares belongs to the marginal reading of a categorical result alone, and
+#' that result's conditional reading returns the same table one column narrower.
 #'
 #' @param x An `ipw` object, as returned by [ipw()].
 #' @param conf.int Logical. Should the confidence interval bounds be returned in
