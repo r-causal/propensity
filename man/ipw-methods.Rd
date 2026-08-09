@@ -369,7 +369,21 @@ a difference between two conditional effects and not, on its own, evidence
 that the modifier changes the effect. It is the estimand's population that
 the tilt fixes, and the modifier's stratum that the indicator fixes, and the
 row reports the effect where those two meet: an \code{att} fit reports the effect
-among the exposed units of a stratum, not among all of its units.
+among the exposed units of a stratum, not among all of its units. For a
+categorical exposure the tilt an \code{att} fit standardizes over is the focal
+level's own propensity score, so a stratum row there reports the effect
+among the units of that stratum who look like the ones assigned the focal
+level.
+
+A categorical exposure already reports one contrast per non-reference level,
+and \code{.by} crosses those contrasts with the strata: every block holds each
+contrast on each reported measure, so a K-level exposure with S strata
+reports the whole-sample block and then S + (S - 1) blocks of (K - 1)
+contrasts. A row is named by three things there, the measure, the contrast,
+and the subgroup, and the \code{estimates} frame carries \code{contrast} and \code{group} in
+that order after \code{effect}. Within a block the ordering is the one an
+ungrouped categorical fit already uses, contrast-major and measure-minor, so
+a contrast's measures sit together; the blocks themselves run group-major.
 
 The stratum rows and the stratum contrasts report the risk difference and the
 log risk ratio for a binary outcome, and the difference in means for a
@@ -381,15 +395,18 @@ overall rows keep all three measures.
 
 Three requirements apply. The modifier must be a factor or a character vector
 with no missing values: a missing value names no subgroup, and a continuous
-variable names no fixed set of them, so cut it into groups first. Every one
-of its levels must hold both exposure levels, since a stratum in which nobody
-took one of them identifies no contrast there and the outcome model would
-extrapolate one from the other strata; the remedy is a coarser modifier
-rather than a refit. Finally, \code{.by} requires \code{se_method = "mestimation"} and a
-binary exposure: the stratum means and their contrasts are parameters of the
-stacked estimating equations, which is what puts them in the same sandwich as
-everything else, and a categorical or continuous exposure reports no pair of
-standardized means to modify. Each of those errors.
+variable names no fixed set of them, so cut it into groups first. A level no
+unit carries is dropped rather than refused, since the fits drop it too and
+an empty stratum has no mean to standardize. Every one of the modifier's
+remaining levels must hold every exposure level, since a stratum in which
+nobody took one of them identifies no contrast against it and the outcome
+model would extrapolate one from the strata that do; the remedy is a coarser
+modifier rather than a refit. Finally, \code{.by} requires
+\code{se_method = "mestimation"} and a binary or categorical exposure: the stratum
+means and their contrasts are parameters of the stacked estimating equations,
+which is what puts them in the same sandwich as everything else, and a
+continuous exposure reports its marginal structural model's own coefficient
+rather than a set of standardized means to modify. Each of those errors.
 
 An outcome model with no term reading the exposure and the modifier together
 warns rather than errors. The stratum effects are g-computation on the model

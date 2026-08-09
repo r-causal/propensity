@@ -358,7 +358,8 @@ ipw_spec_binary <- function(
   by <- ipw_resolve_by(
     .by,
     data = mm_data,
-    exposure = z,
+    exposure = exposure,
+    exposure_levels = exposure_values,
     exposure_name = exposure_name,
     outcome_mod = outcome_mod,
     contrasts = contrasts,
@@ -1320,6 +1321,7 @@ ipw_spec_categorical <- function(
   .data = NULL,
   estimand = NULL,
   .focal_level = NULL,
+  .by = NULL,
   call = rlang::caller_env()
 ) {
   assert_class(ps_mod, "multinom")
@@ -1488,6 +1490,23 @@ ipw_spec_categorical <- function(
     contrasts <- c("rd", "log(rr)", "log(or)")
   }
 
+  # The strata a `.by` request names, on the same terms the binary path resolves
+  # them: from `.data` when the caller supplied one and from the outcome model's
+  # own frame otherwise, and after the contrasts because the measures reported
+  # within a stratum are taken from the ones reported for the whole sample.
+  # Every exposure level has to appear in every stratum, not merely two of them,
+  # since each stratum reports the full set of contrasts.
+  by <- ipw_resolve_by(
+    .by,
+    data = mm_data,
+    exposure = exposure,
+    exposure_levels = levs,
+    exposure_name = exposure_name,
+    outcome_mod = outcome_mod,
+    contrasts = contrasts,
+    call = call
+  )
+
   list(
     exposure_type = "categorical",
     estimand = estimand,
@@ -1513,6 +1532,7 @@ ipw_spec_categorical <- function(
       weights = as.double(wts)
     ),
     contrasts = contrasts,
+    by = by,
     focal_level = focal_level,
     reference_level = levs[[1]]
   )
@@ -2325,6 +2345,7 @@ ipw_mestimation_estimates <- function(
   # coefficient, addressed by its outcome-block theta position; binary and
   # categorical exposures report the contrast rows. Positions are used, not
   # names, since theta names are not unique across blocks.
+  contrast <- NULL
   group <- NULL
 
   if (identical(spec$exposure_type, "continuous")) {
@@ -2334,6 +2355,7 @@ ipw_mestimation_estimates <- function(
     idx <- c(layout$idx$contrast, layout$idx$by_contrast)
     rows <- ipw_estimate_rows(spec)
     effect <- rows$effect
+    contrast <- rows$contrast
     group <- rows$group
   }
 
@@ -2357,34 +2379,22 @@ ipw_mestimation_estimates <- function(
     p.value = p.value
   )
 
-  # A categorical exposure contributes one contrast per non-reference level, so
-  # the table gains a contrast column, placed immediately after effect, that
-  # names each one. Binary and continuous exposures keep the eight-column
-  # contract with no contrast column.
-  if (identical(spec$exposure_type, "categorical")) {
-    contrast <- rep(
-      ipw_contrast_labels(spec),
-      each = length(spec$contrasts)
-    )
-    out <- cbind(
-      out["effect"],
-      contrast = contrast,
-      out[setdiff(names(out), "effect")]
-    )
+  # The columns that name a row lead the table, in the order a label pastes
+  # them: the effect measure, then the contrast a categorical exposure compares,
+  # then the subgroup a `.by` request reports within. Each of the last two is
+  # present only where it names something, since a column repeating one value
+  # down the table would read as a contrast, or a subgroup, that was named. They
+  # are inserted together rather than one after the other, because inserting
+  # each immediately after effect would leave them in the reverse order.
+  keys <- out["effect"]
+  if (!is.null(contrast)) {
+    keys$contrast <- contrast
   }
-
-  # A `.by` request reports each measure for the whole sample, then within each
-  # stratum, then for each non-reference stratum against the reference one, so
-  # the table gains a group column naming the subgroup each row belongs to. It
-  # goes where the contrast column goes, immediately after effect, and a fit
-  # with no `.by` keeps the frame it always reported rather than one repeating a
-  # single group down the table.
   if (!is.null(group)) {
-    out <- cbind(
-      out["effect"],
-      group = group,
-      out[setdiff(names(out), "effect")]
-    )
+    keys$group <- group
+  }
+  if (length(keys) > 1L) {
+    out <- cbind(keys, out[setdiff(names(out), "effect")])
   }
 
   # The covariance of the reported effects, taken from the same rows and columns

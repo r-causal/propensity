@@ -779,8 +779,8 @@ test_that(".by warns when a categorical outcome model has no exposure-by-modifie
   # every stratum, up to the covariate distribution each one has. It is a
   # warning rather than an error: the fit is an honest reading of the model that
   # was supplied, and it still returns.
-  res <- expect_warning(
-    ipw(mods$ps_mod, mods$outcome_mod, .by = v),
+  expect_warning(
+    res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v),
     class = "propensity_ipw_by_interaction_warning"
   )
   expect_s3_class(res, "ipw")

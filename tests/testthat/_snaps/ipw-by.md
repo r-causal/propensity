@@ -14,10 +14,10 @@
       expr
     Condition <propensity_ipw_by_exposure_error>
       Error in `ipw()`:
-      ! `ipw()` does not support `.by` for "continuous" exposures.
-      x Effect modification is reported for a binary exposure alone.
+      ! `ipw()` does not support `.by` for continuous exposures.
+      x A continuous exposure reports the marginal structural model's own exposure coefficient rather than a set of standardized means, so there is no effect within a subgroup for it to report.
       i Omit `.by` to report the overall effect.
-      i Fitting each subgroup on its own subset reports the same stratum effects, but no covariance between them, so the difference between two subgroups cannot be tested from those fits.
+      i Fitting each subgroup on its own subset reports a coefficient per subgroup, but no covariance between them, so the difference between two subgroups cannot be tested from those fits.
 
 # .by refuses a selection that does not name exactly one modifier
 
@@ -57,10 +57,10 @@
       expr
     Condition <propensity_ipw_by_levels_error>
       Error in `ipw()`:
-      ! `.by` must name a modifier whose subgroups each hold both exposure levels.
-      x Every unit in "g = b" has the same value of "z".
-      i An effect within a subgroup contrasts the exposure levels inside it, so a subgroup holding one of them has no contrast to report.
-      i Use a coarser modifier, one whose subgroups each hold both exposure levels. Refitting either model does not help: the data hold no comparison there.
+      ! `.by` must name a modifier whose subgroups each hold every exposure level.
+      x "g = b" holds no unit with "z" set to "0".
+      i An effect within a subgroup contrasts the exposure levels inside it, so a subgroup missing one of them has no contrast to report there.
+      i Use a coarser modifier, one whose subgroups each hold every exposure level. Refitting either model does not help: the data hold no comparison there.
 
 # .by warns when the outcome model has no exposure-by-modifier term
 

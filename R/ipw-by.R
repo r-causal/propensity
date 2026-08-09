@@ -46,28 +46,27 @@ check_ipw_by_method <- function(.by, se_method, call = rlang::caller_env()) {
   )
 }
 
-# Refuse `.by` for an exposure whose path reports no counterfactual contrast to
-# modify. A continuous exposure reports the marginal structural model's own
-# coefficient rather than a pair of standardized means, and a categorical
-# exposure reports one contrast per non-reference level, neither of which the
-# stratum blocks are built for.
-check_ipw_by_exposure <- function(
-  .by,
-  exposure_type,
-  call = rlang::caller_env()
-) {
+# Refuse `.by` for a continuous exposure, the one exposure type whose path
+# reports no counterfactual contrast to modify. A binary or a categorical fit
+# reports contrasts of standardized means, and a stratum's effect is those means
+# taken over the stratum's units. A continuous exposure has no such means:
+# `ipw()` reports the marginal structural model's own exposure coefficient,
+# which is a single number for the whole sample with no per-stratum counterpart
+# the stacked blocks could build.
+check_ipw_by_exposure <- function(.by, call = rlang::caller_env()) {
   if (ipw_by_absent(.by)) {
     return(invisible(TRUE))
   }
 
   abort(
     c(
-      "{.fun ipw} does not support {.arg .by} for {.val {exposure_type}} \\
-      exposures.",
-      x = "Effect modification is reported for a binary exposure alone.",
+      "{.fun ipw} does not support {.arg .by} for continuous exposures.",
+      x = "A continuous exposure reports the marginal structural model's own \\
+      exposure coefficient rather than a set of standardized means, so there \\
+      is no effect within a subgroup for it to report.",
       i = "Omit {.arg .by} to report the overall effect.",
-      i = "Fitting each subgroup on its own subset reports the same stratum \\
-      effects, but no covariance between them, so the difference between two \\
+      i = "Fitting each subgroup on its own subset reports a coefficient per \\
+      subgroup, but no covariance between them, so the difference between two \\
       subgroups cannot be tested from those fits."
     ),
     error_class = "propensity_ipw_by_exposure_error",
@@ -92,6 +91,7 @@ ipw_resolve_by <- function(
   .by,
   data,
   exposure,
+  exposure_levels,
   exposure_name,
   outcome_mod,
   contrasts,
@@ -128,6 +128,7 @@ ipw_resolve_by <- function(
   check_ipw_by_levels(
     indicators,
     exposure,
+    exposure_levels,
     exposure_name,
     labels,
     call = call
@@ -238,43 +239,56 @@ ipw_class_article <- function(x) {
   paste("an object of class", class(x)[[1L]])
 }
 
-# Require every stratum to hold both exposure levels. The effect within a
-# stratum is the contrast of the two counterfactual means taken over that
-# stratum's units, and a stratum in which nobody took one of the levels
-# identifies neither the mean there nor the contrast against it. The outcome
-# model still predicts at both levels, so the fit would return a number: an
-# extrapolation from the strata that do hold both, reported as though it had
-# been estimated. Neither model can be refit to supply what is not there, so the
-# remedy is a coarser modifier.
+# Require every stratum to hold every exposure level. The effects within a
+# stratum are contrasts of the counterfactual means taken over that stratum's
+# units, and a stratum in which nobody took some level identifies neither the
+# mean there nor any contrast against it. The outcome model still predicts at
+# that level, so the fit would return a number: an extrapolation from the strata
+# that do hold it, reported as though it had been estimated.
+#
+# Counting the distinct values a stratum holds is not enough once the exposure
+# has more than two levels, since a stratum can hold two of three and still be
+# missing a contrast. What is required is membership, level by level.
+#
+# Only the first incomplete stratum is named, the way
+# `first_identical_design_pair()` reports the first offending pair: every fix is
+# a coarser modifier, after which the check runs again over the new strata.
+# Neither model can be refit to supply a comparison the data do not hold.
 check_ipw_by_levels <- function(
   indicators,
   exposure,
+  exposure_levels,
   exposure_name,
   labels,
   call = rlang::caller_env()
 ) {
-  incomplete <- vapply(
+  exposure <- as.character(exposure)
+  exposure_levels <- as.character(exposure_levels)
+
+  absent <- lapply(
     seq_along(labels),
-    function(s) length(unique(exposure[indicators[, s] == 1])) < 2L,
-    logical(1)
+    function(s) setdiff(exposure_levels, exposure[indicators[, s] == 1])
   )
+  incomplete <- lengths(absent) > 0L
 
   if (!any(incomplete)) {
     return(invisible(TRUE))
   }
 
-  bad <- labels[incomplete]
+  first <- which(incomplete)[[1L]]
+  stratum <- labels[[first]]
+  missing_levels <- absent[[first]]
 
   abort(
     c(
-      "{.arg .by} must name a modifier whose subgroups each hold both \\
-      exposure levels.",
-      x = "Every unit in {.val {bad}} has the same value of \\
-      {.val {exposure_name}}.",
+      "{.arg .by} must name a modifier whose subgroups each hold every \\
+      exposure level.",
+      x = "{.val {stratum}} holds no unit with {.val {exposure_name}} set to \\
+      {.val {missing_levels}}.",
       i = "An effect within a subgroup contrasts the exposure levels inside \\
-      it, so a subgroup holding one of them has no contrast to report.",
-      i = "Use a coarser modifier, one whose subgroups each hold both exposure \\
-      levels. Refitting either model does not help: the data hold no \\
+      it, so a subgroup missing one of them has no contrast to report there.",
+      i = "Use a coarser modifier, one whose subgroups each hold every \\
+      exposure level. Refitting either model does not help: the data hold no \\
       comparison there."
     ),
     error_class = "propensity_ipw_by_levels_error",
@@ -339,50 +353,103 @@ ipw_by_stratum_weight <- function(indicators, s, tilt) {
   if (is.null(tilt)) indicators[, s] else tilt * indicators[, s]
 }
 
+# The stratum blocks are written against an exposure of any arity. `preds` is
+# one counterfactual prediction vector per exposure level, in the order the
+# stratum mu block stores them; `reference` is the position in it of the level
+# every contrast is taken against, and `comparisons` the positions of the levels
+# compared to it, in the order the estimates table reports them.
+#
+# A binary spec stores its pair exposed-first, matching the whole-sample mu
+# block it grew out of, so its reference is the second element and its single
+# comparison the first. A categorical spec stores its levels reference-first, so
+# its reference is the first element and its comparisons the rest. Stating both
+# as positions is what lets one set of blocks serve the two.
+
+# The suffix each contrast seed is named by, and the label its out-of-domain
+# reports are made under: a subgroup on its own where the exposure names no
+# contrasts, and the contrast within the subgroup where it does.
+ipw_by_contrast_suffixes <- function(contrast_labels, group) {
+  if (is.null(contrast_labels)) {
+    return(group)
+  }
+
+  paste(contrast_labels, group)
+}
+
 # Plug-in init values for the stratum blocks, seeded the way the whole-sample
 # blocks are: each stratum mean at the tilt-weighted mean of the counterfactual
 # predictions over that stratum, which is the exact root of its psi row, and
-# each contrast at the value those means imply.
-ipw_init_by <- function(spec, pred1, pred0, tilt) {
+# each contrast at the value those means imply. `mu_names` is the whole-sample
+# mu block's naming, which each stratum's block reuses under its own label.
+ipw_init_by <- function(
+  spec,
+  preds,
+  reference,
+  comparisons,
+  mu_names,
+  contrast_labels,
+  tilt
+) {
   by <- spec$by
 
   if (is.null(by)) {
     return(list(mu = numeric(0), contrast = numeric(0)))
   }
 
-  weights <- lapply(
-    seq_along(by$labels),
-    function(s) ipw_by_stratum_weight(by$indicators, s, tilt)
-  )
-  mu1 <- vapply(weights, function(w) stats::weighted.mean(pred1, w), numeric(1))
-  mu0 <- vapply(weights, function(w) stats::weighted.mean(pred0, w), numeric(1))
+  # One mean per exposure level per stratum, stratum-major, so the pair or the
+  # tuple belonging to one stratum sits together, which is the order the psi
+  # rows and the layout index read them in.
+  mu <- lapply(seq_along(by$labels), function(s) {
+    w <- ipw_by_stratum_weight(by$indicators, s, tilt)
+    vapply(preds, function(pred) stats::weighted.mean(pred, w), numeric(1))
+  })
 
-  # Interleaved so that the pair belonging to one stratum sits together, which
-  # is the order the psi rows and the layout index read them in.
   mu_block <- stats::setNames(
-    as.vector(rbind(mu1, mu0)),
-    as.vector(rbind(paste0("mu1_", by$labels), paste0("mu0_", by$labels)))
+    unlist(mu, use.names = FALSE),
+    unlist(lapply(by$labels, function(label) paste0(mu_names, "_", label)))
   )
 
   stratum <- lapply(seq_along(by$labels), function(s) {
-    ipw_init_contrasts(
-      by$contrasts,
-      mu1[[s]],
-      mu0[[s]],
-      suffix = by$labels[[s]]
-    )
+    suffixes <- ipw_by_contrast_suffixes(contrast_labels, by$labels[[s]])
+    unlist(lapply(seq_along(comparisons), function(j) {
+      ipw_init_contrasts(
+        by$contrasts,
+        mu[[s]][[comparisons[[j]]]],
+        mu[[s]][[reference]],
+        suffix = suffixes[[j]]
+      )
+    }))
   })
-  em <- lapply(seq_along(by$em_labels), function(j) {
+
+  em <- lapply(seq_along(by$em_labels), function(m) {
+    suffixes <- ipw_by_contrast_suffixes(contrast_labels, by$em_labels[[m]])
     stats::setNames(
-      stratum[[j + 1L]] - stratum[[1L]],
-      paste0(by$contrasts, "_", by$em_labels[[j]])
+      stratum[[m + 1L]] - stratum[[1L]],
+      unlist(lapply(suffixes, function(s) paste0(by$contrasts, "_", s)))
     )
   })
 
-  list(
-    mu = mu_block,
-    contrast = c(unlist(stratum), unlist(em, use.names = TRUE))
-  )
+  list(mu = mu_block, contrast = c(unlist(stratum), unlist(em)))
+}
+
+# One out-of-domain reporter per stratum and comparison, in the order the
+# contrast rows visit them, so a stratum whose marginal means leave the domain
+# of a transform names the subgroup, and the contrast within it, that did.
+# Built once for the fit rather than once per evaluation, so each undefined
+# effect reports once however often the solver revisits it.
+#
+# The effect-modification rows are differences of the stratum contrast
+# parameters and have no domain of their own, so they need none.
+ipw_by_reporters <- function(by, contrast_labels) {
+  if (is.null(by)) {
+    return(NULL)
+  }
+
+  labels <- unlist(lapply(by$labels, function(group) {
+    ipw_by_contrast_suffixes(contrast_labels, group)
+  }))
+
+  lapply(labels, ipw_contrast_reporter)
 }
 
 # The stratum blocks of one psi evaluation. The marginal-mean rows are the
@@ -396,8 +463,9 @@ ipw_init_by <- function(spec, pred1, pred0, tilt) {
 # rather than recomputed from the means, so each one is the difference of two
 # parameters the system already carries and its derivative is exact.
 ipw_by_psi_rows <- function(
-  pred1,
-  pred0,
+  preds,
+  reference,
+  comparisons,
   tilt,
   indicators,
   forms,
@@ -405,36 +473,48 @@ ipw_by_psi_rows <- function(
   th_con,
   reporters
 ) {
-  n <- length(pred1)
+  n <- length(preds[[1L]])
+  n_levels <- length(preds)
   n_strata <- ncol(indicators)
+  n_comparisons <- length(comparisons)
   n_forms <- length(forms)
+  # The contrast rows one group contributes: contrast-major and effect-minor,
+  # the order an ungrouped fit already reports its whole-sample block in.
+  block <- n_comparisons * n_forms
 
-  mu_rows <- matrix(0, nrow = 2L * n_strata, ncol = n)
+  mu_rows <- matrix(0, nrow = n_levels * n_strata, ncol = n)
   con_rows <- matrix(0, nrow = length(th_con), ncol = n)
 
   for (s in seq_len(n_strata)) {
     w <- ipw_by_stratum_weight(indicators, s, tilt)
-    mu1 <- th_mu[[2L * s - 1L]]
-    mu0 <- th_mu[[2L * s]]
-    mu_rows[2L * s - 1L, ] <- w * (pred1 - mu1)
-    mu_rows[2L * s, ] <- w * (pred0 - mu0)
+    mu_at <- (s - 1L) * n_levels
 
-    for (f in seq_len(n_forms)) {
-      row <- (s - 1L) * n_forms + f
-      value <- ipw_contrast_value(
-        forms[[f]],
-        mu1,
-        mu0,
-        reporter = reporters[[s]]
-      )
-      con_rows[row, ] <- value - th_con[[row]]
+    for (level in seq_len(n_levels)) {
+      mu_rows[mu_at + level, ] <- w * (preds[[level]] - th_mu[[mu_at + level]])
+    }
+
+    for (j in seq_len(n_comparisons)) {
+      mu_hi <- th_mu[[mu_at + comparisons[[j]]]]
+      mu_lo <- th_mu[[mu_at + reference]]
+      reporter <- reporters[[(s - 1L) * n_comparisons + j]]
+
+      for (f in seq_len(n_forms)) {
+        row <- (s - 1L) * block + (j - 1L) * n_forms + f
+        value <- ipw_contrast_value(
+          forms[[f]],
+          mu_hi,
+          mu_lo,
+          reporter = reporter
+        )
+        con_rows[row, ] <- value - th_con[[row]]
+      }
     }
   }
 
-  for (j in seq_len(n_strata - 1L)) {
-    for (f in seq_len(n_forms)) {
-      row <- (n_strata + j - 1L) * n_forms + f
-      value <- th_con[[j * n_forms + f]] - th_con[[f]]
+  for (m in seq_len(n_strata - 1L)) {
+    for (within in seq_len(block)) {
+      row <- (n_strata + m - 1L) * block + within
+      value <- th_con[[m * block + within]] - th_con[[within]]
       con_rows[row, ] <- value - th_con[[row]]
     }
   }
@@ -442,26 +522,51 @@ ipw_by_psi_rows <- function(
   list(mu = mu_rows, contrast = con_rows)
 }
 
-# The effect measure and the subgroup each reported row carries. Without `.by`
-# the reported rows are the contrast block and no subgroup is named at all,
-# which is the frame every result reported before `.by` existed. With it the
-# block is followed by one set of measures within each stratum and one set for
-# each non-reference stratum against the reference one, and every row names the
-# subgroup it belongs to.
+# The identity columns of the reported rows: the effect measure, the contrast
+# where the exposure names one, and the subgroup where `.by` names one. Without
+# `.by` the reported rows are the whole-sample contrast block and no subgroup is
+# named at all, which is the frame every result reported before `.by` existed.
+# With it that block is followed by one block per stratum and one per
+# non-reference stratum against the reference one, each repeating the
+# whole-sample block's contrast-major, effect-minor order over the measures a
+# subgroup reports.
 ipw_estimate_rows <- function(spec) {
+  contrast_labels <- ipw_estimate_contrast_labels(spec)
   effect <- rep(spec$contrasts, times = ipw_n_contrasts(spec))
+  contrast <- if (is.null(contrast_labels)) {
+    NULL
+  } else {
+    rep(contrast_labels, each = length(spec$contrasts))
+  }
 
   if (is.null(spec$by)) {
-    return(list(effect = effect, group = NULL))
+    return(list(effect = effect, contrast = contrast, group = NULL))
   }
 
   groups <- c(spec$by$labels, spec$by$em_labels)
+  by_effect <- rep(spec$by$contrasts, times = ipw_n_contrasts(spec))
+  by_contrast <- if (is.null(contrast_labels)) {
+    NULL
+  } else {
+    rep(contrast_labels, each = length(spec$by$contrasts))
+  }
 
   list(
-    effect = c(effect, rep(spec$by$contrasts, times = length(groups))),
+    effect = c(effect, rep(by_effect, times = length(groups))),
+    contrast = c(contrast, rep(by_contrast, times = length(groups))),
     group = c(
       rep(ipw_overall_group, length(effect)),
-      rep(groups, each = length(spec$by$contrasts))
+      rep(groups, each = length(by_effect))
     )
   )
+}
+
+# The contrast each reported row compares, or NULL where the exposure reports a
+# single contrast and naming it would repeat one value down the table.
+ipw_estimate_contrast_labels <- function(spec) {
+  if (!identical(spec$exposure_type, "categorical")) {
+    return(NULL)
+  }
+
+  ipw_contrast_labels(spec)
 }

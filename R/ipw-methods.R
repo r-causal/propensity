@@ -50,8 +50,6 @@ ipw.multinom <- function(
     )
   }
 
-  check_ipw_by_exposure(.by, "categorical")
-
   # Guards first, on the weights that fit the outcome model, mirroring ipw.glm:
   # the psw attributes carried by the weights detect a modified propensity score
   # before any estimand parsing that would otherwise fail obliquely.
@@ -63,7 +61,8 @@ ipw.multinom <- function(
     outcome_mod,
     .data = .data,
     estimand = estimand,
-    .focal_level = .focal_level
+    .focal_level = .focal_level,
+    .by = .by
   )
   fit <- ipw_mestimation(spec, conf_level = conf_level)
   components <- ipw_component_models(wt_mod, outcome_mod, fit)
@@ -112,7 +111,7 @@ ipw.lm <- function(
   assert_class(outcome_mod, c("glm", "lm"))
 
   check_ipw_by_method(.by, se_method)
-  check_ipw_by_exposure(.by, "continuous")
+  check_ipw_by_exposure(.by)
 
   ipw_continuous_estimate(
     wt_mod,

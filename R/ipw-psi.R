@@ -393,7 +393,15 @@ ipw_init_binary <- function(spec, call = rlang::caller_env()) {
 
   con_block <- ipw_init_contrasts(spec$contrasts, mu1, mu0)
 
-  by_block <- ipw_init_by(spec, pred1, pred0, h)
+  by_block <- ipw_init_by(
+    spec,
+    preds = list(pred1, pred0),
+    reference = 2L,
+    comparisons = 1L,
+    mu_names = names(mu_block),
+    contrast_labels = NULL,
+    tilt = h
+  )
 
   list(
     ps = ps_block,
@@ -456,25 +464,17 @@ ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
   # Seed each level's marginal mean at the tilt-standardized weighted mean, the
   # exact root of the standardized mu rows. ate keeps the ordinary mean so its
   # seed, and therefore its solve, is unchanged.
-  if (identical(spec$estimand, "ate")) {
-    weight_mu <- function(pred) mean(pred)
+  h <- ipw_categorical_seed_tilt(spec, levs)
+  weight_mu <- if (is.null(h)) {
+    function(pred) mean(pred)
   } else {
-    ps_fit <- ipw_categorical_ps(spec$ps$X, spec$ps$coefs, k)
-    focal_idx <- if (!is.null(spec$focal_level)) {
-      match(spec$focal_level, levs)
-    } else {
-      NULL
-    }
-    h <- ps_tilt_categorical(ps_fit, spec$estimand, focal_idx)
-    weight_mu <- function(pred) stats::weighted.mean(pred, h)
+    function(pred) stats::weighted.mean(pred, h)
   }
-  mu_vals <- vapply(
+  preds <- lapply(
     seq_len(k),
-    function(j) {
-      weight_mu(inv_out(as.vector(spec$outcome$X_counterfactual[[j]] %*% beta)))
-    },
-    numeric(1)
+    function(j) inv_out(as.vector(spec$outcome$X_counterfactual[[j]] %*% beta))
   )
+  mu_vals <- vapply(preds, weight_mu, numeric(1))
   mu_block <- stats::setNames(mu_vals, paste0("mu_", levs))
 
   con_list <- lapply(seq_len(k)[-1], function(j) {
@@ -487,15 +487,44 @@ ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
   })
   con_block <- if (length(con_list)) do.call(c, con_list) else numeric(0)
 
+  by_block <- ipw_init_by(
+    spec,
+    preds = preds,
+    reference = 1L,
+    comparisons = seq_len(k)[-1],
+    mu_names = names(mu_block),
+    contrast_labels = ipw_contrast_labels(spec),
+    tilt = h
+  )
+
   list(
     ps = ps_block,
     stab = stab_block,
     out = beta,
     mu = mu_block,
     contrast = con_block,
-    by_mu = numeric(0),
-    by_contrast = numeric(0)
+    by_mu = by_block$mu,
+    by_contrast = by_block$contrast
   )
+}
+
+# The tilt a categorical estimand standardizes to at the seeded propensity score
+# coefficients, or NULL for ate, whose tilt is the constant one. The
+# whole-sample means and the stratum means seeded from them both standardize
+# over it, the way `ipw_binary_seed_tilt()` serves the binary blocks.
+ipw_categorical_seed_tilt <- function(spec, levs) {
+  if (identical(spec$estimand, "ate")) {
+    return(NULL)
+  }
+
+  ps_fit <- ipw_categorical_ps(spec$ps$X, spec$ps$coefs, spec$ps$k)
+  focal_idx <- if (!is.null(spec$focal_level)) {
+    match(spec$focal_level, levs)
+  } else {
+    NULL
+  }
+
+  ps_tilt_categorical(ps_fit, spec$estimand, focal_idx)
 }
 
 ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
@@ -616,11 +645,7 @@ ipw_psi_binary <- function(
   # leave the domain of a transform while the whole sample's do not. The
   # effect-modification rows are differences of the stratum contrast parameters
   # and have no domain of their own, so they need none.
-  by_reporters <- if (is.null(by)) {
-    NULL
-  } else {
-    lapply(by$labels, ipw_contrast_reporter)
-  }
+  by_reporters <- ipw_by_reporters(by, NULL)
 
   function(theta) {
     th_ps <- theta[idx$ps]
@@ -684,14 +709,15 @@ ipw_psi_binary <- function(
       by_con_rows <- NULL
     } else {
       by_rows <- ipw_by_psi_rows(
-        pred1,
-        pred0,
-        h,
-        by$indicators,
-        by$contrasts,
-        theta[idx$by_mu],
-        theta[idx$by_contrast],
-        by_reporters
+        preds = list(pred1, pred0),
+        reference = 2L,
+        comparisons = 1L,
+        tilt = h,
+        indicators = by$indicators,
+        forms = by$contrasts,
+        th_mu = theta[idx$by_mu],
+        th_con = theta[idx$by_contrast],
+        reporters = by_reporters
       )
       by_mu_rows <- by_rows$mu
       by_con_rows <- by_rows$contrast
@@ -760,7 +786,10 @@ ipw_psi_categorical <- function(
   # One reporter per contrast, built once for the fit rather than once per
   # evaluation, so each undefined effect reports once however often the solver
   # revisits it. The labels are the ones the estimates table reports.
-  reporters <- lapply(ipw_contrast_labels(spec), ipw_contrast_reporter)
+  contrast_labels <- ipw_contrast_labels(spec)
+  reporters <- lapply(contrast_labels, ipw_contrast_reporter)
+  by <- spec$by
+  by_reporters <- ipw_by_reporters(by, contrast_labels)
 
   function(theta) {
     th_ps <- theta[idx$ps]
@@ -812,10 +841,14 @@ ipw_psi_categorical <- function(
     # Row j of the block is h_i (pred_j(x_i) - mu_j) across the n columns, which
     # makes the root mu_j = weighted.mean(pred_j, h). Each row is built at its
     # own length n, so the tilt is never expanded to the full k-by-n matrix.
+    preds <- lapply(
+      seq_len(k),
+      function(j) inv_out(as.vector(x_cf[[j]] %*% th_out))
+    )
     mu_rows <- t(vapply(
       seq_len(k),
       function(j) {
-        resid <- inv_out(as.vector(x_cf[[j]] %*% th_out)) - th_mu[[j]]
+        resid <- preds[[j]] - th_mu[[j]]
         if (tilted) h * resid else resid
       },
       numeric(n)
@@ -843,7 +876,34 @@ ipw_psi_categorical <- function(
       NULL
     }
 
-    ipw_stack(list(ps_rows, stab_rows, out_rows, mu_rows, con_rows))
+    if (is.null(by)) {
+      by_mu_rows <- NULL
+      by_con_rows <- NULL
+    } else {
+      by_rows <- ipw_by_psi_rows(
+        preds = preds,
+        reference = 1L,
+        comparisons = seq_len(k)[-1],
+        tilt = h,
+        indicators = by$indicators,
+        forms = by$contrasts,
+        th_mu = theta[idx$by_mu],
+        th_con = theta[idx$by_contrast],
+        reporters = by_reporters
+      )
+      by_mu_rows <- by_rows$mu
+      by_con_rows <- by_rows$contrast
+    }
+
+    ipw_stack(list(
+      ps_rows,
+      stab_rows,
+      out_rows,
+      mu_rows,
+      con_rows,
+      by_mu_rows,
+      by_con_rows
+    ))
   }
 }
 
