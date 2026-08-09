@@ -119,6 +119,20 @@ fit_by_models <- function(
   list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
 }
 
+# The outcome model every point-estimate comparison is made under. The covariate
+# is what makes those comparisons discriminating, and it is named here rather
+# than repeated so the anchor and the comparisons it anchors cannot drift apart.
+#
+# Under `y ~ z * v` the counterfactual predictions are constant within a stratum,
+# which collapses the candidates the comparisons are meant to tell apart: the
+# tilt-weighted stratum mean, the untilted stratum mean, and the mean over the
+# exposed units of the stratum all agree to rounding error, so an implementation
+# that dropped the tilt or averaged the wrong population would match the oracle
+# anyway. With `x1` in the model the predictions vary within the stratum and the
+# candidates separate by about 2e-3, several orders above the 1e-8 tolerance
+# these comparisons carry.
+by_outcome_rhs <- "z * v + x1"
+
 # ---- point-estimate oracle --------------------------------------------------
 
 # Tilt-weighted g-computation within one stratum. `keep` is the stratum
@@ -186,7 +200,10 @@ test_that("the stratum oracle reproduces the ungrouped estimates over the whole 
   # A stratum that holds every unit is the whole sample, so the oracle has to
   # return what the fit already reports. This is what makes the stratum
   # comparisons below tests of the strata rather than of the hand computation.
-  mods <- fit_by_models(dat)
+  #
+  # The outcome model is the covariate-bearing one the stratum comparisons use,
+  # so the anchoring argument covers the model those comparisons are made under.
+  mods <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
   ref <- by_stratum_effects(mods$outcome_mod, dat, whole)
   expect_equal(
@@ -197,7 +214,7 @@ test_that("the stratum oracle reproduces the ungrouped estimates over the whole 
 
   # The same with a tilt, so that the att stratum comparisons rest on an anchored
   # oracle too.
-  att <- fit_by_models(dat, estimand = "att")
+  att <- fit_by_models(dat, estimand = "att", outcome_rhs = by_outcome_rhs)
   res_att <- ipw(att$ps_mod, att$outcome_mod)
   ref_att <- by_stratum_effects(
     att$outcome_mod,
@@ -324,9 +341,14 @@ test_that(".by = NULL reports the frame an ungrouped fit reports", {
 test_that("a .by ate fit reports the stratum-specific risk differences and log risk ratios", {
   skip_if_not_installed("deli")
   dat <- sim_by()
-  mods <- fit_by_models(dat)
+  mods <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
+  # The covariate in the outcome model is what makes this a test of the
+  # population each mean is taken over: the counterfactual predictions vary
+  # within a stratum, so restricting the average to the stratum's units gives an
+  # answer that averaging over the whole sample, or over the stratum's exposed
+  # units alone, does not.
   for (level in levels(dat$v)) {
     ref <- by_stratum_effects(mods$outcome_mod, dat, dat$v == level)
     group <- paste0("v = ", level)
@@ -348,7 +370,7 @@ test_that("a .by ate fit reports the stratum-specific risk differences and log r
 test_that("a .by ate fit contrasts each stratum against the reference stratum", {
   skip_if_not_installed("deli")
   dat <- sim_by()
-  mods <- fit_by_models(dat)
+  mods <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
   ref0 <- by_stratum_effects(mods$outcome_mod, dat, dat$v == "0")
@@ -370,7 +392,7 @@ test_that("a .by ate fit contrasts each stratum against the reference stratum", 
 test_that("a .by att fit weights each stratum mean by the tilt within the stratum", {
   skip_if_not_installed("deli")
   dat <- sim_by()
-  mods <- fit_by_models(dat, estimand = "att")
+  mods <- fit_by_models(dat, estimand = "att", outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   tilt <- by_fitted_ps(mods$ps_mod)
 
@@ -378,7 +400,9 @@ test_that("a .by att fit weights each stratum mean by the tilt within the stratu
 
   # The att stratum mean is the counterfactual prediction averaged over the units
   # of the stratum with weight e(x), which is the estimand tilt multiplied by the
-  # stratum indicator.
+  # stratum indicator. The covariate in the outcome model is what separates that
+  # from the untilted stratum mean; without it the tilt divides out and this
+  # comparison would hold whether or not the implementation applied one.
   refs <- lapply(levels(dat$v), function(level) {
     by_stratum_effects(mods$outcome_mod, dat, dat$v == level, tilt = tilt)
   })
@@ -419,6 +443,12 @@ test_that("a .by fit on a continuous outcome reports one diff row per stratum", 
     c("overall", "v = 0", "v = 1", "v = 1 vs v = 0")
   )
 
+  # A linear outcome model has m1 - m0 constant within a stratum, so no
+  # comparison made under one can pin the weights the stratum mean averages
+  # with: the tilted mean, the untilted mean, and the mean over any subset of
+  # the stratum all return the same difference. What this test pins is the row
+  # shape and the closed form below; the binary-outcome tests above carry the
+  # pin on the averaging population and the tilt.
   ref0 <- by_stratum_effects(mods$outcome_mod, dat, dat$v == "0")
   ref1 <- by_stratum_effects(mods$outcome_mod, dat, dat$v == "1")
   expect_equal(
@@ -489,6 +519,37 @@ test_that("a .by fit reports a usable standard error for every row", {
   # sandwich covers them and the standard errors the table reports are its
   # diagonal.
   expect_equal(sqrt(diag(vcov(res))), est$std.err, ignore_attr = TRUE)
+})
+
+test_that("a .by fit's covariance couples the groups it reports", {
+  skip_if_not_installed("deli")
+  mods <- fit_by_models(sim_by(), outcome_rhs = by_outcome_rhs)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
+  covariance <- vcov(res)
+
+  # Every reported row is a function of one outcome model and one propensity
+  # score model, fit to one sample and solved as one stacked system, so rows from
+  # different groups covary. A per-stratum refit assembled into a block-diagonal
+  # matrix would report exact zeros in these entries while matching its own
+  # standard errors everywhere, so the off-diagonal is what tells the two apart.
+  #
+  # The floor is absolute and far below any covariance shared parameters
+  # generate here, where the variances themselves are of order 1e-3. What it
+  # excludes is the structural zero, not a small number.
+  couples <- list(
+    c("rd v = 0", "rd v = 1"),
+    c("log(rr) v = 0", "log(rr) v = 1"),
+    c("rd overall", "rd v = 1"),
+    c("rd v = 1", "rd v = 1 vs v = 0")
+  )
+  for (pair in couples) {
+    entry <- covariance[pair[[1]], pair[[2]]]
+    expect_true(is.finite(entry), label = paste(pair, collapse = " with "))
+    expect_gt(abs(entry), 1e-8, label = paste(pair, collapse = " with "))
+  }
+
+  # The block is a covariance, so it agrees with itself across the diagonal.
+  expect_equal(covariance, t(covariance), tolerance = 1e-12)
 })
 
 test_that("a .by fit labels its coefficients, covariance, and printed rows alike", {
