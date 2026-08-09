@@ -687,6 +687,41 @@ test_that(".by refuses a continuous exposure", {
   expect_propensity_error(ipw(ps_mod, msm, .by = v))
 })
 
+test_that(".by refuses a selection that does not name exactly one modifier", {
+  skip_if_not_installed("deli")
+  dat <- sim_by()
+  # Both columns the selection reaches are in the outcome model's frame, so what
+  # is wrong with the request is how many it names rather than a name that is
+  # not there, which tidyselect reports on its own terms. The model carries no
+  # exposure-by-modifier term, so a request that did settle on one column would
+  # draw the interaction warning, and `expect_no_warning()` pins that the count
+  # is refused before the model is inspected for one.
+  mods <- fit_by_models(dat, outcome_rhs = "z + v + x1")
+
+  expect_no_warning(expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = c(v, x1)),
+    class = "propensity_ipw_by_arg_error"
+  ))
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = c(v, x1)),
+    class = "propensity_error"
+  )
+  expect_propensity_error(ipw(mods$ps_mod, mods$outcome_mod, .by = c(v, x1)))
+
+  # A selection reaching no column at all is the same refusal, and it has to be
+  # one: `.by` names a modifier or it names nothing, and naming nothing is what
+  # the `NULL` default already says. A helper that matched no column would
+  # otherwise report the ungrouped fit as though that had been asked for.
+  expect_no_warning(expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = starts_with("nomatch")),
+    class = "propensity_ipw_by_arg_error"
+  ))
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = starts_with("nomatch")),
+    class = "propensity_error"
+  )
+})
+
 test_that(".by refuses a modifier with missing values", {
   skip_if_not_installed("deli")
   dat <- sim_by()

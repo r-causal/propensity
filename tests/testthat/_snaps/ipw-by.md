@@ -19,6 +19,16 @@
       i Omit `.by` to report the overall effect.
       i Fitting each subgroup on its own subset reports the same stratum effects, but no covariance between them, so the difference between two subgroups cannot be tested from those fits.
 
+# .by refuses a selection that does not name exactly one modifier
+
+    Code
+      expr
+    Condition <propensity_ipw_by_arg_error>
+      Error in `ipw()`:
+      ! `.by` must name exactly one modifier.
+      x It names 2 columns.
+      i Effects are reported within the levels of a single variable. Cross two variables into one column, with `interaction()`, and name that column instead.
+
 # .by refuses a modifier with missing values
 
     Code
