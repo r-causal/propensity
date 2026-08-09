@@ -12,6 +12,7 @@
   outcome_mod,
   ...,
   .data = NULL,
+  .by = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
@@ -25,6 +26,7 @@
   outcome_mod,
   ...,
   .data = NULL,
+  .by = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
@@ -37,6 +39,7 @@
   outcome_mod,
   ...,
   .data = NULL,
+  .by = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
@@ -111,6 +114,17 @@ model's own model frame, which holds each such term at the values it was fit
 on. A term that has to derive the exposure's levels from the values it sees,
 such as \code{factor(a)}, is therefore rejected on that route, with \code{.data} named
 as the remedy.}
+
+\item{.by}{A single unquoted variable naming a modifier to report effects
+within, or \code{NULL} (the default) to report the effect for the sample as a
+whole and nothing else. The variable is looked up in \code{.data} when you
+supply one and in the outcome model's own model frame otherwise, and it
+must be a factor or a character vector with no missing values. The result
+then reports the effects it reports without \code{.by}, keyed by the group
+\code{"overall"}, followed by one set within each level of the modifier and one
+set contrasting each level against the first, and the \code{estimates} frame
+gains a \code{group} column naming the subgroup each row belongs to. See
+\strong{Effect modification} for what those rows estimate and what they require.}
 
 \item{estimand}{A character string specifying the causal estimand: one of
 \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or \code{"entropy"}. The available
@@ -329,6 +343,67 @@ label.
 Use \code{\link[causalgenerics:new_ipw]{as.data.frame()}} with
 \code{exponentiate = TRUE} to obtain risk ratios and odds ratios on their natural
 scale.
+}
+
+\section{Effect modification}{
+\code{.by} names a modifier and asks for the effect within each of its levels
+alongside the effect for the sample as a whole. The reported rows come in
+three blocks, in this order:
+\itemize{
+\item the overall rows, unchanged from the fit without \code{.by}, under the group
+label \code{"overall"};
+\item one block per level of the modifier, under a \code{"var = value"} label such as
+\code{"sex = female"};
+\item one block per non-reference level against the reference level, which is the
+modifier's first level, under a \code{"var = value vs var = value"} label.
+}
+
+A stratum's effect is g-computation restricted to that stratum: the outcome
+model predicts each unit's outcome at each exposure level, and the
+predictions are averaged over the units of the stratum, weighted by the
+estimand's tilt. What a stratum row estimates is therefore the effect in that
+stratum's own covariate distribution, and the last block is a difference of
+two such effects. Those two populations differ whenever the covariates are
+distributed differently across the strata, so a difference between strata is
+a difference between two conditional effects and not, on its own, evidence
+that the modifier changes the effect. It is the estimand's population that
+the tilt fixes, and the modifier's stratum that the indicator fixes, and the
+row reports the effect where those two meet: an \code{att} fit reports the effect
+among the exposed units of a stratum, not among all of its units.
+
+The stratum rows and the stratum contrasts report the risk difference and the
+log risk ratio for a binary outcome, and the difference in means for a
+continuous one. They report no odds ratio. An odds ratio is noncollapsible,
+so a difference of two of them moves with the outcome distribution in each
+stratum whether or not the effect does, and reporting it as effect
+modification would invite exactly the reading it does not support. The
+overall rows keep all three measures.
+
+Three requirements apply. The modifier must be a factor or a character vector
+with no missing values: a missing value names no subgroup, and a continuous
+variable names no fixed set of them, so cut it into groups first. Every one
+of its levels must hold both exposure levels, since a stratum in which nobody
+took one of them identifies no contrast there and the outcome model would
+extrapolate one from the other strata; the remedy is a coarser modifier
+rather than a refit. Finally, \code{.by} requires \code{se_method = "mestimation"} and a
+binary exposure: the stratum means and their contrasts are parameters of the
+stacked estimating equations, which is what puts them in the same sandwich as
+everything else, and a categorical or continuous exposure reports no pair of
+standardized means to modify. Each of those errors.
+
+An outcome model with no term reading the exposure and the modifier together
+warns rather than errors. The stratum effects are g-computation on the model
+as specified, so such a model forces the same effect on every stratum up to
+the covariate distribution each one has, and the modification it reports is a
+property of the model rather than of the data. The fit still returns.
+
+Every reported row is a parameter of one stacked system solved on one sample,
+so the covariance couples them: \code{\link[stats:vcov]{stats::vcov()}} reports nonzero entries
+between the overall rows, the stratum rows, and the stratum contrasts, and
+the standard error of a stratum contrast accounts for the two strata having
+been estimated together. Fitting each stratum on its own subset would report
+the same stratum effects with no covariance between them, leaving the
+difference between two strata untestable.
 }
 
 \section{Variance estimation}{
@@ -592,6 +667,20 @@ y_cont <- 2 + 0.8 * z + 0.3 * x1 + rnorm(n)
 dat$y_cont <- y_cont
 outcome_cont <- lm(y_cont ~ z, data = dat, weights = wts)
 ipw(ps_mod, outcome_cont)
+
+# Effect modification: the effect within each level of a factor, and the
+# difference between them. The outcome model carries the exposure-by-modifier
+# term that lets the effect differ across the strata.
+dat$grp <- factor(rep(c("a", "b"), length.out = n))
+ps_grp <- glm(z ~ x1 + grp, data = dat, family = binomial())
+wts_grp <- wt_ate(ps_grp)
+outcome_grp <- glm(
+  y ~ z * grp + x1,
+  data = dat,
+  family = quasibinomial(),
+  weights = wts_grp
+)
+ipw(ps_grp, outcome_grp, .by = grp)
 
 # Continuous exposure: an lm propensity model of the dose on covariates,
 # stabilized weights, and a weighted marginal structural outcome model

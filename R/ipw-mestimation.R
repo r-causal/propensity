@@ -205,6 +205,7 @@ ipw_spec_binary <- function(
   .data = NULL,
   estimand = NULL,
   ps_link = NULL,
+  .by = NULL,
   call = rlang::caller_env()
 ) {
   assert_class(ps_mod, "glm")
@@ -349,6 +350,21 @@ ipw_spec_binary <- function(
     contrasts <- c("rd", "log(rr)", "log(or)")
   }
 
+  # The strata a `.by` request names, resolved from `.data` when the caller
+  # supplied one and from the outcome model's own frame otherwise, which is what
+  # `mm_data` already holds. It comes after the contrasts because the measures
+  # reported within a stratum are taken from the ones reported for the whole
+  # sample.
+  by <- ipw_resolve_by(
+    .by,
+    data = mm_data,
+    exposure = z,
+    exposure_name = exposure_name,
+    outcome_mod = outcome_mod,
+    contrasts = contrasts,
+    call = call
+  )
+
   list(
     exposure_type = "binary",
     estimand = estimand,
@@ -374,6 +390,7 @@ ipw_spec_binary <- function(
       weights = as.double(wts)
     ),
     contrasts = contrasts,
+    by = by,
     focal_level = NULL,
     reference_level = NULL
   )
@@ -2057,7 +2074,10 @@ ipw_degenerate_se <- function(estimate, std.err) {
 
 # The rows of an estimates table whose standard errors carry that signature,
 # labeled as the table labels them: a categorical exposure names the effect and
-# the contrast together, and the other exposure types name the effect alone.
+# the contrast together, and the other exposure types name the effect alone. A
+# grouped table repeats each measure across its subgroups, so the subgroup
+# completes the label wherever the row is one of those; the whole-sample rows
+# keep the label they carry in a table with no groups at all.
 ipw_degenerate_se_rows <- function(estimates) {
   degenerate <- ipw_degenerate_se(estimates$estimate, estimates$std.err)
 
@@ -2065,6 +2085,15 @@ ipw_degenerate_se_rows <- function(estimates) {
     estimates$effect
   } else {
     paste(estimates$effect, "for", estimates$contrast)
+  }
+
+  if (!is.null(estimates$group)) {
+    grouped <- estimates$group != ipw_overall_group
+    labels[grouped] <- paste(
+      labels[grouped],
+      "in",
+      estimates$group[grouped]
+    )
   }
 
   labels[degenerate]
@@ -2296,12 +2325,16 @@ ipw_mestimation_estimates <- function(
   # coefficient, addressed by its outcome-block theta position; binary and
   # categorical exposures report the contrast rows. Positions are used, not
   # names, since theta names are not unique across blocks.
+  group <- NULL
+
   if (identical(spec$exposure_type, "continuous")) {
     idx <- layout$idx$out[spec$outcome$exposure_col]
     effect <- ipw_continuous_effect_label(spec$outcome$link, call = call)
   } else {
-    idx <- layout$idx$contrast
-    effect <- rep(spec$contrasts, times = ipw_n_contrasts(spec))
+    idx <- c(layout$idx$contrast, layout$idx$by_contrast)
+    rows <- ipw_estimate_rows(spec)
+    effect <- rows$effect
+    group <- rows$group
   }
 
   estimate <- unname(co[idx])
@@ -2340,6 +2373,20 @@ ipw_mestimation_estimates <- function(
     )
   }
 
+  # A `.by` request reports each measure for the whole sample, then within each
+  # stratum, then for each non-reference stratum against the reference one, so
+  # the table gains a group column naming the subgroup each row belongs to. It
+  # goes where the contrast column goes, immediately after effect, and a fit
+  # with no `.by` keeps the frame it always reported rather than one repeating a
+  # single group down the table.
+  if (!is.null(group)) {
+    out <- cbind(
+      out["effect"],
+      group = group,
+      out[setdiff(names(out), "effect")]
+    )
+  }
+
   # The covariance of the reported effects, taken from the same rows and columns
   # of the sandwich the standard errors came from. The effect measures are
   # transformations of one another's marginal means, so they covary, and that
@@ -2352,9 +2399,11 @@ ipw_mestimation_estimates <- function(
   out
 }
 
-# The labels every surface of a result keys its effects by: the effect measure
-# on its own, or the effect measure and the contrast together where a
-# categorical exposure reports one row per contrast.
+# The labels every surface of a result keys its effects by: the effect measure,
+# then the contrast where a categorical exposure reports one row per contrast,
+# then the subgroup where a `.by` request reports one row per subgroup. Each
+# column a frame carries narrows the label, and a frame carrying neither is
+# keyed by the measure alone.
 #
 # causalgenerics holds a function of the same name and the same rule, and the
 # duplication is deliberate: that copy labels what the accessors present, and
@@ -2364,11 +2413,15 @@ ipw_mestimation_estimates <- function(
 # reads frames built by any version of this package; this one reads only frames
 # this package has just built, so it reads the one name they carry.
 ipw_effect_labels <- function(estimates) {
-  if (is.null(estimates[["contrast"]])) {
-    estimates$effect
-  } else {
-    paste(estimates$effect, estimates$contrast)
+  parts <- list(estimates$effect)
+
+  for (column in c("contrast", "group")) {
+    if (!is.null(estimates[[column]])) {
+      parts <- c(parts, list(estimates[[column]]))
+    }
   }
+
+  do.call(paste, parts)
 }
 
 # A square block of the joint sandwich, relabeled on both margins. Blocks are

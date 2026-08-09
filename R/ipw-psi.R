@@ -3,10 +3,18 @@
 # partition and its root-valued seed), and build_ipw_psi() (the stacked
 # estimating-function builder). Everything here is unexported and follows the
 # M-estimation design contract: the psi matrix stacks blocks in the fixed order
-# [ps score | stabilization | outcome score | marginal means | contrasts], and
-# the weights that enter the outcome-score block are recomputed from the
-# ps-parameter block of theta on every evaluation so the sandwich variance
-# accounts for propensity score estimation.
+# [ps score | stabilization | outcome score | marginal means | contrasts |
+# stratum means | stratum contrasts], and the weights that enter the
+# outcome-score block are recomputed from the ps-parameter block of theta on
+# every evaluation so the sandwich variance accounts for propensity score
+# estimation.
+#
+# The last two blocks are the ones a `.by` request adds, and they come last for
+# a reason the result depends on: no earlier equation reads a parameter of
+# theirs, so the bread is block lower triangular across that partition and the
+# leading block of the sandwich is the one a fit without `.by` solves. That is
+# what lets a grouped fit report the same whole-sample rows, and the same
+# conditional reading, as the fit it grew out of.
 
 # Inverse link functions. Covers the propensity score links (logit, probit,
 # cloglog) and the outcome links (logit, identity, log) used when reconstructing
@@ -198,7 +206,15 @@ ipw_theta_layout <- function(spec, call = rlang::caller_env()) {
     continuous = ipw_init_continuous(spec, call = call)
   )
 
-  block_order <- c("ps", "stab", "out", "mu", "contrast")
+  block_order <- c(
+    "ps",
+    "stab",
+    "out",
+    "mu",
+    "contrast",
+    "by_mu",
+    "by_contrast"
+  )
   idx <- vector("list", length(block_order))
   names(idx) <- block_order
   pos <- 0L
@@ -365,14 +381,11 @@ ipw_init_binary <- function(spec, call = rlang::caller_env()) {
   # Seed the marginal means at the tilt-standardized weighted mean so the init
   # is the exact root of the standardized mu rows. ate keeps the ordinary mean
   # so its seed, and therefore its solve, is unchanged.
-  if (identical(spec$estimand, "ate")) {
+  h <- ipw_binary_seed_tilt(spec, call = call)
+  if (is.null(h)) {
     mu1 <- mean(pred1)
     mu0 <- mean(pred0)
   } else {
-    e_fit <- ipw_inv_link(spec$ps$link, call = call)(as.vector(
-      spec$ps$X %*% spec$ps$coefs
-    ))
-    h <- ps_tilt_binary(e_fit, spec$estimand)
     mu1 <- stats::weighted.mean(pred1, h)
     mu0 <- stats::weighted.mean(pred0, h)
   }
@@ -380,13 +393,35 @@ ipw_init_binary <- function(spec, call = rlang::caller_env()) {
 
   con_block <- ipw_init_contrasts(spec$contrasts, mu1, mu0)
 
+  by_block <- ipw_init_by(spec, pred1, pred0, h)
+
   list(
     ps = ps_block,
     stab = stab_block,
     out = beta,
     mu = mu_block,
-    contrast = con_block
+    contrast = con_block,
+    by_mu = by_block$mu,
+    by_contrast = by_block$contrast
   )
+}
+
+# The tilt a binary estimand standardizes to at the seeded propensity score
+# coefficients, or NULL for ate, whose tilt is the constant one. The
+# whole-sample means and the stratum means seeded from them both standardize
+# over it, so it is evaluated once and handed to both rather than rebuilt at
+# each: a stratum seeded against a different tilt would not sit at the root of
+# the row it seeds.
+ipw_binary_seed_tilt <- function(spec, call = rlang::caller_env()) {
+  if (identical(spec$estimand, "ate")) {
+    return(NULL)
+  }
+
+  e_fit <- ipw_inv_link(spec$ps$link, call = call)(as.vector(
+    spec$ps$X %*% spec$ps$coefs
+  ))
+
+  ps_tilt_binary(e_fit, spec$estimand)
 }
 
 # Generate readable names for the multinomial ps coefficient block. The block is
@@ -457,7 +492,9 @@ ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
     stab = stab_block,
     out = beta,
     mu = mu_block,
-    contrast = con_block
+    contrast = con_block,
+    by_mu = numeric(0),
+    by_contrast = numeric(0)
   )
 }
 
@@ -480,7 +517,9 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
     stab = stab_block,
     out = spec$outcome$coefs,
     mu = numeric(0),
-    contrast = numeric(0)
+    contrast = numeric(0),
+    by_mu = numeric(0),
+    by_contrast = numeric(0)
   )
 }
 
@@ -572,6 +611,16 @@ ipw_psi_binary <- function(
   # Built once for the fit, not once per evaluation, so the report survives the
   # solver's repeated visits to the same undefined means.
   reporter <- ipw_contrast_reporter()
+  by <- spec$by
+  # One reporter per stratum, on the same terms: a stratum's marginal means can
+  # leave the domain of a transform while the whole sample's do not. The
+  # effect-modification rows are differences of the stratum contrast parameters
+  # and have no domain of their own, so they need none.
+  by_reporters <- if (is.null(by)) {
+    NULL
+  } else {
+    lapply(by$labels, ipw_contrast_reporter)
+  }
 
   function(theta) {
     th_ps <- theta[idx$ps]
@@ -611,8 +660,10 @@ ipw_psi_binary <- function(
     # sandwich variance accounts for propensity score estimation. The root of
     # sum_i h(e_i)(pred_a(x_i) - mu_a) = 0 is mu_a = weighted.mean(pred_a, h),
     # and h = 1 for ate leaves the unweighted marginal means.
-    resid1 <- inv_out(as.vector(x1 %*% th_out)) - mu1
-    resid0 <- inv_out(as.vector(x0 %*% th_out)) - mu0
+    pred1 <- inv_out(as.vector(x1 %*% th_out))
+    pred0 <- inv_out(as.vector(x0 %*% th_out))
+    resid1 <- pred1 - mu1
+    resid0 <- pred0 - mu0
     mu_rows <- if (tilted) {
       rbind(h * resid1, h * resid0)
     } else {
@@ -628,7 +679,33 @@ ipw_psi_binary <- function(
       reporter = reporter
     )
 
-    ipw_stack(list(ps_rows, stab_rows, out_rows, mu_rows, con_rows))
+    if (is.null(by)) {
+      by_mu_rows <- NULL
+      by_con_rows <- NULL
+    } else {
+      by_rows <- ipw_by_psi_rows(
+        pred1,
+        pred0,
+        h,
+        by$indicators,
+        by$contrasts,
+        theta[idx$by_mu],
+        theta[idx$by_contrast],
+        by_reporters
+      )
+      by_mu_rows <- by_rows$mu
+      by_con_rows <- by_rows$contrast
+    }
+
+    ipw_stack(list(
+      ps_rows,
+      stab_rows,
+      out_rows,
+      mu_rows,
+      con_rows,
+      by_mu_rows,
+      by_con_rows
+    ))
   }
 }
 

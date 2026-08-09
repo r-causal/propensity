@@ -19,6 +19,7 @@ ipw.multinom <- function(
   outcome_mod,
   ...,
   .data = NULL,
+  .by = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
@@ -27,6 +28,7 @@ ipw.multinom <- function(
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
+  .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
@@ -47,6 +49,8 @@ ipw.multinom <- function(
       error_class = "propensity_method_error"
     )
   }
+
+  check_ipw_by_exposure(.by, "categorical")
 
   # Guards first, on the weights that fit the outcome model, mirroring ipw.glm:
   # the psw attributes carried by the weights detect a modified propensity score
@@ -94,6 +98,7 @@ ipw.lm <- function(
   outcome_mod,
   ...,
   .data = NULL,
+  .by = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
@@ -101,9 +106,13 @@ ipw.lm <- function(
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
+  .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
+
+  check_ipw_by_method(.by, se_method)
+  check_ipw_by_exposure(.by, "continuous")
 
   ipw_continuous_estimate(
     wt_mod,

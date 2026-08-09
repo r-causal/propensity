@@ -755,8 +755,8 @@ test_that(".by warns when the outcome model has no exposure-by-modifier term", {
   # stratum, which is almost never what a request for stratum-specific effects
   # means. It is a warning rather than an error: the model as specified is what
   # the g-computation reports, and the fit still returns.
-  res <- expect_warning(
-    ipw(mods$ps_mod, mods$outcome_mod, .by = v),
+  expect_warning(
+    res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v),
     class = "propensity_ipw_by_interaction_warning"
   )
   expect_s3_class(res, "ipw")
