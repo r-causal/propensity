@@ -46,6 +46,22 @@ sim_joint <- function(seed = 4210, n = 700) {
 # fastest, and the reference cell crosses the two reference levels.
 joint_cells <- c("a = 0, e = 0", "a = 1, e = 0", "a = 0, e = 1", "a = 1, e = 1")
 
+# The tolerance every point-estimate comparison in this file carries, the anchor
+# included, following the constant the categorical `.by` file sets for the same
+# reason: the multinomial stack solves to a floor of its own, and a comparison
+# written tighter than that floor fails on arithmetic rather than on contract.
+#
+# Measured on this fixture, the reported vs-reference estimates agree with the
+# oracle to 7.8e-9 relative. Every joint row combines two or four of those
+# mean-level gaps, so the interaction rows are expected around 6e-8 relative in
+# the green state, which is already past 1e-8.
+#
+# It stays four orders below what the comparisons have to tell apart. The
+# closest wrong candidate, the Hajek weighted mean of the observed outcomes in a
+# cell, differs from the correct standardized mean by 5.8e-3 on means of order
+# 0.4 to 0.8, which is about 1e-2 relative.
+joint_tolerance <- 1e-6
+
 # ---- model fitting ----------------------------------------------------------
 
 # Build the multinomial propensity score model over the cells, categorical
@@ -62,7 +78,7 @@ joint_cells <- c("a = 0, e = 0", "a = 1, e = 0", "a = 0, e = 1", "a = 1, e = 1")
 # observed in that cell, and the Hajek weighted mean of the observed outcomes
 # there agree to 4e-15, and an implementation averaging the wrong population
 # would match the oracle anyway. With `x1` in the model those candidates
-# separate by 5.8e-3 and 4.7e-2, orders above the 1e-8 tolerance the comparisons
+# separate by 5.8e-3 and 4.7e-2, orders above the tolerance the comparisons
 # carry.
 fit_joint_models <- function(
   dat,
@@ -266,14 +282,22 @@ test_that("the cell-mean oracle reproduces the vs-reference estimates a categori
   skip_if_not_installed("nnet")
   skip_if_not_installed("deli")
   dat <- joint_data()
-  mods <- fit_joint_models(dat)
+  # The plain factor, not the declared exposure. Each cell against the reference
+  # cell is what the categorical path reports for a four-level exposure, and it
+  # is built from the same four means the joint surface is built from, so it
+  # anchors the oracle. Anchoring against the declared exposure would anchor
+  # against whatever the joint surface reports, which is the thing under test:
+  # it holds only while the declaration falls through to the categorical path,
+  # and every match below would go missing the moment it stops doing so.
+  mods <- fit_joint_models(dat, exposure_name = "plain")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-  # Each cell against the reference cell is what the categorical path reports
-  # today, and it is built from the same four means the joint surface is built
-  # from. Anchoring the oracle against it is what makes the comparisons below
-  # tests of the joint reporting rather than of the hand computation.
-  mu <- joint_cell_means(mods$outcome_mod, dat, mods$lev)
+  mu <- joint_cell_means(
+    mods$outcome_mod,
+    dat,
+    mods$lev,
+    exposure_name = "plain"
+  )
   expect_identical(names(mu), joint_cells)
 
   forms <- c("rd", "log(rr)", "log(or)")
@@ -298,7 +322,7 @@ test_that("the cell-mean oracle reproduces the vs-reference estimates a categori
   expect_equal(
     res$estimates$estimate[match(key_ref, key_got)],
     reference$estimate,
-    tolerance = 1e-8
+    tolerance = joint_tolerance
   )
 })
 
@@ -356,7 +380,7 @@ test_that("a joint exposure reports the four counterfactual cell risks", {
   expect_identical(means$group, rep("overall", 4))
 
   mu <- joint_cell_means(mods$outcome_mod, dat, mods$lev)
-  expect_equal(means$estimate, unname(mu), tolerance = 1e-8)
+  expect_equal(means$estimate, unname(mu), tolerance = joint_tolerance)
 
   # A counterfactual risk is a risk, so it lies where one lies, and it comes
   # out of the same stacked system as everything else.
@@ -438,7 +462,7 @@ test_that("a joint exposure reports each component's effect within the other's l
     expect_equal(
       got,
       row$estimate,
-      tolerance = 1e-8,
+      tolerance = joint_tolerance,
       label = paste(row$effect, row$contrast, row$group)
     )
   }
@@ -451,7 +475,7 @@ test_that("a joint exposure reports each component's effect within the other's l
       est$effect == "rd" & est$contrast == "a: 1 vs 0" & est$group == "e = 1"
     ],
     unname(mu[[4]] - mu[[3]]),
-    tolerance = 1e-8
+    tolerance = joint_tolerance
   )
 })
 
@@ -474,7 +498,7 @@ test_that("a joint exposure reports the additive and multiplicative interaction"
   expect_equal(
     additive,
     unname(mu[[4]] - mu[[2]] - mu[[3]] + mu[[1]]),
-    tolerance = 1e-8
+    tolerance = joint_tolerance
   )
 
   # The multiplicative interaction is the same combination of the logs, which is
@@ -485,17 +509,29 @@ test_that("a joint exposure reports the additive and multiplicative interaction"
   expect_equal(
     multiplicative,
     unname(log(mu[[4]]) - log(mu[[2]]) - log(mu[[3]]) + log(mu[[1]])),
-    tolerance = 1e-8
+    tolerance = joint_tolerance
   )
 
-  # Interaction is symmetric in the two treatments: the same number is the
-  # difference between the second treatment's two simple effects. It is reported
-  # once, under the first treatment's framing, rather than twice.
+  # Interaction is symmetric in the two treatments: the difference between the
+  # first treatment's two simple effects is the difference between the second
+  # treatment's two. That identity is arithmetic on the same four means, so it
+  # is pinned between the two framings of the oracle and to the last bits;
+  # asserting it against a reported row instead would pin the solver's residual
+  # at a tolerance no solve has to meet.
+  a_framing <- (mu[[4]] - mu[[3]]) - (mu[[2]] - mu[[1]])
+  e_framing <- (mu[[4]] - mu[[2]]) - (mu[[3]] - mu[[1]])
+  expect_equal(unname(a_framing), unname(e_framing), tolerance = 1e-12)
   expect_equal(
-    additive,
-    unname((mu[[4]] - mu[[2]]) - (mu[[3]] - mu[[1]])),
+    unname(
+      (log(mu[[4]]) - log(mu[[3]])) - (log(mu[[2]]) - log(mu[[1]]))
+    ),
+    unname(
+      (log(mu[[4]]) - log(mu[[2]])) - (log(mu[[3]]) - log(mu[[1]]))
+    ),
     tolerance = 1e-12
   )
+
+  # Reported once, under the first treatment's framing, rather than twice.
   expect_identical(sum(est$group == group), 2L)
 
   interaction_rows <- est[est$group == group, , drop = FALSE]
@@ -583,7 +619,7 @@ test_that("a joint exposure on a continuous outcome reports means and difference
   expect_identical(est$effect, expected$effect)
   expect_identical(est$contrast, expected$contrast)
   expect_identical(est$group, expected$group)
-  expect_equal(est$estimate, expected$estimate, tolerance = 1e-8)
+  expect_equal(est$estimate, expected$estimate, tolerance = joint_tolerance)
 })
 
 test_that("the declaration is what turns on the joint reporting", {
