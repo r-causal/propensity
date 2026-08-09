@@ -715,13 +715,20 @@ modification_meta_aligns <- function(n, to) {
   n == 0 || n == length(to)
 }
 
+# The record `wt_joint()` leaves on a product weight. Like the categorical
+# attributes, it names the two components rather than the units, so it carries
+# no length of its own and holds at any length.
+psw_joint_attr <- "joint_wt_meta"
+
 # Everything a psw carries beyond the six fields describing the weights as a
 # whole. The score and the modification records are indexed by observation; the
-# categorical attributes name exposure levels and so hold at any length.
+# categorical attributes name exposure levels and the joint record names the two
+# components, so both of those hold at any length.
 psw_carried_attrs <- c(
   "stabilization_score",
   psw_modification_meta,
-  psw_categorical_attrs
+  psw_categorical_attrs,
+  psw_joint_attr
 )
 
 # The attributes a disagreement has already dropped from a prototype under
