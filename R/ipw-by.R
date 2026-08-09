@@ -531,6 +531,10 @@ ipw_by_psi_rows <- function(
 # whole-sample block's contrast-major, effect-minor order over the measures a
 # subgroup reports.
 ipw_estimate_rows <- function(spec) {
+  if (!is.null(spec$joint)) {
+    return(ipw_joint_estimate_rows(spec$joint))
+  }
+
   contrast_labels <- ipw_estimate_contrast_labels(spec)
   effect <- rep(spec$contrasts, times = ipw_n_contrasts(spec))
   contrast <- if (is.null(contrast_labels)) {

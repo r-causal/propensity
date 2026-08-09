@@ -423,6 +423,59 @@ the same stratum effects with no covariance between them, leaving the
 difference between two strata untestable.
 }
 
+\section{Joint exposures}{
+\code{\link[causalgenerics:joint_exposure]{causalgenerics::joint_exposure()}} crosses two discrete treatments into one
+categorical exposure and records the crossing on the vector. The result is a
+factor, so \code{ipw()} fits it exactly as it fits any exposure over the same
+cells. What the declaration changes is what gets reported: instead of each
+cell against the reference cell, the result is written in the two treatments.
+\itemize{
+\item One row per cell, under the effect label \code{"mean"}, carrying the
+counterfactual risk (or mean) had everyone been set to that cell. The cell
+is named in the \code{contrast} column and the group is \code{"overall"}.
+\item The simple effects: each treatment's effect within a fixed level of the
+other, with the \code{contrast} naming the treatment and the level it is set to
+(\code{"a: 1 vs 0"}) and the \code{group} naming the level the other treatment is
+held at (\code{"e = 1"}). These include the comparisons that are not against the
+reference cell, which the vs-reference reporting cannot express at all.
+\item The interaction: the difference between two of the first treatment's simple
+effects, keyed by the two levels of the second being compared
+(\code{"e = 1 vs e = 0"}). On the risk difference scale this is the additive
+interaction, and on the log risk ratio scale the multiplicative one, which
+is the log of the ratio of the two risk ratios.
+}
+
+A 2-by-2 crossing therefore reports fourteen rows for a binary outcome and
+nine for a continuous one. The interaction is reported once, under the first
+treatment's framing, rather than twice: interaction is symmetric in the two
+treatments, so the difference between the first treatment's two simple
+effects is the difference between the second treatment's two, and reporting
+both would be one quantity under two labels.
+
+No odds ratio is reported anywhere on this surface. It is noncollapsible, so
+neither a simple effect reported beside one nor a difference of two of them
+says what it appears to.
+
+Every row is a parameter of the same stacked system, so the covariance
+couples them: the interaction covaries with each simple effect it is built
+from, and with each cell mean underneath those. The cell means are the
+marginal-mean block the categorical path already estimates, and the simple
+effects and interaction rows are contrasts over that block, so an interaction
+equals the corresponding double difference of the cell means exactly rather
+than to within a solver residual.
+
+Two restrictions apply. A declared crossing is reported for the \code{"ate"}
+estimand alone: every cell mean on this surface standardizes to one
+population, and a focal estimand standardizes each of them to a population
+the simple effects and the interaction are not defined over, so weights built
+for anything else error. And \code{.by} cannot be combined with a declared
+crossing: effect modification of a joint intervention is a three-way
+question, the interaction between two treatments within the levels of a
+third variable, which this surface neither answers nor sensibly projects.
+Either restriction is escaped the same way, by dropping the declaration with
+\code{factor(x)} and reporting each cell against the reference cell.
+}
+
 \section{Variance estimation}{
 By default (\code{se_method = "mestimation"}), standard errors are computed by
 M-estimation. The propensity score model, the weighted outcome model, the

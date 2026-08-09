@@ -1397,6 +1397,13 @@ ipw_spec_categorical <- function(
     )
   }
 
+  # Read the declaration before the exposure is resolved to a plain factor of
+  # the fitted levels, which is what the rest of the path works on and what the
+  # resolution returns. A joint exposure is a factor subclass, so everything
+  # downstream fits it exactly as it fits any exposure over the same cells; what
+  # the declaration changes is which rows are reported.
+  declared <- exposure
+
   exposure <- ipw_categorical_exposure_factor(
     exposure,
     ps_mod$lev,
@@ -1422,6 +1429,12 @@ ipw_spec_categorical <- function(
   # attribute with an explicit `estimand` argument via check_estimand(), which
   # asks for `estimand` when the weights carry no attribute and none is supplied.
   estimand <- check_estimand(wts, estimand, call = call)
+
+  # Before the focal level is resolved, so a declared crossing is refused on the
+  # estimand it was weighted for rather than on a focal level it would never
+  # use, and before the fit that would otherwise report the vs-reference rows
+  # for it without a word.
+  check_ipw_joint_estimand(declared, estimand, call = call)
 
   # Focal level resolution: an explicit argument overrides the focal_category
   # attribute the weights carry. The att and atu estimands require a focal
@@ -1490,6 +1503,18 @@ ipw_spec_categorical <- function(
     contrasts <- c("rd", "log(rr)", "log(or)")
   }
 
+  # A declared crossing replaces the vs-reference rows with the joint surface,
+  # written in the two treatments rather than in the cells. It comes after the
+  # contrasts because the measures its rows report are the whole-sample ones
+  # without the odds ratio, which is noncollapsible and says nothing usable
+  # about either a simple effect or an interaction.
+  joint <- ipw_joint_plan(declared, setdiff(contrasts, "log(or)"))
+
+  # Before `.by` is resolved, so the combination is refused rather than
+  # diagnosed: a modifier the request will not be answered under is not worth
+  # reporting the outcome model's missing interaction term about.
+  check_ipw_joint_by(declared, .by, call = call)
+
   # The strata a `.by` request names, on the same terms the binary path resolves
   # them: from `.data` when the caller supplied one and from the outcome model's
   # own frame otherwise, and after the contrasts because the measures reported
@@ -1533,6 +1558,7 @@ ipw_spec_categorical <- function(
     ),
     contrasts = contrasts,
     by = by,
+    joint = joint,
     focal_level = focal_level,
     reference_level = levs[[1]]
   )
@@ -2352,7 +2378,14 @@ ipw_mestimation_estimates <- function(
     idx <- layout$idx$out[spec$outcome$exposure_col]
     effect <- ipw_continuous_effect_label(spec$outcome$link, call = call)
   } else {
-    idx <- c(layout$idx$contrast, layout$idx$by_contrast)
+    # A joint exposure reports the cell means alongside the contrasts over them,
+    # and the means are already the mu block, so its reported rows read two
+    # blocks of theta rather than one.
+    idx <- if (is.null(spec$joint)) {
+      c(layout$idx$contrast, layout$idx$by_contrast)
+    } else {
+      c(layout$idx$mu, layout$idx$contrast)
+    }
     rows <- ipw_estimate_rows(spec)
     effect <- rows$effect
     contrast <- rows$contrast

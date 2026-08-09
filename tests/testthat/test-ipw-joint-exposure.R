@@ -758,6 +758,7 @@ test_that("a joint exposure refuses a focal estimand", {
     ipw(mods$ps_mod, mods$outcome_mod),
     regexp = "ate"
   )
+  expect_propensity_error(ipw(mods$ps_mod, mods$outcome_mod))
 
   # The estimand the surface is defined for still works, which is what makes the
   # refusal a restriction rather than a wall.
@@ -781,6 +782,7 @@ test_that("a joint exposure refuses .by", {
     ipw(mods$ps_mod, mods$outcome_mod, .by = grp),
     class = "propensity_ipw_joint_by_error"
   ))
+  expect_propensity_error(ipw(mods$ps_mod, mods$outcome_mod, .by = grp))
 
   # Each on its own is supported, which is what the refusal is narrowing.
   plain_mods <- fit_joint_models(

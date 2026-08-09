@@ -477,15 +477,21 @@ ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
   mu_vals <- vapply(preds, weight_mu, numeric(1))
   mu_block <- stats::setNames(mu_vals, paste0("mu_", levs))
 
-  con_list <- lapply(seq_len(k)[-1], function(j) {
-    ipw_init_contrasts(
-      spec$contrasts,
-      mu_vals[[j]],
-      mu_vals[[1]],
-      suffix = levs[[j]]
-    )
-  })
-  con_block <- if (length(con_list)) do.call(c, con_list) else numeric(0)
+  # A declared crossing replaces the vs-reference contrasts with the joint
+  # surface's own, built over the same cell means.
+  con_block <- if (!is.null(spec$joint)) {
+    ipw_init_joint(spec$joint, mu_vals)
+  } else {
+    con_list <- lapply(seq_len(k)[-1], function(j) {
+      ipw_init_contrasts(
+        spec$contrasts,
+        mu_vals[[j]],
+        mu_vals[[1]],
+        suffix = levs[[j]]
+      )
+    })
+    if (length(con_list)) do.call(c, con_list) else numeric(0)
+  }
 
   by_block <- ipw_init_by(
     spec,
@@ -790,6 +796,8 @@ ipw_psi_categorical <- function(
   reporters <- lapply(contrast_labels, ipw_contrast_reporter)
   by <- spec$by
   by_reporters <- ipw_by_reporters(by, contrast_labels)
+  joint <- spec$joint
+  joint_reporters <- ipw_joint_reporters(joint)
 
   function(theta) {
     th_ps <- theta[idx$ps]
@@ -854,7 +862,15 @@ ipw_psi_categorical <- function(
       numeric(n)
     ))
 
-    con_rows <- if (!is.null(contrasts) && length(contrasts)) {
+    con_rows <- if (!is.null(joint)) {
+      ipw_joint_psi_rows(
+        joint,
+        th_mu,
+        theta[idx$contrast],
+        n,
+        joint_reporters
+      )
+    } else if (!is.null(contrasts) && length(contrasts)) {
       mu_ref <- th_mu[[1]]
       con_index <- 0L
       row_list <- list()
