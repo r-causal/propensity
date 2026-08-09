@@ -116,7 +116,7 @@ test_that("the component weights and treatment models are what the guardrails re
   # are written against, and none of it depends on the two constructors, so it
   # is checked here where a fixture fault shows up as a fixture fault.
   expect_true(all(vapply(fx$w, is_psw, logical(1))))
-  expect_true(all(vapply(fx$w, length, integer(1)) == nrow(fx$dat)))
+  expect_true(all(lengths(fx$w) == nrow(fx$dat)))
   expect_identical(
     vapply(fx$w, estimand, character(1))[c("a", "e", "d", "d2")],
     c(a = "ate", e = "ate", d = "ate", d2 = "ate")
@@ -404,6 +404,18 @@ test_that("joint_wt_models() records the two treatment models in order", {
   expect_identical(models$models$e, fx$mods$e)
 })
 
+test_that("is_joint_wt_models() is FALSE for anything else", {
+  fx <- joint_wt_fixture()
+
+  # The predicate answers for whatever it is handed, so a caller can branch on
+  # it without checking the class first.
+  expect_false(is_joint_wt_models(fx$mods$a))
+  expect_false(is_joint_wt_models(list(a = fx$mods$a, e = fx$mods$e)))
+  expect_false(is_joint_wt_models(fx$w$a))
+  expect_false(is_joint_wt_models(NULL))
+  expect_false(is_joint_wt_models("a"))
+})
+
 test_that("joint_wt_models() records each model's exposure type", {
   skip_if_not_installed("nnet")
   fx <- joint_wt_fixture()
@@ -462,6 +474,28 @@ test_that("joint_wt_models() requires a discrete second model to condition on th
   additive <- glm(e ~ a + x1, data = fx$dat, family = binomial())
   expect_true(is_joint_wt_models(
     joint_wt_models(a = fx$mods$a, e = additive)
+  ))
+
+  # What the check reads is the variables the right-hand side mentions, not the
+  # term labels it produces. The two agree wherever the treatment is written as
+  # a bare main effect, which is every spelling above, so these two are what
+  # separate them.
+  #
+  # A transformed treatment produces the term labels `factor(a)`, `x1`, and
+  # `factor(a):x1`, none of which is `a`, and an interaction-only dependence
+  # produces `x1` and `x1:a`, neither of which is `a` either. Both models
+  # condition on the first treatment, and a check written against term labels
+  # would refuse them.
+  transformed <- glm(e ~ factor(a) * x1, data = fx$dat, family = binomial())
+  expect_false("a" %in% attr(stats::terms(transformed), "term.labels"))
+  expect_true(is_joint_wt_models(
+    joint_wt_models(a = fx$mods$a, e = transformed)
+  ))
+
+  interaction_only <- glm(e ~ x1 + a:x1, data = fx$dat, family = binomial())
+  expect_false("a" %in% attr(stats::terms(interaction_only), "term.labels"))
+  expect_true(is_joint_wt_models(
+    joint_wt_models(a = fx$mods$a, e = interaction_only)
   ))
 
   expect_propensity_error(
@@ -553,10 +587,15 @@ test_that("joint_wt_models() refuses two models named for the same treatment", {
   # Two factors of one treatment's density is not a crossing, and the container
   # keyed by name could not tell the two apart.
   #
-  # The call is assembled rather than written out because the linter refuses a
-  # literal duplicated argument name, which is the thing under test. `...`
-  # accepts one, so what reaches the constructor is the call a user could write.
-  duplicated_names <- list(a = fx$mods$a, a = fx$mods$a)
+  # The names are attached after the list is built rather than written into it,
+  # because the linter refuses a literal duplicated argument name, which is the
+  # thing under test. `...` accepts one, so what reaches the constructor is the
+  # call a user could write.
+  duplicated_names <- stats::setNames(
+    list(fx$mods$a, fx$mods$a),
+    c("a", "a")
+  )
+  expect_identical(names(duplicated_names), c("a", "a"))
   expect_error(
     do.call("joint_wt_models", duplicated_names),
     class = "propensity_wt_joint_models_error"
