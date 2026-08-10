@@ -458,11 +458,20 @@ check_joint_wt_models_named <- function(
 ) {
   n <- length(models)
 
+  # A call that names none of its arguments has no name vector at all rather
+  # than a vector of empty strings, so the count has to come from the models
+  # there. Read off the names alone it collapses to zero by zero-length
+  # recycling, and the message reports that none of them is unnamed.
+  n_unnamed <- if (is.null(names)) {
+    n
+  } else {
+    sum(is.na(names) | names == "")
+  }
+
   problem <- if (n != 2) {
     "{n} model{?s} {?was/were} supplied."
-  } else if (is.null(names) || any(is.na(names) | names == "")) {
-    "{sum(is.null(names) | is.na(names) | names == \"\")} of them {?is/are} \\
-    unnamed."
+  } else if (n_unnamed > 0) {
+    "{n_unnamed} of them {?is/are} unnamed."
   } else if (anyDuplicated(names)) {
     duplicated_name <- names[[anyDuplicated(names)]]
     "{.val {duplicated_name}} names both of them."

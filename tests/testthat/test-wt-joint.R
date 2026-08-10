@@ -579,6 +579,24 @@ test_that("joint_wt_models() refuses arguments that do not name exactly two trea
     class = "propensity_wt_joint_models_error"
   )
   expect_propensity_error(joint_wt_models(fx$mods$a, e = fx$mods$e))
+
+  # A call naming none of its arguments carries no name vector at all rather
+  # than one of empty strings, so the count of unnamed arguments has to come
+  # from the models. Counted off the names alone it collapses to zero by
+  # zero-length recycling, and the refusal reports that none of them is the
+  # thing it is refusing them for.
+  expect_error(
+    joint_wt_models(fx$mods$a, fx$mods$e),
+    class = "propensity_wt_joint_models_error"
+  )
+  expect_error(
+    joint_wt_models(fx$mods$a, fx$mods$e),
+    class = "propensity_error"
+  )
+  expect_error(
+    joint_wt_models(fx$mods$a, fx$mods$e),
+    regexp = "2 of them are unnamed"
+  )
 })
 
 test_that("joint_wt_models() refuses two models named for the same treatment", {
