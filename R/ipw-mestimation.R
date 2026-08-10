@@ -2001,8 +2001,8 @@ ipw_check_weight_consistency <- function(
     observed_wts,
     spec$exposure_type,
     spec$estimand,
-    # A joint spec weights two treatments, and which causes a mismatch can have
-    # depends on what each of them is rather than on the pair being joint.
+    # A joint spec weights two treatments, and the causes a mismatch can have
+    # depend on what each of them is rather than on the pair being joint.
     components = spec$ps$types,
     call = call
   )

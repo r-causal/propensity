@@ -387,6 +387,24 @@ exposure the marginal normal density evaluated at the population mean and
 standard deviation of \code{.exposure}. Stabilization is supported for ATE and
 censoring weights (\code{wt_ate()} and \code{wt_cens()}) and is strongly recommended
 for continuous exposures.
+
+The default numerator conditions on nothing, and \code{stabilization_score}
+replaces it with one of your own. The case that pays is a numerator
+conditioning on a variable the model the estimates are read from also reads,
+such as an effect modifier. Fit that numerator and evaluate it at the
+exposure each unit actually took, which is the shape the default already has:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{num <- glm(A ~ V, data = dat, family = binomial())
+p <- fitted(num)
+wt_ate(ps_mod, stabilize = TRUE,
+       stabilization_score = ifelse(dat$A == 1, p, 1 - p))
+}\if{html}{\out{</div>}}
+
+Passing \code{fitted(num)} on its own is P(A = 1 | V) for every unit, which is not
+the probability of the exposure an untreated unit took, so the untreated
+weights would carry the wrong numerator. Whether a numerator may condition on
+\code{V} at all is a question about the reported model rather than about the
+weights; see \strong{Effect modification} in \code{\link[=ipw]{ipw()}}.
 }
 
 \subsection{Handling extreme weights}{

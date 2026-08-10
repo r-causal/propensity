@@ -494,6 +494,33 @@ as specified, so such a model forces the same effect on every stratum up to
 the covariate distribution each one has, and the modification it reports is a
 property of the model rather than of the data. The fit still returns.
 
+Stabilizing the weights on the modifier is worth doing here. A stabilized
+weight divides by the propensity score and multiplies by a numerator, and the
+numerator may condition on any variable the outcome model the effects are
+computed from already reads, without changing what is estimated. The modifier
+is such a variable by construction, so a numerator conditioning on it leaves
+the estimator consistent for the same stratum effects and changes only how
+variable the weights are. That is where it pays: the part of the exposure's
+variation the modifier explains cancels between the numerator and the
+propensity score, and the weights tighten by more than the default numerator
+tightens them.
+
+The converse is the constraint, and it is the reason this is a statement
+about the model rather than a free choice. A numerator conditioning on a
+variable the outcome model does not read changes the estimand rather than the
+precision, because the pseudo-population it builds is one in which that
+variable still predicts the exposure. Condition the numerator on the modifier
+and on nothing the model does not hold. The same rule governs an
+exposure-by-modifier interaction reported without \code{.by}, since what matters
+is what the reported model reads and not which argument asked for the rows.
+
+Build the numerator with \code{\link[=wt_ate]{wt_ate()}}'s \code{stabilization_score}, evaluated at the
+exposure each unit actually took; see \strong{Stabilization} in \code{\link[=wt_ate]{wt_ate()}} for the
+recipe. The sandwich treats a supplied score as a known constant, so the
+standard errors do not account for the numerator model having been fitted.
+The default stabilizer is estimated in the stacked system instead, which is
+one parameter wider as a result.
+
 Every reported row is a parameter of one stacked system solved on one sample,
 so the covariance couples them: \code{\link[stats:vcov]{stats::vcov()}} reports nonzero entries
 between the overall rows, the stratum rows, and the stratum contrasts, and
@@ -948,6 +975,27 @@ outcome_grp <- glm(
   weights = wts_grp
 )
 ipw(ps_grp, outcome_grp, .by = grp)
+
+# The same fit with the weights stabilized on the modifier. The numerator is
+# the probability of the exposure each unit took given `grp`, which is the
+# shape the default stabilizer has and conditions only on a variable the
+# outcome model reads, so it tightens the weights without moving the estimand.
+num_grp <- glm(z ~ grp, data = dat, family = binomial())
+p_grp <- fitted(num_grp)
+wts_stab <- wt_ate(
+  ps_grp,
+  stabilize = TRUE,
+  stabilization_score = ifelse(dat$z == 1, p_grp, 1 - p_grp)
+)
+sd(wts_grp)
+sd(wts_stab)
+outcome_stab <- glm(
+  y ~ z * grp + x1,
+  data = dat,
+  family = quasibinomial(),
+  weights = wts_stab
+)
+ipw(ps_grp, outcome_stab, .by = grp)
 
 # Continuous exposure: an lm propensity model of the dose on covariates,
 # stabilized weights, and a weighted marginal structural outcome model
