@@ -2,3 +2,9 @@ url: https://r-causal.github.io/propensity/
 template:
   bootstrap: 5
 
+articles:
+- title: Articles
+  navbar: ~
+  contents:
+  - propensity
+  - effect-modification

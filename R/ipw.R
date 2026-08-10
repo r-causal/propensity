@@ -75,6 +75,16 @@
 #'   on. A term that has to derive the exposure's levels from the values it sees,
 #'   such as `factor(a)`, is therefore rejected on that route, with `.data` named
 #'   as the remedy.
+#' @param .by A single unquoted variable naming a modifier to report effects
+#'   within, or `NULL` (the default) to report the effect for the sample as a
+#'   whole and nothing else. The variable is looked up in `.data` when you
+#'   supply one and in the outcome model's own model frame otherwise, and it
+#'   must be a factor or a character vector with no missing values. The result
+#'   then reports the effects it reports without `.by`, keyed by the group
+#'   `"overall"`, followed by one set within each level of the modifier and one
+#'   set contrasting each level against the first, and the `estimates` frame
+#'   gains a `group` column naming the subgroup each row belongs to. See
+#'   **Effect modification** for what those rows estimate and what they require.
 #' @param estimand A character string specifying the causal estimand: one of
 #'   `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or `"entropy"`. The available
 #'   estimands depend on the exposure type: a binary or categorical exposure
@@ -203,18 +213,322 @@
 #' (for example `"b vs a"`), so a K-level exposure produces one block of
 #' measures per non-reference level.
 #'
-#' For a continuous exposure, `ipw()` reports the single exposure coefficient of
-#' the weighted marginal structural outcome model. Its label follows the outcome
-#' link: `slope` for an identity link, `log(or)` for a logit link, and
-#' `log(rr)` for a log link. The reported coefficient is the one attached to the
-#' exposure term of the marginal structural model. When that term is a
-#' transformation of the exposure (for example an `I(A^2)`-only model), the
-#' coefficient of the transformed term is reported under the same link-based
-#' label.
+#' For a continuous exposure, `ipw()` reports the exposure coefficients of the
+#' weighted marginal structural outcome model. A model with one exposure
+#' coefficient reports one row and no `contrast` column, and a dose-response
+#' curve such as `y ~ A + I(A^2)` reports one row per coefficient, with the
+#' `contrast` column naming the coefficient each row belongs to.
+#'
+#' The `effect` label names the scale: `log(or)` for a logit link and `log(rr)`
+#' for a log link, since a coefficient there is a log odds ratio or a log risk
+#' ratio per unit of whatever column it multiplies. At an identity link the word
+#' depends on what the row claims. A model with one exposure coefficient reports
+#' `slope`, because that coefficient is the slope of the dose response
+#' everywhere. A model with several reports `coef`, because a curve has a
+#' different slope at every dose and no one of its coefficients is that slope;
+#' the row says which coefficient it is and leaves the dose response to be built
+#' downstream from `coef()` and `vcov()`.
+#'
+#' Every term of the marginal structural model that reads the exposure must read
+#' the exposure and nothing else. The requirement is on what a term reads rather
+#' than on how it is written, so `A + I(A^2)` and `A + sin(A)` are admitted and
+#' `A * x1` is not: a term reading a covariate as well contributes a coefficient
+#' that depends on that covariate, and no row could name the effect it stands
+#' for. Read the whole coefficient vector from the returned `fit` object for a
+#' model this surface cannot report.
+#'
+#' A basis matrix reads the exposure alone, so `poly(A, 2)`,
+#' `splines::ns(A, 3)`, and `splines::bs(A, 3)` are admitted on the same
+#' footing. One such term contributes one coefficient per basis column and each
+#' of them is a row, reported under `coef` at an identity link like any other
+#' multi-coefficient surface. The `contrast` column names the coefficient rather
+#' than the term, a distinction a basis makes and `A + I(A^2)` does not: the
+#' single term `poly(A, 2)` reports the contrasts `poly(A, 2)1` and
+#' `poly(A, 2)2`. A basis reading a covariate is a covariate term and
+#' contributes no row, and one reading both, such as `poly(A, 2):x1`, is refused
+#' with every other mixed term.
+#'
+#' A marginal structural model built on a basis of the exposure requires
+#' `.data`. A model frame records the term rather than the variables inside
+#' it, so the frame of such a fit carries the basis matrix and no column
+#' holding the exposure, which is where `ipw()` reads the exposure from when
+#' `.data` is absent. Omitting it errors, and the message names the exposure
+#' and directs to `.data`. Supplying it does not refit the basis: the outcome
+#' design is read from the fit, and a design rebuilt from `.data` is rebuilt
+#' through the fitted terms object, whose `predvars` attribute records the
+#' basis that term was fit with.
 #'
 #' Use [`as.data.frame()`][causalgenerics::new_ipw()] with
 #' `exponentiate = TRUE` to obtain risk ratios and odds ratios on their natural
 #' scale.
+#'
+#' # Effect modification
+#'
+#' `.by` names a modifier and asks for the effect within each of its levels
+#' alongside the effect for the sample as a whole. The reported rows come in
+#' three blocks, in this order:
+#'
+#' - the overall rows, unchanged from the fit without `.by`, under the group
+#'   label `"overall"`;
+#' - one block per level of the modifier, under a `"var = value"` label such as
+#'   `"sex = female"`;
+#' - one block per non-reference level against the reference level, which is the
+#'   modifier's first level, under a `"var = value vs var = value"` label.
+#'
+#' A stratum's effect is g-computation restricted to that stratum: the outcome
+#' model predicts each unit's outcome at each exposure level, and the
+#' predictions are averaged over the units of the stratum, weighted by the
+#' estimand's tilt. What a stratum row estimates is therefore the effect in that
+#' stratum's own covariate distribution, and the last block is a difference of
+#' two such effects. Those two populations differ whenever the covariates are
+#' distributed differently across the strata, so a difference between strata is
+#' a difference between two conditional effects and not, on its own, evidence
+#' that the modifier changes the effect. It is the estimand's population that
+#' the tilt fixes, and the modifier's stratum that the indicator fixes, and the
+#' row reports the effect where those two meet: an `att` fit reports the effect
+#' among the exposed units of a stratum, not among all of its units. For a
+#' categorical exposure the tilt an `att` fit standardizes over is the focal
+#' level's own propensity score, so a stratum row there reports the effect
+#' among the units of that stratum who look like the ones assigned the focal
+#' level.
+#'
+#' A categorical exposure already reports one contrast per non-reference level,
+#' and `.by` crosses those contrasts with the strata: every block holds each
+#' contrast on each reported measure, so a K-level exposure with S strata
+#' reports the whole-sample block and then S + (S - 1) blocks of (K - 1)
+#' contrasts. A row is named by three things there, the measure, the contrast,
+#' and the subgroup, and the `estimates` frame carries `contrast` and `group` in
+#' that order after `effect`. Within a block the ordering is the one an
+#' ungrouped categorical fit already uses, contrast-major and measure-minor, so
+#' a contrast's measures sit together; the blocks themselves run group-major.
+#'
+#' The stratum rows and the stratum contrasts report the risk difference and the
+#' log risk ratio for a binary outcome, and the difference in means for a
+#' continuous one. They report no odds ratio. An odds ratio is noncollapsible,
+#' so a difference of two of them moves with the outcome distribution in each
+#' stratum whether or not the effect does, and reporting it as effect
+#' modification would invite exactly the reading it does not support. The
+#' overall rows keep all three measures.
+#'
+#' Three requirements apply. The modifier must be a factor or a character vector
+#' with no missing values: a missing value names no subgroup, and a continuous
+#' variable names no fixed set of them, so cut it into groups first. A level no
+#' unit carries is dropped rather than refused, since the fits drop it too and
+#' an empty stratum has no mean to standardize. Every one of the modifier's
+#' remaining levels must hold every exposure level, since a stratum in which
+#' nobody took one of them identifies no contrast against it and the outcome
+#' model would extrapolate one from the strata that do; the remedy is a coarser
+#' modifier rather than a refit. Finally, `.by` requires
+#' `se_method = "mestimation"` and a binary or categorical exposure: the stratum
+#' means and their contrasts are parameters of the stacked estimating equations,
+#' which is what puts them in the same sandwich as everything else, and a
+#' continuous exposure reports its marginal structural model's own coefficient
+#' rather than a set of standardized means to modify. Each of those errors.
+#'
+#' An outcome model with no term reading the exposure and the modifier together
+#' warns rather than errors. The stratum effects are g-computation on the model
+#' as specified, so such a model forces the same effect on every stratum up to
+#' the covariate distribution each one has, and the modification it reports is a
+#' property of the model rather than of the data. The fit still returns.
+#'
+#' Stabilizing the weights on the modifier is worth doing here. A stabilized
+#' weight divides by the propensity score and multiplies by a numerator, and the
+#' numerator may condition on any variable the outcome model the effects are
+#' computed from already reads, without changing what is estimated. The modifier
+#' is such a variable by construction, so a numerator conditioning on it leaves
+#' the estimator consistent for the same stratum effects and changes only how
+#' variable the weights are. That is where it pays: the part of the exposure's
+#' variation the modifier explains cancels between the numerator and the
+#' propensity score, and the weights tighten by more than the default numerator
+#' tightens them.
+#'
+#' The converse is the constraint, and it is the reason this is a statement
+#' about the model rather than a free choice. A numerator conditioning on a
+#' variable the outcome model does not read changes the estimand rather than the
+#' precision, because the pseudo-population it builds is one in which that
+#' variable still predicts the exposure. Condition the numerator on the modifier
+#' and on nothing the model does not hold. The same rule governs an
+#' exposure-by-modifier interaction reported without `.by`, since what matters
+#' is what the reported model reads and not which argument asked for the rows.
+#'
+#' Build the numerator with [wt_ate()]'s `stabilization_score`, evaluated at the
+#' exposure each unit actually took; see **Stabilization** in [wt_ate()] for the
+#' recipe. The sandwich treats a supplied score as a known constant, so the
+#' standard errors do not account for the numerator model having been fitted.
+#' The default stabilizer is estimated in the stacked system instead, which is
+#' one parameter wider as a result.
+#'
+#' Every reported row is a parameter of one stacked system solved on one sample,
+#' so the covariance couples them: [stats::vcov()] reports nonzero entries
+#' between the overall rows, the stratum rows, and the stratum contrasts, and
+#' the standard error of a stratum contrast accounts for the two strata having
+#' been estimated together. Fitting each stratum on its own subset would report
+#' the same stratum effects with no covariance between them, leaving the
+#' difference between two strata untestable.
+#'
+#' # Joint exposures
+#'
+#' [causalgenerics::joint_exposure()] crosses two discrete treatments into one
+#' categorical exposure and records the crossing on the vector. The result is a
+#' factor, so `ipw()` fits it exactly as it fits any exposure over the same
+#' cells. What the declaration changes is what gets reported: instead of each
+#' cell against the reference cell, the result is written in the two treatments.
+#'
+#' - One row per cell, under the effect label `"mean"`, carrying the
+#'   counterfactual risk (or mean) had everyone been set to that cell. The cell
+#'   is named in the `contrast` column and the group is `"overall"`.
+#' - The simple effects: each treatment's effect within a fixed level of the
+#'   other, with the `contrast` naming the treatment and the level it is set to
+#'   (`"a: 1 vs 0"`) and the `group` naming the level the other treatment is
+#'   held at (`"e = 1"`). These include the comparisons that are not against the
+#'   reference cell, which the vs-reference reporting cannot express at all.
+#' - The interaction: the difference between two of the first treatment's simple
+#'   effects, keyed by the two levels of the second being compared
+#'   (`"e = 1 vs e = 0"`). On the risk difference scale this is the additive
+#'   interaction, and on the log risk ratio scale the multiplicative one, which
+#'   is the log of the ratio of the two risk ratios.
+#'
+#' A 2-by-2 crossing therefore reports fourteen rows for a binary outcome and
+#' nine for a continuous one. The interaction is reported once, under the first
+#' treatment's framing, rather than twice: interaction is symmetric in the two
+#' treatments, so the difference between the first treatment's two simple
+#' effects is the difference between the second treatment's two, and reporting
+#' both would be one quantity under two labels.
+#'
+#' No odds ratio is reported anywhere on this surface. It is noncollapsible, so
+#' neither a simple effect reported beside one nor a difference of two of them
+#' says what it appears to.
+#'
+#' Every row is a parameter of the same stacked system, so the covariance
+#' couples them: the interaction covaries with each simple effect it is built
+#' from, and with each cell mean underneath those. The cell means are the
+#' marginal-mean block the categorical path already estimates, and the simple
+#' effects and interaction rows are contrasts over that block, so an interaction
+#' equals the corresponding double difference of the cell means exactly rather
+#' than to within a solver residual.
+#'
+#' Two restrictions apply. A declared crossing is reported for the `"ate"`
+#' estimand alone: every cell mean on this surface standardizes to one
+#' population, and a focal estimand standardizes each of them to a population
+#' the simple effects and the interaction are not defined over, so weights built
+#' for anything else error. And `.by` cannot be combined with a declared
+#' crossing: effect modification of a joint intervention is a three-way
+#' question, the interaction between two treatments within the levels of a
+#' third variable, which this surface neither answers nor sensibly projects.
+#' Either restriction is escaped the same way, by dropping the declaration with
+#' `factor(x)` and reporting each cell against the reference cell.
+#'
+#' ## Two treatment models instead of a declared crossing
+#'
+#' A joint intervention can also be weighted through the sequential
+#' factorization it really has, \eqn{f(A | L) f(E | A, L)}: one treatment model
+#' per treatment, recorded with [joint_wt_models()], and the product of their
+#' weights, built with [wt_joint()]. Pass the container as `wt_mod` and an
+#' outcome model that reads both treatments as separate columns.
+#'
+#' The reported surface is the one above, row for row and label for label: the
+#' same cell means, simple effects, and interaction, under the same
+#' `effect`, `contrast`, and `group` values. The two routes estimate the same
+#' estimand through different models of the same propensity score, so they agree
+#' as estimators rather than to the last bit, and they coincide when the two
+#' parameterizations are saturated in the same covariates.
+#'
+#' Prefer the two-model route when the two treatments call for different
+#' adjustment sets, or when the dependence of the second treatment on the first
+#' is what you want to model directly, since each treatment then gets its own
+#' model and its own covariates. Prefer the declared crossing when one model over
+#' the cells is the natural specification. The factorization itself is validated
+#' when the container is built rather than here: [joint_wt_models()] refuses a
+#' second model that does not condition on the first treatment, and a pair that
+#' condition on each other.
+#'
+#' Both treatment models are stacked alongside the outcome model, so the weights
+#' entering the outcome score are rebuilt from both propensity score blocks on
+#' every evaluation and the reported standard errors account for having
+#' estimated both. The same two restrictions apply: the `"ate"` estimand only,
+#' and no `.by`. Standard errors come from M-estimation alone.
+#'
+#' ## A joint intervention with a dose
+#'
+#' The second treatment may be a dose rather than a second discrete treatment,
+#' recorded with an [stats::lm()] or an identity-link gaussian [stats::glm()]
+#' and weighted with a stabilized density ratio, which [wt_joint()] requires of
+#' a continuous component. A dose has no cells, so there is no crossing to
+#' report counterfactual risks over: the surface is the marginal structural
+#' model's own coefficients, which for an identity-link model are exactly the
+#' weighted fit's coefficients.
+#'
+#' Which of two surfaces a fit reports is decided by the marginal structural
+#' model alone. A model written in bare treatment terms reports the vocabulary
+#' surface below, whose rows name the treatment each one varies and where it is
+#' evaluated. Every other treatment-reading model reports the coefficient
+#' surface, whose rows are named after the coefficients they report.
+#'
+#' ### The vocabulary surface
+#'
+#' For `y ~ a * e` with `a` binary and `e` a dose, three coefficients carry
+#' causal content and each is a row:
+#'
+#' - the binary treatment's effect at a dose of zero, with the `contrast`
+#'   naming the treatment and its levels (`"a: 1 vs 0"`) and the `group`
+#'   naming where it is evaluated (`"e = 0"`);
+#' - the dose's slope at the binary treatment's reference level
+#'   (`"e: per unit"`, `"a = 0"`);
+#' - the interaction, the change in the binary treatment's effect per unit of
+#'   the dose, keyed by the one-unit step of the other treatment
+#'   (`"a: 1 vs 0"`, `"e + 1 vs e"`).
+#'
+#' The `effect` column names the scale, keeping the vocabulary each treatment
+#' type already uses: a level contrast is a `diff` and a per-unit change in the
+#' dose is a `slope` under an identity link, and both are `log(or)` under a
+#' logit link and `log(rr)` under a log link. An additive model, `y ~ a + e`,
+#' forces one effect for the binary treatment at every dose and one slope at
+#' either of its levels, so it reports two rows under the group `"overall"` and
+#' no interaction.
+#'
+#' Those three readings hold of a model that is linear in each treatment and of
+#' no other, which is why such a model reports this surface and no other model
+#' does. The columns are read as well as the formula: a factor treatment under a
+#' coding other than treatment contrasts leaves the terms bare while rescaling
+#' or recentering the column, so its coefficients are no longer the effects
+#' these rows name, and such a fit is refused rather than reported on either
+#' surface. Refit the outcome model with the treatment as a 0/1 numeric or as an
+#' unordered factor under treatment contrasts.
+#'
+#' ### The coefficient surface
+#'
+#' A marginal structural model carrying a transformed or a basis treatment term,
+#' such as `y ~ a * sin(e)`, `y ~ a + e + I(e^2) + a:e`, or
+#' `y ~ a * splines::ns(e, 3)`, reports one row per treatment-reading
+#' coefficient. The `contrast` column carries the coefficient name exactly as
+#' the fit writes it, and there is no `group` column at all: the surface makes
+#' no claim about where a row is evaluated, because for a curve there is no one
+#' place. Build an interpretable dose response downstream from `coef()` and
+#' `vcov()`, whose covariance between the rows is what that takes.
+#'
+#' The `effect` label follows the outcome link, `coef` at an identity link and
+#' the same `log(or)` and `log(rr)` as everywhere else. `coef` is a word of its
+#' own rather than `diff` or `slope`, both of which carry an evaluated-at claim
+#' on the vocabulary surface.
+#'
+#' ### Covariates and mixed terms
+#'
+#' A covariate entering on its own is admitted on either surface and contributes
+#' no row, however many columns it expands to: it adjusts the marginal
+#' structural model and the surface has nothing to say about its coefficient. A
+#' term reading a treatment and a covariate together is refused on both, since
+#' its coefficient is a change in an effect per unit of that covariate and no
+#' row could name the effect it stands for. Nothing here is standardized over
+#' the covariates, which is what the declared crossing does instead.
+#'
+#' Unlike the single-treatment route, this one needs no `.data` for a basis
+#' marginal structural model. Each treatment is read off its own treatment
+#' model, so the outcome model frame is never asked for a column it does not
+#' hold.
+#'
+#' The dose model contributes its coefficients and the conditional variance its
+#' density ratio divides by, and the stabilizing numerator contributes the
+#' dose's two marginal moments, all as parameters of the same stacked system.
 #'
 #' # Variance estimation
 #'
@@ -528,6 +842,41 @@
 #' outcome_cont <- lm(y_cont ~ z, data = dat, weights = wts)
 #' ipw(ps_mod, outcome_cont)
 #'
+#' # Effect modification: the effect within each level of a factor, and the
+#' # difference between them. The outcome model carries the exposure-by-modifier
+#' # term that lets the effect differ across the strata.
+#' dat$grp <- factor(rep(c("a", "b"), length.out = n))
+#' ps_grp <- glm(z ~ x1 + grp, data = dat, family = binomial())
+#' wts_grp <- wt_ate(ps_grp)
+#' outcome_grp <- glm(
+#'   y ~ z * grp + x1,
+#'   data = dat,
+#'   family = quasibinomial(),
+#'   weights = wts_grp
+#' )
+#' ipw(ps_grp, outcome_grp, .by = grp)
+#'
+#' # The same fit with the weights stabilized on the modifier. The numerator is
+#' # the probability of the exposure each unit took given `grp`, which is the
+#' # shape the default stabilizer has and conditions only on a variable the
+#' # outcome model reads, so it tightens the weights without moving the estimand.
+#' num_grp <- glm(z ~ grp, data = dat, family = binomial())
+#' p_grp <- fitted(num_grp)
+#' wts_stab <- wt_ate(
+#'   ps_grp,
+#'   stabilize = TRUE,
+#'   stabilization_score = ifelse(dat$z == 1, p_grp, 1 - p_grp)
+#' )
+#' sd(wts_grp)
+#' sd(wts_stab)
+#' outcome_stab <- glm(
+#'   y ~ z * grp + x1,
+#'   data = dat,
+#'   family = quasibinomial(),
+#'   weights = wts_stab
+#' )
+#' ipw(ps_grp, outcome_stab, .by = grp)
+#'
 #' # Continuous exposure: an lm propensity model of the dose on covariates,
 #' # stabilized weights, and a weighted marginal structural outcome model
 #' a <- 0.5 + 0.8 * x1 + rnorm(n)
@@ -543,6 +892,12 @@
 #' )
 #' msm <- lm(y_dose ~ a, data = dat, weights = wts_cont)
 #' ipw(ps_cont, msm)
+#'
+#' # A dose-response curve written as a basis matrix reports one row per basis
+#' # coefficient. The model frame of such a fit holds the basis rather than the
+#' # dose, so `.data` supplies the exposure.
+#' msm_curve <- lm(y_dose ~ poly(a, 2), data = dat, weights = wts_cont)
+#' ipw(ps_cont, msm_curve, .data = dat)
 #'
 #' @examplesIf requireNamespace("nnet", quietly = TRUE)
 #' # Categorical exposure: a multinomial propensity model and per-level contrasts
@@ -576,6 +931,7 @@ ipw.glm <- function(
   outcome_mod,
   ...,
   .data = NULL,
+  .by = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
@@ -583,16 +939,26 @@ ipw.glm <- function(
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
+  .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
   effects <- rlang::arg_match(effects)
   assert_class(wt_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
   check_ipw_ps_response(wt_mod)
 
+  # The two things about a `.by` request that can be settled before the modifier
+  # is read, in the order a request fails in: the standard error method, then
+  # the exposure type. The exposure refusal sits inside the continuous branch
+  # below, so a request naming both is refused for the method it cannot use
+  # rather than for the exposure it cannot use either.
+  check_ipw_by_method(.by, se_method)
+
   # A gaussian-family propensity model indicates a continuous exposure. Route it
   # to the shared continuous path, which an lm propensity model also uses; the two
   # share fitted values and so produce identical estimates and standard errors.
   if (identical(wt_mod$family$family, "gaussian")) {
+    check_ipw_by_exposure(.by)
+
     return(ipw_continuous_estimate(
       wt_mod,
       outcome_mod,
@@ -634,7 +1000,8 @@ ipw.glm <- function(
       outcome_mod,
       .data = .data,
       estimand = estimand,
-      ps_link = ps_link
+      ps_link = ps_link,
+      .by = .by
     )
     fit <- ipw_mestimation(spec, conf_level = conf_level)
     components <- ipw_component_models(wt_mod, outcome_mod, fit)
@@ -2563,17 +2930,57 @@ check_estimand_known <- function(
 
 check_exposure <- function(.data, .exposure_name, call = rlang::caller_env()) {
   assert_class(.exposure_name, "character", .length = 1, call = call)
-  if (!(.exposure_name %in% names(.data))) {
-    abort(
-      c(
-        "{.val { .exposure_name}} not found in {.code model.frame(outcome_mod)}.",
-        i = "The outcome model may have transformations in the formula.",
-        i = "Please specify {.arg .data}"
-      ),
-      call = call,
-      error_class = "propensity_columns_exist_error"
-    )
+
+  if (.exposure_name %in% names(.data)) {
+    return(invisible(TRUE))
   }
+
+  # A model frame is keyed by the terms a model was fit with rather than by the
+  # variables inside them, so a transformed or a basis exposure sits under the
+  # term's own name and no column holds the exposure. Naming that column is what
+  # separates a model that transforms the exposure, which `.data` fixes, from
+  # one that never reads it, which nothing here can.
+  #
+  # The name is rebound without its dot, since cli reads a substitution opening
+  # with one as inline markup rather than as a value.
+  exposure <- .exposure_name
+  holding <- columns_reading(names(.data), exposure)
+
+  problem <- if (length(holding)) {
+    "The frame holds {.code {holding}} instead, which {?is a term/are terms} \\
+    built from it."
+  } else {
+    "No column of the frame is built from it either."
+  }
+
+  abort(
+    c(
+      "{.val {exposure}} not found in {.code model.frame(outcome_mod)}.",
+      x = problem,
+      i = "The outcome model may have transformations in the formula, and a \\
+      model frame records the term rather than the variables inside it.",
+      i = "Please specify {.arg .data}"
+    ),
+    call = call,
+    error_class = "propensity_columns_exist_error"
+  )
+}
+
+# The column names of a frame that are built from a variable. Names are parsed
+# rather than matched as text, so a name mentioning the variable inside a longer
+# one is not mistaken for a term reading it. A name that does not parse is not a
+# term and reads nothing.
+columns_reading <- function(column_names, variable) {
+  reads <- vapply(
+    column_names,
+    function(name) {
+      parsed <- tryCatch(str2lang(name), error = function(e) NULL)
+      !is.null(parsed) && variable %in% all.vars(parsed)
+    },
+    logical(1)
+  )
+
+  column_names[reads]
 }
 
 is_linear_regression <- function(outcome_mod) {

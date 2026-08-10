@@ -1,0 +1,779 @@
+# The two-model route to a joint intervention.
+#
+# `joint_exposure()` crosses two treatments into one categorical exposure and
+# weights it with one multinomial propensity score model. The route here weights
+# the same intervention through the sequential factorization it really has,
+# f(A | L) f(E | A, L): two treatment models, one per treatment, and the product
+# of their weights. `joint_wt_models()` records the pair and `wt_joint()` builds
+# the product; what this file pins is `ipw()` over that container.
+#
+# The reported surface is the one the declared-exposure route reports and not a
+# second surface that resembles it: the four counterfactual cell risks under the
+# effect label "mean", the simple effects keyed by the level the other treatment
+# is held at, and the interaction on each collapsible scale. Fourteen rows for a
+# binary outcome, nine for a continuous one, labelled identically. The
+# expectations below are written out against those conventions rather than
+# imported from the joint-exposure file, which keeps this file readable on its
+# own and makes a divergence between the two routes show up as a disagreement
+# between two written-out contracts.
+#
+# The centrepiece is the equivalence: the two routes estimate the same estimand
+# through different parameterizations of the same propensity score, so they
+# agree loosely in general and to the last bits when the two parameterizations
+# are saturated in the same covariate. Both gaps are measured on these fixtures
+# and the tolerances are set from the measurements.
+
+# ---- data simulators --------------------------------------------------------
+
+# Two binary treatments sharing confounders, the second depending on the first.
+# The dependence of E on A is not additive: the sequential factorization is only
+# as good as the second model, and the guardrail on `joint_wt_models()` asks for
+# that dependence to be modeled flexibly rather than as a single term, so the
+# simulator gives it something to model.
+sim_joint_models <- function(seed = 6401, n = 900) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  a <- rbinom(n, 1, plogis(0.3 * x1 - 0.4 * x2))
+  e <- rbinom(n, 1, plogis(-0.2 + 0.5 * x1 + 0.3 * x2 - 0.8 * a + 0.6 * a * x1))
+  y <- rbinom(
+    n,
+    1,
+    plogis(-0.5 + 0.7 * a + 0.5 * e + 0.6 * x1 - 0.3 * x2 + 0.9 * a * e)
+  )
+  yc <- 1 +
+    0.6 * a +
+    0.4 * e +
+    0.5 * x1 -
+    0.2 * x2 +
+    0.8 * a * e +
+    rnorm(n)
+  data.frame(x1, x2, a, e, y, yc)
+}
+
+# One binary covariate and nothing else, so that a sequential pair saturated in
+# it and a multinomial saturated in it describe the same joint distribution of
+# the two treatments exactly rather than approximately. This is the fixture the
+# tight equivalence pin runs on.
+sim_joint_models_saturated <- function(seed = 6402, n = 1200) {
+  withr::local_seed(seed)
+  x2 <- rbinom(n, 1, 0.5)
+  a <- rbinom(n, 1, plogis(0.4 - 0.8 * x2))
+  e <- rbinom(n, 1, plogis(-0.2 + 0.6 * x2 - 0.9 * a + 0.7 * a * x2))
+  y <- rbinom(
+    n,
+    1,
+    plogis(-0.5 + 0.7 * a + 0.5 * e - 0.3 * x2 + 0.9 * a * e)
+  )
+  data.frame(x2, a, e, y)
+}
+
+# ---- model fitting ----------------------------------------------------------
+
+# The two-model route. `e_rhs` carries the second model's right-hand side so a
+# test can vary its dimension, and `outcome_rhs` the outcome model's; the
+# formulas are built here rather than passed in so the weights resolve against
+# this frame when `glm()` looks for them.
+fit_joint_models_route <- function(
+  dat,
+  a_rhs = c("x1", "x2"),
+  e_rhs = "a * x1 + x2",
+  outcome_rhs = "a * e + x1",
+  outcome_family = "binomial"
+) {
+  ps_a <- glm(
+    stats::reformulate(a_rhs, response = "a"),
+    data = dat,
+    family = binomial()
+  )
+  ps_e <- glm(
+    stats::reformulate(e_rhs, response = "e"),
+    data = dat,
+    family = binomial()
+  )
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+
+  outcome_var <- if (outcome_family == "binomial") "y" else "yc"
+  fmla <- stats::reformulate(outcome_rhs, response = outcome_var)
+  outcome_mod <- if (outcome_family == "binomial") {
+    glm(
+      fmla,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+  } else {
+    lm(fmla, data = dat, weights = wts)
+  }
+
+  list(
+    models = joint_wt_models(a = ps_a, e = ps_e),
+    ps_a = ps_a,
+    ps_e = ps_e,
+    outcome_mod = outcome_mod,
+    wts = wts
+  )
+}
+
+# The declared-exposure route over the same data: the crossing as one factor,
+# one multinomial propensity score model, categorical ate weights, and an
+# outcome model over the cells. `y ~ joint + x1` and `y ~ a * e + x1` span the
+# same columns, so given the same weights the two outcome fits coincide and the
+# only thing separating the routes is the propensity score parameterization.
+fit_joint_exposure_route <- function(
+  dat,
+  ps_rhs = c("x1", "x2"),
+  outcome_rhs = "joint + x1"
+) {
+  dat$joint <- causalgenerics::joint_exposure(a = dat$a, e = dat$e)
+  ps_mod <- nnet::multinom(
+    stats::reformulate(ps_rhs, response = "joint"),
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps_named <- unname(predict(ps_mod, type = "probs"))
+  colnames(ps_named) <- ps_mod$lev
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_named, dat$joint, exposure_type = "categorical")
+  )
+  outcome_mod <- glm(
+    stats::reformulate(outcome_rhs, response = "y"),
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts, dat = dat)
+}
+
+# ---- the reported surface ---------------------------------------------------
+
+# The cells, in the order the crossing varies them: the first treatment fastest,
+# the reference cell first.
+joint_models_cells <- c(
+  "a = 0, e = 0",
+  "a = 1, e = 0",
+  "a = 0, e = 1",
+  "a = 1, e = 1"
+)
+
+# The identity columns of the surface both routes report, written out against
+# the conventions rather than read off either of them.
+joint_models_expected_rows <- function(forms = c("rd", "log(rr)")) {
+  simple <- list(
+    c(contrast = "a: 1 vs 0", group = "e = 0"),
+    c(contrast = "a: 1 vs 0", group = "e = 1"),
+    c(contrast = "e: 1 vs 0", group = "a = 0"),
+    c(contrast = "e: 1 vs 0", group = "a = 1")
+  )
+  interaction <- list(
+    c(contrast = "a: 1 vs 0", group = "e = 1 vs e = 0")
+  )
+  entries <- c(simple, interaction)
+
+  data.frame(
+    effect = c(
+      rep("mean", length(joint_models_cells)),
+      rep(forms, times = length(entries))
+    ),
+    contrast = c(
+      joint_models_cells,
+      rep(
+        vapply(entries, function(x) x[["contrast"]], ""),
+        each = length(forms)
+      )
+    ),
+    group = c(
+      rep("overall", length(joint_models_cells)),
+      rep(vapply(entries, function(x) x[["group"]], ""), each = length(forms))
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+joint_models_labels <- function(estimates) {
+  paste(estimates$effect, estimates$contrast, estimates$group)
+}
+
+# The four counterfactual cell risks by g-computation on a weighted outcome
+# model that reads the two treatments separately, standardized over the whole
+# sample. The ate tilt is the constant one, so the averaging population is the
+# whole sample and nothing is weighted here.
+joint_models_cell_means <- function(outcome_mod, data) {
+  values <- list(c(0, 0), c(1, 0), c(0, 1), c(1, 1))
+  out <- vapply(
+    values,
+    function(cell) {
+      d <- data
+      d$a <- cell[[1]]
+      d$e <- cell[[2]]
+      mean(predict(outcome_mod, newdata = d, type = "response"))
+    },
+    numeric(1)
+  )
+  stats::setNames(out, joint_models_cells)
+}
+
+joint_models_transform <- function(form, mu_hi, mu_lo) {
+  switch(
+    form,
+    rd = mu_hi - mu_lo,
+    diff = mu_hi - mu_lo,
+    "log(rr)" = log(mu_hi) - log(mu_lo)
+  )
+}
+
+# Every reported estimate, built from the four cell means in the row order
+# above. `mu[[1]]` is the reference cell, `mu[[2]]` is a = 1 e = 0, `mu[[3]]` is
+# a = 0 e = 1, and `mu[[4]]` is a = 1 e = 1.
+joint_models_expected_estimates <- function(mu, forms = c("rd", "log(rr)")) {
+  pairs <- list(c(2L, 1L), c(4L, 3L), c(3L, 1L), c(4L, 2L))
+  simple <- unlist(lapply(pairs, function(ix) {
+    vapply(
+      forms,
+      function(f) joint_models_transform(f, mu[[ix[[1]]]], mu[[ix[[2]]]]),
+      numeric(1)
+    )
+  }))
+  interaction <- vapply(
+    forms,
+    function(f) {
+      joint_models_transform(f, mu[[4]], mu[[3]]) -
+        joint_models_transform(f, mu[[2]], mu[[1]])
+    },
+    numeric(1)
+  )
+
+  unname(c(mu, simple, interaction))
+}
+
+# ---- baselines: the halves that stand today ---------------------------------
+
+test_that("the fixture fits both routes and the constructors accept them", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+
+  # Every cell of the crossing is populated, which the declared-exposure route
+  # requires and which the two-model route needs a mean for.
+  expect_true(all(table(dat$a, dat$e) > 0))
+
+  two <- fit_joint_models_route(dat)
+  expect_true(is_joint_wt_models(two$models))
+  expect_identical(two$models$names, c("a", "e"))
+  expect_identical(
+    two$models$exposure_type,
+    c(a = "binary", e = "binary")
+  )
+
+  # The weights are the product the container's models imply, and they say so.
+  expect_true(is_joint_wt(two$wts))
+  expect_identical(estimand(two$wts), "ate")
+  expect_equal(
+    as.double(two$wts),
+    as.double(wt_ate(two$ps_a)) * as.double(wt_ate(two$ps_e)),
+    tolerance = 1e-12
+  )
+
+  # The declared-exposure route is merged, so its half of the equivalence
+  # comparison is a fact about the package today rather than an aspiration.
+  joint <- fit_joint_exposure_route(dat)
+  res <- ipw(joint$ps_mod, joint$outcome_mod)
+  expected <- joint_models_expected_rows()
+  expect_identical(res$estimates$effect, expected$effect)
+  expect_identical(res$estimates$contrast, expected$contrast)
+  expect_identical(res$estimates$group, expected$group)
+  expect_identical(nrow(res$estimates), 14L)
+})
+
+test_that("the two parameterizations disagree about the weights they imply", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+  joint <- fit_joint_exposure_route(dat)
+
+  # What makes the loose equivalence below a statement about estimators rather
+  # than about arithmetic: a sequential pair of logistic models and a
+  # multinomial logit over the cells are different models of the same
+  # conditional distribution, and on this fixture the weights they imply differ
+  # by up to 32 percent. Two routes agreeing to a few percent in the estimates
+  # after that is the claim being made.
+  gap <- max(
+    abs(as.double(two$wts) - as.double(joint$wts)) / as.double(joint$wts)
+  )
+  expect_gt(gap, 0.1)
+})
+
+test_that("saturated parameterizations imply the same weights", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_models_saturated()
+  two <- fit_joint_models_route(
+    dat,
+    a_rhs = "x2",
+    e_rhs = "a * x2",
+    outcome_rhs = "a * e + x2"
+  )
+  joint <- fit_joint_exposure_route(
+    dat,
+    ps_rhs = "x2",
+    outcome_rhs = "joint + x2"
+  )
+
+  # `a ~ x2` with `e ~ a * x2` and a multinomial over the cells on `x2` are two
+  # parameterizations of the same saturated model, so they fit the same cell
+  # probabilities and the weights coincide. Measured max relative gap on this
+  # fixture is 1.5e-7, which is where the multinomial's own convergence stops.
+  gap <- max(
+    abs(as.double(two$wts) - as.double(joint$wts)) / as.double(joint$wts)
+  )
+  expect_lt(gap, 1e-5)
+})
+
+# ---- the reported surface ---------------------------------------------------
+
+test_that("ipw() over two treatment models reports the joint surface", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+  res <- ipw(two$models, two$outcome_mod)
+  est <- res$estimates
+
+  expect_s3_class(res, "ipw")
+  expect_identical(res$estimand, "ate")
+  expect_identical(res$se_method, "mestimation")
+
+  # The same three identity columns in the same order the declared-exposure
+  # route uses, so a row means the same thing whichever route produced it.
+  expect_identical(
+    names(est),
+    c(
+      "effect",
+      "contrast",
+      "group",
+      "estimate",
+      "std.err",
+      "z",
+      "ci.lower",
+      "ci.upper",
+      "conf.level",
+      "p.value"
+    )
+  )
+
+  expected <- joint_models_expected_rows()
+  expect_identical(nrow(est), 14L)
+  expect_identical(est$effect, expected$effect)
+  expect_identical(est$contrast, expected$contrast)
+  expect_identical(est$group, expected$group)
+
+  # No odds ratio anywhere: it is noncollapsible, so neither a simple effect
+  # beside one nor a difference of two of them says what it appears to.
+  expect_false(any(est$effect == "log(or)"))
+})
+
+test_that("ipw() over two treatment models hand-computes its cell risks and contrasts", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+  res <- ipw(two$models, two$outcome_mod)
+
+  # Every reported quantity is g-computation on the weighted outcome model,
+  # standardized over the whole sample, with the two treatments set together.
+  mu <- joint_models_cell_means(two$outcome_mod, dat)
+  expect_equal(
+    res$estimates$estimate,
+    joint_models_expected_estimates(mu),
+    tolerance = 1e-8
+  )
+
+  # The interaction written out over the cells, so the identity the labels claim
+  # is pinned against arithmetic rather than against the helper above.
+  interaction <- res$estimates$estimate[
+    res$estimates$effect == "rd" & res$estimates$group == "e = 1 vs e = 0"
+  ]
+  expect_equal(
+    interaction,
+    unname(mu[[4]] - mu[[2]] - mu[[3]] + mu[[1]]),
+    tolerance = 1e-8
+  )
+})
+
+test_that("ipw() over two treatment models reports diffs for a continuous outcome", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat, outcome_family = "gaussian")
+  res <- ipw(two$models, two$outcome_mod)
+  est <- res$estimates
+
+  expected <- joint_models_expected_rows(forms = "diff")
+  expect_identical(nrow(est), 9L)
+  expect_identical(est$effect, expected$effect)
+  expect_identical(est$contrast, expected$contrast)
+  expect_identical(est$group, expected$group)
+
+  mu <- joint_models_cell_means(two$outcome_mod, dat)
+  expect_equal(
+    est$estimate,
+    joint_models_expected_estimates(mu, forms = "diff"),
+    tolerance = 1e-8
+  )
+})
+
+# ---- equivalence with the declared-exposure route ---------------------------
+
+test_that("the two routes agree as estimators of the same joint effects", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+
+  two <- fit_joint_models_route(dat)
+  joint <- fit_joint_exposure_route(dat)
+  res_two <- ipw(two$models, two$outcome_mod)
+  res_joint <- ipw(joint$ps_mod, joint$outcome_mod)
+
+  # The same rows in the same order, so the comparison is row for row.
+  expect_identical(res_two$estimates$effect, res_joint$estimates$effect)
+  expect_identical(res_two$estimates$contrast, res_joint$estimates$contrast)
+  expect_identical(res_two$estimates$group, res_joint$estimates$group)
+
+  # They target the same estimand through different models of the same
+  # propensity score, so what separates them is the difference between those
+  # models rather than solver noise. Measured on this fixture the reported rows
+  # differ by at most 1.5e-2 in absolute terms, on cell risks of 0.36 to 0.84
+  # and contrasts of 0.09 to 0.63, while the weights behind them differ by up to
+  # 32 percent. The bound is set from that measurement with room, and what it
+  # pins is that the two routes answer the same question, not that they compute
+  # the same number.
+  expect_lt(
+    max(abs(res_two$estimates$estimate - res_joint$estimates$estimate)),
+    0.05
+  )
+
+  # The cell risks are the primary quantities and they are all probabilities, so
+  # they carry a tighter bound of their own; measured 6e-3.
+  means <- res_two$estimates$effect == "mean"
+  expect_lt(
+    max(abs(
+      res_two$estimates$estimate[means] - res_joint$estimates$estimate[means]
+    )),
+    0.03
+  )
+})
+
+test_that("saturated parameterizations make the two routes agree tightly", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models_saturated()
+
+  two <- fit_joint_models_route(
+    dat,
+    a_rhs = "x2",
+    e_rhs = "a * x2",
+    outcome_rhs = "a * e + x2"
+  )
+  joint <- fit_joint_exposure_route(
+    dat,
+    ps_rhs = "x2",
+    outcome_rhs = "joint + x2"
+  )
+  res_two <- ipw(two$models, two$outcome_mod)
+  res_joint <- ipw(joint$ps_mod, joint$outcome_mod)
+
+  # With both parameterizations saturated in the one covariate they describe the
+  # same joint distribution exactly, so nothing separates the routes but the two
+  # solves. This is the strongest available statement that the two-model route
+  # computes the same estimand rather than something that resembles it: the
+  # loose comparison above would be satisfied by an estimator that was merely
+  # close, and this one would not.
+  #
+  # Measured on this fixture the rows agree to 3.2e-14 absolute and 9.3e-14
+  # relative, against weights agreeing to 1.5e-7. The bound is set well above
+  # the measurement to leave room for the two solvers.
+  expect_equal(
+    res_two$estimates$estimate,
+    res_joint$estimates$estimate,
+    tolerance = 1e-6
+  )
+})
+
+# ---- standard errors ---------------------------------------------------------
+
+test_that("ipw() over two treatment models reports a usable standard error for every row", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+  res <- ipw(two$models, two$outcome_mod)
+  est <- res$estimates
+
+  expect_identical(nrow(est), 14L)
+  expect_true(all(is.finite(est$std.err)))
+  expect_true(all(est$std.err > 0))
+  expect_true(all(is.finite(est$ci.lower)))
+  expect_true(all(is.finite(est$ci.upper)))
+  expect_true(all(est$ci.lower < est$ci.upper))
+  expect_equal(sqrt(diag(vcov(res))), est$std.err, ignore_attr = TRUE)
+})
+
+test_that("the stacked system carries both treatment models", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+  res <- ipw(two$models, two$outcome_mod)
+
+  # The claim this pins is that both propensity score models are estimated
+  # alongside the outcome model rather than plugged in as fixed weights, which
+  # is what makes the reported standard errors account for having estimated
+  # them. It is pinned through the dimension of the stacked system rather than
+  # by comparison against a fixed-weight fit: `ipw()` has no route that takes
+  # product weights as given, and the outcome model's own standard errors live
+  # on the coefficient scale rather than on the effect scale, so there is no
+  # like-for-like comparator to make. The dimension is exact and it fails
+  # loudly for the defect in question.
+  #
+  # Three coefficients for `a ~ x1 + x2`, five for `e ~ a * x1 + x2`, five for
+  # the outcome model, four cell means, and ten contrast rows.
+  expect_identical(as.integer(res$fit@n_params), 27L)
+  expect_identical(nobs(res), 900L)
+  expect_identical(df.residual(res), 900L - 27L)
+
+  # Both models' coefficients are in there under names of their own.
+  theta <- names(res$fit@theta)
+  expect_true(all(c("x1", "x2") %in% theta))
+  expect_true(any(grepl("a:x1", theta, fixed = TRUE)))
+
+  # The second model's dimension is what moves when the second model changes, so
+  # the count tracks the pair rather than carrying a fixed allowance for it. An
+  # additive second model has one coefficient fewer and the system is one
+  # parameter smaller.
+  additive <- fit_joint_models_route(dat, e_rhs = "a + x1 + x2")
+  res_additive <- ipw(additive$models, additive$outcome_mod)
+  expect_identical(as.integer(res_additive$fit@n_params), 26L)
+})
+
+test_that("the covariance of a two-model joint fit couples its blocks", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+  res <- ipw(two$models, two$outcome_mod)
+  covariance <- vcov(res)
+
+  # Every reported row is a function of the same four cell means, solved as one
+  # stacked system on one sample, so the interaction covaries with each simple
+  # effect it is built from and two simple effects sharing a cell covary with
+  # each other. An assembly that computed any of these separately and stitched
+  # it in would report exact zeros here while matching its own standard errors
+  # everywhere. The floor is absolute and excludes the structural zero rather
+  # than a small number.
+  couples <- list(
+    c("rd a: 1 vs 0 e = 1 vs e = 0", "rd a: 1 vs 0 e = 1"),
+    c("rd a: 1 vs 0 e = 1 vs e = 0", "rd a: 1 vs 0 e = 0"),
+    c("rd a: 1 vs 0 e = 0", "rd e: 1 vs 0 a = 0"),
+    c("mean a = 1, e = 1 overall", "rd a: 1 vs 0 e = 1 vs e = 0")
+  )
+  for (pair in couples) {
+    where <- paste(pair, collapse = " with ")
+    present <- all(pair %in% rownames(covariance))
+    expect_true(present, label = where)
+    if (!present) {
+      next
+    }
+    entry <- covariance[pair[[1]], pair[[2]]]
+    expect_true(is.finite(entry), label = where)
+    expect_gt(abs(entry), 1e-8, label = where)
+  }
+
+  expect_equal(covariance, t(covariance), tolerance = 1e-12)
+})
+
+test_that("a two-model joint fit labels every surface alike", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+  res <- ipw(two$models, two$outcome_mod)
+
+  labels <- joint_models_labels(res$estimates)
+  expect_identical(anyDuplicated(labels), 0L)
+  expect_identical(names(coef(res)), labels)
+  expect_identical(dimnames(vcov(res)), list(labels, labels))
+  expect_identical(rownames(confint(res)), labels)
+  expect_identical(
+    dimnames(attr(res$estimates, "ipw_vcov", exact = TRUE)),
+    list(labels, labels)
+  )
+
+  frame <- as.data.frame(res)
+  expect_identical(
+    names(frame),
+    c(
+      "term",
+      "contrast",
+      "group",
+      "estimate",
+      "std.error",
+      "statistic",
+      "p.value"
+    )
+  )
+  expect_identical(frame$group, res$estimates$group)
+
+  tidied <- tidy(res)
+  expect_s3_class(tidied, "tbl_df")
+  expect_identical(names(tidied), names(frame))
+})
+
+test_that("the conditional reading of a two-model joint fit is the outcome model's", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+  conditional <- causalgenerics::as_conditional(
+    ipw(two$models, two$outcome_mod)
+  )
+
+  # The container changes what is reported, not what is fitted. The outcome
+  # model reads the two treatments and a covariate, and the conditional reading
+  # is its coefficients with the covariance the joint estimation implies.
+  expect_identical(coef(conditional), coef(two$outcome_mod))
+  expect_identical(
+    rownames(vcov(conditional)),
+    names(coef(two$outcome_mod))
+  )
+  # Read off the surface the conditional reading presents rather than off the
+  # stored frame. `as_conditional()` flips which reading a result reports
+  # without rebuilding anything, so `estimates` stays the marginal frame and
+  # legitimately keeps the group column its rows are keyed by; so does
+  # `as.data.frame()`, which tabulates that frame whichever reading is active.
+  # `tidy()` is the surface that answers in the reading, and the coefficients it
+  # reports belong to no subgroup.
+  expect_false("group" %in% names(tidy(conditional)))
+})
+
+# ---- refusals ----------------------------------------------------------------
+
+test_that("ipw() refuses an outcome model that does not read both treatments", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+
+  # A joint surface sets both treatments at once, so an outcome model reading
+  # one of them has no counterfactual design for three of the four cells. Both
+  # omissions are the same fault and are reported under the class the package
+  # already uses for an outcome model that does not read the exposure.
+  missing_e <- fit_joint_models_route(dat, outcome_rhs = "a + x1")
+  expect_error(
+    ipw(missing_e$models, missing_e$outcome_mod),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  missing_a <- fit_joint_models_route(dat, outcome_rhs = "e + x1")
+  expect_error(
+    ipw(missing_a$models, missing_a$outcome_mod),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  expect_propensity_error(ipw(missing_e$models, missing_e$outcome_mod))
+})
+
+test_that("ipw() refuses weights that are not a joint product", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+
+  # The container says the analysis is a joint intervention on two treatments,
+  # and the weights have to be the product that names. A single treatment's
+  # weights are an ordinary psw of the right length and the right estimand, so
+  # nothing else downstream would notice.
+  #
+  # What is pinned here is the minimum: weights carrying no `joint_wt_meta`
+  # refuse. Whether the product is recomputed from the container's own models
+  # and compared, the way the binary path's weight-consistency preflight does,
+  # is a heavier guarantee and is left to the estimator rounds.
+  single <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_ate(two$ps_a)
+    ),
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  expect_false(is_joint_wt(extract_weights(single)))
+  expect_error(
+    ipw(two$models, single),
+    class = "propensity_ipw_joint_models_weights_error"
+  )
+  expect_propensity_error(ipw(two$models, single))
+})
+
+test_that("ipw() refuses a joint fit whose weights are not the ate", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+
+  # `wt_joint()` refuses a non-ate component, so a non-ate product cannot be
+  # built at all and the estimand refusal is reached only by handing over
+  # weights that are not a product. That is the previous refusal, so what is
+  # pinned here is the other half: the surface is defined for the ate, and the
+  # result says so.
+  res <- ipw(two$models, two$outcome_mod)
+  expect_identical(res$estimand, "ate")
+  expect_identical(estimand(two$wts), "ate")
+  expect_error(
+    wt_joint(
+      withr::with_options(
+        list(propensity.quiet = TRUE),
+        wt_att(two$ps_a)
+      ),
+      withr::with_options(
+        list(propensity.quiet = TRUE),
+        wt_ate(two$ps_e)
+      )
+    ),
+    class = "propensity_wt_joint_estimand_error"
+  )
+})
+
+test_that("ipw() refuses .by on the two-model route", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))
+  # The outcome model carries the modifier interacted with both treatments, so
+  # the only thing wrong with the request is the combination itself.
+  two <- fit_joint_models_route(dat, outcome_rhs = "a * e * grp + x1")
+
+  # Effect modification of a joint intervention is a three-way question whether
+  # the crossing arrived declared or as two models, so the refusal is the one
+  # the declared route raises.
+  expect_no_warning(expect_error(
+    ipw(two$models, two$outcome_mod, .by = grp),
+    class = "propensity_ipw_joint_by_error"
+  ))
+  expect_propensity_error(ipw(two$models, two$outcome_mod, .by = grp))
+})
+
+test_that("ipw() refuses linearization standard errors on the two-model route", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+
+  # The cell means and every contrast built from them are parameters of the
+  # stacked system, and the linearization path solves no such system.
+  expect_error(
+    ipw(two$models, two$outcome_mod, se_method = "linearization"),
+    class = "propensity_ipw_joint_models_method_error"
+  )
+  expect_propensity_error(
+    ipw(two$models, two$outcome_mod, se_method = "linearization")
+  )
+})

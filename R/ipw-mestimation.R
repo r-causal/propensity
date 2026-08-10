@@ -205,6 +205,7 @@ ipw_spec_binary <- function(
   .data = NULL,
   estimand = NULL,
   ps_link = NULL,
+  .by = NULL,
   call = rlang::caller_env()
 ) {
   assert_class(ps_mod, "glm")
@@ -349,6 +350,22 @@ ipw_spec_binary <- function(
     contrasts <- c("rd", "log(rr)", "log(or)")
   }
 
+  # The strata a `.by` request names, resolved from `.data` when the caller
+  # supplied one and from the outcome model's own frame otherwise, which is what
+  # `mm_data` already holds. It comes after the contrasts because the measures
+  # reported within a stratum are taken from the ones reported for the whole
+  # sample.
+  by <- ipw_resolve_by(
+    .by,
+    data = mm_data,
+    exposure = exposure,
+    exposure_levels = exposure_values,
+    exposure_name = exposure_name,
+    outcome_mod = outcome_mod,
+    contrasts = contrasts,
+    call = call
+  )
+
   list(
     exposure_type = "binary",
     estimand = estimand,
@@ -374,6 +391,7 @@ ipw_spec_binary <- function(
       weights = as.double(wts)
     ),
     contrasts = contrasts,
+    by = by,
     focal_level = NULL,
     reference_level = NULL
   )
@@ -1303,6 +1321,7 @@ ipw_spec_categorical <- function(
   .data = NULL,
   estimand = NULL,
   .focal_level = NULL,
+  .by = NULL,
   call = rlang::caller_env()
 ) {
   assert_class(ps_mod, "multinom")
@@ -1378,6 +1397,13 @@ ipw_spec_categorical <- function(
     )
   }
 
+  # Read the declaration before the exposure is resolved to a plain factor of
+  # the fitted levels, which is what the rest of the path works on and what the
+  # resolution returns. A joint exposure is a factor subclass, so everything
+  # downstream fits it exactly as it fits any exposure over the same cells; what
+  # the declaration changes is which rows are reported.
+  declared <- exposure
+
   exposure <- ipw_categorical_exposure_factor(
     exposure,
     ps_mod$lev,
@@ -1403,6 +1429,12 @@ ipw_spec_categorical <- function(
   # attribute with an explicit `estimand` argument via check_estimand(), which
   # asks for `estimand` when the weights carry no attribute and none is supplied.
   estimand <- check_estimand(wts, estimand, call = call)
+
+  # Before the focal level is resolved, so a declared crossing is refused on the
+  # estimand it was weighted for rather than on a focal level it would never
+  # use, and before the fit that would otherwise report the vs-reference rows
+  # for it without a word.
+  check_ipw_joint_estimand(declared, estimand, call = call)
 
   # Focal level resolution: an explicit argument overrides the focal_category
   # attribute the weights carry. The att and atu estimands require a focal
@@ -1471,6 +1503,42 @@ ipw_spec_categorical <- function(
     contrasts <- c("rd", "log(rr)", "log(or)")
   }
 
+  # A declared crossing replaces the vs-reference rows with the joint surface,
+  # written in the two treatments rather than in the cells. It comes after the
+  # contrasts because the measures its rows report are the whole-sample ones
+  # without the odds ratio, which is noncollapsible and says nothing usable
+  # about either a simple effect or an interaction.
+  joint <- ipw_joint_plan(declared, setdiff(contrasts, "log(or)"))
+
+  # Before `.by` is resolved, so the combination is refused rather than
+  # diagnosed: a modifier the request will not be answered under is not worth
+  # reporting the outcome model's missing interaction term about.
+  check_ipw_joint_by(
+    causalgenerics::is_joint_exposure(declared),
+    .by,
+    remedy = "Drop {.arg .by} to report the joint surface, or drop the \\
+    declaration with {.code factor(x)} to report each cell against the \\
+    reference cell within each subgroup.",
+    call = call
+  )
+
+  # The strata a `.by` request names, on the same terms the binary path resolves
+  # them: from `.data` when the caller supplied one and from the outcome model's
+  # own frame otherwise, and after the contrasts because the measures reported
+  # within a stratum are taken from the ones reported for the whole sample.
+  # Every exposure level has to appear in every stratum, not merely two of them,
+  # since each stratum reports the full set of contrasts.
+  by <- ipw_resolve_by(
+    .by,
+    data = mm_data,
+    exposure = exposure,
+    exposure_levels = levs,
+    exposure_name = exposure_name,
+    outcome_mod = outcome_mod,
+    contrasts = contrasts,
+    call = call
+  )
+
   list(
     exposure_type = "categorical",
     estimand = estimand,
@@ -1496,6 +1564,8 @@ ipw_spec_categorical <- function(
       weights = as.double(wts)
     ),
     contrasts = contrasts,
+    by = by,
+    joint = joint,
     focal_level = focal_level,
     reference_level = levs[[1]]
   )
@@ -1591,31 +1661,36 @@ ipw_spec_continuous <- function(
   }
   estimand <- check_estimand(wts, estimand, call = call)
 
-  # Marginal structural model term detection: exactly one term of the outcome
-  # model references the exposure, contributing exactly one coefficient. A model
-  # with several exposure terms has no single reported effect.
+  # Marginal structural model term detection. Every term of the outcome model
+  # that reads the exposure must read the exposure and nothing else. What such a
+  # model reports is its own exposure coefficients, and a term reading a
+  # covariate as well contributes a coefficient whose value depends on that
+  # covariate, which no row of the table could name.
+  #
+  # The boundary is variable membership rather than the shape of the function,
+  # so a dose-response curve written as `A + I(A^2)` or as `A + sin(A)` is a
+  # model of the exposure alone and each of its coefficients is a row.
   out_X <- model.matrix(outcome_mod)
   term_labels <- attr(stats::terms(outcome_mod), "term.labels")
-  is_exposure_term <- vapply(
-    term_labels,
-    function(l) exposure_name %in% all.vars(str2lang(l)),
+  term_vars <- lapply(term_labels, function(label) all.vars(str2lang(label)))
+  reads_exposure <- vapply(
+    term_vars,
+    function(vars) exposure_name %in% vars,
     logical(1)
   )
-  exposure_cols <- which(attr(out_X, "assign") %in% which(is_exposure_term))
-  if (length(exposure_cols) != 1) {
-    abort(
-      c(
-        "{.fun ipw} requires a marginal structural model with a single \\
-        exposure term for a continuous exposure.",
-        x = "{.arg outcome_mod} contributes {length(exposure_cols)} \\
-        coefficient{?s} for {.val {exposure_name}}.",
-        i = "Read the full coefficient vector from the returned {.field fit} \\
-        object for a model with more than one exposure term."
-      ),
-      error_class = "propensity_ipw_msm_error",
-      call = call
-    )
-  }
+  reads_more <- vapply(
+    term_vars,
+    function(vars) length(setdiff(vars, exposure_name)) > 0,
+    logical(1)
+  )
+  check_ipw_msm_terms(
+    term_labels[reads_exposure & reads_more],
+    exposure_name,
+    call = call
+  )
+
+  exposure_cols <- which(attr(out_X, "assign") %in% which(reads_exposure))
+  check_ipw_msm_reported(exposure_cols, exposure_name, call = call)
 
   if (is_linear_regression(outcome_mod)) {
     family <- "gaussian"
@@ -1647,12 +1722,107 @@ ipw_spec_continuous <- function(
       link = out_link,
       coefs = stats::coef(outcome_mod),
       X_counterfactual = NULL,
-      weights = as.double(wts),
-      exposure_col = exposure_cols
+      weights = as.double(wts)
     ),
     contrasts = NULL,
+    coefficients = ipw_continuous_coefficient_rows(
+      exposure_cols,
+      colnames(out_X),
+      out_link,
+      call = call
+    ),
     focal_level = NULL,
     reference_level = NULL
+  )
+}
+
+# The rows a single-treatment continuous fit reports, which is one per exposure
+# coefficient.
+#
+# An exposure entering through one column is the whole of the dose response, so
+# its coefficient is the slope of that response everywhere and the row says so,
+# naming nothing further: a contrast column repeating one value down a one-row
+# table would read as a contrast that was named. An exposure entering through
+# several columns has no such row. No one of those coefficients is the slope,
+# since a curve has a different slope at every dose, so each row is named after
+# the coefficient it reports and the scale word steps back to `coef`.
+ipw_continuous_coefficient_rows <- function(
+  exposure_cols,
+  column_names,
+  link,
+  call = rlang::caller_env()
+) {
+  named <- length(exposure_cols) > 1L
+
+  ipw_coefficient_rows(
+    col = exposure_cols,
+    effect = rep(
+      ipw_effect_label(link, if (named) "coef" else "slope", call = call),
+      length(exposure_cols)
+    ),
+    contrast = if (named) column_names[exposure_cols]
+  )
+}
+
+# The marginal structural model refusals a coefficient-shaped surface makes. A
+# term that reads the exposure and a covariate together is refused because the
+# coefficient it contributes is not a causal effect on its own: it is the change
+# in the effect per unit of the covariate, and the effect itself is then defined
+# only at a value of that covariate the table does not name. Reading the whole
+# coefficient vector off the fit is the way to have such a model estimated with
+# the sandwich this path builds.
+check_ipw_msm_terms <- function(
+  mixed_terms,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  if (length(mixed_terms) == 0) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} requires a marginal structural model whose exposure terms \\
+      read the exposure alone.",
+      x = "{.code {mixed_terms}} {?is/are} not {?a term/terms} of \\
+      {.val {exposure_name}} alone.",
+      i = "A term reading anything else contributes a coefficient that depends \\
+      on what it reads, so there is no one effect for a row to report.",
+      i = "A term reading the exposure alone is admitted however it is \\
+      written, so a curve such as \\
+      {.code {exposure_name} + I({exposure_name}^2)} reports one row per \\
+      coefficient.",
+      i = "Read the full coefficient vector from the returned {.field fit} \\
+      object for a model this surface cannot report."
+    ),
+    error_class = "propensity_ipw_msm_error",
+    call = call
+  )
+}
+
+# The other half of the same requirement: a marginal structural model that
+# reports nothing at all. Reached when no term of the outcome model contributes
+# a coefficient for the exposure, which is the case a model that mentions the
+# exposure only inside a term the design dropped ends at.
+check_ipw_msm_reported <- function(
+  exposure_cols,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  if (length(exposure_cols) > 0) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.arg outcome_mod} must contribute a coefficient for the exposure \\
+      {.val {exposure_name}}.",
+      x = "No term of {.arg outcome_mod} contributes one.",
+      i = "Refit {.arg outcome_mod} with {.val {exposure_name}} on the \\
+      right-hand side of the formula."
+    ),
+    error_class = "propensity_ipw_msm_error",
+    call = call
   )
 }
 
@@ -1728,7 +1898,7 @@ abort_ipw_ps_separation <- function(
 # Recompute the weights implied by the spec at its seeded init, mirroring the
 # weight computation each psi builder performs at theta = init.
 ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
-  weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand)
+  weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand, spec$ps$types)
   init <- layout$init
   idx <- layout$idx
   th_ps <- init[idx$ps]
@@ -1770,6 +1940,31 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
         list(focal_idx = focal_idx, stab_probs = stab_probs, score = score)
       )
     },
+    joint_models = {
+      blocks <- ipw_joint_models_blocks(spec, th_ps, th_stab)
+      # Only a discrete component has a probability to saturate. A dose divides
+      # by a normal density, which is small at a badly fitted observation rather
+      # than zero, and the weight it gives is finite wherever the density is.
+      check_ipw_ps_separation(
+        sum(vapply(
+          blocks,
+          function(block) {
+            if (identical(block$type, "continuous")) {
+              0L
+            } else {
+              sum(block$ps == 0 | block$ps == 1)
+            }
+          },
+          integer(1)
+        )),
+        call = call
+      )
+      weight_fn(
+        lapply(blocks, function(block) block$ps),
+        spec$exposure,
+        lapply(blocks, function(block) block$extras)
+      )
+    },
     continuous = {
       n_alpha <- ncol(spec$ps$X)
       alpha <- th_ps[seq_len(n_alpha)]
@@ -1806,6 +2001,9 @@ ipw_check_weight_consistency <- function(
     observed_wts,
     spec$exposure_type,
     spec$estimand,
+    # A joint spec weights two treatments, and the causes a mismatch can have
+    # depend on what each of them is rather than on the pair being joint.
+    components = spec$ps$types,
     call = call
   )
 }
@@ -1820,6 +2018,7 @@ ipw_compare_weights <- function(
   observed_wts,
   exposure_type,
   estimand,
+  components = NULL,
   call = rlang::caller_env()
 ) {
   recomputed <- as.double(recomputed)
@@ -1857,15 +2056,33 @@ ipw_compare_weights <- function(
       the one {.fun ipw} resolved are one cause.",
       NULL
     )
-    # A continuous exposure is the only one whose weights carry a spread. The
+    # A dose is the only exposure whose weights carry a spread, and it is a dose
+    # whether it is the exposure or the second component of a joint one. The
     # stacked system estimates one pooled residual variance, so weights built on
     # observation-level standard deviations are a different function of the data
     # and cannot be reproduced here at any parameter value.
-    sigma_hint <- if (exposure_type == "continuous") {
+    dose <- identical(exposure_type, "continuous") ||
+      "continuous" %in% components
+    sigma_hint <- if (dose) {
       "Weights built with an observation-level {.arg .sigma}, such as \\
       {.code influence(model)$sigma}, are one cause: {.fun ipw} models the \\
       conditional density with a single pooled residual standard deviation, \\
       which is what {.fun wt_ate} uses when no {.arg .sigma} is given."
+    } else {
+      NULL
+    }
+    # A joint weight is a product, and a product records that a component was
+    # stabilized without recording the numerator either component was built
+    # with. The stacked system therefore estimates the dose's own marginal
+    # moments, and a component carrying a numerator of its own is a different
+    # function of the data that no parameter value reproduces. A single dose
+    # keeps its score, which is read off the weights and held fixed, so this
+    # cause belongs to the joint route alone.
+    score_hint <- if (identical(exposure_type, "joint_models") && dose) {
+      "A dose component built with a fixed {.arg stabilization_score} is one \\
+      cause: the product records that a component was stabilized and not the \\
+      numerator it was built with, so {.fun ipw} rebuilds the dose weights \\
+      from the exposure's own marginal moments instead."
     } else {
       NULL
     }
@@ -1880,6 +2097,9 @@ ipw_compare_weights <- function(
     }
     if (!is.null(sigma_hint)) {
       msg <- c(msg, i = sigma_hint)
+    }
+    if (!is.null(score_hint)) {
+      msg <- c(msg, i = score_hint)
     }
     msg <- c(
       msg,
@@ -2057,7 +2277,10 @@ ipw_degenerate_se <- function(estimate, std.err) {
 
 # The rows of an estimates table whose standard errors carry that signature,
 # labeled as the table labels them: a categorical exposure names the effect and
-# the contrast together, and the other exposure types name the effect alone.
+# the contrast together, and the other exposure types name the effect alone. A
+# grouped table repeats each measure across its subgroups, so the subgroup
+# completes the label wherever the row is one of those; the whole-sample rows
+# keep the label they carry in a table with no groups at all.
 ipw_degenerate_se_rows <- function(estimates) {
   degenerate <- ipw_degenerate_se(estimates$estimate, estimates$std.err)
 
@@ -2065,6 +2288,15 @@ ipw_degenerate_se_rows <- function(estimates) {
     estimates$effect
   } else {
     paste(estimates$effect, "for", estimates$contrast)
+  }
+
+  if (!is.null(estimates$group)) {
+    grouped <- estimates$group != ipw_overall_group
+    labels[grouped] <- paste(
+      labels[grouped],
+      "in",
+      estimates$group[grouped]
+    )
   }
 
   labels[degenerate]
@@ -2259,18 +2491,22 @@ abort_ipw_no_variance <- function(spec, call = rlang::caller_env()) {
   )
 }
 
-# Build the estimates table from the solved contrast rows of theta, mirroring
-# the column layout that calculate_estimates() produces on the linearization
-# path so the two SE methods return the same shape. The contrast rows are
-# addressed by their theta positions, not by name: theta names are not unique
-# across blocks (a ps or outcome covariate can share a contrast label such as
-# "rd" or "diff"), so name subsetting could silently return the wrong row.
-# Effect label for a continuous exposure, taken from the outcome-model link:
-# the reported effect is the single marginal structural model coefficient.
-ipw_continuous_effect_label <- function(link, call = rlang::caller_env()) {
+# The scale a reported coefficient is on, taken from the outcome-model link.
+# Only the identity link needs the caller's help. A coefficient of a logit model
+# is a log odds ratio per unit of the column it multiplies and one of a log
+# model is a log risk ratio, whatever that column is, so those words are honest
+# of every row this package reports and are fixed here.
+#
+# At an identity link the word depends on what the row claims, which is the
+# caller's to know: `diff` where the row is a contrast of two treatment levels,
+# `slope` where it is a per-unit change in a dose, and `coef` where the row is
+# named after its own coefficient and claims nothing further. The three are kept
+# apart because `diff` and `slope` each carry an evaluated-at claim, and reusing
+# one of them for a basis coefficient would make the same word mean two things.
+ipw_effect_label <- function(link, identity, call = rlang::caller_env()) {
   switch(
     link,
-    identity = "slope",
+    identity = identity,
     logit = "log(or)",
     log = "log(rr)",
     abort(
@@ -2281,6 +2517,23 @@ ipw_continuous_effect_label <- function(link, call = rlang::caller_env()) {
   )
 }
 
+# The description of a coefficient-shaped surface: which columns of the outcome
+# design carry causal content, and how each of them is named. A surface
+# described this way reports the outcome block of theta directly and
+# standardizes nothing, so what it reports are the weighted fit's own
+# coefficients. `contrast` and `group` are each present only where they name
+# something, since a column repeating one value down the table would read as a
+# contrast, or a group, that was named.
+ipw_coefficient_rows <- function(col, effect, contrast = NULL, group = NULL) {
+  list(col = col, effect = effect, contrast = contrast, group = group)
+}
+
+# Build the estimates table from the solved rows of theta, mirroring the column
+# layout that calculate_estimates() produces on the linearization path so the
+# two SE methods return the same shape. The rows are addressed by their theta
+# positions, not by name: theta names are not unique across blocks (a ps or
+# outcome covariate can share a contrast label such as "rd" or "diff"), so name
+# subsetting could silently return the wrong row.
 ipw_mestimation_estimates <- function(
   spec,
   fit,
@@ -2292,16 +2545,31 @@ ipw_mestimation_estimates <- function(
   vc <- stats::vcov(fit)
   se <- sqrt(diag(vc))
 
-  # A continuous exposure reports the marginal structural model exposure
-  # coefficient, addressed by its outcome-block theta position; binary and
-  # categorical exposures report the contrast rows. Positions are used, not
-  # names, since theta names are not unique across blocks.
-  if (identical(spec$exposure_type, "continuous")) {
-    idx <- layout$idx$out[spec$outcome$exposure_col]
-    effect <- ipw_continuous_effect_label(spec$outcome$link, call = call)
+  # A coefficient-shaped surface reports coefficients of the marginal structural
+  # model, addressed by their outcome-block theta positions; the cell-shaped
+  # surfaces report the contrast rows. Positions are used, not names, since
+  # theta names are not unique across blocks.
+  contrast <- NULL
+  group <- NULL
+
+  if (!is.null(spec$coefficients)) {
+    idx <- layout$idx$out[spec$coefficients$col]
+    effect <- spec$coefficients$effect
+    contrast <- spec$coefficients$contrast
+    group <- spec$coefficients$group
   } else {
-    idx <- layout$idx$contrast
-    effect <- rep(spec$contrasts, times = ipw_n_contrasts(spec))
+    # A joint exposure reports the cell means alongside the contrasts over them,
+    # and the means are already the mu block, so its reported rows read two
+    # blocks of theta rather than one.
+    idx <- if (is.null(spec$joint)) {
+      c(layout$idx$contrast, layout$idx$by_contrast)
+    } else {
+      c(layout$idx$mu, layout$idx$contrast)
+    }
+    rows <- ipw_estimate_rows(spec)
+    effect <- rows$effect
+    contrast <- rows$contrast
+    group <- rows$group
   }
 
   estimate <- unname(co[idx])
@@ -2324,20 +2592,22 @@ ipw_mestimation_estimates <- function(
     p.value = p.value
   )
 
-  # A categorical exposure contributes one contrast per non-reference level, so
-  # the table gains a contrast column, placed immediately after effect, that
-  # names each one. Binary and continuous exposures keep the eight-column
-  # contract with no contrast column.
-  if (identical(spec$exposure_type, "categorical")) {
-    contrast <- rep(
-      ipw_contrast_labels(spec),
-      each = length(spec$contrasts)
-    )
-    out <- cbind(
-      out["effect"],
-      contrast = contrast,
-      out[setdiff(names(out), "effect")]
-    )
+  # The columns that name a row lead the table, in the order a label pastes
+  # them: the effect measure, then the contrast a categorical exposure compares,
+  # then the subgroup a `.by` request reports within. Each of the last two is
+  # present only where it names something, since a column repeating one value
+  # down the table would read as a contrast, or a subgroup, that was named. They
+  # are inserted together rather than one after the other, because inserting
+  # each immediately after effect would leave them in the reverse order.
+  keys <- out["effect"]
+  if (!is.null(contrast)) {
+    keys$contrast <- contrast
+  }
+  if (!is.null(group)) {
+    keys$group <- group
+  }
+  if (length(keys) > 1L) {
+    out <- cbind(keys, out[setdiff(names(out), "effect")])
   }
 
   # The covariance of the reported effects, taken from the same rows and columns
@@ -2352,9 +2622,11 @@ ipw_mestimation_estimates <- function(
   out
 }
 
-# The labels every surface of a result keys its effects by: the effect measure
-# on its own, or the effect measure and the contrast together where a
-# categorical exposure reports one row per contrast.
+# The labels every surface of a result keys its effects by: the effect measure,
+# then the contrast where a categorical exposure reports one row per contrast,
+# then the subgroup where a `.by` request reports one row per subgroup. Each
+# column a frame carries narrows the label, and a frame carrying neither is
+# keyed by the measure alone.
 #
 # causalgenerics holds a function of the same name and the same rule, and the
 # duplication is deliberate: that copy labels what the accessors present, and
@@ -2364,11 +2636,15 @@ ipw_mestimation_estimates <- function(
 # reads frames built by any version of this package; this one reads only frames
 # this package has just built, so it reads the one name they carry.
 ipw_effect_labels <- function(estimates) {
-  if (is.null(estimates[["contrast"]])) {
-    estimates$effect
-  } else {
-    paste(estimates$effect, estimates$contrast)
+  parts <- list(estimates$effect)
+
+  for (column in c("contrast", "group")) {
+    if (!is.null(estimates[[column]])) {
+      parts <- c(parts, list(estimates[[column]]))
+    }
   }
+
+  do.call(paste, parts)
 }
 
 # A square block of the joint sandwich, relabeled on both margins. Blocks are

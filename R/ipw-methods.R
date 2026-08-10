@@ -19,6 +19,7 @@ ipw.multinom <- function(
   outcome_mod,
   ...,
   .data = NULL,
+  .by = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
@@ -27,6 +28,7 @@ ipw.multinom <- function(
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
+  .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
@@ -59,7 +61,8 @@ ipw.multinom <- function(
     outcome_mod,
     .data = .data,
     estimand = estimand,
-    .focal_level = .focal_level
+    .focal_level = .focal_level,
+    .by = .by
   )
   fit <- ipw_mestimation(spec, conf_level = conf_level)
   components <- ipw_component_models(wt_mod, outcome_mod, fit)
@@ -81,11 +84,14 @@ ipw.multinom <- function(
 #' propensity score model of the exposure and a weighted marginal structural
 #' outcome model. The only supported estimand is `"ate"`. Standard errors are
 #' computed by M-estimation; the linearization method is not available for
-#' continuous exposures. The marginal structural model must contain exactly one
-#' exposure term, and the reported effect is that single coefficient: `"slope"`
-#' for an identity-link outcome, `"log(or)"` for a logit-link outcome, and
-#' `"log(rr)"` for a log-link outcome. The estimates table keeps the eight-column
-#' contract with no contrast column.
+#' continuous exposures. Every term of the marginal structural model that reads
+#' the exposure must read the exposure and nothing else, and the reported
+#' effects are the coefficients those terms contribute, labeled `"log(or)"` for
+#' a logit-link outcome and `"log(rr)"` for a log-link one. A model with one
+#' exposure coefficient keeps the eight-column contract with no contrast column
+#' and labels its row `"slope"` at an identity link; a dose-response curve such
+#' as `y ~ A + I(A^2)` reports one row per coefficient under `"coef"`, gaining a
+#' contrast column that names them.
 #'
 #' @name ipw-methods
 #' @exportS3Method causalgenerics::ipw lm
@@ -94,6 +100,7 @@ ipw.lm <- function(
   outcome_mod,
   ...,
   .data = NULL,
+  .by = NULL,
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
@@ -101,9 +108,13 @@ ipw.lm <- function(
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
+  .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
+
+  check_ipw_by_method(.by, se_method)
+  check_ipw_by_exposure(.by)
 
   ipw_continuous_estimate(
     wt_mod,

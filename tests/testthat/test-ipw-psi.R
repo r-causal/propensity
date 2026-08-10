@@ -360,7 +360,15 @@ expect_weight_parity <- function(
 }
 
 expect_layout_partition <- function(layout, sizes) {
-  block_order <- c("ps", "stab", "out", "mu", "contrast")
+  block_order <- c(
+    "ps",
+    "stab",
+    "out",
+    "mu",
+    "contrast",
+    "by_mu",
+    "by_contrast"
+  )
   expect_named(layout$idx, block_order)
   expect_equal(
     lengths(layout$idx[block_order]),
@@ -893,7 +901,9 @@ test_that("ipw_theta_layout partitions theta for binary specs", {
       stab = 1,
       out = ncol(spec_stab$outcome$X),
       mu = 2,
-      contrast = 3
+      contrast = 3,
+      by_mu = 0,
+      by_contrast = 0
     )
   )
 
@@ -907,7 +917,9 @@ test_that("ipw_theta_layout partitions theta for binary specs", {
       stab = 0,
       out = ncol(spec_unstab$outcome$X),
       mu = 2,
-      contrast = 3
+      contrast = 3,
+      by_mu = 0,
+      by_contrast = 0
     )
   )
 
@@ -921,7 +933,9 @@ test_that("ipw_theta_layout partitions theta for binary specs", {
       stab = 0,
       out = ncol(spec_lin$outcome$X),
       mu = 2,
-      contrast = 1
+      contrast = 1,
+      by_mu = 0,
+      by_contrast = 0
     )
   )
 })
@@ -939,7 +953,9 @@ test_that("ipw_theta_layout partitions theta for categorical specs", {
       stab = 0,
       out = ncol(spec$outcome$X),
       mu = k,
-      contrast = (k - 1) * length(spec$contrasts)
+      contrast = (k - 1) * length(spec$contrasts),
+      by_mu = 0,
+      by_contrast = 0
     )
   )
 
@@ -952,7 +968,9 @@ test_that("ipw_theta_layout partitions theta for categorical specs", {
       stab = k - 1,
       out = ncol(spec_stab$outcome$X),
       mu = k,
-      contrast = (k - 1) * length(spec_stab$contrasts)
+      contrast = (k - 1) * length(spec_stab$contrasts),
+      by_mu = 0,
+      by_contrast = 0
     )
   )
 })
@@ -967,7 +985,9 @@ test_that("ipw_theta_layout partitions theta for a continuous stabilized spec", 
       stab = 2,
       out = ncol(spec$outcome$X),
       mu = 0,
-      contrast = 0
+      contrast = 0,
+      by_mu = 0,
+      by_contrast = 0
     )
   )
 })
@@ -984,7 +1004,9 @@ test_that("ipw_theta_layout partitions theta for a continuous unstabilized spec"
       stab = 0,
       out = ncol(spec$outcome$X),
       mu = 0,
-      contrast = 0
+      contrast = 0,
+      by_mu = 0,
+      by_contrast = 0
     )
   )
 })

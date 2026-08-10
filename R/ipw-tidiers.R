@@ -96,9 +96,10 @@
 #' @return A [tibble][tibble::tibble] with one row per estimate and the columns:
 #' \describe{
 #'   \item{`term`}{The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-#'     `"diff"`, or `"slope"`.}
-#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"`.
-#'     Categorical exposures only.}
+#'     `"diff"`, `"slope"`, or `"coef"`.}
+#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"` for a
+#'     categorical exposure or the coefficient name on a surface whose rows are
+#'     named after their coefficients. Present only where a row reports one.}
 #'   \item{`estimate`}{The estimated effect.}
 #'   \item{`std.error`}{The standard error of the estimate.}
 #'   \item{`statistic`}{The z statistic, the estimate over its standard error.}
@@ -459,12 +460,13 @@ glance.ipw <- function(x, ...) {
 #'   columns:
 #' \describe{
 #'   \item{`term`}{The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-#'     `"diff"`, or `"slope"`, or the coefficient name in the conditional
-#'     reading.}
-#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"`.
-#'     Categorical exposures only, and among those only in the marginal reading:
-#'     the conditional reading names each coefficient in `term` and returns no
-#'     `contrast` column.}
+#'     `"diff"`, `"slope"`, or `"coef"`, or the coefficient name in the
+#'     conditional reading.}
+#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"` for a
+#'     categorical exposure or the coefficient name on a surface whose rows are
+#'     named after their coefficients. Present only in the marginal reading, and
+#'     there only where a row reports one: the conditional reading names each
+#'     coefficient in `term` and returns no `contrast` column.}
 #'   \item{`estimate`}{The pooled point estimate.}
 #'   \item{`std.error`}{The pooled standard error.}
 #'   \item{`statistic`}{The test statistic, the estimate over its standard

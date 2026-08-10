@@ -50,7 +50,7 @@ VignetteBuilder:
 Remotes:
     r-causal/causalgenerics,
     r-causal/deli
-Config/roxygen2/version: 8.0.0
+Config/roxygen2/version: 8.1.0
 Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US

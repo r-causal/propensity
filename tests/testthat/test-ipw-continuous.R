@@ -261,18 +261,28 @@ test_that("ipw() continuous rejects estimands other than ate", {
 
 # ---- MSM guard --------------------------------------------------------------
 
-test_that("ipw() continuous rejects an MSM with more than one exposure term", {
+test_that("ipw() continuous rejects an MSM term that reads a covariate", {
   skip_if_not_installed("deli")
   dat <- sim_continuous()
-  mods <- fit_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+  mods <- fit_continuous_models(dat, msm_rhs = c("A", "A:x1"))
 
-  # more than one exposure term has no single reported effect; the error must
+  # the requirement is on what a term reads rather than on how many terms there
+  # are: a term reading a covariate contributes a coefficient that depends on
+  # that covariate, so no row of the table names an effect. The error must
   # direct the user to the returned fit object for the full coefficient vector
   expect_error(
     ipw(mods$ps_mod, mods$outcome_mod),
     class = "propensity_ipw_msm_error",
     regexp = "fit"
   )
+
+  # a curve in the exposure alone is admitted, and reports one row per
+  # coefficient; the full contract for those rows is pinned in
+  # test-ipw-joint-continuous.R
+  curve <- fit_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+  res <- ipw(curve$ps_mod, curve$outcome_mod)
+  expect_identical(nrow(res$estimates), 2L)
+  expect_identical(res$estimates$contrast, c("A", "I(A^2)"))
 })
 
 # ---- gaussian-glm routing ---------------------------------------------------

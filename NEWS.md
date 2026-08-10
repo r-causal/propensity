@@ -1,5 +1,63 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` gains a `.by` argument, which reports the effect of the exposure
+  within each level of a modifier alongside the effect for the sample as a
+  whole. The reported rows come in three blocks: the overall rows unchanged from
+  a fit without `.by`, one block per level of the modifier, and one block per
+  level against the reference level, so the difference between two strata is
+  reported rather than left to be taken by hand. A stratum's effect is
+  g-computation restricted to that stratum, which means it is the effect in that
+  stratum's own covariate distribution, and every row is a parameter of the same
+  stacked system, so the standard error of a difference between strata accounts
+  for the two having been estimated together. Fitting each stratum on its own
+  subset reports the same stratum effects with no covariance between them, which
+  leaves that difference untestable. The stratum rows and their contrasts report
+  the risk difference and the log risk ratio but no odds ratio, since an odds
+  ratio is noncollapsible and a difference of two of them moves with the outcome
+  distribution in each stratum whether or not the effect does. `.by` requires
+  `se_method = "mestimation"` and a binary or categorical exposure.
+
+* `ipw()` now reports a joint intervention on two discrete treatments. Cross
+  them with `causalgenerics::joint_exposure()`, which records the crossing on the
+  vector, and the result is written in the two treatments rather than as each
+  cell against a reference cell: one counterfactual mean per cell, each
+  treatment's simple effects within the levels of the other, and the interaction
+  between them, on the risk difference scale as the additive interaction and on
+  the log risk ratio scale as the multiplicative one. The simple effects include
+  the comparisons that are not against the reference cell, which the
+  vs-reference reporting cannot express at all. The interaction is reported once,
+  under the first treatment's framing, because it is symmetric in the two. Every
+  row is a parameter of one stacked system, so an interaction equals the
+  corresponding double difference of the cell means exactly.
+
+* `wt_joint()` and `joint_wt_models()` build the weight for a joint intervention
+  from one treatment model per treatment, which is the sequential factorization
+  the weight really has: the first treatment given the covariates, times the
+  second given the first treatment and the covariates. Pass the container to
+  `ipw()` as `wt_mod` with an outcome model reading both treatments and the
+  reported surface is the declared crossing's, row for row. Prefer this route
+  when the two treatments call for different adjustment sets, or when the
+  dependence of the second on the first is what you want to model. The
+  factorization is checked rather than assumed: `joint_wt_models()` refuses a
+  second model that does not condition on the first treatment, since the product
+  of two marginal weights is a different quantity that nothing downstream can
+  tell apart, and `wt_joint()` requires a continuous component to be stabilized.
+  The second treatment may be a dose, recorded with an `lm()` or an
+  identity-link gaussian `glm()`, in which case there are no cells to report and
+  the surface is the marginal structural model's own coefficients. A model
+  written in bare treatment terms reports rows naming the treatment each one
+  varies and where it is evaluated; every other treatment-reading model, a
+  transformed term or a basis such as `poly()` or `splines::ns()` among them,
+  reports one row per coefficient named after the coefficient it reports. Both
+  treatment models are stacked alongside the outcome model, so the standard
+  errors account for having estimated both.
+
+* A new vignette, `vignette("effect-modification")`, separates effect
+  modification from interaction as causal questions and works both on one
+  dataset where they give different answers. It covers when a stabilizing
+  numerator may condition on the modifier, why no odds ratio is reported for
+  effect modification, and the reasoning behind the checks on joint weights.
+
 * `tidy()` on a pooled result gains an `effects` argument, which reports the
   reading it names rather than the one the pooled result records: `"conditional"`
   returns the pooled coefficients of the outcome models, one row per coefficient,
