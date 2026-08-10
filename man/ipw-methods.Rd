@@ -391,6 +391,26 @@ that depends on that covariate, and no row could name the effect it stands
 for. Read the whole coefficient vector from the returned \code{fit} object for a
 model this surface cannot report.
 
+A basis matrix reads the exposure alone, so \code{poly(A, 2)},
+\code{splines::ns(A, 3)}, and \code{splines::bs(A, 3)} are admitted on the same
+footing. One such term contributes one coefficient per basis column and each
+of them is a row. The \code{contrast} column names the coefficient rather than the
+term, a distinction a basis makes and \code{A + I(A^2)} does not: the single term
+\code{poly(A, 2)} reports the contrasts \verb{poly(A, 2)1} and \verb{poly(A, 2)2}. A basis
+reading a covariate is a covariate term and contributes no row, and one
+reading both, such as \code{poly(A, 2):x1}, is refused with every other mixed
+term.
+
+A marginal structural model built on a basis of the exposure requires
+\code{.data}. A model frame records the term rather than the variables inside
+it, so the frame of such a fit carries the basis matrix and no column
+holding the exposure, which is where \code{ipw()} reads the exposure from when
+\code{.data} is absent. Omitting it errors, and the message names the exposure
+and directs to \code{.data}. Supplying it does not refit the basis: the outcome
+design is read from the fit, and a design rebuilt from \code{.data} is rebuilt
+through the fitted terms object, whose \code{predvars} attribute records the
+basis that term was fit with.
+
 Use \code{\link[causalgenerics:new_ipw]{as.data.frame()}} with
 \code{exponentiate = TRUE} to obtain risk ratios and odds ratios on their natural
 scale.
@@ -896,6 +916,12 @@ wts_cont <- wt_ate(
 )
 msm <- lm(y_dose ~ a, data = dat, weights = wts_cont)
 ipw(ps_cont, msm)
+
+# A dose-response curve written as a basis matrix reports one row per basis
+# coefficient. The model frame of such a fit holds the basis rather than the
+# dose, so `.data` supplies the exposure.
+msm_curve <- lm(y_dose ~ poly(a, 2), data = dat, weights = wts_cont)
+ipw(ps_cont, msm_curve, .data = dat)
 
 \dontshow{if (requireNamespace("nnet", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 # Categorical exposure: a multinomial propensity model and per-level contrasts
