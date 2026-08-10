@@ -956,12 +956,14 @@ test_that("ipw() still refuses a term reading a treatment and a covariate", {
     ipw(mixed$models, mixed$outcome_mod),
     class = "propensity_ipw_msm_error"
   )
+  expect_propensity_error(ipw(mixed$models, mixed$outcome_mod))
 
   dosewise <- fit_joint_continuous(dat, outcome_rhs = "a + e + e:x1")
   expect_error(
     ipw(dosewise$models, dosewise$outcome_mod),
     class = "propensity_ipw_msm_error"
   )
+  expect_propensity_error(ipw(dosewise$models, dosewise$outcome_mod))
 })
 
 test_that("ipw() refuses a treatment column coded some other way", {

@@ -427,28 +427,19 @@ check_ipw_joint_models_dose_link <- function(
   )
 }
 
-# ---- the coefficient surface a dose reports ---------------------------------
+# ---- the surfaces a dose reports --------------------------------------------
 
 # Which coefficients of a joint marginal structural model carry causal content,
 # and how each of them is named. A dose has no cells, so nothing is standardized
-# and the surface is the weighted fit's own coefficients: the binary treatment's
-# effect, the dose's slope, and the interaction between them.
+# and what is reported either way are the weighted fit's own coefficients. Which
+# rows those are is one question, answered here for both surfaces, and how they
+# are named is the other, answered by whichever surface the model reaches.
 #
-# Each row is named the way the declared route names its rows. `contrast` names
-# the treatment being varied and how, and `group` says where in the other
-# treatment's range the row is evaluated: the binary treatment's coefficient is
-# its effect at a dose of zero, the dose's is its slope at the binary
-# treatment's reference level, and the interaction row keeps the discrete
-# route's idiom of a group comparing the other treatment's levels, which for a
-# dose is a one-unit step. An additive model evaluates neither row anywhere in
-# particular, so both are reported as overall.
-#
-# Those three readings are true of a model that is linear in each treatment and
-# of no other, which is why every treatment-reading term has to be a bare one.
-# A transformed term breaks them in two ways at once. Its coefficient is not the
-# quantity the row it lands in claims, and two transformed terms of the same
-# treatment land in the same row, so the surface reports one label twice and the
-# labels stop keying the rows.
+# A row is reported when the term its column belongs to reads a treatment. A
+# covariate term reads neither and contributes no row however many columns it
+# expands to, which is the whole of the rule and is applied once, here, so that
+# neither surface can get it differently. It is applied to columns rather than
+# to terms because a term is not what a row reports.
 ipw_joint_dose_rows <- function(
   outcome_mod,
   names,
@@ -465,27 +456,71 @@ ipw_joint_dose_rows <- function(
     vapply(term_vars, function(vars) name %in% vars, logical(1))
   })
   reads_treatment <- reads[[1]] | reads[[2]]
+  reads_covariate <- vapply(
+    term_vars,
+    function(vars) length(setdiff(vars, names)) > 0,
+    logical(1)
+  )
 
-  bare <- ipw_joint_dose_bare_terms(names)
   check_ipw_joint_dose_terms(
-    setdiff(term_labels[reads_treatment], bare$admitted),
+    term_labels[reads_treatment & reads_covariate],
     names,
-    bare$reported,
     call = call
   )
 
-  # Reported in the design's column order, which is the order the terms are in,
-  # so the rows read as the coefficient vector reads. A bare term of a binary
-  # treatment or of a dose contributes exactly one column, and the check above
-  # is what leaves only bare terms here, so the columns and the labels below are
-  # in step by construction.
-  reported <- which(reads_treatment)
-  columns <- vapply(
-    reported,
-    function(term) which(term_of_column == term),
-    integer(1)
-  )
+  # The one filter. Columns come out in the design's order, so the rows read as
+  # the coefficient vector reads, and each carries the term it belongs to, which
+  # is what the labels below are decided from.
+  columns <- which(term_of_column %in% which(reads_treatment))
+  column_terms <- term_of_column[columns]
 
+  # A model in bare treatment terms is one the vocabulary describes, and it is
+  # reported in that vocabulary. Every other model reaches the coefficient
+  # surface. Nothing else decides this: a fit reports the surface its own
+  # marginal structural model has a reading for.
+  bare <- ipw_joint_dose_bare_terms(names)
+
+  if (all(term_labels[reads_treatment] %in% bare$admitted)) {
+    return(ipw_joint_dose_vocabulary_rows(
+      out_X,
+      columns,
+      column_terms,
+      reads,
+      term_labels,
+      names,
+      treatments,
+      link,
+      call = call
+    ))
+  }
+
+  ipw_joint_dose_coefficient_rows(out_X, columns, link, call = call)
+}
+
+# The vocabulary surface, which a model linear in each treatment reports. Each
+# row is named the way the declared route names its rows: `contrast` names the
+# treatment being varied and how, and `group` says where in the other
+# treatment's range the row is evaluated. The binary treatment's coefficient is
+# its effect at a dose of zero, the dose's is its slope at the binary
+# treatment's reference level, and the interaction row keeps the discrete
+# route's idiom of a group comparing the other treatment's levels, which for a
+# dose is a one-unit step. An additive model evaluates neither row anywhere in
+# particular, so both are reported as overall.
+#
+# A bare term of a binary treatment or of a dose contributes exactly one column,
+# so the columns and the terms they belong to are in step here and each row is
+# one coefficient.
+ipw_joint_dose_vocabulary_rows <- function(
+  out_X,
+  columns,
+  column_terms,
+  reads,
+  term_labels,
+  names,
+  treatments,
+  link,
+  call = rlang::caller_env()
+) {
   level_labels <- as.character(ipw_joint_models_level_values(treatments[[1]]))
 
   # A bare term says which variables a column is built from and nothing about
@@ -495,8 +530,8 @@ ipw_joint_dose_rows <- function(
   check_ipw_joint_dose_coding(
     out_X,
     columns,
-    ipw_joint_dose_columns(reads, reported, treatments),
-    term_labels[reported],
+    ipw_joint_dose_columns(reads, column_terms, treatments),
+    term_labels[column_terms],
     names,
     level_labels,
     call = call
@@ -504,11 +539,11 @@ ipw_joint_dose_rows <- function(
 
   interacted <- any(reads[[1]] & reads[[2]])
   level_contrast <- ipw_joint_contrast_label(names[[1]], level_labels, 2L)
-  level_effect <- ipw_level_effect_label(link, call = call)
+  level_effect <- ipw_effect_label(link, "diff", call = call)
   dose_contrast <- paste0(names[[2]], ": per unit")
-  dose_effect <- ipw_continuous_effect_label(link, call = call)
+  dose_effect <- ipw_effect_label(link, "slope", call = call)
 
-  named <- lapply(reported, function(term) {
+  named <- lapply(column_terms, function(term) {
     if (reads[[1]][[term]] && reads[[2]][[term]]) {
       return(c(
         level_effect,
@@ -544,58 +579,79 @@ ipw_joint_dose_rows <- function(
   )
 }
 
-# The treatment terms this surface admits: each treatment on its own and their
-# two-way interaction, written bare. `admitted` carries the interaction under
-# both orders, since `terms()` labels it in the order the formula introduces the
-# treatments and either order is the same term. `reported` is the canonical
-# three, which is what a message naming the admitted model should show.
-ipw_joint_dose_bare_terms <- function(names) {
-  interaction <- paste(names, collapse = ":")
-
-  list(
-    admitted = c(names, interaction, paste(rev(names), collapse = ":")),
-    reported = c(names, interaction)
+# The coefficient surface, which every other treatment-reading model reports.
+# One row per treatment-reading coefficient, named by the coefficient as the fit
+# names it, and no group column at all: where the vocabulary surface says which
+# treatment a row varies and where it is evaluated, this one says only which
+# coefficient it is, because for a curve there is no one place a row holds at.
+# An interpretable dose response is built downstream from `coef()` and `vcov()`,
+# which is what the covariance between these rows is for.
+#
+# Naming rows by the coefficient is also what lets the surface hold a model the
+# vocabulary has nowhere to put, such as one carrying two distinct interactions
+# between the same pair of treatments: the columns have different names, so the
+# rows do.
+ipw_joint_dose_coefficient_rows <- function(
+  out_X,
+  columns,
+  link,
+  call = rlang::caller_env()
+) {
+  ipw_coefficient_rows(
+    col = columns,
+    effect = rep(ipw_effect_label(link, "coef", call = call), length(columns)),
+    contrast = colnames(out_X)[columns]
   )
 }
 
-# Refuse a treatment term that is not a bare one. The rows this surface reports
-# each say where in the other treatment's range they are evaluated, and those
-# statements hold only of a model that is linear in each treatment: the
-# coefficient of a transformed term is not the effect at a dose of zero, nor a
-# per-unit slope, nor the change in either. Two transformed terms of the same
-# treatment would also be reported under one label, leaving the table with rows
-# nothing distinguishes.
+# The treatment terms the vocabulary surface describes: each treatment on its
+# own and their two-way interaction, written bare. The interaction is carried
+# under both orders, since `terms()` labels it in the order the formula
+# introduces the treatments and either order is the same term. A model whose
+# treatment terms all come from this set has a reading in the vocabulary; any
+# other treatment-reading model is reported by the coefficient surface, which
+# is a choice of surface rather than a refusal.
+ipw_joint_dose_bare_terms <- function(names) {
+  list(
+    admitted = c(
+      names,
+      paste(names, collapse = ":"),
+      paste(rev(names), collapse = ":")
+    )
+  )
+}
+
+# Refuse a term reading a treatment and a covariate together. This is the one
+# shape neither surface can report. A coefficient of such a term is the change
+# in an effect per unit of the covariate, so the effect it modifies is defined
+# only at a value of that covariate no row names, and naming the row after the
+# column would report a quantity the table pins to nothing.
 #
-# The remedy for a curve in one treatment is the single-treatment route rather
-# than a different formula here, since that route reports one row per
-# coefficient and names each by the coefficient it is.
+# What a covariate may do is enter on its own. Such a term reads no treatment,
+# contributes no row, and adjusts the marginal structural model without
+# appearing on either surface. The declared route carries treatment-by-covariate
+# terms because it standardizes over the covariates rather than reporting
+# coefficients, which is the difference between the two.
 check_ipw_joint_dose_terms <- function(
-  bad_terms,
+  mixed_terms,
   names,
-  bare_terms,
   call = rlang::caller_env()
 ) {
-  if (length(bad_terms) == 0) {
+  if (length(mixed_terms) == 0) {
     return(invisible(TRUE))
   }
 
-  first <- names[[1]]
-  second <- names[[2]]
-
   abort(
     c(
-      "{.fun ipw} reports a joint intervention with a dose from a marginal \\
-      structural model that is linear in each treatment.",
-      x = "{.code {bad_terms}} in {.arg outcome_mod} {?is/are} not \\
-      {?a bare treatment term/bare treatment terms}.",
-      i = "The reported rows are the effect of {.val {first}} at a dose of \\
-      zero, the slope of {.val {second}} per unit, and the change in that \\
-      effect per unit of {.val {second}}. Each of those describes a \\
-      coefficient of a model in {.code {bare_terms}} and of no other.",
-      i = "Refit {.arg outcome_mod} on those terms alone.",
-      i = "To fit a curve in one treatment, weight and report that treatment on \\
-      its own. The single-treatment route admits any term reading its exposure \\
-      alone and names each reported row by the coefficient it is."
+      "{.fun ipw} requires a joint marginal structural model whose treatment \\
+      terms read the treatments alone.",
+      x = "{.code {mixed_terms}} in {.arg outcome_mod} {?is/are} not \\
+      {?a term/terms} of {.val {names}} alone.",
+      i = "A coefficient of a term reading a covariate is a change in an effect \\
+      per unit of that covariate, so no row could name the effect it stands for.",
+      i = "A covariate entering on its own is admitted and contributes no row, \\
+      so adjust {.arg outcome_mod} for it that way, or cross two discrete \\
+      treatments to report a surface that standardizes over the covariates."
     ),
     error_class = "propensity_ipw_msm_error",
     call = call
@@ -607,11 +663,11 @@ check_ipw_joint_dose_terms <- function(
 # itself, or their product. The indicator is built with the recode the weight
 # machinery uses, so what is compared is the coding the estimator assumes
 # against the coding the outcome model was fit under.
-ipw_joint_dose_columns <- function(reads, reported, treatments) {
+ipw_joint_dose_columns <- function(reads, column_terms, treatments) {
   indicator <- ipw_recode_binary_exposure(treatments[[1]])
   dose <- as.double(treatments[[2]])
 
-  lapply(reported, function(term) {
+  lapply(column_terms, function(term) {
     if (reads[[1]][[term]] && reads[[2]][[term]]) {
       return(indicator * dose)
     }

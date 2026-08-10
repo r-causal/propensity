@@ -85,9 +85,10 @@ pooled across multiply imputed datasets.}
 A \link[tibble:tibble]{tibble} with one row per estimate and the columns:
 \describe{
 \item{\code{term}}{The effect measure, such as \code{"rd"}, \code{"log(rr)"}, \code{"log(or)"},
-\code{"diff"}, or \code{"slope"}.}
-\item{\code{contrast}}{The contrast the row reports, such as \code{"b vs a"}.
-Categorical exposures only.}
+\code{"diff"}, \code{"slope"}, or \code{"coef"}.}
+\item{\code{contrast}}{The contrast the row reports, such as \code{"b vs a"} for a
+categorical exposure or the coefficient name on a surface whose rows are
+named after their coefficients. Present only where a row reports one.}
 \item{\code{estimate}}{The estimated effect.}
 \item{\code{std.error}}{The standard error of the estimate.}
 \item{\code{statistic}}{The z statistic, the estimate over its standard error.}

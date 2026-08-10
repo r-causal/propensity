@@ -214,12 +214,20 @@
 #' measures per non-reference level.
 #'
 #' For a continuous exposure, `ipw()` reports the exposure coefficients of the
-#' weighted marginal structural outcome model. Their label follows the outcome
-#' link: `slope` for an identity link, `log(or)` for a logit link, and
-#' `log(rr)` for a log link. A model with one exposure coefficient reports one
-#' row and no `contrast` column, and a dose-response curve such as
-#' `y ~ A + I(A^2)` reports one row per coefficient, with the `contrast` column
-#' naming the coefficient each row belongs to.
+#' weighted marginal structural outcome model. A model with one exposure
+#' coefficient reports one row and no `contrast` column, and a dose-response
+#' curve such as `y ~ A + I(A^2)` reports one row per coefficient, with the
+#' `contrast` column naming the coefficient each row belongs to.
+#'
+#' The `effect` label names the scale: `log(or)` for a logit link and `log(rr)`
+#' for a log link, since a coefficient there is a log odds ratio or a log risk
+#' ratio per unit of whatever column it multiplies. At an identity link the word
+#' depends on what the row claims. A model with one exposure coefficient reports
+#' `slope`, because that coefficient is the slope of the dose response
+#' everywhere. A model with several reports `coef`, because a curve has a
+#' different slope at every dose and no one of its coefficients is that slope;
+#' the row says which coefficient it is and leaves the dose response to be built
+#' downstream from `coef()` and `vcov()`.
 #'
 #' Every term of the marginal structural model that reads the exposure must read
 #' the exposure and nothing else. The requirement is on what a term reads rather
@@ -232,12 +240,13 @@
 #' A basis matrix reads the exposure alone, so `poly(A, 2)`,
 #' `splines::ns(A, 3)`, and `splines::bs(A, 3)` are admitted on the same
 #' footing. One such term contributes one coefficient per basis column and each
-#' of them is a row. The `contrast` column names the coefficient rather than the
-#' term, a distinction a basis makes and `A + I(A^2)` does not: the single term
-#' `poly(A, 2)` reports the contrasts `poly(A, 2)1` and `poly(A, 2)2`. A basis
-#' reading a covariate is a covariate term and contributes no row, and one
-#' reading both, such as `poly(A, 2):x1`, is refused with every other mixed
-#' term.
+#' of them is a row, reported under `coef` at an identity link like any other
+#' multi-coefficient surface. The `contrast` column names the coefficient rather
+#' than the term, a distinction a basis makes and `A + I(A^2)` does not: the
+#' single term `poly(A, 2)` reports the contrasts `poly(A, 2)1` and
+#' `poly(A, 2)2`. A basis reading a covariate is a covariate term and
+#' contributes no row, and one reading both, such as `poly(A, 2):x1`, is refused
+#' with every other mixed term.
 #'
 #' A marginal structural model built on a basis of the exposure requires
 #' `.data`. A model frame records the term rather than the variables inside
@@ -422,6 +431,14 @@
 #' model's own coefficients, which for an identity-link model are exactly the
 #' weighted fit's coefficients.
 #'
+#' Which of two surfaces a fit reports is decided by the marginal structural
+#' model alone. A model written in bare treatment terms reports the vocabulary
+#' surface below, whose rows name the treatment each one varies and where it is
+#' evaluated. Every other treatment-reading model reports the coefficient
+#' surface, whose rows are named after the coefficients they report.
+#'
+#' ### The vocabulary surface
+#'
 #' For `y ~ a * e` with `a` binary and `e` a dose, three coefficients carry
 #' causal content and each is a row:
 #'
@@ -442,17 +459,45 @@
 #' either of its levels, so it reports two rows under the group `"overall"` and
 #' no interaction.
 #'
-#' The marginal structural model must be linear in each treatment. Every term
-#' that reads a treatment has to be a bare one, meaning `a`, `e`, or `a:e`, and
-#' any other treatment term is refused. The three readings above are what makes
-#' this a requirement rather than a convenience: the coefficient of a
-#' transformed term such as `I(e^2)` or `sin(e)` is not the effect at a dose of
-#' zero, nor a per-unit slope, nor the change in either, and two transformed
-#' terms of one treatment would be reported under one label. To fit a curve in
-#' one treatment, weight and report that treatment on its own, where any term
-#' reading the exposure alone is admitted and each row is named by its
-#' coefficient. Nothing here is standardized, so a covariate belongs in the
-#' treatment models rather than in this one.
+#' Those three readings hold of a model that is linear in each treatment and of
+#' no other, which is why such a model reports this surface and no other model
+#' does. The columns are read as well as the formula: a factor treatment under a
+#' coding other than treatment contrasts leaves the terms bare while rescaling
+#' or recentering the column, so its coefficients are no longer the effects
+#' these rows name, and such a fit is refused rather than reported on either
+#' surface. Refit the outcome model with the treatment as a 0/1 numeric or as an
+#' unordered factor under treatment contrasts.
+#'
+#' ### The coefficient surface
+#'
+#' A marginal structural model carrying a transformed or a basis treatment term,
+#' such as `y ~ a * sin(e)`, `y ~ a + e + I(e^2) + a:e`, or
+#' `y ~ a * splines::ns(e, 3)`, reports one row per treatment-reading
+#' coefficient. The `contrast` column carries the coefficient name exactly as
+#' the fit writes it, and there is no `group` column at all: the surface makes
+#' no claim about where a row is evaluated, because for a curve there is no one
+#' place. Build an interpretable dose response downstream from `coef()` and
+#' `vcov()`, whose covariance between the rows is what that takes.
+#'
+#' The `effect` label follows the outcome link, `coef` at an identity link and
+#' the same `log(or)` and `log(rr)` as everywhere else. `coef` is a word of its
+#' own rather than `diff` or `slope`, both of which carry an evaluated-at claim
+#' on the vocabulary surface.
+#'
+#' ### Covariates and mixed terms
+#'
+#' A covariate entering on its own is admitted on either surface and contributes
+#' no row, however many columns it expands to: it adjusts the marginal
+#' structural model and the surface has nothing to say about its coefficient. A
+#' term reading a treatment and a covariate together is refused on both, since
+#' its coefficient is a change in an effect per unit of that covariate and no
+#' row could name the effect it stands for. Nothing here is standardized over
+#' the covariates, which is what the declared crossing does instead.
+#'
+#' Unlike the single-treatment route, this one needs no `.data` for a basis
+#' marginal structural model. Each treatment is read off its own treatment
+#' model, so the outcome model frame is never asked for a column it does not
+#' hold.
 #'
 #' The dose model contributes its coefficients and the conditional variance its
 #' density ratio divides by, and the stabilizing numerator contributes the

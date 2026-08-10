@@ -1725,21 +1725,42 @@ ipw_spec_continuous <- function(
       weights = as.double(wts)
     ),
     contrasts = NULL,
-    coefficients = ipw_coefficient_rows(
-      col = exposure_cols,
-      effect = rep(
-        ipw_continuous_effect_label(out_link, call = call),
-        length(exposure_cols)
-      ),
-      # Rows are named by the coefficient rather than by the term. The two
-      # differ wherever a term contributes several coefficients, as a basis such
-      # as `poly(A, 2)` does, and the coefficient is the thing a row reports.
-      contrast = if (length(exposure_cols) > 1L) {
-        colnames(out_X)[exposure_cols]
-      }
+    coefficients = ipw_continuous_coefficient_rows(
+      exposure_cols,
+      colnames(out_X),
+      out_link,
+      call = call
     ),
     focal_level = NULL,
     reference_level = NULL
+  )
+}
+
+# The rows a single-treatment continuous fit reports, which is one per exposure
+# coefficient.
+#
+# An exposure entering through one column is the whole of the dose response, so
+# its coefficient is the slope of that response everywhere and the row says so,
+# naming nothing further: a contrast column repeating one value down a one-row
+# table would read as a contrast that was named. An exposure entering through
+# several columns has no such row. No one of those coefficients is the slope,
+# since a curve has a different slope at every dose, so each row is named after
+# the coefficient it reports and the scale word steps back to `coef`.
+ipw_continuous_coefficient_rows <- function(
+  exposure_cols,
+  column_names,
+  link,
+  call = rlang::caller_env()
+) {
+  named <- length(exposure_cols) > 1L
+
+  ipw_coefficient_rows(
+    col = exposure_cols,
+    effect = rep(
+      ipw_effect_label(link, if (named) "coef" else "slope", call = call),
+      length(exposure_cols)
+    ),
+    contrast = if (named) column_names[exposure_cols]
   )
 }
 
@@ -2445,12 +2466,22 @@ abort_ipw_no_variance <- function(spec, call = rlang::caller_env()) {
   )
 }
 
-# Effect label for a per-unit change in a dose, taken from the outcome-model
-# link: the reported effect is a marginal structural model coefficient.
-ipw_continuous_effect_label <- function(link, call = rlang::caller_env()) {
+# The scale a reported coefficient is on, taken from the outcome-model link.
+# Only the identity link needs the caller's help. A coefficient of a logit model
+# is a log odds ratio per unit of the column it multiplies and one of a log
+# model is a log risk ratio, whatever that column is, so those words are honest
+# of every row this package reports and are fixed here.
+#
+# At an identity link the word depends on what the row claims, which is the
+# caller's to know: `diff` where the row is a contrast of two treatment levels,
+# `slope` where it is a per-unit change in a dose, and `coef` where the row is
+# named after its own coefficient and claims nothing further. The three are kept
+# apart because `diff` and `slope` each carry an evaluated-at claim, and reusing
+# one of them for a basis coefficient would make the same word mean two things.
+ipw_effect_label <- function(link, identity, call = rlang::caller_env()) {
   switch(
     link,
-    identity = "slope",
+    identity = identity,
     logit = "log(or)",
     log = "log(rr)",
     abort(
@@ -2459,18 +2490,6 @@ ipw_continuous_effect_label <- function(link, call = rlang::caller_env()) {
       call = call
     )
   )
-}
-
-# Effect label for a contrast of two treatment levels reported as a coefficient.
-# It differs from the dose label only at the identity link, where a difference
-# between two levels is a `diff` and a per-unit change in a dose is a `slope`;
-# on the other links a coefficient is the same log ratio either way.
-ipw_level_effect_label <- function(link, call = rlang::caller_env()) {
-  if (identical(link, "identity")) {
-    return("diff")
-  }
-
-  ipw_continuous_effect_label(link, call = call)
 }
 
 # The description of a coefficient-shaped surface: which columns of the outcome

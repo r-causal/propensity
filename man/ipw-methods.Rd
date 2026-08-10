@@ -288,12 +288,12 @@ outcome model. The only supported estimand is \code{"ate"}. Standard errors are
 computed by M-estimation; the linearization method is not available for
 continuous exposures. Every term of the marginal structural model that reads
 the exposure must read the exposure and nothing else, and the reported
-effects are the coefficients those terms contribute: \code{"slope"} for an
-identity-link outcome, \code{"log(or)"} for a logit-link outcome, and \code{"log(rr)"}
-for a log-link outcome. A model with one exposure coefficient keeps the
-eight-column contract with no contrast column; a dose-response curve such as
-\code{y ~ A + I(A^2)} reports one row per coefficient and gains a contrast column
-naming them.
+effects are the coefficients those terms contribute, labeled \code{"log(or)"} for
+a logit-link outcome and \code{"log(rr)"} for a log-link one. A model with one
+exposure coefficient keeps the eight-column contract with no contrast column
+and labels its row \code{"slope"} at an identity link; a dose-response curve such
+as \code{y ~ A + I(A^2)} reports one row per coefficient under \code{"coef"}, gaining a
+contrast column that names them.
 
 \code{ipw()} is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
@@ -376,12 +376,20 @@ table gains a \code{contrast} column naming the pair of levels each row compares
 measures per non-reference level.
 
 For a continuous exposure, \code{ipw()} reports the exposure coefficients of the
-weighted marginal structural outcome model. Their label follows the outcome
-link: \code{slope} for an identity link, \code{log(or)} for a logit link, and
-\code{log(rr)} for a log link. A model with one exposure coefficient reports one
-row and no \code{contrast} column, and a dose-response curve such as
-\code{y ~ A + I(A^2)} reports one row per coefficient, with the \code{contrast} column
-naming the coefficient each row belongs to.
+weighted marginal structural outcome model. A model with one exposure
+coefficient reports one row and no \code{contrast} column, and a dose-response
+curve such as \code{y ~ A + I(A^2)} reports one row per coefficient, with the
+\code{contrast} column naming the coefficient each row belongs to.
+
+The \code{effect} label names the scale: \code{log(or)} for a logit link and \code{log(rr)}
+for a log link, since a coefficient there is a log odds ratio or a log risk
+ratio per unit of whatever column it multiplies. At an identity link the word
+depends on what the row claims. A model with one exposure coefficient reports
+\code{slope}, because that coefficient is the slope of the dose response
+everywhere. A model with several reports \code{coef}, because a curve has a
+different slope at every dose and no one of its coefficients is that slope;
+the row says which coefficient it is and leaves the dose response to be built
+downstream from \code{coef()} and \code{vcov()}.
 
 Every term of the marginal structural model that reads the exposure must read
 the exposure and nothing else. The requirement is on what a term reads rather
@@ -394,12 +402,13 @@ model this surface cannot report.
 A basis matrix reads the exposure alone, so \code{poly(A, 2)},
 \code{splines::ns(A, 3)}, and \code{splines::bs(A, 3)} are admitted on the same
 footing. One such term contributes one coefficient per basis column and each
-of them is a row. The \code{contrast} column names the coefficient rather than the
-term, a distinction a basis makes and \code{A + I(A^2)} does not: the single term
-\code{poly(A, 2)} reports the contrasts \verb{poly(A, 2)1} and \verb{poly(A, 2)2}. A basis
-reading a covariate is a covariate term and contributes no row, and one
-reading both, such as \code{poly(A, 2):x1}, is refused with every other mixed
-term.
+of them is a row, reported under \code{coef} at an identity link like any other
+multi-coefficient surface. The \code{contrast} column names the coefficient rather
+than the term, a distinction a basis makes and \code{A + I(A^2)} does not: the
+single term \code{poly(A, 2)} reports the contrasts \verb{poly(A, 2)1} and
+\verb{poly(A, 2)2}. A basis reading a covariate is a covariate term and
+contributes no row, and one reading both, such as \code{poly(A, 2):x1}, is refused
+with every other mixed term.
 
 A marginal structural model built on a basis of the exposure requires
 \code{.data}. A model frame records the term rather than the variables inside
@@ -586,6 +595,13 @@ report counterfactual risks over: the surface is the marginal structural
 model's own coefficients, which for an identity-link model are exactly the
 weighted fit's coefficients.
 
+Which of two surfaces a fit reports is decided by the marginal structural
+model alone. A model written in bare treatment terms reports the vocabulary
+surface below, whose rows name the treatment each one varies and where it is
+evaluated. Every other treatment-reading model reports the coefficient
+surface, whose rows are named after the coefficients they report.
+\subsection{The vocabulary surface}{
+
 For \code{y ~ a * e} with \code{a} binary and \code{e} a dose, three coefficients carry
 causal content and each is a row:
 \itemize{
@@ -607,21 +623,53 @@ forces one effect for the binary treatment at every dose and one slope at
 either of its levels, so it reports two rows under the group \code{"overall"} and
 no interaction.
 
-The marginal structural model must be linear in each treatment. Every term
-that reads a treatment has to be a bare one, meaning \code{a}, \code{e}, or \code{a:e}, and
-any other treatment term is refused. The three readings above are what makes
-this a requirement rather than a convenience: the coefficient of a
-transformed term such as \code{I(e^2)} or \code{sin(e)} is not the effect at a dose of
-zero, nor a per-unit slope, nor the change in either, and two transformed
-terms of one treatment would be reported under one label. To fit a curve in
-one treatment, weight and report that treatment on its own, where any term
-reading the exposure alone is admitted and each row is named by its
-coefficient. Nothing here is standardized, so a covariate belongs in the
-treatment models rather than in this one.
+Those three readings hold of a model that is linear in each treatment and of
+no other, which is why such a model reports this surface and no other model
+does. The columns are read as well as the formula: a factor treatment under a
+coding other than treatment contrasts leaves the terms bare while rescaling
+or recentering the column, so its coefficients are no longer the effects
+these rows name, and such a fit is refused rather than reported on either
+surface. Refit the outcome model with the treatment as a 0/1 numeric or as an
+unordered factor under treatment contrasts.
+}
+
+\subsection{The coefficient surface}{
+
+A marginal structural model carrying a transformed or a basis treatment term,
+such as \code{y ~ a * sin(e)}, \code{y ~ a + e + I(e^2) + a:e}, or
+\code{y ~ a * splines::ns(e, 3)}, reports one row per treatment-reading
+coefficient. The \code{contrast} column carries the coefficient name exactly as
+the fit writes it, and there is no \code{group} column at all: the surface makes
+no claim about where a row is evaluated, because for a curve there is no one
+place. Build an interpretable dose response downstream from \code{coef()} and
+\code{vcov()}, whose covariance between the rows is what that takes.
+
+The \code{effect} label follows the outcome link, \code{coef} at an identity link and
+the same \code{log(or)} and \code{log(rr)} as everywhere else. \code{coef} is a word of its
+own rather than \code{diff} or \code{slope}, both of which carry an evaluated-at claim
+on the vocabulary surface.
+}
+
+\subsection{Covariates and mixed terms}{
+
+A covariate entering on its own is admitted on either surface and contributes
+no row, however many columns it expands to: it adjusts the marginal
+structural model and the surface has nothing to say about its coefficient. A
+term reading a treatment and a covariate together is refused on both, since
+its coefficient is a change in an effect per unit of that covariate and no
+row could name the effect it stands for. Nothing here is standardized over
+the covariates, which is what the declared crossing does instead.
+
+Unlike the single-treatment route, this one needs no \code{.data} for a basis
+marginal structural model. Each treatment is read off its own treatment
+model, so the outcome model frame is never asked for a column it does not
+hold.
 
 The dose model contributes its coefficients and the conditional variance its
 density ratio divides by, and the stabilizing numerator contributes the
 dose's two marginal moments, all as parameters of the same stacked system.
+}
+
 }
 }
 

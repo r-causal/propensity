@@ -22,6 +22,28 @@
       i A term reading the exposure alone is admitted however it is written, so a curve such as `e + I(e^2)` reports one row per coefficient.
       i Read the full coefficient vector from the returned fit object for a model this surface cannot report.
 
+# ipw() still refuses a term reading a treatment and a covariate
+
+    Code
+      expr
+    Condition <propensity_ipw_msm_error>
+      Error in `ipw()`:
+      ! `ipw()` requires a joint marginal structural model whose treatment terms read the treatments alone.
+      x `a:x1`, `e:x1`, and `a:e:x1` in `outcome_mod` are not terms of "a" and "e" alone.
+      i A coefficient of a term reading a covariate is a change in an effect per unit of that covariate, so no row could name the effect it stands for.
+      i A covariate entering on its own is admitted and contributes no row, so adjust `outcome_mod` for it that way, or cross two discrete treatments to report a surface that standardizes over the covariates.
+
+---
+
+    Code
+      expr
+    Condition <propensity_ipw_msm_error>
+      Error in `ipw()`:
+      ! `ipw()` requires a joint marginal structural model whose treatment terms read the treatments alone.
+      x `e:x1` in `outcome_mod` is not a term of "a" and "e" alone.
+      i A coefficient of a term reading a covariate is a change in an effect per unit of that covariate, so no row could name the effect it stands for.
+      i A covariate entering on its own is admitted and contributes no row, so adjust `outcome_mod` for it that way, or cross two discrete treatments to report a surface that standardizes over the covariates.
+
 # ipw() refuses a treatment column coded some other way
 
     Code

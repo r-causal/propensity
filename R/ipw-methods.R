@@ -86,12 +86,12 @@ ipw.multinom <- function(
 #' computed by M-estimation; the linearization method is not available for
 #' continuous exposures. Every term of the marginal structural model that reads
 #' the exposure must read the exposure and nothing else, and the reported
-#' effects are the coefficients those terms contribute: `"slope"` for an
-#' identity-link outcome, `"log(or)"` for a logit-link outcome, and `"log(rr)"`
-#' for a log-link outcome. A model with one exposure coefficient keeps the
-#' eight-column contract with no contrast column; a dose-response curve such as
-#' `y ~ A + I(A^2)` reports one row per coefficient and gains a contrast column
-#' naming them.
+#' effects are the coefficients those terms contribute, labeled `"log(or)"` for
+#' a logit-link outcome and `"log(rr)"` for a log-link one. A model with one
+#' exposure coefficient keeps the eight-column contract with no contrast column
+#' and labels its row `"slope"` at an identity link; a dose-response curve such
+#' as `y ~ A + I(A^2)` reports one row per coefficient under `"coef"`, gaining a
+#' contrast column that names them.
 #'
 #' @name ipw-methods
 #' @exportS3Method causalgenerics::ipw lm
