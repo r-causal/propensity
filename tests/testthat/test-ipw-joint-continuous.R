@@ -14,7 +14,7 @@
 # two exposures in it. The requirement narrows rather than disappears: what is
 # refused is a term reading something other than the exposure.
 #
-# ---- the coefficient-shaped surface -----------------------------------------
+# ---- the vocabulary surface -------------------------------------------------
 #
 # For `y ~ a * e` with `a` binary and `e` a dose, three coefficients carry causal
 # content and each is reported as a row:
@@ -33,6 +33,36 @@
 # discrete route's idiom, where the group is a comparison of the other
 # treatment's levels; with a dose the comparison is a one-unit step, which for a
 # linear model is the whole of it.
+#
+# ---- the coefficient surface ------------------------------------------------
+#
+# Those three readings hold of a model that is linear in each treatment and of
+# no other, so a marginal structural model carrying a transformed or a basis
+# treatment term reports a different surface rather than the same one with
+# different numbers in it. The coefficient surface reports one row per
+# treatment-reading coefficient, `contrast` carries the coefficient name exactly
+# as the fit writes it, and there is no `group` column at all: the surface makes
+# no claim about where a row is evaluated, because for a curve there is no one
+# place. An interpretable dose response is built downstream from `coef()` and
+# `vcov()`, which is what the covariance between the rows is for.
+#
+# `effect` names the scale and only the scale. A coefficient of an identity-link
+# model is `coef`, a new word rather than `diff` or `slope`, since both of those
+# carry an evaluated-at claim on the vocabulary surface and reusing one here
+# would make the same word mean two things. Under a logit or a log link the
+# existing words are already honest, since a coefficient there is a log odds
+# ratio or a log risk ratio per unit of whatever column it multiplies, so
+# `log(or)` and `log(rr)` are kept.
+#
+# Which surface a fit reports is decided by the model alone. A bare-term model
+# reports the vocabulary surface, and every other treatment-reading model
+# reports the coefficient surface. Two things are unchanged by this. A term
+# reading a treatment and a covariate together is still refused, since its
+# coefficient depends on the covariate and naming it after the column would
+# report a quantity nothing pins down. And a bare-term model whose columns are
+# coded some other way keeps its refusal rather than falling through to the
+# coefficient surface: such a model reads as linear, and answering it with a
+# differently shaped table would be a worse outcome than the guided refusal.
 
 # ---- data simulator ---------------------------------------------------------
 
@@ -187,6 +217,86 @@ joint_continuous_labels <- function(estimates) {
   paste(estimates$effect, estimates$contrast, estimates$group)
 }
 
+# A coefficient row has no group to fold in, so its label is the two columns
+# that name it.
+joint_coefficient_labels <- function(estimates) {
+  paste(estimates$effect, estimates$contrast)
+}
+
+# What every coefficient-surface fit holds, written once because it is the same
+# claim each time: the column layout with no group in it, the identity columns,
+# unique labels that every accessor keys by in the same order, standard errors
+# that are the diagonal of the reported covariance, and a covariance that is a
+# real one rather than a diagonal assembled a row at a time.
+expect_joint_coefficient_surface <- function(res, contrast, effect = "coef") {
+  estimates <- res$estimates
+  labels <- joint_coefficient_labels(estimates)
+
+  testthat::expect_identical(
+    names(estimates),
+    c(
+      "effect",
+      "contrast",
+      "estimate",
+      "std.err",
+      "z",
+      "ci.lower",
+      "ci.upper",
+      "conf.level",
+      "p.value"
+    )
+  )
+  testthat::expect_null(estimates[["group"]])
+  testthat::expect_identical(estimates$effect, rep(effect, length(contrast)))
+  testthat::expect_identical(estimates$contrast, contrast)
+
+  testthat::expect_true(all(is.finite(estimates$std.err)))
+  testthat::expect_true(all(estimates$std.err > 0))
+  testthat::expect_true(all(estimates$ci.lower < estimates$ci.upper))
+  testthat::expect_identical(anyDuplicated(labels), 0L)
+  testthat::expect_identical(names(coef(res)), labels)
+  testthat::expect_identical(dimnames(vcov(res)), list(labels, labels))
+  testthat::expect_identical(rownames(confint(res)), labels)
+  testthat::expect_equal(
+    sqrt(diag(vcov(res))),
+    estimates$std.err,
+    ignore_attr = TRUE
+  )
+
+  # Every row is a parameter of one system solved on one sample, so the rows
+  # covary and a downstream dose curve has a covariance to build from.
+  covariance <- vcov(res)
+  testthat::expect_true(is.finite(covariance[1L, 2L]))
+  testthat::expect_gt(abs(covariance[1L, 2L]), 1e-10)
+  testthat::expect_equal(covariance, t(covariance), tolerance = 1e-12)
+
+  invisible(res)
+}
+
+# The reported estimates are the weighted fit's own coefficients, keyed by the
+# name each row carries rather than by position, so a reordering of the surface
+# fails here rather than passing on a vector that happens to line up.
+expect_joint_coefficient_estimates <- function(res, outcome_mod) {
+  beta <- coef(outcome_mod)
+  estimates <- res$estimates
+
+  testthat::expect_equal(
+    estimates$estimate,
+    unname(beta[estimates$contrast]),
+    tolerance = 1e-9
+  )
+
+  for (i in seq_len(nrow(estimates))) {
+    testthat::expect_equal(
+      estimates$estimate[[i]],
+      unname(beta[[estimates$contrast[[i]]]]),
+      tolerance = 1e-9
+    )
+  }
+
+  invisible(res)
+}
+
 # ---- baselines --------------------------------------------------------------
 
 test_that("the continuous fixture builds the container and the product weights", {
@@ -279,7 +389,10 @@ test_that("a polynomial dose model reports one row per dose coefficient", {
 
   # More than one exposure coefficient, so the table gains a contrast column
   # naming the term each one belongs to, placed where every other route places
-  # it. The scale stays the one the outcome link implies.
+  # it, and the scale word becomes `coef`. Neither of these two coefficients is
+  # the slope of the dose response, since the response has a different slope at
+  # every dose, so the surface says what the numbers are rather than naming them
+  # after a quantity only one of them could be.
   expect_identical(
     names(est),
     c(
@@ -295,7 +408,7 @@ test_that("a polynomial dose model reports one row per dose coefficient", {
     )
   )
   expect_identical(nrow(est), 2L)
-  expect_identical(est$effect, c("slope", "slope"))
+  expect_identical(est$effect, c("coef", "coef"))
   expect_identical(est$contrast, c("e", "I(e^2)"))
   expect_null(est[["group"]])
 
@@ -331,6 +444,7 @@ test_that("the relaxation admits any term that reads the exposure alone", {
   res <- ipw(fx$ps_mod, fx$outcome_mod)
 
   expect_identical(nrow(res$estimates), 2L)
+  expect_identical(res$estimates$effect, c("coef", "coef"))
   expect_identical(res$estimates$contrast, c("e", "sin(e)"))
   expect_equal(
     res$estimates$estimate,
@@ -341,7 +455,7 @@ test_that("the relaxation admits any term that reads the exposure alone", {
 
 # ---- part 1: the joint route with a dose ------------------------------------
 
-test_that("ipw() over a binary and a continuous treatment reports the coefficient surface", {
+test_that("ipw() over a binary and a continuous treatment reports the vocabulary surface", {
   skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
@@ -354,6 +468,11 @@ test_that("ipw() over a binary and a continuous treatment reports the coefficien
 
   # Coefficient-shaped, not cell-shaped: a dose has no cells, so there are no
   # counterfactual risks to report and no `mean` rows.
+  #
+  # A bare-term model keeps this surface exactly as it is. The coefficient
+  # surface exists for the models this vocabulary cannot describe, and a model
+  # it can describe never reaches it, so these rows are a regression pin: the
+  # words, the group claims, and the column layout all stay.
   expect_false(any(est$effect == "mean"))
   expected <- joint_continuous_expected_rows()
   expect_identical(nrow(est), 3L)
@@ -446,6 +565,9 @@ test_that("an additive marginal structural model reports two ungrouped rows", {
   # With no interaction term the model forces one effect for the binary
   # treatment at every dose and one slope at either level of it, so neither row
   # is evaluated anywhere in particular and there is no interaction to report.
+  # Bare terms, so the vocabulary surface, and these rows are pinned as they
+  # are: `overall` is a group claim and not the absence of one, which is what
+  # distinguishes this table from a coefficient-surface table of the same width.
   expect_identical(nrow(est), 2L)
   expect_identical(est$effect, c("diff", "slope"))
   expect_identical(est$contrast, c("a: 1 vs 0", "e: per unit"))
@@ -455,6 +577,46 @@ test_that("an additive marginal structural model reports two ungrouped rows", {
     unname(coef(fx$outcome_mod)[c("a", "e")]),
     tolerance = 1e-8
   )
+})
+
+test_that("a covariate in a bare-term model contributes no vocabulary row", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # Adjusting the marginal structural model for a covariate is a different thing
+  # from making the covariate a treatment. `x1` reads neither treatment, so it
+  # contributes a coefficient the fit needs and the surface has nothing to say
+  # about: the rows are the three the crossing reports and no more, and each of
+  # them is still the coefficient it was without the covariate in the model.
+  #
+  # The design puts `x1` between the dose column and the interaction column, so
+  # a surface that reported whatever was not the intercept would show it here,
+  # in the middle of the table, rather than tidily at the end.
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * e + x1")
+  res <- ipw(fx$models, fx$outcome_mod)
+  est <- res$estimates
+
+  expected <- joint_continuous_expected_rows()
+  expect_identical(nrow(est), 3L)
+  expect_identical(est$effect, expected$effect)
+  expect_identical(est$contrast, expected$contrast)
+  expect_identical(est$group, expected$group)
+  expect_false("x1" %in% est$contrast)
+
+  expect_equal(
+    est$estimate,
+    unname(coef(fx$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+
+  labels <- joint_continuous_labels(est)
+  expect_identical(anyDuplicated(labels), 0L)
+  expect_identical(names(coef(res)), labels)
+
+  # The covariate's coefficient is inside the outcome block of the stacked
+  # system even though no row reports it: five outcome coefficients against the
+  # four a model without it has, and everything else unchanged.
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 5L)
 })
 
 # ---- standard errors and the stacked system ---------------------------------
@@ -586,44 +748,220 @@ test_that("ipw() refuses an outcome model that does not read both treatments", {
   )
 })
 
-test_that("ipw() refuses a treatment term that is not a bare one", {
+test_that("a transformed dose term reports one row per treatment coefficient", {
   skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
-  # Every row of this surface says where in the other treatment's range it is
-  # evaluated, and each of those readings holds only of a model that is linear
-  # in each treatment. A transformed treatment term has no such reading, and it
-  # lands in a row whose label then describes neither the coefficient reported
-  # nor, where two transformed terms of one treatment land in the same row, one
-  # row rather than two.
-  curved <- fit_joint_continuous(dat, outcome_rhs = "a + e + I(e^2) + a:e")
-  expect_error(
-    ipw(curved$models, curved$outcome_mod),
-    class = "propensity_ipw_msm_error"
-  )
-  expect_propensity_error(ipw(curved$models, curved$outcome_mod))
+  # A curve written without a bare dose term at all. Every treatment-reading
+  # coefficient is a row, named by the coefficient rather than by the treatment,
+  # and the rows come in the design's column order so the table reads as the
+  # coefficient vector reads.
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * sin(e)")
+  res <- ipw(fx$models, fx$outcome_mod)
 
-  # A curve written without a bare dose term at all is refused on the same
-  # terms: the boundary is what a term is, not whether a linear one sits beside
-  # it.
-  transformed <- fit_joint_continuous(dat, outcome_rhs = "a * sin(e)")
-  expect_error(
-    ipw(transformed$models, transformed$outcome_mod),
-    class = "propensity_ipw_msm_error"
-  )
-  expect_propensity_error(ipw(transformed$models, transformed$outcome_mod))
+  expect_joint_coefficient_surface(res, c("a", "sin(e)", "a:sin(e)"))
+  expect_joint_coefficient_estimates(res, fx$outcome_mod)
+  expect_identical(nrow(res$estimates), 3L)
 
-  # A transformed term reading both treatments is a second interaction between
-  # them, which the interaction row cannot hold beside the one it reports.
-  wrapped <- fit_joint_continuous(
+  # Three coefficients for the binomial treatment model, four for the dose model
+  # plus the conditional variance its density ratio needs, the two marginal
+  # moments the stabilizing numerator is built from, and the four outcome
+  # coefficients. Only the outcome block moves when the marginal structural
+  # model changes shape.
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 4L)
+})
+
+test_that("a covariate in a transformed model contributes no coefficient row", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # The rule that a covariate term contributes no row holds on this surface too,
+  # and it has to be said here rather than inferred from the single-treatment
+  # route, which reaches the same conclusion through different code.
+  #
+  # Naming rows by their coefficients makes the temptation concrete: the surface
+  # reports coefficients, and every column of the design has one. What decides a
+  # row is still whether the term reads a treatment. `x1` does not, so its
+  # coefficient is estimated, is carried in the outcome block, and is reported
+  # nowhere. Its column sits between the dose column and the interaction column,
+  # so a surface that took everything but the intercept would show it in the
+  # middle of the table and fail here rather than at the end of a list.
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * sin(e) + x1")
+  res <- ipw(fx$models, fx$outcome_mod)
+
+  expect_joint_coefficient_surface(res, c("a", "sin(e)", "a:sin(e)"))
+  expect_joint_coefficient_estimates(res, fx$outcome_mod)
+  expect_identical(nrow(res$estimates), 3L)
+  expect_false("x1" %in% res$estimates$contrast)
+
+  # Five outcome coefficients, one of them the covariate's, against the three
+  # rows the surface reports.
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 5L)
+  expect_length(coef(fx$outcome_mod), 5L)
+})
+
+test_that("a curve beside the bare terms reports every treatment coefficient", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # The bare terms are still there and still contribute their coefficients; the
+  # quadratic contributes one more. What the extra term costs is the vocabulary,
+  # not the reporting: no row can be called the slope per unit once two columns
+  # of the dose carry the response, so every row is named by its coefficient
+  # instead and none of them claims a place it is evaluated at.
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a + e + I(e^2) + a:e")
+  res <- ipw(fx$models, fx$outcome_mod)
+
+  expect_joint_coefficient_surface(res, c("a", "e", "I(e^2)", "a:e"))
+  expect_joint_coefficient_estimates(res, fx$outcome_mod)
+  expect_identical(nrow(res$estimates), 4L)
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 5L)
+})
+
+test_that("a transformed term reading both treatments is named by its coefficient", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # `I(a * sin(e))` reads both treatments without being their bare interaction.
+  # On a surface that named rows by what they mean there would be nowhere to put
+  # it, since the model then holds two distinct interactions between the same
+  # pair of treatments. On a surface that names rows by their coefficients there
+  # is no difficulty: the row reports the coefficient of the column
+  # `I(a * sin(e))` and says so, which is true and distinguishes it from the
+  # bare interaction sitting beside it.
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * e + I(a * sin(e))")
+  res <- ipw(fx$models, fx$outcome_mod)
+
+  expect_joint_coefficient_surface(
+    res,
+    c("a", "e", "I(a * sin(e))", "a:e")
+  )
+  expect_joint_coefficient_estimates(res, fx$outcome_mod)
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 5L)
+})
+
+test_that("a basis in the dose reports its basis and interaction coefficients", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # A basis is where naming rows by the coefficient stops being a refinement and
+  # becomes the only option: one term contributes three columns of the dose and
+  # three more of its interaction with the binary treatment, and the term names
+  # none of them.
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * splines::ns(e, 3)")
+  res <- ipw(fx$models, fx$outcome_mod)
+
+  expect_joint_coefficient_surface(
+    res,
+    c(
+      "a",
+      "splines::ns(e, 3)1",
+      "splines::ns(e, 3)2",
+      "splines::ns(e, 3)3",
+      "a:splines::ns(e, 3)1",
+      "a:splines::ns(e, 3)2",
+      "a:splines::ns(e, 3)3"
+    )
+  )
+  expect_joint_coefficient_estimates(res, fx$outcome_mod)
+  expect_identical(nrow(res$estimates), 7L)
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 8L)
+})
+
+test_that("a basis joint fit needs no .data, unlike the single-treatment route", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # The single-treatment route reads the exposure off the outcome model frame
+  # and so requires `.data` for a basis fit, whose frame holds the basis matrix
+  # instead. This route reads each treatment off its own treatment model, so the
+  # outcome frame is never asked for a column it does not have and the fit runs
+  # from the container alone. Supplying `.data` anyway changes nothing.
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * splines::ns(e, 3)")
+  bare_call <- ipw(fx$models, fx$outcome_mod)
+  with_data <- ipw(fx$models, fx$outcome_mod, .data = dat)
+
+  expect_identical(bare_call$estimates$contrast, with_data$estimates$contrast)
+  expect_equal(
+    bare_call$estimates$estimate,
+    with_data$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    bare_call$estimates$std.err,
+    with_data$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a logit joint dose model reports coefficient rows on the odds scale", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # The scale word follows the outcome link exactly as it does everywhere else.
+  # Under a logit link a coefficient is a log odds ratio per unit of the column
+  # it multiplies, whichever treatment that column reads, so the existing word
+  # is already the honest one and the surface keeps it. Only the identity link
+  # needed a word of its own.
+  fx <- fit_joint_continuous(
     dat,
-    outcome_rhs = "a * e + I(a * sin(e))"
+    outcome_rhs = "a * sin(e)",
+    outcome_family = "binomial"
   )
+  res <- ipw(fx$models, fx$outcome_mod)
+
+  expect_joint_coefficient_surface(
+    res,
+    c("a", "sin(e)", "a:sin(e)"),
+    effect = "log(or)"
+  )
+  expect_joint_coefficient_estimates(res, fx$outcome_mod)
+})
+
+test_that("the conditional reading of a transformed joint fit is the outcome model's", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * sin(e)")
+  conditional <- causalgenerics::as_conditional(
+    ipw(fx$models, fx$outcome_mod)
+  )
+
+  # Read through the tidier, which is the surface the reading presents; the
+  # stored estimates frame is the marginal one whichever reading is recorded.
+  # The conditional reading is the whole coefficient vector, unchanged by the
+  # marginal surface having become coefficient-shaped, so the intercept the
+  # marginal surface drops is back and neither identity column is there.
+  tidied <- tidy(conditional)
+  expect_identical(tidied$term, names(coef(fx$outcome_mod)))
+  expect_equal(
+    tidied$estimate,
+    unname(coef(fx$outcome_mod)),
+    tolerance = 1e-9
+  )
+  expect_false("contrast" %in% names(tidied))
+  expect_false("group" %in% names(tidied))
+})
+
+test_that("ipw() still refuses a term reading a treatment and a covariate", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # The boundary the coefficient surface moves is what a treatment term may look
+  # like, not whether a term may read something other than a treatment. A
+  # coefficient of a term reading a covariate is a change in an effect per unit
+  # of that covariate, so a row named after the column would report a quantity
+  # the table pins to no value of it.
+  mixed <- fit_joint_continuous(dat, outcome_rhs = "a * e * x1")
   expect_error(
-    ipw(wrapped$models, wrapped$outcome_mod),
+    ipw(mixed$models, mixed$outcome_mod),
     class = "propensity_ipw_msm_error"
   )
-  expect_propensity_error(ipw(wrapped$models, wrapped$outcome_mod))
+
+  dosewise <- fit_joint_continuous(dat, outcome_rhs = "a + e + e:x1")
+  expect_error(
+    ipw(dosewise$models, dosewise$outcome_mod),
+    class = "propensity_ipw_msm_error"
+  )
 })
 
 test_that("ipw() refuses a treatment column coded some other way", {
@@ -705,8 +1043,10 @@ test_that("ipw() refuses .by on a joint continuous fit", {
   skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))
-  # The modifier is interacted with both treatments, so the only thing wrong
-  # with the request is the combination itself.
+  # The `.by` refusal fires before the marginal structural model's shape is
+  # examined, which is what this fixture pins: the model here reads a covariate
+  # in its treatment terms and would be refused on those grounds too, and the
+  # error reported is nonetheless the one about `.by`.
   fx <- fit_joint_continuous(dat, outcome_rhs = "a * e * grp")
 
   # Effect modification of a joint intervention is a three-way question whether

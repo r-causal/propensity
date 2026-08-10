@@ -115,10 +115,17 @@ expect_dose_basis_columns <- function(estimates) {
 # the row labels are unique, every accessor keys by them in the same order, the
 # reported standard errors are the diagonal of the reported covariance, and that
 # covariance is a real one rather than a diagonal assembled row by row.
-expect_dose_basis_accessors <- function(res) {
+#
+# `effect` is pinned here too, since it is one word repeated down the table and
+# the same word for every basis. A surface whose rows are named by their
+# coefficients reports `coef` at an identity link rather than `slope`: a basis
+# coefficient is not a slope, and `slope` is reserved for the surfaces where a
+# row really is one and says where it is evaluated.
+expect_dose_basis_accessors <- function(res, effect = "coef") {
   estimates <- res$estimates
   labels <- paste(estimates$effect, estimates$contrast)
 
+  testthat::expect_identical(estimates$effect, rep(effect, nrow(estimates)))
   testthat::expect_true(all(is.finite(estimates$std.err)))
   testthat::expect_true(all(estimates$std.err > 0))
   testthat::expect_true(all(estimates$ci.lower < estimates$ci.upper))
@@ -154,7 +161,7 @@ test_that("a polynomial basis reports one row per basis coefficient", {
 
   expect_dose_basis_columns(est)
   expect_identical(nrow(est), 2L)
-  expect_identical(est$effect, c("slope", "slope"))
+  expect_identical(est$effect, c("coef", "coef"))
 
   # Named by the coefficient, not by the term: one term produced both columns,
   # so the term names neither of them on its own.
@@ -190,7 +197,7 @@ test_that("a natural spline basis reports one row per basis coefficient", {
 
   expect_dose_basis_columns(est)
   expect_identical(nrow(est), 3L)
-  expect_identical(est$effect, rep("slope", 3L))
+  expect_identical(est$effect, rep("coef", 3L))
   expect_identical(
     est$contrast,
     c("splines::ns(e, 3)1", "splines::ns(e, 3)2", "splines::ns(e, 3)3")
@@ -219,7 +226,7 @@ test_that("a B-spline basis reports one row per basis coefficient", {
 
   expect_dose_basis_columns(est)
   expect_identical(nrow(est), 3L)
-  expect_identical(est$effect, rep("slope", 3L))
+  expect_identical(est$effect, rep("coef", 3L))
   expect_identical(
     est$contrast,
     c("splines::bs(e, 3)1", "splines::bs(e, 3)2", "splines::bs(e, 3)3")
@@ -288,7 +295,7 @@ test_that("a logit marginal structural model reports the same rows on the odds s
     unname(coef(fx$outcome_mod)[c("poly(e, 2)1", "poly(e, 2)2")]),
     tolerance = 1e-10
   )
-  expect_dose_basis_accessors(res)
+  expect_dose_basis_accessors(res, effect = "log(or)")
   expect_identical(as.integer(res$fit@n_params), 3L + 1L + 2L + 3L)
 })
 
@@ -383,6 +390,11 @@ test_that("a basis term reading a covariate is admitted as a covariate", {
   # covariate term however many columns it expands to: it contributes no row and
   # the surface is the single-row one a bare dose reports, with no contrast
   # column to name a coefficient that is the only one.
+  #
+  # That single row keeps the word `slope`. The exposure enters through one
+  # column, so its coefficient is the slope of the dose response everywhere and
+  # the word is true of it; this is the vocabulary surface, and `slope` is
+  # reserved for exactly the rows it is true of.
   fx <- fit_dose_basis(dat, "e + splines::ns(x1, 3)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
   est <- res$estimates

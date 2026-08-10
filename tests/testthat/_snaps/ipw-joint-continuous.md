@@ -22,42 +22,6 @@
       i A term reading the exposure alone is admitted however it is written, so a curve such as `e + I(e^2)` reports one row per coefficient.
       i Read the full coefficient vector from the returned fit object for a model this surface cannot report.
 
-# ipw() refuses a treatment term that is not a bare one
-
-    Code
-      expr
-    Condition <propensity_ipw_msm_error>
-      Error in `ipw()`:
-      ! `ipw()` reports a joint intervention with a dose from a marginal structural model that is linear in each treatment.
-      x `I(e^2)` in `outcome_mod` is not a bare treatment term.
-      i The reported rows are the effect of "a" at a dose of zero, the slope of "e" per unit, and the change in that effect per unit of "e". Each of those describes a coefficient of a model in `a`, `e`, and `a:e` and of no other.
-      i Refit `outcome_mod` on those terms alone.
-      i To fit a curve in one treatment, weight and report that treatment on its own. The single-treatment route admits any term reading its exposure alone and names each reported row by the coefficient it is.
-
----
-
-    Code
-      expr
-    Condition <propensity_ipw_msm_error>
-      Error in `ipw()`:
-      ! `ipw()` reports a joint intervention with a dose from a marginal structural model that is linear in each treatment.
-      x `sin(e)` and `a:sin(e)` in `outcome_mod` are not bare treatment terms.
-      i The reported rows are the effect of "a" at a dose of zero, the slope of "e" per unit, and the change in that effect per unit of "e". Each of those describes a coefficient of a model in `a`, `e`, and `a:e` and of no other.
-      i Refit `outcome_mod` on those terms alone.
-      i To fit a curve in one treatment, weight and report that treatment on its own. The single-treatment route admits any term reading its exposure alone and names each reported row by the coefficient it is.
-
----
-
-    Code
-      expr
-    Condition <propensity_ipw_msm_error>
-      Error in `ipw()`:
-      ! `ipw()` reports a joint intervention with a dose from a marginal structural model that is linear in each treatment.
-      x `I(a * sin(e))` in `outcome_mod` is not a bare treatment term.
-      i The reported rows are the effect of "a" at a dose of zero, the slope of "e" per unit, and the change in that effect per unit of "e". Each of those describes a coefficient of a model in `a`, `e`, and `a:e` and of no other.
-      i Refit `outcome_mod` on those terms alone.
-      i To fit a curve in one treatment, weight and report that treatment on its own. The single-treatment route admits any term reading its exposure alone and names each reported row by the coefficient it is.
-
 # ipw() refuses a treatment column coded some other way
 
     Code
