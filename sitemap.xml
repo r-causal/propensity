@@ -2,6 +2,7 @@
 <url><loc>https://r-causal.github.io/propensity/404.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/LICENSE-text.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/LICENSE.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/articles/effect-modification.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/articles/index.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/articles/propensity.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/authors.html</loc></url>
@@ -18,6 +19,7 @@
 <url><loc>https://r-causal.github.io/propensity/reference/is_refit.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/is_unit_trimmed.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/is_unit_truncated.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/joint_wt_models.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/propensity-package.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_calibrate.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_refit.html</loc></url>
@@ -31,5 +33,6 @@
 <url><loc>https://r-causal.github.io/propensity/reference/tidy.ipw.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/tidy.ipw_pooled.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/wt_ate.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/wt_joint.html</loc></url>
 </urlset>
 

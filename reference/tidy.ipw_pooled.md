@@ -126,15 +126,16 @@ row per pooled estimate and the columns:
 - `term`:
 
   The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-  `"diff"`, or `"slope"`, or the coefficient name in the conditional
-  reading.
+  `"diff"`, `"slope"`, or `"coef"`, or the coefficient name in the
+  conditional reading.
 
 - `contrast`:
 
-  The contrast the row reports, such as `"b vs a"`. Categorical
-  exposures only, and among those only in the marginal reading: the
-  conditional reading names each coefficient in `term` and returns no
-  `contrast` column.
+  The contrast the row reports, such as `"b vs a"` for a categorical
+  exposure or the coefficient name on a surface whose rows are named
+  after their coefficients. Present only in the marginal reading, and
+  there only where a row reports one: the conditional reading names each
+  coefficient in `term` and returns no `contrast` column.
 
 - `estimate`:
 

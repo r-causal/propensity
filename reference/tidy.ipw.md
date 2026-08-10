@@ -154,12 +154,13 @@ row per estimate and the columns:
 - `term`:
 
   The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-  `"diff"`, or `"slope"`.
+  `"diff"`, `"slope"`, or `"coef"`.
 
 - `contrast`:
 
-  The contrast the row reports, such as `"b vs a"`. Categorical
-  exposures only.
+  The contrast the row reports, such as `"b vs a"` for a categorical
+  exposure or the coefficient name on a surface whose rows are named
+  after their coefficients. Present only where a row reports one.
 
 - `estimate`:
 

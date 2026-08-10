@@ -71,6 +71,10 @@ that result's conditional reading returns the same table one column narrower."><
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/propensity.html">Get started</a></li>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/effect-modification.html">Effect modification and interaction</a></li>
+  </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -217,11 +221,12 @@ pooled across multiply imputed datasets.</p></dd>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A <a href="https://tibble.tidyverse.org/reference/tibble.html" class="external-link">tibble</a> with one row per estimate and the columns:</p><dl><dt><code>term</code></dt>
 <dd><p>The effect measure, such as <code>"rd"</code>, <code>"log(rr)"</code>, <code>"log(or)"</code>,
-<code>"diff"</code>, or <code>"slope"</code>.</p></dd>
+<code>"diff"</code>, <code>"slope"</code>, or <code>"coef"</code>.</p></dd>
 
 <dt><code>contrast</code></dt>
-<dd><p>The contrast the row reports, such as <code>"b vs a"</code>.
-Categorical exposures only.</p></dd>
+<dd><p>The contrast the row reports, such as <code>"b vs a"</code> for a
+categorical exposure or the coefficient name on a surface whose rows are
+named after their coefficients. Present only where a row reports one.</p></dd>
 
 <dt><code>estimate</code></dt>
 <dd><p>The estimated effect.</p></dd>

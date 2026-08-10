@@ -437,6 +437,25 @@ and standard deviation of `.exposure`. Stabilization is supported for
 ATE and censoring weights (`wt_ate()` and `wt_cens()`) and is strongly
 recommended for continuous exposures.
 
+The default numerator conditions on nothing, and `stabilization_score`
+replaces it with one of your own. The case that pays is a numerator
+conditioning on a variable the model the estimates are read from also
+reads, such as an effect modifier. Fit that numerator and evaluate it at
+the exposure each unit actually took, which is the shape the default
+already has:
+
+    num <- glm(A ~ V, data = dat, family = binomial())
+    p <- fitted(num)
+    wt_ate(ps_mod, stabilize = TRUE,
+           stabilization_score = ifelse(dat$A == 1, p, 1 - p))
+
+Passing `fitted(num)` on its own is P(A = 1 \| V) for every unit, which
+is not the probability of the exposure an untreated unit took, so the
+untreated weights would carry the wrong numerator. Whether a numerator
+may condition on `V` at all is a question about the reported model
+rather than about the weights; see **Effect modification** in
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
+
 ### Handling extreme weights
 
 Extreme weights signal positivity violations, poor model fit, or limited

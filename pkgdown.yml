@@ -2,8 +2,9 @@ pandoc: 3.8.3
 pkgdown: 2.2.1
 pkgdown_sha: ~
 articles:
+  effect-modification: effect-modification.html
   propensity: propensity.html
-last_built: 2026-08-08T19:17Z
+last_built: 2026-08-10T20:58Z
 urls:
   reference: https://r-causal.github.io/propensity/reference
   article: https://r-causal.github.io/propensity/articles

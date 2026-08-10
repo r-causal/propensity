@@ -12,7 +12,8 @@
 - [`glance(`*`<ipw_pooled>`*`)`](https://r-causal.github.io/propensity/reference/glance.ipw_pooled.md)
   : Glance at a pooled inverse probability weighted result
 
-- [`ipw(`*`<multinom>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
+- [`ipw(`*`<joint_wt_models>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
+  [`ipw(`*`<multinom>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
   [`ipw(`*`<lm>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
   [`ipw(`*`<glm>`*`)`](https://r-causal.github.io/propensity/reference/ipw-methods.md)
   : Inverse Probability Weighted Estimation
@@ -34,6 +35,10 @@
 
 - [`is_unit_truncated()`](https://r-causal.github.io/propensity/reference/is_unit_truncated.md)
   : Identify which units were truncated
+
+- [`joint_wt_models()`](https://r-causal.github.io/propensity/reference/joint_wt_models.md)
+  [`is_joint_wt_models()`](https://r-causal.github.io/propensity/reference/joint_wt_models.md)
+  : Record the two treatment models of a joint exposure
 
 - [`propensity`](https://r-causal.github.io/propensity/reference/propensity-package.md)
   [`propensity-package`](https://r-causal.github.io/propensity/reference/propensity-package.md)
@@ -88,3 +93,8 @@
   [`wt_atc()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   [`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
   : Calculate propensity score weights
+
+- [`wt_joint()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
+  [`is_joint_wt()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
+  [`joint_wt_meta()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
+  : Product weights for a joint intervention on two treatments
