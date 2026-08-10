@@ -1661,31 +1661,36 @@ ipw_spec_continuous <- function(
   }
   estimand <- check_estimand(wts, estimand, call = call)
 
-  # Marginal structural model term detection: exactly one term of the outcome
-  # model references the exposure, contributing exactly one coefficient. A model
-  # with several exposure terms has no single reported effect.
+  # Marginal structural model term detection. Every term of the outcome model
+  # that reads the exposure must read the exposure and nothing else. What such a
+  # model reports is its own exposure coefficients, and a term reading a
+  # covariate as well contributes a coefficient whose value depends on that
+  # covariate, which no row of the table could name.
+  #
+  # The boundary is variable membership rather than the shape of the function,
+  # so a dose-response curve written as `A + I(A^2)` or as `A + sin(A)` is a
+  # model of the exposure alone and each of its coefficients is a row.
   out_X <- model.matrix(outcome_mod)
   term_labels <- attr(stats::terms(outcome_mod), "term.labels")
-  is_exposure_term <- vapply(
-    term_labels,
-    function(l) exposure_name %in% all.vars(str2lang(l)),
+  term_vars <- lapply(term_labels, function(label) all.vars(str2lang(label)))
+  reads_exposure <- vapply(
+    term_vars,
+    function(vars) exposure_name %in% vars,
     logical(1)
   )
-  exposure_cols <- which(attr(out_X, "assign") %in% which(is_exposure_term))
-  if (length(exposure_cols) != 1) {
-    abort(
-      c(
-        "{.fun ipw} requires a marginal structural model with a single \\
-        exposure term for a continuous exposure.",
-        x = "{.arg outcome_mod} contributes {length(exposure_cols)} \\
-        coefficient{?s} for {.val {exposure_name}}.",
-        i = "Read the full coefficient vector from the returned {.field fit} \\
-        object for a model with more than one exposure term."
-      ),
-      error_class = "propensity_ipw_msm_error",
-      call = call
-    )
-  }
+  reads_more <- vapply(
+    term_vars,
+    function(vars) length(setdiff(vars, exposure_name)) > 0,
+    logical(1)
+  )
+  check_ipw_msm_terms(
+    term_labels[reads_exposure & reads_more],
+    exposure_name,
+    call = call
+  )
+
+  exposure_cols <- which(attr(out_X, "assign") %in% which(reads_exposure))
+  check_ipw_msm_reported(exposure_cols, exposure_name, call = call)
 
   if (is_linear_regression(outcome_mod)) {
     family <- "gaussian"
@@ -1717,12 +1722,86 @@ ipw_spec_continuous <- function(
       link = out_link,
       coefs = stats::coef(outcome_mod),
       X_counterfactual = NULL,
-      weights = as.double(wts),
-      exposure_col = exposure_cols
+      weights = as.double(wts)
     ),
     contrasts = NULL,
+    coefficients = ipw_coefficient_rows(
+      col = exposure_cols,
+      effect = rep(
+        ipw_continuous_effect_label(out_link, call = call),
+        length(exposure_cols)
+      ),
+      # Rows are named by the coefficient rather than by the term. The two
+      # differ wherever a term contributes several coefficients, as a basis such
+      # as `poly(A, 2)` does, and the coefficient is the thing a row reports.
+      contrast = if (length(exposure_cols) > 1L) {
+        colnames(out_X)[exposure_cols]
+      }
+    ),
     focal_level = NULL,
     reference_level = NULL
+  )
+}
+
+# The marginal structural model refusals a coefficient-shaped surface makes. A
+# term that reads the exposure and a covariate together is refused because the
+# coefficient it contributes is not a causal effect on its own: it is the change
+# in the effect per unit of the covariate, and the effect itself is then defined
+# only at a value of that covariate the table does not name. Reading the whole
+# coefficient vector off the fit is the way to have such a model estimated with
+# the sandwich this path builds.
+check_ipw_msm_terms <- function(
+  mixed_terms,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  if (length(mixed_terms) == 0) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} requires a marginal structural model whose exposure terms \\
+      read the exposure alone.",
+      x = "{.code {mixed_terms}} {?is/are} not {?a term/terms} of \\
+      {.val {exposure_name}} alone.",
+      i = "A term reading anything else contributes a coefficient that depends \\
+      on what it reads, so there is no one effect for a row to report.",
+      i = "A term reading the exposure alone is admitted however it is \\
+      written, so a curve such as \\
+      {.code {exposure_name} + I({exposure_name}^2)} reports one row per \\
+      coefficient.",
+      i = "Read the full coefficient vector from the returned {.field fit} \\
+      object for a model this surface cannot report."
+    ),
+    error_class = "propensity_ipw_msm_error",
+    call = call
+  )
+}
+
+# The other half of the same requirement: a marginal structural model that
+# reports nothing at all. Reached when no term of the outcome model contributes
+# a coefficient for the exposure, which is the case a model that mentions the
+# exposure only inside a term the design dropped ends at.
+check_ipw_msm_reported <- function(
+  exposure_cols,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  if (length(exposure_cols) > 0) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.arg outcome_mod} must contribute a coefficient for the exposure \\
+      {.val {exposure_name}}.",
+      x = "No term of {.arg outcome_mod} contributes one.",
+      i = "Refit {.arg outcome_mod} with {.val {exposure_name}} on the \\
+      right-hand side of the formula."
+    ),
+    error_class = "propensity_ipw_msm_error",
+    call = call
   )
 }
 
@@ -1798,7 +1877,7 @@ abort_ipw_ps_separation <- function(
 # Recompute the weights implied by the spec at its seeded init, mirroring the
 # weight computation each psi builder performs at theta = init.
 ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
-  weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand)
+  weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand, spec$ps$types)
   init <- layout$init
   idx <- layout$idx
   th_ps <- init[idx$ps]
@@ -1841,12 +1920,29 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       )
     },
     joint_models = {
-      ps <- ipw_joint_models_ps(spec, th_ps)
+      blocks <- ipw_joint_models_blocks(spec, th_ps, th_stab)
+      # Only a discrete component has a probability to saturate. A dose divides
+      # by a normal density, which is small at a badly fitted observation rather
+      # than zero, and the weight it gives is finite wherever the density is.
       check_ipw_ps_separation(
-        sum(vapply(ps, function(p) sum(p == 0 | p == 1), integer(1))),
+        sum(vapply(
+          blocks,
+          function(block) {
+            if (identical(block$type, "continuous")) {
+              0L
+            } else {
+              sum(block$ps == 0 | block$ps == 1)
+            }
+          },
+          integer(1)
+        )),
         call = call
       )
-      weight_fn(ps, spec$exposure, list())
+      weight_fn(
+        lapply(blocks, function(block) block$ps),
+        spec$exposure,
+        lapply(blocks, function(block) block$extras)
+      )
     },
     continuous = {
       n_alpha <- ncol(spec$ps$X)
@@ -2349,14 +2445,8 @@ abort_ipw_no_variance <- function(spec, call = rlang::caller_env()) {
   )
 }
 
-# Build the estimates table from the solved contrast rows of theta, mirroring
-# the column layout that calculate_estimates() produces on the linearization
-# path so the two SE methods return the same shape. The contrast rows are
-# addressed by their theta positions, not by name: theta names are not unique
-# across blocks (a ps or outcome covariate can share a contrast label such as
-# "rd" or "diff"), so name subsetting could silently return the wrong row.
-# Effect label for a continuous exposure, taken from the outcome-model link:
-# the reported effect is the single marginal structural model coefficient.
+# Effect label for a per-unit change in a dose, taken from the outcome-model
+# link: the reported effect is a marginal structural model coefficient.
 ipw_continuous_effect_label <- function(link, call = rlang::caller_env()) {
   switch(
     link,
@@ -2371,6 +2461,35 @@ ipw_continuous_effect_label <- function(link, call = rlang::caller_env()) {
   )
 }
 
+# Effect label for a contrast of two treatment levels reported as a coefficient.
+# It differs from the dose label only at the identity link, where a difference
+# between two levels is a `diff` and a per-unit change in a dose is a `slope`;
+# on the other links a coefficient is the same log ratio either way.
+ipw_level_effect_label <- function(link, call = rlang::caller_env()) {
+  if (identical(link, "identity")) {
+    return("diff")
+  }
+
+  ipw_continuous_effect_label(link, call = call)
+}
+
+# The description of a coefficient-shaped surface: which columns of the outcome
+# design carry causal content, and how each of them is named. A surface
+# described this way reports the outcome block of theta directly and
+# standardizes nothing, so what it reports are the weighted fit's own
+# coefficients. `contrast` and `group` are each present only where they name
+# something, since a column repeating one value down the table would read as a
+# contrast, or a group, that was named.
+ipw_coefficient_rows <- function(col, effect, contrast = NULL, group = NULL) {
+  list(col = col, effect = effect, contrast = contrast, group = group)
+}
+
+# Build the estimates table from the solved rows of theta, mirroring the column
+# layout that calculate_estimates() produces on the linearization path so the
+# two SE methods return the same shape. The rows are addressed by their theta
+# positions, not by name: theta names are not unique across blocks (a ps or
+# outcome covariate can share a contrast label such as "rd" or "diff"), so name
+# subsetting could silently return the wrong row.
 ipw_mestimation_estimates <- function(
   spec,
   fit,
@@ -2382,16 +2501,18 @@ ipw_mestimation_estimates <- function(
   vc <- stats::vcov(fit)
   se <- sqrt(diag(vc))
 
-  # A continuous exposure reports the marginal structural model exposure
-  # coefficient, addressed by its outcome-block theta position; binary and
-  # categorical exposures report the contrast rows. Positions are used, not
-  # names, since theta names are not unique across blocks.
+  # A coefficient-shaped surface reports coefficients of the marginal structural
+  # model, addressed by their outcome-block theta positions; the cell-shaped
+  # surfaces report the contrast rows. Positions are used, not names, since
+  # theta names are not unique across blocks.
   contrast <- NULL
   group <- NULL
 
-  if (identical(spec$exposure_type, "continuous")) {
-    idx <- layout$idx$out[spec$outcome$exposure_col]
-    effect <- ipw_continuous_effect_label(spec$outcome$link, call = call)
+  if (!is.null(spec$coefficients)) {
+    idx <- layout$idx$out[spec$coefficients$col]
+    effect <- spec$coefficients$effect
+    contrast <- spec$coefficients$contrast
+    group <- spec$coefficients$group
   } else {
     # A joint exposure reports the cell means alongside the contrasts over them,
     # and the means are already the mu block, so its reported rows read two

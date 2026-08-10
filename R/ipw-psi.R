@@ -55,7 +55,12 @@ ipw_inv_link <- function(link, call = rlang::caller_env()) {
 # question is worth asking, and `check_estimand()` reads it for that.
 ipw_estimands <- c("ate", "att", "atu", "atm", "ato", "entropy")
 
-ipw_weight_fn <- function(exposure_type, estimand, call = rlang::caller_env()) {
+ipw_weight_fn <- function(
+  exposure_type,
+  estimand,
+  components = NULL,
+  call = rlang::caller_env()
+) {
   supported <- switch(
     exposure_type,
     binary = ipw_estimands,
@@ -87,7 +92,7 @@ ipw_weight_fn <- function(exposure_type, estimand, call = rlang::caller_env()) {
     binary = ipw_binary_weight_fn(estimand),
     categorical = ipw_categorical_weight_fn(estimand),
     continuous = ipw_continuous_weight_fn(estimand),
-    joint_models = ipw_joint_models_weight_fn(estimand)
+    joint_models = ipw_joint_models_weight_fn(estimand, components)
   )
 }
 
@@ -564,7 +569,12 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
 # ---- psi builder ------------------------------------------------------------
 
 build_ipw_psi <- function(spec, layout, call = rlang::caller_env()) {
-  weight_fn <- ipw_weight_fn(spec$exposure_type, spec$estimand, call = call)
+  weight_fn <- ipw_weight_fn(
+    spec$exposure_type,
+    spec$estimand,
+    spec$ps$types,
+    call = call
+  )
   switch(
     spec$exposure_type,
     binary = ipw_psi_binary(spec, layout, weight_fn, call = call),

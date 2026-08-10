@@ -213,14 +213,21 @@
 #' (for example `"b vs a"`), so a K-level exposure produces one block of
 #' measures per non-reference level.
 #'
-#' For a continuous exposure, `ipw()` reports the single exposure coefficient of
-#' the weighted marginal structural outcome model. Its label follows the outcome
+#' For a continuous exposure, `ipw()` reports the exposure coefficients of the
+#' weighted marginal structural outcome model. Their label follows the outcome
 #' link: `slope` for an identity link, `log(or)` for a logit link, and
-#' `log(rr)` for a log link. The reported coefficient is the one attached to the
-#' exposure term of the marginal structural model. When that term is a
-#' transformation of the exposure (for example an `I(A^2)`-only model), the
-#' coefficient of the transformed term is reported under the same link-based
-#' label.
+#' `log(rr)` for a log link. A model with one exposure coefficient reports one
+#' row and no `contrast` column, and a dose-response curve such as
+#' `y ~ A + I(A^2)` reports one row per coefficient, with the `contrast` column
+#' naming the coefficient each row belongs to.
+#'
+#' Every term of the marginal structural model that reads the exposure must read
+#' the exposure and nothing else. The requirement is on what a term reads rather
+#' than on how it is written, so `A + I(A^2)` and `A + sin(A)` are admitted and
+#' `A * x1` is not: a term reading a covariate as well contributes a coefficient
+#' that depends on that covariate, and no row could name the effect it stands
+#' for. Read the whole coefficient vector from the returned `fit` object for a
+#' model this surface cannot report.
 #'
 #' Use [`as.data.frame()`][causalgenerics::new_ipw()] with
 #' `exponentiate = TRUE` to obtain risk ratios and odds ratios on their natural
@@ -383,8 +390,53 @@
 #' entering the outcome score are rebuilt from both propensity score blocks on
 #' every evaluation and the reported standard errors account for having
 #' estimated both. The same two restrictions apply: the `"ate"` estimand only,
-#' and no `.by`. Both treatments must be binary, and standard errors come from
-#' M-estimation alone.
+#' and no `.by`. Standard errors come from M-estimation alone.
+#'
+#' ## A joint intervention with a dose
+#'
+#' The second treatment may be a dose rather than a second discrete treatment,
+#' recorded with an [stats::lm()] or an identity-link gaussian [stats::glm()]
+#' and weighted with a stabilized density ratio, which [wt_joint()] requires of
+#' a continuous component. A dose has no cells, so there is no crossing to
+#' report counterfactual risks over: the surface is the marginal structural
+#' model's own coefficients, which for an identity-link model are exactly the
+#' weighted fit's coefficients.
+#'
+#' For `y ~ a * e` with `a` binary and `e` a dose, three coefficients carry
+#' causal content and each is a row:
+#'
+#' - the binary treatment's effect at a dose of zero, with the `contrast`
+#'   naming the treatment and its levels (`"a: 1 vs 0"`) and the `group`
+#'   naming where it is evaluated (`"e = 0"`);
+#' - the dose's slope at the binary treatment's reference level
+#'   (`"e: per unit"`, `"a = 0"`);
+#' - the interaction, the change in the binary treatment's effect per unit of
+#'   the dose, keyed by the one-unit step of the other treatment
+#'   (`"a: 1 vs 0"`, `"e + 1 vs e"`).
+#'
+#' The `effect` column names the scale, keeping the vocabulary each treatment
+#' type already uses: a level contrast is a `diff` and a per-unit change in the
+#' dose is a `slope` under an identity link, and both are `log(or)` under a
+#' logit link and `log(rr)` under a log link. An additive model, `y ~ a + e`,
+#' forces one effect for the binary treatment at every dose and one slope at
+#' either of its levels, so it reports two rows under the group `"overall"` and
+#' no interaction.
+#'
+#' The marginal structural model must be linear in each treatment. Every term
+#' that reads a treatment has to be a bare one, meaning `a`, `e`, or `a:e`, and
+#' any other treatment term is refused. The three readings above are what makes
+#' this a requirement rather than a convenience: the coefficient of a
+#' transformed term such as `I(e^2)` or `sin(e)` is not the effect at a dose of
+#' zero, nor a per-unit slope, nor the change in either, and two transformed
+#' terms of one treatment would be reported under one label. To fit a curve in
+#' one treatment, weight and report that treatment on its own, where any term
+#' reading the exposure alone is admitted and each row is named by its
+#' coefficient. Nothing here is standardized, so a covariate belongs in the
+#' treatment models rather than in this one.
+#'
+#' The dose model contributes its coefficients and the conditional variance its
+#' density ratio divides by, and the stabilizing numerator contributes the
+#' dose's two marginal moments, all as parameters of the same stacked system.
 #'
 #' # Variance estimation
 #'

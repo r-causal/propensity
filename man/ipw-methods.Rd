@@ -253,6 +253,10 @@ errors are computed by M-estimation; the linearization method is not
 available. The only supported estimand is \code{"ate"}, which is what the product
 weights \code{\link[=wt_joint]{wt_joint()}} builds target.
 
+The second treatment may be a dose, in which case the surface is the marginal
+structural model's own coefficients rather than the cells of a crossing; see
+\strong{Joint exposures}.
+
 This is the second of the two routes to a joint intervention. The other
 declares the crossing with \code{\link[causalgenerics:joint_exposure]{causalgenerics::joint_exposure()}} and weights it
 with one multinomial model over the cells; see \strong{Joint exposures}. Both
@@ -282,11 +286,14 @@ exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \
 propensity score model of the exposure and a weighted marginal structural
 outcome model. The only supported estimand is \code{"ate"}. Standard errors are
 computed by M-estimation; the linearization method is not available for
-continuous exposures. The marginal structural model must contain exactly one
-exposure term, and the reported effect is that single coefficient: \code{"slope"}
-for an identity-link outcome, \code{"log(or)"} for a logit-link outcome, and
-\code{"log(rr)"} for a log-link outcome. The estimates table keeps the eight-column
-contract with no contrast column.
+continuous exposures. Every term of the marginal structural model that reads
+the exposure must read the exposure and nothing else, and the reported
+effects are the coefficients those terms contribute: \code{"slope"} for an
+identity-link outcome, \code{"log(or)"} for a logit-link outcome, and \code{"log(rr)"}
+for a log-link outcome. A model with one exposure coefficient keeps the
+eight-column contract with no contrast column; a dose-response curve such as
+\code{y ~ A + I(A^2)} reports one row per coefficient and gains a contrast column
+naming them.
 
 \code{ipw()} is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
@@ -368,14 +375,21 @@ table gains a \code{contrast} column naming the pair of levels each row compares
 (for example \code{"b vs a"}), so a K-level exposure produces one block of
 measures per non-reference level.
 
-For a continuous exposure, \code{ipw()} reports the single exposure coefficient of
-the weighted marginal structural outcome model. Its label follows the outcome
+For a continuous exposure, \code{ipw()} reports the exposure coefficients of the
+weighted marginal structural outcome model. Their label follows the outcome
 link: \code{slope} for an identity link, \code{log(or)} for a logit link, and
-\code{log(rr)} for a log link. The reported coefficient is the one attached to the
-exposure term of the marginal structural model. When that term is a
-transformation of the exposure (for example an \code{I(A^2)}-only model), the
-coefficient of the transformed term is reported under the same link-based
-label.
+\code{log(rr)} for a log link. A model with one exposure coefficient reports one
+row and no \code{contrast} column, and a dose-response curve such as
+\code{y ~ A + I(A^2)} reports one row per coefficient, with the \code{contrast} column
+naming the coefficient each row belongs to.
+
+Every term of the marginal structural model that reads the exposure must read
+the exposure and nothing else. The requirement is on what a term reads rather
+than on how it is written, so \code{A + I(A^2)} and \code{A + sin(A)} are admitted and
+\code{A * x1} is not: a term reading a covariate as well contributes a coefficient
+that depends on that covariate, and no row could name the effect it stands
+for. Read the whole coefficient vector from the returned \code{fit} object for a
+model this surface cannot report.
 
 Use \code{\link[causalgenerics:new_ipw]{as.data.frame()}} with
 \code{exponentiate = TRUE} to obtain risk ratios and odds ratios on their natural
@@ -539,8 +553,55 @@ Both treatment models are stacked alongside the outcome model, so the weights
 entering the outcome score are rebuilt from both propensity score blocks on
 every evaluation and the reported standard errors account for having
 estimated both. The same two restrictions apply: the \code{"ate"} estimand only,
-and no \code{.by}. Both treatments must be binary, and standard errors come from
-M-estimation alone.
+and no \code{.by}. Standard errors come from M-estimation alone.
+}
+
+\subsection{A joint intervention with a dose}{
+
+The second treatment may be a dose rather than a second discrete treatment,
+recorded with an \code{\link[stats:lm]{stats::lm()}} or an identity-link gaussian \code{\link[stats:glm]{stats::glm()}}
+and weighted with a stabilized density ratio, which \code{\link[=wt_joint]{wt_joint()}} requires of
+a continuous component. A dose has no cells, so there is no crossing to
+report counterfactual risks over: the surface is the marginal structural
+model's own coefficients, which for an identity-link model are exactly the
+weighted fit's coefficients.
+
+For \code{y ~ a * e} with \code{a} binary and \code{e} a dose, three coefficients carry
+causal content and each is a row:
+\itemize{
+\item the binary treatment's effect at a dose of zero, with the \code{contrast}
+naming the treatment and its levels (\code{"a: 1 vs 0"}) and the \code{group}
+naming where it is evaluated (\code{"e = 0"});
+\item the dose's slope at the binary treatment's reference level
+(\code{"e: per unit"}, \code{"a = 0"});
+\item the interaction, the change in the binary treatment's effect per unit of
+the dose, keyed by the one-unit step of the other treatment
+(\code{"a: 1 vs 0"}, \code{"e + 1 vs e"}).
+}
+
+The \code{effect} column names the scale, keeping the vocabulary each treatment
+type already uses: a level contrast is a \code{diff} and a per-unit change in the
+dose is a \code{slope} under an identity link, and both are \code{log(or)} under a
+logit link and \code{log(rr)} under a log link. An additive model, \code{y ~ a + e},
+forces one effect for the binary treatment at every dose and one slope at
+either of its levels, so it reports two rows under the group \code{"overall"} and
+no interaction.
+
+The marginal structural model must be linear in each treatment. Every term
+that reads a treatment has to be a bare one, meaning \code{a}, \code{e}, or \code{a:e}, and
+any other treatment term is refused. The three readings above are what makes
+this a requirement rather than a convenience: the coefficient of a
+transformed term such as \code{I(e^2)} or \code{sin(e)} is not the effect at a dose of
+zero, nor a per-unit slope, nor the change in either, and two transformed
+terms of one treatment would be reported under one label. To fit a curve in
+one treatment, weight and report that treatment on its own, where any term
+reading the exposure alone is admitted and each row is named by its
+coefficient. Nothing here is standardized, so a covariate belongs in the
+treatment models rather than in this one.
+
+The dose model contributes its coefficients and the conditional variance its
+density ratio divides by, and the stabilizing numerator contributes the
+dose's two marginal moments, all as parameters of the same stacked system.
 }
 }
 

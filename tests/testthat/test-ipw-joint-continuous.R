@@ -119,6 +119,38 @@ fit_joint_continuous <- function(
   )
 }
 
+# The same fixture with the binary treatment recoded as a two-level factor,
+# which is the same intervention written a different way. Every model is refit
+# from the recoded column, so the coding the outcome design carries is the one
+# `ordered` and the session's contrast option imply, which is what the estimator
+# has to read off the columns rather than off the formula.
+fit_joint_factor <- function(dat, ordered = FALSE) {
+  dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes"),
+    ordered = ordered
+  )
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- lm(e ~ a + x1 + x2, data = dat)
+  wts <- quiet_wt(wt_joint(
+    wt_ate(ps_a),
+    wt_ate(
+      as.double(fitted(ps_e)),
+      dat$e,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    exposure_type = c("binary", "continuous")
+  ))
+
+  list(
+    models = joint_wt_models(a = ps_a, e = ps_e),
+    outcome_mod = lm(y ~ a * e, data = dat, weights = wts),
+    wts = wts
+  )
+}
+
 # The single-dose route, with whatever marginal structural model a test wants to
 # hand it. The weights are the stabilized continuous ate weights the path
 # already documents.
@@ -223,6 +255,7 @@ test_that("a marginal structural model reading a covariate is still refused", {
     ipw(covariate$ps_mod, covariate$outcome_mod),
     class = "propensity_ipw_msm_error"
   )
+  expect_propensity_error(ipw(covariate$ps_mod, covariate$outcome_mod))
 
   # The case the guardrail exists for: two undeclared exposures handed to the
   # plain continuous route with one treatment's weights. Nothing declares a
@@ -232,6 +265,7 @@ test_that("a marginal structural model reading a covariate is still refused", {
     ipw(undeclared$ps_mod, undeclared$outcome_mod),
     class = "propensity_ipw_msm_error"
   )
+  expect_propensity_error(ipw(undeclared$ps_mod, undeclared$outcome_mod))
 })
 
 # ---- part 2: the validator relaxation ---------------------------------------
@@ -552,6 +586,121 @@ test_that("ipw() refuses an outcome model that does not read both treatments", {
   )
 })
 
+test_that("ipw() refuses a treatment term that is not a bare one", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # Every row of this surface says where in the other treatment's range it is
+  # evaluated, and each of those readings holds only of a model that is linear
+  # in each treatment. A transformed treatment term has no such reading, and it
+  # lands in a row whose label then describes neither the coefficient reported
+  # nor, where two transformed terms of one treatment land in the same row, one
+  # row rather than two.
+  curved <- fit_joint_continuous(dat, outcome_rhs = "a + e + I(e^2) + a:e")
+  expect_error(
+    ipw(curved$models, curved$outcome_mod),
+    class = "propensity_ipw_msm_error"
+  )
+  expect_propensity_error(ipw(curved$models, curved$outcome_mod))
+
+  # A curve written without a bare dose term at all is refused on the same
+  # terms: the boundary is what a term is, not whether a linear one sits beside
+  # it.
+  transformed <- fit_joint_continuous(dat, outcome_rhs = "a * sin(e)")
+  expect_error(
+    ipw(transformed$models, transformed$outcome_mod),
+    class = "propensity_ipw_msm_error"
+  )
+  expect_propensity_error(ipw(transformed$models, transformed$outcome_mod))
+
+  # A transformed term reading both treatments is a second interaction between
+  # them, which the interaction row cannot hold beside the one it reports.
+  wrapped <- fit_joint_continuous(
+    dat,
+    outcome_rhs = "a * e + I(a * sin(e))"
+  )
+  expect_error(
+    ipw(wrapped$models, wrapped$outcome_mod),
+    class = "propensity_ipw_msm_error"
+  )
+  expect_propensity_error(ipw(wrapped$models, wrapped$outcome_mod))
+})
+
+test_that("ipw() refuses a treatment column coded some other way", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # A bare term says which variables a column is built from and nothing about
+  # how the column is coded, so a factor treatment under a coding other than
+  # treatment contrasts reaches the surface with the term check satisfied. An
+  # ordered two-level factor carries polynomial contrasts, whose column is the
+  # contrast scaled and centered, so the fit runs to completion and reports
+  # neither the effect at a dose of zero nor the slope at the reference level
+  # under labels that claim both.
+  ordered <- fit_joint_factor(dat, ordered = TRUE)
+  expect_error(
+    ipw(ordered$models, ordered$outcome_mod),
+    class = "propensity_ipw_msm_error"
+  )
+  expect_propensity_error(ipw(ordered$models, ordered$outcome_mod))
+
+  # The same hole reached through the session option rather than through the
+  # vector, which is why the check reads the columns rather than the contrasts
+  # a factor happens to carry.
+  withr::with_options(list(contrasts = c("contr.sum", "contr.poly")), {
+    summed <- fit_joint_factor(dat)
+    expect_error(
+      ipw(summed$models, summed$outcome_mod),
+      class = "propensity_ipw_msm_error"
+    )
+    expect_propensity_error(ipw(summed$models, summed$outcome_mod))
+  })
+})
+
+test_that("a factor treatment under treatment contrasts reports the numeric fit", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # Treatment contrasts code a two-level factor as the indicator the rows
+  # describe, so the coding check admits it and the two fixtures are the same
+  # intervention written two ways. Anchoring one fit against the other is what
+  # keeps the check from being satisfied by a refusal of everything: the
+  # estimates have to be the numeric fixture's, not merely present.
+  numeric_fit <- ipw(
+    fit_joint_continuous(dat)$models,
+    fit_joint_continuous(dat)$outcome_mod
+  )
+  factored <- fit_joint_factor(dat)
+  factor_fit <- ipw(factored$models, factored$outcome_mod)
+
+  expect_identical(
+    factor_fit$estimates$effect,
+    numeric_fit$estimates$effect
+  )
+  expect_equal(
+    factor_fit$estimates$estimate,
+    numeric_fit$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    factor_fit$estimates$std.err,
+    numeric_fit$estimates$std.err,
+    tolerance = 1e-8
+  )
+
+  # The two identity columns that name a level are the one thing the fixtures do
+  # not share, since a factor's levels are its own and the numeric fixture's are
+  # 0 and 1.
+  expect_identical(
+    factor_fit$estimates$contrast,
+    c("a: yes vs no", "e: per unit", "a: yes vs no")
+  )
+  expect_identical(
+    factor_fit$estimates$group,
+    c("e = 0", "a = no", "e + 1 vs e")
+  )
+})
+
 test_that("ipw() refuses .by on a joint continuous fit", {
   skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
@@ -567,6 +716,7 @@ test_that("ipw() refuses .by on a joint continuous fit", {
     ipw(fx$models, fx$outcome_mod, .by = grp),
     class = "propensity_ipw_joint_by_error"
   ))
+  expect_propensity_error(ipw(fx$models, fx$outcome_mod, .by = grp))
 })
 
 test_that("ipw() refuses linearization on a joint continuous fit", {
@@ -579,5 +729,8 @@ test_that("ipw() refuses linearization on a joint continuous fit", {
   expect_error(
     ipw(fx$models, fx$outcome_mod, se_method = "linearization"),
     class = "propensity_ipw_joint_models_method_error"
+  )
+  expect_propensity_error(
+    ipw(fx$models, fx$outcome_mod, se_method = "linearization")
   )
 })
