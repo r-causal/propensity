@@ -43,16 +43,20 @@ Winsorize
 Zadrozny
 Zaslavsky
 Zhou
+additively
 al
+biomarker
 cauchit
 causalgenerics
 cloglog
+confounder
 cr
 dplyr
 estimand
 estimand's
 estimands
 et
+framings
 glm
 glm's
 halfmoon
@@ -63,6 +67,7 @@ misassigned
 misspecification
 misspecified
 multiclass
+noncollapsible
 pctl
 poisson
 positionally
@@ -80,6 +85,8 @@ softmax
 subassignment
 subclassification
 unclassed
+unstabilized
+untestable
 vctrs
 winsorize
 winsorized
