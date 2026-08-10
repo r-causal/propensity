@@ -61,6 +61,7 @@ ipw_weight_fn <- function(exposure_type, estimand, call = rlang::caller_env()) {
     binary = ipw_estimands,
     categorical = ipw_estimands,
     continuous = "ate",
+    joint_models = "ate",
     abort(
       "Unsupported exposure type {.val {exposure_type}}.",
       error_class = "propensity_ipw_estimand_error",
@@ -85,7 +86,8 @@ ipw_weight_fn <- function(exposure_type, estimand, call = rlang::caller_env()) {
     exposure_type,
     binary = ipw_binary_weight_fn(estimand),
     categorical = ipw_categorical_weight_fn(estimand),
-    continuous = ipw_continuous_weight_fn(estimand)
+    continuous = ipw_continuous_weight_fn(estimand),
+    joint_models = ipw_joint_models_weight_fn(estimand)
   )
 }
 
@@ -203,7 +205,8 @@ ipw_theta_layout <- function(spec, call = rlang::caller_env()) {
     spec$exposure_type,
     binary = ipw_init_binary(spec, call = call),
     categorical = ipw_init_categorical(spec, call = call),
-    continuous = ipw_init_continuous(spec, call = call)
+    continuous = ipw_init_continuous(spec, call = call),
+    joint_models = ipw_init_joint_models(spec, call = call)
   )
 
   block_order <- c(
@@ -566,7 +569,8 @@ build_ipw_psi <- function(spec, layout, call = rlang::caller_env()) {
     spec$exposure_type,
     binary = ipw_psi_binary(spec, layout, weight_fn, call = call),
     categorical = ipw_psi_categorical(spec, layout, weight_fn, call = call),
-    continuous = ipw_psi_continuous(spec, layout, weight_fn, call = call)
+    continuous = ipw_psi_continuous(spec, layout, weight_fn, call = call),
+    joint_models = ipw_psi_joint_models(spec, layout, weight_fn, call = call)
   )
 }
 

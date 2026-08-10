@@ -649,7 +649,14 @@ test_that("the conditional reading of a two-model joint fit is the outcome model
     rownames(vcov(conditional)),
     names(coef(two$outcome_mod))
   )
-  expect_null(conditional$estimates[["group"]])
+  # Read off the surface the conditional reading presents rather than off the
+  # stored frame. `as_conditional()` flips which reading a result reports
+  # without rebuilding anything, so `estimates` stays the marginal frame and
+  # legitimately keeps the group column its rows are keyed by; so does
+  # `as.data.frame()`, which tabulates that frame whichever reading is active.
+  # `tidy()` is the surface that answers in the reading, and the coefficients it
+  # reports belong to no subgroup.
+  expect_false("group" %in% names(tidy(conditional)))
 })
 
 # ---- refusals ----------------------------------------------------------------

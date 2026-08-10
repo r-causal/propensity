@@ -355,6 +355,37 @@
 #' Either restriction is escaped the same way, by dropping the declaration with
 #' `factor(x)` and reporting each cell against the reference cell.
 #'
+#' ## Two treatment models instead of a declared crossing
+#'
+#' A joint intervention can also be weighted through the sequential
+#' factorization it really has, \eqn{f(A | L) f(E | A, L)}: one treatment model
+#' per treatment, recorded with [joint_wt_models()], and the product of their
+#' weights, built with [wt_joint()]. Pass the container as `wt_mod` and an
+#' outcome model that reads both treatments as separate columns.
+#'
+#' The reported surface is the one above, row for row and label for label: the
+#' same cell means, simple effects, and interaction, under the same
+#' `effect`, `contrast`, and `group` values. The two routes estimate the same
+#' estimand through different models of the same propensity score, so they agree
+#' as estimators rather than to the last bit, and they coincide when the two
+#' parameterizations are saturated in the same covariates.
+#'
+#' Prefer the two-model route when the two treatments call for different
+#' adjustment sets, or when the dependence of the second treatment on the first
+#' is what you want to model directly, since each treatment then gets its own
+#' model and its own covariates. Prefer the declared crossing when one model over
+#' the cells is the natural specification. The factorization itself is validated
+#' when the container is built rather than here: [joint_wt_models()] refuses a
+#' second model that does not condition on the first treatment, and a pair that
+#' condition on each other.
+#'
+#' Both treatment models are stacked alongside the outcome model, so the weights
+#' entering the outcome score are rebuilt from both propensity score blocks on
+#' every evaluation and the reported standard errors account for having
+#' estimated both. The same two restrictions apply: the `"ate"` estimand only,
+#' and no `.by`. Both treatments must be binary, and standard errors come from
+#' M-estimation alone.
+#'
 #' # Variance estimation
 #'
 #' By default (`se_method = "mestimation"`), standard errors are computed by

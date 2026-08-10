@@ -1513,7 +1513,14 @@ ipw_spec_categorical <- function(
   # Before `.by` is resolved, so the combination is refused rather than
   # diagnosed: a modifier the request will not be answered under is not worth
   # reporting the outcome model's missing interaction term about.
-  check_ipw_joint_by(declared, .by, call = call)
+  check_ipw_joint_by(
+    causalgenerics::is_joint_exposure(declared),
+    .by,
+    remedy = "Drop {.arg .by} to report the joint surface, or drop the \\
+    declaration with {.code factor(x)} to report each cell against the \\
+    reference cell within each subgroup.",
+    call = call
+  )
 
   # The strata a `.by` request names, on the same terms the binary path resolves
   # them: from `.data` when the caller supplied one and from the outcome model's
@@ -1832,6 +1839,14 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
         spec$exposure,
         list(focal_idx = focal_idx, stab_probs = stab_probs, score = score)
       )
+    },
+    joint_models = {
+      ps <- ipw_joint_models_ps(spec, th_ps)
+      check_ipw_ps_separation(
+        sum(vapply(ps, function(p) sum(p == 0 | p == 1), integer(1))),
+        call = call
+      )
+      weight_fn(ps, spec$exposure, list())
     },
     continuous = {
       n_alpha <- ncol(spec$ps$X)

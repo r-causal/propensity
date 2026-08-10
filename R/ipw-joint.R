@@ -273,8 +273,19 @@ check_ipw_joint_estimand <- function(
 # intervention is a three-way question, the interaction between two treatments
 # within the levels of a third variable, and this surface reports neither that
 # nor a projection of it that could stand in.
-check_ipw_joint_by <- function(exposure, .by, call = rlang::caller_env()) {
-  if (!causalgenerics::is_joint_exposure(exposure) || ipw_by_absent(.by)) {
+#
+# `joint` says whether the fit is over a crossing at all, as a flag rather than
+# as the thing the flag was read off: a declared exposure carries the crossing
+# on the vector, and a `joint_wt_models()` container is the crossing without one
+# to read.
+#
+# `remedy` is the one bullet the two routes do not share. Both offer the same
+# way out, reporting the crossing as a plain categorical exposure, but they
+# reach it differently: a declared exposure is a factor already and gives up its
+# declaration when it is asked to be one, while a container has no declaration
+# to drop and the crossing has to be built and weighted as a factor instead.
+check_ipw_joint_by <- function(joint, .by, remedy, call = rlang::caller_env()) {
+  if (!joint || ipw_by_absent(.by)) {
     return(invisible(TRUE))
   }
 
@@ -284,9 +295,7 @@ check_ipw_joint_by <- function(exposure, .by, call = rlang::caller_env()) {
       x = "A joint exposure already reports an interaction between two \\
       treatments, and reporting it within the levels of a modifier is a \\
       three-way question this surface does not answer.",
-      i = "Drop {.arg .by} to report the joint surface, or drop the \\
-      declaration with {.code factor(x)} to report each cell against the \\
-      reference cell within each subgroup."
+      i = remedy
     ),
     error_class = "propensity_ipw_joint_by_error",
     call = call
