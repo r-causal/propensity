@@ -289,37 +289,45 @@ export(wt_cens)
 export(wt_entropy)
 export(wt_joint)
 import(vctrs)
-importFrom(causalgenerics,"estimand<-")
-importFrom(causalgenerics,as_conditional)
-importFrom(causalgenerics,as_marginal)
-importFrom(causalgenerics,estimand)
-importFrom(causalgenerics,ipw)
-importFrom(causalgenerics,is_causal_wt)
-importFrom(causalgenerics,new_ipw)
-importFrom(causalgenerics,new_ipw_model)
-importFrom(causalgenerics,pool_ipw)
-importFrom(deli,MEstimator)
-importFrom(deli,estimate)
-importFrom(generics,augment)
-importFrom(generics,glance)
-importFrom(generics,tidy)
-importFrom(stats,binomial)
-importFrom(stats,cov)
-importFrom(stats,dnorm)
-importFrom(stats,family)
-importFrom(stats,formula)
-importFrom(stats,glm)
-importFrom(stats,median)
-importFrom(stats,model.frame)
-importFrom(stats,model.matrix)
-importFrom(stats,model.weights)
-importFrom(stats,na.omit)
-importFrom(stats,plogis)
-importFrom(stats,pnorm)
-importFrom(stats,predict)
-importFrom(stats,qlogis)
-importFrom(stats,qnorm)
-importFrom(stats,quantile)
-importFrom(stats,uniroot)
-importFrom(stats,var)
+importFrom(causalgenerics,
+  "estimand<-",
+  as_conditional,
+  as_marginal,
+  estimand,
+  ipw,
+  is_causal_wt,
+  new_ipw,
+  new_ipw_model,
+  pool_ipw
+)
+importFrom(deli,
+  MEstimator,
+  estimate
+)
+importFrom(generics,
+  augment,
+  glance,
+  tidy
+)
+importFrom(stats,
+  binomial,
+  cov,
+  dnorm,
+  family,
+  formula,
+  glm,
+  median,
+  model.frame,
+  model.matrix,
+  model.weights,
+  na.omit,
+  plogis,
+  pnorm,
+  predict,
+  qlogis,
+  qnorm,
+  quantile,
+  uniroot,
+  var
+)
 importFrom(tibble,tibble)
