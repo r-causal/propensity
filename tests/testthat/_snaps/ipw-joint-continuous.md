@@ -68,6 +68,32 @@
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
       i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
 
+# the weights mismatch names a fixed stabilization score
+
+    Code
+      expr
+    Condition <propensity_ipw_weights_mismatch_error>
+      Error in `ipw()`:
+      ! The "ate" weights recomputed from `wt_mod` differ from the weights supplied to `outcome_mod` (compared at relative tolerance 1e-6).
+      i The estimand or the focal level the weights were built for may differ from the ones `ipw()` resolved.
+      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual standard deviation, which is what `wt_ate()` uses when no `.sigma` is given.
+      i A dose component built with a fixed `stabilization_score` is one cause: the product records that a component was stabilized and not the numerator it was built with, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
+      i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
+      i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
+      i Refit `outcome_mod` with weights from this propensity score model and estimand if the weights are the cause.
+
+# a bare-term model with no intercept is refused, not errored
+
+    Code
+      expr
+    Condition <propensity_ipw_msm_error>
+      Error in `ipw()`:
+      ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
+      x `a` in `outcome_mod` contributes a column coded some other way.
+      i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
+      i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
+
 # ipw() refuses .by on a joint continuous fit
 
     Code

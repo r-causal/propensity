@@ -5,7 +5,8 @@
     Condition <propensity_columns_exist_error>
       Error in `ipw()`:
       ! "e" not found in `model.frame(outcome_mod)`.
-      i The outcome model may have transformations in the formula.
+      x The frame holds `poly(e, 2)` instead, which is a term built from it.
+      i The outcome model may have transformations in the formula, and a model frame records the term rather than the variables inside it.
       i Please specify `.data`
 
 # the mixed-term refusal names the term and the way out

@@ -2882,17 +2882,57 @@ check_estimand_known <- function(
 
 check_exposure <- function(.data, .exposure_name, call = rlang::caller_env()) {
   assert_class(.exposure_name, "character", .length = 1, call = call)
-  if (!(.exposure_name %in% names(.data))) {
-    abort(
-      c(
-        "{.val { .exposure_name}} not found in {.code model.frame(outcome_mod)}.",
-        i = "The outcome model may have transformations in the formula.",
-        i = "Please specify {.arg .data}"
-      ),
-      call = call,
-      error_class = "propensity_columns_exist_error"
-    )
+
+  if (.exposure_name %in% names(.data)) {
+    return(invisible(TRUE))
   }
+
+  # A model frame is keyed by the terms a model was fit with rather than by the
+  # variables inside them, so a transformed or a basis exposure sits under the
+  # term's own name and no column holds the exposure. Naming that column is what
+  # separates a model that transforms the exposure, which `.data` fixes, from
+  # one that never reads it, which nothing here can.
+  #
+  # The name is rebound without its dot, since cli reads a substitution opening
+  # with one as inline markup rather than as a value.
+  exposure <- .exposure_name
+  holding <- columns_reading(names(.data), exposure)
+
+  problem <- if (length(holding)) {
+    "The frame holds {.code {holding}} instead, which {?is a term/are terms} \\
+    built from it."
+  } else {
+    "No column of the frame is built from it either."
+  }
+
+  abort(
+    c(
+      "{.val {exposure}} not found in {.code model.frame(outcome_mod)}.",
+      x = problem,
+      i = "The outcome model may have transformations in the formula, and a \\
+      model frame records the term rather than the variables inside it.",
+      i = "Please specify {.arg .data}"
+    ),
+    call = call,
+    error_class = "propensity_columns_exist_error"
+  )
+}
+
+# The column names of a frame that are built from a variable. Names are parsed
+# rather than matched as text, so a name mentioning the variable inside a longer
+# one is not mistaken for a term reading it. A name that does not parse is not a
+# term and reads nothing.
+columns_reading <- function(column_names, variable) {
+  reads <- vapply(
+    column_names,
+    function(name) {
+      parsed <- tryCatch(str2lang(name), error = function(e) NULL)
+      !is.null(parsed) && variable %in% all.vars(parsed)
+    },
+    logical(1)
+  )
+
+  column_names[reads]
 }
 
 is_linear_regression <- function(outcome_mod) {

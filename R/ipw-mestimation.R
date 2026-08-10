@@ -2001,6 +2001,9 @@ ipw_check_weight_consistency <- function(
     observed_wts,
     spec$exposure_type,
     spec$estimand,
+    # A joint spec weights two treatments, and which causes a mismatch can have
+    # depends on what each of them is rather than on the pair being joint.
+    components = spec$ps$types,
     call = call
   )
 }
@@ -2015,6 +2018,7 @@ ipw_compare_weights <- function(
   observed_wts,
   exposure_type,
   estimand,
+  components = NULL,
   call = rlang::caller_env()
 ) {
   recomputed <- as.double(recomputed)
@@ -2052,15 +2056,33 @@ ipw_compare_weights <- function(
       the one {.fun ipw} resolved are one cause.",
       NULL
     )
-    # A continuous exposure is the only one whose weights carry a spread. The
+    # A dose is the only exposure whose weights carry a spread, and it is a dose
+    # whether it is the exposure or the second component of a joint one. The
     # stacked system estimates one pooled residual variance, so weights built on
     # observation-level standard deviations are a different function of the data
     # and cannot be reproduced here at any parameter value.
-    sigma_hint <- if (exposure_type == "continuous") {
+    dose <- identical(exposure_type, "continuous") ||
+      "continuous" %in% components
+    sigma_hint <- if (dose) {
       "Weights built with an observation-level {.arg .sigma}, such as \\
       {.code influence(model)$sigma}, are one cause: {.fun ipw} models the \\
       conditional density with a single pooled residual standard deviation, \\
       which is what {.fun wt_ate} uses when no {.arg .sigma} is given."
+    } else {
+      NULL
+    }
+    # A joint weight is a product, and a product records that a component was
+    # stabilized without recording the numerator either component was built
+    # with. The stacked system therefore estimates the dose's own marginal
+    # moments, and a component carrying a numerator of its own is a different
+    # function of the data that no parameter value reproduces. A single dose
+    # keeps its score, which is read off the weights and held fixed, so this
+    # cause belongs to the joint route alone.
+    score_hint <- if (identical(exposure_type, "joint_models") && dose) {
+      "A dose component built with a fixed {.arg stabilization_score} is one \\
+      cause: the product records that a component was stabilized and not the \\
+      numerator it was built with, so {.fun ipw} rebuilds the dose weights \\
+      from the exposure's own marginal moments instead."
     } else {
       NULL
     }
@@ -2075,6 +2097,9 @@ ipw_compare_weights <- function(
     }
     if (!is.null(sigma_hint)) {
       msg <- c(msg, i = sigma_hint)
+    }
+    if (!is.null(score_hint)) {
+      msg <- c(msg, i = score_hint)
     }
     msg <- c(
       msg,

@@ -348,7 +348,28 @@ test_that("the refusal without .data names the exposure and the remedy", {
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
 
+  # The message names the column the frame holds instead of the exposure, which
+  # is what tells a model that transforms the exposure from one that never reads
+  # it. The first is what `.data` is for and the second is a model to refit, and
+  # a message that said only that the exposure was missing left the reader to
+  # work out which of the two they had.
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_mod),
+    class = "propensity_columns_exist_error",
+    regexp = "poly\\(e, 2\\)"
+  )
   expect_propensity_error(ipw(fx$ps_mod, fx$outcome_mod))
+
+  # A basis of the exposure beside a basis of a covariate: only the term built
+  # from the exposure is named, since the other one is not what the frame is
+  # missing.
+  beside <- fit_dose_basis(dat, "poly(e, 2) + splines::ns(x1, 3)")
+  err <- expect_error(
+    ipw(beside$ps_mod, beside$outcome_mod),
+    class = "propensity_columns_exist_error"
+  )
+  expect_match(conditionMessage(err), "poly(e, 2)", fixed = TRUE)
+  expect_false(grepl("ns(x1, 3)", conditionMessage(err), fixed = TRUE))
 })
 
 test_that("a spline propensity model rebuilds from .data as it was fit", {

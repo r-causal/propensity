@@ -106,7 +106,8 @@ fit_joint_continuous <- function(
   a_rhs = c("x1", "x2"),
   e_rhs = c("a", "x1", "x2"),
   outcome_rhs = "a * e",
-  outcome_family = "gaussian"
+  outcome_family = "gaussian",
+  dose_score = NULL
 ) {
   ps_a <- glm(
     stats::reformulate(a_rhs, response = "a"),
@@ -121,7 +122,10 @@ fit_joint_continuous <- function(
       as.double(fitted(ps_e)),
       dat$e,
       exposure_type = "continuous",
-      stabilize = TRUE
+      stabilize = TRUE,
+      # A numerator the caller computed rather than one the estimator can
+      # rebuild, which `dose_score` is here to supply.
+      stabilization_score = dose_score
     ),
     exposure_type = c("binary", "continuous")
   ))
@@ -1039,6 +1043,85 @@ test_that("a factor treatment under treatment contrasts reports the numeric fit"
     factor_fit$estimates$group,
     c("e = 0", "a = no", "e + 1 vs e")
   )
+})
+
+test_that("the weights mismatch names a fixed stabilization score", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+
+  # A product weight records that a component was stabilized and not which
+  # numerator it was built with, so a dose component carrying one of its own is
+  # a weight the stacked system cannot rebuild: it estimates the dose's marginal
+  # moments and reaches a different vector. The numerator here is the one a
+  # caller would write by hand, whose `sd()` divides by n - 1 where the
+  # estimator's own moment divides by n, so the two differ by more than the
+  # preflight's tolerance and by little else.
+  #
+  # The refusal has to name that cause. Reaching this message and reading
+  # through a list of estimands, focal levels, and trimming, none of which
+  # applies, is how a correct diagnosis goes unmade.
+  fx <- fit_joint_continuous(
+    dat,
+    dose_score = dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
+  )
+
+  expect_error(
+    ipw(fx$models, fx$outcome_mod),
+    class = "propensity_ipw_weights_mismatch_error",
+    regexp = "stabilization_score"
+  )
+  expect_propensity_error(ipw(fx$models, fx$outcome_mod))
+
+  # The observation-level spread is the other cause a dose brings, and it was
+  # reported for a single dose before it was reported for this one.
+  expect_error(
+    ipw(fx$models, fx$outcome_mod),
+    class = "propensity_ipw_weights_mismatch_error",
+    regexp = "\\.sigma"
+  )
+})
+
+test_that("a bare-term model with no intercept is refused, not errored", {
+  skip_if_not_installed("deli")
+  dat <- sim_joint_continuous()
+  dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+
+  # Dropping the intercept expands a factor treatment into one column per level,
+  # so the first column is the indicator of the reference level rather than of
+  # the focal one. The terms are bare, so the model reaches the vocabulary
+  # surface, and it is the columns that say it cannot be reported there.
+  #
+  # What is pinned is that this arrives as a guided refusal. Reading the columns
+  # is what makes it one: a surface that trusted the terms would have taken the
+  # first column for the indicator and reported a coefficient that is not the
+  # effect the row names.
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- lm(e ~ a + x1 + x2, data = dat)
+  wts <- quiet_wt(wt_joint(
+    wt_ate(ps_a),
+    wt_ate(
+      as.double(fitted(ps_e)),
+      dat$e,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    exposure_type = c("binary", "continuous")
+  ))
+  models <- joint_wt_models(a = ps_a, e = ps_e)
+  outcome_mod <- lm(y ~ a * e - 1, data = dat, weights = wts)
+
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("ano", "ayes", "e", "ayes:e")
+  )
+  expect_error(
+    ipw(models, outcome_mod),
+    class = "propensity_ipw_msm_error"
+  )
+  expect_propensity_error(ipw(models, outcome_mod))
 })
 
 test_that("ipw() refuses .by on a joint continuous fit", {
