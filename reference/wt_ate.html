@@ -364,7 +364,7 @@ with an error of class <code>propensity_sigma_error</code>.</p></dd>
 <code>.exposure</code>. Not every weight function answers every type; see <strong>Exposure
 types</strong> in Details for which does which. Naming a type a function does not
 support, or supplying an exposure detection reads as one, is an error of
-class <code>propensity_wt_not_supported_error</code>.</p></dd>
+class <code>causalgenerics_unsupported_exposure_type</code>.</p></dd>
 
 
 <dt id="arg--focal-level">.focal_level<a class="anchor" aria-label="anchor" href="#arg--focal-level"></a></dt>
@@ -459,7 +459,7 @@ these attributes:</p><ul><li><p><code>estimand</code>: character, e.g. <code>"at
 also support continuous exposures. All except <code>wt_cens()</code> support
 categorical exposures; naming a categorical exposure to <code>wt_cens()</code>, or
 handing it one detection reads as categorical, is an error of class
-<code>propensity_wt_not_supported_error</code>.</p><ul><li><p><strong>Binary</strong>: <code>.exposure</code> is a two-level vector (e.g., 0/1, logical, or a
+<code>causalgenerics_unsupported_exposure_type</code>.</p><ul><li><p><strong>Binary</strong>: <code>.exposure</code> is a two-level vector (e.g., 0/1, logical, or a
 two-level factor). <code>.propensity</code> is a numeric vector of P(treatment | X),
 or a matrix or data frame holding it in one of its columns.</p></li>
 <li><p><strong>Categorical</strong>: <code>.exposure</code> is a factor or character vector with 3+

@@ -308,7 +308,7 @@ wt_cens(
   weight function answers every type; see **Exposure types** in Details
   for which does which. Naming a type a function does not support, or
   supplying an exposure detection reads as one, is an error of class
-  `propensity_wt_not_supported_error`.
+  `causalgenerics_unsupported_exposure_type`.
 
 - .focal_level:
 
@@ -410,7 +410,7 @@ All weight functions support binary exposures. `wt_ate()` and
 `wt_cens()` also support continuous exposures. All except `wt_cens()`
 support categorical exposures; naming a categorical exposure to
 `wt_cens()`, or handing it one detection reads as categorical, is an
-error of class `propensity_wt_not_supported_error`.
+error of class `causalgenerics_unsupported_exposure_type`.
 
 - **Binary**: `.exposure` is a two-level vector (e.g., 0/1, logical, or
   a two-level factor). `.propensity` is a numeric vector of P(treatment
