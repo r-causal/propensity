@@ -105,7 +105,7 @@
 
     Code
       expr
-    Condition <propensity_wt_not_supported_error>
+    Condition <causalgenerics_unsupported_exposure_type>
       Error in `wt_entropy()`:
       ! Exposure type "continuous" is not supported.
       i Supported exposure types: "binary" and "categorical".
@@ -370,7 +370,7 @@
 
     Code
       expr
-    Condition <propensity_wt_not_supported_error>
+    Condition <causalgenerics_unsupported_exposure_type>
       Error in `wt_att()`:
       ! Exposure type "continuous" is not supported.
       i Supported exposure types: "binary" and "categorical".
