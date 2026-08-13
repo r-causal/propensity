@@ -1,5 +1,14 @@
 # propensity 0.1.0.9000 (development version)
 
+* The exposure-type machinery that resolves `exposure_type` and detects the type
+  of an exposure now lives in causalgenerics, where the other packages in the
+  ecosystem can reach it, and propensity calls it there rather than keeping its
+  own copy. The refusal of a type a weight function does not answer says the
+  same thing it did, but it now carries the classes
+  `causalgenerics_unsupported_exposure_type` and `causalgenerics_error` in place
+  of `propensity_wt_not_supported_error`. Code that catches that refusal by
+  class needs the new one.
+
 * `ipw()` gains a `.by` argument, which reports the effect of the exposure
   within each level of a modifier alongside the effect for the sample as a
   whole. The reported rows come in three blocks: the overall rows unchanged from

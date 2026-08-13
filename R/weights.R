@@ -36,7 +36,7 @@
 #' also support continuous exposures. All except `wt_cens()` support
 #' categorical exposures; naming a categorical exposure to `wt_cens()`, or
 #' handing it one detection reads as categorical, is an error of class
-#' `propensity_wt_not_supported_error`.
+#' `causalgenerics_unsupported_exposure_type`.
 #'
 #' - **Binary**: `.exposure` is a two-level vector (e.g., 0/1, logical, or a
 #'   two-level factor). `.propensity` is a numeric vector of P(treatment | X),
@@ -209,7 +209,7 @@
 #'   `.exposure`. Not every weight function answers every type; see **Exposure
 #'   types** in Details for which does which. Naming a type a function does not
 #'   support, or supplying an exposure detection reads as one, is an error of
-#'   class `propensity_wt_not_supported_error`.
+#'   class `causalgenerics_unsupported_exposure_type`.
 #' @param .sigma Observation-level standard deviations of the conditional
 #'   density for continuous exposures, one per observation (e.g.,
 #'   `influence(model)$sigma`). Optional: with none supplied, including when
@@ -437,9 +437,10 @@ wt_ate.numeric <- function(
   .reference_level <- focal_params$.reference_level
   check_focal_levels(.focal_level, .reference_level, call = call)
 
-  exposure_type <- match_exposure_type(
+  exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
+    announce = !be_quiet(),
     call = call
   )
 
@@ -740,10 +741,11 @@ wt_att.numeric <- function(
   .reference_level <- focal_params$.reference_level
   check_focal_levels(.focal_level, .reference_level, call = call)
 
-  exposure_type <- match_exposure_type(
+  exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical"),
+    announce = !be_quiet(),
     call = call
   )
 
@@ -936,10 +938,11 @@ wt_atu.numeric <- function(
   .reference_level <- focal_params$.reference_level
   check_focal_levels(.focal_level, .reference_level, call = call)
 
-  exposure_type <- match_exposure_type(
+  exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical"),
+    announce = !be_quiet(),
     call = call
   )
 
@@ -1132,10 +1135,11 @@ wt_atm.numeric <- function(
   .reference_level <- focal_params$.reference_level
   check_focal_levels(.focal_level, .reference_level, call = call)
 
-  exposure_type <- match_exposure_type(
+  exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical"),
+    announce = !be_quiet(),
     call = call
   )
 
@@ -1321,10 +1325,11 @@ wt_ato.numeric <- function(
   .reference_level <- focal_params$.reference_level
   check_focal_levels(.focal_level, .reference_level, call = call)
 
-  exposure_type <- match_exposure_type(
+  exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical"),
+    announce = !be_quiet(),
     call = call
   )
 
@@ -1509,10 +1514,11 @@ wt_entropy.numeric <- function(
   .reference_level <- focal_params$.reference_level
   check_focal_levels(.focal_level, .reference_level, call = call)
 
-  exposure_type <- match_exposure_type(
+  exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "categorical"),
+    announce = !be_quiet(),
     call = call
   )
 
@@ -1731,10 +1737,11 @@ wt_cens.numeric <- function(
   # Censoring is a two-level event, so the exposure type is resolved against the
   # types censoring weights answer rather than against the wider set the ATE
   # machinery answers.
-  exposure_type <- match_exposure_type(
+  exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
     c("auto", "binary", "continuous"),
+    announce = !be_quiet(),
     call = call
   )
 

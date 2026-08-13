@@ -254,7 +254,7 @@ with an error of class \code{propensity_sigma_error}.}
 \code{.exposure}. Not every weight function answers every type; see \strong{Exposure
 types} in Details for which does which. Naming a type a function does not
 support, or supplying an exposure detection reads as one, is an error of
-class \code{propensity_wt_not_supported_error}.}
+class \code{causalgenerics_unsupported_exposure_type}.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal
 (treated) group. Every binary coding honors it: 0/1 numeric, logical,
@@ -362,7 +362,7 @@ All weight functions support binary exposures. \code{wt_ate()} and \code{wt_cens
 also support continuous exposures. All except \code{wt_cens()} support
 categorical exposures; naming a categorical exposure to \code{wt_cens()}, or
 handing it one detection reads as categorical, is an error of class
-\code{propensity_wt_not_supported_error}.
+\code{causalgenerics_unsupported_exposure_type}.
 \itemize{
 \item \strong{Binary}: \code{.exposure} is a two-level vector (e.g., 0/1, logical, or a
 two-level factor). \code{.propensity} is a numeric vector of P(treatment | X),

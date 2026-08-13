@@ -718,7 +718,10 @@ ps_trim.data.frame <- function(
 
   # For categorical exposures, convert to matrix and call matrix method
   if (!is.null(.exposure)) {
-    exposure_type <- detect_exposure_type(.exposure)
+    exposure_type <- causalgenerics::detect_exposure_type(
+      .exposure,
+      announce = !be_quiet()
+    )
     if (exposure_type == "categorical") {
       ps_matrix <- as.matrix(.propensity)
       # The focal arguments travel on so that the matrix method refuses them.

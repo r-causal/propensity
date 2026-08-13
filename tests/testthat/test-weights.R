@@ -246,13 +246,13 @@ test_that("wt_cens() refuses a categorical exposure", {
 
   expect_error(
     wt_cens(ps_matrix, exposure, exposure_type = "categorical"),
-    class = "propensity_wt_not_supported_error"
+    class = "causalgenerics_unsupported_exposure_type"
   )
 
   # auto-detection reaches the same refusal from a three-level exposure
   expect_error(
     wt_cens(ps_matrix, exposure),
-    class = "propensity_wt_not_supported_error"
+    class = "causalgenerics_unsupported_exposure_type"
   )
 })
 
@@ -3434,9 +3434,9 @@ test_that("wt_* functions error appropriately on invalid inputs", {
 
 # ---- `exposure_type` rejections name the function the user called -----------
 
-# Every weight function routes `exposure_type` through the internal
-# `match_exposure_type()` helper, so an unrecognized string is rejected several
-# frames below the surface. The rejection still has to name the weight function
+# Every weight function routes `exposure_type` through
+# `causalgenerics::match_exposure_type()`, so an unrecognized string is rejected
+# in another package. The rejection still has to name the weight function
 # the user called, the way every other guard in the package does. cli wraps the
 # message at the console width, so the assertions collapse whitespace before
 # matching the valid set.

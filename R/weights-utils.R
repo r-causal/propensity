@@ -1,18 +1,3 @@
-abort_unsupported <- function(
-  exposure_type,
-  valid_types,
-  call = rlang::caller_env()
-) {
-  abort(
-    c(
-      "Exposure type {.val {exposure_type}} is not supported.",
-      i = "Supported exposure types: {.val {setdiff(valid_types, 'auto')}}."
-    ),
-    call = call,
-    error_class = "propensity_wt_not_supported_error"
-  )
-}
-
 abort_no_method <- function(.propensity, call = rlang::caller_env()) {
   abort(
     paste0(
@@ -22,67 +7,6 @@ abort_no_method <- function(.propensity, call = rlang::caller_env()) {
     call = call,
     error_class = "propensity_method_error"
   )
-}
-
-exposure_types <- c("binary", "categorical", "continuous")
-
-# The exposure type a weight function works on, resolved against the types that
-# function supports. A type the package knows but this function does not answer
-# is refused as unsupported rather than as an unrecognized value, and the same
-# refusal covers a type reached by detection, so naming a type and letting it be
-# detected give the same answer.
-match_exposure_type <- function(
-  exposure_type = c("auto", "binary", "categorical", "continuous"),
-  .exposure,
-  valid_types = c("auto", "binary", "categorical", "continuous"),
-  call = rlang::caller_env()
-) {
-  if (
-    rlang::is_string(exposure_type) &&
-      exposure_type %in% exposure_types &&
-      !exposure_type %in% valid_types
-  ) {
-    abort_unsupported(exposure_type, valid_types, call = call)
-  }
-
-  .exposure_type <- rlang::arg_match(
-    exposure_type,
-    valid_types,
-    error_call = call
-  )
-
-  if (.exposure_type != "auto") {
-    return(.exposure_type)
-  }
-
-  .exposure_type <- detect_exposure_type(.exposure)
-
-  if (!.exposure_type %in% valid_types) {
-    abort_unsupported(.exposure_type, valid_types, call = call)
-  }
-
-  .exposure_type
-}
-
-detect_exposure_type <- function(.exposure) {
-  exposure_type <- if (has_two_levels(.exposure)) {
-    "binary"
-  } else if (is.factor(.exposure) || is.character(.exposure)) {
-    # Check number of unique values for factor/character
-    if (length(observed_values(.exposure)) > 2) {
-      "categorical"
-    } else {
-      "binary"
-    }
-  } else if (is_categorical(.exposure)) {
-    "categorical"
-  } else {
-    "continuous"
-  }
-
-  alert_info("Treating {.arg .exposure} as {exposure_type}")
-
-  exposure_type
 }
 
 # lifecycle decides whether a deprecation belongs to the caller or to the
@@ -321,7 +245,7 @@ transform_exposure_binary <- function(
     return(as.numeric(.exposure))
   }
 
-  if (has_two_levels(.exposure)) {
+  if (causalgenerics::has_two_levels(.exposure)) {
     levels <- binary_exposure_levels(.exposure)
     alert_info("Setting focal level to {.val {levels[[2]]}}")
     return(ifelse(.exposure == levels[[2]], 1, 0))
@@ -417,7 +341,7 @@ effective_binary_focal_level <- function(
     return(TRUE)
   }
 
-  if (!has_two_levels(.exposure)) {
+  if (!causalgenerics::has_two_levels(.exposure)) {
     return(NULL)
   }
 
@@ -487,35 +411,6 @@ record_binary_focal_level <- function(
 is_binary <- function(.exposure) {
   is.numeric(.exposure) &&
     identical(sort(unique(as.double(.exposure))), c(0, 1))
-}
-
-is_categorical <- function(.exposure) {
-  # assumption: a variable where the proportion of unique values
-  # to total number of observations is less than 20% is categorical
-  n_non_na <- sum(!is.na(.exposure))
-  if (n_non_na == 0) {
-    return(FALSE)
-  }
-
-  ratio <- length(observed_values(.exposure)) / n_non_na
-  # Handle NaN case explicitly
-  if (is.nan(ratio)) {
-    return(FALSE)
-  }
-
-  ratio < 0.2
-}
-
-# The values an exposure actually takes. A missing value is missing, not a level
-# of its own: counting it as one gives a two-level exposure three levels, which
-# takes it off the binary path entirely, and the same inflation makes a
-# categorical exposure look like it has one more category than it has.
-observed_values <- function(.x) {
-  unique(.x[!is.na(.x)])
-}
-
-has_two_levels <- function(.x) {
-  length(observed_values(.x)) == 2
 }
 
 check_refit <- function(.propensity, call = rlang::caller_env()) {
@@ -1441,10 +1336,11 @@ handle_data_frame_weight_calculation <- function(
   }
 
   # Check exposure type
-  exposure_type_check <- match_exposure_type(
+  exposure_type_check <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
     valid_exposure_types,
+    announce = !be_quiet(),
     call = call
   )
 
@@ -1591,10 +1487,11 @@ prepare_glm_weight_args <- function(
   user_env = rlang::caller_env(2)
 ) {
   .exposure <- extract_exposure_from_glm(glm_obj, .exposure)
-  exposure_type <- match_exposure_type(
+  exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
     valid_exposure_types,
+    announce = !be_quiet(),
     call = call
   )
 
