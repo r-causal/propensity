@@ -3,9 +3,11 @@
 #' from a fitted [nnet::multinom()] propensity score model and a weighted
 #' outcome model. Standard errors are computed by M-estimation; the
 #' linearization method is not available for categorical exposures. For a
-#' K-level exposure, effects are reported for each non-reference level against
-#' the reference (first) factor level, and the estimates table gains a
-#' `contrast` column naming the pair of levels each row compares.
+#' K-level exposure, the counterfactual mean at each level is reported first,
+#' under the effect label `"mean"`, and then the effects for each non-reference
+#' level against the reference (first) factor level. The `contrast` column names
+#' the level each mean row belongs to and the pair of levels each effect row
+#' compares, as it does for a binary exposure.
 #'
 #' @param .focal_level For the categorical (`multinom`) method with the `att`
 #'   or `atu` estimand, the focal exposure level. If `NULL`, it is taken from

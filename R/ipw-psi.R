@@ -246,6 +246,33 @@ ipw_contrast_labels <- function(spec) {
   paste(nonref, "vs", spec$reference_level)
 }
 
+# The positions of the mu block in the order the estimates table reports the
+# counterfactual means: level order, with the reference level first. A
+# categorical spec seeds its means in that order already. A binary spec seeds
+# the pair exposed-first, because the contrast rows built from it read the
+# exposed mean as the first of the pair, so its two positions are swapped here
+# rather than in the seed, which would move every contrast that reads them.
+ipw_mu_order <- function(spec) {
+  if (identical(spec$exposure_type, "binary")) {
+    return(c(2L, 1L))
+  }
+
+  seq_along(spec$exposure_levels)
+}
+
+# The same order over the stratum mean block, which stores one mean per exposure
+# level per stratum, stratum-major. Empty where `.by` names nothing, which is
+# the block the layout leaves empty too.
+ipw_by_mu_order <- function(spec) {
+  if (is.null(spec$by)) {
+    return(integer(0))
+  }
+
+  order <- ipw_mu_order(spec)
+  offsets <- (seq_along(spec$by$labels) - 1L) * length(order)
+  as.integer(unlist(lapply(offsets, function(offset) offset + order)))
+}
+
 # The transform a contrast form applies to a pair of marginal means.
 ipw_contrast_transform <- function(form, mu_hi, mu_lo) {
   switch(

@@ -1,5 +1,20 @@
 # propensity 0.1.0.9000 (development version)
 
+* A binary or categorical `ipw()` result now reports the counterfactual mean at
+  each exposure level, one row per level under the effect label `"mean"`, ahead
+  of the contrasts built from those means. A risk difference is now read beside
+  the two risks it is a difference of, on either standard error route and within
+  each stratum of a `.by` request. The rows are covered by the stored covariance
+  and carried by `coef()`, `vcov()`, `confint()`, `tidy()`, `as.data.frame()`,
+  and the pooled results, and `exponentiate = TRUE` leaves them alone, a
+  counterfactual risk being no kind of ratio.
+
+* The `estimates` frame of a binary `ipw()` result gains the `contrast` column a
+  categorical result already carried, naming the level each mean row belongs to
+  and the pair of levels each contrast row compares, such as `"1 vs 0"`. Row
+  labels on every surface of the result name that contrast, so code matching a
+  label such as `"rd"` exactly needs `"rd 1 vs 0"`.
+
 * The exposure-type machinery that resolves `exposure_type` and detects the type
   of an exposure now lives in causalgenerics, where the other packages in the
   ecosystem can reach it, and propensity calls it there rather than keeping its

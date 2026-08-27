@@ -17,3 +17,5 @@
 ^doc$
 ^Meta$
 ^CRAN-SUBMISSION$
+^\.braid\.toml$
+^\.braid-project$

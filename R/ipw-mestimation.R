@@ -371,6 +371,10 @@ ipw_spec_binary <- function(
     estimand = estimand,
     n = length(z),
     exposure = z,
+    # The levels the exposure was coded on, reference first. The reported rows
+    # name them: one counterfactual mean per level, and the pair the contrast
+    # rows compare.
+    exposure_levels = as.character(exposure_values),
     ps = list(
       X = ps_X,
       link = ps_link,
@@ -1544,6 +1548,7 @@ ipw_spec_categorical <- function(
     estimand = estimand,
     n = length(exposure),
     exposure = z_ind,
+    exposure_levels = levs,
     ps = list(
       X = ps_X,
       link = NULL,
@@ -2243,44 +2248,70 @@ ipw_solve <- function(m) {
   list(fit = fit, unsolved = unsolved, no_variance = no_variance)
 }
 
-# A standard error the solve did not really produce. When the estimating
-# equations have no unique root, the sandwich variance along the unidentified
-# direction collapses instead of growing: the zero-events fixture reports a risk
-# difference of 0.66 with a standard error of 1.5e-44, a p-value of zero, and an
-# interval of no width.
+# The scale a table of estimates is measured on: the largest magnitude anything
+# in it reports, over the estimates and the standard errors alike. A table's
+# rows are all built from one pair of models fitted to one sample, so a number
+# many orders below this is small relative to the fit it belongs to rather than
+# small in units of its own.
+ipw_estimate_scale <- function(estimate, std.err) {
+  values <- c(abs(estimate), std.err)
+  values <- values[is.finite(values)]
+
+  if (length(values) == 0L) {
+    return(0)
+  }
+
+  max(values)
+}
+
+# A standard error the solve did not really produce, vectorized over the rows of
+# one estimates table. When the estimating equations have no unique root, the
+# sandwich variance along the unidentified direction collapses instead of
+# growing: the zero-events fixture reports a risk difference of 0.66 with a
+# standard error of 1.5e-44, a p-value of zero, and an interval of no width.
 #
-# The signature is the size of the test statistic the two make together, which
-# is free of the units the outcome is measured in. A floor on the standard error
-# itself is not: an outcome measured in nanomolar units gives a healthy fit an
-# estimate of 6e-10 and a standard error of 1e-10, and any absolute floor near
-# machine precision reports that fit, whose z is 6, as carrying no information.
+# The signature is the size of the standard error against the scale of the table
+# it sits in, which is free of the units the outcome is measured in. An absolute
+# floor is not: an outcome measured in nanomolar units gives a healthy fit an
+# estimate of 6e-10 and a standard error of 1e-10, and any floor near machine
+# precision reports that fit, whose test statistic is 6, as carrying no
+# information. Multiplying a whole table by a constant leaves every row's
+# verdict where it was.
 #
-# Measured across the exposure types and both standard error paths, healthy fits
-# reach |z| = 11, including outcomes rescaled by 1e-9; the degenerate fixtures
-# sit between 4.5e16 and 1.8e44. The threshold is the reciprocal of the square
-# root of machine epsilon, about 6.7e7, which the healthy fits clear by nearly
-# seven orders of magnitude and the degenerate ones by nearly nine.
+# The scale is the table's rather than the row's because a row can be pinned at
+# zero: a counterfactual mean the fit puts at zero comes back a few multiples of
+# machine precision away from it with a standard error an order or two further
+# down, and the ratio of one numerical zero to another is whatever the
+# arithmetic left behind. On the constant-outcome fixture that ratio is 20,
+# indistinguishable from an ordinary estimate read on its own. Every row of a
+# table comes from one pair of models fitted to one sample, so what the fit is
+# measured in is a property of the table.
+#
+# The threshold is the square root of machine epsilon, about 1.5e-8, applied to
+# that scale. Measured across the exposure types and both standard error paths,
+# healthy fits keep every standard error within a factor of 36 of the scale of
+# their own table, including outcomes rescaled by 1e-9; the degenerate fixtures
+# sit between 4.5e16 and 4.1e27 below theirs. The threshold clears the healthy
+# fits by six orders of magnitude and the degenerate ones by nine.
 #
 # A standard error of exactly zero is degenerate whatever the estimate is, and
 # is taken on its own: it is what an outcome that is constant at zero in both
-# arms reports, where the ratio is 0/0 and says nothing. An estimate of exactly
-# zero beside a standard error that is not gives |z| = 0 and is an honest null.
+# arms reports, and it is degenerate even in a table whose scale is zero too.
 ipw_degenerate_se <- function(estimate, std.err) {
   reported <- !is.na(estimate) & !is.na(std.err)
+  scale <- ipw_estimate_scale(estimate[reported], std.err[reported])
 
-  z <- rep(0, length(std.err))
-  scaled <- reported & std.err > 0
-  z[scaled] <- abs(estimate[scaled]) / std.err[scaled]
-
-  (reported & std.err == 0) | z > 1 / sqrt(.Machine$double.eps)
+  (reported & std.err == 0) |
+    (reported & std.err < scale * sqrt(.Machine$double.eps))
 }
 
 # The rows of an estimates table whose standard errors carry that signature,
-# labeled as the table labels them: a categorical exposure names the effect and
-# the contrast together, and the other exposure types name the effect alone. A
-# grouped table repeats each measure across its subgroups, so the subgroup
-# completes the label wherever the row is one of those; the whole-sample rows
-# keep the label they carry in a table with no groups at all.
+# labeled as the table labels them: the effect and the contrast it names
+# together, where the contrast is the level a counterfactual mean belongs to or
+# the pair of levels an effect measure compares. A grouped table repeats each
+# measure across its subgroups, so the subgroup completes the label wherever the
+# row is one of those; the whole-sample rows keep the label they carry in a
+# table with no groups at all.
 ipw_degenerate_se_rows <- function(estimates) {
   degenerate <- ipw_degenerate_se(estimates$estimate, estimates$std.err)
 
@@ -2558,11 +2589,17 @@ ipw_mestimation_estimates <- function(
     contrast <- spec$coefficients$contrast
     group <- spec$coefficients$group
   } else {
-    # A joint exposure reports the cell means alongside the contrasts over them,
-    # and the means are already the mu block, so its reported rows read two
-    # blocks of theta rather than one.
+    # The counterfactual mean at each exposure level is a reported row, and the
+    # means are already the mu block, so the reported rows read it alongside the
+    # contrasts built over it. A declared joint exposure reports its cell means
+    # the same way but has no stratum blocks, `.by` being refused for it.
     idx <- if (is.null(spec$joint)) {
-      c(layout$idx$contrast, layout$idx$by_contrast)
+      c(
+        layout$idx$mu[ipw_mu_order(spec)],
+        layout$idx$contrast,
+        layout$idx$by_mu[ipw_by_mu_order(spec)],
+        layout$idx$by_contrast
+      )
     } else {
       c(layout$idx$mu, layout$idx$contrast)
     }

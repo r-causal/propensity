@@ -197,6 +197,17 @@
 #'
 #' # Effect measures
 #'
+#' A binary or categorical exposure reports the counterfactual mean at each
+#' exposure level before the contrasts built from those means. Those rows carry
+#' the effect label `"mean"` and lead the table, one per level in level order
+#' with the reference level first. Each is the outcome model's prediction with
+#' every unit set to that level, averaged over the sample under the estimand's
+#' tilt, so a binomial outcome reports the marginal risk under each level and a
+#' continuous one reports the marginal mean. Reading a risk difference beside
+#' the two risks it is a difference of is what those rows are for: a difference
+#' of 0.05 is a different finding at risks of 0.02 and 0.07 than at 0.50 and
+#' 0.55.
+#'
 #' For a binary exposure, the reported measures depend on the outcome model. A
 #' binary outcome ([stats::glm()] with `family = binomial()`) returns three
 #' measures:
@@ -208,10 +219,15 @@
 #' `family = gaussian()`) returns only the difference in means (`diff`).
 #'
 #' For a categorical exposure, the same measures are reported for each
-#' non-reference level against the reference (first) factor level. The estimates
-#' table gains a `contrast` column naming the pair of levels each row compares
-#' (for example `"b vs a"`), so a K-level exposure produces one block of
-#' measures per non-reference level.
+#' non-reference level against the reference (first) factor level, so a K-level
+#' exposure produces one block of measures per non-reference level.
+#'
+#' The estimates table of either exposure carries a `contrast` column naming
+#' what each row is about: the level a mean row belongs to, and the pair of
+#' levels a contrast row compares, written `"1 vs 0"` or `"b vs a"` in the
+#' levels the models were fit on. A binary exposure names its one pair the same
+#' way a categorical one names each of its several, so the two tables are read
+#' alike.
 #'
 #' For a continuous exposure, `ipw()` reports the exposure coefficients of the
 #' weighted marginal structural outcome model. A model with one exposure
@@ -266,14 +282,20 @@
 #'
 #' `.by` names a modifier and asks for the effect within each of its levels
 #' alongside the effect for the sample as a whole. The reported rows come in
-#' three blocks, in this order:
+#' four blocks, in this order:
 #'
-#' - the overall rows, unchanged from the fit without `.by`, under the group
-#'   label `"overall"`;
-#' - one block per level of the modifier, under a `"var = value"` label such as
-#'   `"sex = female"`;
-#' - one block per non-reference level against the reference level, which is the
-#'   modifier's first level, under a `"var = value vs var = value"` label.
+#' - the overall rows, unchanged from the fit without `.by`, the counterfactual
+#'   means and then the contrasts, under the group label `"overall"`;
+#' - the counterfactual mean at each exposure level within each level of the
+#'   modifier, under a `"var = value"` label such as `"sex = female"`;
+#' - one block of contrasts per level of the modifier, under the same labels;
+#' - one block of contrasts per non-reference level against the reference level,
+#'   which is the modifier's first level, under a
+#'   `"var = value vs var = value"` label.
+#'
+#' The last block reports no means of its own. Its rows compare the effects in
+#' two strata, and a difference of two effects belongs to neither stratum's
+#' population, so there is no level whose mean it would be.
 #'
 #' A stratum's effect is g-computation restricted to that stratum: the outcome
 #' model predicts each unit's outcome at each exposure level, and the
@@ -296,11 +318,12 @@
 #' and `.by` crosses those contrasts with the strata: every block holds each
 #' contrast on each reported measure, so a K-level exposure with S strata
 #' reports the whole-sample block and then S + (S - 1) blocks of (K - 1)
-#' contrasts. A row is named by three things there, the measure, the contrast,
-#' and the subgroup, and the `estimates` frame carries `contrast` and `group` in
-#' that order after `effect`. Within a block the ordering is the one an
-#' ungrouped categorical fit already uses, contrast-major and measure-minor, so
-#' a contrast's measures sit together; the blocks themselves run group-major.
+#' contrasts, beside S blocks of K means. A row is named by three things, the
+#' measure, the contrast, and the subgroup, and the `estimates` frame carries
+#' `contrast` and `group` in that order after `effect`. Within a contrast block
+#' the ordering is the one an ungrouped fit already uses, contrast-major and
+#' measure-minor, so a contrast's measures sit together; the blocks themselves
+#' run group-major.
 #'
 #' The stratum rows and the stratum contrasts report the risk difference and the
 #' log risk ratio for a binary outcome, and the difference in means for a
@@ -799,11 +822,12 @@
 #'   the reported effects, [stats::vcov()] for their covariance,
 #'   [stats::nobs()] and [stats::df.residual()] for the counts describing the
 #'   fit, and [stats::weights()] for the [psw()] vector the outcome model was
-#'   fit with. Coefficients are named for the effect measure, and for the effect
-#'   measure and the contrast together where a categorical exposure reports one
-#'   row per contrast. Which surface [stats::coef()], [stats::vcov()], and
-#'   [stats::confint()] report follows the presentation mode the result records,
-#'   described under `effects` above.
+#'   fit with. Coefficients are named for the effect measure and the contrast
+#'   together, the contrast being the level a counterfactual mean belongs to or
+#'   the pair of levels an effect measure compares, and for the subgroup as well
+#'   where `.by` reports one row per subgroup. Which surface [stats::coef()],
+#'   [stats::vcov()], and [stats::confint()] report follows the presentation
+#'   mode the result records, described under `effects` above.
 #'
 #'   Under `se_method = "mestimation"` the stored `wt_mod` and `outcome_mod` are
 #'   the models supplied, carrying their block of the joint sandwich. Calling
@@ -1192,7 +1216,8 @@ ipw.glm <- function(
     marginal_means = marginal_means,
     n = length(outcome),
     linear_regression = is_linear_regression(outcome_mod),
-    conf_level = conf_level
+    conf_level = conf_level,
+    exposure_levels = sort(unique(exposure))
   )
 
   # The same collapse the M-estimation path reports, from the seam this path
@@ -2303,14 +2328,32 @@ ipw.default <- function(
   )
 }
 
+# The reported rows of the linearization path, in the order the M-estimation
+# path reports them: the counterfactual mean at each exposure level, reference
+# level first, then the contrasts built from that pair. `exposure_levels` names
+# the two levels, and every row is keyed by the level it belongs to or the pair
+# it compares.
+#
+# The mean rows come from the same influence functions the contrast rows do:
+# `l1` and `l0` are the influence functions of `mu1` and `mu0` themselves, so
+# each mean's variance is the variance of its own influence function over n,
+# which is the calculation the contrasts already apply to differences of the two.
 calculate_estimates <- function(
   lin_vars,
   marginal_means,
   n,
   linear_regression,
-  conf_level
+  conf_level,
+  exposure_levels
 ) {
   z_val <- qnorm(1 - ((1 - conf_level) / 2))
+
+  mu_est <- c(marginal_means$mu0, marginal_means$mu1)
+  mu_inf <- cbind(lin_vars$l0, lin_vars$l1)
+  mu_se <- sqrt(apply(mu_inf, 2, var) / n)
+  mu_z <- mu_est / mu_se
+  mu_contrast <- as.character(exposure_levels)
+  contrast_label <- paste(mu_contrast[[2]], "vs", mu_contrast[[1]])
 
   ### RISK DIFFERENCE (raw scale)
   # --------------------------------
@@ -2325,25 +2368,25 @@ calculate_estimates <- function(
   rd_ci_upper <- rd_est + z_val * rd_se
 
   rd_z <- rd_est / rd_se
-  rd_p <- 2 * (1 - pnorm(abs(rd_z)))
 
   # for continuous outcomes, only return difference
   if (linear_regression) {
-    estimates <- data.frame(
-      effect = "diff",
-      estimate = rd_est,
-
-      # variances are on the same scale as 'estimate':
-      # variance = c(rd_var, log_rr_var, log_or_var),
-      std.err = rd_se,
-      z = rd_z,
-      ci.lower = rd_ci_lower,
-      ci.upper = rd_ci_upper,
-      conf.level = conf_level,
-      p.value = rd_p
+    estimates <- ipw_linearization_estimates(
+      effect = c("mean", "mean", "diff"),
+      contrast = c(mu_contrast, contrast_label),
+      estimate = c(mu_est, rd_est),
+      std.err = c(mu_se, rd_se),
+      z = c(mu_z, rd_z),
+      ci.lower = c(mu_est - z_val * mu_se, rd_ci_lower),
+      ci.upper = c(mu_est + z_val * mu_se, rd_ci_upper),
+      conf_level = conf_level
     )
 
-    return(ipw_attach_influence_vcov(estimates, cbind(diff = rd_inf), n))
+    return(ipw_attach_influence_vcov(
+      estimates,
+      cbind(mu_inf, rd_inf),
+      n
+    ))
   }
 
   ### RISK RATIO (log scale)
@@ -2367,7 +2410,6 @@ calculate_estimates <- function(
   log_rr_ci_upper <- log_rr_est + z_val * log_rr_se
 
   rr_z <- log_rr_est / log_rr_se
-  rr_p <- 2 * (1 - pnorm(abs(rr_z)))
 
   ### ODDS RATIO (log scale)
   # ---------------------------
@@ -2391,40 +2433,83 @@ calculate_estimates <- function(
   log_or_ci_upper <- log_or_est + z_val * log_or_se
 
   or_z <- log_or_est / log_or_se
-  or_p <- 2 * (1 - pnorm(abs(or_z)))
 
-  estimates <- data.frame(
-    effect = c("rd", "log(rr)", "log(or)"),
-    # For RD, the estimate is raw. For RR and OR, the estimate is log-scale:
-    estimate = c(rd_est, log_rr_est, log_or_est),
-
-    # Variances are on the same scale as 'estimate'
-    # but we won't return these since they can be calculated from std.err
-    # variance = c(rd_var, log_rr_var, log_or_var)
-    std.err = c(rd_se, log_rr_se, log_or_se),
-    z = c(rd_z, rr_z, or_z),
-    ci.lower = c(rd_ci_lower, log_rr_ci_lower, log_or_ci_lower),
-    ci.upper = c(rd_ci_upper, log_rr_ci_upper, log_or_ci_upper),
-    conf.level = conf_level,
-    p.value = c(rd_p, rr_p, or_p)
+  estimates <- ipw_linearization_estimates(
+    effect = c("mean", "mean", "rd", "log(rr)", "log(or)"),
+    contrast = c(mu_contrast, rep(contrast_label, 3)),
+    # The mean rows and the risk difference are on the outcome's own scale; the
+    # ratio measures are reported as logs of themselves.
+    estimate = c(mu_est, rd_est, log_rr_est, log_or_est),
+    # Each standard error is on the scale of the estimate beside it.
+    std.err = c(mu_se, rd_se, log_rr_se, log_or_se),
+    z = c(mu_z, rd_z, rr_z, or_z),
+    ci.lower = c(
+      mu_est - z_val * mu_se,
+      rd_ci_lower,
+      log_rr_ci_lower,
+      log_or_ci_lower
+    ),
+    ci.upper = c(
+      mu_est + z_val * mu_se,
+      rd_ci_upper,
+      log_rr_ci_upper,
+      log_or_ci_upper
+    ),
+    conf_level = conf_level
   )
 
   ipw_attach_influence_vcov(
     estimates,
-    cbind(rd = rd_inf, "log(rr)" = log_rr_inf, "log(or)" = log_or_inf),
+    cbind(mu_inf, rd_inf, log_rr_inf, log_or_inf),
     n
+  )
+}
+
+# The estimates frame of the linearization path, in the column order the
+# M-estimation path builds: the columns that name a row lead, then the numbers.
+# The p-value is derived here rather than passed, since it is a function of the
+# test statistic alone and deriving it once keeps the two branches from
+# disagreeing about which tail it comes from.
+ipw_linearization_estimates <- function(
+  effect,
+  contrast,
+  estimate,
+  std.err,
+  z,
+  ci.lower,
+  ci.upper,
+  conf_level
+) {
+  data.frame(
+    effect = effect,
+    contrast = contrast,
+    estimate = estimate,
+    std.err = std.err,
+    z = z,
+    ci.lower = ci.lower,
+    ci.upper = ci.upper,
+    conf.level = conf_level,
+    p.value = 2 * (1 - pnorm(abs(z)))
   )
 }
 
 # The covariance of the reported effects on the linearization path. There is no
 # stacked system here, so it comes from the influence functions the standard
-# errors themselves come from: each effect measure's variance is the variance of
+# errors themselves come from: each reported row's variance is the variance of
 # its influence function over n, and the covariance of two of them is the
 # covariance of theirs over the same n. The diagonal therefore reproduces the
 # reported standard errors, and the off-diagonal records that the effect
-# measures are transformations of the same pair of marginal means.
+# measures are transformations of the same pair of marginal means, which the
+# table reports rows of their own.
+#
+# The block is labeled the way every surface of the result labels its rows,
+# read off the frame it belongs to rather than off the influence matrix, whose
+# columns are the influence functions and not the rows they describe.
 ipw_attach_influence_vcov <- function(estimates, influence, n) {
-  attr(estimates, "ipw_vcov") <- cov(influence) / n
+  covariance <- cov(influence) / n
+  labels <- ipw_effect_labels(estimates)
+  dimnames(covariance) <- list(labels, labels)
+  attr(estimates, "ipw_vcov") <- covariance
   estimates
 }
 

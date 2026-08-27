@@ -2,9 +2,11 @@
 #'
 #' @description
 #' `tidy()` returns the estimates of an [ipw()] result as a tibble using the
-#' column names broom conventions use. There is one row per effect measure, and
-#' one row per effect measure per contrast for a categorical exposure, in the
-#' order the result stores them. Nothing is dropped.
+#' column names broom conventions use. For a binary or categorical exposure
+#' there is one row per exposure level, under the term `"mean"`, and then one
+#' row per effect measure per contrast of levels; for a continuous exposure
+#' there is one row per reported coefficient. The rows arrive in the order the
+#' result stores them and nothing is dropped.
 #'
 #' Those columns are the ones the result's own coercion surface reports, so the
 #' marginal reading is [`as.data.frame()`][causalgenerics::new_ipw()] read as a
@@ -29,9 +31,11 @@
 #' coefficient, with the standard errors of the block of the joint estimation
 #' that carries the uncertainty of having estimated the weights from the same
 #' data. The two readings return the same columns in the same order, with one
-#' exception: the `contrast` column that names the pair of exposure levels a row
-#' compares belongs to the marginal reading of a categorical result alone, and
-#' that result's conditional reading returns the same table one column narrower.
+#' exception: the `contrast` column belongs to the marginal reading. A binary
+#' and a categorical result both carry it there, naming the exposure level each
+#' mean row belongs to and the pair of levels each effect measure compares, and
+#' the conditional reading of either returns the same table one column narrower.
+#' A coefficient names neither a level nor a pair of them.
 #'
 #' @param x An `ipw` object, as returned by [ipw()].
 #' @param conf.int Logical. Should the confidence interval bounds be returned in
@@ -95,11 +99,14 @@
 #'
 #' @return A [tibble][tibble::tibble] with one row per estimate and the columns:
 #' \describe{
-#'   \item{`term`}{The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-#'     `"diff"`, `"slope"`, or `"coef"`.}
-#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"` for a
-#'     categorical exposure or the coefficient name on a surface whose rows are
-#'     named after their coefficients. Present only where a row reports one.}
+#'   \item{`term`}{The effect measure, such as `"mean"` for a counterfactual
+#'     mean, or `"rd"`, `"log(rr)"`, `"log(or)"`, `"diff"`, `"slope"`, or
+#'     `"coef"` for the measures built from them.}
+#'   \item{`contrast`}{What the row is about: the exposure level a `"mean"` row
+#'     belongs to, such as `"0"` or `"b"`; the pair of levels an effect measure
+#'     compares, such as `"1 vs 0"` or `"b vs a"`; or the coefficient name on a
+#'     surface whose rows are named after their coefficients. Present only where
+#'     a row reports one.}
 #'   \item{`estimate`}{The estimated effect.}
 #'   \item{`std.error`}{The standard error of the estimate.}
 #'   \item{`statistic`}{The z statistic, the estimate over its standard error.}
@@ -113,9 +120,10 @@
 #' `estimate` is the coefficient, `std.error` is the square root of the diagonal
 #' of the corrected covariance, `statistic` is the estimate over that standard
 #' error, and `p.value` is the two-sided normal p-value of the statistic. There
-#' is no `contrast` column, because a coefficient is not a contrast of exposure
-#' levels, and the bounds are built at the level `conf.level` asks for, the
-#' stored ones belonging to the effects the marginal reading reports.
+#' is no `contrast` column, whatever the exposure, because a coefficient names
+#' neither an exposure level nor a pair of them, and the bounds are built at the
+#' level `conf.level` asks for, the stored ones belonging to the effects the
+#' marginal reading reports.
 #'
 #' @examples
 #' set.seed(123)
@@ -385,9 +393,11 @@ glance.ipw <- function(x, ...) {
 #'
 #' @description
 #' `tidy()` returns the estimates of a [pool_ipw()] result as a tibble using the
-#' column names broom conventions use. There is one row per effect measure, and
-#' one row per effect measure per contrast for a categorical exposure, in the
-#' order the pooled result stores them. Nothing is dropped.
+#' column names broom conventions use. It holds the rows the results themselves
+#' report: for a binary or categorical exposure one row per exposure level,
+#' under the term `"mean"`, and then one row per effect measure per contrast of
+#' levels; for a continuous exposure one row per reported coefficient. The rows
+#' arrive in the order the pooled result stores them and nothing is dropped.
 #'
 #' Those columns are the ones the pooled result's own coercion surface reports,
 #' so this method is that surface read as a tibble rather than a second assembly
@@ -410,9 +420,10 @@ glance.ipw <- function(x, ...) {
 #' the same way: one row per coefficient, from the block of the joint estimation
 #' that carries the uncertainty of having estimated the weights from the same
 #' data. The two readings return the same columns in the same order, with one
-#' exception: the `contrast` column that names the pair of exposure levels a row
-#' compares belongs to the marginal reading of a categorical pool alone, and
-#' that pool's conditional reading returns the same table one column narrower.
+#' exception: the `contrast` column belongs to the marginal reading. A binary
+#' and a categorical pool both carry it there, naming the exposure level each
+#' mean row belongs to and the pair of levels each effect measure compares, and
+#' the conditional reading of either returns the same table one column narrower.
 #'
 #' @param x An `ipw_pooled` object, as returned by [pool_ipw()].
 #' @param conf.int Logical. Should the confidence interval bounds be returned in
@@ -459,14 +470,17 @@ glance.ipw <- function(x, ...) {
 #' @return A [tibble][tibble::tibble] with one row per pooled estimate and the
 #'   columns:
 #' \describe{
-#'   \item{`term`}{The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-#'     `"diff"`, `"slope"`, or `"coef"`, or the coefficient name in the
+#'   \item{`term`}{The effect measure, such as `"mean"` for a counterfactual
+#'     mean, or `"rd"`, `"log(rr)"`, `"log(or)"`, `"diff"`, `"slope"`, or
+#'     `"coef"` for the measures built from them, or the coefficient name in the
 #'     conditional reading.}
-#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"` for a
-#'     categorical exposure or the coefficient name on a surface whose rows are
-#'     named after their coefficients. Present only in the marginal reading, and
-#'     there only where a row reports one: the conditional reading names each
-#'     coefficient in `term` and returns no `contrast` column.}
+#'   \item{`contrast`}{What the row is about: the exposure level a `"mean"` row
+#'     belongs to, such as `"0"` or `"b"`; the pair of levels an effect measure
+#'     compares, such as `"1 vs 0"` or `"b vs a"`; or the coefficient name on a
+#'     surface whose rows are named after their coefficients. Present only in
+#'     the marginal reading, and there only where a row reports one: the
+#'     conditional reading names each coefficient in `term` and returns no
+#'     `contrast` column.}
 #'   \item{`estimate`}{The pooled point estimate.}
 #'   \item{`std.error`}{The pooled standard error.}
 #'   \item{`statistic`}{The test statistic, the estimate over its standard

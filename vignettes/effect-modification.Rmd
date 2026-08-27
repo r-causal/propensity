@@ -12,6 +12,10 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
+# The estimates table names each row by the effect measure, the contrast it
+# compares, and the subgroup it belongs to, which needs more than the console's
+# default 80 columns to print without wrapping.
+options(width = 100)
 ```
 
 Two questions get asked with the same words and answered with different

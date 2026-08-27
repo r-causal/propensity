@@ -522,55 +522,72 @@ ipw_by_psi_rows <- function(
   list(mu = mu_rows, contrast = con_rows)
 }
 
-# The identity columns of the reported rows: the effect measure, the contrast
-# where the exposure names one, and the subgroup where `.by` names one. Without
-# `.by` the reported rows are the whole-sample contrast block and no subgroup is
-# named at all, which is the frame every result reported before `.by` existed.
-# With it that block is followed by one block per stratum and one per
-# non-reference stratum against the reference one, each repeating the
-# whole-sample block's contrast-major, effect-minor order over the measures a
-# subgroup reports.
+# The identity columns of the reported rows: the effect measure, the level or
+# the pair of levels the contrast column names, and the subgroup where `.by`
+# names one. The counterfactual mean at each exposure level leads, one row per
+# level in level order with the reference level first, and the contrasts built
+# from those means follow. Without `.by` no subgroup is named at all.
+#
+# With `.by` the whole-sample block is followed by the means within each
+# stratum, then one contrast block per stratum and one per non-reference
+# stratum against the reference one, each repeating the whole-sample block's
+# contrast-major, effect-minor order over the measures a subgroup reports. A
+# stratum contrast compares two strata's effects and has no mean of its own, so
+# the mean rows stop at the strata themselves.
 ipw_estimate_rows <- function(spec) {
   if (!is.null(spec$joint)) {
     return(ipw_joint_estimate_rows(spec$joint))
   }
 
+  levels <- spec$exposure_levels
+  means <- rep("mean", length(levels))
   contrast_labels <- ipw_estimate_contrast_labels(spec)
   effect <- rep(spec$contrasts, times = ipw_n_contrasts(spec))
-  contrast <- if (is.null(contrast_labels)) {
-    NULL
-  } else {
-    rep(contrast_labels, each = length(spec$contrasts))
-  }
+  contrast <- rep(contrast_labels, each = length(spec$contrasts))
 
   if (is.null(spec$by)) {
-    return(list(effect = effect, contrast = contrast, group = NULL))
+    return(list(
+      effect = c(means, effect),
+      contrast = c(levels, contrast),
+      group = NULL
+    ))
   }
 
-  groups <- c(spec$by$labels, spec$by$em_labels)
+  strata <- spec$by$labels
+  groups <- c(strata, spec$by$em_labels)
   by_effect <- rep(spec$by$contrasts, times = ipw_n_contrasts(spec))
-  by_contrast <- if (is.null(contrast_labels)) {
-    NULL
-  } else {
-    rep(contrast_labels, each = length(spec$by$contrasts))
-  }
+  by_contrast <- rep(contrast_labels, each = length(spec$by$contrasts))
 
   list(
-    effect = c(effect, rep(by_effect, times = length(groups))),
-    contrast = c(contrast, rep(by_contrast, times = length(groups))),
+    effect = c(
+      means,
+      effect,
+      rep(means, times = length(strata)),
+      rep(by_effect, times = length(groups))
+    ),
+    contrast = c(
+      levels,
+      contrast,
+      rep(levels, times = length(strata)),
+      rep(by_contrast, times = length(groups))
+    ),
     group = c(
-      rep(ipw_overall_group, length(effect)),
+      rep(ipw_overall_group, length(means) + length(effect)),
+      rep(strata, each = length(means)),
       rep(groups, each = length(by_effect))
     )
   )
 }
 
-# The contrast each reported row compares, or NULL where the exposure reports a
-# single contrast and naming it would repeat one value down the table.
+# The pair of levels each contrast row compares. A binary exposure compares one
+# pair and a categorical exposure one pair per non-reference level, and both are
+# written the same way, so a reader of either table finds the comparison named
+# rather than left to the reader of a binary one to infer.
 ipw_estimate_contrast_labels <- function(spec) {
-  if (!identical(spec$exposure_type, "categorical")) {
-    return(NULL)
+  if (identical(spec$exposure_type, "categorical")) {
+    return(ipw_contrast_labels(spec))
   }
 
-  ipw_contrast_labels(spec)
+  levels <- spec$exposure_levels
+  paste(levels[[2]], "vs", levels[[1]])
 }
