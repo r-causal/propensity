@@ -135,6 +135,14 @@
 #'   afterwards, and the accessors take an `effects` argument of their own for a
 #'   single call.
 #'
+#'   One kind of fit has a single reading rather than two. A continuous exposure
+#'   entering `outcome_mod` through more than one design column, such as a
+#'   `poly()` or spline dose response, has no coefficient that is the effect of
+#'   the exposure, because a curve has a different slope at every dose. Such a
+#'   result records the conditional reading, says so once, and refuses the
+#'   marginal one from `ipw()` and from every accessor that could report it. See
+#'   the continuous exposure section below.
+#'
 #'   The covariance the conditional reading reports is the outcome block of the
 #'   jointly estimated sandwich, which every route that stacks estimating
 #'   equations attaches to the outcome model it stores:
@@ -965,6 +973,13 @@ ipw.glm <- function(
   rlang::check_dots_empty()
   .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
+
+  # Whether the caller named a reading, read before `arg_match()` resolves the
+  # default and loses the distinction. The continuous route needs it: a fit
+  # whose exposure enters the outcome model through several columns records the
+  # conditional reading either way, and what changes is whether that is a
+  # default being explained or a reading the caller asked for.
+  effects_named <- !missing(effects)
   effects <- rlang::arg_match(effects)
   assert_class(wt_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))
@@ -991,7 +1006,7 @@ ipw.glm <- function(
       ps_link = ps_link,
       conf_level = conf_level,
       se_method = se_method,
-      effects = effects
+      effects = if (effects_named) effects
     ))
   }
 
@@ -1242,6 +1257,12 @@ ipw.glm <- function(
 # ipw.glm. An lm and a gaussian glm propensity model share fitted values, so both
 # reach the same M-estimation fit. Standard errors come only from M-estimation
 # for a continuous exposure; the linearization path is not available.
+#
+# `effects` is `NULL` when the caller named no reading, which the methods above
+# read off `missing()` before `arg_match()` resolves the default. The two are
+# the same request for every fit but one: an exposure entering the outcome
+# model through several columns records the conditional reading whichever way
+# it was asked for, and only the unnamed request is announced.
 ipw_continuous_estimate <- function(
   wt_mod,
   outcome_mod,
@@ -1250,7 +1271,7 @@ ipw_continuous_estimate <- function(
   ps_link = NULL,
   conf_level = 0.95,
   se_method = "mestimation",
-  effects = "marginal",
+  effects = NULL,
   call = rlang::caller_env()
 ) {
   # Before the class guard below, which reports a matrix-response fit as the
@@ -1307,10 +1328,25 @@ ipw_continuous_estimate <- function(
     estimand = estimand,
     call = call
   )
+
+  # The reading the result records, settled before anything is solved so that a
+  # request for a reading the fit does not have is refused rather than answered
+  # after the work of building it.
+  dose_basis <- ipw_is_dose_basis(spec)
+  if (dose_basis) {
+    check_ipw_dose_basis_effects(effects, call = call)
+    if (is.null(effects)) {
+      ipw_dose_basis_announce()
+    }
+    effects <- "conditional"
+  } else if (is.null(effects)) {
+    effects <- "marginal"
+  }
+
   fit <- ipw_mestimation(spec, conf_level = conf_level, call = call)
   components <- ipw_component_models(wt_mod, outcome_mod, fit)
 
-  new_ipw(
+  result <- new_ipw(
     estimand = spec$estimand,
     wt_mod = components$wt_mod,
     outcome_mod = components$outcome_mod,
@@ -1319,6 +1355,12 @@ ipw_continuous_estimate <- function(
     fit = fit$fit,
     effects = effects
   )
+
+  if (dose_basis) {
+    class(result) <- c("ipw_dose_basis", class(result))
+  }
+
+  result
 }
 
 # Guard the weights that fit the outcome model. ipw() cannot yet account for

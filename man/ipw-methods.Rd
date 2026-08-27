@@ -194,6 +194,14 @@ nothing else. \code{\link[causalgenerics:as_marginal]{causalgenerics::as_margina
 afterwards, and the accessors take an \code{effects} argument of their own for a
 single call.
 
+One kind of fit has a single reading rather than two. A continuous exposure
+entering \code{outcome_mod} through more than one design column, such as a
+\code{poly()} or spline dose response, has no coefficient that is the effect of
+the exposure, because a curve has a different slope at every dose. Such a
+result records the conditional reading, says so once, and refuses the
+marginal one from \code{ipw()} and from every accessor that could report it. See
+the continuous exposure section below.
+
 The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
@@ -297,6 +305,29 @@ exposure coefficient keeps the eight-column contract with no contrast column
 and labels its row \code{"slope"} at an identity link; a dose-response curve such
 as \code{y ~ A + I(A^2)} reports one row per coefficient under \code{"coef"}, gaining a
 contrast column that names them.
+
+A curve is also the one shape of fit that has a single reading. An exposure
+entering the outcome model through more than one design column, whether
+written as \code{y ~ A + I(A^2)} or as a basis such as \code{poly(A, 2)},
+\code{splines::ns(A, 3)}, or \code{splines::bs(A, 3)}, has no coefficient that is the
+effect of the exposure, because the dose response has a different slope at
+every dose. \code{ipw()} records the conditional reading for such a fit, reports
+it once as a message, and refuses \code{effects = "marginal"} there and from
+\code{\link[causalgenerics:as_marginal]{causalgenerics::as_marginal()}}, \code{\link[stats:coef]{stats::coef()}}, \code{\link[stats:vcov]{stats::vcov()}},
+\code{\link[stats:confint]{stats::confint()}}, \code{\link[generics:tidy]{generics::tidy()}}, and \code{as.data.frame()}, with an error
+of class \code{propensity_ipw_effects_error}. Marginalizing the curve over the
+observed doses is a separate estimand that this package does not compute; the
+\pkg{marginaleffects} package computes it from the conditional result through
+\code{avg_slopes()} or \code{avg_comparisons()}. A basis term reading a covariate
+rather than the exposure is a covariate term however many columns it expands
+to, so it contributes no row and leaves the reading marginal.
+
+A model frame records the term rather than the variables inside it, so the
+frame of a fit whose exposure enters through \code{poly()} or a spline holds no
+exposure column and \code{.data} must supply one. The propensity score design is
+then rebuilt through the model's terms object, whose \code{predvars} attribute
+records the basis the model was fit with, so the rebuilt columns are the
+fitted ones.
 
 \code{ipw()} is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model

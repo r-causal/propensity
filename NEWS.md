@@ -1,5 +1,19 @@
 # propensity 0.1.0.9000 (development version)
 
+* A continuous-exposure `ipw()` fit whose outcome model reads the exposure
+  through more than one design column, such as `y ~ A + I(A^2)` or a basis like
+  `poly(A, 2)` or `splines::ns(A, 3)`, now records the conditional reading and
+  says so once. No coefficient of a curve is the effect of the exposure, since
+  the dose response has a different slope at every dose, so there is no marginal
+  reading of such a fit to present. `effects = "marginal"` is refused there and
+  from `as_marginal()`, `coef()`, `vcov()`, `confint()`, `tidy()`, and
+  `as.data.frame()`, with an error of class `propensity_ipw_effects_error`.
+  Marginalizing the curve over the observed doses is a separate estimand that
+  this package does not compute; the marginaleffects package computes it from
+  the conditional result through `avg_slopes()` or `avg_comparisons()`
+  (<https://marginaleffects.com/chapters/interactions.html>). A fit whose
+  exposure enters through one column is unchanged.
+
 * A binary or categorical `ipw()` result now reports the counterfactual mean at
   each exposure level, one row per level under the effect label `"mean"`, ahead
   of the contrasts built from those means. A risk difference is now read beside
