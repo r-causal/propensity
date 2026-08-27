@@ -47,9 +47,16 @@ mask_saturated_count <- function(lines) {
 # quantities: their digits are whatever the platform's arithmetic left behind,
 # so they differ between machines. The pattern matches only a mantissa carried
 # to four decimals against an exponent of magnitude 16 or more, which is the
-# shape that noise prints in and which the estimates beside it and the
-# `< 2.2e-16` p-value do not share. What these snapshots pin is the sentence the
-# fit is described in and the shape of the report, not the noise.
+# shape that noise prints in and which the `< 2.2e-16` p-value does not share.
+#
+# An estimate can carry that shape too, and does: a counterfactual mean the fit
+# pins at zero prints a few multiples of machine precision away from it and is
+# masked here alongside the standard error beside it. That is the right reading
+# of it rather than a mask reaching too far, since such an estimate is noise on
+# the same terms. An estimate of an ordinary magnitude is untouched.
+#
+# What these snapshots pin is the sentence the fit is described in and the shape
+# of the report, not the noise.
 mask_degenerate_magnitudes <- function(lines) {
   gsub("[0-9]\\.[0-9]{4}e[+-](1[6-9]|[2-9][0-9])", "<degenerate>", lines)
 }

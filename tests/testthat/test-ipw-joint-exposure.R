@@ -334,8 +334,11 @@ test_that("a plain factor over the same cells reports the vs-reference rows", {
   res <- ipw(mods$ps_mod, mods$outcome_mod)
   est <- res$estimates
 
-  # Without the declaration there is no joint reporting: three effect measures
-  # for each of three non-reference cells, no cell means, and no subgroups.
+  # Without the declaration there is no joint reporting: the counterfactual mean
+  # at each cell, which any categorical exposure reports, then three effect
+  # measures for each of three non-reference cells against the reference one,
+  # and no subgroups. What the declaration adds is the simple effects and the
+  # interaction, neither of which a vs-reference table can express.
   expect_identical(
     names(est),
     c(
@@ -350,14 +353,29 @@ test_that("a plain factor over the same cells reports the vs-reference rows", {
       "p.value"
     )
   )
-  expect_identical(nrow(est), 9L)
-  expect_identical(est$effect, rep(c("rd", "log(rr)", "log(or)"), times = 3))
+  expect_identical(nrow(est), 13L)
+  expect_identical(
+    est$effect,
+    c(
+      rep("mean", length(joint_cells)),
+      rep(c("rd", "log(rr)", "log(or)"), times = 3)
+    )
+  )
   expect_identical(
     est$contrast,
-    rep(paste(joint_cells[-1], "vs", joint_cells[[1]]), each = 3)
+    c(
+      joint_cells,
+      rep(paste(joint_cells[-1], "vs", joint_cells[[1]]), each = 3)
+    )
   )
   expect_null(est[["group"]])
-  expect_false(any(est$effect == "mean"))
+
+  # No simple effect and no interaction: every contrast row is against the
+  # reference cell.
+  expect_true(all(
+    est$contrast[est$effect != "mean"] %in%
+      paste(joint_cells[-1], "vs", joint_cells[[1]])
+  ))
 })
 
 # ---- the joint surface -------------------------------------------------------
@@ -637,7 +655,7 @@ test_that("the declaration is what turns on the joint reporting", {
   # and differ only in whether the crossing was declared. The plain one reports
   # the vs-reference rows and the declared one reports the joint surface, so the
   # frames differ in shape rather than only in wording.
-  expect_identical(nrow(plain$estimates), 9L)
+  expect_identical(nrow(plain$estimates), 13L)
   expect_identical(nrow(declared$estimates), 14L)
   expect_null(plain$estimates[["group"]])
   expect_false(is.null(declared$estimates[["group"]]))

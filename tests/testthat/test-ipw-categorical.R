@@ -292,25 +292,29 @@ test_that("ipw() categorical estimates table adds a contrast column", {
   # the binary eight-column contract plus a contrast column
   expect_named(est, cat_estimates_columns)
 
-  # three-level exposure: two non-reference contrasts, each vs the reference
-  expect_equal(unique(est$contrast), c("b vs a", "c vs a"))
+  # three-level exposure: one counterfactual mean per level, keyed by the level
+  # it belongs to, then two non-reference contrasts, each vs the reference
+  expect_equal(unique(est$contrast), c("a", "b", "c", "b vs a", "c vs a"))
 
-  # binomial outcome: rd/log(rr)/log(or) per contrast, six rows for three levels
-  expect_equal(nrow(est), 6L)
-  expect_equal(est$effect, rep(c("rd", "log(rr)", "log(or)"), times = 2))
+  # binomial outcome: three means, then rd/log(rr)/log(or) per contrast
+  expect_equal(nrow(est), 9L)
+  expect_equal(
+    est$effect,
+    c(rep("mean", 3), rep(c("rd", "log(rr)", "log(or)"), times = 2))
+  )
   expect_equal(
     est$contrast,
-    rep(c("b vs a", "c vs a"), each = 3)
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
   )
   expect_true(all(est$conf.level == 0.95))
 
-  # gaussian outcome: a single difference per contrast, two rows
+  # gaussian outcome: three means, then a single difference per contrast
   mods_g <- fit_categorical_models(dat, "ate", outcome_family = "gaussian")
   res_g <- ipw(mods_g$ps_mod, mods_g$outcome_mod)
   est_g <- res_g$estimates
-  expect_equal(nrow(est_g), 2L)
-  expect_equal(est_g$effect, c("diff", "diff"))
-  expect_equal(est_g$contrast, c("b vs a", "c vs a"))
+  expect_equal(nrow(est_g), 5L)
+  expect_equal(est_g$effect, c(rep("mean", 3), "diff", "diff"))
+  expect_equal(est_g$contrast, c("a", "b", "c", "b vs a", "c vs a"))
 })
 
 # ---- point-estimate parity with the plug-in g-computation -------------------
@@ -392,7 +396,10 @@ test_that("ipw() categorical att detects the focal level from the psw attribute"
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
   expect_equal(res$estimand, "att")
-  expect_equal(unique(res$estimates$contrast), c("b vs a", "c vs a"))
+  expect_equal(
+    unique(res$estimates$contrast),
+    c("a", "b", "c", "b vs a", "c vs a")
+  )
   ref <- plugin_categorical(
     mods$outcome_mod,
     dat,
@@ -633,9 +640,17 @@ test_that("as.data.frame(exponentiate = TRUE) relabels ratios per contrast", {
     c("term", "contrast", "estimate", "std.error", "statistic", "p.value")
   )
 
-  # the ratio rows are relabelled while the contrast column is preserved
-  expect_equal(df$term, rep(c("rd", "rr", "or"), times = 2))
-  expect_equal(df$contrast, rep(c("b vs a", "c vs a"), each = 3))
+  # the ratio rows are relabelled while the contrast column is preserved, and
+  # the mean rows are neither exponentiated nor relabelled
+  expect_equal(
+    df$term,
+    c(rep("mean", 3), rep(c("rd", "rr", "or"), times = 2))
+  )
+  expect_equal(
+    df$contrast,
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
+  )
+  expect_equal(df$estimate[1:3], res$estimates$estimate[1:3])
 
   # the standard error describes the log scale estimate and stays there
   expect_equal(df$std.error, as.data.frame(res)$std.error)
@@ -1256,7 +1271,7 @@ test_that("ipw() categorical resolves a character .data exposure against the fit
   expect_equal(res_chr$estimates, res_fac$estimates, tolerance = 1e-8)
   expect_equal(
     unique(res_chr$estimates$contrast),
-    c("mid vs low", "high vs low")
+    c("low", "mid", "high", "mid vs low", "high vs low")
   )
 })
 
@@ -1280,7 +1295,7 @@ test_that("ipw() categorical ignores a releveled .data exposure ordering", {
   expect_equal(res_relevel$estimates, res_fac$estimates, tolerance = 1e-8)
   expect_equal(
     unique(res_relevel$estimates$contrast),
-    c("mid vs low", "high vs low")
+    c("low", "mid", "high", "mid vs low", "high vs low")
   )
 })
 
@@ -1342,7 +1357,10 @@ test_that("ipw() categorical accepts models fit on a character exposure column",
   res_chr <- ipw(mods_chr$ps_mod, mods_chr$outcome_mod)
 
   expect_equal(res_chr$estimates, res_fac$estimates, tolerance = 1e-8)
-  expect_equal(unique(res_chr$estimates$contrast), c("b vs a", "c vs a"))
+  expect_equal(
+    unique(res_chr$estimates$contrast),
+    c("a", "b", "c", "b vs a", "c vs a")
+  )
 })
 
 # ---- weight-consistency hint wording ----------------------------------------
@@ -1465,11 +1483,11 @@ test_that("ipw() categorical accepts a saturated no-intercept outcome model", {
   expect_equal(res_sat$estimates$effect, res_int$estimates$effect)
   expect_equal(res_sat$estimates$contrast, res_int$estimates$contrast)
   # Spelled out so the agreement above is between two real columns rather than
-  # between two absent ones: a binomial outcome reports three effect measures
-  # for each of the two contrasts.
+  # between two absent ones: a binomial outcome reports one mean per level and
+  # three effect measures for each of the two contrasts.
   expect_equal(
     res_sat$estimates$contrast,
-    rep(c("b vs a", "c vs a"), each = 3)
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
   )
   expect_equal(
     res_sat$estimates$estimate,
@@ -2044,11 +2062,15 @@ test_that("ipw() multinom accepts every argument supplied by name", {
 # names it the same way, so a reader of the object and a reader of any surface
 # built from it are reading one column under one name.
 
-# The six labels a three-level exposure with a binomial outcome keys its effects
-# by: the effect measure and the pair of levels it compares, together. Written
-# out rather than pasted from the estimates table, because the code that pastes
+# The nine labels a three-level exposure with a binomial outcome keys its
+# effects by: the counterfactual mean at each level, keyed by that level, then
+# the effect measure and the pair of levels it compares, together. Written out
+# rather than pasted from the estimates table, because the code that pastes
 # them is part of what these tests pin.
 cat_effect_labels <- c(
+  "mean a",
+  "mean b",
+  "mean c",
   "rd b vs a",
   "log(rr) b vs a",
   "log(or) b vs a",
@@ -2067,16 +2089,20 @@ test_that("ipw() categorical stores its level pairs in a contrast column", {
   expect_true("contrast" %in% names(est))
   expect_false("comparison" %in% names(est))
 
-  # The column qualifies the effect measure, so it follows it.
+  # The column qualifies the effect measure, so it follows it. It names the
+  # level a mean row belongs to and the pair a contrast row compares.
   expect_identical(names(est)[seq(1, 2)], c("effect", "contrast"))
-  expect_equal(est$contrast, rep(c("b vs a", "c vs a"), each = 3))
+  expect_equal(
+    est$contrast,
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
+  )
 
   # A gaussian outcome reports one difference per pair rather than three effect
   # measures, and names the pairs the same way.
   mods_g <- fit_categorical_models(dat, "ate", outcome_family = "gaussian")
   est_g <- ipw(mods_g$ps_mod, mods_g$outcome_mod)$estimates
   expect_false("comparison" %in% names(est_g))
-  expect_equal(est_g$contrast, c("b vs a", "c vs a"))
+  expect_equal(est_g$contrast, c("a", "b", "c", "b vs a", "c vs a"))
 })
 
 test_that("a categorical fit keys its stored covariance by effect and contrast", {
@@ -2089,8 +2115,9 @@ test_that("a categorical fit keys its stored covariance by effect and contrast",
   # The labels are built by reading the contrast column off the table by name,
   # so they travel with the name that column is written under. Renaming the
   # column without the code that reads it leaves that code with nothing to find
-  # and collapses these six labels to the three effect measures, each used twice
-  # across the two pairs.
+  # and collapses these nine labels to the three effect measures, each used
+  # twice across the two pairs, beside three mean rows that cannot be told
+  # apart at all.
   covariance <- attr(est, "ipw_vcov", exact = TRUE)
   expect_identical(
     dimnames(covariance),
@@ -2133,7 +2160,10 @@ test_that("the categorical output surfaces name the contrast column contrast", {
   df <- as.data.frame(res)
   expect_identical(names(df)[seq(1, 2)], c("term", "contrast"))
   expect_false("comparison" %in% names(df))
-  expect_identical(df$contrast, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(
+    df$contrast,
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
+  )
 
   tidied <- tidy(res)
   expect_identical(names(tidied)[seq(1, 2)], c("term", "contrast"))

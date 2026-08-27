@@ -1615,7 +1615,7 @@ test_that("ATE works for continuous cases", {
       predict(denom_model),
       .exposure = mtcars$mpg,
       .sigma = model_sigma,
-      stabilize = TRUE,
+      stabilize = TRUE
     ),
     "Treating `.exposure` as continuous"
   )

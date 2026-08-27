@@ -420,15 +420,17 @@ test_that("ipw() rejects an unsupported model with propensity's error class", {
 
 test_that("an ipw result prints its labelled sections and model calls", {
   # testthat 3e pins the output width but not the number of significant digits,
-  # and `printCoefmat()` wraps the estimates table past 80 columns under a
-  # larger `digits`, which splits the rows this test reads by position.
-  withr::local_options(digits = 7)
+  # and `printCoefmat()` wraps the estimates table past the console width, which
+  # splits the rows this test reads by position. The row labels name the effect
+  # measure and the contrast together, so the table needs more than the 80
+  # columns testthat pins.
+  withr::local_options(digits = 7, width = 120)
 
   res <- fit_ipw_binary(sim_ipw_binary())
   expect_identical(class(res), "ipw")
 
   out <- capture.output(print(res))
-  expect_length(out, 17L)
+  expect_length(out, 19L)
 
   expect_identical(out[[1]], "Inverse Probability Weight Estimator")
   expect_identical(out[[2]], "Estimand: ATE ")
@@ -477,10 +479,10 @@ test_that("an ipw result prints its labelled sections and model calls", {
       "p.value"
     )
   )
-  expect_identical(sub(" .*$", "", out[seq(13, 15)]), res$estimates$effect)
+  expect_identical(sub(" .*$", "", out[seq(13, 17)]), res$estimates$effect)
 
-  expect_identical(out[[16]], "---")
-  expect_true(startsWith(out[[17]], "Signif. codes:"))
+  expect_identical(out[[18]], "---")
+  expect_true(startsWith(out[[19]], "Signif. codes:"))
 })
 
 test_that("an ipw result prints a weighting object with no call as a class label", {
@@ -516,9 +518,10 @@ test_that("as.data.frame() on an ipw result returns the estimates in tidy column
   expect_s3_class(df, "data.frame")
   expect_named(
     df,
-    c("term", "estimate", "std.error", "statistic", "p.value")
+    c("term", "contrast", "estimate", "std.error", "statistic", "p.value")
   )
-  expect_identical(df$term, c("rd", "log(rr)", "log(or)"))
+  expect_identical(df$term, c("mean", "mean", "rd", "log(rr)", "log(or)"))
+  expect_identical(df$contrast, c("0", "1", rep("1 vs 0", 3)))
 
   # The values are the result's own, renamed rather than recomputed.
   expect_identical(df$estimate, estimates$estimate)
@@ -535,6 +538,7 @@ test_that("as.data.frame() on an ipw result returns the estimates in tidy column
     bounded,
     c(
       "term",
+      "contrast",
       "estimate",
       "std.error",
       "statistic",
@@ -554,8 +558,8 @@ test_that("as.data.frame() on an ipw result returns the estimates in tidy column
   )
 
   # `row.names` reaches `base::as.data.frame()`.
-  named <- as.data.frame(res, row.names = c("a", "b", "c"))
-  expect_identical(rownames(named), c("a", "b", "c"))
+  named <- as.data.frame(res, row.names = c("a", "b", "c", "d", "e"))
+  expect_identical(rownames(named), c("a", "b", "c", "d", "e"))
 
   # `optional` is part of the signature `base::as.data.frame()` requires. The
   # data frame method ignores it, so it must be accepted and leave the frame
@@ -574,7 +578,9 @@ test_that("exponentiating an ipw result transforms only the estimate and bounds"
 
   ratio <- log_scale$term %in% c("log(rr)", "log(or)")
 
-  expect_identical(exp_scale$term, c("rd", "rr", "or"))
+  # The mean rows are counterfactual risks rather than ratios, so they are
+  # neither exponentiated nor relabelled.
+  expect_identical(exp_scale$term, c("mean", "mean", "rd", "rr", "or"))
   expect_equal(exp_scale$estimate[ratio], exp(log_scale$estimate[ratio]))
   expect_equal(exp_scale$conf.low[ratio], exp(log_scale$conf.low[ratio]))
   expect_equal(exp_scale$conf.high[ratio], exp(log_scale$conf.high[ratio]))
@@ -602,7 +608,7 @@ test_that("exponentiating a difference-only ipw result changes nothing", {
   plain <- as.data.frame(res, conf.int = TRUE)
   exponentiated <- as.data.frame(res, conf.int = TRUE, exponentiate = TRUE)
 
-  expect_identical(plain$term, "diff")
+  expect_identical(plain$term, c("mean", "mean", "diff"))
 
   # No row of this table is on a log scale, so every column arrives as it was.
   # The covariance is the one thing the exponentiated frame drops, and it drops
@@ -618,11 +624,17 @@ test_that("a categorical ipw result keeps its contrast column through both surfa
 
   df <- as.data.frame(res)
   expect_identical(names(df)[seq(1, 2)], c("term", "contrast"))
-  expect_identical(df$contrast, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(
+    df$contrast,
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
+  )
 
   exp_scale <- as.data.frame(res, exponentiate = TRUE)
   ratio <- df$term %in% c("log(rr)", "log(or)")
-  expect_identical(exp_scale$term, rep(c("rd", "rr", "or"), times = 2))
+  expect_identical(
+    exp_scale$term,
+    c(rep("mean", 3), rep(c("rd", "rr", "or"), times = 2))
+  )
   expect_identical(exp_scale$contrast, df$contrast)
   expect_equal(exp_scale$estimate[ratio], exp(df$estimate[ratio]))
   expect_identical(exp_scale$std.error, df$std.error)

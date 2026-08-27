@@ -160,17 +160,28 @@ by_stratum_effects <- function(
   mu1 <- weighted.mean(m1, w)
   mu0 <- weighted.mean(m0, w)
 
+  # Keyed the way the estimates table keys a row, by the effect measure and the
+  # contrast it names together, so a mean row and the contrast built from it are
+  # told apart rather than sharing the key "mean".
+  means <- c("mean 0" = mu0, "mean 1" = mu1)
+
   linear <- !inherits(outcome_mod, "glm") ||
     stats::family(outcome_mod)$family == "gaussian"
   if (linear) {
-    return(c(diff = mu1 - mu0))
+    return(c(means, "diff 1 vs 0" = mu1 - mu0))
   }
 
   c(
-    rd = mu1 - mu0,
-    "log(rr)" = log(mu1) - log(mu0),
-    "log(or)" = qlogis(mu1) - qlogis(mu0)
+    means,
+    "rd 1 vs 0" = mu1 - mu0,
+    "log(rr) 1 vs 0" = log(mu1) - log(mu0),
+    "log(or) 1 vs 0" = qlogis(mu1) - qlogis(mu0)
   )
+}
+
+# The key one row of an estimates table is addressed by in the oracle above.
+by_row_key <- function(estimates) {
+  paste(estimates$effect, estimates$contrast)
 }
 
 # The fitted propensity scores an estimand tilts by. Only att is needed here;
@@ -208,7 +219,7 @@ test_that("the stratum oracle reproduces the ungrouped estimates over the whole 
   ref <- by_stratum_effects(mods$outcome_mod, dat, whole)
   expect_equal(
     res$estimates$estimate,
-    unname(ref[res$estimates$effect]),
+    unname(ref[by_row_key(res$estimates)]),
     tolerance = 1e-8
   )
 
@@ -224,7 +235,7 @@ test_that("the stratum oracle reproduces the ungrouped estimates over the whole 
   )
   expect_equal(
     res_att$estimates$estimate,
-    unname(ref_att[res_att$estimates$effect]),
+    unname(ref_att[by_row_key(res_att$estimates)]),
     tolerance = 1e-8
   )
 })
@@ -237,9 +248,15 @@ test_that("an ungrouped binary fit names no subgroups", {
   # The frame a fit reports without `.by` carries no group column at all, rather
   # than one repeating a single value down the table, which is the shape `.by`
   # has to leave alone.
-  expect_identical(res$estimates$effect, c("rd", "log(rr)", "log(or)"))
+  expect_identical(
+    res$estimates$effect,
+    c("mean", "mean", "rd", "log(rr)", "log(or)")
+  )
   expect_null(res$estimates[["group"]])
-  expect_identical(names(coef(res)), c("rd", "log(rr)", "log(or)"))
+  expect_identical(
+    names(coef(res)),
+    c("mean 0", "mean 1", "rd 1 vs 0", "log(rr) 1 vs 0", "log(or) 1 vs 0")
+  )
   expect_false("group" %in% names(as.data.frame(res)))
 })
 
@@ -250,12 +267,13 @@ test_that("a .by fit orders its rows overall, then by stratum, then by stratum c
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
-  # The group column sits immediately after effect, where a categorical exposure
-  # puts its contrast column, and the rest of the frame keeps its order.
+  # The group column follows the contrast column, and both lead the frame in the
+  # order a label pastes them. The rest of the frame keeps its order.
   expect_identical(
     names(res$estimates),
     c(
       "effect",
+      "contrast",
       "group",
       "estimate",
       "std.err",
@@ -269,9 +287,15 @@ test_that("a .by fit orders its rows overall, then by stratum, then by stratum c
   expect_identical(
     res$estimates$effect,
     c(
+      "mean",
+      "mean",
       "rd",
       "log(rr)",
       "log(or)",
+      "mean",
+      "mean",
+      "mean",
+      "mean",
       "rd",
       "log(rr)",
       "rd",
@@ -281,9 +305,24 @@ test_that("a .by fit orders its rows overall, then by stratum, then by stratum c
     )
   )
   expect_identical(
+    res$estimates$contrast,
+    c(
+      "0",
+      "1",
+      rep("1 vs 0", 3),
+      "0",
+      "1",
+      "0",
+      "1",
+      rep("1 vs 0", 6)
+    )
+  )
+  expect_identical(
     res$estimates$group,
     c(
-      rep("overall", 3),
+      rep("overall", 5),
+      rep("v = 0", 2),
+      rep("v = 1", 2),
       rep("v = 0", 2),
       rep("v = 1", 2),
       rep("v = 1 vs v = 0", 2)
@@ -354,13 +393,13 @@ test_that("a .by ate fit reports the stratum-specific risk differences and log r
     group <- paste0("v = ", level)
     expect_equal(
       by_estimate(res$estimates, "rd", group),
-      ref[["rd"]],
+      ref[["rd 1 vs 0"]],
       tolerance = 1e-8,
       label = paste("rd", group)
     )
     expect_equal(
       by_estimate(res$estimates, "log(rr)", group),
-      ref[["log(rr)"]],
+      ref[["log(rr) 1 vs 0"]],
       tolerance = 1e-8,
       label = paste("log(rr)", group)
     )
@@ -379,12 +418,12 @@ test_that("a .by ate fit contrasts each stratum against the reference stratum", 
 
   expect_equal(
     by_estimate(res$estimates, "rd", group),
-    ref1[["rd"]] - ref0[["rd"]],
+    ref1[["rd 1 vs 0"]] - ref0[["rd 1 vs 0"]],
     tolerance = 1e-8
   )
   expect_equal(
     by_estimate(res$estimates, "log(rr)", group),
-    ref1[["log(rr)"]] - ref0[["log(rr)"]],
+    ref1[["log(rr) 1 vs 0"]] - ref0[["log(rr) 1 vs 0"]],
     tolerance = 1e-8
   )
 })
@@ -412,13 +451,13 @@ test_that("a .by att fit weights each stratum mean by the tilt within the stratu
     group <- paste0("v = ", level)
     expect_equal(
       by_estimate(res$estimates, "rd", group),
-      refs[[level]][["rd"]],
+      refs[[level]][["rd 1 vs 0"]],
       tolerance = 1e-8,
       label = paste("rd", group)
     )
     expect_equal(
       by_estimate(res$estimates, "log(rr)", group),
-      refs[[level]][["log(rr)"]],
+      refs[[level]][["log(rr) 1 vs 0"]],
       tolerance = 1e-8,
       label = paste("log(rr)", group)
     )
@@ -426,7 +465,7 @@ test_that("a .by att fit weights each stratum mean by the tilt within the stratu
 
   expect_equal(
     by_estimate(res$estimates, "rd", "v = 1 vs v = 0"),
-    refs[["1"]][["rd"]] - refs[["0"]][["rd"]],
+    refs[["1"]][["rd 1 vs 0"]] - refs[["0"]][["rd 1 vs 0"]],
     tolerance = 1e-8
   )
 })
@@ -437,10 +476,20 @@ test_that("a .by fit on a continuous outcome reports one diff row per stratum", 
   mods <- fit_by_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
-  expect_identical(res$estimates$effect, rep("diff", 4))
+  expect_identical(
+    res$estimates$effect,
+    c("mean", "mean", "diff", rep("mean", 4), "diff", "diff", "diff")
+  )
   expect_identical(
     res$estimates$group,
-    c("overall", "v = 0", "v = 1", "v = 1 vs v = 0")
+    c(
+      rep("overall", 3),
+      rep("v = 0", 2),
+      rep("v = 1", 2),
+      "v = 0",
+      "v = 1",
+      "v = 1 vs v = 0"
+    )
   )
 
   # A linear outcome model has m1 - m0 constant within a stratum, so no
@@ -453,12 +502,12 @@ test_that("a .by fit on a continuous outcome reports one diff row per stratum", 
   ref1 <- by_stratum_effects(mods$outcome_mod, dat, dat$v == "1")
   expect_equal(
     by_estimate(res$estimates, "diff", "v = 0"),
-    ref0[["diff"]],
+    ref0[["diff 1 vs 0"]],
     tolerance = 1e-8
   )
   expect_equal(
     by_estimate(res$estimates, "diff", "v = 1"),
-    ref1[["diff"]],
+    ref1[["diff 1 vs 0"]],
     tolerance = 1e-8
   )
 
@@ -537,10 +586,12 @@ test_that("a .by fit's covariance couples the groups it reports", {
   # generate here, where the variances themselves are of order 1e-3. What it
   # excludes is the structural zero, not a small number.
   couples <- list(
-    c("rd v = 0", "rd v = 1"),
-    c("log(rr) v = 0", "log(rr) v = 1"),
-    c("rd overall", "rd v = 1"),
-    c("rd v = 1", "rd v = 1 vs v = 0")
+    c("rd 1 vs 0 v = 0", "rd 1 vs 0 v = 1"),
+    c("log(rr) 1 vs 0 v = 0", "log(rr) 1 vs 0 v = 1"),
+    c("rd 1 vs 0 overall", "rd 1 vs 0 v = 1"),
+    c("rd 1 vs 0 v = 1", "rd 1 vs 0 v = 1 vs v = 0"),
+    c("mean 1 v = 0", "mean 1 v = 1"),
+    c("mean 0 overall", "rd 1 vs 0 v = 1")
   )
   for (pair in couples) {
     entry <- covariance[pair[[1]], pair[[2]]]
@@ -557,10 +608,14 @@ test_that("a .by fit labels its coefficients, covariance, and printed rows alike
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
-  # A binary exposure names no contrasts, so a row's identity is the effect
-  # measure and the subgroup, in that order, which is what the causalgenerics
-  # labelling contract pastes.
-  labels <- paste(res$estimates$effect, res$estimates$group)
+  # A row's identity is the effect measure, the contrast it names, and the
+  # subgroup, in that order, which is what the causalgenerics labelling contract
+  # pastes.
+  labels <- paste(
+    res$estimates$effect,
+    res$estimates$contrast,
+    res$estimates$group
+  )
   expect_identical(anyDuplicated(labels), 0L)
   expect_identical(names(coef(res)), labels)
   expect_identical(dimnames(vcov(res)), list(labels, labels))
@@ -603,7 +658,15 @@ test_that("as.data.frame() heads its subgroup column after the term column", {
   tbl <- as.data.frame(res)
   expect_identical(
     names(tbl),
-    c("term", "group", "estimate", "std.error", "statistic", "p.value")
+    c(
+      "term",
+      "contrast",
+      "group",
+      "estimate",
+      "std.error",
+      "statistic",
+      "p.value"
+    )
   )
   expect_identical(tbl$term, res$estimates$effect)
   expect_identical(tbl$group, res$estimates$group)
@@ -615,6 +678,7 @@ test_that("as.data.frame() heads its subgroup column after the term column", {
     names(bounded),
     c(
       "term",
+      "contrast",
       "group",
       "estimate",
       "std.error",
@@ -635,7 +699,15 @@ test_that("tidy() carries the subgroup column", {
   expect_s3_class(tidied, "tbl_df")
   expect_identical(
     names(tidied),
-    c("term", "group", "estimate", "std.error", "statistic", "p.value")
+    c(
+      "term",
+      "contrast",
+      "group",
+      "estimate",
+      "std.error",
+      "statistic",
+      "p.value"
+    )
   )
   expect_identical(tidied$group, res$estimates$group)
 })
