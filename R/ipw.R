@@ -139,9 +139,13 @@
 #'   entering `outcome_mod` through more than one design column, such as a
 #'   `poly()` or spline dose response, has no coefficient that is the effect of
 #'   the exposure, because a curve has a different slope at every dose. Such a
-#'   result records the conditional reading, says so once, and refuses the
-#'   marginal one from `ipw()` and from every accessor that could report it. See
-#'   the continuous exposure section below.
+#'   result records the conditional reading and says so once. `ipw()` refuses
+#'   `effects = "marginal"` itself with an error of class
+#'   `propensity_ipw_effects_error`, and the result declares the conditional
+#'   reading as the only one it supports, so the accessors refuse it from the
+#'   result class with an error of class
+#'   `causalgenerics_unsupported_reading_marginal`. See the continuous exposure
+#'   section below.
 #'
 #'   The covariance the conditional reading reports is the outcome block of the
 #'   jointly estimated sandwich, which every route that stacks estimating
@@ -1329,16 +1333,18 @@ ipw_continuous_estimate <- function(
     call = call
   )
 
-  # The reading the result records, settled before anything is solved so that a
-  # request for a reading the fit does not have is refused rather than answered
-  # after the work of building it.
+  # The readings the result declares and the one it records, settled before
+  # anything is solved so that a request for a reading the fit does not have is
+  # refused rather than answered after the work of building it.
   dose_basis <- ipw_is_dose_basis(spec)
+  readings <- c("marginal", "conditional")
   if (dose_basis) {
     check_ipw_dose_basis_effects(effects, call = call)
     if (is.null(effects)) {
       ipw_dose_basis_announce()
     }
     effects <- "conditional"
+    readings <- "conditional"
   } else if (is.null(effects)) {
     effects <- "marginal"
   }
@@ -1346,21 +1352,19 @@ ipw_continuous_estimate <- function(
   fit <- ipw_mestimation(spec, conf_level = conf_level, call = call)
   components <- ipw_component_models(wt_mod, outcome_mod, fit)
 
-  result <- new_ipw(
+  # A dose-basis fit declares the one reading it has, so the result class
+  # refuses the other wherever it is asked for and this package adds no methods
+  # of its own to carry that refusal.
+  new_ipw(
     estimand = spec$estimand,
     wt_mod = components$wt_mod,
     outcome_mod = components$outcome_mod,
     estimates = fit$estimates,
     se_method = "mestimation",
     fit = fit$fit,
-    effects = effects
+    effects = effects,
+    readings = readings
   )
-
-  if (dose_basis) {
-    class(result) <- c("ipw_dose_basis", class(result))
-  }
-
-  result
 }
 
 # Guard the weights that fit the outcome model. ipw() cannot yet account for

@@ -19,9 +19,10 @@
 # entering through several columns has no coefficient that is an effect: a curve
 # has a different slope at every dose, so no row of the table answers the
 # question the marginal reading is asked. `ipw()` therefore records the
-# conditional reading for these fits, says so once, and refuses the marginal one
-# wherever it is asked for. Marginalizing over the dose is a separate estimand
-# that this package does not compute, and the message names the marginaleffects
+# conditional reading for these fits, says so once, and declares it as the only
+# reading they support, which is where the refusal of the marginal one at every
+# accessor comes from. Marginalizing over the dose is a separate estimand that
+# this package does not compute, and the message names the marginaleffects
 # package rather than leaving the user to assemble it from the coefficients.
 #
 # The one thing a basis changes about how the fit has to be called is `.data`. A

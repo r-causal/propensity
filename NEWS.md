@@ -5,12 +5,14 @@
   `poly(A, 2)` or `splines::ns(A, 3)`, now records the conditional reading and
   says so once. No coefficient of a curve is the effect of the exposure, since
   the dose response has a different slope at every dose, so there is no marginal
-  reading of such a fit to present. `effects = "marginal"` is refused there and
-  from `as_marginal()`, `coef()`, `vcov()`, `confint()`, `tidy()`, and
-  `as.data.frame()`, with an error of class `propensity_ipw_effects_error`.
-  Marginalizing the curve over the observed doses is a separate estimand that
-  this package does not compute; the marginaleffects package computes it from
-  the conditional result through `avg_slopes()` or `avg_comparisons()`
+  reading of such a fit to present. `ipw()` refuses `effects = "marginal"` with
+  an error of class `propensity_ipw_effects_error`, and the result declares the
+  conditional reading as the only one it supports, so `as_marginal()`, `coef()`,
+  `vcov()`, `confint()`, `tidy()`, and `as.data.frame()` refuse it with an error
+  of class `causalgenerics_unsupported_reading_marginal`. Marginalizing the
+  curve over the observed doses is a separate estimand that this package does
+  not compute; the marginaleffects package computes it from the conditional
+  result through `avg_slopes()` or `avg_comparisons()`
   (<https://marginaleffects.com/chapters/interactions.html>). A fit whose
   exposure enters through one column is unchanged.
 

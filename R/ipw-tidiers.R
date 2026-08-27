@@ -175,21 +175,6 @@ tidy.ipw <- function(
     effects <- NULL
   }
 
-  # The marginal reading, which is the result's own coercion surface read as a
-  # tibble. It is built before anything branches on a reading because the three
-  # arguments the two surfaces share are validated there, and one argument of one
-  # method cannot be well formed in one reading of a result and refused in the
-  # other.
-  #
-  # The conditional reading answers from the accessors and so discards the frame,
-  # which costs a table of a few rows: nothing is refit to build it.
-  frame <- as.data.frame(
-    x,
-    conf.int = conf.int,
-    conf.level = conf.level,
-    exponentiate = exponentiate
-  )
-
   # The accessors own the `effects` argument, so the estimates of the reading
   # this call reports come from one before anything here branches on a reading.
   # That call resolves a `NULL` against the reading the result records and
@@ -201,6 +186,31 @@ tidy.ipw <- function(
   # The value has been through that check by the time this reads it, so this
   # settles which reading was asked for rather than checking it a second time.
   reading <- if (is.null(effects)) ipw_stored_effects(x) else effects
+
+  # The conditional reading exponentiates by the link of the outcome model
+  # rather than by the labels of the rows, and the refusal of a link no
+  # exponential undoes is this package's, so it is raised before the surface
+  # below reaches a refusal of its own. A value of `exponentiate` that is not a
+  # flag is not read here; it is refused there, with the other two arguments.
+  if (reading == "conditional" && isTRUE(exponentiate)) {
+    check_exponentiate_link(x$outcome_mod)
+  }
+
+  # The result's own coercion surface, in the reading this call reports rather
+  # than the one the result records: the three arguments the two readings share
+  # are validated there, and one argument of one method cannot be well formed in
+  # one reading of a result and refused in the other.
+  #
+  # The conditional reading answers from the accessors and so discards the
+  # frame, which costs a table of a few rows: nothing is refit to build it.
+  frame <- as.data.frame(
+    x,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate,
+    effects = reading
+  )
+
   if (reading == "conditional") {
     return(tidy_ipw_conditional(
       x,
@@ -236,8 +246,7 @@ tidy_ipw_conditional <- function(
   estimate,
   conf.int,
   conf.level,
-  exponentiate,
-  call = rlang::caller_env()
+  exponentiate
 ) {
   # A row is its estimate and its inference together, so the corrected
   # covariance is read whether or not bounds were asked for. A result that
@@ -272,8 +281,6 @@ tidy_ipw_conditional <- function(
   }
 
   if (exponentiate) {
-    check_exponentiate_link(x$outcome_mod, call = call)
-
     # Broom's convention, which every method taking the argument follows: the
     # estimate and, when they were asked for, the bounds move to the natural
     # scale, and the columns describing the link scale estimate stay there.

@@ -100,16 +100,20 @@ ipw.multinom <- function(
 #' written as `y ~ A + I(A^2)` or as a basis such as `poly(A, 2)`,
 #' `splines::ns(A, 3)`, or `splines::bs(A, 3)`, has no coefficient that is the
 #' effect of the exposure, because the dose response has a different slope at
-#' every dose. `ipw()` records the conditional reading for such a fit, reports
-#' it once as a message, and refuses `effects = "marginal"` there and from
-#' [causalgenerics::as_marginal()], [stats::coef()], [stats::vcov()],
-#' [stats::confint()], [generics::tidy()], and `as.data.frame()`, with an error
-#' of class `propensity_ipw_effects_error`. Marginalizing the curve over the
-#' observed doses is a separate estimand that this package does not compute; the
-#' \pkg{marginaleffects} package computes it from the conditional result through
-#' `avg_slopes()` or `avg_comparisons()`. A basis term reading a covariate
-#' rather than the exposure is a covariate term however many columns it expands
-#' to, so it contributes no row and leaves the reading marginal.
+#' every dose. `ipw()` records the conditional reading for such a fit and
+#' reports it once as a message. Asking `ipw()` itself for
+#' `effects = "marginal"` is refused with an error of class
+#' `propensity_ipw_effects_error`; the result declares the conditional reading
+#' as the only one it supports, so [causalgenerics::as_marginal()],
+#' [stats::coef()], [stats::vcov()], [stats::confint()], [generics::tidy()],
+#' and `as.data.frame()` refuse it from the result class instead, with an error
+#' of class `causalgenerics_unsupported_reading_marginal`. Marginalizing the
+#' curve over the observed doses is a separate estimand that this package does
+#' not compute; the \pkg{marginaleffects} package computes it from the
+#' conditional result through `avg_slopes()` or `avg_comparisons()`. A basis
+#' term reading a covariate rather than the exposure is a covariate term however
+#' many columns it expands to, so it contributes no row and leaves the reading
+#' marginal.
 #'
 #' A model frame records the term rather than the variables inside it, so the
 #' frame of a fit whose exposure enters through `poly()` or a spline holds no

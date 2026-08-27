@@ -198,9 +198,13 @@ One kind of fit has a single reading rather than two. A continuous exposure
 entering \code{outcome_mod} through more than one design column, such as a
 \code{poly()} or spline dose response, has no coefficient that is the effect of
 the exposure, because a curve has a different slope at every dose. Such a
-result records the conditional reading, says so once, and refuses the
-marginal one from \code{ipw()} and from every accessor that could report it. See
-the continuous exposure section below.
+result records the conditional reading and says so once. \code{ipw()} refuses
+\code{effects = "marginal"} itself with an error of class
+\code{propensity_ipw_effects_error}, and the result declares the conditional
+reading as the only one it supports, so the accessors refuse it from the
+result class with an error of class
+\code{causalgenerics_unsupported_reading_marginal}. See the continuous exposure
+section below.
 
 The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
@@ -311,16 +315,20 @@ entering the outcome model through more than one design column, whether
 written as \code{y ~ A + I(A^2)} or as a basis such as \code{poly(A, 2)},
 \code{splines::ns(A, 3)}, or \code{splines::bs(A, 3)}, has no coefficient that is the
 effect of the exposure, because the dose response has a different slope at
-every dose. \code{ipw()} records the conditional reading for such a fit, reports
-it once as a message, and refuses \code{effects = "marginal"} there and from
-\code{\link[causalgenerics:as_marginal]{causalgenerics::as_marginal()}}, \code{\link[stats:coef]{stats::coef()}}, \code{\link[stats:vcov]{stats::vcov()}},
-\code{\link[stats:confint]{stats::confint()}}, \code{\link[generics:tidy]{generics::tidy()}}, and \code{as.data.frame()}, with an error
-of class \code{propensity_ipw_effects_error}. Marginalizing the curve over the
-observed doses is a separate estimand that this package does not compute; the
-\pkg{marginaleffects} package computes it from the conditional result through
-\code{avg_slopes()} or \code{avg_comparisons()}. A basis term reading a covariate
-rather than the exposure is a covariate term however many columns it expands
-to, so it contributes no row and leaves the reading marginal.
+every dose. \code{ipw()} records the conditional reading for such a fit and
+reports it once as a message. Asking \code{ipw()} itself for
+\code{effects = "marginal"} is refused with an error of class
+\code{propensity_ipw_effects_error}; the result declares the conditional reading
+as the only one it supports, so \code{\link[causalgenerics:as_marginal]{causalgenerics::as_marginal()}},
+\code{\link[stats:coef]{stats::coef()}}, \code{\link[stats:vcov]{stats::vcov()}}, \code{\link[stats:confint]{stats::confint()}}, \code{\link[generics:tidy]{generics::tidy()}},
+and \code{as.data.frame()} refuse it from the result class instead, with an error
+of class \code{causalgenerics_unsupported_reading_marginal}. Marginalizing the
+curve over the observed doses is a separate estimand that this package does
+not compute; the \pkg{marginaleffects} package computes it from the
+conditional result through \code{avg_slopes()} or \code{avg_comparisons()}. A basis
+term reading a covariate rather than the exposure is a covariate term however
+many columns it expands to, so it contributes no row and leaves the reading
+marginal.
 
 A model frame records the term rather than the variables inside it, so the
 frame of a fit whose exposure enters through \code{poly()} or a spline holds no
