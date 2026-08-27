@@ -2079,15 +2079,19 @@ test_that("tidy() follows a dose basis result into its only reading", {
     unname(sqrt(diag(vcov(res))))
   )
 
-  # Naming the reading the result does not have is refused rather than answered
-  # from the frame the stacked system happens to store.
-  expect_error(
+  # Naming a reading the result does not declare is refused rather than answered
+  # from the frame the stacked system happens to store. `tidy()` is this
+  # package's own method, so the refusal it raises is pinned here: it comes from
+  # the accessor that owns the argument rather than from a check of its own, and
+  # a caller catching either class gets it whichever surface they asked at.
+  err <- expect_error(
     tidy(res, effects = "marginal"),
-    class = "propensity_ipw_effects_error"
+    class = "causalgenerics_unsupported_reading_marginal"
   )
+  expect_s3_class(err, "causalgenerics_unsupported_reading")
   expect_error(
     tidy(res, conf.int = TRUE, effects = "marginal"),
-    class = "propensity_ipw_effects_error"
+    class = "causalgenerics_unsupported_reading_marginal"
   )
 })
 

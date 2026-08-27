@@ -123,10 +123,12 @@ expect_dose_basis_columns <- function(estimates) {
 }
 
 # The reading a basis fit presents, written once because the claim is the same
-# for every basis. The result records the conditional reading, its accessors key
-# by the outcome model's coefficient names in one order, and the covariance they
-# report is the outcome block of the stacked sandwich rather than the one the
-# weighted fit computed for itself while treating its weights as fixed.
+# for every basis. The result records the conditional reading and declares it
+# as the only one it supports, which is where the refusals of the other one come
+# from. Its accessors key by the outcome model's coefficient names in one order,
+# and the covariance they report is the outcome block of the stacked sandwich
+# rather than the one the weighted fit computed for itself while treating its
+# weights as fixed.
 #
 # The coefficients come out of one fit of one model, so they covary; a surface
 # assembled row by row would report zeros off the diagonal.
@@ -139,6 +141,7 @@ expect_dose_basis_conditional <- function(res, outcome_mod) {
   labels <- names(coef(outcome_mod))
 
   testthat::expect_identical(res$effects, "conditional")
+  testthat::expect_identical(res$readings, "conditional")
   testthat::expect_identical(coef(res), coef(outcome_mod))
   testthat::expect_identical(names(coef(res)), labels)
   testthat::expect_identical(dimnames(vcov(res)), list(labels, labels))
@@ -179,20 +182,34 @@ expect_dose_basis_conditional <- function(res, outcome_mod) {
   invisible(res)
 }
 
-# Every surface that could report the marginal reading of a basis fit refuses
-# it, under one class, so a caller who reaches for it from any of them is told
-# the same thing. The refusal is registered on a subclass of the result rather
-# than on `ipw` itself, which is what keeps every other result answering as it
-# always did.
-expect_dose_basis_refuses_marginal <- function(res) {
-  cls <- "propensity_ipw_effects_error"
+# One refusal of a reading a result does not declare, asserted by its classes
+# rather than by its words, since the words are causalgenerics'. The specific
+# class names the reading that was asked for and the general one is what a
+# caller catching any such refusal writes against.
+expect_unsupported_marginal <- function(expr) {
+  err <- testthat::expect_error(
+    expr,
+    class = "causalgenerics_unsupported_reading_marginal"
+  )
+  testthat::expect_s3_class(err, "causalgenerics_unsupported_reading")
 
-  testthat::expect_error(causalgenerics::as_marginal(res), class = cls)
-  testthat::expect_error(coef(res, effects = "marginal"), class = cls)
-  testthat::expect_error(vcov(res, effects = "marginal"), class = cls)
-  testthat::expect_error(confint(res, effects = "marginal"), class = cls)
-  testthat::expect_error(tidy(res, effects = "marginal"), class = cls)
-  testthat::expect_error(as.data.frame(res, effects = "marginal"), class = cls)
+  invisible(err)
+}
+
+# Every surface that could report the marginal reading of a basis fit refuses
+# it, so a caller who reaches for it from any of them is told the same thing.
+# The refusal belongs to the result class rather than to this package: the fit
+# declares the readings it supports and the shared accessors answer for them,
+# which is what keeps every other result answering as it always did without a
+# subclass here to carry refusals of its own. `tidy()` is propensity's own
+# method, so it is asserted here too rather than assumed to defer.
+expect_dose_basis_refuses_marginal <- function(res) {
+  expect_unsupported_marginal(causalgenerics::as_marginal(res))
+  expect_unsupported_marginal(coef(res, effects = "marginal"))
+  expect_unsupported_marginal(vcov(res, effects = "marginal"))
+  expect_unsupported_marginal(confint(res, effects = "marginal"))
+  expect_unsupported_marginal(tidy(res, effects = "marginal"))
+  expect_unsupported_marginal(as.data.frame(res, effects = "marginal"))
 
   invisible(res)
 }
@@ -227,11 +244,13 @@ test_that("a polynomial basis reports one row per basis coefficient", {
   expect_identical(as.integer(res$fit@n_params), 3L + 1L + 2L + 3L)
 
   # One exposure column is one slope, so a bare dose is the marginal reading it
-  # always was, on the class it always had.
+  # always was, on the class it always had, declaring both readings as every
+  # other result does.
   bare <- fit_dose_basis(dat, "e")
   bare_res <- ipw(bare$ps_mod, bare$outcome_mod)
   expect_identical(as.integer(bare_res$fit@n_params), 3L + 1L + 2L + 2L)
   expect_identical(bare_res$effects, "marginal")
+  expect_identical(bare_res$readings, c("marginal", "conditional"))
   expect_identical(class(bare_res), "ipw")
 })
 
@@ -378,11 +397,12 @@ test_that("a basis fit is an ipw result reporting its conditional reading", {
   fx <- fit_dose_basis(dat, "poly(e, 2)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
 
-  # The subclass carries the refusals and nothing else. Everything written
-  # against an `ipw` result keeps working, which is the whole reason the
-  # refusals are registered on a subclass rather than on the class itself.
-  expect_identical(class(res), c("ipw_dose_basis", "ipw"))
-  expect_true(inherits(res, "ipw"))
+  # The class is the shared one, with no subclass of this package's on it. What
+  # marks the fit out is the set of readings it declares, which the result class
+  # contracts to hold and its accessors answer from, so everything written
+  # against an `ipw` result keeps working.
+  expect_identical(class(res), "ipw")
+  expect_identical(res$readings, "conditional")
   expect_identical(res$estimand, "ate")
   expect_identical(res$se_method, "mestimation")
   expect_s3_class(res$outcome_mod, "ipw_model")
@@ -510,12 +530,15 @@ test_that("pool_ipw() over basis fits pools the conditional reading", {
   expect_true(all(is.finite(pooled$estimates$estimate)))
   expect_true(all(is.finite(pooled$estimates$std.err)))
 
-  # A pooled result is causalgenerics' class rather than this package's, and it
-  # reads the stored frames of the results rather than their accessors, so the
-  # marginal surface it stores beside the conditional one is still reachable
-  # there. Refusing it belongs where the pooled class is defined; what this
-  # package settles is the reading the pooling starts from.
-  expect_identical(causalgenerics::as_marginal(pooled)$effects, "marginal")
+  # The readings the results declare travel into the pooling, so a set of fits
+  # with one reading between them pools that reading and records why the other
+  # one is absent. Asking the pooled result for it is refused where the pooled
+  # class is defined; what this package settles is the reading the pooling
+  # starts from.
+  expect_error(
+    causalgenerics::as_marginal(pooled),
+    class = "causalgenerics_pool_missing_surface_marginal"
+  )
 })
 
 # ---- the .data requirement ---------------------------------------------------
@@ -623,6 +646,7 @@ test_that("a basis term reading a covariate is admitted as a covariate", {
 
   expect_identical(class(res), "ipw")
   expect_identical(res$effects, "marginal")
+  expect_identical(res$readings, c("marginal", "conditional"))
   expect_identical(nrow(est), 1L)
   expect_identical(est$effect, "slope")
   expect_null(est[["contrast"]])

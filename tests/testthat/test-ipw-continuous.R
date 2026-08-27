@@ -302,8 +302,8 @@ test_that("ipw() continuous reports the conditional reading for a curve", {
   res <- ipw(curve$ps_mod, curve$outcome_mod)
 
   expect_identical(res$effects, "conditional")
-  expect_identical(class(res), c("ipw_dose_basis", "ipw"))
-  expect_true(inherits(res, "ipw"))
+  expect_identical(res$readings, "conditional")
+  expect_identical(class(res), "ipw")
 
   # The reading is the outcome model's own coefficient vector, intercept
   # included, under the covariance the stacked system leaves for it.
@@ -323,17 +323,17 @@ test_that("ipw() continuous refuses the marginal reading of a curve", {
     class = "propensity_ipw_effects_error"
   )
 
-  # The same refusal from the result, so a caller who takes the conditional
-  # result and asks it for the other reading is told what the constructor would
-  # have told them.
+  # The result refuses it too, from the set of readings it declares, so a caller
+  # who takes the conditional result and asks it for the other reading is told
+  # the same thing the constructor told them.
   res <- ipw(curve$ps_mod, curve$outcome_mod)
   expect_error(
     causalgenerics::as_marginal(res),
-    class = "propensity_ipw_effects_error"
+    class = "causalgenerics_unsupported_reading_marginal"
   )
   expect_error(
     coef(res, effects = "marginal"),
-    class = "propensity_ipw_effects_error"
+    class = "causalgenerics_unsupported_reading_marginal"
   )
 })
 
@@ -352,6 +352,7 @@ test_that("ipw() continuous leaves a single exposure term marginal", {
     )
 
     expect_identical(res$effects, "marginal")
+    expect_identical(res$readings, c("marginal", "conditional"))
     expect_identical(class(res), "ipw")
     expect_identical(res$estimates$effect, "slope")
     expect_identical(causalgenerics::as_marginal(res), res)

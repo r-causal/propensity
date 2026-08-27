@@ -888,6 +888,18 @@ test_that("every route defaults to the marginal reading and round-trips", {
     stats::setNames(rep("marginal", length(results)), names(results))
   )
 
+  # A result says which readings it supports as well as which one it presents.
+  # A binary exposure under either standard error method, a categorical one, and
+  # a single-term continuous one all have both, which is what makes the flips
+  # below answers rather than refusals.
+  expect_identical(
+    lapply(results, function(res) res$readings),
+    stats::setNames(
+      rep(list(c("marginal", "conditional")), length(results)),
+      names(results)
+    )
+  )
+
   # Both readings exist on every result, so moving to the other one records the
   # move and reads nothing else, and moving back is the result that went in
   # rather than a rebuild of it.
@@ -1008,12 +1020,13 @@ test_that("a dose basis fit records the conditional reading", {
 
   # An exposure entering the outcome model through several design columns has no
   # coefficient that is an effect, so there is no marginal reading of the fit to
-  # present. The result records the conditional one, and the refusals that go
-  # with it are registered on a subclass, which leaves the class every other
-  # result carries answering exactly as it did.
+  # present. The result records the conditional one and declares it as the only
+  # reading it supports, which is what the refusals come from; the class is the
+  # shared one every other result carries.
   res <- ipw(mods$ps_mod, mods$outcome_mod)
-  expect_identical(class(res), c("ipw_dose_basis", "ipw"))
+  expect_identical(class(res), "ipw")
   expect_identical(res$effects, "conditional")
+  expect_identical(res$readings, "conditional")
 
   # Naming the reading the default records builds the result the default builds,
   # which is what says the argument records a reading rather than selecting a
@@ -1036,20 +1049,31 @@ test_that("a dose basis fit refuses the marginal reading everywhere", {
   mods <- fit_base_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-  # Every surface a reading can be asked for at refuses the one this result does
-  # not have, under one class, so a caller reaching for it from any of them is
-  # told the same thing rather than being handed a table of coefficients under
-  # the name of an effect.
-  cls <- "propensity_ipw_effects_error"
+  # Asking for the reading at construction is this package's refusal, since the
+  # result that would record it is never built.
   expect_error(
     ipw(mods$ps_mod, mods$outcome_mod, effects = "marginal"),
-    class = cls
+    class = "propensity_ipw_effects_error"
   )
+
+  # Every surface a reading can be asked for at refuses the one this result does
+  # not declare, under the classes the result class raises for it, so a caller
+  # reaching for it from any of them is told the same thing rather than being
+  # handed a table of coefficients under the name of an effect.
+  cls <- "causalgenerics_unsupported_reading_marginal"
   expect_error(causalgenerics::as_marginal(res), class = cls)
   expect_error(coef(res, effects = "marginal"), class = cls)
   expect_error(vcov(res, effects = "marginal"), class = cls)
   expect_error(confint(res, effects = "marginal"), class = cls)
   expect_error(as.data.frame(res, effects = "marginal"), class = cls)
+  expect_error(tidy(res, effects = "marginal"), class = cls)
+
+  # The general class is what a caller catching any refusal of a reading writes
+  # against, so it is on the condition beside the specific one.
+  expect_s3_class(
+    expect_error(coef(res, effects = "marginal")),
+    "causalgenerics_unsupported_reading"
+  )
 
   # The reading the result records is still asked for the ordinary way, and
   # asking for it says what recording it said.

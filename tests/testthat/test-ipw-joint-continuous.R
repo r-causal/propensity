@@ -436,7 +436,8 @@ test_that("a polynomial dose model reports one row per dose coefficient", {
   # coefficient vector, intercept included, under the block the stacked system
   # leaves for it.
   expect_identical(res$effects, "conditional")
-  expect_identical(class(res), c("ipw_dose_basis", "ipw"))
+  expect_identical(res$readings, "conditional")
+  expect_identical(class(res), "ipw")
   expect_identical(coef(res), coef(fx$outcome_mod))
   expect_identical(names(coef(res)), c("(Intercept)", "e", "I(e^2)"))
   expect_identical(vcov(res), vcov(res$outcome_mod))
@@ -452,7 +453,7 @@ test_that("a polynomial dose model reports one row per dose coefficient", {
   )
   expect_error(
     causalgenerics::as_marginal(res),
-    class = "propensity_ipw_effects_error"
+    class = "causalgenerics_unsupported_reading_marginal"
   )
 
   # One outcome coefficient more than the single-term fit, and nothing else
