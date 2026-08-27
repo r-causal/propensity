@@ -169,7 +169,11 @@ fit_base_categorical_models <- function(dat, estimand = "ate") {
 # Continuous exposure: an lm propensity score model of the exposure, stabilized
 # continuous ATE weights, and a weighted marginal structural model with the one
 # exposure term the continuous path requires.
-fit_base_continuous_models <- function(dat, outcome_family = "gaussian") {
+fit_base_continuous_models <- function(
+  dat,
+  outcome_family = "gaussian",
+  msm_rhs = "A"
+) {
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -181,7 +185,7 @@ fit_base_continuous_models <- function(dat, outcome_family = "gaussian") {
     )
   )
   outcome_var <- if (outcome_family == "binomial") "yb" else "yc"
-  fmla <- stats::reformulate("A", response = outcome_var)
+  fmla <- stats::reformulate(msm_rhs, response = outcome_var)
   outcome_mod <- if (outcome_family == "binomial") {
     glm(
       fmla,
@@ -995,6 +999,69 @@ test_that("a continuous fit records the reading it was built in", {
   expect_s3_class(res$outcome_mod, "ipw_model")
   expect_identical(coef(res), coef(mods$outcome_mod))
   expect_identical(names(coef(res)), c("(Intercept)", "A"))
+})
+
+test_that("a dose basis fit records the conditional reading", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_continuous()
+  mods <- fit_base_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+
+  # An exposure entering the outcome model through several design columns has no
+  # coefficient that is an effect, so there is no marginal reading of the fit to
+  # present. The result records the conditional one, and the refusals that go
+  # with it are registered on a subclass, which leaves the class every other
+  # result carries answering exactly as it did.
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  expect_identical(class(res), c("ipw_dose_basis", "ipw"))
+  expect_identical(res$effects, "conditional")
+
+  # Naming the reading the default records builds the result the default builds,
+  # which is what says the argument records a reading rather than selecting a
+  # computation.
+  named <- ipw(mods$ps_mod, mods$outcome_mod, effects = "conditional")
+  expect_ipw_built_as(named, res)
+
+  # The accessors answer from the outcome model with nothing named at the call
+  # site, under the block the stacked system left for it.
+  expect_s3_class(res$outcome_mod, "ipw_model")
+  expect_identical(coef(res), coef(mods$outcome_mod))
+  expect_identical(names(coef(res)), c("(Intercept)", "A", "I(A^2)"))
+  expect_identical(vcov(res), vcov(res$outcome_mod))
+  expect_identical(rownames(confint(res)), names(coef(mods$outcome_mod)))
+})
+
+test_that("a dose basis fit refuses the marginal reading everywhere", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_continuous()
+  mods <- fit_base_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  # Every surface a reading can be asked for at refuses the one this result does
+  # not have, under one class, so a caller reaching for it from any of them is
+  # told the same thing rather than being handed a table of coefficients under
+  # the name of an effect.
+  cls <- "propensity_ipw_effects_error"
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, effects = "marginal"),
+    class = cls
+  )
+  expect_error(causalgenerics::as_marginal(res), class = cls)
+  expect_error(coef(res, effects = "marginal"), class = cls)
+  expect_error(vcov(res, effects = "marginal"), class = cls)
+  expect_error(confint(res, effects = "marginal"), class = cls)
+  expect_error(as.data.frame(res, effects = "marginal"), class = cls)
+
+  # The reading the result records is still asked for the ordinary way, and
+  # asking for it says what recording it said.
+  expect_identical(causalgenerics::as_conditional(res), res)
+  expect_identical(coef(res, effects = "conditional"), coef(res))
+  expect_identical(vcov(res, effects = "conditional"), vcov(res))
+
+  # The accessors that describe the fit rather than a reading of it take no
+  # reading at all, so they are untouched by any of this.
+  expect_identical(nobs(res), nobs(mods$outcome_mod))
+  expect_identical(weights(res), mods$wts)
+  expect_identical(estimand(res), "ate")
 })
 
 test_that("an invalid effects value errors", {

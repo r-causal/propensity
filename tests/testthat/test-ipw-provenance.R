@@ -198,6 +198,27 @@ ipw_accessor_methods <- c(
 # `ipw_generic_namespaces`.
 ipw_tidier_methods <- c(tidy = "ipw", glance = "ipw", augment = "ipw")
 
+# Methods propensity registers on the subclass a dose-basis result carries. An
+# exposure entering the outcome model through several design columns leaves the
+# result with one reading rather than two, and the refusal of the other one has
+# to be a method: `as_marginal.ipw()` upstream sets the field and reads nothing
+# else, and the accessors upstream answer whichever reading they are asked for.
+# Registering the refusals against `ipw` itself would refuse them for every
+# result, so they go on a subclass, which every method not listed here falls
+# through to the shared class for.
+#
+# `as_conditional` is not among them. The reading such a result records is the
+# one it presents, so the upstream method already answers, and a method here
+# would be a second definition of the same answer.
+ipw_dose_basis_methods <- c(
+  as_marginal = "ipw_dose_basis",
+  coef = "ipw_dose_basis",
+  vcov = "ipw_dose_basis",
+  confint = "ipw_dose_basis",
+  tidy = "ipw_dose_basis",
+  as.data.frame = "ipw_dose_basis"
+)
+
 # `ipw()` methods that must survive. causalgenerics has no `ipw.default` of its
 # own, so losing propensity's would replace a message that names the supported
 # propensity score model classes with `UseMethod()`'s generic complaint.
@@ -403,6 +424,34 @@ test_that("propensity supplies the broom tidiers for the ipw result class", {
     owners,
     stats::setNames(rep("propensity", length(owners)), names(owners))
   )
+})
+
+test_that("propensity supplies the dose basis refusals on a subclass", {
+  owners <- ipw_method_owners(ipw_dose_basis_methods)
+
+  expect_identical(
+    owners,
+    stats::setNames(rep("propensity", length(owners)), names(owners))
+  )
+
+  # The subclass exists to carry the refusals, so a method on it that refuses
+  # nothing is a copy of an upstream answer that will drift from it. Every
+  # generic not listed above resolves at `ipw`, which is what keeps a dose-basis
+  # result printable, poolable, and readable by everything written against the
+  # shared class.
+  expect_identical(
+    ipw_method_owner("as_conditional", "ipw_dose_basis"),
+    NA_character_
+  )
+  expect_identical(ipw_method_owner("print", "ipw_dose_basis"), NA_character_)
+  expect_identical(ipw_method_owner("nobs", "ipw_dose_basis"), NA_character_)
+  expect_identical(
+    ipw_method_owner("df.residual", "ipw_dose_basis"),
+    NA_character_
+  )
+  expect_identical(ipw_method_owner("weights", "ipw_dose_basis"), NA_character_)
+  expect_identical(ipw_method_owner("glance", "ipw_dose_basis"), NA_character_)
+  expect_identical(ipw_method_owner("augment", "ipw_dose_basis"), NA_character_)
 })
 
 test_that("ipw() rejects an unsupported model with propensity's error class", {

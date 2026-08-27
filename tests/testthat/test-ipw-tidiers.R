@@ -150,7 +150,11 @@ fit_tidy_categorical_models <- function(dat) {
 # Continuous exposure: an lm propensity score model of the exposure, stabilized
 # continuous ATE weights, and a weighted marginal structural model with the one
 # exposure term the continuous path requires.
-fit_tidy_continuous_models <- function(dat, outcome_family = "gaussian") {
+fit_tidy_continuous_models <- function(
+  dat,
+  outcome_family = "gaussian",
+  msm_rhs = "A"
+) {
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -162,7 +166,7 @@ fit_tidy_continuous_models <- function(dat, outcome_family = "gaussian") {
     )
   )
   outcome_var <- if (outcome_family == "binomial") "yb" else "yc"
-  fmla <- stats::reformulate("A", response = outcome_var)
+  fmla <- stats::reformulate(msm_rhs, response = outcome_var)
   outcome_mod <- if (outcome_family == "binomial") {
     glm(
       fmla,
@@ -2052,6 +2056,39 @@ test_that("tidy() follows the reading the result records", {
   # Naming one also leaves the result where it was, so the next call with nothing
   # named answers in the stored reading.
   expect_identical(res$effects, "marginal")
+})
+
+test_that("tidy() follows a dose basis result into its only reading", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_continuous()
+  mods <- fit_tidy_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  # An exposure entering the outcome model through several design columns has no
+  # marginal reading to tidy, so the default is the conditional table and the
+  # tidier reaches it with nothing named at the call site.
+  tidied <- tidy(res)
+  expect_conditional_tidy_contract(tidied, res)
+  expect_identical(tidied$term, names(coef(mods$outcome_mod)))
+  expect_identical(tidied, tidy(res, effects = "conditional"))
+
+  # The standard errors are the diagonal of the block the stacked system leaves
+  # for the outcome model, which is the same block the accessors report.
+  expect_identical(
+    tidied$std.error,
+    unname(sqrt(diag(vcov(res))))
+  )
+
+  # Naming the reading the result does not have is refused rather than answered
+  # from the frame the stacked system happens to store.
+  expect_error(
+    tidy(res, effects = "marginal"),
+    class = "propensity_ipw_effects_error"
+  )
+  expect_error(
+    tidy(res, conf.int = TRUE, effects = "marginal"),
+    class = "propensity_ipw_effects_error"
+  )
 })
 
 test_that("tidy() rebuilds the conditional interval at the level asked for", {
