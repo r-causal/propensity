@@ -118,14 +118,14 @@ row per effect measure per contrast of levels; for a continuous exposure
 there is one row per reported coefficient. The rows arrive in the order the
 result stores them and nothing is dropped.
 
-Those columns are the ones the result's own coercion surface reports, so the
-marginal reading is \code{\link[causalgenerics:new_ipw]{as.data.frame()}} read as a
+Those columns are the ones the result's own coercion surface reports, so
+either reading is \code{\link[causalgenerics:new_ipw]{as.data.frame()}} read as a
 tibble rather than a second assembly of the same table. The values are the
 ones the result already holds, nothing being re-estimated: the confidence
 interval is the only thing rebuilt, and only when the requested \code{conf.level}
 differs from the level the result was fit at. The one thing the frame carries
-that the tibble does not is the covariance of the effects it attaches as an
-attribute, a tidied table being its columns.
+that the tibble does not is the covariance it attaches as an attribute, a
+tidied table being its columns.
 
 \code{conf.int}, \code{conf.level}, and \code{exponentiate} are the arguments this method
 shares with that surface, so the surface validates them, in both readings and

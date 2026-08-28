@@ -8,14 +8,14 @@
 #' there is one row per reported coefficient. The rows arrive in the order the
 #' result stores them and nothing is dropped.
 #'
-#' Those columns are the ones the result's own coercion surface reports, so the
-#' marginal reading is [`as.data.frame()`][causalgenerics::new_ipw()] read as a
+#' Those columns are the ones the result's own coercion surface reports, so
+#' either reading is [`as.data.frame()`][causalgenerics::new_ipw()] read as a
 #' tibble rather than a second assembly of the same table. The values are the
 #' ones the result already holds, nothing being re-estimated: the confidence
 #' interval is the only thing rebuilt, and only when the requested `conf.level`
 #' differs from the level the result was fit at. The one thing the frame carries
-#' that the tibble does not is the covariance of the effects it attaches as an
-#' attribute, a tidied table being its columns.
+#' that the tibble does not is the covariance it attaches as an attribute, a
+#' tidied table being its columns.
 #'
 #' `conf.int`, `conf.level`, and `exponentiate` are the arguments this method
 #' shares with that surface, so the surface validates them, in both readings and
@@ -175,13 +175,15 @@ tidy.ipw <- function(
     effects <- NULL
   }
 
-  # The accessors own the `effects` argument, so the estimates of the reading
-  # this call reports come from one before anything here branches on a reading.
-  # That call resolves a `NULL` against the reading the result records and
-  # refuses a value naming neither, on every route a result can have been built
-  # by; validating the value here as well would leave two validators to keep in
-  # step.
-  estimate <- stats::coef(x, effects = effects)
+  # The accessors own the `effects` argument, so it is put through one before
+  # anything here branches on a reading. That call resolves a `NULL` against the
+  # reading the result records and refuses a value naming neither, on every
+  # route a result can have been built by; validating the value here as well
+  # would leave two validators to keep in step. Nothing is read off it: the
+  # refusal is the whole of what it is for, and it has to come before the
+  # comparison below, which a value that is not one string would fail on its
+  # length rather than on being no reading.
+  stats::coef(x, effects = effects)
 
   # The value has been through that check by the time this reads it, so this
   # settles which reading was asked for rather than checking it a second time.
@@ -199,10 +201,9 @@ tidy.ipw <- function(
   # The result's own coercion surface, in the reading this call reports rather
   # than the one the result records: the three arguments the two readings share
   # are validated there, and one argument of one method cannot be well formed in
-  # one reading of a result and refused in the other.
-  #
-  # The conditional reading answers from the accessors and so discards the
-  # frame, which costs a table of a few rows: nothing is refit to build it.
+  # one reading of a result and refused in the other. Both readings are tabled
+  # there in the columns a tidier uses, so both are read off this one call and
+  # neither is assembled a second time here.
   frame <- as.data.frame(
     x,
     conf.int = conf.int,
@@ -211,19 +212,8 @@ tidy.ipw <- function(
     effects = reading
   )
 
-  if (reading == "conditional") {
-    return(tidy_ipw_conditional(
-      x,
-      estimate = estimate,
-      conf.int = conf.int,
-      conf.level = conf.level,
-      exponentiate = exponentiate
-    ))
-  }
-
-  # The covariance of the effects the frame attaches is the one thing that does
-  # not travel: it is an attribute rather than a column, and a tidied table is
-  # its columns.
+  # The covariance the frame attaches is the one thing that does not travel: it
+  # is an attribute rather than a column, and a tidied table is its columns.
   out <- tibble::as_tibble(frame)
   attr(out, "ipw_vcov") <- NULL
 
@@ -234,64 +224,6 @@ tidy.ipw <- function(
 # none, and marginal is the reading every method produced then.
 ipw_stored_effects <- function(x) {
   if (is.null(x$effects)) "marginal" else x$effects
-}
-
-# The conditional reading: the outcome model's coefficient surface, in the
-# columns the marginal reading uses so that the two tables stack. The estimates
-# arrive from the accessor that resolved the reading, and the rest of the row is
-# read through the accessors beside it, which is what keeps this table and the
-# printed reading of the same result the same numbers.
-tidy_ipw_conditional <- function(
-  x,
-  estimate,
-  conf.int,
-  conf.level,
-  exponentiate
-) {
-  # A row is its estimate and its inference together, so the corrected
-  # covariance is read whether or not bounds were asked for. A result that
-  # stacked no estimating equations records none, and the error the accessor
-  # raises for that is the answer here rather than the covariance the outcome
-  # model computed for itself, which treats the estimated weights as fixed.
-  covariance <- stats::vcov(x, effects = "conditional")
-
-  # A column of a tibble is addressed by its position, so the names the
-  # accessors label their vectors with belong to `term` and to nothing else.
-  std_error <- unname(sqrt(diag(covariance)))
-  statistic <- unname(estimate) / std_error
-
-  out <- list(
-    term = names(estimate),
-    estimate = unname(estimate),
-    std.error = std_error,
-    statistic = statistic,
-    # The form causalgenerics prints this reading with, which keeps its
-    # significant digits in the far tail where `2 * (1 - pnorm(abs(z)))` loses
-    # them.
-    p.value = 2 * stats::pnorm(-abs(statistic))
-  )
-
-  if (conf.int) {
-    # The bounds the result stores describe the effects of the other reading, so
-    # there are none to prefer here and the accessor builds them at whatever
-    # level the call asked for.
-    limits <- stats::confint(x, level = conf.level, effects = "conditional")
-    out$conf.low <- unname(limits[, 1L])
-    out$conf.high <- unname(limits[, 2L])
-  }
-
-  if (exponentiate) {
-    # Broom's convention, which every method taking the argument follows: the
-    # estimate and, when they were asked for, the bounds move to the natural
-    # scale, and the columns describing the link scale estimate stay there.
-    out$estimate <- exp(out$estimate)
-    if (conf.int) {
-      out$conf.low <- exp(out$conf.low)
-      out$conf.high <- exp(out$conf.high)
-    }
-  }
-
-  tibble::as_tibble(out)
 }
 
 # The conditional reading has no rows labeled as ratios to pick out, so the link

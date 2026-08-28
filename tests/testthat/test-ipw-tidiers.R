@@ -1984,6 +1984,44 @@ test_that("tidy() reports the outcome model's coefficients conditionally", {
   )
 })
 
+test_that("the conditional tidy table is the result's own conditional table", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The result's own coercion surface reports the conditional reading, so the
+  # tidier presents that table rather than assembling a second one beside it.
+  # A tidied table is its columns, so the covariance the frame carries as an
+  # attribute is the one thing that does not travel.
+  expect_identical(family(mods$outcome_mod)$link, "logit")
+
+  as_tidied <- function(...) {
+    out <- tibble::as_tibble(as.data.frame(res, effects = "conditional", ...))
+    attr(out, "ipw_vcov") <- NULL
+    out
+  }
+
+  expect_identical(tidy(res, effects = "conditional"), as_tidied())
+  expect_identical(
+    tidy(res, conf.int = TRUE, effects = "conditional"),
+    as_tidied(conf.int = TRUE)
+  )
+  expect_identical(
+    tidy(res, exponentiate = TRUE, effects = "conditional"),
+    as_tidied(exponentiate = TRUE)
+  )
+  expect_identical(
+    tidy(res, conf.int = TRUE, exponentiate = TRUE, effects = "conditional"),
+    as_tidied(conf.int = TRUE, exponentiate = TRUE)
+  )
+  expect_null(attr(
+    tidy(res, conf.int = TRUE, effects = "conditional"),
+    "ipw_vcov",
+    exact = TRUE
+  ))
+})
+
 test_that("tidy() reports the corrected standard errors conditionally", {
   skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
