@@ -983,7 +983,11 @@ ipw.glm <- function(
   # whose exposure enters the outcome model through several columns records the
   # conditional reading either way, and what changes is whether that is a
   # default being explained or a reading the caller asked for.
-  effects_named <- !missing(effects)
+  #
+  # A whole set of readings is one of them no more than a missing argument is.
+  # It is what a wrapper carrying this argument's default forwards, and a caller
+  # of that wrapper who named nothing has named nothing here either.
+  effects_named <- !missing(effects) && length(effects) == 1L
   effects <- rlang::arg_match(effects)
   assert_class(wt_mod, "glm")
   assert_class(outcome_mod, c("glm", "lm"))

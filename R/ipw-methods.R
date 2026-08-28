@@ -141,9 +141,10 @@ ipw.lm <- function(
   se_method <- rlang::arg_match(se_method)
 
   # Read before `arg_match()` resolves the default, for the reason `ipw.glm()`
-  # reads it: the reading a dose-basis fit records is the same either way, and
-  # what the caller named settles whether it is announced.
-  effects_named <- !missing(effects)
+  # reads it, and reading a forwarded set of readings as naming nothing for the
+  # reason it does: the reading a dose-basis fit records is the same either way,
+  # and what the caller named settles whether it is announced.
+  effects_named <- !missing(effects) && length(effects) == 1L
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
 

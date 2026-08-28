@@ -426,6 +426,133 @@ test_that("a basis fit is an ipw result reporting its conditional reading", {
   expect_identical(substr(rows, 1L, nchar(labels)), labels)
 })
 
+# ---- a forwarded reading default ---------------------------------------------
+
+# The shape every wrapper of `ipw()` writes: the wrapper carries the same
+# `effects` default, and forwarding it hands `ipw()` the whole set of readings
+# rather than one of them. A caller of the wrapper who named no reading is a
+# caller of `ipw()` who named no reading, so the set has to mean what the
+# missing argument means.
+wrap_ipw_effects <- function(..., effects = c("marginal", "conditional")) {
+  ipw(..., effects = effects)
+}
+
+# The announcement of a fit built through the wrapper against the one built
+# directly, which is the comparison the claim is about: the two are the same
+# call, so they say the same thing.
+dose_basis_messages <- function(expr) {
+  withr::with_options(
+    list(propensity.quiet = FALSE),
+    testthat::capture_messages(expr)
+  )
+}
+
+test_that("a wrapper forwarding the reading default reports the default", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # A forwarded default is the caller naming nothing, so the fit records the
+  # reading it has and says so, rather than being refused for asking for the
+  # reading the default resolves to first.
+  said <- dose_basis_messages(
+    wrap_ipw_effects(fx$ps_mod, fx$outcome_mod, .data = dat)
+  )
+  direct <- dose_basis_messages(ipw(fx$ps_mod, fx$outcome_mod, .data = dat))
+
+  expect_gt(length(direct), 0L)
+  expect_identical(said, direct)
+
+  # Built again for the result rather than out of the capture above, which
+  # returns what was said rather than what was fitted. Nothing is announced
+  # here: the suite runs quiet, which is the state the announcement is read
+  # against in the two captures.
+  res <- wrap_ipw_effects(fx$ps_mod, fx$outcome_mod, .data = dat)
+  plain <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
+  expect_dose_basis_conditional(res, fx$outcome_mod)
+
+  # The same result, not merely the same reading. `fit` is excluded for the
+  # reason the direct comparison excludes it: two solves of one system agree in
+  # every number they report and are identical in none of them.
+  comparable <- setdiff(names(plain), "fit")
+  expect_identical(res[comparable], plain[comparable])
+})
+
+test_that("a forwarded reading default reaches the gaussian glm route", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # The continuous route is reached from two methods, and both read the
+  # argument the same way. A gaussian glm propensity model and the lm of the
+  # same formula share their fitted values, so the weights the outcome model
+  # was fit with are the weights this fit implies.
+  ps_glm <- glm(e ~ x1 + x2, data = dat, family = gaussian())
+  said <- dose_basis_messages(
+    wrap_ipw_effects(ps_glm, fx$outcome_mod, .data = dat)
+  )
+  direct <- dose_basis_messages(ipw(ps_glm, fx$outcome_mod, .data = dat))
+
+  expect_gt(length(direct), 0L)
+  expect_identical(said, direct)
+
+  res <- wrap_ipw_effects(ps_glm, fx$outcome_mod, .data = dat)
+  expect_identical(res$effects, "conditional")
+  expect_identical(res$readings, "conditional")
+  expect_identical(coef(res), coef(fx$outcome_mod))
+})
+
+test_that("a forwarded reading is still the caller naming one", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # One reading forwarded is one reading named, whichever of them it is, so the
+  # refusal and the silence both survive the wrapper.
+  expect_error(
+    wrap_ipw_effects(
+      fx$ps_mod,
+      fx$outcome_mod,
+      .data = dat,
+      effects = "marginal"
+    ),
+    class = "propensity_ipw_effects_error"
+  )
+  named <- withr::with_options(
+    list(propensity.quiet = FALSE),
+    expect_no_message(
+      wrap_ipw_effects(
+        fx$ps_mod,
+        fx$outcome_mod,
+        .data = dat,
+        effects = "conditional"
+      )
+    )
+  )
+  expect_identical(named$effects, "conditional")
+})
+
+test_that("a forwarded reading default leaves a single-column fit marginal", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+
+  # One exposure column is one slope, so there is a row that answers the
+  # question the marginal reading is asked and the default resolves to it. The
+  # set of readings a wrapper forwards resolves the way the default resolves,
+  # with nothing announced.
+  fx <- fit_dose_basis(dat, "e")
+  res <- withr::with_options(
+    list(propensity.quiet = FALSE),
+    expect_no_message(
+      wrap_ipw_effects(fx$ps_mod, fx$outcome_mod, .data = dat)
+    )
+  )
+
+  expect_identical(res$effects, "marginal")
+  expect_identical(res$readings, c("marginal", "conditional"))
+  expect_identical(names(coef(res)), "slope")
+})
+
 # ---- the closed form ---------------------------------------------------------
 
 test_that("the conditional reading is the outcome block of the stacked system", {

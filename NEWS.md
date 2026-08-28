@@ -14,7 +14,11 @@
   not compute; the marginaleffects package computes it from the conditional
   result through `avg_slopes()` or `avg_comparisons()`
   (<https://marginaleffects.com/chapters/interactions.html>). A fit whose
-  exposure enters through one column is unchanged.
+  exposure enters through one column is unchanged. A caller who names no
+  reading includes a wrapper that forwards the whole `effects` default, which
+  is a set of readings rather than one of them, so such a call is announced and
+  given the conditional reading rather than refused for the reading the default
+  resolves to first.
 
 * A binary or categorical `ipw()` result now reports the counterfactual mean at
   each exposure level, one row per level under the effect label `"mean"`, ahead
