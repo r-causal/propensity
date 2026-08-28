@@ -57,8 +57,9 @@ or categorical exposure:
 \item \code{density}, the specification of the conditional density family, as built
 by \code{\link[=dens_normal]{dens_normal()}} and its relatives.
 \item \code{numerator}, what stabilized the weights: \code{"marginal"} for the marginal
-density of the exposure, \code{"score"} for a \code{stabilization_score} the caller
-supplied, and \code{"none"} for weights that were not stabilized.
+density of the exposure, \code{"integrated"} for the conditional density
+marginalized over the units, \code{"score"} for a \code{stabilization_score} the
+caller supplied, and \code{"none"} for weights that were not stabilized.
 \item \code{sigma}, where the residual spread of the conditional density came from:
 \code{"pooled"} for the pooled residual standard deviation, and \code{"supplied"}
 for a \code{.sigma} the caller gave.

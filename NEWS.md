@@ -31,6 +31,41 @@
   the numerator that stabilized them and where the residual spread came from;
   read it back with `density_meta()`.
 
+* `wt_ate()` and `wt_cens()` gain a `numerator` argument, which chooses how the
+  marginal density that stabilizes a continuous exposure's weights is arrived
+  at. `"marginal"`, the default and the behavior of every earlier version,
+  reads the family `.density` names at the population mean and standard
+  deviation of the exposure; those two moments are parameters of the weights,
+  and `ipw()` estimates them alongside the rest of its parameter vector.
+  `"integrated"` marginalizes the conditional density numerically instead,
+  averaging it over the units at each of 50 points spanning the exposure and
+  interpolating that average back to each observed exposure, which is what
+  WeightIt has done since version 2.0.0 and is what makes the two packages'
+  continuous weights agree. It estimates no parameters of its own.
+
+  The default did not change, and it was studied before it was left alone: a
+  simulation study run for this package compared the two over linear, skewed,
+  heteroskedastic, heavy-tailed, and bimodal designs. The integrated numerator
+  never improved bias, root mean squared error, or weighted covariate balance
+  by more than Monte Carlo noise, including in the scenarios drawn to favor
+  marginalizing, and in the heavy-tailed cells it was worse: it inflated the
+  root mean squared error, and in some replicates the interpolated density came
+  back negative. `"integrated"` is offered for agreement with WeightIt, and for
+  a conditional density whose marginal has no closed form in the same family.
+  Because it is read off an interpolation rather than a formula, it can dip
+  below zero where the density on the grid comes close to it; the interpolated
+  values are held to the same output check any density is held to, so that
+  becomes an error of class `propensity_density_error` rather than a negative
+  weight. An integrated numerator needs a conditional density to marginalize,
+  so it is refused with an error of class `propensity_numerator_error` for a
+  binary or categorical exposure, with `stabilize = FALSE`, with a
+  `stabilization_score`, and with any `.sigma`. A unit whose exposure or fitted
+  conditional mean is missing is not read by the average and has no weight, as
+  it has none under any other numerator, and a model with nothing to condition
+  on gives weights of exactly one rather than the grid's approximation to them.
+  The weights record the numerator they were built from; read it back with
+  `density_meta()`.
+
 * A continuous-exposure `ipw()` fit whose outcome model reads the exposure
   through more than one design column, such as `y ~ A + I(A^2)` or a basis like
   `poly(A, 2)` or `splines::ns(A, 3)`, now records the conditional reading and

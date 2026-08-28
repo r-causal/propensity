@@ -29,6 +29,7 @@ wt_ate(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 )
@@ -44,6 +45,7 @@ wt_ate(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
@@ -186,6 +188,7 @@ wt_cens(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 )
@@ -201,6 +204,7 @@ wt_cens(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
@@ -317,6 +321,25 @@ ignored outside a continuous one.
 the weights were built from is recorded on the result and read back with
 \code{\link[=density_meta]{density_meta()}}.}
 
+\item{numerator}{How the marginal density that stabilizes a continuous
+exposure's weights is obtained, described under \strong{Stabilization} in
+Details. Either \code{"marginal"}, the default, which reads the family
+\code{.density} names at the population mean and standard deviation of
+\code{.exposure}, or \code{"integrated"}, which averages the conditional density
+over the units on a grid spanning \code{.exposure} and interpolates the result
+back to each observed exposure.
+
+\code{"integrated"} describes a continuous exposure alone, and needs a
+conditional density to marginalize: it is refused with an error of class
+\code{propensity_numerator_error} for a binary or categorical exposure, with
+\code{stabilize = FALSE}, with a \code{stabilization_score}, and with any \code{.sigma}.
+The default is accepted for every exposure type and ignored outside a
+continuous one.
+
+\code{numerator} sits after \code{...} and so can only be supplied by name. The
+numerator the weights were built from is recorded on the result and read
+back with \code{\link[=density_meta]{density_meta()}}.}
+
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
@@ -421,11 +444,45 @@ the population mean and standard deviation of \code{.exposure}. Stabilization is
 supported for ATE and censoring weights (\code{wt_ate()} and \code{wt_cens()}) and is
 strongly recommended for continuous exposures.
 
+For a continuous exposure, \code{numerator} chooses how that marginal density is
+arrived at. \code{"marginal"}, the default, reads the family \code{.density} names at
+the population mean and standard deviation of \code{.exposure}. Those two moments
+are parameters of the weights, and \code{\link[=ipw]{ipw()}} estimates them alongside the rest
+of its parameter vector, so the standard errors account for the numerator
+having been estimated. \code{"integrated"} marginalizes the conditional density
+numerically instead: it averages \eqn{f_{A|X}(t \mid X_i)} over the units at
+each of 50 points spanning \code{.exposure}, then interpolates that average back
+to each observed exposure with a cubic spline. It estimates no parameters of
+its own, and it is what WeightIt has done since version 2.0.0.
+
+The two agree whenever the family is normal and the fitted conditional means
+are themselves normal, since an average of normal densities centered on
+normally distributed means is again a normal density. They separate as
+those means grow skewed or bimodal, or as the family's tails grow heavier
+than the normal's.
+
+The marginal numerator is the default because it is the published convention
+(Robins et al., 2000; Naimi et al., 2014) and because it held up: in a
+simulation study run for this package, over linear, skewed, heteroskedastic,
+heavy-tailed, and bimodal designs, marginalizing never improved bias, root
+mean squared error, or weighted covariate balance by more than Monte Carlo
+noise, including in the scenarios drawn to favor it, and in the heavy-tailed
+cells it was worse: it inflated the root mean squared error, and in some
+replicates the interpolated density came back negative. The integrated
+numerator is here for
+agreement with WeightIt, and for a conditional density whose marginal has no
+closed form in the same family. Being read off an interpolation rather than
+a formula, it can dip below zero where the density on the grid comes close
+to it, which is refused with an error of class \code{propensity_density_error}
+rather than turned into a negative weight.
+
 The default numerator conditions on nothing, and \code{stabilization_score}
-replaces it with one of your own. The case that pays is a numerator
-conditioning on a variable the model the estimates are read from also reads,
-such as an effect modifier. Fit that numerator and evaluate it at the
-exposure each unit actually took, which is the shape the default already has:
+replaces it with one of your own, which leaves \code{numerator} nothing to
+choose: the two cannot be supplied together. The case that pays is a
+numerator conditioning on a variable the model the estimates are read from
+also reads, such as an effect modifier. Fit that numerator and evaluate it at
+the exposure each unit actually took, which is the shape the default already
+has:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{num <- glm(A ~ V, data = dat, family = binomial())
 p <- fitted(num)
@@ -542,7 +599,10 @@ of a unit whose exposure the model fits poorly, and \code{"kernel"} assumes no
 shape at all, at the cost of a density that is not a smooth function of the
 model's parameters. A \code{stabilization_score} replaces the numerator outright
 and \code{stabilize = FALSE} leaves it out, so under either the family describes
-the denominator alone.
+the denominator alone. Under \code{numerator = "integrated"} it describes both
+again, the numerator there being the same conditional density averaged over
+the units rather than the same family read at the exposure's own moments;
+see \strong{Stabilization}.
 
 A unit whose exposure or fitted conditional mean is missing has no
 standardized residual, and so no weight: the density is asked only about the
@@ -658,6 +718,14 @@ Medical Research}, 29(12), 3721--3756. (Entropy weights)
 Hirano, K., & Imbens, G. W. (2004). The propensity score with continuous
 treatments. In \emph{Applied Bayesian Modeling and Causal Inference from
 Incomplete-Data Perspectives} (pp. 73--84).
+
+Robins, J. M., Hernán, M. A., & Brumback, B. (2000). Marginal structural
+models and causal inference in epidemiology. \emph{Epidemiology}, 11(5),
+550--560.
+
+Naimi, A. I., Moodie, E. E. M., Auger, N., & Kaufman, J. S. (2014).
+Constructing inverse probability weights for continuous exposures: a
+comparison of methods. \emph{Epidemiology}, 25(2), 292--299.
 
 Austin, P. C., & Stuart, E. A. (2015). Moving towards best practice when
 using inverse probability of treatment weighting (IPTW). \emph{Statistics in

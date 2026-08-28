@@ -61,11 +61,45 @@
 #' supported for ATE and censoring weights (`wt_ate()` and `wt_cens()`) and is
 #' strongly recommended for continuous exposures.
 #'
+#' For a continuous exposure, `numerator` chooses how that marginal density is
+#' arrived at. `"marginal"`, the default, reads the family `.density` names at
+#' the population mean and standard deviation of `.exposure`. Those two moments
+#' are parameters of the weights, and [ipw()] estimates them alongside the rest
+#' of its parameter vector, so the standard errors account for the numerator
+#' having been estimated. `"integrated"` marginalizes the conditional density
+#' numerically instead: it averages \eqn{f_{A|X}(t \mid X_i)} over the units at
+#' each of 50 points spanning `.exposure`, then interpolates that average back
+#' to each observed exposure with a cubic spline. It estimates no parameters of
+#' its own, and it is what WeightIt has done since version 2.0.0.
+#'
+#' The two agree whenever the family is normal and the fitted conditional means
+#' are themselves normal, since an average of normal densities centered on
+#' normally distributed means is again a normal density. They separate as
+#' those means grow skewed or bimodal, or as the family's tails grow heavier
+#' than the normal's.
+#'
+#' The marginal numerator is the default because it is the published convention
+#' (Robins et al., 2000; Naimi et al., 2014) and because it held up: in a
+#' simulation study run for this package, over linear, skewed, heteroskedastic,
+#' heavy-tailed, and bimodal designs, marginalizing never improved bias, root
+#' mean squared error, or weighted covariate balance by more than Monte Carlo
+#' noise, including in the scenarios drawn to favor it, and in the heavy-tailed
+#' cells it was worse: it inflated the root mean squared error, and in some
+#' replicates the interpolated density came back negative. The integrated
+#' numerator is here for
+#' agreement with WeightIt, and for a conditional density whose marginal has no
+#' closed form in the same family. Being read off an interpolation rather than
+#' a formula, it can dip below zero where the density on the grid comes close
+#' to it, which is refused with an error of class `propensity_density_error`
+#' rather than turned into a negative weight.
+#'
 #' The default numerator conditions on nothing, and `stabilization_score`
-#' replaces it with one of your own. The case that pays is a numerator
-#' conditioning on a variable the model the estimates are read from also reads,
-#' such as an effect modifier. Fit that numerator and evaluate it at the
-#' exposure each unit actually took, which is the shape the default already has:
+#' replaces it with one of your own, which leaves `numerator` nothing to
+#' choose: the two cannot be supplied together. The case that pays is a
+#' numerator conditioning on a variable the model the estimates are read from
+#' also reads, such as an effect modifier. Fit that numerator and evaluate it at
+#' the exposure each unit actually took, which is the shape the default already
+#' has:
 #'
 #' ```
 #' num <- glm(A ~ V, data = dat, family = binomial())
@@ -178,7 +212,10 @@
 #' shape at all, at the cost of a density that is not a smooth function of the
 #' model's parameters. A `stabilization_score` replaces the numerator outright
 #' and `stabilize = FALSE` leaves it out, so under either the family describes
-#' the denominator alone.
+#' the denominator alone. Under `numerator = "integrated"` it describes both
+#' again, the numerator there being the same conditional density averaged over
+#' the units rather than the same family read at the exposure's own moments;
+#' see **Stabilization**.
 #'
 #' A unit whose exposure or fitted conditional mean is missing has no
 #' standardized residual, and so no weight: the density is asked only about the
@@ -280,6 +317,24 @@
 #'   `.density` sits after `...` and so can only be supplied by name. The family
 #'   the weights were built from is recorded on the result and read back with
 #'   [density_meta()].
+#' @param numerator How the marginal density that stabilizes a continuous
+#'   exposure's weights is obtained, described under **Stabilization** in
+#'   Details. Either `"marginal"`, the default, which reads the family
+#'   `.density` names at the population mean and standard deviation of
+#'   `.exposure`, or `"integrated"`, which averages the conditional density
+#'   over the units on a grid spanning `.exposure` and interpolates the result
+#'   back to each observed exposure.
+#'
+#'   `"integrated"` describes a continuous exposure alone, and needs a
+#'   conditional density to marginalize: it is refused with an error of class
+#'   `propensity_numerator_error` for a binary or categorical exposure, with
+#'   `stabilize = FALSE`, with a `stabilization_score`, and with any `.sigma`.
+#'   The default is accepted for every exposure type and ignored outside a
+#'   continuous one.
+#'
+#'   `numerator` sits after `...` and so can only be supplied by name. The
+#'   numerator the weights were built from is recorded on the result and read
+#'   back with [density_meta()].
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
 #' @param .focal_level The value of `.exposure` representing the focal
@@ -422,6 +477,14 @@
 #' treatments. In *Applied Bayesian Modeling and Causal Inference from
 #' Incomplete-Data Perspectives* (pp. 73--84).
 #'
+#' Robins, J. M., Hernán, M. A., & Brumback, B. (2000). Marginal structural
+#' models and causal inference in epidemiology. *Epidemiology*, 11(5),
+#' 550--560.
+#'
+#' Naimi, A. I., Moodie, E. E. M., Auger, N., & Kaufman, J. S. (2014).
+#' Constructing inverse probability weights for continuous exposures: a
+#' comparison of methods. *Epidemiology*, 25(2), 292--299.
+#'
 #' Austin, P. C., & Stuart, E. A. (2015). Moving towards best practice when
 #' using inverse probability of treatment weighting (IPTW). *Statistics in
 #' Medicine*, 34(28), 3661--3679.
@@ -447,6 +510,7 @@ wt_ate <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -465,6 +529,7 @@ wt_ate.default <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -483,6 +548,7 @@ wt_ate.numeric <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env(),
@@ -515,9 +581,20 @@ wt_ate.numeric <- function(
 
   # The density is resolved once, here, for every route: the model, data frame,
   # and modified-score methods all funnel through this one, and `wt_cens()`
-  # reaches the continuous formula through it as well.
+  # reaches the continuous formula through it as well. The numerator is resolved
+  # in the same place and for the same reason.
   .density <- as_density_spec(.density, arg = ".density", call = call)
   check_density_arg(.density, exposure_type, call = call)
+
+  numerator <- rlang::arg_match(numerator, error_call = call)
+  check_numerator(
+    numerator,
+    exposure_type,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    .sigma = .sigma,
+    call = call
+  )
 
   # The exposure supplies the number of observations the score is checked
   # against, so a `.propensity` of a different length has to be caught first.
@@ -567,6 +644,7 @@ wt_ate.numeric <- function(
       .exposure = .exposure,
       .sigma = .sigma,
       .density = .density,
+      numerator = numerator,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
       call = call
@@ -615,6 +693,7 @@ wt_ate.data.frame <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
@@ -634,6 +713,7 @@ wt_ate.data.frame <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -652,6 +732,7 @@ wt_ate.glm <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env()
@@ -682,6 +763,7 @@ wt_ate.glm <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     call = call,
     ...
   )
@@ -725,6 +807,7 @@ ate_continuous <- function(
   .exposure,
   .sigma,
   .density = dens_normal(),
+  numerator = "marginal",
   stabilize = FALSE,
   stabilization_score = NULL,
   call = rlang::caller_env()
@@ -735,12 +818,16 @@ ate_continuous <- function(
   # standard deviation otherwise.
   sigma_i <- continuous_sigma(.exposure, .propensity, .sigma)
 
+  # What divides the conditional density: nothing at all when the weights are
+  # not stabilized, a score the caller supplied when there is one, and otherwise
+  # the numerator asked for. The combinations `check_numerator()` refuses cannot
+  # reach here, so the two that answer for themselves are read first.
   numerator <- if (!isTRUE(stabilize)) {
     "none"
-  } else if (is.null(stabilization_score)) {
-    "marginal"
-  } else {
+  } else if (!is.null(stabilization_score)) {
     "score"
+  } else {
+    numerator
   }
 
   # The marginal density f_A(A_i) is read at the exposure's population moments,
@@ -1790,6 +1877,7 @@ wt_cens <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -1808,6 +1896,7 @@ wt_cens.default <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -1826,6 +1915,7 @@ wt_cens.numeric <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env(),
@@ -1874,6 +1964,7 @@ wt_cens.numeric <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     call = call,
     ...
   )
@@ -1896,6 +1987,7 @@ wt_cens.data.frame <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
@@ -1917,6 +2009,7 @@ wt_cens.data.frame <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     ...
   )
 }
@@ -1933,6 +2026,7 @@ wt_cens.glm <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env()
@@ -1963,6 +2057,7 @@ wt_cens.glm <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     call = call,
     ...
   )
@@ -1984,6 +2079,7 @@ wt_ate.ps_trim <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2001,6 +2097,7 @@ wt_ate.ps_trim <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     ...
   )
 }
@@ -2117,6 +2214,7 @@ wt_ate.ps_trunc <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2134,6 +2232,7 @@ wt_ate.ps_trunc <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     ...
   )
 }
@@ -2306,6 +2405,7 @@ wt_cens.ps_trim <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2323,6 +2423,7 @@ wt_cens.ps_trim <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     ...
   )
 }
@@ -2339,6 +2440,7 @@ wt_cens.ps_trunc <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2356,6 +2458,7 @@ wt_cens.ps_trunc <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     ...
   )
 }
@@ -2496,6 +2599,7 @@ wt_ate.ps_calib <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2513,6 +2617,7 @@ wt_ate.ps_calib <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     ...
   )
 }
@@ -2657,6 +2762,7 @@ wt_cens.ps_calib <- function(
   stabilization_score = NULL,
   ...,
   .density = "normal",
+  numerator = c("marginal", "integrated"),
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2674,6 +2780,7 @@ wt_cens.ps_calib <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .density = .density,
+    numerator = numerator,
     ...
   )
 }

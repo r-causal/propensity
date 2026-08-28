@@ -1243,6 +1243,128 @@ test_that("an intercept-only model gives integrated weights of exactly one", {
   )
 
   expect_identical(as.numeric(heavy), rep(1, continuous_density_data$n))
+
+  # The fitted values an intercept-only model actually returns are not the same
+  # double: the decomposition behind them leaves the last few bits of each one
+  # to the arithmetic, so this problem has seven distinct values spanning
+  # 4e-16. They are one number as far as the model is concerned, and the
+  # weights they give are one as far as the package is concerned.
+  fitted_mu <- as.numeric(fitted(lm(exposure ~ 1)))
+  expect_gt(length(unique(fitted_mu)), 1)
+
+  from_model <- wt_ate(
+    fitted_mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = "normal",
+    numerator = "integrated"
+  )
+
+  expect_identical(as.numeric(from_model), rep(1, continuous_density_data$n))
+})
+
+test_that("an exposure that does not vary has no grid to be marginalized over", {
+  # Every unit took the same dose, so the grid the conditional density is
+  # averaged over collapses to a point and the interpolation has nowhere to run.
+  # `stats::spline()` reaches that as a base warning about tied points; it is
+  # refused here first, in terms of the exposure.
+  n <- continuous_density_data$n
+  exposure <- rep(2, n)
+  mu <- seq(1.5, 2.5, length.out = n)
+
+  expect_error(
+    wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      numerator = "integrated"
+    ),
+    class = "propensity_density_error"
+  )
+
+  constant_error <- rlang::catch_cnd(wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  ))
+  expect_match(conditionMessage(constant_error), "does not vary")
+})
+
+test_that("the integrated numerator reads only the units with a residual", {
+  set.seed(24)
+  n <- 50
+  x <- rnorm(n)
+  exposure <- 0.5 * x + rnorm(n)
+
+  # A score a modification can be applied to has to lie in (0, 1); it stands in
+  # for the fitted conditional mean here. Trimmed and not refit, it carries a
+  # missing value at every unit it set aside.
+  trimmed <- ps_trim(plogis(0.9 * x), method = "ps", lower = 0.2, upper = 0.8)
+  mu <- as.numeric(trimmed)
+  missing_at <- which(is.na(mu))
+  expect_gt(length(missing_at), 1)
+
+  present <- setdiff(seq_len(n), missing_at)
+
+  # The ends of the grid are the smallest and largest exposure among the units
+  # that have a residual, the average of the conditional density is an average
+  # over those units, and the spread that standardizes it is theirs as well. So
+  # the weights the units that are left carry are the weights of the problem
+  # those units make on their own, and a unit with no residual has no weight.
+  families <- list(
+    list(
+      input = dens_t(df = 4),
+      oracle = function(exposure, mu) {
+        continuous_integrated_wt(
+          function(z) stats::dt(z, df = 4),
+          exposure = exposure,
+          mu = mu
+        )
+      }
+    ),
+    list(input = "kernel", oracle = continuous_integrated_kernel_wt)
+  )
+
+  for (family in families) {
+    weights <- NULL
+    expect_warning(
+      weights <- wt_ate(
+        trimmed,
+        exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = family$input,
+        numerator = "integrated"
+      ),
+      class = "propensity_no_refit_warning"
+    )
+    weights <- as.numeric(weights)
+
+    expect_identical(which(is.na(weights)), missing_at)
+    expect_equal(
+      weights[present],
+      family$oracle(exposure[present], mu[present]),
+      tolerance = 1e-12
+    )
+  }
+
+  # When no unit has a residual there is nothing to read: no grid, no average,
+  # and no weight anywhere. A kernel has nothing to be fit on either, and is not
+  # asked, since the density is not the reason these weights are missing.
+  none <- expect_silent(wt_ate(
+    rep(NA_real_, n),
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = "kernel",
+    numerator = "integrated"
+  ))
+
+  expect_true(all(is.na(as.numeric(none))))
 })
 
 # ---- refusals of the numerator ----------------------------------------------
@@ -1419,6 +1541,67 @@ test_that("a numerator that is not a numerator is refused", {
   expect_error(
     continuous_density_wt(numerator = "none"),
     regexp = "must be one of"
+  )
+})
+
+test_that("the refusals of an integrated numerator read the way they should", {
+  set.seed(25)
+  ps <- runif(20, 0.2, 0.8)
+  trt <- rbinom(20, 1, ps)
+
+  categorical_exposure <- factor(rep(c("a", "b", "c"), each = 4))
+  categorical_ps <- matrix(
+    rep(c(0.5, 0.3, 0.2), times = 12),
+    ncol = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("a", "b", "c"))
+  )
+
+  expect_propensity_error(
+    wt_ate(ps, trt, exposure_type = "binary", numerator = "integrated")
+  )
+  expect_propensity_error(
+    wt_ate(
+      categorical_ps,
+      categorical_exposure,
+      exposure_type = "categorical",
+      numerator = "integrated"
+    )
+  )
+  expect_propensity_error(
+    continuous_density_wt(numerator = "integrated", stabilize = FALSE)
+  )
+  expect_propensity_error(
+    continuous_density_wt(
+      numerator = "integrated",
+      stabilization_score = seq(
+        0.4,
+        1.6,
+        length.out = continuous_density_data$n
+      )
+    )
+  )
+  expect_propensity_error(
+    continuous_density_wt(numerator = "integrated", .sigma = 0.85)
+  )
+
+  # And the two refusals that are about the problem rather than the arguments:
+  # an exposure with no spread for the grid to run over, and an interpolated
+  # numerator that dipped below zero.
+  expect_propensity_error(
+    wt_ate(
+      seq(1.5, 2.5, length.out = continuous_density_data$n),
+      rep(2, continuous_density_data$n),
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      numerator = "integrated"
+    )
+  )
+  expect_propensity_error(
+    continuous_density_wt(
+      .density = function(r) stats::dnorm(r, sd = 0.1),
+      numerator = "integrated"
+    )
   )
 })
 
@@ -1684,7 +1867,18 @@ test_that("censoring weights carry a numerator through their other methods", {
 test_that("censoring weights carry a numerator through a modified score", {
   problem <- continuous_modified_scores()
 
-  for (modified in problem$scores) {
+  # A modification is recorded on the estimand after the censoring weights have
+  # named themselves, so each of the three reads as the estimand and then the
+  # modification.
+  estimands <- c(
+    refit = "uncensored; trimmed",
+    truncated = "uncensored; truncated",
+    calibrated = "uncensored; calibrated"
+  )
+
+  for (modification in names(problem$scores)) {
+    modified <- problem$scores[[modification]]
+
     weights <- wt_cens(
       modified,
       problem$exposure,
@@ -1703,7 +1897,7 @@ test_that("censoring weights carry a numerator through a modified score", {
       ),
       tolerance = 1e-12
     )
-    expect_identical(estimand(weights), "uncensored")
+    expect_identical(estimand(weights), estimands[[modification]])
     expect_identical(density_meta(weights)$numerator, "integrated")
   }
 })

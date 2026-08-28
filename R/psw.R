@@ -316,8 +316,9 @@ stabilization_score <- function(wt) {
 #' * `density`, the specification of the conditional density family, as built
 #'   by [dens_normal()] and its relatives.
 #' * `numerator`, what stabilized the weights: `"marginal"` for the marginal
-#'   density of the exposure, `"score"` for a `stabilization_score` the caller
-#'   supplied, and `"none"` for weights that were not stabilized.
+#'   density of the exposure, `"integrated"` for the conditional density
+#'   marginalized over the units, `"score"` for a `stabilization_score` the
+#'   caller supplied, and `"none"` for weights that were not stabilized.
 #' * `sigma`, where the residual spread of the conditional density came from:
 #'   `"pooled"` for the pooled residual standard deviation, and `"supplied"`
 #'   for a `.sigma` the caller gave.

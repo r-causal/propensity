@@ -6,6 +6,7 @@ BYOM
 Biometrics
 Biometrika
 Biostatistics
+Brumback
 CMD
 Codecov
 Crump
@@ -18,6 +19,7 @@ Faries
 Gerke
 Hajage
 Hajek
+Hernán
 Hirano
 Hotz
 IPTW
@@ -31,6 +33,8 @@ Leyrat
 Matchable
 Matsouaka
 Mitnik
+Moodie
+Naimi
 ORCID
 PSW
 Platt
@@ -41,6 +45,7 @@ SIGKDD
 Stefanski
 Subassignment
 Unstabilized
+WeightIt
 Winsorize
 Zadrozny
 Zaslavsky
@@ -67,6 +72,7 @@ framings
 glm
 glm's
 halfmoon
+heteroskedastic
 isotonic
 lifecycle
 lossy

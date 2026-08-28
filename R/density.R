@@ -269,6 +269,89 @@ check_density_arg <- function(
   )
 }
 
+# What a numerator has to be able to be. The default is accepted for every
+# exposure type and ignored outside the continuous route, so a caller who writes
+# out the numerator the weights were getting anyway is not refused for saying
+# so. An integrated numerator marginalizes the conditional density a continuous
+# exposure's weights divide by, and each of the settings refused below leaves it
+# with no such density to marginalize.
+check_numerator <- function(
+  numerator,
+  exposure_type,
+  stabilize,
+  stabilization_score,
+  .sigma,
+  call = rlang::caller_env()
+) {
+  if (!identical(numerator, "integrated")) {
+    return(invisible(NULL))
+  }
+
+  if (!identical(exposure_type, "continuous")) {
+    abort(
+      c(
+        "{.arg numerator} = {.val integrated} applies only to continuous
+         exposures.",
+        x = "{.arg .exposure} is being treated as {exposure_type}.",
+        i = "An integrated numerator averages the conditional density of a
+             continuous exposure over the units. A {exposure_type} exposure has
+             a probability rather than a density, so leave {.arg numerator}
+             unset for one."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  if (!isTRUE(stabilize)) {
+    abort(
+      c(
+        "{.arg numerator} = {.val integrated} needs stabilized weights.",
+        x = "{.arg stabilize} is {.code FALSE}, so the weights carry no
+             numerator at all.",
+        i = "Set {.code stabilize = TRUE} to stabilize the weights on the
+             marginalized conditional density, or leave {.arg numerator} unset."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  if (!is.null(stabilization_score)) {
+    abort(
+      c(
+        "{.arg numerator} = {.val integrated} cannot be used with
+         {.arg stabilization_score}.",
+        x = "A score you supply is itself the numerator of the weights.",
+        i = "Drop {.arg stabilization_score} to stabilize on the marginalized
+             conditional density, or leave {.arg numerator} unset to keep the
+             numerator you wrote."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  if (!is.null(.sigma)) {
+    abort(
+      c(
+        "{.arg numerator} = {.val integrated} cannot be used with
+         {.arg .sigma}.",
+        x = "The marginalization reads the conditional density the propensity
+             model estimated at every unit's fitted mean, and {.arg .sigma}
+             replaces the spread of that density with one of your own.",
+        i = "Leave {.arg .sigma} unset to spread the conditional density by the
+             pooled residual standard deviation, or use {.arg numerator} =
+             {.val marginal}, which takes a spread you supply."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  invisible(NULL)
+}
+
 # The spread of the conditional density: the one the caller supplied, or the
 # pooled uncentered root mean square of the residuals. It is uncentered because
 # the residuals of a fitted model already average to zero, and because the
@@ -288,16 +371,17 @@ continuous_sigma <- function(exposure, mu, .sigma = NULL) {
 # own scale, so the normal family returns exactly what a normal density in the
 # exposure's units returns.
 #
-# The numerator is the marginal density of the exposure, a stabilization score
-# the caller supplied, or nothing at all. `grid` is the evaluation grid an
-# integrated numerator averages the conditional density over; no numerator uses
-# it yet.
+# The numerator is the marginal density of the exposure, the conditional density
+# marginalized over the units, a stabilization score the caller supplied, or
+# nothing at all. `grid` is the evaluation grid an integrated numerator averages
+# the conditional density over, and is built from the exposure when it is not
+# supplied.
 continuous_density_ratio <- function(
   exposure,
   mu,
   sigma,
   density,
-  numerator = c("marginal", "none", "score"),
+  numerator = c("marginal", "integrated", "none", "score"),
   mu_a = NULL,
   sigma_a = NULL,
   score = NULL,
@@ -305,6 +389,17 @@ continuous_density_ratio <- function(
   call = rlang::caller_env()
 ) {
   numerator <- rlang::arg_match(numerator, error_call = call)
+
+  if (identical(numerator, "integrated")) {
+    return(continuous_integrated_ratio(
+      exposure = exposure,
+      mu = mu,
+      sigma = sigma,
+      density = density,
+      grid = grid,
+      call = call
+    ))
+  }
 
   z <- (exposure - mu) / sigma
   f_den <- density_eval_present(density, z, call = call) / sigma
@@ -324,6 +419,173 @@ continuous_density_ratio <- function(
   f_num <- density_eval_present(density, z_a, call = call) / sigma_a
 
   f_num / f_den
+}
+
+# The number of points an integrated numerator marginalizes the conditional
+# density over. It is the grid WeightIt uses, which is what the agreement with
+# it is written against. A grid four times as long removed the negative
+# interpolated densities the simulation study behind the default saw in its
+# heavy-tailed cell, and changed nothing else it measured.
+continuous_grid_n <- 50L
+
+# Whether a vector holds one number, to within the arithmetic that produced it.
+# Fitted values that ought to be identical seldom are: an intercept-only model
+# reaches each of them through a decomposition, and the last few bits differ, so
+# counting distinct doubles would find several where the model means one. The
+# tolerance is relative to the size of the values, as `all.equal()`'s is.
+is_constant <- function(x) {
+  diff(range(x)) <= sqrt(.Machine$double.eps) * max(1, abs(mean(x)))
+}
+
+# The density ratio under an integrated numerator, which is the conditional
+# density in both places: the denominator reads it at each unit's own fitted
+# mean, and the numerator reads the average of it over the units.
+#
+# A unit whose exposure or fitted mean is missing has no standardized residual,
+# so it is not read by the average, its exposure does not reach the ends of the
+# grid, and its weight is missing, exactly as it is under any other numerator.
+continuous_integrated_ratio <- function(
+  exposure,
+  mu,
+  sigma,
+  density,
+  grid = NULL,
+  call = rlang::caller_env()
+) {
+  z <- (exposure - mu) / sigma
+  present <- !is.na(z)
+
+  exposure <- exposure[present]
+  mu <- mu[present]
+  z <- z[present]
+
+  wt <- rep(NA_real_, length(present))
+
+  # With nothing to condition on, every unit's conditional density is the same
+  # density, the average of it over the units is that density again, and the
+  # ratio is one. Sending it through the grid and the interpolation instead
+  # returns values near but not equal to one, so the case is answered directly
+  # rather than to within the grid's error.
+  #
+  # The fitted values of an intercept-only model are constant to within the
+  # arithmetic that produced them rather than exactly, so the case is read from
+  # the spread of the fitted means rather than from how many distinct doubles
+  # they are. Fitted means that vary by that little leave weights of one either
+  # way; this returns the ones the model means.
+  if (length(mu) == 0 || is_constant(mu)) {
+    wt[present] <- 1
+    return(wt)
+  }
+
+  if (is.null(grid)) {
+    grid <- seq(min(exposure), max(exposure), length.out = continuous_grid_n)
+  }
+
+  # An exposure that takes one value leaves the grid no width, and the
+  # interpolation nowhere to run. `stats::spline()` reaches that as a base
+  # warning about collapsing tied points and then returns the density at the one
+  # point for every unit; it is refused here instead, in terms of the exposure
+  # the grid was built from.
+  if (grid[[length(grid)]] <= grid[[1]]) {
+    abort(
+      c(
+        "{.arg numerator} = {.val integrated} cannot marginalize over an
+         exposure that does not vary.",
+        x = "Every exposure with a fitted conditional mean is
+             {.val {grid[[1]]}}, so the grid the conditional density is
+             averaged over has no width.",
+        i = "The integrated numerator reads the conditional density at points
+             spanning {.arg .exposure}. Use {.arg numerator} = {.val marginal}
+             for an exposure that takes one value."
+      ),
+      error_class = "propensity_density_error",
+      call = call
+    )
+  }
+
+  # The conditional density of each unit read at each grid point, on the
+  # standardized scale the family is written on. The spread is a single number
+  # here, which is why an integrated numerator refuses a `.sigma` of one per
+  # observation.
+  standardized <- outer(grid, mu, "-") / sigma
+
+  # A kernel is one estimate answering for both densities, so it is fit on the
+  # standardized residuals over a range that covers them and the whole
+  # standardized grid, which reaches further than they do. The parametric
+  # families have no fit and ignore both.
+  span <- range(c(z, standardized))
+
+  f_den <- density_eval(
+    density,
+    z,
+    fit_on = z,
+    range = span,
+    call = call
+  ) /
+    sigma
+
+  f_num <- continuous_numerator_integrated(
+    exposure = exposure,
+    z = z,
+    grid = grid,
+    standardized = standardized,
+    sigma = sigma,
+    density = density,
+    span = span,
+    call = call
+  )
+
+  wt[present] <- f_num / f_den
+  wt
+}
+
+# The integrated numerator: the conditional density averaged over the units at
+# each grid point, \eqn{f_A(t_j) = n^{-1} \sum_i g((t_j - \mu_i) / \sigma) /
+# \sigma}, interpolated back to each observed exposure with a cubic spline.
+#
+# The interpolation is the reason the result is checked rather than trusted. A
+# spline through points that come close to zero can undershoot below it, which
+# is a property of the interpolation and not of the family, so the values are
+# held to the same rules any density is held to before they become weights.
+continuous_numerator_integrated <- function(
+  exposure,
+  z,
+  grid,
+  standardized,
+  sigma,
+  density,
+  span,
+  call = rlang::caller_env()
+) {
+  on_grid <- rowMeans(matrix(
+    density_eval(
+      density,
+      as.vector(standardized),
+      fit_on = z,
+      range = span,
+      call = call
+    ),
+    nrow = length(grid)
+  )) /
+    sigma
+
+  values <- stats::spline(grid, on_grid, xout = exposure, method = "fmm")$y
+
+  check_density_values(
+    values,
+    length(exposure),
+    what = "The integrated numerator",
+    what_is_arg = FALSE,
+    z = z,
+    remedy = "The marginalized density is interpolated back to the exposure
+              with a cubic spline, which can dip below zero where the density
+              on the grid comes close to it. Use {.arg numerator} =
+              {.val marginal}, or a density with a heavier tail, to stabilize
+              on a density that is positive everywhere.",
+    call = call
+  )
+
+  values
 }
 
 # A density is asked only about the observations it can answer for. A missing
@@ -467,20 +729,34 @@ check_density_kernel_fit <- function(
   invisible(TRUE)
 }
 
-# The output check every density passes, whoever wrote it. `z` is the
-# standardized residuals the density was evaluated at, and is used only to say
-# how extreme the exposure was where the density failed.
+# The output check every density passes, whoever wrote it. `what` names the
+# thing the values came from: an argument the caller wrote, styled as one, or,
+# under `what_is_arg = FALSE`, a noun phrase for a density the package computed
+# itself. `z` is the standardized residuals the density was evaluated at, and is
+# used only to say how extreme the exposure was where the density failed.
+# `remedy` is how to fix a density that came back negative, which a family the
+# caller chose and a density read off an interpolation are fixed in different
+# ways.
 check_density_values <- function(
   p,
   n,
   what = ".density",
+  what_is_arg = TRUE,
   z = NULL,
+  remedy = "A density is non-negative everywhere. Check that {.arg {what}}
+            returns a density rather than a log density or a distribution
+            function.",
   call = rlang::caller_env()
 ) {
+  # Styled once, here, rather than by each message below: a template cannot
+  # interpolate markup that arrives in a value, so the subject reaches the
+  # messages already written the way it reads.
+  subject <- if (what_is_arg) cli::format_inline("{.arg {what}}") else what
+
   if (!is.numeric(p)) {
     abort(
       c(
-        "{.arg {what}} must return a numeric vector.",
+        "{subject} must return a numeric vector.",
         x = "It returned {.cls {class(p)}}.",
         i = "A density returns one number for each standardized residual it is
              given."
@@ -493,7 +769,7 @@ check_density_values <- function(
   if (length(p) != n) {
     abort(
       c(
-        "{.arg {what}} must return one value for each observation.",
+        "{subject} must return one value for each observation.",
         x = "It returned {length(p)} value{?s} for {n} observation{?s}.",
         i = "The density is evaluated on the whole vector of standardized
              residuals at once, so it must be vectorized over its argument."
@@ -507,7 +783,7 @@ check_density_values <- function(
     n_missing <- sum(is.na(p))
     abort(
       c(
-        "{.arg {what}} must not return missing values.",
+        "{subject} must not return missing values.",
         x = "It returned {n_missing} missing value{?s}.",
         i = density_range_hint(z),
         i = "The density must be defined at every standardized residual, and a
@@ -523,13 +799,11 @@ check_density_values <- function(
     n_unusable <- sum(unusable)
     abort(
       c(
-        "{.arg {what}} must return finite, non-negative values.",
+        "{subject} must return finite, non-negative values.",
         x = "It returned {n_unusable} value{?s} that {?is/are} negative or not
              finite.",
         i = density_range_hint(z, unusable),
-        i = "A density is non-negative everywhere. Check that {.arg {what}}
-             returns a density rather than a log density or a distribution
-             function."
+        i = remedy
       ),
       error_class = "propensity_density_error",
       call = call
@@ -539,7 +813,7 @@ check_density_values <- function(
   if (length(p) > 0 && all(p == 0)) {
     abort(
       c(
-        "{.arg {what}} must not be zero everywhere.",
+        "{subject} must not be zero everywhere.",
         x = "Every one of the {length(p)} value{?s} it returned is zero.",
         i = density_range_hint(z),
         i = "Every weight built from a density that is zero at every
