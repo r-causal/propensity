@@ -10,8 +10,9 @@ ipw_is_dose_basis <- function(spec) {
 # exposure and there is no row of the surface that answers the question the
 # marginal reading is asked.
 ipw_dose_basis_lead <- function() {
-  "{.fun ipw} reports only the conditional reading when the exposure enters \\
-  {.arg outcome_mod} through several columns."
+  "{.fun ipw} reports only the conditional reading because the exposure \\
+  enters {.arg outcome_mod} through more than one term, such as a spline or \\
+  polynomial."
 }
 
 # Why there is one reading, and where the estimand this package does not compute
@@ -20,11 +21,11 @@ ipw_dose_basis_lead <- function() {
 # should not be left to do.
 ipw_dose_basis_reason <- function() {
   c(
-    "The coefficient surface is the outcome model's own, and no single row of \\
-    it is a causal effect.",
-    "Marginalizing over the dose is left to the {.pkg marginaleffects} \\
-    package: call {.fun avg_slopes} or {.fun avg_comparisons} on the \\
-    conditional result. See \\
+    "With a nonlinear dose-response, no single coefficient is the effect of \\
+    the exposure, so there is no marginal effect to report.",
+    "Use the {.pkg marginaleffects} package to marginalize over the dose: \\
+    {.fun avg_slopes} for slopes, {.fun avg_comparisons} for contrasts, and \\
+    {.fun avg_predictions} for causal dose-response functions. See \\
     {.url https://marginaleffects.com/chapters/interactions.html}."
   )
 }
@@ -58,8 +59,7 @@ check_ipw_dose_basis_effects <- function(effects, call = rlang::caller_env()) {
   abort(
     c(
       ipw_dose_basis_lead(),
-      x = "{.code effects = \"marginal\"} asks for a reading this model has \\
-      none of.",
+      x = "{.code effects = \"marginal\"} is not available for this model.",
       i = reason[[1]],
       i = reason[[2]],
       i = "Use {.code effects = \"conditional\"} or omit {.arg effects}."

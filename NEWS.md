@@ -11,8 +11,9 @@
   `vcov()`, `confint()`, `tidy()`, and `as.data.frame()` refuse it with an error
   of class `causalgenerics_unsupported_reading_marginal`. Marginalizing the
   curve over the observed doses is a separate estimand that this package does
-  not compute; the marginaleffects package computes it from the conditional
-  result through `avg_slopes()` or `avg_comparisons()`
+  not compute; use the marginaleffects package on the conditional result:
+  `avg_slopes()` for slopes, `avg_comparisons()` for contrasts, and
+  `avg_predictions()` for causal dose-response functions
   (<https://marginaleffects.com/chapters/interactions.html>). A fit whose
   exposure enters through one column is unchanged. A caller who names no
   reading includes a wrapper that forwards the whole `effects` default, which

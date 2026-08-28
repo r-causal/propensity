@@ -324,8 +324,9 @@ as the only one it supports, so \code{\link[causalgenerics:as_marginal]{causalge
 and \code{as.data.frame()} refuse it from the result class instead, with an error
 of class \code{causalgenerics_unsupported_reading_marginal}. Marginalizing the
 curve over the observed doses is a separate estimand that this package does
-not compute; the \pkg{marginaleffects} package computes it from the
-conditional result through \code{avg_slopes()} or \code{avg_comparisons()}. A basis
+not compute; use the \pkg{marginaleffects} package on the conditional
+result: \code{avg_slopes()} for slopes, \code{avg_comparisons()} for contrasts, and
+\code{avg_predictions()} for causal dose-response functions. A basis
 term reading a covariate rather than the exposure is a covariate term however
 many columns it expands to, so it contributes no row and leaves the reading
 marginal.

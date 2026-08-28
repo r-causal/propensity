@@ -109,8 +109,9 @@ ipw.multinom <- function(
 #' and `as.data.frame()` refuse it from the result class instead, with an error
 #' of class `causalgenerics_unsupported_reading_marginal`. Marginalizing the
 #' curve over the observed doses is a separate estimand that this package does
-#' not compute; the \pkg{marginaleffects} package computes it from the
-#' conditional result through `avg_slopes()` or `avg_comparisons()`. A basis
+#' not compute; use the \pkg{marginaleffects} package on the conditional
+#' result: `avg_slopes()` for slopes, `avg_comparisons()` for contrasts, and
+#' `avg_predictions()` for causal dose-response functions. A basis
 #' term reading a covariate rather than the exposure is a covariate term however
 #' many columns it expands to, so it contributes no row and leaves the reading
 #' marginal.
