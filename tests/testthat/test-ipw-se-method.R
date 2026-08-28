@@ -107,13 +107,18 @@ se_method_outcome_offset_arg <- function(dat, ps_mod) {
 # exist to catch.
 se_method_lin_reference <- function() {
   data.frame(
-    effect = c("rd", "log(rr)", "log(or)"),
+    effect = c("mean", "mean", "rd", "log(rr)", "log(or)"),
+    contrast = c("0", "1", rep("1 vs 0", 3)),
     estimate = c(
+      0.29744534143394004,
+      0.54053118729710203,
       0.24308584586316151,
       0.59732185440835850,
       1.02197399113135590
     ),
     std.err = c(
+      0.032268480487667904,
+      0.036574156651138997,
       0.048386022223687541,
       0.126936312969173404,
       0.211670119599652012
@@ -123,6 +128,7 @@ se_method_lin_reference <- function() {
 
 estimates_columns <- c(
   "effect",
+  "contrast",
   "estimate",
   "std.err",
   "z",
@@ -229,6 +235,7 @@ test_that("ipw(se_method = 'linearization') matches the pre-change output", {
 
   reference <- se_method_lin_reference()
   expect_equal(res$estimates$effect, reference$effect)
+  expect_equal(res$estimates$contrast, reference$contrast)
   expect_equal(res$estimates$estimate, reference$estimate, tolerance = 1e-6)
   expect_equal(res$estimates$std.err, reference$std.err, tolerance = 1e-6)
 })
@@ -444,8 +451,8 @@ test_that("as.data.frame(exponentiate = TRUE) matches across SE methods", {
 
   # Both paths relabel the ratio rows and share point estimates on the natural
   # scale (standard errors stay on the log scale and may differ by method).
-  expect_equal(df_m$term, c("rd", "rr", "or"))
-  expect_equal(df_l$term, c("rd", "rr", "or"))
+  expect_equal(df_m$term, c("mean", "mean", "rd", "rr", "or"))
+  expect_equal(df_l$term, c("mean", "mean", "rd", "rr", "or"))
   expect_equal(df_m$estimate, df_l$estimate, tolerance = 1e-8)
 })
 
@@ -453,6 +460,10 @@ test_that("ipw() print output is stable per SE method", {
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  # The row labels name the effect measure and the contrast together, so the
+  # table needs more than the 80 columns testthat pins or it wraps.
+  withr::local_options(width = 120)
 
   # Pins the default-path print output.
   expect_snapshot(print(ipw(ps_mod, outcome_mod, .data = dat)))
@@ -1067,6 +1078,23 @@ factor_numeric_arms <- function(dat, factor_col, wt_fun) {
   )
 }
 
+# The numeric content of an estimates frame, with the labels naming its rows set
+# aside. A factor exposure and a 0/1 recode of it are the same fit reporting the
+# same numbers, and each writes its labels with its own level names, so the
+# comparison between the two arms is of the numbers alone. The labels are pinned
+# separately, since which level names a fit writes is itself part of the
+# contract.
+factor_estimates_values <- function(estimates) {
+  out <- estimates[setdiff(names(estimates), "contrast")]
+  attr(out, "ipw_vcov") <- unname(attr(estimates, "ipw_vcov", exact = TRUE))
+  out
+}
+
+# The rows a binary fit over `levels` reports, in order.
+factor_row_labels <- function(levels, contrasts) {
+  c(levels, rep(paste(levels[[2]], "vs", levels[[1]]), length(contrasts)))
+}
+
 test_that("linearization recodes a factor exposure to match the numeric fit", {
   arms <- factor_numeric_arms(factor_exposure_data(), "trt", wt_ate)
   ref <- ipw(arms$ps_num, arms$om_num, se_method = "linearization")$estimates
@@ -1086,8 +1114,28 @@ test_that("linearization recodes a factor exposure to match the numeric fit", {
   )
   expect_true(all(is.finite(res_nodata$std.err)))
   expect_true(all(is.finite(res_data$std.err)))
-  expect_equal(res_nodata, ref, tolerance = 1e-8)
-  expect_equal(res_data, ref, tolerance = 1e-8)
+  expect_equal(
+    factor_estimates_values(res_nodata),
+    factor_estimates_values(ref),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    factor_estimates_values(res_data),
+    factor_estimates_values(ref),
+    tolerance = 1e-8
+  )
+
+  # The labels are written with the levels the fit codes the exposure on, so the
+  # factor arm names its arms and the 0/1 arm names its codes.
+  expect_identical(
+    res_nodata$contrast,
+    factor_row_labels(c("control", "treated"), c("rd", "log(rr)", "log(or)"))
+  )
+  expect_identical(res_nodata$contrast, res_data$contrast)
+  expect_identical(
+    ref$contrast,
+    factor_row_labels(c("0", "1"), c("rd", "log(rr)", "log(or)"))
+  )
 })
 
 test_that("linearization recodes a reversed-level factor exposure to match the numeric fit", {
@@ -1099,7 +1147,17 @@ test_that("linearization recodes a reversed-level factor exposure to match the n
     ipw(arms$ps_fac, arms$om_fac, se_method = "linearization")$estimates
   )
   expect_true(all(is.finite(res$std.err)))
-  expect_equal(res, ref, tolerance = 1e-8)
+  expect_equal(
+    factor_estimates_values(res),
+    factor_estimates_values(ref),
+    tolerance = 1e-8
+  )
+
+  # The reference level is the fit's own first level, which here is "treated".
+  expect_identical(
+    res$contrast,
+    factor_row_labels(c("treated", "control"), c("rd", "log(rr)", "log(or)"))
+  )
 })
 
 test_that("linearization recodes a factor exposure for the att estimand", {
@@ -1111,7 +1169,11 @@ test_that("linearization recodes a factor exposure for the att estimand", {
     ipw(arms$ps_fac, arms$om_fac, se_method = "linearization")$estimates
   )
   expect_true(all(is.finite(res$std.err)))
-  expect_equal(res, ref, tolerance = 1e-8)
+  expect_equal(
+    factor_estimates_values(res),
+    factor_estimates_values(ref),
+    tolerance = 1e-8
+  )
 })
 
 test_that("mestimation matches a factor exposure to the numeric fit", {
@@ -1128,7 +1190,18 @@ test_that("mestimation matches a factor exposure to the numeric fit", {
       arms$om_num,
       se_method = "mestimation"
     )$estimates
-    expect_equal(res_fac, res_num, tolerance = 1e-8)
+    expect_equal(
+      factor_estimates_values(res_fac),
+      factor_estimates_values(res_num),
+      tolerance = 1e-8
+    )
+    expect_identical(
+      res_fac$contrast,
+      factor_row_labels(
+        levels(arms$dat[[factor_col]]),
+        c("rd", "log(rr)", "log(or)")
+      )
+    )
   }
 })
 
@@ -1831,8 +1904,14 @@ test_that("print.ipw formats the z column as a test statistic, not a coefficient
   # pair and z as the test statistic; `current` is the off-by-one assignment
   # that marks std.err + z as the pair and ci.lower as the test statistic, under
   # which z prints at full precision rather than as a rounded test statistic.
-  estimates <- res$estimates[-1]
-  rownames(estimates) <- res$estimates$effect
+  estimates <- res$estimates[
+    !names(res$estimates) %in%
+      c("effect", "contrast")
+  ]
+  rownames(estimates) <- paste(
+    res$estimates$effect,
+    res$estimates$contrast
+  )
   fixed <- capture.output(
     printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 1:2, tst.ind = 3)
   )
@@ -1840,7 +1919,7 @@ test_that("print.ipw formats the z column as a test statistic, not a coefficient
     printCoefmat(estimates, has.Pvalue = TRUE, cs.ind = 2:3, tst.ind = 4)
   )
 
-  data_rows <- function(lines) grep("^(rd|log)", lines, value = TRUE)
+  data_rows <- function(lines) grep("^(mean|rd|log)", lines, value = TRUE)
   printed <- data_rows(capture.output(print(res)))
 
   # The two renderings genuinely differ (guards the discriminator), and the
@@ -3144,24 +3223,30 @@ test_that("the intercept-only outcome rejection reads in the user's terms", {
   )
 })
 
-# ---- the contrast column a binary exposure has no use for -------------------
+# ---- the contrast column a binary exposure names its one pair in -------------
 
-test_that("ipw() binary stores no contrast column under either name", {
+test_that("ipw() binary names its contrast column contrast under both routes", {
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_ate(dat, ps_mod)
 
-  # A binary exposure compares one pair of levels and keys its rows by the
-  # effect measure alone. Both routes are pinned here because linearization is
-  # available for a binary exposure alone, a categorical or continuous exposure
-  # refusing it, so this is the only fixture that can hold the two routes to the
-  # same table shape.
+  # A binary exposure reports the counterfactual mean at each level and one pair
+  # of levels, and names both in a column called `contrast`, the way a
+  # categorical exposure does. Both routes are pinned here because linearization
+  # is available for a binary exposure alone, a categorical or continuous
+  # exposure refusing it, so this is the only fixture that can hold the two
+  # routes to the same table shape.
   results <- list(
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "mestimation"),
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
   )
   for (res in results) {
-    expect_false("contrast" %in% names(res$estimates))
+    expect_true("contrast" %in% names(res$estimates))
     expect_false("comparison" %in% names(res$estimates))
+    expect_identical(
+      names(res$estimates)[seq(1, 2)],
+      c("effect", "contrast")
+    )
+    expect_identical(res$estimates$contrast, c("0", "1", rep("1 vs 0", 3)))
   }
 })

@@ -7,12 +7,23 @@
 #
 # Three things follow from the boundary being variable membership. A basis term
 # reads the exposure alone, so it is admitted however many columns it expands
-# to; each of those columns carries a coefficient, so each is a row, named by
-# the coefficient rather than by the term, since the two differ exactly here. A
-# basis term reading a covariate reads a covariate, so it is admitted as one and
-# contributes no row. A term reading both, such as `poly(e, 2):x1`, keeps the
-# refusal every mixed term gets: its coefficient is a change in the effect per
-# unit of the covariate, and no row could name the covariate value it holds at.
+# to; each of those columns carries a coefficient, so each is a row of the
+# surface the stacked system estimates, named by the coefficient rather than by
+# the term, since the two differ exactly here. A basis term reading a covariate
+# reads a covariate, so it is admitted as one and contributes no row. A term
+# reading both, such as `poly(e, 2):x1`, keeps the refusal every mixed term
+# gets: its coefficient is a change in the effect per unit of the covariate, and
+# no row could name the covariate value it holds at.
+#
+# What such a fit reports is the conditional reading and only that. An exposure
+# entering through several columns has no coefficient that is an effect: a curve
+# has a different slope at every dose, so no row of the table answers the
+# question the marginal reading is asked. `ipw()` therefore records the
+# conditional reading for these fits, says so once, and declares it as the only
+# reading they support, which is where the refusal of the marginal one at every
+# accessor comes from. Marginalizing over the dose is a separate estimand that
+# this package does not compute, and the message names the marginaleffects
+# package rather than leaving the user to assemble it from the coefficients.
 #
 # The one thing a basis changes about how the fit has to be called is `.data`. A
 # model frame records the term, not the variables inside it, so `model.frame()`
@@ -86,10 +97,12 @@ fit_dose_basis <- function(
 
 # ---- shared expectations ----------------------------------------------------
 
-# The column contract of a multi-row coefficient surface. A basis puts a
-# contrast column on the table naming the coefficient each row reports, placed
-# where every other route places it, and puts no group column there: nothing
-# about a dose-response curve is evaluated in a stratum.
+# The column contract of the multi-row coefficient surface the stacked system
+# estimates. It is the frame the result class contracts to hold rather than a
+# reading the result presents: a basis puts a contrast column on the table
+# naming the coefficient each row belongs to, placed where every other route
+# places it, and puts no group column there, since nothing about a
+# dose-response curve is evaluated in a stratum.
 expect_dose_basis_columns <- function(estimates) {
   testthat::expect_identical(
     names(estimates),
@@ -110,42 +123,94 @@ expect_dose_basis_columns <- function(estimates) {
   invisible(estimates)
 }
 
-# The accessors a coefficient-shaped surface keeps in lockstep with the
-# estimates frame. Written once because the claim is the same for every basis:
-# the row labels are unique, every accessor keys by them in the same order, the
-# reported standard errors are the diagonal of the reported covariance, and that
-# covariance is a real one rather than a diagonal assembled row by row.
+# The reading a basis fit presents, written once because the claim is the same
+# for every basis. The result records the conditional reading and declares it
+# as the only one it supports, which is where the refusals of the other one come
+# from. Its accessors key by the outcome model's coefficient names in one order,
+# and the covariance they report is the outcome block of the stacked sandwich
+# rather than the one the weighted fit computed for itself while treating its
+# weights as fixed.
 #
-# `effect` is pinned here too, since it is one word repeated down the table and
-# the same word for every basis. A surface whose rows are named by their
-# coefficients reports `coef` at an identity link rather than `slope`: a basis
-# coefficient is not a slope, and `slope` is reserved for the surfaces where a
-# row really is one and says where it is evaluated.
-expect_dose_basis_accessors <- function(res, effect = "coef") {
-  estimates <- res$estimates
-  labels <- paste(estimates$effect, estimates$contrast)
+# The coefficients come out of one fit of one model, so they covary; a surface
+# assembled row by row would report zeros off the diagonal.
+#
+# The stored frame is checked against that same block. It is not a reading the
+# result presents, but `pool_ipw()` reads it rather than the accessors, so its
+# standard errors reach a pooled result whether or not anything else reports
+# them, and nothing else pins them to a covariance.
+expect_dose_basis_conditional <- function(res, outcome_mod) {
+  labels <- names(coef(outcome_mod))
 
-  testthat::expect_identical(estimates$effect, rep(effect, nrow(estimates)))
-  testthat::expect_true(all(is.finite(estimates$std.err)))
-  testthat::expect_true(all(estimates$std.err > 0))
-  testthat::expect_true(all(estimates$ci.lower < estimates$ci.upper))
-  testthat::expect_identical(anyDuplicated(labels), 0L)
+  testthat::expect_identical(res$effects, "conditional")
+  testthat::expect_identical(res$readings, "conditional")
+  testthat::expect_identical(coef(res), coef(outcome_mod))
   testthat::expect_identical(names(coef(res)), labels)
   testthat::expect_identical(dimnames(vcov(res)), list(labels, labels))
   testthat::expect_identical(rownames(confint(res)), labels)
-  testthat::expect_equal(
-    sqrt(diag(vcov(res))),
-    estimates$std.err,
-    ignore_attr = TRUE
-  )
+  testthat::expect_identical(tidy(res)$term, labels)
 
-  # The basis coefficients come out of one fit of one model, so they covary; an
-  # assembly that estimated each row on its own would report zeros here.
   covariance <- vcov(res)
-  entry <- covariance[1L, 2L]
+  testthat::expect_identical(covariance, vcov(res$outcome_mod))
+  testthat::expect_true(all(is.finite(sqrt(diag(covariance)))))
+  testthat::expect_true(all(diag(covariance) > 0))
+  testthat::expect_equal(covariance, t(covariance), tolerance = 1e-12)
+
+  entry <- covariance[2L, 3L]
   testthat::expect_true(is.finite(entry))
   testthat::expect_gt(abs(entry), 1e-8)
-  testthat::expect_equal(covariance, t(covariance), tolerance = 1e-12)
+
+  testthat::expect_false(isTRUE(all.equal(
+    covariance,
+    vcov(outcome_mod),
+    check.attributes = FALSE
+  )))
+
+  # The stored frame reports the standard error of each exposure coefficient,
+  # which is the square root of that coefficient's diagonal entry in the same
+  # block, read at the coefficient the row names rather than by position. A
+  # frame built from the wrong rows of the sandwich, or from the covariance the
+  # weighted fit computed for itself, differs here by more than rounding.
+  estimates <- res$estimates
+  testthat::expect_equal(
+    unname(sqrt(diag(covariance))[estimates$contrast]),
+    estimates$std.err,
+    tolerance = 1e-12
+  )
+  testthat::expect_true(all(is.finite(estimates$std.err)))
+  testthat::expect_true(all(estimates$std.err > 0))
+  testthat::expect_true(all(estimates$ci.lower < estimates$ci.upper))
+
+  invisible(res)
+}
+
+# One refusal of a reading a result does not declare, asserted by its classes
+# rather than by its words, since the words are causalgenerics'. The specific
+# class names the reading that was asked for and the general one is what a
+# caller catching any such refusal writes against.
+expect_unsupported_marginal <- function(expr) {
+  err <- testthat::expect_error(
+    expr,
+    class = "causalgenerics_unsupported_reading_marginal"
+  )
+  testthat::expect_s3_class(err, "causalgenerics_unsupported_reading")
+
+  invisible(err)
+}
+
+# Every surface that could report the marginal reading of a basis fit refuses
+# it, so a caller who reaches for it from any of them is told the same thing.
+# The refusal belongs to the result class rather than to this package: the fit
+# declares the readings it supports and the shared accessors answer for them,
+# which is what keeps every other result answering as it always did without a
+# subclass here to carry refusals of its own. `tidy()` is propensity's own
+# method, so it is asserted here too rather than assumed to defer.
+expect_dose_basis_refuses_marginal <- function(res) {
+  expect_unsupported_marginal(causalgenerics::as_marginal(res))
+  expect_unsupported_marginal(coef(res, effects = "marginal"))
+  expect_unsupported_marginal(vcov(res, effects = "marginal"))
+  expect_unsupported_marginal(confint(res, effects = "marginal"))
+  expect_unsupported_marginal(tidy(res, effects = "marginal"))
+  expect_unsupported_marginal(as.data.frame(res, effects = "marginal"))
 
   invisible(res)
 }
@@ -171,7 +236,7 @@ test_that("a polynomial basis reports one row per basis coefficient", {
     unname(coef(fx$outcome_mod)[c("poly(e, 2)1", "poly(e, 2)2")]),
     tolerance = 1e-10
   )
-  expect_dose_basis_accessors(res)
+  expect_dose_basis_conditional(res, fx$outcome_mod)
 
   # The stacked system for a stabilized single-dose fit: three propensity score
   # coefficients, the conditional variance the density ratio needs, the two
@@ -179,9 +244,15 @@ test_that("a polynomial basis reports one row per basis coefficient", {
   # the last block moves, and it moves by the basis dimension.
   expect_identical(as.integer(res$fit@n_params), 3L + 1L + 2L + 3L)
 
+  # One exposure column is one slope, so a bare dose is the marginal reading it
+  # always was, on the class it always had, declaring both readings as every
+  # other result does.
   bare <- fit_dose_basis(dat, "e")
   bare_res <- ipw(bare$ps_mod, bare$outcome_mod)
   expect_identical(as.integer(bare_res$fit@n_params), 3L + 1L + 2L + 2L)
+  expect_identical(bare_res$effects, "marginal")
+  expect_identical(bare_res$readings, c("marginal", "conditional"))
+  expect_identical(class(bare_res), "ipw")
 })
 
 test_that("a natural spline basis reports one row per basis coefficient", {
@@ -207,7 +278,7 @@ test_that("a natural spline basis reports one row per basis coefficient", {
     unname(coef(fx$outcome_mod)[est$contrast]),
     tolerance = 1e-10
   )
-  expect_dose_basis_accessors(res)
+  expect_dose_basis_conditional(res, fx$outcome_mod)
 
   # Three basis columns where the bare dose has one, so the outcome block is
   # four coefficients wide and the system is two parameters wider than the
@@ -236,43 +307,287 @@ test_that("a B-spline basis reports one row per basis coefficient", {
     unname(coef(fx$outcome_mod)[est$contrast]),
     tolerance = 1e-10
   )
-  expect_dose_basis_accessors(res)
+  expect_dose_basis_conditional(res, fx$outcome_mod)
 
   # A cubic B-spline with no interior knots spans the same three columns a
   # natural spline of the same argument does, so the system is the same width.
   expect_identical(as.integer(res$fit@n_params), 3L + 1L + 2L + 4L)
 })
 
+# ---- the reading a basis fit reports ----------------------------------------
+
+test_that("a basis fit announces the reading it reports", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # The announcement is the one thing about this route a user cannot infer from
+  # the result they were handed: the surface looks like a coefficient table
+  # either way, and what changed is which question it answers. It says which
+  # reading was recorded, why there is no other, where the marginalization it
+  # does not do belongs, and how to stop being told.
+  withr::with_options(
+    list(propensity.quiet = FALSE),
+    expect_snapshot(res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat))
+  )
+})
+
+test_that("naming the conditional reading silences the announcement", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # A caller who has named the reading has been told, so the message is a
+  # default being explained rather than a fact being reported and it stops.
+  named <- withr::with_options(
+    list(propensity.quiet = FALSE),
+    expect_no_message(
+      ipw(fx$ps_mod, fx$outcome_mod, .data = dat, effects = "conditional")
+    )
+  )
+
+  # Naming the reading the default records builds the result the default builds.
+  # `fit` is excluded because two solves of one system agree in every number
+  # they report and are identical in none of them: the M-estimator carries the
+  # closures of the call that produced it.
+  default <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
+  expect_identical(class(named), class(default))
+  expect_identical(names(named), names(default))
+  comparable <- setdiff(names(default), "fit")
+  expect_identical(named[comparable], default[comparable])
+})
+
+test_that("a basis fit refuses the marginal reading", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # Asking for the marginal reading of a model that has none is a question
+  # rather than a preference, so it is answered rather than quietly given the
+  # other reading.
+  expect_error(
+    ipw(fx$ps_mod, fx$outcome_mod, .data = dat, effects = "marginal"),
+    class = "propensity_ipw_effects_error"
+  )
+  expect_propensity_error(
+    ipw(fx$ps_mod, fx$outcome_mod, .data = dat, effects = "marginal")
+  )
+})
+
+test_that("the marginal reading is refused wherever it is asked for", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "splines::ns(e, 3)")
+  res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
+
+  # One refusal reached from every door, so a caller who goes around the
+  # constructor gets the same answer the constructor gave.
+  expect_dose_basis_refuses_marginal(res)
+
+  # Asking for the reading the result already records is answered rather than
+  # refused, which is what makes the refusal about the reading rather than about
+  # the argument.
+  expect_identical(causalgenerics::as_conditional(res), res)
+  expect_identical(coef(res, effects = "conditional"), coef(res))
+  expect_identical(tidy(res, effects = "conditional"), tidy(res))
+})
+
+test_that("a basis fit is an ipw result reporting its conditional reading", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+  res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
+
+  # The class is the shared one, with no subclass of this package's on it. What
+  # marks the fit out is the set of readings it declares, which the result class
+  # contracts to hold and its accessors answer from, so everything written
+  # against an `ipw` result keeps working.
+  expect_identical(class(res), "ipw")
+  expect_identical(res$readings, "conditional")
+  expect_identical(res$estimand, "ate")
+  expect_identical(res$se_method, "mestimation")
+  expect_s3_class(res$outcome_mod, "ipw_model")
+
+  # The printed form is the conditional one every route prints, named over the
+  # table as well as beside the estimand.
+  withr::local_options(digits = 7)
+  out <- capture.output(print(res))
+  expect_true(any(grepl(
+    "Effects: conditional (outcome model)",
+    out,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl("Marginal estimates:", out, fixed = TRUE)))
+
+  header <- which(startsWith(out, "Conditional estimates (outcome model):"))
+  expect_length(header, 1L)
+  labels <- names(coef(fx$outcome_mod))
+  rows <- out[seq(header + 2L, header + 1L + length(labels))]
+  expect_identical(substr(rows, 1L, nchar(labels)), labels)
+})
+
+# ---- a forwarded reading default ---------------------------------------------
+
+# The shape every wrapper of `ipw()` writes: the wrapper carries the same
+# `effects` default, and forwarding it hands `ipw()` the whole set of readings
+# rather than one of them. A caller of the wrapper who named no reading is a
+# caller of `ipw()` who named no reading, so the set has to mean what the
+# missing argument means.
+wrap_ipw_effects <- function(..., effects = c("marginal", "conditional")) {
+  ipw(..., effects = effects)
+}
+
+# The announcement of a fit built through the wrapper against the one built
+# directly, which is the comparison the claim is about: the two are the same
+# call, so they say the same thing.
+dose_basis_messages <- function(expr) {
+  withr::with_options(
+    list(propensity.quiet = FALSE),
+    testthat::capture_messages(expr)
+  )
+}
+
+test_that("a wrapper forwarding the reading default reports the default", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # A forwarded default is the caller naming nothing, so the fit records the
+  # reading it has and says so, rather than being refused for asking for the
+  # reading the default resolves to first.
+  said <- dose_basis_messages(
+    wrap_ipw_effects(fx$ps_mod, fx$outcome_mod, .data = dat)
+  )
+  direct <- dose_basis_messages(ipw(fx$ps_mod, fx$outcome_mod, .data = dat))
+
+  expect_gt(length(direct), 0L)
+  expect_identical(said, direct)
+
+  # Built again for the result rather than out of the capture above, which
+  # returns what was said rather than what was fitted. Nothing is announced
+  # here: the suite runs quiet, which is the state the announcement is read
+  # against in the two captures.
+  res <- wrap_ipw_effects(fx$ps_mod, fx$outcome_mod, .data = dat)
+  plain <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
+  expect_dose_basis_conditional(res, fx$outcome_mod)
+
+  # The same result, not merely the same reading. `fit` is excluded for the
+  # reason the direct comparison excludes it: two solves of one system agree in
+  # every number they report and are identical in none of them.
+  comparable <- setdiff(names(plain), "fit")
+  expect_identical(res[comparable], plain[comparable])
+})
+
+test_that("a forwarded reading default reaches the gaussian glm route", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # The continuous route is reached from two methods, and both read the
+  # argument the same way. A gaussian glm propensity model and the lm of the
+  # same formula share their fitted values, so the weights the outcome model
+  # was fit with are the weights this fit implies.
+  ps_glm <- glm(e ~ x1 + x2, data = dat, family = gaussian())
+  said <- dose_basis_messages(
+    wrap_ipw_effects(ps_glm, fx$outcome_mod, .data = dat)
+  )
+  direct <- dose_basis_messages(ipw(ps_glm, fx$outcome_mod, .data = dat))
+
+  expect_gt(length(direct), 0L)
+  expect_identical(said, direct)
+
+  res <- wrap_ipw_effects(ps_glm, fx$outcome_mod, .data = dat)
+  expect_identical(res$effects, "conditional")
+  expect_identical(res$readings, "conditional")
+  expect_identical(coef(res), coef(fx$outcome_mod))
+})
+
+test_that("a forwarded reading is still the caller naming one", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+  fx <- fit_dose_basis(dat, "poly(e, 2)")
+
+  # One reading forwarded is one reading named, whichever of them it is, so the
+  # refusal and the silence both survive the wrapper.
+  expect_error(
+    wrap_ipw_effects(
+      fx$ps_mod,
+      fx$outcome_mod,
+      .data = dat,
+      effects = "marginal"
+    ),
+    class = "propensity_ipw_effects_error"
+  )
+  named <- withr::with_options(
+    list(propensity.quiet = FALSE),
+    expect_no_message(
+      wrap_ipw_effects(
+        fx$ps_mod,
+        fx$outcome_mod,
+        .data = dat,
+        effects = "conditional"
+      )
+    )
+  )
+  expect_identical(named$effects, "conditional")
+})
+
+test_that("a forwarded reading default leaves a single-column fit marginal", {
+  skip_if_not_installed("deli")
+  dat <- sim_dose_basis()
+
+  # One exposure column is one slope, so there is a row that answers the
+  # question the marginal reading is asked and the default resolves to it. The
+  # set of readings a wrapper forwards resolves the way the default resolves,
+  # with nothing announced.
+  fx <- fit_dose_basis(dat, "e")
+  res <- withr::with_options(
+    list(propensity.quiet = FALSE),
+    expect_no_message(
+      wrap_ipw_effects(fx$ps_mod, fx$outcome_mod, .data = dat)
+    )
+  )
+
+  expect_identical(res$effects, "marginal")
+  expect_identical(res$readings, c("marginal", "conditional"))
+  expect_identical(names(coef(res)), "slope")
+})
+
 # ---- the closed form ---------------------------------------------------------
 
-test_that("the reported coefficients are the weighted marginal structural model's", {
+test_that("the conditional reading is the outcome block of the stacked system", {
   skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
 
   # An identity-link marginal structural model is the estimator: nothing is
-  # standardized, so each row is exactly a coefficient of the weighted fit and
-  # the comparison is a closed form rather than an agreement to within a
-  # g-computation.
+  # standardized, so what the reading reports is exactly the weighted fit's
+  # coefficient vector and the comparison is a closed form rather than an
+  # agreement to within a g-computation. The intercept is a coefficient of that
+  # model, so it is there, which is the difference between a coefficient surface
+  # and the effects table a single-dose fit reports.
   beta <- coef(fx$outcome_mod)
+  expect_equal(coef(res), beta, tolerance = 1e-10)
+  expect_identical(names(coef(res))[[1L]], "(Intercept)")
+
+  # The covariance is the block the stacked system leaves for the outcome
+  # model, read out of the fitted variance object by position: three propensity
+  # score coefficients, the conditional variance, and the two stabilizing
+  # moments come first, and the outcome coefficients are the rest.
+  covariance <- vcov(res$fit)
+  outcome_block <- seq(7L, nrow(covariance))
   expect_equal(
-    res$estimates$estimate,
-    unname(beta[c("poly(e, 2)1", "poly(e, 2)2")]),
-    tolerance = 1e-10
+    unname(vcov(res)),
+    unname(covariance[outcome_block, outcome_block]),
+    tolerance = 1e-12
   )
 
   # Row by row as well, so a reordering of the surface fails here rather than
   # passing on a vector that happens to line up.
-  pick <- function(contrast) {
-    res$estimates$estimate[res$estimates$contrast == contrast]
-  }
+  pick <- function(label) unname(coef(res)[[label]])
   expect_equal(pick("poly(e, 2)1"), unname(beta[["poly(e, 2)1"]]))
   expect_equal(pick("poly(e, 2)2"), unname(beta[["poly(e, 2)2"]]))
-
-  # The intercept is not a causal coefficient and is not reported, so the
-  # surface is one row shorter than the coefficient vector.
-  expect_identical(nrow(res$estimates), length(beta) - 1L)
 })
 
 test_that("a logit marginal structural model reports the same rows on the odds scale", {
@@ -283,9 +598,9 @@ test_that("a logit marginal structural model reports the same rows on the odds s
   est <- res$estimates
 
   # The scale follows the outcome link, which is what the continuous path
-  # already does with a single-term logit dose response. The rows are otherwise
-  # the ones the gaussian fit reports, and the contrast still names the
-  # coefficient.
+  # already does with a single-term logit dose response. The rows the stacked
+  # system estimates are otherwise the ones the gaussian fit reports, and the
+  # contrast still names the coefficient.
   expect_dose_basis_columns(est)
   expect_identical(nrow(est), 2L)
   expect_identical(est$effect, c("log(or)", "log(or)"))
@@ -295,7 +610,8 @@ test_that("a logit marginal structural model reports the same rows on the odds s
     unname(coef(fx$outcome_mod)[c("poly(e, 2)1", "poly(e, 2)2")]),
     tolerance = 1e-10
   )
-  expect_dose_basis_accessors(res, effect = "log(or)")
+  expect_dose_basis_conditional(res, fx$outcome_mod)
+  expect_dose_basis_refuses_marginal(res)
   expect_identical(as.integer(res$fit@n_params), 3L + 1L + 2L + 3L)
 })
 
@@ -303,14 +619,11 @@ test_that("the conditional reading of a basis fit is the outcome model's", {
   skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "splines::ns(e, 3)")
-  conditional <- causalgenerics::as_conditional(
-    ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
-  )
+  conditional <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
 
-  # Read through the tidier, which is the surface the reading presents; the
-  # stored estimates frame is the marginal one whichever reading is recorded.
-  # The conditional reading is the whole coefficient vector, so the intercept
-  # the marginal surface drops is back.
+  # Read through the tidier, which is the surface the reading presents. The
+  # conditional reading is the whole coefficient vector, so the intercept the
+  # stored frame drops is back.
   tidied <- tidy(conditional)
   expect_identical(tidied$term, names(coef(fx$outcome_mod)))
   expect_equal(
@@ -320,6 +633,40 @@ test_that("the conditional reading of a basis fit is the outcome model's", {
   )
   expect_false("contrast" %in% names(tidied))
   expect_false("group" %in% names(tidied))
+})
+
+# ---- pooling -----------------------------------------------------------------
+
+test_that("pool_ipw() over basis fits pools the conditional reading", {
+  skip_if_not_installed("deli")
+
+  # Three fits of the same model to three datasets, which is the shape a set of
+  # imputations arrives in. What is pooled is the reading the results record,
+  # so a set of basis fits pools by coefficient.
+  fits <- lapply(c(8301, 8302, 8303), function(seed) {
+    dat <- sim_dose_basis(seed = seed)
+    fx <- fit_dose_basis(dat, "poly(e, 2)")
+    ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
+  })
+
+  pooled <- pool_ipw(fits)
+  coefficients <- names(coef(fits[[1L]]$outcome_mod))
+
+  expect_identical(pooled$effects, "conditional")
+  expect_identical(pooled$estimates$effect, coefficients)
+  expect_identical(pooled$m, 3L)
+  expect_true(all(is.finite(pooled$estimates$estimate)))
+  expect_true(all(is.finite(pooled$estimates$std.err)))
+
+  # The readings the results declare travel into the pooling, so a set of fits
+  # with one reading between them pools that reading and records why the other
+  # one is absent. Asking the pooled result for it is refused where the pooled
+  # class is defined; what this package settles is the reading the pooling
+  # starts from.
+  expect_error(
+    causalgenerics::as_marginal(pooled),
+    class = "causalgenerics_pool_missing_surface_marginal"
+  )
 })
 
 # ---- the .data requirement ---------------------------------------------------
@@ -398,7 +745,7 @@ test_that("a spline propensity model rebuilds from .data as it was fit", {
   # Five propensity score coefficients now, and the rest of the system as
   # before.
   expect_identical(as.integer(res$fit@n_params), 5L + 1L + 2L + 3L)
-  expect_dose_basis_accessors(res)
+  expect_dose_basis_conditional(res, fx$outcome_mod)
 })
 
 # ---- basis terms that are not exposure terms ---------------------------------
@@ -415,11 +762,19 @@ test_that("a basis term reading a covariate is admitted as a covariate", {
   # That single row keeps the word `slope`. The exposure enters through one
   # column, so its coefficient is the slope of the dose response everywhere and
   # the word is true of it; this is the vocabulary surface, and `slope` is
-  # reserved for exactly the rows it is true of.
+  # reserved for exactly the rows it is true of. The reading is marginal for the
+  # same reason, and nothing is announced, since there is a row that answers the
+  # question the marginal reading is asked.
   fx <- fit_dose_basis(dat, "e + splines::ns(x1, 3)")
-  res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
+  res <- withr::with_options(
+    list(propensity.quiet = FALSE),
+    expect_no_message(ipw(fx$ps_mod, fx$outcome_mod, .data = dat))
+  )
   est <- res$estimates
 
+  expect_identical(class(res), "ipw")
+  expect_identical(res$effects, "marginal")
+  expect_identical(res$readings, c("marginal", "conditional"))
   expect_identical(nrow(est), 1L)
   expect_identical(est$effect, "slope")
   expect_null(est[["contrast"]])
@@ -429,6 +784,15 @@ test_that("a basis term reading a covariate is admitted as a covariate", {
     est$estimate,
     unname(coef(fx$outcome_mod)[["e"]]),
     tolerance = 1e-10
+  )
+
+  # The reading is the one every single-dose fit records, so it is reported
+  # rather than refused and the result moves between the two as any other does.
+  expect_identical(names(coef(res)), "slope")
+  expect_identical(causalgenerics::as_marginal(res), res)
+  expect_identical(
+    coef(causalgenerics::as_conditional(res)),
+    coef(fx$outcome_mod)
   )
 
   # The covariate basis is still in the outcome block of the stacked system,
@@ -446,7 +810,9 @@ test_that("an exposure basis beside a covariate basis reports only its own rows"
 
   # Both terms expand to several columns and only one of them reads the
   # exposure, so the count of rows follows the exposure basis rather than the
-  # width of the design.
+  # width of the design. The exposure entering through two of them is what
+  # settles the reading, so a covariate basis beside it changes nothing about
+  # that either.
   expect_identical(nrow(est), 2L)
   expect_identical(est$contrast, c("poly(e, 2)1", "poly(e, 2)2"))
   expect_equal(
@@ -454,7 +820,8 @@ test_that("an exposure basis beside a covariate basis reports only its own rows"
     unname(coef(fx$outcome_mod)[c("poly(e, 2)1", "poly(e, 2)2")]),
     tolerance = 1e-10
   )
-  expect_dose_basis_accessors(res)
+  expect_dose_basis_conditional(res, fx$outcome_mod)
+  expect_dose_basis_refuses_marginal(res)
   expect_identical(as.integer(res$fit@n_params), 3L + 1L + 2L + 6L)
 })
 

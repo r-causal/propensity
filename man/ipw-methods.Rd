@@ -194,6 +194,18 @@ nothing else. \code{\link[causalgenerics:as_marginal]{causalgenerics::as_margina
 afterwards, and the accessors take an \code{effects} argument of their own for a
 single call.
 
+One kind of fit has a single reading rather than two. A continuous exposure
+entering \code{outcome_mod} through more than one design column, such as a
+\code{poly()} or spline dose response, has no coefficient that is the effect of
+the exposure, because a curve has a different slope at every dose. Such a
+result records the conditional reading and says so once. \code{ipw()} refuses
+\code{effects = "marginal"} itself with an error of class
+\code{propensity_ipw_effects_error}, and the result declares the conditional
+reading as the only one it supports, so the accessors refuse it from the
+result class with an error of class
+\code{causalgenerics_unsupported_reading_marginal}. See the continuous exposure
+section below.
+
 The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
@@ -231,11 +243,12 @@ registers for the shared class: \code{\link[stats:coef]{stats::coef()}} and \cod
 the reported effects, \code{\link[stats:vcov]{stats::vcov()}} for their covariance,
 \code{\link[stats:nobs]{stats::nobs()}} and \code{\link[stats:df.residual]{stats::df.residual()}} for the counts describing the
 fit, and \code{\link[stats:weights]{stats::weights()}} for the \code{\link[=psw]{psw()}} vector the outcome model was
-fit with. Coefficients are named for the effect measure, and for the effect
-measure and the contrast together where a categorical exposure reports one
-row per contrast. Which surface \code{\link[stats:coef]{stats::coef()}}, \code{\link[stats:vcov]{stats::vcov()}}, and
-\code{\link[stats:confint]{stats::confint()}} report follows the presentation mode the result records,
-described under \code{effects} above.
+fit with. Coefficients are named for the effect measure and the contrast
+together, the contrast being the level a counterfactual mean belongs to or
+the pair of levels an effect measure compares, and for the subgroup as well
+where \code{.by} reports one row per subgroup. Which surface \code{\link[stats:coef]{stats::coef()}},
+\code{\link[stats:vcov]{stats::vcov()}}, and \code{\link[stats:confint]{stats::confint()}} report follows the presentation
+mode the result records, described under \code{effects} above.
 
 Under \code{se_method = "mestimation"} the stored \code{wt_mod} and \code{outcome_mod} are
 the models supplied, carrying their block of the joint sandwich. Calling
@@ -277,9 +290,11 @@ The \code{multinom} method estimates causal effects for a categorical exposure
 from a fitted \code{\link[nnet:multinom]{nnet::multinom()}} propensity score model and a weighted
 outcome model. Standard errors are computed by M-estimation; the
 linearization method is not available for categorical exposures. For a
-K-level exposure, effects are reported for each non-reference level against
-the reference (first) factor level, and the estimates table gains a
-\code{contrast} column naming the pair of levels each row compares.
+K-level exposure, the counterfactual mean at each level is reported first,
+under the effect label \code{"mean"}, and then the effects for each non-reference
+level against the reference (first) factor level. The \code{contrast} column names
+the level each mean row belongs to and the pair of levels each effect row
+compares, as it does for a binary exposure.
 
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
@@ -294,6 +309,34 @@ exposure coefficient keeps the eight-column contract with no contrast column
 and labels its row \code{"slope"} at an identity link; a dose-response curve such
 as \code{y ~ A + I(A^2)} reports one row per coefficient under \code{"coef"}, gaining a
 contrast column that names them.
+
+A curve is also the one shape of fit that has a single reading. An exposure
+entering the outcome model through more than one design column, whether
+written as \code{y ~ A + I(A^2)} or as a basis such as \code{poly(A, 2)},
+\code{splines::ns(A, 3)}, or \code{splines::bs(A, 3)}, has no coefficient that is the
+effect of the exposure, because the dose response has a different slope at
+every dose. \code{ipw()} records the conditional reading for such a fit and
+reports it once as a message. Asking \code{ipw()} itself for
+\code{effects = "marginal"} is refused with an error of class
+\code{propensity_ipw_effects_error}; the result declares the conditional reading
+as the only one it supports, so \code{\link[causalgenerics:as_marginal]{causalgenerics::as_marginal()}},
+\code{\link[stats:coef]{stats::coef()}}, \code{\link[stats:vcov]{stats::vcov()}}, \code{\link[stats:confint]{stats::confint()}}, \code{\link[generics:tidy]{generics::tidy()}},
+and \code{as.data.frame()} refuse it from the result class instead, with an error
+of class \code{causalgenerics_unsupported_reading_marginal}. Marginalizing the
+curve over the observed doses is a separate estimand that this package does
+not compute; use the \pkg{marginaleffects} package on the conditional
+result: \code{avg_slopes()} for slopes, \code{avg_comparisons()} for contrasts, and
+\code{avg_predictions()} for causal dose-response functions. A basis
+term reading a covariate rather than the exposure is a covariate term however
+many columns it expands to, so it contributes no row and leaves the reading
+marginal.
+
+A model frame records the term rather than the variables inside it, so the
+frame of a fit whose exposure enters through \code{poly()} or a spline holds no
+exposure column and \code{.data} must supply one. The propensity score design is
+then rebuilt through the model's terms object, whose \code{predvars} attribute
+records the basis the model was fit with, so the rebuilt columns are the
+fitted ones.
 
 \code{ipw()} is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
@@ -357,6 +400,17 @@ for anything other than \code{"ate"}.
 }
 
 \section{Effect measures}{
+A binary or categorical exposure reports the counterfactual mean at each
+exposure level before the contrasts built from those means. Those rows carry
+the effect label \code{"mean"} and lead the table, one per level in level order
+with the reference level first. Each is the outcome model's prediction with
+every unit set to that level, averaged over the sample under the estimand's
+tilt, so a binomial outcome reports the marginal risk under each level and a
+continuous one reports the marginal mean. Reading a risk difference beside
+the two risks it is a difference of is what those rows are for: a difference
+of 0.05 is a different finding at risks of 0.02 and 0.07 than at 0.50 and
+0.55.
+
 For a binary exposure, the reported measures depend on the outcome model. A
 binary outcome (\code{\link[stats:glm]{stats::glm()}} with \code{family = binomial()}) returns three
 measures:
@@ -370,10 +424,15 @@ A continuous outcome (\code{\link[stats:lm]{stats::lm()}} or \code{\link[stats:g
 \code{family = gaussian()}) returns only the difference in means (\code{diff}).
 
 For a categorical exposure, the same measures are reported for each
-non-reference level against the reference (first) factor level. The estimates
-table gains a \code{contrast} column naming the pair of levels each row compares
-(for example \code{"b vs a"}), so a K-level exposure produces one block of
-measures per non-reference level.
+non-reference level against the reference (first) factor level, so a K-level
+exposure produces one block of measures per non-reference level.
+
+The estimates table of either exposure carries a \code{contrast} column naming
+what each row is about: the level a mean row belongs to, and the pair of
+levels a contrast row compares, written \code{"1 vs 0"} or \code{"b vs a"} in the
+levels the models were fit on. A binary exposure names its one pair the same
+way a categorical one names each of its several, so the two tables are read
+alike.
 
 For a continuous exposure, \code{ipw()} reports the exposure coefficients of the
 weighted marginal structural outcome model. A model with one exposure
@@ -428,15 +487,21 @@ scale.
 \section{Effect modification}{
 \code{.by} names a modifier and asks for the effect within each of its levels
 alongside the effect for the sample as a whole. The reported rows come in
-three blocks, in this order:
+four blocks, in this order:
 \itemize{
-\item the overall rows, unchanged from the fit without \code{.by}, under the group
-label \code{"overall"};
-\item one block per level of the modifier, under a \code{"var = value"} label such as
-\code{"sex = female"};
-\item one block per non-reference level against the reference level, which is the
-modifier's first level, under a \code{"var = value vs var = value"} label.
+\item the overall rows, unchanged from the fit without \code{.by}, the counterfactual
+means and then the contrasts, under the group label \code{"overall"};
+\item the counterfactual mean at each exposure level within each level of the
+modifier, under a \code{"var = value"} label such as \code{"sex = female"};
+\item one block of contrasts per level of the modifier, under the same labels;
+\item one block of contrasts per non-reference level against the reference level,
+which is the modifier's first level, under a
+\code{"var = value vs var = value"} label.
 }
+
+The last block reports no means of its own. Its rows compare the effects in
+two strata, and a difference of two effects belongs to neither stratum's
+population, so there is no level whose mean it would be.
 
 A stratum's effect is g-computation restricted to that stratum: the outcome
 model predicts each unit's outcome at each exposure level, and the
@@ -459,11 +524,12 @@ A categorical exposure already reports one contrast per non-reference level,
 and \code{.by} crosses those contrasts with the strata: every block holds each
 contrast on each reported measure, so a K-level exposure with S strata
 reports the whole-sample block and then S + (S - 1) blocks of (K - 1)
-contrasts. A row is named by three things there, the measure, the contrast,
-and the subgroup, and the \code{estimates} frame carries \code{contrast} and \code{group} in
-that order after \code{effect}. Within a block the ordering is the one an
-ungrouped categorical fit already uses, contrast-major and measure-minor, so
-a contrast's measures sit together; the blocks themselves run group-major.
+contrasts, beside S blocks of K means. A row is named by three things, the
+measure, the contrast, and the subgroup, and the \code{estimates} frame carries
+\code{contrast} and \code{group} in that order after \code{effect}. Within a contrast block
+the ordering is the one an ungrouped fit already uses, contrast-major and
+measure-minor, so a contrast's measures sit together; the blocks themselves
+run group-major.
 
 The stratum rows and the stratum contrasts report the risk difference and the
 log risk ratio for a binary outcome, and the difference in means for a

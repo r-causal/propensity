@@ -276,13 +276,87 @@ test_that("ipw() continuous rejects an MSM term that reads a covariate", {
     regexp = "fit"
   )
 
-  # a curve in the exposure alone is admitted, and reports one row per
-  # coefficient; the full contract for those rows is pinned in
+  # a curve in the exposure alone is admitted, and the stacked system estimates
+  # one row per coefficient; the full contract for those rows is pinned in
   # test-ipw-joint-continuous.R
   curve <- fit_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
   res <- ipw(curve$ps_mod, curve$outcome_mod)
   expect_identical(nrow(res$estimates), 2L)
   expect_identical(res$estimates$contrast, c("A", "I(A^2)"))
+})
+
+# ---- the reading a curve reports --------------------------------------------
+
+# A curve in the exposure is admitted, and what it reports is the outcome
+# model's coefficient surface. No coefficient of a curve is the effect of the
+# dose, since the response has a different slope at every dose, so there is no
+# marginal reading of such a fit to present and `ipw()` records the conditional
+# one instead of picking a row to call an effect. The boundary is how many
+# design columns the exposure enters through, which is the same boundary that
+# decides whether the stacked system's rows are named after their coefficients.
+
+test_that("ipw() continuous reports the conditional reading for a curve", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  curve <- fit_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+  res <- ipw(curve$ps_mod, curve$outcome_mod)
+
+  expect_identical(res$effects, "conditional")
+  expect_identical(res$readings, "conditional")
+  expect_identical(class(res), "ipw")
+
+  # The reading is the outcome model's own coefficient vector, intercept
+  # included, under the covariance the stacked system leaves for it.
+  expect_identical(coef(res), coef(curve$outcome_mod))
+  expect_identical(names(coef(res)), c("(Intercept)", "A", "I(A^2)"))
+  expect_identical(vcov(res), vcov(res$outcome_mod))
+  expect_identical(tidy(res)$term, names(coef(curve$outcome_mod)))
+})
+
+test_that("ipw() continuous refuses the marginal reading of a curve", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  curve <- fit_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+
+  expect_error(
+    ipw(curve$ps_mod, curve$outcome_mod, effects = "marginal"),
+    class = "propensity_ipw_effects_error"
+  )
+
+  # The result refuses it too, from the set of readings it declares, so a caller
+  # who takes the conditional result and asks it for the other reading is told
+  # the same thing the constructor told them.
+  res <- ipw(curve$ps_mod, curve$outcome_mod)
+  expect_error(
+    causalgenerics::as_marginal(res),
+    class = "causalgenerics_unsupported_reading_marginal"
+  )
+  expect_error(
+    coef(res, effects = "marginal"),
+    class = "causalgenerics_unsupported_reading_marginal"
+  )
+})
+
+test_that("ipw() continuous leaves a single exposure term marginal", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+
+  # One design column is one slope, and that slope is the dose response
+  # everywhere, so the reading, the class, and the row are the ones this path
+  # has always reported. A covariate beside the exposure changes none of it.
+  for (rhs in list("A", c("A", "x1"))) {
+    mods <- fit_continuous_models(dat, msm_rhs = rhs)
+    res <- withr::with_options(
+      list(propensity.quiet = FALSE),
+      expect_no_message(ipw(mods$ps_mod, mods$outcome_mod))
+    )
+
+    expect_identical(res$effects, "marginal")
+    expect_identical(res$readings, c("marginal", "conditional"))
+    expect_identical(class(res), "ipw")
+    expect_identical(res$estimates$effect, "slope")
+    expect_identical(causalgenerics::as_marginal(res), res)
+  }
 })
 
 # ---- gaussian-glm routing ---------------------------------------------------

@@ -394,13 +394,17 @@ test_that("the unsolved-equations warning leaves the estimates in the output", {
   )
 
   expect_s3_class(res, "ipw")
-  expect_identical(nrow(res$estimates), 3L)
+  expect_identical(nrow(res$estimates), 5L)
   expect_true(all(is.finite(res$estimates$estimate)))
 })
 
 test_that("the unsolved-equations warning reads in the user's terms", {
   skip_if_not_installed("deli")
   mods <- zero_event_fit()
+
+  # The row labels name the effect measure and the contrast together, so the
+  # table needs more than the 80 columns testthat pins or it wraps.
+  withr::local_options(width = 120)
 
   # The collapsed standard errors and the statistics built from them are masked;
   # see `mask_degenerate_magnitudes()`.
@@ -638,26 +642,51 @@ constant_outcome_fit <- function() {
   list(ps_mod = ps_mod, out = out, dat = dat)
 }
 
+# Every row this fit reports collapses, the counterfactual means included. The
+# outcome is the exposure, so the mean in the reference arm is zero and the mean
+# in the exposed arm is one, each with no spread at all: the reference arm's mean
+# comes back a few multiples of machine precision from zero with a standard error
+# a further order below that, which is a number carrying no information rather
+# than a small estimate measured precisely. All three rows are printed with an
+# interval of no width and a p-value of zero, so all three have to be named.
+constant_outcome_rows <- c("mean for 0", "mean for 1", "diff for 1 vs 0")
+
 test_that("a solved fit with a collapsed standard error is reported", {
   skip_if_not_installed("deli")
   mods <- constant_outcome_fit()
 
   w <- expect_warning(
-    ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
+    res <- ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
     class = "propensity_ipw_degenerate_se_warning"
   )
   msg <- rank_msg(w)
-  expect_match(msg, "diff", fixed = TRUE)
+  for (row in constant_outcome_rows) {
+    expect_match(msg, row, fixed = TRUE)
+  }
+
+  # And read off the table directly, so the row set is held whether or not the
+  # report reaches a message.
+  expect_identical(
+    ipw_degenerate_se_rows(res$estimates),
+    constant_outcome_rows
+  )
 })
 
 test_that("the linearization path reports a collapsed standard error too", {
   mods <- constant_outcome_fit()
 
   w <- expect_warning(
-    ipw(mods$ps_mod, mods$out, se_method = "linearization"),
+    res <- ipw(mods$ps_mod, mods$out, se_method = "linearization"),
     class = "propensity_ipw_degenerate_se_warning"
   )
-  expect_match(rank_msg(w), "diff", fixed = TRUE)
+  msg <- rank_msg(w)
+  for (row in constant_outcome_rows) {
+    expect_match(msg, row, fixed = TRUE)
+  }
+  expect_identical(
+    ipw_degenerate_se_rows(res$estimates),
+    constant_outcome_rows
+  )
 })
 
 test_that("the collapsed standard error is reported once per fit", {
@@ -718,9 +747,21 @@ test_that("a categorical collapsed standard error names the pair each row compar
 
   # And read off the table directly, the way the signature itself is pinned
   # below, so the labels are held whether or not the report reaches a message.
+  # The counterfactual means the contrasts are built from collapse with them,
+  # each named by the level it belongs to. The reference level's mean is one of
+  # them: the outcome is zero throughout that arm, so the mean comes back a few
+  # multiples of machine precision from zero beside a standard error an order
+  # further down, which is a number carrying no information rather than a small
+  # quantity measured precisely.
   expect_identical(
     ipw_degenerate_se_rows(res$estimates),
-    c("diff for b vs a", "diff for c vs a")
+    c(
+      "mean for a",
+      "mean for b",
+      "mean for c",
+      "diff for b vs a",
+      "diff for c vs a"
+    )
   )
 })
 
@@ -762,6 +803,10 @@ test_that("a fit the solver could not pin down reports that rather than the coll
 test_that("the collapsed standard error report reads in the user's terms", {
   skip_if_not_installed("deli")
   mods <- constant_outcome_fit()
+
+  # The row labels name the effect measure and the contrast together, so the
+  # table needs more than the 80 columns testthat pins or it wraps.
+  withr::local_options(width = 120)
 
   # The collapsed standard error and the statistics built from it are masked;
   # see `mask_degenerate_magnitudes()`.
@@ -809,7 +854,9 @@ test_that("a small-unit outcome keeps an informative test statistic", {
   )
 
   # the fit the report would have to be about: every number in the table near
-  # machine precision, and an interval that excludes zero
+  # machine precision, and an interval that excludes zero. Read off the contrast
+  # row, which is the one whose collapse the report would concern.
+  est <- est[est$term == "diff", ]
   expect_lt(abs(est$estimate), 1e-8)
   expect_lt(est$std.error, 1e-8)
   expect_gt(abs(est$statistic), 3)
@@ -876,8 +923,15 @@ degenerate_se_z <- function(res) {
   max(abs(est$estimate) / est$std.error)
 }
 
+# The smallest test statistic among the contrast rows. The margin this measures
+# is the one the magnitude branch of the signature rests on, and the
+# counterfactual means are not a case that branch decides: a mean the fit pins
+# at zero divides one numerical zero by another and lands on whatever ratio the
+# arithmetic left behind. Which rows are named is held by the report itself,
+# against the whole table, rather than here.
 degenerate_se_min_z <- function(res) {
   est <- as.data.frame(res)
+  est <- est[est$term != "mean", ]
   min(abs(est$estimate) / est$std.error)
 }
 
@@ -942,7 +996,7 @@ test_that("healthy fits clear the degenerate-standard-error threshold by orders"
   expect_true(all(statistics < threshold / 1e6))
 })
 
-test_that("degenerate fits clear the threshold by orders in the other direction", {
+test_that("every reported row of a degenerate fit carries the signature", {
   skip_if_not_installed("deli")
   threshold <- 1 / sqrt(.Machine$double.eps)
   fits <- list()
@@ -966,6 +1020,27 @@ test_that("degenerate fits clear the threshold by orders in the other direction"
     se_method = "mestimation"
   ))
 
+  # Every reported row of a degenerate fit has to be named. Each one is printed
+  # with an interval of no width and a p-value of zero, so a row the report
+  # misses is a row the reader takes for an ordinary estimate.
+  #
+  # Asserted against the table rather than against `ipw_degenerate_se()`, whose
+  # two arguments are one row's estimate and standard error and nothing else.
+  # The pair a pinned mean reports is genuinely indistinguishable from the pair
+  # a healthy fit of a nanomolar outcome reports, which the signature's own
+  # tests require it to pass, so what separates them is the rest of the table
+  # rather than either pair on its own.
+  for (name in names(fits)) {
+    estimates <- fits[[name]]$estimates
+    expect_length(ipw_degenerate_se_rows(estimates), nrow(estimates))
+  }
+
+  # The margin the magnitude branch rests on, measured over the contrast rows.
+  # Every one of them clears the threshold by orders, which is what separates a
+  # degenerate fit from the healthy ones the test above measures. The mean rows
+  # are left out because magnitude is not what decides them: a mean pinned at
+  # zero reports whatever ratio the arithmetic left behind, so the report has to
+  # reach it some other way, which is what the length check above holds.
   statistics <- vapply(fits, degenerate_se_min_z, numeric(1))
   expect_true(all(statistics > 1e6 * threshold))
 })

@@ -14,10 +14,12 @@
         Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) 
       
       Marginal estimates:
-              estimate  std.err      z ci.lower ci.upper conf.level p.value  
-      rd      0.199882 0.092425 2.1626 0.018732  0.38103       0.95 0.03057 *
-      log(rr) 0.560414 0.273519 2.0489 0.024326  1.09650       0.95 0.04047 *
-      log(or) 0.878313 0.418661 2.0979 0.057753  1.69887       0.95 0.03591 *
+                     estimate  std.err      z ci.lower ci.upper conf.level   p.value    
+      mean 0         0.266013 0.061830 4.3023 0.144829  0.38720       0.95 1.690e-05 ***
+      mean 1         0.465895 0.070677 6.5919 0.327371  0.60442       0.95 4.342e-11 ***
+      rd 1 vs 0      0.199882 0.092425 2.1626 0.018732  0.38103       0.95   0.03057 *  
+      log(rr) 1 vs 0 0.560414 0.273519 2.0489 0.024326  1.09650       0.95   0.04047 *  
+      log(or) 1 vs 0 0.878313 0.418661 2.0979 0.057753  1.69887       0.95   0.03591 *  
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
@@ -37,8 +39,10 @@
         Call: lm(formula = y ~ z, data = dat, weights = wts) 
       
       Marginal estimates:
-           estimate std.err      z ci.lower ci.upper conf.level   p.value    
-      diff  2.25255 0.17524 12.854   1.9091    2.596       0.95 < 2.2e-16 ***
+                  estimate std.err      z ci.lower ci.upper conf.level   p.value    
+      mean 0       4.64537 0.17330 26.805   4.3057   4.9850       0.95 < 2.2e-16 ***
+      mean 1       6.89793 0.16808 41.040   6.5685   7.2274       0.95 < 2.2e-16 ***
+      diff 1 vs 0  2.25255 0.17524 12.854   1.9091   2.5960       0.95 < 2.2e-16 ***
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 

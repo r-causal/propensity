@@ -391,12 +391,15 @@ test_that("a polynomial dose model reports one row per dose coefficient", {
   res <- ipw(fx$ps_mod, fx$outcome_mod)
   est <- res$estimates
 
-  # More than one exposure coefficient, so the table gains a contrast column
-  # naming the term each one belongs to, placed where every other route places
-  # it, and the scale word becomes `coef`. Neither of these two coefficients is
-  # the slope of the dose response, since the response has a different slope at
-  # every dose, so the surface says what the numbers are rather than naming them
-  # after a quantity only one of them could be.
+  # More than one exposure coefficient, so the frame the stacked system
+  # estimates gains a contrast column naming the term each one belongs to,
+  # placed where every other route places it, and the scale word becomes `coef`.
+  # Neither of these two coefficients is the slope of the dose response, since
+  # the response has a different slope at every dose, so the surface says what
+  # the numbers are rather than naming them after a quantity only one of them
+  # could be. That is also why the result reports the conditional reading and
+  # refuses the marginal one: there is no row of it that answers the question
+  # the marginal reading is asked.
   expect_identical(
     names(est),
     c(
@@ -427,8 +430,31 @@ test_that("a polynomial dose model reports one row per dose coefficient", {
 
   expect_true(all(is.finite(est$std.err)))
   expect_true(all(est$std.err > 0))
-  expect_equal(sqrt(diag(vcov(res))), est$std.err, ignore_attr = TRUE)
-  expect_identical(names(coef(res)), paste(est$effect, est$contrast))
+  expect_true(all(est$ci.lower < est$ci.upper))
+
+  # What the result reports is the conditional reading: the outcome model's own
+  # coefficient vector, intercept included, under the block the stacked system
+  # leaves for it.
+  expect_identical(res$effects, "conditional")
+  expect_identical(res$readings, "conditional")
+  expect_identical(class(res), "ipw")
+  expect_identical(coef(res), coef(fx$outcome_mod))
+  expect_identical(names(coef(res)), c("(Intercept)", "e", "I(e^2)"))
+  expect_identical(vcov(res), vcov(res$outcome_mod))
+
+  # The frame the stacked system estimates carries the standard error of each
+  # dose coefficient, which is that coefficient's diagonal entry in the same
+  # block. Nothing else pins those numbers to a covariance, and `pool_ipw()`
+  # reads them off the frame rather than through the accessors.
+  expect_equal(
+    unname(sqrt(diag(vcov(res)))[est$contrast]),
+    est$std.err,
+    tolerance = 1e-12
+  )
+  expect_error(
+    causalgenerics::as_marginal(res),
+    class = "causalgenerics_unsupported_reading_marginal"
+  )
 
   # One outcome coefficient more than the single-term fit, and nothing else
   # about the system changes.
@@ -450,6 +476,7 @@ test_that("the relaxation admits any term that reads the exposure alone", {
   expect_identical(nrow(res$estimates), 2L)
   expect_identical(res$estimates$effect, c("coef", "coef"))
   expect_identical(res$estimates$contrast, c("e", "sin(e)"))
+  expect_identical(res$effects, "conditional")
   expect_equal(
     res$estimates$estimate,
     unname(coef(fx$outcome_mod)[c("e", "sin(e)")]),

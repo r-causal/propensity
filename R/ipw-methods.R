@@ -3,9 +3,11 @@
 #' from a fitted [nnet::multinom()] propensity score model and a weighted
 #' outcome model. Standard errors are computed by M-estimation; the
 #' linearization method is not available for categorical exposures. For a
-#' K-level exposure, effects are reported for each non-reference level against
-#' the reference (first) factor level, and the estimates table gains a
-#' `contrast` column naming the pair of levels each row compares.
+#' K-level exposure, the counterfactual mean at each level is reported first,
+#' under the effect label `"mean"`, and then the effects for each non-reference
+#' level against the reference (first) factor level. The `contrast` column names
+#' the level each mean row belongs to and the pair of levels each effect row
+#' compares, as it does for a binary exposure.
 #'
 #' @param .focal_level For the categorical (`multinom`) method with the `att`
 #'   or `atu` estimand, the focal exposure level. If `NULL`, it is taken from
@@ -93,6 +95,34 @@ ipw.multinom <- function(
 #' as `y ~ A + I(A^2)` reports one row per coefficient under `"coef"`, gaining a
 #' contrast column that names them.
 #'
+#' A curve is also the one shape of fit that has a single reading. An exposure
+#' entering the outcome model through more than one design column, whether
+#' written as `y ~ A + I(A^2)` or as a basis such as `poly(A, 2)`,
+#' `splines::ns(A, 3)`, or `splines::bs(A, 3)`, has no coefficient that is the
+#' effect of the exposure, because the dose response has a different slope at
+#' every dose. `ipw()` records the conditional reading for such a fit and
+#' reports it once as a message. Asking `ipw()` itself for
+#' `effects = "marginal"` is refused with an error of class
+#' `propensity_ipw_effects_error`; the result declares the conditional reading
+#' as the only one it supports, so [causalgenerics::as_marginal()],
+#' [stats::coef()], [stats::vcov()], [stats::confint()], [generics::tidy()],
+#' and `as.data.frame()` refuse it from the result class instead, with an error
+#' of class `causalgenerics_unsupported_reading_marginal`. Marginalizing the
+#' curve over the observed doses is a separate estimand that this package does
+#' not compute; use the \pkg{marginaleffects} package on the conditional
+#' result: `avg_slopes()` for slopes, `avg_comparisons()` for contrasts, and
+#' `avg_predictions()` for causal dose-response functions. A basis
+#' term reading a covariate rather than the exposure is a covariate term however
+#' many columns it expands to, so it contributes no row and leaves the reading
+#' marginal.
+#'
+#' A model frame records the term rather than the variables inside it, so the
+#' frame of a fit whose exposure enters through `poly()` or a spline holds no
+#' exposure column and `.data` must supply one. The propensity score design is
+#' then rebuilt through the model's terms object, whose `predvars` attribute
+#' records the basis the model was fit with, so the rebuilt columns are the
+#' fitted ones.
+#'
 #' @name ipw-methods
 #' @exportS3Method causalgenerics::ipw lm
 ipw.lm <- function(
@@ -110,6 +140,12 @@ ipw.lm <- function(
   rlang::check_dots_empty()
   .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
+
+  # Read before `arg_match()` resolves the default, for the reason `ipw.glm()`
+  # reads it, and reading a forwarded set of readings as naming nothing for the
+  # reason it does: the reading a dose-basis fit records is the same either way,
+  # and what the caller named settles whether it is announced.
+  effects_named <- !missing(effects) && length(effects) == 1L
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
 
@@ -124,6 +160,6 @@ ipw.lm <- function(
     ps_link = ps_link,
     conf_level = conf_level,
     se_method = se_method,
-    effects = effects
+    effects = if (effects_named) effects
   )
 }

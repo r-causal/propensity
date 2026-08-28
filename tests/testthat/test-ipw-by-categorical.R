@@ -233,7 +233,14 @@ by_cat_stratum_effects <- function(
   )
   ref <- mu[[1]]
 
-  rows <- list()
+  # The counterfactual mean at each level is a reported row of its own, keyed by
+  # the level rather than by a pair of them.
+  rows <- list(data.frame(
+    effect = "mean",
+    contrast = lev,
+    estimate = unname(mu),
+    stringsAsFactors = FALSE
+  ))
   for (j in seq_along(lev)[-1]) {
     for (form in forms) {
       rows[[length(rows) + 1L]] <- data.frame(
@@ -268,6 +275,13 @@ expect_by_cat_match <- function(
   key_ref <- paste(reference$effect, reference$contrast)
   got <- rows$estimate[match(key_ref, key_got)]
   expect_equal(got, reference$estimate, tolerance = tolerance, label = group)
+}
+
+# The contrast rows of an oracle frame. A stratum reports the counterfactual
+# means as well as the contrasts over them, but the effect-modification rows
+# compare two strata's contrasts and have no mean of their own.
+by_cat_contrast_rows <- function(reference) {
+  reference[reference$effect != "mean", , drop = FALSE]
 }
 
 # The labels every surface of a grouped categorical result keys its rows by.
@@ -336,9 +350,12 @@ test_that("an ungrouped categorical fit names no subgroups", {
   # subgroups, which is the shape `.by` has to leave alone.
   expect_identical(
     res$estimates$effect,
-    rep(c("rd", "log(rr)", "log(or)"), times = 2)
+    c(rep("mean", 3), rep(c("rd", "log(rr)", "log(or)"), times = 2))
   )
-  expect_identical(res$estimates$contrast, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(
+    res$estimates$contrast,
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
+  )
   expect_null(res$estimates[["group"]])
   expect_identical(
     names(coef(res)),
@@ -391,36 +408,47 @@ test_that("a .by categorical fit crosses its contrasts with its groups", {
     )
   )
 
-  # Blocks run group-major; within a block the ordering is the one an ungrouped
-  # categorical fit uses, contrast-major and effect-minor, so a contrast's
-  # measures sit together.
+  # The whole-sample means lead, then the whole-sample contrasts, then the
+  # stratum means, then the stratum contrasts. Blocks run group-major; within a
+  # contrast block the ordering is the one an ungrouped categorical fit uses,
+  # contrast-major and effect-minor, so a contrast's measures sit together.
+  levs <- c("a", "b", "c")
   contrasts <- c("b vs a", "c vs a")
   overall <- c("rd", "log(rr)", "log(or)")
   stratum <- c("rd", "log(rr)")
+  strata <- c("v = 0", "v = 1")
   groups <- c("v = 0", "v = 1", "v = 1 vs v = 0")
 
   expect_identical(
     est$effect,
     c(
+      rep("mean", length(levs)),
       rep(overall, times = length(contrasts)),
+      rep("mean", length(levs) * length(strata)),
       rep(rep(stratum, times = length(contrasts)), times = length(groups))
     )
   )
   expect_identical(
     est$contrast,
     c(
+      levs,
       rep(contrasts, each = length(overall)),
+      rep(levs, times = length(strata)),
       rep(rep(contrasts, each = length(stratum)), times = length(groups))
     )
   )
   expect_identical(
     est$group,
     c(
-      rep("overall", length(overall) * length(contrasts)),
+      rep(
+        "overall",
+        length(levs) + length(overall) * length(contrasts)
+      ),
+      rep(strata, each = length(levs)),
       rep(groups, each = length(stratum) * length(contrasts))
     )
   )
-  expect_identical(nrow(est), 18L)
+  expect_identical(nrow(est), 27L)
   expect_identical(res$estimand, "ate")
 })
 
@@ -499,8 +527,8 @@ test_that("a .by categorical ate fit contrasts each stratum against the referenc
 
   # The stratum contrast is taken per contrast and per scale: the same
   # comparison of exposure levels, differenced between the two strata.
-  em <- ref1
-  em$estimate <- ref1$estimate - ref0$estimate
+  em <- by_cat_contrast_rows(ref1)
+  em$estimate <- em$estimate - by_cat_contrast_rows(ref0)$estimate
   expect_by_cat_match(res$estimates, "v = 1 vs v = 0", em)
 })
 
@@ -534,8 +562,8 @@ test_that("a .by categorical att fit weights each stratum mean by the tilt withi
     expect_by_cat_match(res$estimates, paste0("v = ", level), refs[[level]])
   }
 
-  em <- refs[["1"]]
-  em$estimate <- refs[["1"]]$estimate - refs[["0"]]$estimate
+  em <- by_cat_contrast_rows(refs[["1"]])
+  em$estimate <- em$estimate - by_cat_contrast_rows(refs[["0"]])$estimate
   expect_by_cat_match(res$estimates, "v = 1 vs v = 0", em)
 })
 
@@ -547,11 +575,31 @@ test_that("a .by categorical fit on a continuous outcome reports one diff row pe
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   est <- res$estimates
 
-  expect_identical(est$effect, rep("diff", 8))
-  expect_identical(est$contrast, rep(c("b vs a", "c vs a"), times = 4))
+  expect_identical(
+    est$effect,
+    c(
+      rep("mean", 3),
+      rep("diff", 2),
+      rep("mean", 6),
+      rep("diff", 6)
+    )
+  )
+  expect_identical(
+    est$contrast,
+    c(
+      c("a", "b", "c"),
+      c("b vs a", "c vs a"),
+      rep(c("a", "b", "c"), times = 2),
+      rep(c("b vs a", "c vs a"), times = 3)
+    )
+  )
   expect_identical(
     est$group,
-    rep(c("overall", "v = 0", "v = 1", "v = 1 vs v = 0"), each = 2)
+    c(
+      rep("overall", 5),
+      rep(c("v = 0", "v = 1"), each = 3),
+      rep(c("v = 0", "v = 1", "v = 1 vs v = 0"), each = 2)
+    )
   )
 
   # A linear outcome model has each level's counterfactual mean differing from
@@ -736,7 +784,7 @@ test_that("a .by categorical fit drops a modifier level no unit carries", {
     unique(res$estimates$group),
     c("overall", "v = 0", "v = 1", "v = 1 vs v = 0")
   )
-  expect_identical(nrow(res$estimates), 18L)
+  expect_identical(nrow(res$estimates), 27L)
 })
 
 test_that(".by refuses a stratum missing one of a categorical exposure's levels", {
@@ -784,7 +832,7 @@ test_that(".by warns when a categorical outcome model has no exposure-by-modifie
     class = "propensity_ipw_by_interaction_warning"
   )
   expect_s3_class(res, "ipw")
-  expect_identical(nrow(res$estimates), 18L)
+  expect_identical(nrow(res$estimates), 27L)
 
   expect_propensity_warning(ipw(mods$ps_mod, mods$outcome_mod, .by = v))
 })

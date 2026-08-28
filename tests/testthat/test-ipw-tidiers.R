@@ -150,7 +150,11 @@ fit_tidy_categorical_models <- function(dat) {
 # Continuous exposure: an lm propensity score model of the exposure, stabilized
 # continuous ATE weights, and a weighted marginal structural model with the one
 # exposure term the continuous path requires.
-fit_tidy_continuous_models <- function(dat, outcome_family = "gaussian") {
+fit_tidy_continuous_models <- function(
+  dat,
+  outcome_family = "gaussian",
+  msm_rhs = "A"
+) {
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -162,7 +166,7 @@ fit_tidy_continuous_models <- function(dat, outcome_family = "gaussian") {
     )
   )
   outcome_var <- if (outcome_family == "binomial") "yb" else "yc"
-  fmla <- stats::reformulate("A", response = outcome_var)
+  fmla <- stats::reformulate(msm_rhs, response = outcome_var)
   outcome_mod <- if (outcome_family == "binomial") {
     glm(
       fmla,
@@ -400,10 +404,9 @@ expect_tidy_wraps_frame <- function(
 # tidier: the outcome model's coefficients, the standard errors the joint block
 # implies, and the normal statistics those two make. Reading them from the
 # accessors is what keeps the tidied table and the printed one the same numbers,
-# which is also why the p-value takes the form causalgenerics prints this reading
-# with, `2 * pnorm(-abs(z))`, rather than the `2 * (1 - pnorm(abs(z)))` the
-# marginal estimates table was built with, a form that loses its significant
-# digits in the far tail.
+# and the p-value is written the way causalgenerics writes it for this reading,
+# `2 * pnorm(-abs(z))`, which reads the tail the statistic falls in directly and
+# so keeps its significant digits however far out that tail the statistic lands.
 conditional_expectations <- function(result, conf_level = 0.95) {
   estimate <- stats::coef(result, effects = "conditional")
   std_error <- sqrt(diag(stats::vcov(result, effects = "conditional")))
@@ -588,8 +591,9 @@ test_that("tidy() returns the broom columns for a binary mestimation fit", {
 
   # conf.int defaults to FALSE, so no bounds appear, and the effect labels
   # arrive on the log scale because exponentiate defaults to FALSE
-  expect_tidy_contract(tidied, res)
-  expect_identical(tidied$term, c("rd", "log(rr)", "log(or)"))
+  expect_tidy_contract(tidied, res, contrast = TRUE)
+  expect_identical(tidied$term, c("mean", "mean", "rd", "log(rr)", "log(or)"))
+  expect_identical(tidied$contrast, c("0", "1", rep("1 vs 0", 3)))
 })
 
 test_that("tidy(conf.int = TRUE) returns the stored bounds for a binary fit", {
@@ -601,7 +605,7 @@ test_that("tidy(conf.int = TRUE) returns the stored bounds for a binary fit", {
   # conf.level defaults to 0.95, the level the fit was built at, so the bounds
   # are the stored ones rather than a recomputation that merely agrees with them
   tidied <- tidy(res, conf.int = TRUE)
-  expect_tidy_contract(tidied, res, conf_int = TRUE)
+  expect_tidy_contract(tidied, res, conf_int = TRUE, contrast = TRUE)
 })
 
 test_that("tidy() reports the diff row for a gaussian binary outcome", {
@@ -611,8 +615,8 @@ test_that("tidy() reports the diff row for a gaussian binary outcome", {
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
 
   tidied <- tidy(res, conf.int = TRUE)
-  expect_tidy_contract(tidied, res, conf_int = TRUE)
-  expect_identical(tidied$term, "diff")
+  expect_tidy_contract(tidied, res, conf_int = TRUE, contrast = TRUE)
+  expect_identical(tidied$term, c("mean", "mean", "diff"))
 
   # a table with no ratio rows is untouched by exponentiate
   expect_identical(tidy(res, conf.int = TRUE, exponentiate = TRUE), tidied)
@@ -628,8 +632,13 @@ test_that("tidy() returns the broom columns for a binary linearization fit", {
   # The linearization path stores no deli fit, so the tidier has only the
   # estimates table to read. Its contract is the same as the M-estimation one.
   expect_null(res$fit)
-  expect_tidy_contract(tidy(res), res)
-  expect_tidy_contract(tidy(res, conf.int = TRUE), res, conf_int = TRUE)
+  expect_tidy_contract(tidy(res), res, contrast = TRUE)
+  expect_tidy_contract(
+    tidy(res, conf.int = TRUE),
+    res,
+    conf_int = TRUE,
+    contrast = TRUE
+  )
 })
 
 # ---- categorical exposure ----------------------------------------------------
@@ -646,9 +655,16 @@ test_that("tidy() keeps the contrast column after term for a categorical fit", {
   tidied <- tidy(res, conf.int = TRUE)
   expect_tidy_contract(tidied, res, conf_int = TRUE, contrast = TRUE)
 
-  # every effect of every contrast keeps its own row, in the stored order
-  expect_identical(tidied$term, rep(c("rd", "log(rr)", "log(or)"), times = 2))
-  expect_identical(tidied$contrast, rep(c("b vs a", "c vs a"), each = 3))
+  # every mean and every effect of every contrast keeps its own row, in the
+  # stored order
+  expect_identical(
+    tidied$term,
+    c(rep("mean", 3), rep(c("rd", "log(rr)", "log(or)"), times = 2))
+  )
+  expect_identical(
+    tidied$contrast,
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
+  )
 })
 
 # ---- continuous exposure -----------------------------------------------------
@@ -939,11 +955,14 @@ test_that("tidy(exponentiate = TRUE) relabels and exponentiates ratio rows", {
   plain <- tidy(res, conf.int = TRUE)
   expo <- tidy(res, conf.int = TRUE, exponentiate = TRUE)
 
-  expect_named(expo, tidy_names(conf_int = TRUE))
-  expect_identical(expo$term, c("rd", "rr", "or"))
+  expect_named(expo, tidy_names(conf_int = TRUE, contrast = TRUE))
+  expect_identical(expo$term, c("mean", "mean", "rd", "rr", "or"))
 
-  # the risk difference row is on its own scale already and is left alone
-  ratio <- c(FALSE, TRUE, TRUE)
+  # The counterfactual mean rows are risks rather than ratios, and the risk
+  # difference row is on its own scale already, so all three are left alone,
+  # labels included.
+  ratio <- c(FALSE, FALSE, FALSE, TRUE, TRUE)
+  expect_identical(expo$contrast, plain$contrast)
   expect_identical(expo$estimate[!ratio], plain$estimate[!ratio])
   expect_identical(expo$conf.low[!ratio], plain$conf.low[!ratio])
   expect_identical(expo$conf.high[!ratio], plain$conf.high[!ratio])
@@ -971,8 +990,8 @@ test_that("tidy(exponentiate = TRUE) relabels and exponentiates ratio rows", {
 
   # the relabeling does not depend on bounds being requested
   bare <- tidy(res, exponentiate = TRUE)
-  expect_named(bare, tidy_names())
-  expect_identical(bare$term, c("rd", "rr", "or"))
+  expect_named(bare, tidy_names(contrast = TRUE))
+  expect_identical(bare$term, c("mean", "mean", "rd", "rr", "or"))
   expect_identical(bare$estimate, expo$estimate)
 })
 
@@ -1008,8 +1027,14 @@ test_that("tidy(exponentiate = TRUE) relabels ratio rows per contrast", {
   df <- as.data.frame(res, conf.int = TRUE, exponentiate = TRUE)
   tidied <- tidy(res, conf.int = TRUE, exponentiate = TRUE)
 
-  expect_identical(tidied$term, rep(c("rd", "rr", "or"), times = 2))
-  expect_identical(tidied$contrast, rep(c("b vs a", "c vs a"), each = 3))
+  expect_identical(
+    tidied$term,
+    c(rep("mean", 3), rep(c("rd", "rr", "or"), times = 2))
+  )
+  expect_identical(
+    tidied$contrast,
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
+  )
   expect_identical(tidied$term, df$term)
   expect_identical(tidied$contrast, df$contrast)
   expect_identical(tidied$estimate, df$estimate)
@@ -1946,13 +1971,54 @@ test_that("tidy() reports the outcome model's coefficients conditionally", {
   expect_identical(tidied$term, names(coef(mods$outcome_mod)))
   expect_identical(tidied$term, c("(Intercept)", "z"))
   expect_identical(tidied$estimate, unname(coef(mods$outcome_mod)))
-  expect_identical(tidy(res)$term, c("rd", "log(rr)", "log(or)"))
+  expect_identical(
+    tidy(res)$term,
+    c("mean", "mean", "rd", "log(rr)", "log(or)")
+  )
 
   expect_conditional_tidy_contract(
     tidy(res, conf.int = TRUE, effects = "conditional"),
     res,
     conf_int = TRUE
   )
+})
+
+test_that("the conditional tidy table is the result's own conditional table", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  # The result's own coercion surface reports the conditional reading, so the
+  # tidier presents that table rather than assembling a second one beside it.
+  # A tidied table is its columns, so the covariance the frame carries as an
+  # attribute is the one thing that does not travel.
+  expect_identical(family(mods$outcome_mod)$link, "logit")
+
+  as_tidied <- function(...) {
+    out <- tibble::as_tibble(as.data.frame(res, effects = "conditional", ...))
+    attr(out, "ipw_vcov") <- NULL
+    out
+  }
+
+  expect_identical(tidy(res, effects = "conditional"), as_tidied())
+  expect_identical(
+    tidy(res, conf.int = TRUE, effects = "conditional"),
+    as_tidied(conf.int = TRUE)
+  )
+  expect_identical(
+    tidy(res, exponentiate = TRUE, effects = "conditional"),
+    as_tidied(exponentiate = TRUE)
+  )
+  expect_identical(
+    tidy(res, conf.int = TRUE, exponentiate = TRUE, effects = "conditional"),
+    as_tidied(conf.int = TRUE, exponentiate = TRUE)
+  )
+  expect_null(attr(
+    tidy(res, conf.int = TRUE, effects = "conditional"),
+    "ipw_vcov",
+    exact = TRUE
+  ))
 })
 
 test_that("tidy() reports the corrected standard errors conditionally", {
@@ -2029,6 +2095,43 @@ test_that("tidy() follows the reading the result records", {
   expect_identical(res$effects, "marginal")
 })
 
+test_that("tidy() follows a dose basis result into its only reading", {
+  skip_if_not_installed("deli")
+  dat <- sim_tidy_continuous()
+  mods <- fit_tidy_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  # An exposure entering the outcome model through several design columns has no
+  # marginal reading to tidy, so the default is the conditional table and the
+  # tidier reaches it with nothing named at the call site.
+  tidied <- tidy(res)
+  expect_conditional_tidy_contract(tidied, res)
+  expect_identical(tidied$term, names(coef(mods$outcome_mod)))
+  expect_identical(tidied, tidy(res, effects = "conditional"))
+
+  # The standard errors are the diagonal of the block the stacked system leaves
+  # for the outcome model, which is the same block the accessors report.
+  expect_identical(
+    tidied$std.error,
+    unname(sqrt(diag(vcov(res))))
+  )
+
+  # Naming a reading the result does not declare is refused rather than answered
+  # from the frame the stacked system happens to store. `tidy()` is this
+  # package's own method, so the refusal it raises is pinned here: it comes from
+  # the accessor that owns the argument rather than from a check of its own, and
+  # a caller catching either class gets it whichever surface they asked at.
+  err <- expect_error(
+    tidy(res, effects = "marginal"),
+    class = "causalgenerics_unsupported_reading_marginal"
+  )
+  expect_s3_class(err, "causalgenerics_unsupported_reading")
+  expect_error(
+    tidy(res, conf.int = TRUE, effects = "marginal"),
+    class = "causalgenerics_unsupported_reading_marginal"
+  )
+})
+
 test_that("tidy() rebuilds the conditional interval at the level asked for", {
   skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
@@ -2089,10 +2192,38 @@ test_that("tidy() has no conditional reading of a linearization fit", {
     class = "causalgenerics_no_conditional_vcov"
   )
 
+  # The refusal is this package's, so that it reports the call the user made
+  # rather than the coercion the tidier reaches the reading through. The classes
+  # the coercion raises are kept, which is what the expectations above match on.
+  expect_error(
+    tidy(res, effects = "conditional"),
+    class = "propensity_no_conditional_vcov_error"
+  )
+  expect_propensity_error(tidy(res, effects = "conditional"))
+
+  # The accessors that own the reading report it against their own calls, which
+  # this leaves alone: theirs is already the call that asked for it.
+  vcov_refusal <- tryCatch(
+    vcov(res, effects = "conditional"),
+    error = function(e) e
+  )
+  confint_refusal <- tryCatch(
+    confint(res, effects = "conditional"),
+    error = function(e) e
+  )
+  expect_identical(conditionCall(vcov_refusal)[[1]], quote(vcov.ipw))
+  expect_identical(conditionCall(confint_refusal)[[1]], quote(confint.ipw))
+  expect_false(inherits(vcov_refusal, "propensity_error"))
+  expect_false(inherits(confint_refusal, "propensity_error"))
+
   # The marginal reading of the same result is untouched by the absence, whether
   # it is the reading the result records or the one the call names.
-  expect_tidy_contract(tidy(res), res)
-  expect_tidy_contract(tidy(as_conditional(res), effects = "marginal"), res)
+  expect_tidy_contract(tidy(res), res, contrast = TRUE)
+  expect_tidy_contract(
+    tidy(as_conditional(res), effects = "marginal"),
+    res,
+    contrast = TRUE
+  )
 })
 
 test_that("tidy() reports one conditional row per categorical coefficient", {
@@ -2106,13 +2237,14 @@ test_that("tidy() reports one conditional row per categorical coefficient", {
   expect_conditional_tidy_contract(tidied, res, conf_int = TRUE)
   expect_identical(tidied$term, c("(Intercept)", "ab", "ac"))
 
-  # The contrast column belongs to the marginal reading, which reports every
-  # effect measure once per contrast of levels. A coefficient is not such a
-  # contrast, so the conditional table carries no such column and reports three
-  # rows where the marginal reading of the same result reports six.
+  # The contrast column belongs to the marginal reading, which names the level a
+  # counterfactual mean belongs to and the pair of levels a contrast compares. A
+  # coefficient names neither, so the conditional table carries no such column
+  # and reports three rows where the marginal reading of the same result reports
+  # nine.
   expect_named(tidied, tidy_names(conf_int = TRUE))
   expect_identical(nrow(tidied), 3L)
-  expect_identical(nrow(tidy(res, conf.int = TRUE)), 6L)
+  expect_identical(nrow(tidy(res, conf.int = TRUE)), 9L)
 })
 
 test_that("tidy() reports the conditional reading of a continuous fit", {
@@ -2212,7 +2344,10 @@ test_that("tidy(exponentiate = TRUE) exponentiates every conditional row", {
     tidy(as_conditional(res), exponentiate = TRUE, effects = "marginal"),
     tidy(res, exponentiate = TRUE)
   )
-  expect_identical(tidy(res, exponentiate = TRUE)$term, c("rd", "rr", "or"))
+  expect_identical(
+    tidy(res, exponentiate = TRUE)$term,
+    c("mean", "mean", "rd", "rr", "or")
+  )
 })
 
 test_that("tidy(exponentiate = TRUE) exponentiates a log link conditionally", {
@@ -2323,7 +2458,10 @@ test_that("tidy(exponentiate = TRUE) rejects the other binary links", {
     # The refusal belongs to the conditional reading. The marginal reading of
     # the same result reports ratio measures whatever the link of the model they
     # were computed from, and exponentiates them as it always has.
-    expect_identical(tidy(res, exponentiate = TRUE)$term, c("rd", "rr", "or"))
+    expect_identical(
+      tidy(res, exponentiate = TRUE)$term,
+      c("mean", "mean", "rd", "rr", "or")
+    )
   }
 })
 
@@ -2770,7 +2908,7 @@ test_that("tidy() reports a pooled categorical result as a tibble", {
   expect_identical(names(tidied)[seq(1, 2)], c("term", "contrast"))
   expect_identical(
     tidied$contrast,
-    rep(c("b vs a", "c vs a"), each = 3)
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
   )
 })
 
@@ -2833,10 +2971,10 @@ test_that("glance() describes a pooled fit in one row whatever it reports", {
   skip_if_not_installed("deli")
   pooled <- fit_pooled_categorical()
 
-  # Six effects, three measures for each of two contrasts, and still one row:
-  # the row describes the fit rather than its estimates, so it does not grow
-  # with them.
-  expect_identical(nrow(tidy(pooled)), 6L)
+  # Nine effects, one mean per level and three measures for each of two
+  # contrasts, and still one row: the row describes the fit rather than its
+  # estimates, so it does not grow with them.
+  expect_identical(nrow(tidy(pooled)), 9L)
   expect_identical(nrow(glance(pooled)), 1L)
   expect_named(glance(pooled), c("estimand", "nobs", "m", "dfcom"))
   expect_identical(glance(pooled)$m, 3L)
@@ -2979,7 +3117,7 @@ test_that("tidy() reports the marginal reading of a conditional pool", {
   expect_identical(tidy(pooled, effects = "marginal"), tidy(pool_ipw(fits)))
   expect_identical(
     tidy(pooled, effects = "marginal")$term,
-    c("rd", "log(rr)", "log(or)")
+    c("mean", "mean", "rd", "log(rr)", "log(or)")
   )
 })
 

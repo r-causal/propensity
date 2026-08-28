@@ -11,6 +11,10 @@ knitr::opts_chunk$set(
   fig.path = "man/figures/README-",
   out.width = "100%"
 )
+# The estimates table names each row by the effect measure and the contrast it
+# compares, which needs more than the console's default 80 columns to print
+# without wrapping.
+options(width = 100)
 set.seed(123)
 ```
 

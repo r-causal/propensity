@@ -111,6 +111,9 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
     se_method = "linearization"
   )
 
+  # The row labels name the effect measure and the contrast together, so the
+  # table needs more than the 80 columns testthat pins or it wraps.
+  withr::local_options(width = 120)
   expect_snapshot(res)
 
   # `ipw` checks
@@ -119,13 +122,15 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
   expect_true("estimand" %in% names(res))
   expect_true("estimates" %in% names(res))
 
-  # For binary outcomes, we should see 'rd', 'log(rr)', 'log(or)'
+  # For binary outcomes, we should see a mean per level, then 'rd', 'log(rr)',
+  # 'log(or)'
   est_df <- res$estimates
   expect_s3_class(est_df, "data.frame")
   expect_named(
     est_df,
     c(
       "effect",
+      "contrast",
       "estimate",
       "std.err",
       "z",
@@ -136,6 +141,8 @@ test_that("ipw works for binary outcome with a confounder, using logistic ps, lo
     )
   )
 
+  expect_equal(est_df$effect[est_df$effect == "mean"], c("mean", "mean"))
+  expect_equal(est_df$contrast[est_df$effect == "mean"], c("0", "1"))
   expect_true("rd" %in% est_df$effect)
   expect_true("log(rr)" %in% est_df$effect)
   expect_true("log(or)" %in% est_df$effect)
@@ -178,19 +185,23 @@ test_that("ipw works for continuous outcome with a confounder, using logistic ps
     se_method = "linearization"
   )
 
+  # The row labels name the effect measure and the contrast together, so the
+  # table needs more than the 80 columns testthat pins or it wraps.
+  withr::local_options(width = 120)
   expect_snapshot(res)
 
-  # Should only have "diff" for continuous outcomes
+  # Should only have "diff" beside the per-level means for continuous outcomes
   est_df <- res$estimates
   expect_s3_class(res, "ipw")
-  expect_equal(unique(est_df$effect), "diff")
-  expect_equal(nrow(est_df), 1)
+  expect_equal(unique(est_df$effect), c("mean", "diff"))
+  expect_equal(nrow(est_df), 3)
 
   # Check columns
   expect_named(
     est_df,
     c(
       "effect",
+      "contrast",
       "estimate",
       "std.err",
       "z",
@@ -580,15 +591,30 @@ test_that("ipw() glm accepts every argument supplied by name", {
   )
 
   expect_equal(named$estimates, baseline$estimates)
-  expect_equal(named$estimates$effect, c("rd", "log(rr)", "log(or)"))
+  expect_equal(
+    named$estimates$effect,
+    c("mean", "mean", "rd", "log(rr)", "log(or)")
+  )
   expect_equal(
     named$estimates$estimate,
-    c(0.293149648386106, 0.579445266649124, 1.21028245127107),
+    c(
+      0.373416242531666,
+      0.666565890917773,
+      0.293149648386106,
+      0.579445266649124,
+      1.21028245127107
+    ),
     tolerance = 1e-6
   )
   expect_equal(
     named$estimates$std.err,
-    c(0.0545082497807004, 0.121118456441513, 0.238716341998527),
+    c(
+      0.0409390583902703,
+      0.0380136938806449,
+      0.0545082497807004,
+      0.121118456441513,
+      0.238716341998527
+    ),
     tolerance = 1e-6
   )
 })
@@ -614,12 +640,24 @@ test_that("ipw() glm accepts every argument supplied by name under linearization
   expect_equal(unique(named$estimates$conf.level), 0.9)
   expect_equal(
     named$estimates$estimate,
-    c(0.293149648386107, 0.579445266649124, 1.21028245127107),
+    c(
+      0.373416242531666,
+      0.666565890917773,
+      0.293149648386107,
+      0.579445266649124,
+      1.21028245127107
+    ),
     tolerance = 1e-6
   )
   expect_equal(
     named$estimates$std.err,
-    c(0.054599327536842, 0.121320826160904, 0.239115226595756),
+    c(
+      0.041007463147344,
+      0.0380772089183415,
+      0.054599327536842,
+      0.121320826160904,
+      0.239115226595756
+    ),
     tolerance = 1e-6
   )
 })

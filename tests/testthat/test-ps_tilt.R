@@ -191,9 +191,41 @@ tilt_grid_continuous_models <- function(dat) {
 # sandwich is solved through. A change to the tilt itself moves these numbers by
 # orders of magnitude more than that, so 1e-6 still catches what the pins exist
 # to catch.
+# The pins name the contrast rows, which are where a change to the tilt shows up
+# as a change in a reported effect. The counterfactual mean rows the same fits
+# report are checked against the contrasts they are built from instead of being
+# pinned twice over: the risk difference of a pair of levels is the difference
+# of the two means reported for them, exactly, so a mean row that drifted away
+# from the tilt its contrast was standardized under fails here.
 expect_ipw_pin <- function(result, pin) {
-  expect_equal(result$estimates$estimate, pin$estimate, tolerance = 1e-6)
-  expect_equal(result$estimates$std.err, pin$std.err, tolerance = 1e-6)
+  estimates <- result$estimates
+  is_mean <- estimates$effect == "mean"
+  contrasts <- estimates[!is_mean, , drop = FALSE]
+
+  expect_equal(contrasts$estimate, pin$estimate, tolerance = 1e-6)
+  expect_equal(contrasts$std.err, pin$std.err, tolerance = 1e-6)
+
+  if (!any(is_mean)) {
+    return(invisible(result))
+  }
+
+  means <- estimates[is_mean, , drop = FALSE]
+  expect_true(all(is.finite(means$estimate)))
+  expect_true(all(means$std.err > 0))
+
+  differences <- contrasts[
+    contrasts$effect %in% c("rd", "diff"),
+    ,
+    drop = FALSE
+  ]
+  reference <- means$estimate[[1]]
+  expect_equal(
+    differences$estimate,
+    means$estimate[-1] - reference,
+    tolerance = 1e-8
+  )
+
+  invisible(result)
 }
 
 # ---- recorded ipw() estimates and standard errors ---------------------------

@@ -6,8 +6,8 @@
 #
 # That attribute is a square matrix of the reported effects, in the row order of
 # `estimates` and labeled the way `print()` labels its rows: the effect measure
-# on its own, or the effect measure and the contrast together where a
-# categorical exposure reports one row per contrast. Its diagonal is the square
+# and the contrast it names together, which for the counterfactual mean rows is
+# the exposure level the mean belongs to. Its diagonal is the square
 # of the standard errors the result already reports, which is what keeps the
 # matrix and the estimates table describing the same fit. Its off-diagonal is the
 # part that cannot be recovered from the estimates table, and it is a real
@@ -69,6 +69,16 @@ sim_base_continuous <- function(seed = 2024, n = 600) {
   yc <- 1 + 0.6 * A + 0.5 * x1 - 0.3 * x2 + rnorm(n)
   yb <- rbinom(n, 1, plogis(-0.5 + 0.4 * A + 0.3 * x1 - 0.2 * x2))
   data.frame(x1, x2, A, yc, yb)
+}
+
+# ---- reported labels ---------------------------------------------------------
+
+# The rows a binary fit reports, in order: the counterfactual mean at each
+# exposure level with the reference level first, then the effect measures, each
+# naming the contrast it compares. The fixtures code the exposure 0/1, so those
+# are the level names the labels are written with.
+binary_effect_labels <- function(contrasts = c("rd", "log(rr)", "log(or)")) {
+  c("mean 0", "mean 1", paste(contrasts, "1 vs 0"))
 }
 
 # ---- model fitting -----------------------------------------------------------
@@ -159,7 +169,11 @@ fit_base_categorical_models <- function(dat, estimand = "ate") {
 # Continuous exposure: an lm propensity score model of the exposure, stabilized
 # continuous ATE weights, and a weighted marginal structural model with the one
 # exposure term the continuous path requires.
-fit_base_continuous_models <- function(dat, outcome_family = "gaussian") {
+fit_base_continuous_models <- function(
+  dat,
+  outcome_family = "gaussian",
+  msm_rhs = "A"
+) {
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -171,7 +185,7 @@ fit_base_continuous_models <- function(dat, outcome_family = "gaussian") {
     )
   )
   outcome_var <- if (outcome_family == "binomial") "yb" else "yc"
-  fmla <- stats::reformulate("A", response = outcome_var)
+  fmla <- stats::reformulate(msm_rhs, response = outcome_var)
   outcome_mod <- if (outcome_family == "binomial") {
     glm(
       fmla,
@@ -302,12 +316,17 @@ test_that("a binary mestimation fit records the covariance of its effects", {
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
 
   covariance <- expect_ipw_vcov_contract(res)
-  expect_identical(rownames(covariance), c("rd", "log(rr)", "log(or)"))
+  expect_identical(rownames(covariance), binary_effect_labels())
 
   # The three effect measures are increasing transformations of the same pair of
-  # marginal means, so they move together and the matrix is not the diagonal one
-  # the standard errors on their own would make.
-  expect_true(all(covariance[upper.tri(covariance)] > 0))
+  # marginal means, so they move together and that block of the matrix is not
+  # the diagonal one the standard errors on their own would make.
+  contrasts <- covariance[3:5, 3:5]
+  expect_true(all(contrasts[upper.tri(contrasts)] > 0))
+
+  # A mean row covaries with the contrasts built from it, and with the opposite
+  # arm's mean, so no row of the matrix is the standard error alone.
+  expect_true(all(covariance[1:2, 3:5] != 0))
 })
 
 test_that("a gaussian outcome under mestimation records one variance", {
@@ -320,7 +339,8 @@ test_that("a gaussian outcome under mestimation records one variance", {
   # and has no covariance to hold. It is still a labeled matrix, because that is
   # what `vcov()` returns whatever the fit reports.
   covariance <- expect_ipw_vcov_contract(res)
-  expect_identical(dimnames(covariance), list("diff", "diff"))
+  labels <- c("mean 0", "mean 1", "diff 1 vs 0")
+  expect_identical(dimnames(covariance), list(labels, labels))
 })
 
 test_that("a binary att fit records the covariance of its effects", {
@@ -333,7 +353,7 @@ test_that("a binary att fit records the covariance of its effects", {
   # covariance is of whatever effects the result reports, so it follows.
   expect_identical(res$estimand, "att")
   covariance <- expect_ipw_vcov_contract(res)
-  expect_identical(rownames(covariance), c("rd", "log(rr)", "log(or)"))
+  expect_identical(rownames(covariance), binary_effect_labels())
 })
 
 test_that("a stabilized binary fit records the covariance of its effects", {
@@ -348,7 +368,7 @@ test_that("a stabilized binary fit records the covariance of its effects", {
   # three effect measures it reports, carrying their standard errors.
   expect_true(is_stabilized(mods$wts))
   covariance <- expect_ipw_vcov_contract(res)
-  expect_identical(rownames(covariance), c("rd", "log(rr)", "log(or)"))
+  expect_identical(rownames(covariance), binary_effect_labels())
 })
 
 test_that("a categorical fit labels its covariance by effect and contrast", {
@@ -358,10 +378,14 @@ test_that("a categorical fit labels its covariance by effect and contrast", {
   mods <- fit_base_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
-  # Three effect measures for each of two contrasts, and neither part of a
-  # label identifies a row on its own, so the label is both together.
+  # One mean for each of three levels, then three effect measures for each of
+  # two contrasts, and neither part of a contrast label identifies a row on its
+  # own, so the label is both together.
   covariance <- expect_ipw_vcov_contract(res)
   labels <- c(
+    "mean a",
+    "mean b",
+    "mean c",
     "rd b vs a",
     "log(rr) b vs a",
     "log(or) b vs a",
@@ -374,9 +398,14 @@ test_that("a categorical fit labels its covariance by effect and contrast", {
 
   # The contrasts share the reference level's marginal mean, so the covariance
   # spans the whole table rather than being block diagonal by contrast.
-  across <- covariance[seq(1, 3), seq(4, 6)]
+  across <- covariance[seq(4, 6), seq(7, 9)]
   expect_true(all(is.finite(across)))
   expect_true(all(across != 0))
+
+  # The mean rows are in the covariance too, and each contrast covaries with the
+  # means it is built from.
+  expect_true(all(is.finite(covariance[seq(1, 3), seq(4, 9)])))
+  expect_true(all(covariance[seq(1, 3), seq(4, 9)] != 0))
 })
 
 test_that("a categorical att fit records the covariance of its effects", {
@@ -388,7 +417,7 @@ test_that("a categorical att fit records the covariance of its effects", {
 
   expect_identical(res$estimand, "att")
   covariance <- expect_ipw_vcov_contract(res)
-  expect_identical(dim(covariance), c(6L, 6L))
+  expect_identical(dim(covariance), c(9L, 9L))
 })
 
 test_that("a continuous exposure fit records the variance of its slope", {
@@ -425,16 +454,22 @@ test_that("a binary linearization fit records the covariance of its effects", {
   # answers is the same one.
   expect_null(res$fit)
   covariance <- expect_ipw_vcov_contract(res)
-  expect_identical(rownames(covariance), c("rd", "log(rr)", "log(or)"))
+  expect_identical(rownames(covariance), binary_effect_labels())
 
   # Each of the three influence functions is a difference of the same two per-arm
   # influence values, with a positive coefficient on each, so every pair of
   # effect measures has a real covariance and a positive one. Zeros here would
   # report the effect measures as independent estimates of unrelated things.
-  off_diagonal <- covariance[upper.tri(covariance)]
+  contrasts <- covariance[3:5, 3:5]
+  off_diagonal <- contrasts[upper.tri(contrasts)]
   expect_length(off_diagonal, 3L)
   expect_true(all(is.finite(off_diagonal)))
   expect_true(all(off_diagonal > 0))
+
+  # The per-arm means are reported rows of their own here too, built from the
+  # same two influence values, so they covary with the contrasts.
+  expect_true(all(is.finite(covariance[1:2, 3:5])))
+  expect_true(all(covariance[1:2, 3:5] != 0))
 })
 
 test_that("a gaussian linearization fit records one variance", {
@@ -444,7 +479,8 @@ test_that("a gaussian linearization fit records one variance", {
 
   expect_null(res$fit)
   covariance <- expect_ipw_vcov_contract(res)
-  expect_identical(dimnames(covariance), list("diff", "diff"))
+  labels <- c("mean 0", "mean 1", "diff 1 vs 0")
+  expect_identical(dimnames(covariance), list(labels, labels))
 })
 
 # ---- accessor integration ----------------------------------------------------
@@ -456,7 +492,7 @@ test_that("the accessors read a binary mestimation fit", {
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
 
   expect_ipw_accessor_contract(res, mods$wts)
-  expect_identical(names(coef(res)), c("rd", "log(rr)", "log(or)"))
+  expect_identical(names(coef(res)), binary_effect_labels())
 
   # The counts are of the stacked system: every observation of the fixture went
   # into it, and the parameters it solves for are what the observations are
@@ -852,6 +888,18 @@ test_that("every route defaults to the marginal reading and round-trips", {
     stats::setNames(rep("marginal", length(results)), names(results))
   )
 
+  # A result says which readings it supports as well as which one it presents.
+  # A binary exposure under either standard error method, a categorical one, and
+  # a single-term continuous one all have both, which is what makes the flips
+  # below answers rather than refusals.
+  expect_identical(
+    lapply(results, function(res) res$readings),
+    stats::setNames(
+      rep(list(c("marginal", "conditional")), length(results)),
+      names(results)
+    )
+  )
+
   # Both readings exist on every result, so moving to the other one records the
   # move and reads nothing else, and moving back is the result that went in
   # rather than a rebuild of it.
@@ -902,7 +950,7 @@ test_that("a binary mestimation fit records the reading it was built in", {
     effects = "marginal"
   )
   expect_ipw_built_as(named, causalgenerics::as_marginal(base))
-  expect_identical(names(coef(named)), c("rd", "log(rr)", "log(or)"))
+  expect_identical(names(coef(named)), binary_effect_labels())
 })
 
 test_that("a binary linearization fit records the reading it was built in", {
@@ -963,6 +1011,81 @@ test_that("a continuous fit records the reading it was built in", {
   expect_s3_class(res$outcome_mod, "ipw_model")
   expect_identical(coef(res), coef(mods$outcome_mod))
   expect_identical(names(coef(res)), c("(Intercept)", "A"))
+})
+
+test_that("a dose basis fit records the conditional reading", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_continuous()
+  mods <- fit_base_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+
+  # An exposure entering the outcome model through several design columns has no
+  # coefficient that is an effect, so there is no marginal reading of the fit to
+  # present. The result records the conditional one and declares it as the only
+  # reading it supports, which is what the refusals come from; the class is the
+  # shared one every other result carries.
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  expect_identical(class(res), "ipw")
+  expect_identical(res$effects, "conditional")
+  expect_identical(res$readings, "conditional")
+
+  # Naming the reading the default records builds the result the default builds,
+  # which is what says the argument records a reading rather than selecting a
+  # computation.
+  named <- ipw(mods$ps_mod, mods$outcome_mod, effects = "conditional")
+  expect_ipw_built_as(named, res)
+
+  # The accessors answer from the outcome model with nothing named at the call
+  # site, under the block the stacked system left for it.
+  expect_s3_class(res$outcome_mod, "ipw_model")
+  expect_identical(coef(res), coef(mods$outcome_mod))
+  expect_identical(names(coef(res)), c("(Intercept)", "A", "I(A^2)"))
+  expect_identical(vcov(res), vcov(res$outcome_mod))
+  expect_identical(rownames(confint(res)), names(coef(mods$outcome_mod)))
+})
+
+test_that("a dose basis fit refuses the marginal reading everywhere", {
+  skip_if_not_installed("deli")
+  dat <- sim_base_continuous()
+  mods <- fit_base_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  # Asking for the reading at construction is this package's refusal, since the
+  # result that would record it is never built.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, effects = "marginal"),
+    class = "propensity_ipw_effects_error"
+  )
+
+  # Every surface a reading can be asked for at refuses the one this result does
+  # not declare, under the classes the result class raises for it, so a caller
+  # reaching for it from any of them is told the same thing rather than being
+  # handed a table of coefficients under the name of an effect.
+  cls <- "causalgenerics_unsupported_reading_marginal"
+  expect_error(causalgenerics::as_marginal(res), class = cls)
+  expect_error(coef(res, effects = "marginal"), class = cls)
+  expect_error(vcov(res, effects = "marginal"), class = cls)
+  expect_error(confint(res, effects = "marginal"), class = cls)
+  expect_error(as.data.frame(res, effects = "marginal"), class = cls)
+  expect_error(tidy(res, effects = "marginal"), class = cls)
+
+  # The general class is what a caller catching any refusal of a reading writes
+  # against, so it is on the condition beside the specific one.
+  expect_s3_class(
+    expect_error(coef(res, effects = "marginal")),
+    "causalgenerics_unsupported_reading"
+  )
+
+  # The reading the result records is still asked for the ordinary way, and
+  # asking for it says what recording it said.
+  expect_identical(causalgenerics::as_conditional(res), res)
+  expect_identical(coef(res, effects = "conditional"), coef(res))
+  expect_identical(vcov(res, effects = "conditional"), vcov(res))
+
+  # The accessors that describe the fit rather than a reading of it take no
+  # reading at all, so they are untouched by any of this.
+  expect_identical(nobs(res), nobs(mods$outcome_mod))
+  expect_identical(weights(res), mods$wts)
+  expect_identical(estimand(res), "ate")
 })
 
 test_that("an invalid effects value errors", {

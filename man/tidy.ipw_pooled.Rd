@@ -65,14 +65,17 @@ tidies a pooled result on its behalf.}
 A \link[tibble:tibble]{tibble} with one row per pooled estimate and the
 columns:
 \describe{
-\item{\code{term}}{The effect measure, such as \code{"rd"}, \code{"log(rr)"}, \code{"log(or)"},
-\code{"diff"}, \code{"slope"}, or \code{"coef"}, or the coefficient name in the
+\item{\code{term}}{The effect measure, such as \code{"mean"} for a counterfactual
+mean, or \code{"rd"}, \code{"log(rr)"}, \code{"log(or)"}, \code{"diff"}, \code{"slope"}, or
+\code{"coef"} for the measures built from them, or the coefficient name in the
 conditional reading.}
-\item{\code{contrast}}{The contrast the row reports, such as \code{"b vs a"} for a
-categorical exposure or the coefficient name on a surface whose rows are
-named after their coefficients. Present only in the marginal reading, and
-there only where a row reports one: the conditional reading names each
-coefficient in \code{term} and returns no \code{contrast} column.}
+\item{\code{contrast}}{What the row is about: the exposure level a \code{"mean"} row
+belongs to, such as \code{"0"} or \code{"b"}; the pair of levels an effect measure
+compares, such as \code{"1 vs 0"} or \code{"b vs a"}; or the coefficient name on a
+surface whose rows are named after their coefficients. Present only in
+the marginal reading, and there only where a row reports one: the
+conditional reading names each coefficient in \code{term} and returns no
+\code{contrast} column.}
 \item{\code{estimate}}{The pooled point estimate.}
 \item{\code{std.error}}{The pooled standard error.}
 \item{\code{statistic}}{The test statistic, the estimate over its standard
@@ -87,9 +90,11 @@ referred to t on them rather than to the normal.}
 }
 \description{
 \code{tidy()} returns the estimates of a \code{\link[=pool_ipw]{pool_ipw()}} result as a tibble using the
-column names broom conventions use. There is one row per effect measure, and
-one row per effect measure per contrast for a categorical exposure, in the
-order the pooled result stores them. Nothing is dropped.
+column names broom conventions use. It holds the rows the results themselves
+report: for a binary or categorical exposure one row per exposure level,
+under the term \code{"mean"}, and then one row per effect measure per contrast of
+levels; for a continuous exposure one row per reported coefficient. The rows
+arrive in the order the pooled result stores them and nothing is dropped.
 
 Those columns are the ones the pooled result's own coercion surface reports,
 so this method is that surface read as a tibble rather than a second assembly
@@ -112,9 +117,10 @@ The conditional reading is the outcome models' coefficient surface, pooled
 the same way: one row per coefficient, from the block of the joint estimation
 that carries the uncertainty of having estimated the weights from the same
 data. The two readings return the same columns in the same order, with one
-exception: the \code{contrast} column that names the pair of exposure levels a row
-compares belongs to the marginal reading of a categorical pool alone, and
-that pool's conditional reading returns the same table one column narrower.
+exception: the \code{contrast} column belongs to the marginal reading. A binary
+and a categorical pool both carry it there, naming the exposure level each
+mean row belongs to and the pair of levels each effect measure compares, and
+the conditional reading of either returns the same table one column narrower.
 }
 \examples{
 \dontshow{if (requireNamespace("mice", quietly = TRUE)) withAutoprint(\{ # examplesIf}

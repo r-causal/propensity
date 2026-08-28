@@ -12,6 +12,10 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
+# The estimates table names each row by the effect measure, the contrast it
+# compares, and the subgroup it belongs to, which needs more than the console's
+# default 80 columns to print without wrapping.
+options(width = 100)
 ```
 
 This vignette walks through the core propensity score weighting workflow:
@@ -232,8 +236,10 @@ you want to keep the full sample.
 
 ### Binary outcomes
 
-For binary outcomes, `ipw()` returns three effect measures: the risk
-difference, log risk ratio, and log odds ratio:
+For binary outcomes, `ipw()` returns the marginal risk under each exposure
+level, then three effect measures built from those risks: the risk difference,
+log risk ratio, and log odds ratio. The `contrast` column names the level a
+mean row belongs to and the pair of levels an effect measure compares:
 
 ```{r interpret-binary}
 result
@@ -254,8 +260,8 @@ as.data.frame(result, exponentiate = TRUE)
 
 ### Continuous outcomes
 
-For continuous outcomes, `ipw()` returns the mean difference. Use `lm()`
-for the outcome model:
+For continuous outcomes, `ipw()` returns the marginal mean under each exposure
+level and the difference between them. Use `lm()` for the outcome model:
 
 ```{r continuous-outcome}
 y_cont <- 2 + 0.8 * z + 0.3 * x1 + 0.2 * x2 + rnorm(n)

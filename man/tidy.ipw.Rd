@@ -84,11 +84,14 @@ pooled across multiply imputed datasets.}
 \value{
 A \link[tibble:tibble]{tibble} with one row per estimate and the columns:
 \describe{
-\item{\code{term}}{The effect measure, such as \code{"rd"}, \code{"log(rr)"}, \code{"log(or)"},
-\code{"diff"}, \code{"slope"}, or \code{"coef"}.}
-\item{\code{contrast}}{The contrast the row reports, such as \code{"b vs a"} for a
-categorical exposure or the coefficient name on a surface whose rows are
-named after their coefficients. Present only where a row reports one.}
+\item{\code{term}}{The effect measure, such as \code{"mean"} for a counterfactual
+mean, or \code{"rd"}, \code{"log(rr)"}, \code{"log(or)"}, \code{"diff"}, \code{"slope"}, or
+\code{"coef"} for the measures built from them.}
+\item{\code{contrast}}{What the row is about: the exposure level a \code{"mean"} row
+belongs to, such as \code{"0"} or \code{"b"}; the pair of levels an effect measure
+compares, such as \code{"1 vs 0"} or \code{"b vs a"}; or the coefficient name on a
+surface whose rows are named after their coefficients. Present only where
+a row reports one.}
 \item{\code{estimate}}{The estimated effect.}
 \item{\code{std.error}}{The standard error of the estimate.}
 \item{\code{statistic}}{The z statistic, the estimate over its standard error.}
@@ -102,24 +105,27 @@ per coefficient of the outcome model: \code{term} is the coefficient's name,
 \code{estimate} is the coefficient, \code{std.error} is the square root of the diagonal
 of the corrected covariance, \code{statistic} is the estimate over that standard
 error, and \code{p.value} is the two-sided normal p-value of the statistic. There
-is no \code{contrast} column, because a coefficient is not a contrast of exposure
-levels, and the bounds are built at the level \code{conf.level} asks for, the
-stored ones belonging to the effects the marginal reading reports.
+is no \code{contrast} column, whatever the exposure, because a coefficient names
+neither an exposure level nor a pair of them, and the bounds are built at the
+level \code{conf.level} asks for, the stored ones belonging to the effects the
+marginal reading reports.
 }
 \description{
 \code{tidy()} returns the estimates of an \code{\link[=ipw]{ipw()}} result as a tibble using the
-column names broom conventions use. There is one row per effect measure, and
-one row per effect measure per contrast for a categorical exposure, in the
-order the result stores them. Nothing is dropped.
+column names broom conventions use. For a binary or categorical exposure
+there is one row per exposure level, under the term \code{"mean"}, and then one
+row per effect measure per contrast of levels; for a continuous exposure
+there is one row per reported coefficient. The rows arrive in the order the
+result stores them and nothing is dropped.
 
-Those columns are the ones the result's own coercion surface reports, so the
-marginal reading is \code{\link[causalgenerics:new_ipw]{as.data.frame()}} read as a
+Those columns are the ones the result's own coercion surface reports, so
+either reading is \code{\link[causalgenerics:new_ipw]{as.data.frame()}} read as a
 tibble rather than a second assembly of the same table. The values are the
 ones the result already holds, nothing being re-estimated: the confidence
 interval is the only thing rebuilt, and only when the requested \code{conf.level}
 differs from the level the result was fit at. The one thing the frame carries
-that the tibble does not is the covariance of the effects it attaches as an
-attribute, a tidied table being its columns.
+that the tibble does not is the covariance it attaches as an attribute, a
+tidied table being its columns.
 
 \code{conf.int}, \code{conf.level}, and \code{exponentiate} are the arguments this method
 shares with that surface, so the surface validates them, in both readings and
@@ -135,9 +141,11 @@ conditional reading is the outcome model's coefficient surface: one row per
 coefficient, with the standard errors of the block of the joint estimation
 that carries the uncertainty of having estimated the weights from the same
 data. The two readings return the same columns in the same order, with one
-exception: the \code{contrast} column that names the pair of exposure levels a row
-compares belongs to the marginal reading of a categorical result alone, and
-that result's conditional reading returns the same table one column narrower.
+exception: the \code{contrast} column belongs to the marginal reading. A binary
+and a categorical result both carry it there, naming the exposure level each
+mean row belongs to and the pair of levels each effect measure compares, and
+the conditional reading of either returns the same table one column narrower.
+A coefficient names neither a level nor a pair of them.
 }
 \examples{
 set.seed(123)

@@ -158,23 +158,35 @@ plugin_contrasts <- function(
   } else {
     TRUE
   }
+  # Keyed by the pair of columns that names a row, so that the two
+  # counterfactual mean rows are told apart rather than sharing the key "mean".
+  means <- c("mean 0" = mu0, "mean 1" = mu1)
   if (linear) {
-    c(diff = mu1 - mu0)
+    c(means, "diff 1 vs 0" = mu1 - mu0)
   } else {
     c(
-      rd = mu1 - mu0,
-      "log(rr)" = log(mu1) - log(mu0),
-      "log(or)" = qlogis(mu1) - qlogis(mu0)
+      means,
+      "rd 1 vs 0" = mu1 - mu0,
+      "log(rr) 1 vs 0" = log(mu1) - log(mu0),
+      "log(or) 1 vs 0" = qlogis(mu1) - qlogis(mu0)
     )
   }
 }
 
 # ---- assertion helper -------------------------------------------------------
 
+# The key one row of an estimates table is addressed by.
+estimate_row_key <- function(estimates) {
+  paste(estimates$effect, estimates$contrast)
+}
+
 # Compare an engine estimates table to a named reference vector, matching by the
-# effect label so row order is irrelevant.
+# row key so row order is irrelevant.
 expect_estimate_match <- function(estimates, reference, tolerance = 1e-8) {
-  got <- estimates$estimate[match(names(reference), estimates$effect)]
+  got <- estimates$estimate[match(
+    names(reference),
+    estimate_row_key(estimates)
+  )]
   expect_equal(got, unname(reference), tolerance = tolerance)
 }
 
@@ -243,7 +255,10 @@ test_that("ipw_mestimation std.err matches linearization within 3 percent", {
     )$estimates
     spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
     got <- ipw_mestimation(spec)$estimates
-    got_se <- got$std.err[match(ref$effect, got$effect)]
+    got_se <- got$std.err[match(
+      estimate_row_key(ref),
+      estimate_row_key(got)
+    )]
     rel <- abs(got_se - ref$std.err) / ref$std.err
     expect_true(
       all(rel < 0.03),
@@ -307,6 +322,7 @@ test_that("ipw_mestimation estimates table has the documented shape", {
     got,
     c(
       "effect",
+      "contrast",
       "estimate",
       "std.err",
       "z",
@@ -316,14 +332,16 @@ test_that("ipw_mestimation estimates table has the documented shape", {
       "p.value"
     )
   )
-  expect_equal(got$effect, c("rd", "log(rr)", "log(or)"))
+  expect_equal(got$effect, c("mean", "mean", "rd", "log(rr)", "log(or)"))
+  expect_equal(got$contrast, c("0", "1", rep("1 vs 0", 3)))
   expect_true(all(got$conf.level == 0.95))
 
-  # gaussian outcome collapses to a single difference row
+  # gaussian outcome collapses to a single difference row beside the means
   mods_g <- fit_binary_models(dat, "ate", outcome_family = "gaussian")
   spec_g <- ipw_spec_binary(mods_g$ps_mod, mods_g$outcome_mod)
   got_g <- ipw_mestimation(spec_g)$estimates
-  expect_equal(got_g$effect, "diff")
+  expect_equal(got_g$effect, c("mean", "mean", "diff"))
+  expect_equal(got_g$contrast, c("0", "1", "1 vs 0"))
 
   # a non-default confidence level rescales the interval half-width by qnorm
   got90 <- ipw_mestimation(spec, conf_level = 0.9)$estimates
@@ -356,11 +374,13 @@ test_that("ipw_mestimation returns a converged deli fit with named theta", {
   vc <- vcov(fit)
   expect_equal(dim(vc), c(length(co), length(co)))
 
-  # the contrast rows of the solved theta equal the reported estimates
-  # (addressed by position, since theta names are not unique across blocks)
+  # the mean and contrast rows of the solved theta equal the reported estimates
+  # (addressed by position, since theta names are not unique across blocks). The
+  # binary mu block is seeded (mu1, mu0) and reported reference level first.
   got <- res$estimates
-  contrast_idx <- ipw_theta_layout(spec)$idx$contrast
-  expect_equal(unname(co[contrast_idx]), got$estimate, tolerance = 1e-8)
+  layout <- ipw_theta_layout(spec)
+  reported_idx <- c(rev(layout$idx$mu), layout$idx$contrast)
+  expect_equal(unname(co[reported_idx]), got$estimate, tolerance = 1e-8)
 })
 
 # ---- name collisions between covariates and contrast labels ------------------
@@ -690,7 +710,9 @@ test_that("mestimation diff matches the tilted oracle under a heterogeneous effe
 
     # exact: the engine reports the tilt-standardized g-computation from the
     # fitted model, weighted.mean(m1 - m0, h(e_hat))
-    ref <- plugin_contrasts(om, dat, "z", estimand = est, ps = e_hat)[["diff"]]
+    ref <- plugin_contrasts(om, dat, "z", estimand = est, ps = e_hat)[[
+      "diff 1 vs 0"
+    ]]
     expect_equal(est_diff, ref, tolerance = 1e-6, label = est)
 
     # within sampling noise of the simulation oracle (h-tilted mean of the
@@ -700,7 +722,9 @@ test_that("mestimation diff matches the tilted oracle under a heterogeneous effe
 
     # att and atu target populations are far from the ate
     if (est %in% c("att", "atu")) {
-      ate_plain <- plugin_contrasts(om, dat, "z", estimand = "ate")[["diff"]]
+      ate_plain <- plugin_contrasts(om, dat, "z", estimand = "ate")[[
+        "diff 1 vs 0"
+      ]]
       expect_gt(abs(est_diff - ate_plain), 10 * se, label = est)
     }
   }
@@ -861,7 +885,9 @@ boot_gcomp_diffs <- function(dat, estimand, reps = 200, seed = 7) {
     wt_fun <- switch(estimand, ate = wt_ate, att = wt_att)
     w_b <- withr::with_options(list(propensity.quiet = TRUE), wt_fun(ps_b))
     om_b <- lm(y ~ z * x, data = d, weights = w_b)
-    plugin_contrasts(om_b, d, "z", estimand = estimand, ps = e_b)[["diff"]]
+    plugin_contrasts(om_b, d, "z", estimand = estimand, ps = e_b)[[
+      "diff 1 vs 0"
+    ]]
   })
 }
 

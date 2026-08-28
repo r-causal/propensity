@@ -135,13 +135,13 @@ test_that("mice::pool() combines binary mestimation ipw results", {
   expect_s3_class(pooled, "mipo")
   expect_identical(pooled$m, 3L)
 
-  # One row per effect measure, in the order the result reports them, and each
+  # One row per reported effect, in the order the result reports them, and each
   # row combined over all three imputations.
   summarized <- summary(pooled)
-  expect_identical(nrow(summarized), 3L)
+  expect_identical(nrow(summarized), 5L)
   expect_identical(
     as.character(summarized$term),
-    c("rd", "log(rr)", "log(or)")
+    c("mean", "mean", "rd", "log(rr)", "log(or)")
   )
   expect_true(all(pooled$pooled$m == 3L))
 
@@ -181,33 +181,33 @@ test_that("mice::pool() groups categorical ipw results by term and contrast", {
   summarized <- summary(pooled)
 
   # The grouping is on the pooled table, which is where the column mice grouped
-  # by survives. Three effect measures for each of two contrasts: grouping on
-  # `term` alone would return three rows, each combining six estimates from
-  # three imputations of two different contrasts.
-  expect_identical(nrow(pooled$pooled), 6L)
+  # by survives. One mean per level and three effect measures for each of two
+  # contrasts: grouping on `term` alone would return four rows, one of them
+  # combining nine estimates from three imputations of three different levels.
+  expect_identical(nrow(pooled$pooled), 9L)
   expect_true("contrast" %in% names(pooled$pooled))
   expect_identical(
     as.character(pooled$pooled$contrast),
-    rep(c("b vs a", "c vs a"), times = 3)
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), times = 3))
   )
   expect_identical(
     as.character(pooled$pooled$term),
-    rep(c("rd", "log(rr)", "log(or)"), each = 2)
+    c(rep("mean", 3), rep(c("rd", "log(rr)", "log(or)"), each = 2))
   )
 
   # Each group holds one estimate per imputation, which is the half of the
   # contract a collapsed grouping would break while still returning numbers:
-  # six groups of three rather than three groups of six.
+  # nine groups of three rather than four groups of three, six, or nine.
   expect_true(all(pooled$pooled$m == 3L))
 
-  # `summary()` reports the same six rows in the same order, keyed by `term`
+  # `summary()` reports the same nine rows in the same order, keyed by `term`
   # alone, which repeats. What identifies a row there is its position beside the
   # pooled table, so the two are pinned against each other rather than the
   # summary being read on its own.
-  expect_identical(nrow(summarized), 6L)
+  expect_identical(nrow(summarized), 9L)
   expect_identical(
     as.character(summarized$term),
-    rep(c("rd", "log(rr)", "log(or)"), each = 2)
+    c(rep("mean", 3), rep(c("rd", "log(rr)", "log(or)"), each = 2))
   )
   expect_equal(summarized$estimate, pooled$pooled$estimate)
 
@@ -256,7 +256,7 @@ test_that("mice::pool() combines linearization estimates but reports no df", {
 
   # The estimates pool: the point estimates and the within-imputation variances
   # are there to combine, and Rubin's first two rules need nothing else.
-  expect_identical(nrow(summarized), 3L)
+  expect_identical(nrow(summarized), 5L)
   expect_true(all(is.finite(summarized$estimate)))
   expect_true(all(is.finite(summarized$std.error)))
 
@@ -331,8 +331,12 @@ test_that("pool_ipw() combines ipw results fitted to imputed data", {
   expect_identical(pooled$estimand, "ate")
 
   tidied <- tidy(pooled)
-  expect_identical(nrow(tidied), 3L)
-  expect_identical(tidied$term, c("rd", "log(rr)", "log(or)"))
+  expect_identical(nrow(tidied), 5L)
+  expect_identical(
+    tidied$term,
+    c("mean", "mean", "rd", "log(rr)", "log(or)")
+  )
+  expect_identical(tidied$contrast, c("0", "1", rep("1 vs 0", 3)))
   expect_true(all(is.finite(tidied$estimate)))
   expect_true(all(is.finite(tidied$std.error)))
   expect_true(all(is.finite(tidied$df)))
@@ -352,15 +356,15 @@ test_that("pool_ipw() keeps the contrast labels of a categorical result", {
   # The labels reach the pooled table rather than being reconstructed from row
   # order, which is what reading the results themselves buys over reading a
   # tidied table of them.
-  expect_identical(nrow(tidied), 6L)
+  expect_identical(nrow(tidied), 9L)
   expect_identical(names(tidied)[seq(1, 2)], c("term", "contrast"))
   expect_identical(
     tidied$term,
-    rep(c("rd", "log(rr)", "log(or)"), times = 2)
+    c(rep("mean", 3), rep(c("rd", "log(rr)", "log(or)"), times = 2))
   )
   expect_identical(
     tidied$contrast,
-    rep(c("b vs a", "c vs a"), each = 3)
+    c(c("a", "b", "c"), rep(c("b vs a", "c vs a"), each = 3))
   )
 })
 
@@ -577,6 +581,7 @@ test_that("pool_ipw() keys grouped binary results by effect and subgroup", {
     names(pooled$estimates),
     c(
       "effect",
+      "contrast",
       "group",
       "estimate",
       "std.err",
@@ -589,11 +594,13 @@ test_that("pool_ipw() keys grouped binary results by effect and subgroup", {
     )
   )
   expect_identical(pooled$estimates$effect, first$effect)
+  expect_identical(pooled$estimates$contrast, first$contrast)
   expect_identical(pooled$estimates$group, first$group)
 
-  # Three overall measures, two within each of three strata, and two for each of
-  # the two non-reference strata against the reference one.
-  expect_identical(nrow(pooled$estimates), 13L)
+  # Two overall means and three overall measures, two means and two measures
+  # within each of three strata, and two measures for each of the two
+  # non-reference strata against the reference one.
+  expect_identical(nrow(pooled$estimates), 21L)
   expect_identical(
     unique(pooled$estimates$group),
     c(
@@ -610,14 +617,15 @@ test_that("pool_ipw() keys grouped binary results by effect and subgroup", {
   # variance decomposition can be read beside the estimate it belongs to.
   expect_identical(
     names(pooled$pooling),
-    c("effect", "group", "ubar", "b", "riv", "lambda", "fmi")
+    c("effect", "contrast", "group", "ubar", "b", "riv", "lambda", "fmi")
   )
   expect_identical(pooled$pooling$effect, first$effect)
+  expect_identical(pooled$pooling$contrast, first$contrast)
   expect_identical(pooled$pooling$group, first$group)
 
   # The pooled covariance is labelled the way every other surface labels these
-  # rows: the measure and the subgroup together.
-  labels <- paste(first$effect, first$group)
+  # rows: the measure, the contrast, and the subgroup together.
+  labels <- paste(first$effect, first$contrast, first$group)
   expect_identical(
     dimnames(attr(pooled$estimates, "ipw_vcov", exact = TRUE)),
     list(labels, labels)
@@ -745,7 +753,7 @@ test_that("pool_ipw() keys grouped categorical results by effect, contrast, and 
   expect_identical(pooled$estimates$effect, first$effect)
   expect_identical(pooled$estimates$contrast, first$contrast)
   expect_identical(pooled$estimates$group, first$group)
-  expect_identical(nrow(pooled$estimates), 18L)
+  expect_identical(nrow(pooled$estimates), 27L)
 
   expect_identical(names(pooled$pooling)[1:3], c("effect", "contrast", "group"))
   expect_identical(pooled$pooling$contrast, first$contrast)
@@ -839,6 +847,7 @@ test_that("the tidiers of a pooled grouped result carry the subgroup column", {
     names(tidied),
     c(
       "term",
+      "contrast",
       "group",
       "estimate",
       "std.error",
@@ -857,7 +866,7 @@ test_that("the tidiers of a pooled grouped result carry the subgroup column", {
   # Asking for an interval adds to the table rather than rearranging it, so the
   # subgroup column keeps its place.
   bounded <- tidy(pooled, conf.int = TRUE)
-  expect_identical(names(bounded)[1:2], c("term", "group"))
+  expect_identical(names(bounded)[1:3], c("term", "contrast", "group"))
   expect_identical(
     names(bounded)[(length(names(bounded)) - 1):length(names(bounded))],
     c("conf.low", "conf.high")

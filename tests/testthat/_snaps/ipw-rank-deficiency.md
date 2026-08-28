@@ -29,7 +29,7 @@
     Condition
       Warning in `ipw()`:
       The estimating equations behind these estimates have no unique root at the values the solver returned.
-      x The standard errors reported for "rd", "log(rr)", and "log(or)" are not meaningful: they collapsed to essentially zero, which makes the test statistics and the intervals built from them meaningless too.
+      x The standard errors reported for "mean for 0", "mean for 1", "rd for 1 vs 0", "log(rr) for 1 vs 0", and "log(or) for 1 vs 0" are not meaningful: they collapsed to essentially zero, which makes the test statistics and the intervals built from them meaningless too.
       i At least one direction in the parameter space leaves the equations unchanged, so the sandwich variance along it is not identified.
       i An exposure level in which every outcome is an event, or none is, is one cause: the outcome model has no finite fit within it. Check the outcome within each level of the exposure, and both designs for columns that duplicate one another.
       i The estimates are reported as the solver returned them.
@@ -46,14 +46,12 @@
           weights = wts) 
       
       Marginal estimates:
-                estimate    std.err          z ci.lower ci.upper conf.level   p.value
-      rd      6.5625e-01 <degenerate> <degenerate>  0.65625  0.65625       0.95 < 2.2e-16
-      log(rr) 1.9344e+01 <degenerate> <degenerate> 19.34407 19.34407       0.95 < 2.2e-16
-      log(or) 2.0412e+01 <degenerate> <degenerate> 20.41190 20.41190       0.95 < 2.2e-16
-                 
-      rd      ***
-      log(rr) ***
-      log(or) ***
+      estimate std.err z ci.lower ci.upper conf.level p.value
+      mean 0 2.6064e-09 <degenerate> <degenerate> 2.6064e-09 2.6064e-09 0.95 < 2.2e-16 ***
+      mean 1 6.5625e-01 <degenerate> <degenerate> 6.5625e-01 6.5625e-01 0.95 < 2.2e-16 ***
+      rd 1 vs 0 6.5625e-01 <degenerate> <degenerate> 6.5625e-01 6.5625e-01 0.95 < 2.2e-16 ***
+      log(rr) 1 vs 0 1.9344e+01 <degenerate> <degenerate> 1.9344e+01 1.9344e+01 0.95 < 2.2e-16 ***
+      log(or) 1 vs 0 2.0412e+01 <degenerate> <degenerate> 2.0412e+01 2.0412e+01 0.95 < 2.2e-16 ***
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
@@ -96,8 +94,8 @@
       ipw(mods$ps_mod, mods$out, se_method = "mestimation")
     Condition
       Warning in `ipw()`:
-      The standard error reported for "diff" is not meaningful.
-      x It is zero, or so small beside the estimate it accompanies that the test statistic and the interval built from it carry no information.
+      The standard errors reported for "mean for 0", "mean for 1", and "diff for 1 vs 0" are not meaningful.
+      x They are zero, or so small beside the estimates they accompany that the test statistics and the intervals built from them carry no information.
       i An exposure group the outcome does not vary within is one cause: the contrast is then a fixed value rather than a quantity with any spread. Check the outcome within each level of the exposure.
       i The estimates are reported as they were computed.
     Output
@@ -112,10 +110,10 @@
         Call: lm(formula = yconst ~ z, data = dat, weights = wts) 
       
       Marginal estimates:
-             estimate    std.err          z ci.lower ci.upper conf.level   p.value
-      diff 1.0000e+00 <degenerate> <degenerate>        1        1       0.95 < 2.2e-16
-              
-      diff ***
+      estimate std.err z ci.lower ci.upper conf.level p.value
+      mean 0 <degenerate> <degenerate> <degenerate> <degenerate> <degenerate> 0.95 < 2.2e-16 ***
+      mean 1 1e+00 <degenerate> <degenerate> 1e+00 1e+00 0.95 < 2.2e-16 ***
+      diff 1 vs 0 1e+00 <degenerate> <degenerate> 1e+00 1e+00 0.95 < 2.2e-16 ***
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 

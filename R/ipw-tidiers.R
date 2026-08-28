@@ -2,18 +2,20 @@
 #'
 #' @description
 #' `tidy()` returns the estimates of an [ipw()] result as a tibble using the
-#' column names broom conventions use. There is one row per effect measure, and
-#' one row per effect measure per contrast for a categorical exposure, in the
-#' order the result stores them. Nothing is dropped.
+#' column names broom conventions use. For a binary or categorical exposure
+#' there is one row per exposure level, under the term `"mean"`, and then one
+#' row per effect measure per contrast of levels; for a continuous exposure
+#' there is one row per reported coefficient. The rows arrive in the order the
+#' result stores them and nothing is dropped.
 #'
-#' Those columns are the ones the result's own coercion surface reports, so the
-#' marginal reading is [`as.data.frame()`][causalgenerics::new_ipw()] read as a
+#' Those columns are the ones the result's own coercion surface reports, so
+#' either reading is [`as.data.frame()`][causalgenerics::new_ipw()] read as a
 #' tibble rather than a second assembly of the same table. The values are the
 #' ones the result already holds, nothing being re-estimated: the confidence
 #' interval is the only thing rebuilt, and only when the requested `conf.level`
 #' differs from the level the result was fit at. The one thing the frame carries
-#' that the tibble does not is the covariance of the effects it attaches as an
-#' attribute, a tidied table being its columns.
+#' that the tibble does not is the covariance it attaches as an attribute, a
+#' tidied table being its columns.
 #'
 #' `conf.int`, `conf.level`, and `exponentiate` are the arguments this method
 #' shares with that surface, so the surface validates them, in both readings and
@@ -29,9 +31,11 @@
 #' coefficient, with the standard errors of the block of the joint estimation
 #' that carries the uncertainty of having estimated the weights from the same
 #' data. The two readings return the same columns in the same order, with one
-#' exception: the `contrast` column that names the pair of exposure levels a row
-#' compares belongs to the marginal reading of a categorical result alone, and
-#' that result's conditional reading returns the same table one column narrower.
+#' exception: the `contrast` column belongs to the marginal reading. A binary
+#' and a categorical result both carry it there, naming the exposure level each
+#' mean row belongs to and the pair of levels each effect measure compares, and
+#' the conditional reading of either returns the same table one column narrower.
+#' A coefficient names neither a level nor a pair of them.
 #'
 #' @param x An `ipw` object, as returned by [ipw()].
 #' @param conf.int Logical. Should the confidence interval bounds be returned in
@@ -95,11 +99,14 @@
 #'
 #' @return A [tibble][tibble::tibble] with one row per estimate and the columns:
 #' \describe{
-#'   \item{`term`}{The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-#'     `"diff"`, `"slope"`, or `"coef"`.}
-#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"` for a
-#'     categorical exposure or the coefficient name on a surface whose rows are
-#'     named after their coefficients. Present only where a row reports one.}
+#'   \item{`term`}{The effect measure, such as `"mean"` for a counterfactual
+#'     mean, or `"rd"`, `"log(rr)"`, `"log(or)"`, `"diff"`, `"slope"`, or
+#'     `"coef"` for the measures built from them.}
+#'   \item{`contrast`}{What the row is about: the exposure level a `"mean"` row
+#'     belongs to, such as `"0"` or `"b"`; the pair of levels an effect measure
+#'     compares, such as `"1 vs 0"` or `"b vs a"`; or the coefficient name on a
+#'     surface whose rows are named after their coefficients. Present only where
+#'     a row reports one.}
 #'   \item{`estimate`}{The estimated effect.}
 #'   \item{`std.error`}{The standard error of the estimate.}
 #'   \item{`statistic`}{The z statistic, the estimate over its standard error.}
@@ -113,9 +120,10 @@
 #' `estimate` is the coefficient, `std.error` is the square root of the diagonal
 #' of the corrected covariance, `statistic` is the estimate over that standard
 #' error, and `p.value` is the two-sided normal p-value of the statistic. There
-#' is no `contrast` column, because a coefficient is not a contrast of exposure
-#' levels, and the bounds are built at the level `conf.level` asks for, the
-#' stored ones belonging to the effects the marginal reading reports.
+#' is no `contrast` column, whatever the exposure, because a coefficient names
+#' neither an exposure level nor a pair of them, and the bounds are built at the
+#' level `conf.level` asks for, the stored ones belonging to the effects the
+#' marginal reading reports.
 #'
 #' @examples
 #' set.seed(123)
@@ -167,45 +175,55 @@ tidy.ipw <- function(
     effects <- NULL
   }
 
-  # The marginal reading, which is the result's own coercion surface read as a
-  # tibble. It is built before anything branches on a reading because the three
-  # arguments the two surfaces share are validated there, and one argument of one
-  # method cannot be well formed in one reading of a result and refused in the
-  # other.
-  #
-  # The conditional reading answers from the accessors and so discards the frame,
-  # which costs a table of a few rows: nothing is refit to build it.
-  frame <- as.data.frame(
-    x,
-    conf.int = conf.int,
-    conf.level = conf.level,
-    exponentiate = exponentiate
-  )
-
-  # The accessors own the `effects` argument, so the estimates of the reading
-  # this call reports come from one before anything here branches on a reading.
-  # That call resolves a `NULL` against the reading the result records and
-  # refuses a value naming neither, on every route a result can have been built
-  # by; validating the value here as well would leave two validators to keep in
-  # step.
-  estimate <- stats::coef(x, effects = effects)
+  # The accessors own the `effects` argument, so it is put through one before
+  # anything here branches on a reading. That call resolves a `NULL` against the
+  # reading the result records and refuses a value naming neither, on every
+  # route a result can have been built by; validating the value here as well
+  # would leave two validators to keep in step. Nothing is read off it: the
+  # refusal is the whole of what it is for, and it has to come before the
+  # comparison below, which a value that is not one string would fail on its
+  # length rather than on being no reading.
+  stats::coef(x, effects = effects)
 
   # The value has been through that check by the time this reads it, so this
   # settles which reading was asked for rather than checking it a second time.
   reading <- if (is.null(effects)) ipw_stored_effects(x) else effects
-  if (reading == "conditional") {
-    return(tidy_ipw_conditional(
-      x,
-      estimate = estimate,
-      conf.int = conf.int,
-      conf.level = conf.level,
-      exponentiate = exponentiate
-    ))
+
+  # The conditional reading exponentiates by the link of the outcome model
+  # rather than by the labels of the rows, and the refusal of a link no
+  # exponential undoes is this package's, so it is raised before the surface
+  # below reaches a refusal of its own. A value of `exponentiate` that is not a
+  # flag is not read here; it is refused there, with the other two arguments.
+  if (reading == "conditional" && isTRUE(exponentiate)) {
+    check_exponentiate_link(x$outcome_mod)
   }
 
-  # The covariance of the effects the frame attaches is the one thing that does
-  # not travel: it is an attribute rather than a column, and a tidied table is
-  # its columns.
+  # A tidied row is its estimate and its inference together, and the inference
+  # of this reading comes from the covariance the joint estimation of the
+  # weights and the outcome implies. A result carries that covariance on a
+  # wrapped outcome model, which is how the reading is decided everywhere it is
+  # reported, so the same test is made here and the absence is refused against
+  # the call that asked for the reading rather than against the coercion below.
+  if (reading == "conditional" && !inherits(x$outcome_mod, "ipw_model")) {
+    stop_no_conditional_vcov()
+  }
+
+  # The result's own coercion surface, in the reading this call reports rather
+  # than the one the result records: the three arguments the two readings share
+  # are validated there, and one argument of one method cannot be well formed in
+  # one reading of a result and refused in the other. Both readings are tabled
+  # there in the columns a tidier uses, so both are read off this one call and
+  # neither is assembled a second time here.
+  frame <- as.data.frame(
+    x,
+    conf.int = conf.int,
+    conf.level = conf.level,
+    exponentiate = exponentiate,
+    effects = reading
+  )
+
+  # The covariance the frame attaches is the one thing that does not travel: it
+  # is an attribute rather than a column, and a tidied table is its columns.
   out <- tibble::as_tibble(frame)
   attr(out, "ipw_vcov") <- NULL
 
@@ -218,65 +236,29 @@ ipw_stored_effects <- function(x) {
   if (is.null(x$effects)) "marginal" else x$effects
 }
 
-# The conditional reading: the outcome model's coefficient surface, in the
-# columns the marginal reading uses so that the two tables stack. The estimates
-# arrive from the accessor that resolved the reading, and the rest of the row is
-# read through the accessors beside it, which is what keeps this table and the
-# printed reading of the same result the same numbers.
-tidy_ipw_conditional <- function(
-  x,
-  estimate,
-  conf.int,
-  conf.level,
-  exponentiate,
-  call = rlang::caller_env()
-) {
-  # A row is its estimate and its inference together, so the corrected
-  # covariance is read whether or not bounds were asked for. A result that
-  # stacked no estimating equations records none, and the error the accessor
-  # raises for that is the answer here rather than the covariance the outcome
-  # model computed for itself, which treats the estimated weights as fixed.
-  covariance <- stats::vcov(x, effects = "conditional")
-
-  # A column of a tibble is addressed by its position, so the names the
-  # accessors label their vectors with belong to `term` and to nothing else.
-  std_error <- unname(sqrt(diag(covariance)))
-  statistic <- unname(estimate) / std_error
-
-  out <- list(
-    term = names(estimate),
-    estimate = unname(estimate),
-    std.error = std_error,
-    statistic = statistic,
-    # The form causalgenerics prints this reading with, which keeps its
-    # significant digits in the far tail where `2 * (1 - pnorm(abs(z)))` loses
-    # them.
-    p.value = 2 * stats::pnorm(-abs(statistic))
+# Refuse the conditional reading of a result that records no covariance for it.
+# The classes are the ones the result's own surfaces raise for the same absence,
+# so a caller handling either of them is unaffected by where the refusal was
+# made; the message is this package's, since this package knows which of its
+# standard error methods leaves the covariance unrecorded.
+stop_no_conditional_vcov <- function(call = rlang::caller_env()) {
+  abort(
+    c(
+      "The conditional reading reports the covariance the joint estimation of \\
+      the weights and the outcome implies, and this result records none.",
+      x = "The {.val linearization} standard error method corrects the \\
+      marginal estimates only, so it stores no covariance for the conditional \\
+      reading.",
+      i = "Fit with {.code se_method = \"mestimation\"}, which solves the two \\
+      models as one system and stores that covariance."
+    ),
+    error_class = c(
+      "propensity_no_conditional_vcov_error",
+      "causalgenerics_no_conditional_vcov",
+      "causalgenerics_no_vcov"
+    ),
+    call = call
   )
-
-  if (conf.int) {
-    # The bounds the result stores describe the effects of the other reading, so
-    # there are none to prefer here and the accessor builds them at whatever
-    # level the call asked for.
-    limits <- stats::confint(x, level = conf.level, effects = "conditional")
-    out$conf.low <- unname(limits[, 1L])
-    out$conf.high <- unname(limits[, 2L])
-  }
-
-  if (exponentiate) {
-    check_exponentiate_link(x$outcome_mod, call = call)
-
-    # Broom's convention, which every method taking the argument follows: the
-    # estimate and, when they were asked for, the bounds move to the natural
-    # scale, and the columns describing the link scale estimate stay there.
-    out$estimate <- exp(out$estimate)
-    if (conf.int) {
-      out$conf.low <- exp(out$conf.low)
-      out$conf.high <- exp(out$conf.high)
-    }
-  }
-
-  tibble::as_tibble(out)
 }
 
 # The conditional reading has no rows labeled as ratios to pick out, so the link
@@ -385,9 +367,11 @@ glance.ipw <- function(x, ...) {
 #'
 #' @description
 #' `tidy()` returns the estimates of a [pool_ipw()] result as a tibble using the
-#' column names broom conventions use. There is one row per effect measure, and
-#' one row per effect measure per contrast for a categorical exposure, in the
-#' order the pooled result stores them. Nothing is dropped.
+#' column names broom conventions use. It holds the rows the results themselves
+#' report: for a binary or categorical exposure one row per exposure level,
+#' under the term `"mean"`, and then one row per effect measure per contrast of
+#' levels; for a continuous exposure one row per reported coefficient. The rows
+#' arrive in the order the pooled result stores them and nothing is dropped.
 #'
 #' Those columns are the ones the pooled result's own coercion surface reports,
 #' so this method is that surface read as a tibble rather than a second assembly
@@ -410,9 +394,10 @@ glance.ipw <- function(x, ...) {
 #' the same way: one row per coefficient, from the block of the joint estimation
 #' that carries the uncertainty of having estimated the weights from the same
 #' data. The two readings return the same columns in the same order, with one
-#' exception: the `contrast` column that names the pair of exposure levels a row
-#' compares belongs to the marginal reading of a categorical pool alone, and
-#' that pool's conditional reading returns the same table one column narrower.
+#' exception: the `contrast` column belongs to the marginal reading. A binary
+#' and a categorical pool both carry it there, naming the exposure level each
+#' mean row belongs to and the pair of levels each effect measure compares, and
+#' the conditional reading of either returns the same table one column narrower.
 #'
 #' @param x An `ipw_pooled` object, as returned by [pool_ipw()].
 #' @param conf.int Logical. Should the confidence interval bounds be returned in
@@ -459,14 +444,17 @@ glance.ipw <- function(x, ...) {
 #' @return A [tibble][tibble::tibble] with one row per pooled estimate and the
 #'   columns:
 #' \describe{
-#'   \item{`term`}{The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-#'     `"diff"`, `"slope"`, or `"coef"`, or the coefficient name in the
+#'   \item{`term`}{The effect measure, such as `"mean"` for a counterfactual
+#'     mean, or `"rd"`, `"log(rr)"`, `"log(or)"`, `"diff"`, `"slope"`, or
+#'     `"coef"` for the measures built from them, or the coefficient name in the
 #'     conditional reading.}
-#'   \item{`contrast`}{The contrast the row reports, such as `"b vs a"` for a
-#'     categorical exposure or the coefficient name on a surface whose rows are
-#'     named after their coefficients. Present only in the marginal reading, and
-#'     there only where a row reports one: the conditional reading names each
-#'     coefficient in `term` and returns no `contrast` column.}
+#'   \item{`contrast`}{What the row is about: the exposure level a `"mean"` row
+#'     belongs to, such as `"0"` or `"b"`; the pair of levels an effect measure
+#'     compares, such as `"1 vs 0"` or `"b vs a"`; or the coefficient name on a
+#'     surface whose rows are named after their coefficients. Present only in
+#'     the marginal reading, and there only where a row reports one: the
+#'     conditional reading names each coefficient in `term` and returns no
+#'     `contrast` column.}
 #'   \item{`estimate`}{The pooled point estimate.}
 #'   \item{`std.error`}{The pooled standard error.}
 #'   \item{`statistic`}{The test statistic, the estimate over its standard
