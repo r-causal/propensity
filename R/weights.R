@@ -45,8 +45,9 @@
 #'   levels. `.propensity` must be a matrix or data frame with one column per
 #'   level, where rows sum to 1.
 #' - **Continuous**: `.exposure` is a numeric vector. `.propensity` is a
-#'   vector of conditional means (fitted values). Weights use a normal density
-#'   ratio; stabilization is strongly recommended.
+#'   vector of conditional means (fitted values). Weights are a ratio of
+#'   densities, whose family is chosen by `.density`; stabilization is strongly
+#'   recommended.
 #' - **Auto** (default): Detects the exposure type from `.exposure`.
 #'
 #' ## Stabilization
@@ -55,10 +56,10 @@
 #' P(A) (binary) or f_A(A) (continuous), reducing variance. When no
 #' `stabilization_score` is supplied, that estimate is the marginal mean of
 #' `.exposure` for a binary or categorical exposure, and for a continuous
-#' exposure the marginal normal density evaluated at the population mean and
-#' standard deviation of `.exposure`. Stabilization is supported for ATE and
-#' censoring weights (`wt_ate()` and `wt_cens()`) and is strongly recommended
-#' for continuous exposures.
+#' exposure the marginal density of the family `.density` names, evaluated at
+#' the population mean and standard deviation of `.exposure`. Stabilization is
+#' supported for ATE and censoring weights (`wt_ate()` and `wt_cens()`) and is
+#' strongly recommended for continuous exposures.
 #'
 #' The default numerator conditions on nothing, and `stabilization_score`
 #' replaces it with one of your own. The case that pays is a numerator
@@ -144,16 +145,52 @@
 #'
 #' Weights use the density ratio
 #' \eqn{w = f_A(A) / f_{A|X}(A \mid X)}, where \eqn{f_A} is the marginal
-#' density and \eqn{f_{A|X}} is the conditional density (both assumed
-#' normal). Only `wt_ate()` and `wt_cens()` support continuous exposures.
+#' density of the exposure and \eqn{f_{A|X}} is the conditional density the
+#' propensity model estimates. Only `wt_ate()` and `wt_cens()` support
+#' continuous exposures.
 #'
-#' The marginal density is evaluated at the population mean and standard
-#' deviation of `.exposure`. The conditional density is centered on
-#' `.propensity` and spread by the propensity model's residual standard
-#' deviation. That spread is the pooled residual standard deviation
-#' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies an
-#' observation-level standard deviation for each unit, which the `glm` methods
-#' do not do on their own.
+#' Both densities are read on a standardized residual. The conditional density
+#' is evaluated at \eqn{z_i = (A_i - \hat{A}_i) / \sigma}, where
+#' \eqn{\hat{A}_i} is the fitted conditional mean in `.propensity` and
+#' \eqn{\sigma} is the residual spread; the marginal density is evaluated at
+#' \eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} and \eqn{s_A} are
+#' the population mean and standard deviation of `.exposure`. Each density is
+#' then divided by the spread that standardized it, the Jacobian of that change
+#' of variable, which returns both to the exposure's own units so that each
+#' integrates to one:
+#'
+#' \deqn{w_i = \frac{g(z^A_i) / s_A}{g(z_i) / \sigma}}
+#'
+#' `.density` chooses the family \eqn{g}:
+#'
+#' | `.density` | \eqn{g(z)} |
+#' | --- | --- |
+#' | `"normal"`, [dens_normal()] | the standard normal density, the default |
+#' | `"laplace"`, [dens_laplace()] | \eqn{\exp(-\lvert z \rvert) / 2} |
+#' | [dens_t()] | Student's t with `df` degrees of freedom |
+#' | `"kernel"`, [dens_kernel()] | a kernel density estimate of the standardized residuals |
+#' | [dens_fn()], or a bare function | a density you write yourself |
+#'
+#' The numerator and the denominator take the same family, so the choice
+#' describes the shape of the residuals rather than the estimand. A heavier tail
+#' than the normal's, such as [dens_t()] or `"laplace"`, holds down the weight
+#' of a unit whose exposure the model fits poorly, and `"kernel"` assumes no
+#' shape at all, at the cost of a density that is not a smooth function of the
+#' model's parameters. A `stabilization_score` replaces the numerator outright
+#' and `stabilize = FALSE` leaves it out, so under either the family describes
+#' the denominator alone.
+#'
+#' A unit whose exposure or fitted conditional mean is missing has no
+#' standardized residual, and so no weight: the density is asked only about the
+#' units that have one, and a kernel is fit on those. A propensity score
+#' [ps_trim()] set aside is the ordinary way this arises.
+#'
+#' \eqn{\sigma} is the pooled residual standard deviation
+#' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies a single
+#' standard deviation, or one for each unit, which the `glm` methods do not do
+#' on their own. The marginal density is spread by \eqn{s_A} whatever `.sigma`
+#' says, the spread of the exposure itself being no business of the conditional
+#' model's.
 #'
 #' [ipw()] models the conditional density with a single pooled residual
 #' variance, estimated jointly with the rest of the parameter vector. Weights
@@ -223,6 +260,26 @@
 #'   the third position, which is where a value meant for `exposure_type`
 #'   arrives when it is supplied without a name, so anything else is refused
 #'   with an error of class `propensity_sigma_error`.
+#' @param .density The family of the conditional density for continuous
+#'   exposures, described under **Continuous exposures** in Details. One of the
+#'   strings `"normal"` (the default), `"laplace"`, or `"kernel"`; a
+#'   specification built by [dens_normal()], [dens_laplace()], [dens_t()],
+#'   [dens_kernel()], or [dens_fn()]; or a bare function of the standardized
+#'   residual, which is wrapped with [dens_fn()].
+#'
+#'   A function is called on the whole vector of standardized residuals at once
+#'   rather than on one residual at a time, and is called a second time on the
+#'   standardized exposure when the marginal numerator stabilizes the weights.
+#'   Each call must return one finite, non-negative value for each value it was
+#'   given, not every one of them zero. Anything else is refused with an error of
+#'   class `propensity_density_error`, which is also what a family other than the
+#'   default gets for a binary or categorical exposure, whose weights are not a
+#'   ratio of densities. The default is accepted for every exposure type and
+#'   ignored outside a continuous one.
+#'
+#'   `.density` sits after `...` and so can only be supplied by name. The family
+#'   the weights were built from is recorded on the result and read back with
+#'   [density_meta()].
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
 #' @param .focal_level The value of `.exposure` representing the focal
@@ -389,6 +446,7 @@ wt_ate <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -406,6 +464,7 @@ wt_ate.default <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -423,6 +482,7 @@ wt_ate.numeric <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env(),
@@ -452,6 +512,12 @@ wt_ate.numeric <- function(
   )
 
   check_sigma(.sigma, exposure_type, length(.exposure), call = call)
+
+  # The density is resolved once, here, for every route: the model, data frame,
+  # and modified-score methods all funnel through this one, and `wt_cens()`
+  # reaches the continuous formula through it as well.
+  .density <- as_density_spec(.density, arg = ".density", call = call)
+  check_density_arg(.density, exposure_type, call = call)
 
   # The exposure supplies the number of observations the score is checked
   # against, so a `.propensity` of a different length has to be caught first.
@@ -500,8 +566,10 @@ wt_ate.numeric <- function(
       .propensity = .propensity,
       .exposure = .exposure,
       .sigma = .sigma,
+      .density = .density,
       stabilize = stabilize,
-      stabilization_score = stabilization_score
+      stabilization_score = stabilization_score,
+      call = call
     )
   } else {
     # For categorical, let calculate_categorical_weights handle all validation
@@ -546,6 +614,7 @@ wt_ate.data.frame <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
@@ -564,6 +633,7 @@ wt_ate.data.frame <- function(
     .reference_level = .reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     .treated = .treated,
     .untreated = .untreated,
     ...
@@ -581,6 +651,7 @@ wt_ate.glm <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env()
@@ -610,6 +681,7 @@ wt_ate.glm <- function(
     .reference_level = args$reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     call = call,
     ...
   )
@@ -652,37 +724,47 @@ ate_continuous <- function(
   .propensity,
   .exposure,
   .sigma,
+  .density = dens_normal(),
   stabilize = FALSE,
-  stabilization_score = NULL
+  stabilization_score = NULL,
+  call = rlang::caller_env()
 ) {
-  # Both densities below are normal densities in the exposure's own units, so
-  # both carry the 1/sigma factor that makes them integrate to one.
-
   # The conditional density f_{A|X}(A_i | X_i) is the one the propensity model
   # estimates, so its spread is that model's residual standard deviation: the
   # observation-level `.sigma` when the caller supplies one, the pooled residual
   # standard deviation otherwise.
-  sigma_i <- if (is.null(.sigma)) {
-    sqrt(mean((.exposure - .propensity)^2, na.rm = TRUE))
+  sigma_i <- continuous_sigma(.exposure, .propensity, .sigma)
+
+  numerator <- if (!isTRUE(stabilize)) {
+    "none"
+  } else if (is.null(stabilization_score)) {
+    "marginal"
   } else {
-    .sigma
+    "score"
   }
 
-  f_den <- stats::dnorm(.exposure, mean = .propensity, sd = sigma_i)
+  # The marginal density f_A(A_i) is read at the exposure's population moments,
+  # which no other numerator needs and a constant exposure has no spread for.
+  mu_a <- NULL
+  sigma_a <- NULL
+  if (identical(numerator, "marginal")) {
+    mu_a <- mean(.exposure, na.rm = TRUE)
+    sigma_a <- sqrt(mean((.exposure - mu_a)^2, na.rm = TRUE))
+  }
 
-  # build base weight = 1 / f_{A|X}
-  wt <- 1 / f_den
+  wt <- continuous_density_ratio(
+    exposure = .exposure,
+    mu = .propensity,
+    sigma = sigma_i,
+    density = .density,
+    numerator = numerator,
+    mu_a = mu_a,
+    sigma_a = sigma_a,
+    score = stabilization_score,
+    call = call
+  )
 
-  if (isTRUE(stabilize) && is.null(stabilization_score)) {
-    # The marginal density f_A(A_i) uses the exposure's population moments.
-    un_mean <- mean(.exposure, na.rm = TRUE)
-    un_var <- mean((.exposure - un_mean)^2, na.rm = TRUE)
-
-    f_num <- stats::dnorm(.exposure, mean = un_mean, sd = sqrt(un_var))
-    wt <- wt * f_num
-  } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
-    wt <- wt * stabilization_score
-  } else {
+  if (identical(numerator, "none")) {
     alert_info(
       "Using unstabilized weights for continuous exposures is not recommended."
     )
@@ -693,14 +775,8 @@ ate_continuous <- function(
   # with the weights rather than beside them so that it reaches the `psw` the
   # same way the categorical attributes do.
   attr(wt, "density_meta") <- new_density_meta(
-    density = dens_normal(),
-    numerator = if (!isTRUE(stabilize)) {
-      "none"
-    } else if (is.null(stabilization_score)) {
-      "marginal"
-    } else {
-      "score"
-    },
+    density = .density,
+    numerator = numerator,
     sigma = if (is.null(.sigma)) "pooled" else "supplied"
   )
 
@@ -1713,6 +1789,7 @@ wt_cens <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -1730,6 +1807,7 @@ wt_cens.default <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -1747,6 +1825,7 @@ wt_cens.numeric <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env(),
@@ -1794,6 +1873,7 @@ wt_cens.numeric <- function(
     .untreated = NULL,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     call = call,
     ...
   )
@@ -1815,6 +1895,7 @@ wt_cens.data.frame <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
@@ -1835,6 +1916,7 @@ wt_cens.data.frame <- function(
     .untreated = .untreated,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     ...
   )
 }
@@ -1850,6 +1932,7 @@ wt_cens.glm <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   call = rlang::current_env()
@@ -1879,6 +1962,7 @@ wt_cens.glm <- function(
     .reference_level = args$reference_level,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     call = call,
     ...
   )
@@ -1899,6 +1983,7 @@ wt_ate.ps_trim <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -1915,6 +2000,7 @@ wt_ate.ps_trim <- function(
     .untreated = .untreated,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     ...
   )
 }
@@ -2030,6 +2116,7 @@ wt_ate.ps_trunc <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2046,6 +2133,7 @@ wt_ate.ps_trunc <- function(
     .untreated = .untreated,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     ...
   )
 }
@@ -2217,6 +2305,7 @@ wt_cens.ps_trim <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2233,6 +2322,7 @@ wt_cens.ps_trim <- function(
     .untreated = .untreated,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     ...
   )
 }
@@ -2248,6 +2338,7 @@ wt_cens.ps_trunc <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2264,6 +2355,7 @@ wt_cens.ps_trunc <- function(
     .untreated = .untreated,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     ...
   )
 }
@@ -2403,6 +2495,7 @@ wt_ate.ps_calib <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2419,6 +2512,7 @@ wt_ate.ps_calib <- function(
     .untreated = .untreated,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     ...
   )
 }
@@ -2562,6 +2656,7 @@ wt_cens.ps_calib <- function(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 ) {
@@ -2578,6 +2673,7 @@ wt_cens.ps_calib <- function(
     .untreated = .untreated,
     stabilize = stabilize,
     stabilization_score = stabilization_score,
+    .density = .density,
     ...
   )
 }

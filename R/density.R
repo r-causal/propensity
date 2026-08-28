@@ -239,6 +239,121 @@ as_density_spec <- function(
   )
 }
 
+# A density other than the default describes a continuous exposure and has
+# nothing to say about any other kind, so it is refused there the way
+# `check_sigma()` refuses a spread. The default is accepted for every type and
+# ignored outside the continuous route, so that a caller who writes out the
+# family they were getting anyway is not refused for saying so.
+check_density_arg <- function(
+  spec,
+  exposure_type,
+  call = rlang::caller_env()
+) {
+  if (
+    identical(exposure_type, "continuous") || identical(spec$family, "normal")
+  ) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "{.arg .density} applies only to continuous exposures.",
+      x = "{.arg .exposure} is being treated as {exposure_type}.",
+      i = "{.arg .density} chooses the family of the conditional density a
+           continuous exposure's weights are a ratio of. A {exposure_type}
+           exposure has a probability rather than a density, so leave
+           {.arg .density} unset for one."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
+}
+
+# The spread of the conditional density: the one the caller supplied, or the
+# pooled uncentered root mean square of the residuals. It is uncentered because
+# the residuals of a fitted model already average to zero, and because the
+# estimating equation `ipw()` solves for the same quantity is the uncentered
+# moment.
+continuous_sigma <- function(exposure, mu, .sigma = NULL) {
+  if (!is.null(.sigma)) {
+    return(.sigma)
+  }
+
+  sqrt(mean((exposure - mu)^2, na.rm = TRUE))
+}
+
+# The density ratio a continuous exposure's weights are. Both densities are
+# evaluated on a standardized residual and divided by the spread that
+# standardized it, which is the Jacobian that puts each back on the exposure's
+# own scale, so the normal family returns exactly what a normal density in the
+# exposure's units returns.
+#
+# The numerator is the marginal density of the exposure, a stabilization score
+# the caller supplied, or nothing at all. `grid` is the evaluation grid an
+# integrated numerator averages the conditional density over; no numerator uses
+# it yet.
+continuous_density_ratio <- function(
+  exposure,
+  mu,
+  sigma,
+  density,
+  numerator = c("marginal", "none", "score"),
+  mu_a = NULL,
+  sigma_a = NULL,
+  score = NULL,
+  grid = NULL,
+  call = rlang::caller_env()
+) {
+  numerator <- rlang::arg_match(numerator, error_call = call)
+
+  z <- (exposure - mu) / sigma
+  f_den <- density_eval_present(density, z, call = call) / sigma
+
+  if (identical(numerator, "none")) {
+    return(1 / f_den)
+  }
+
+  if (identical(numerator, "score")) {
+    return(score / f_den)
+  }
+
+  # The marginal density is the same family read at the exposure's own center
+  # and spread, so it is standardized by those rather than by the conditional
+  # spread. A kernel numerator is therefore fit on its own values.
+  z_a <- (exposure - mu_a) / sigma_a
+  f_num <- density_eval_present(density, z_a, call = call) / sigma_a
+
+  f_num / f_den
+}
+
+# A density is asked only about the observations it can answer for. A missing
+# exposure, fitted value, or spread leaves a missing standardized residual, and
+# the weight there is missing for that reason rather than for anything the
+# density did: a propensity score trimmed away is the ordinary case. Asking only
+# about the residuals that are present also lets a kernel be fit on the
+# observations that have one.
+density_eval_present <- function(spec, z, call = rlang::caller_env()) {
+  present <- !is.na(z)
+
+  if (all(present)) {
+    return(density_eval(spec, z, call = call))
+  }
+
+  values <- rep(NA_real_, length(z))
+
+  # Nothing is present to ask about, so nothing is asked. Every family returns
+  # a missing value at a missing residual, and a kernel asked to fit on no
+  # residuals at all would instead be refused for the sample size, describing a
+  # density that was never the reason the weights are missing.
+  if (!any(present)) {
+    return(values)
+  }
+
+  values[present] <- density_eval(spec, z[present], call = call)
+
+  values
+}
+
 # Evaluate a specification at the standardized residuals `z`. A kernel is fit
 # once on `fit_on`, bounded by `range`, and interpolated to `z`, so `range` must
 # cover every point the density is asked for: a point outside it interpolates to

@@ -423,6 +423,88 @@ test_that("the default density is accepted for every exposure type", {
   ))
 })
 
+test_that("the default density is accepted for a categorical exposure", {
+  exposure <- factor(rep(c("a", "b", "c"), each = 4))
+  ps <- matrix(
+    rep(c(0.5, 0.3, 0.2), times = 12),
+    ncol = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("a", "b", "c"))
+  )
+
+  plain <- wt_ate(ps, exposure, exposure_type = "categorical")
+
+  expect_equal(
+    as.numeric(wt_ate(
+      ps,
+      exposure,
+      exposure_type = "categorical",
+      .density = "normal"
+    )),
+    as.numeric(plain)
+  )
+  expect_equal(
+    as.numeric(wt_ate(
+      ps,
+      exposure,
+      exposure_type = "categorical",
+      .density = dens_normal()
+    )),
+    as.numeric(plain)
+  )
+
+  expect_null(density_meta(
+    wt_ate(ps, exposure, exposure_type = "categorical", .density = "normal")
+  ))
+})
+
+test_that("a density other than the default refuses a detected binary exposure", {
+  set.seed(15)
+  ps <- runif(20, 0.2, 0.8)
+  trt <- rbinom(20, 1, ps)
+
+  # The type was not named, so the refusal is against the type detection
+  # resolved the 0/1 exposure to rather than against anything the caller wrote.
+  expect_error(
+    wt_ate(ps, trt, .density = dens_t(df = 4)),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    wt_cens(ps, trt, .density = "kernel"),
+    class = "propensity_density_error"
+  )
+
+  detected <- rlang::catch_cnd(wt_ate(ps, trt, .density = "laplace"))
+  expect_match(conditionMessage(detected), "binary")
+})
+
+test_that("the refusal of a density reads the same way for either type", {
+  set.seed(16)
+  ps <- runif(20, 0.2, 0.8)
+  trt <- rbinom(20, 1, ps)
+
+  categorical_exposure <- factor(rep(c("a", "b", "c"), each = 4))
+  categorical_ps <- matrix(
+    rep(c(0.5, 0.3, 0.2), times = 12),
+    ncol = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("a", "b", "c"))
+  )
+
+  expect_propensity_error(
+    wt_ate(ps, trt, exposure_type = "binary", .density = "laplace")
+  )
+  expect_propensity_error(
+    wt_ate(
+      categorical_ps,
+      categorical_exposure,
+      exposure_type = "categorical",
+      .density = dens_t(df = 4)
+    )
+  )
+  expect_propensity_error(wt_cens(ps, trt, .density = "kernel"))
+})
+
 test_that("a density that is not a density is refused", {
   expect_error(
     continuous_density_wt(.density = 1),
@@ -702,6 +784,207 @@ test_that("censoring weights take a density of their own", {
 
   expect_identical(estimand(from_model), "uncensored")
   expect_identical(format(density_meta(from_model)$density), "laplace")
+})
+
+test_that("censoring weights carry a density through their other methods", {
+  set.seed(17)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- 0.5 * x + rnorm(n)
+
+  from_frame <- wt_cens(
+    data.frame(mu = continuous_density_data$mu),
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = "laplace"
+  )
+
+  expect_equal(
+    as.numeric(from_frame),
+    as.numeric(continuous_density_wt(.density = "laplace")),
+    tolerance = 1e-12
+  )
+  expect_identical(estimand(from_frame), "uncensored")
+  expect_identical(format(density_meta(from_frame)$density), "laplace")
+
+  # A score a modification can be applied to has to lie in (0, 1); it stands in
+  # for the fitted conditional mean here.
+  scores <- plogis(0.5 * x)
+
+  modified_scores <- list(
+    ps_refit(
+      ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8),
+      model = glm(
+        exposure ~ x,
+        data = data.frame(exposure = exposure, x = x),
+        family = gaussian()
+      )
+    ),
+    ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+    ps_calibrate(scores, rbinom(n, 1, scores))
+  )
+
+  for (modified in modified_scores) {
+    weights <- wt_cens(
+      modified,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = dens_t(df = 4)
+    )
+    plain <- wt_cens(
+      as.numeric(modified),
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = dens_t(df = 4)
+    )
+
+    expect_equal(as.numeric(weights), as.numeric(plain), tolerance = 1e-12)
+    expect_identical(format(density_meta(weights)$density), "t(df = 4)")
+  }
+})
+
+# ---- missing values ---------------------------------------------------------
+
+# A unit with no standardized residual has no weight, and the density is asked
+# only about the units that have one. That is what lets a kernel be fit at all
+# when some of the residuals are missing, and it is why a family is never the
+# reason a weight came back missing.
+
+test_that("a missing fitted value leaves a weight the density was not asked about", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+  missing_at <- c(4L, 37L)
+  mu[missing_at] <- NA_real_
+
+  weights <- as.numeric(wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = "kernel"
+  ))
+
+  expect_identical(which(is.na(weights)), missing_at)
+
+  # The pooled spread, the kernel, and the range it is fit over all read the
+  # residuals that exist and nothing else.
+  present <- setdiff(seq_len(continuous_density_data$n), missing_at)
+  sigma <- sqrt(mean((exposure[present] - mu[present])^2))
+  z <- (exposure[present] - mu[present]) / sigma
+  f_den <- continuous_density_kde(z) / sigma
+
+  # The exposure is whole, so the marginal density is still fit on all of it.
+  f_num <- continuous_density_kde(continuous_density_z_a()) /
+    continuous_density_sd_a()
+
+  expect_equal(weights[present], f_num[present] / f_den, tolerance = 1e-12)
+})
+
+test_that("a missing exposure is left out of the numerator as well", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+  missing_at <- 11L
+  exposure[missing_at] <- NA_real_
+
+  weights <- as.numeric(wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = "kernel"
+  ))
+
+  expect_identical(which(is.na(weights)), missing_at)
+
+  present <- setdiff(seq_len(continuous_density_data$n), missing_at)
+  sigma <- sqrt(mean((exposure[present] - mu[present])^2))
+  z <- (exposure[present] - mu[present]) / sigma
+  f_den <- continuous_density_kde(z) / sigma
+
+  # A missing exposure is missing from its own marginal density too, so the
+  # moments it is read at and the kernel fit on it both skip that unit.
+  mu_a <- mean(exposure[present])
+  sd_a <- sqrt(mean((exposure[present] - mu_a)^2))
+  f_num <- continuous_density_kde((exposure[present] - mu_a) / sd_a) / sd_a
+
+  expect_equal(weights[present], f_num / f_den, tolerance = 1e-12)
+})
+
+test_that("a trimmed propensity score leaves the units it set aside missing", {
+  set.seed(18)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- 0.5 * x + rnorm(n)
+
+  # A score a modification can be applied to has to lie in (0, 1); it stands in
+  # for the fitted conditional mean here. Trimmed and not refit, it carries a
+  # missing value at every unit it set aside, which is the ordinary way a
+  # standardized residual goes missing.
+  trimmed <- ps_trim(plogis(0.9 * x), method = "ps", lower = 0.2, upper = 0.8)
+  mu <- as.numeric(trimmed)
+  missing_at <- which(is.na(mu))
+  expect_gt(length(missing_at), 1)
+
+  present <- setdiff(seq_len(n), missing_at)
+  sigma <- sqrt(mean((exposure[present] - mu[present])^2))
+  z <- (exposure[present] - mu[present]) / sigma
+  mu_a <- mean(exposure)
+  sd_a <- sqrt(mean((exposure - mu_a)^2))
+  z_a <- (exposure - mu_a) / sd_a
+
+  families <- list(
+    list(
+      input = dens_t(df = 4),
+      g = function(values) stats::dt(values, df = 4)
+    ),
+    list(input = "kernel", g = continuous_density_kde)
+  )
+
+  for (family in families) {
+    weights <- NULL
+    expect_warning(
+      weights <- wt_ate(
+        trimmed,
+        exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = family$input
+      ),
+      class = "propensity_no_refit_warning"
+    )
+    weights <- as.numeric(weights)
+
+    expect_identical(which(is.na(weights)), missing_at)
+
+    f_den <- family$g(z) / sigma
+    f_num <- family$g(z_a) / sd_a
+
+    expect_equal(weights[present], f_num[present] / f_den, tolerance = 1e-12)
+  }
+})
+
+test_that("no residual at all leaves every weight missing", {
+  exposure <- continuous_density_data$exposure
+  mu <- rep(NA_real_, continuous_density_data$n)
+
+  # Every family answers alike, the kernel included. There is nothing for a
+  # kernel to be fit on, but the density is not the reason these weights are
+  # missing, so it is not asked and has nothing to object to.
+  for (family in list("normal", dens_t(df = 4), "kernel")) {
+    weights <- expect_silent(wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = family
+    ))
+
+    expect_length(weights, continuous_density_data$n)
+    expect_true(all(is.na(as.numeric(weights))))
+  }
 })
 
 # ---- against WeightIt -------------------------------------------------------

@@ -28,6 +28,7 @@ wt_ate(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 )
@@ -42,6 +43,7 @@ wt_ate(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
@@ -183,6 +185,7 @@ wt_cens(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL
 )
@@ -197,6 +200,7 @@ wt_cens(
   stabilize = FALSE,
   stabilization_score = NULL,
   ...,
+  .density = "normal",
   .propensity_col = NULL,
   .treated = NULL,
   .untreated = NULL
@@ -292,6 +296,27 @@ length. Ignored when \code{stabilize = FALSE}.}
 
 \item{...}{These dots are for future extensions and must be empty.}
 
+\item{.density}{The family of the conditional density for continuous
+exposures, described under \strong{Continuous exposures} in Details. One of the
+strings \code{"normal"} (the default), \code{"laplace"}, or \code{"kernel"}; a
+specification built by \code{\link[=dens_normal]{dens_normal()}}, \code{\link[=dens_laplace]{dens_laplace()}}, \code{\link[=dens_t]{dens_t()}},
+\code{\link[=dens_kernel]{dens_kernel()}}, or \code{\link[=dens_fn]{dens_fn()}}; or a bare function of the standardized
+residual, which is wrapped with \code{\link[=dens_fn]{dens_fn()}}.
+
+A function is called on the whole vector of standardized residuals at once
+rather than on one residual at a time, and is called a second time on the
+standardized exposure when the marginal numerator stabilizes the weights.
+Each call must return one finite, non-negative value for each value it was
+given, not every one of them zero. Anything else is refused with an error of
+class \code{propensity_density_error}, which is also what a family other than the
+default gets for a binary or categorical exposure, whose weights are not a
+ratio of densities. The default is accepted for every exposure type and
+ignored outside a continuous one.
+
+\code{.density} sits after \code{...} and so can only be supplied by name. The family
+the weights were built from is recorded on the result and read back with
+\code{\link[=density_meta]{density_meta()}}.}
+
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
@@ -378,8 +403,9 @@ or a matrix or data frame holding it in one of its columns.
 levels. \code{.propensity} must be a matrix or data frame with one column per
 level, where rows sum to 1.
 \item \strong{Continuous}: \code{.exposure} is a numeric vector. \code{.propensity} is a
-vector of conditional means (fitted values). Weights use a normal density
-ratio; stabilization is strongly recommended.
+vector of conditional means (fitted values). Weights are a ratio of
+densities, whose family is chosen by \code{.density}; stabilization is strongly
+recommended.
 \item \strong{Auto} (default): Detects the exposure type from \code{.exposure}.
 }
 }
@@ -390,10 +416,10 @@ Setting \code{stabilize = TRUE} multiplies the base weight by an estimate of
 P(A) (binary) or f_A(A) (continuous), reducing variance. When no
 \code{stabilization_score} is supplied, that estimate is the marginal mean of
 \code{.exposure} for a binary or categorical exposure, and for a continuous
-exposure the marginal normal density evaluated at the population mean and
-standard deviation of \code{.exposure}. Stabilization is supported for ATE and
-censoring weights (\code{wt_ate()} and \code{wt_cens()}) and is strongly recommended
-for continuous exposures.
+exposure the marginal density of the family \code{.density} names, evaluated at
+the population mean and standard deviation of \code{.exposure}. Stabilization is
+supported for ATE and censoring weights (\code{wt_ate()} and \code{wt_cens()}) and is
+strongly recommended for continuous exposures.
 
 The default numerator conditions on nothing, and \code{stabilization_score}
 replaces it with one of your own. The case that pays is a numerator
@@ -483,16 +509,52 @@ moment constraints rather than tilting a fitted propensity score.
 
 Weights use the density ratio
 \eqn{w = f_A(A) / f_{A|X}(A \mid X)}, where \eqn{f_A} is the marginal
-density and \eqn{f_{A|X}} is the conditional density (both assumed
-normal). Only \code{wt_ate()} and \code{wt_cens()} support continuous exposures.
+density of the exposure and \eqn{f_{A|X}} is the conditional density the
+propensity model estimates. Only \code{wt_ate()} and \code{wt_cens()} support
+continuous exposures.
 
-The marginal density is evaluated at the population mean and standard
-deviation of \code{.exposure}. The conditional density is centered on
-\code{.propensity} and spread by the propensity model's residual standard
-deviation. That spread is the pooled residual standard deviation
-\eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies an
-observation-level standard deviation for each unit, which the \code{glm} methods
-do not do on their own.
+Both densities are read on a standardized residual. The conditional density
+is evaluated at \eqn{z_i = (A_i - \hat{A}_i) / \sigma}, where
+\eqn{\hat{A}_i} is the fitted conditional mean in \code{.propensity} and
+\eqn{\sigma} is the residual spread; the marginal density is evaluated at
+\eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} and \eqn{s_A} are
+the population mean and standard deviation of \code{.exposure}. Each density is
+then divided by the spread that standardized it, the Jacobian of that change
+of variable, which returns both to the exposure's own units so that each
+integrates to one:
+
+\deqn{w_i = \frac{g(z^A_i) / s_A}{g(z_i) / \sigma}}
+
+\code{.density} chooses the family \eqn{g}:\tabular{ll}{
+   \code{.density} \tab \eqn{g(z)} \cr
+   \code{"normal"}, \code{\link[=dens_normal]{dens_normal()}} \tab the standard normal density, the default \cr
+   \code{"laplace"}, \code{\link[=dens_laplace]{dens_laplace()}} \tab \eqn{\exp(-\lvert z \rvert) / 2} \cr
+   \code{\link[=dens_t]{dens_t()}} \tab Student's t with \code{df} degrees of freedom \cr
+   \code{"kernel"}, \code{\link[=dens_kernel]{dens_kernel()}} \tab a kernel density estimate of the standardized residuals \cr
+   \code{\link[=dens_fn]{dens_fn()}}, or a bare function \tab a density you write yourself \cr
+}
+
+
+The numerator and the denominator take the same family, so the choice
+describes the shape of the residuals rather than the estimand. A heavier tail
+than the normal's, such as \code{\link[=dens_t]{dens_t()}} or \code{"laplace"}, holds down the weight
+of a unit whose exposure the model fits poorly, and \code{"kernel"} assumes no
+shape at all, at the cost of a density that is not a smooth function of the
+model's parameters. A \code{stabilization_score} replaces the numerator outright
+and \code{stabilize = FALSE} leaves it out, so under either the family describes
+the denominator alone.
+
+A unit whose exposure or fitted conditional mean is missing has no
+standardized residual, and so no weight: the density is asked only about the
+units that have one, and a kernel is fit on those. A propensity score
+\code{\link[=ps_trim]{ps_trim()}} set aside is the ordinary way this arises.
+
+\eqn{\sigma} is the pooled residual standard deviation
+\eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies a single
+standard deviation, or one for each unit, which the \code{glm} methods do not do
+on their own. The marginal density is spread by \eqn{s_A} whatever \code{.sigma}
+says, the spread of the exposure itself being no business of the conditional
+model's.
 
 \code{\link[=ipw]{ipw()}} models the conditional density with a single pooled residual
 variance, estimated jointly with the rest of the parameter vector. Weights

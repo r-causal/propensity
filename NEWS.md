@@ -1,5 +1,36 @@
 # propensity 0.1.0.9000 (development version)
 
+* `wt_ate()` and `wt_cens()` gain a `.density` argument, which chooses the
+  family of the conditional density a continuous exposure's weights are a ratio
+  of. That density was a normal one and nothing else before, which is a strong
+  claim to make about the residuals of a model for a dose. `.density` accepts
+  the strings `"normal"` (the default), `"laplace"`, and `"kernel"`; a
+  specification built by the new `dens_normal()`, `dens_laplace()`,
+  `dens_t()`, `dens_kernel()`, or `dens_fn()`; or a bare function of one
+  argument. A tail heavier than the normal's, from `dens_t()` or `"laplace"`,
+  holds down the weight of a unit whose exposure the model fits poorly, and a
+  kernel estimate assumes no shape at all, at the cost of a density that is not
+  a smooth function of the model's parameters. `.density` sits after `...`, so
+  it is supplied by name, and it describes a continuous exposure alone: a
+  family other than the default is refused for a binary or categorical
+  exposure, whose weights are not a ratio of densities, the way `.sigma`
+  already was.
+
+  Both densities in the ratio are now evaluated on a standardized residual,
+  `(A - mu) / sigma` for the conditional density and the exposure standardized
+  by its own mean and standard deviation for the marginal one, and each is
+  divided by the spread that standardized it. That factor is the Jacobian of
+  the change of variable, and it returns both densities to the exposure's own
+  units, so every family is read on one scale and the normal family returns the
+  weights the package returned before, to within a rounding error in the last
+  binary digit. Whatever the density gives back is checked before it becomes a
+  weight: one finite, non-negative value for each standardized residual, and
+  not zero at every one of them. Anything else is an error of class
+  `propensity_density_error` whose message reports the standardized residuals
+  it failed at. The weights record the family they were built from, alongside
+  the numerator that stabilized them and where the residual spread came from;
+  read it back with `density_meta()`.
+
 * A continuous-exposure `ipw()` fit whose outcome model reads the exposure
   through more than one design column, such as `y ~ A + I(A^2)` or a basis like
   `poly(A, 2)` or `splines::ns(A, 3)`, now records the conditional reading and
