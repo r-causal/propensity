@@ -2193,6 +2193,30 @@ test_that("tidy() has no conditional reading of a linearization fit", {
     class = "causalgenerics_no_conditional_vcov"
   )
 
+  # The refusal is this package's, so that it reports the call the user made
+  # rather than the coercion the tidier reaches the reading through. The classes
+  # the coercion raises are kept, which is what the expectations above match on.
+  expect_error(
+    tidy(res, effects = "conditional"),
+    class = "propensity_no_conditional_vcov_error"
+  )
+  expect_propensity_error(tidy(res, effects = "conditional"))
+
+  # The accessors that own the reading report it against their own calls, which
+  # this leaves alone: theirs is already the call that asked for it.
+  vcov_refusal <- tryCatch(
+    vcov(res, effects = "conditional"),
+    error = function(e) e
+  )
+  confint_refusal <- tryCatch(
+    confint(res, effects = "conditional"),
+    error = function(e) e
+  )
+  expect_identical(conditionCall(vcov_refusal)[[1]], quote(vcov.ipw))
+  expect_identical(conditionCall(confint_refusal)[[1]], quote(confint.ipw))
+  expect_false(inherits(vcov_refusal, "propensity_error"))
+  expect_false(inherits(confint_refusal, "propensity_error"))
+
   # The marginal reading of the same result is untouched by the absence, whether
   # it is the reading the result records or the one the call names.
   expect_tidy_contract(tidy(res), res, contrast = TRUE)

@@ -61,3 +61,13 @@
       x The outcome model `x` holds reports no weights.
       i An `ipw()` outcome model is weighted by construction. Refit it with the weights the propensity score model implies, such as those `wt_ate()` returns.
 
+# tidy() has no conditional reading of a linearization fit
+
+    Code
+      expr
+    Condition <propensity_no_conditional_vcov_error>
+      Error in `tidy()`:
+      ! The conditional reading reports the covariance the joint estimation of the weights and the outcome implies, and this result records none.
+      x The "linearization" standard error method corrects the marginal estimates only, so it stores no covariance for the conditional reading.
+      i Fit with `se_method = "mestimation"`, which solves the two models as one system and stores that covariance.
+

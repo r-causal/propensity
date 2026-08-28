@@ -198,6 +198,16 @@ tidy.ipw <- function(
     check_exponentiate_link(x$outcome_mod)
   }
 
+  # A tidied row is its estimate and its inference together, and the inference
+  # of this reading comes from the covariance the joint estimation of the
+  # weights and the outcome implies. A result carries that covariance on a
+  # wrapped outcome model, which is how the reading is decided everywhere it is
+  # reported, so the same test is made here and the absence is refused against
+  # the call that asked for the reading rather than against the coercion below.
+  if (reading == "conditional" && !inherits(x$outcome_mod, "ipw_model")) {
+    stop_no_conditional_vcov()
+  }
+
   # The result's own coercion surface, in the reading this call reports rather
   # than the one the result records: the three arguments the two readings share
   # are validated there, and one argument of one method cannot be well formed in
@@ -224,6 +234,31 @@ tidy.ipw <- function(
 # none, and marginal is the reading every method produced then.
 ipw_stored_effects <- function(x) {
   if (is.null(x$effects)) "marginal" else x$effects
+}
+
+# Refuse the conditional reading of a result that records no covariance for it.
+# The classes are the ones the result's own surfaces raise for the same absence,
+# so a caller handling either of them is unaffected by where the refusal was
+# made; the message is this package's, since this package knows which of its
+# standard error methods leaves the covariance unrecorded.
+stop_no_conditional_vcov <- function(call = rlang::caller_env()) {
+  abort(
+    c(
+      "The conditional reading reports the covariance the joint estimation of \\
+      the weights and the outcome implies, and this result records none.",
+      x = "The {.val linearization} standard error method corrects the \\
+      marginal estimates only, so it stores no covariance for the conditional \\
+      reading.",
+      i = "Fit with {.code se_method = \"mestimation\"}, which solves the two \\
+      models as one system and stores that covariance."
+    ),
+    error_class = c(
+      "propensity_no_conditional_vcov_error",
+      "causalgenerics_no_conditional_vcov",
+      "causalgenerics_no_vcov"
+    ),
+    call = call
+  )
 }
 
 # The conditional reading has no rows labeled as ratios to pick out, so the link
