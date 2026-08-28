@@ -1299,7 +1299,24 @@ test_that("a call over other covariates inside an interaction is left alone", {
 
   with_data <- expect_no_warning(ipw(ps_mod, out, .data = dat))
   without_data <- expect_no_warning(ipw(ps_mod, out))
-  expect_equal(with_data$estimates, without_data$estimates, tolerance = 1e-8)
+
+  # The rebuild from `.data` evaluates the basis through `predict()` on the
+  # stored `poly()` coefficients, which differs from the fitted frame's own
+  # columns at machine precision. The estimates agree to the solver's tolerance
+  # either way, but the covariance comes from a finite-difference Jacobian,
+  # which turns that machine-precision difference into one on the order of
+  # 1e-7, and how large depends on the R build.
+  expect_equal(
+    with_data$estimates,
+    without_data$estimates,
+    tolerance = 1e-8,
+    ignore_attr = "ipw_vcov"
+  )
+  expect_equal(
+    attr(with_data$estimates, "ipw_vcov"),
+    attr(without_data$estimates, "ipw_vcov"),
+    tolerance = 1e-6
+  )
 })
 
 # ---- a logical column where the fit recorded levels -------------------------
