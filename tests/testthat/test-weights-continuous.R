@@ -1061,3 +1061,718 @@ test_that("the denominator is the one WeightIt divides by", {
     expect_equal(mass, 1, tolerance = 0.05)
   }
 })
+
+# ---- the integrated numerator -----------------------------------------------
+
+# The number of points the integrated numerator marginalizes the conditional
+# density over. It is an internal constant rather than an argument, so the hand
+# calculations write it out once here.
+continuous_numerator_grid <- 50L
+
+# The integrated numerator, written out: average the conditional density over
+# the units at each of 50 points spanning the exposure, then interpolate back to
+# each observation with `stats::spline()`. `g` evaluates the density on a
+# standardized residual.
+continuous_integrated_numerator <- function(
+  g,
+  exposure = continuous_density_data$exposure,
+  mu = continuous_density_data$mu,
+  sigma
+) {
+  grid <- seq(
+    min(exposure),
+    max(exposure),
+    length.out = continuous_numerator_grid
+  )
+  standardized <- outer(grid, mu, "-") / sigma
+  on_grid <- rowMeans(matrix(
+    g(as.vector(standardized)),
+    nrow = continuous_numerator_grid
+  )) /
+    sigma
+
+  stats::spline(grid, on_grid, xout = exposure, method = "fmm")$y
+}
+
+# The whole integrated ratio for a parametric family, denominator included.
+continuous_integrated_wt <- function(
+  g,
+  exposure = continuous_density_data$exposure,
+  mu = continuous_density_data$mu
+) {
+  sigma <- sqrt(mean((exposure - mu)^2))
+  f_den <- g((exposure - mu) / sigma) / sigma
+  f_num <- continuous_integrated_numerator(
+    g,
+    exposure = exposure,
+    mu = mu,
+    sigma = sigma
+  )
+
+  f_num / f_den
+}
+
+# The integrated ratio for a kernel, which is one estimate rather than two: the
+# same fit answers for the standardized residuals and for the whole standardized
+# grid, so it is fit over a range covering both.
+continuous_integrated_kernel_wt <- function(
+  exposure = continuous_density_data$exposure,
+  mu = continuous_density_data$mu
+) {
+  sigma <- sqrt(mean((exposure - mu)^2))
+  z <- (exposure - mu) / sigma
+
+  grid <- seq(
+    min(exposure),
+    max(exposure),
+    length.out = continuous_numerator_grid
+  )
+  standardized <- outer(grid, mu, "-") / sigma
+  span <- range(c(z, as.vector(standardized)))
+
+  fit <- stats::density(
+    z,
+    bw = "nrd0",
+    adjust = 1,
+    kernel = "gaussian",
+    n = 512,
+    from = span[1],
+    to = span[2]
+  )
+  kde <- stats::approxfun(fit$x, fit$y)
+
+  f_den <- kde(z) / sigma
+  on_grid <- rowMeans(matrix(
+    kde(as.vector(standardized)),
+    nrow = continuous_numerator_grid
+  )) /
+    sigma
+  f_num <- stats::spline(grid, on_grid, xout = exposure, method = "fmm")$y
+
+  f_num / f_den
+}
+
+test_that("the integrated numerator is the grid marginalization by hand", {
+  families <- list(
+    list(input = "normal", g = function(z) stats::dnorm(z)),
+    list(input = dens_t(df = 4), g = function(z) stats::dt(z, df = 4)),
+    list(input = "laplace", g = function(z) exp(-abs(z)) / 2),
+    list(
+      input = function(z) stats::dlogis(z),
+      g = function(z) stats::dlogis(z)
+    )
+  )
+
+  for (family in families) {
+    weights <- continuous_density_wt(
+      .density = family$input,
+      numerator = "integrated"
+    )
+
+    expect_equal(
+      as.numeric(weights),
+      continuous_integrated_wt(family$g),
+      tolerance = 1e-12
+    )
+  }
+})
+
+test_that("the integrated numerator differs from the marginal one", {
+  # The two coincide only when the fitted means are themselves normal, so a
+  # family with heavier tails than the fitted means separates them. This is the
+  # guard that the integrated route is doing its own arithmetic rather than
+  # falling back on the marginal moments.
+  marginal <- as.numeric(continuous_density_wt(.density = dens_t(df = 4)))
+  integrated <- as.numeric(continuous_density_wt(
+    .density = dens_t(df = 4),
+    numerator = "integrated"
+  ))
+
+  expect_false(isTRUE(all.equal(marginal, integrated, tolerance = 1e-6)))
+})
+
+test_that("an integrated kernel is one estimate over the grid and the residuals", {
+  weights <- continuous_density_wt(
+    .density = "kernel",
+    numerator = "integrated"
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    continuous_integrated_kernel_wt(),
+    tolerance = 1e-12
+  )
+
+  # The range the kernel is fit over has to cover the whole standardized grid,
+  # which reaches further than the residuals do. A kernel fit only over the
+  # residuals would interpolate to missing values on the grid, and the density
+  # output check would refuse them, so the weights existing at all is part of
+  # what this pins.
+  expect_true(all(is.finite(as.numeric(weights))))
+})
+
+test_that("an intercept-only model gives integrated weights of exactly one", {
+  exposure <- continuous_density_data$exposure
+  mu <- rep(mean(exposure), continuous_density_data$n)
+
+  # With nothing to condition on, the conditional density of the exposure is its
+  # marginal density and the weights are one. Sending them through the grid and
+  # the spline instead returns values near but not equal to one, off by about
+  # 1e-05 on this problem, so the equality asked for here is the identity of the
+  # numbers rather than a tolerance the grid could also meet.
+  weights <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = "normal",
+    numerator = "integrated"
+  )
+
+  expect_identical(as.numeric(weights), rep(1, continuous_density_data$n))
+
+  # Not only the normal family: any family read at the same value in the
+  # numerator and the denominator cancels.
+  heavy <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4),
+    numerator = "integrated"
+  )
+
+  expect_identical(as.numeric(heavy), rep(1, continuous_density_data$n))
+})
+
+# ---- refusals of the numerator ----------------------------------------------
+
+test_that("an integrated numerator refuses a binary exposure", {
+  set.seed(21)
+  ps <- runif(20, 0.2, 0.8)
+  trt <- rbinom(20, 1, ps)
+
+  expect_error(
+    wt_ate(ps, trt, exposure_type = "binary", numerator = "integrated"),
+    class = "propensity_numerator_error"
+  )
+  expect_error(
+    wt_cens(ps, trt, exposure_type = "binary", numerator = "integrated"),
+    class = "propensity_numerator_error"
+  )
+
+  # The type was not named here, so the refusal is against the type the
+  # detection resolved the 0/1 exposure to.
+  expect_error(
+    wt_ate(ps, trt, numerator = "integrated"),
+    class = "propensity_numerator_error"
+  )
+
+  binary_error <- rlang::catch_cnd(
+    wt_ate(ps, trt, exposure_type = "binary", numerator = "integrated")
+  )
+  expect_match(conditionMessage(binary_error), "binary")
+})
+
+test_that("an integrated numerator refuses a categorical exposure", {
+  exposure <- factor(rep(c("a", "b", "c"), each = 4))
+  ps <- matrix(
+    rep(c(0.5, 0.3, 0.2), times = 12),
+    ncol = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("a", "b", "c"))
+  )
+
+  expect_error(
+    wt_ate(
+      ps,
+      exposure,
+      exposure_type = "categorical",
+      numerator = "integrated"
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  categorical_error <- rlang::catch_cnd(
+    wt_ate(
+      ps,
+      exposure,
+      exposure_type = "categorical",
+      numerator = "integrated"
+    )
+  )
+  expect_match(conditionMessage(categorical_error), "categorical")
+})
+
+test_that("the default numerator is accepted for every exposure type", {
+  set.seed(22)
+  ps <- runif(20, 0.2, 0.8)
+  trt <- rbinom(20, 1, ps)
+
+  exposure <- factor(rep(c("a", "b", "c"), each = 4))
+  categorical_ps <- matrix(
+    rep(c(0.5, 0.3, 0.2), times = 12),
+    ncol = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("a", "b", "c"))
+  )
+
+  # Writing out the numerator the weights were getting anyway is not a reason to
+  # refuse them, so the default holds for every type and is ignored outside the
+  # continuous route.
+  expect_equal(
+    as.numeric(wt_ate(
+      ps,
+      trt,
+      exposure_type = "binary",
+      numerator = "marginal"
+    )),
+    as.numeric(wt_ate(ps, trt, exposure_type = "binary"))
+  )
+  expect_equal(
+    as.numeric(wt_ate(
+      categorical_ps,
+      exposure,
+      exposure_type = "categorical",
+      numerator = "marginal"
+    )),
+    as.numeric(wt_ate(categorical_ps, exposure, exposure_type = "categorical"))
+  )
+  expect_null(density_meta(
+    wt_ate(ps, trt, exposure_type = "binary", numerator = "marginal")
+  ))
+})
+
+test_that("an integrated numerator refuses weights that are not stabilized", {
+  # The integrated numerator is a numerator, so there is nothing for it to be
+  # when the weights carry none.
+  expect_error(
+    continuous_density_wt(numerator = "integrated", stabilize = FALSE),
+    class = "propensity_numerator_error"
+  )
+  expect_error(
+    continuous_density_wt(
+      .density = dens_t(df = 4),
+      numerator = "integrated",
+      stabilize = FALSE
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  stabilize_error <- rlang::catch_cnd(
+    continuous_density_wt(numerator = "integrated", stabilize = FALSE)
+  )
+  expect_match(conditionMessage(stabilize_error), "stabilize")
+})
+
+test_that("an integrated numerator refuses a stabilization score", {
+  score <- seq(0.4, 1.6, length.out = continuous_density_data$n)
+
+  # A score the caller supplies is the numerator, so it cannot also be
+  # marginalized out of the conditional density.
+  expect_error(
+    continuous_density_wt(
+      numerator = "integrated",
+      stabilization_score = score
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  score_error <- rlang::catch_cnd(
+    continuous_density_wt(
+      numerator = "integrated",
+      stabilization_score = score
+    )
+  )
+  expect_match(conditionMessage(score_error), "stabilization_score")
+})
+
+test_that("an integrated numerator refuses a supplied spread", {
+  # The grid marginalization reads the conditional density at every unit's
+  # fitted mean, which a spread the caller supplied rather than the model
+  # estimated has no standing to describe.
+  expect_error(
+    continuous_density_wt(numerator = "integrated", .sigma = 0.85),
+    class = "propensity_numerator_error"
+  )
+  expect_error(
+    continuous_density_wt(
+      numerator = "integrated",
+      .sigma = continuous_density_data$sigma_i
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  sigma_error <- rlang::catch_cnd(
+    continuous_density_wt(numerator = "integrated", .sigma = 0.85)
+  )
+  expect_match(conditionMessage(sigma_error), "sigma")
+})
+
+test_that("a numerator that is not a numerator is refused", {
+  # A mistyped value is corrected by the argument matcher rather than refused on
+  # the package's own terms.
+  expect_error(
+    continuous_density_wt(numerator = "intergrated"),
+    regexp = "must be one of"
+  )
+  expect_error(
+    continuous_density_wt(numerator = "none"),
+    regexp = "must be one of"
+  )
+})
+
+# ---- positivity of the interpolated numerator -------------------------------
+
+test_that("an interpolated numerator that dips below zero is refused", {
+  # A density this narrow leaves the marginalized density on the grid close to
+  # zero between sharp peaks, and a cubic spline through those points undershoots
+  # below zero at three of the observed exposures. The refusal is the ordinary
+  # output check on a density, reached through the non-finite-or-negative rule:
+  # the denominator is positive everywhere here, so nothing else is wrong with
+  # these weights.
+  narrow <- function(r) stats::dnorm(r, sd = 0.1)
+
+  expect_error(
+    continuous_density_wt(.density = narrow, numerator = "integrated"),
+    class = "propensity_density_error"
+  )
+
+  # The message names the numerator, so a reader can tell an interpolated
+  # marginal density that went negative from a conditional one that did.
+  numerator_error <- rlang::catch_cnd(
+    continuous_density_wt(.density = narrow, numerator = "integrated")
+  )
+  expect_match(conditionMessage(numerator_error), "numerator")
+
+  # The same density with the marginal numerator is fine, so the refusal is
+  # about the interpolation rather than about the family.
+  expect_silent(continuous_density_wt(.density = narrow))
+})
+
+# ---- what the integrated weights record -------------------------------------
+
+test_that("integrated weights record the numerator they were built from", {
+  for (family in list("normal", dens_t(df = 4), "laplace", "kernel")) {
+    record <- density_meta(continuous_density_wt(
+      .density = family,
+      numerator = "integrated"
+    ))
+
+    expect_s3_class(record, "propensity_density_meta")
+    expect_identical(record$numerator, "integrated")
+    expect_identical(record$sigma, "pooled")
+  }
+
+  # And the marginal numerator still records itself, written out or not.
+  expect_identical(
+    density_meta(continuous_density_wt(numerator = "marginal"))$numerator,
+    "marginal"
+  )
+})
+
+test_that("weights that disagree on the numerator drop the density record", {
+  # The two records agree on the family and the spread and differ only on the
+  # numerator, and the pair is compatible on every field that decides the type:
+  # both are stabilized and neither carries a score. So the combine is a
+  # disagreement about the density record alone.
+  marginal <- continuous_density_wt(.density = dens_t(df = 4))
+  integrated <- continuous_density_wt(
+    .density = dens_t(df = 4),
+    numerator = "integrated"
+  )
+
+  combined <- NULL
+  expect_warning(
+    combined <- c(marginal, integrated),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(combined, "psw")
+  expect_length(combined, 2 * continuous_density_data$n)
+  expect_null(density_meta(combined))
+
+  # The exposure type is not what they disagreed on, so it survives.
+  expect_identical(exposure_type(combined), "continuous")
+})
+
+test_that("weights that agree on the integrated numerator combine", {
+  first <- continuous_density_wt(
+    .density = "laplace",
+    numerator = "integrated"
+  )
+  second <- continuous_density_wt(
+    .density = "laplace",
+    numerator = "integrated"
+  )
+
+  combined <- expect_silent(c(first, second))
+
+  expect_length(combined, 2 * continuous_density_data$n)
+  expect_identical(density_meta(combined)$numerator, "integrated")
+  expect_identical(format(density_meta(combined)$density), "laplace")
+})
+
+# ---- the numerator through the other methods --------------------------------
+
+test_that("the numerator reaches the weights through a fitted model", {
+  exposure <- continuous_density_data$exposure
+  x <- continuous_density_data$x
+  model_data <- data.frame(exposure = exposure, x = x)
+  fit <- glm(exposure ~ x, data = model_data, family = gaussian())
+
+  from_model <- wt_ate(
+    fit,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4),
+    numerator = "integrated"
+  )
+
+  expect_equal(
+    as.numeric(from_model),
+    continuous_integrated_wt(function(z) stats::dt(z, df = 4)),
+    tolerance = 1e-12
+  )
+  expect_identical(density_meta(from_model)$numerator, "integrated")
+})
+
+test_that("the numerator reaches the weights through a data frame", {
+  from_frame <- wt_ate(
+    data.frame(mu = continuous_density_data$mu),
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = "laplace",
+    numerator = "integrated"
+  )
+
+  expect_equal(
+    as.numeric(from_frame),
+    continuous_integrated_wt(function(z) exp(-abs(z)) / 2),
+    tolerance = 1e-12
+  )
+  expect_identical(density_meta(from_frame)$numerator, "integrated")
+})
+
+test_that("censoring weights take an integrated numerator of their own", {
+  weights <- wt_cens(
+    continuous_density_data$mu,
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4),
+    numerator = "integrated"
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    continuous_integrated_wt(function(z) stats::dt(z, df = 4)),
+    tolerance = 1e-12
+  )
+  expect_identical(estimand(weights), "uncensored")
+  expect_identical(density_meta(weights)$numerator, "integrated")
+})
+
+# The three modified propensity scores the numerator has to reach through,
+# built on one seeded problem. A score a modification can be applied to has to
+# lie in (0, 1); it stands in for the fitted conditional mean here.
+#
+# The seed is chosen so that the scores all lie inside the trimming bounds and
+# nothing is trimmed away: with no unit set aside, none of the three leaves a
+# missing value, and the grid marginalization reads every unit. That is a
+# property of this fixture rather than of trimming, and it keeps these tests
+# about the numerator reaching each route. What the marginalization does when a
+# unit has no residual is a separate question, and the trimmed weights already
+# have tests of their own above.
+continuous_modified_scores <- function() {
+  set.seed(23)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- 0.5 * x + rnorm(n)
+  fit <- glm(
+    exposure ~ x,
+    data = data.frame(exposure = exposure, x = x),
+    family = gaussian()
+  )
+
+  scores <- plogis(0.5 * x)
+  trimmed <- ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8)
+  stopifnot(!anyNA(as.numeric(trimmed)))
+
+  list(
+    n = n,
+    x = x,
+    exposure = exposure,
+    scores = list(
+      refit = ps_refit(trimmed, model = fit),
+      truncated = ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+      calibrated = ps_calibrate(scores, rbinom(n, 1, scores))
+    )
+  )
+}
+
+test_that("the numerator reaches the weights through a modified score", {
+  problem <- continuous_modified_scores()
+
+  for (modified in problem$scores) {
+    weights <- wt_ate(
+      modified,
+      problem$exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = dens_t(df = 4),
+      numerator = "integrated"
+    )
+
+    expect_equal(
+      as.numeric(weights),
+      continuous_integrated_wt(
+        function(z) stats::dt(z, df = 4),
+        exposure = problem$exposure,
+        mu = as.numeric(modified)
+      ),
+      tolerance = 1e-12
+    )
+    expect_identical(density_meta(weights)$numerator, "integrated")
+  }
+})
+
+test_that("censoring weights carry a numerator through their other methods", {
+  from_frame <- wt_cens(
+    data.frame(mu = continuous_density_data$mu),
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = "laplace",
+    numerator = "integrated"
+  )
+
+  expect_equal(
+    as.numeric(from_frame),
+    continuous_integrated_wt(function(z) exp(-abs(z)) / 2),
+    tolerance = 1e-12
+  )
+  expect_identical(estimand(from_frame), "uncensored")
+  expect_identical(density_meta(from_frame)$numerator, "integrated")
+
+  model_data <- data.frame(
+    exposure = continuous_density_data$exposure,
+    x = continuous_density_data$x
+  )
+  fit <- glm(exposure ~ x, data = model_data, family = gaussian())
+
+  from_model <- wt_cens(
+    fit,
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4),
+    numerator = "integrated"
+  )
+
+  expect_equal(
+    as.numeric(from_model),
+    continuous_integrated_wt(function(z) stats::dt(z, df = 4)),
+    tolerance = 1e-12
+  )
+  expect_identical(estimand(from_model), "uncensored")
+  expect_identical(density_meta(from_model)$numerator, "integrated")
+})
+
+test_that("censoring weights carry a numerator through a modified score", {
+  problem <- continuous_modified_scores()
+
+  for (modified in problem$scores) {
+    weights <- wt_cens(
+      modified,
+      problem$exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = dens_t(df = 4),
+      numerator = "integrated"
+    )
+
+    expect_equal(
+      as.numeric(weights),
+      continuous_integrated_wt(
+        function(z) stats::dt(z, df = 4),
+        exposure = problem$exposure,
+        mu = as.numeric(modified)
+      ),
+      tolerance = 1e-12
+    )
+    expect_identical(estimand(weights), "uncensored")
+    expect_identical(density_meta(weights)$numerator, "integrated")
+  }
+})
+
+# ---- against WeightIt -------------------------------------------------------
+
+test_that("integrated weights are the weights WeightIt gives", {
+  skip_on_cran()
+  skip_if_not_installed("WeightIt", "2.0.0")
+
+  set.seed(123)
+  n <- 300
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  exposure <- 0.5 + 0.8 * x1 - 0.4 * x2 + rnorm(n)
+  model_data <- data.frame(exposure = exposure, x1 = x1, x2 = x2)
+
+  ps_mod <- glm(exposure ~ x1 + x2, data = model_data, family = gaussian())
+
+  # WeightIt divides neither density by the residual spread, and we divide both,
+  # so the factor cancels and the two ratios are the same number rather than
+  # proportional to each other. Both are checked: the equality is what the
+  # implementation owes, and the proportionality says the shape agrees even if
+  # the scale ever drifts.
+  families <- list(
+    list(ours = "normal", theirs = NULL),
+    list(ours = dens_t(df = 4), theirs = "dt_4"),
+    list(ours = "laplace", theirs = "dlaplace"),
+    list(ours = "kernel", theirs = "kernel")
+  )
+
+  for (family in families) {
+    ours <- wt_ate(
+      ps_mod,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = family$ours,
+      numerator = "integrated"
+    )
+
+    theirs <- if (is.null(family$theirs)) {
+      WeightIt::weightit(
+        exposure ~ x1 + x2,
+        data = model_data,
+        method = "glm"
+      )$weights
+    } else {
+      WeightIt::weightit(
+        exposure ~ x1 + x2,
+        data = model_data,
+        method = "glm",
+        density = family$theirs
+      )$weights
+    }
+    theirs <- as.numeric(theirs)
+
+    expect_equal(
+      as.numeric(ours),
+      theirs,
+      tolerance = 1e-6,
+      ignore_attr = TRUE
+    )
+
+    expect_equal(
+      as.numeric(ours) / mean(as.numeric(ours)),
+      theirs / mean(theirs),
+      tolerance = 1e-6,
+      ignore_attr = TRUE
+    )
+  }
+})
