@@ -46,12 +46,12 @@
           weights = wts) 
       
       Marginal estimates:
-                       estimate    std.err          z   ci.lower   ci.upper conf.level   p.value    
-      mean 0         2.6064e-09 <degenerate> <degenerate> 2.6064e-09 2.6064e-09       0.95 < 2.2e-16 ***
-      mean 1         6.5625e-01 <degenerate> <degenerate> 6.5625e-01 6.5625e-01       0.95 < 2.2e-16 ***
-      rd 1 vs 0      6.5625e-01 <degenerate> <degenerate> 6.5625e-01 6.5625e-01       0.95 < 2.2e-16 ***
-      log(rr) 1 vs 0 1.9344e+01 <degenerate> <degenerate> 1.9344e+01 1.9344e+01       0.95 < 2.2e-16 ***
-      log(or) 1 vs 0 2.0412e+01 <degenerate> <degenerate> 2.0412e+01 2.0412e+01       0.95 < 2.2e-16 ***
+      estimate std.err z ci.lower ci.upper conf.level p.value
+      mean 0 2.6064e-09 <degenerate> <degenerate> 2.6064e-09 2.6064e-09 0.95 < 2.2e-16 ***
+      mean 1 6.5625e-01 <degenerate> <degenerate> 6.5625e-01 6.5625e-01 0.95 < 2.2e-16 ***
+      rd 1 vs 0 6.5625e-01 <degenerate> <degenerate> 6.5625e-01 6.5625e-01 0.95 < 2.2e-16 ***
+      log(rr) 1 vs 0 1.9344e+01 <degenerate> <degenerate> 1.9344e+01 1.9344e+01 0.95 < 2.2e-16 ***
+      log(or) 1 vs 0 2.0412e+01 <degenerate> <degenerate> 2.0412e+01 2.0412e+01 0.95 < 2.2e-16 ***
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
@@ -110,10 +110,10 @@
         Call: lm(formula = yconst ~ z, data = dat, weights = wts) 
       
       Marginal estimates:
-                     estimate     std.err           z    ci.lower  ci.upper conf.level   p.value    
-      mean 0      -<degenerate>  <degenerate> -1.9959e+01 -<degenerate> -2.01e-16       0.95 < 2.2e-16 ***
-      mean 1       1.0000e+00  <degenerate>  <degenerate>  1.0000e+00  1.00e+00       0.95 < 2.2e-16 ***
-      diff 1 vs 0  1.0000e+00  <degenerate>  <degenerate>  1.0000e+00  1.00e+00       0.95 < 2.2e-16 ***
+      estimate std.err z ci.lower ci.upper conf.level p.value
+      mean 0 <degenerate> <degenerate> <degenerate> <degenerate> <degenerate> 0.95 < 2.2e-16 ***
+      mean 1 1e+00 <degenerate> <degenerate> 1e+00 1e+00 0.95 < 2.2e-16 ***
+      diff 1 vs 0 1e+00 <degenerate> <degenerate> 1e+00 1e+00 0.95 < 2.2e-16 ***
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
