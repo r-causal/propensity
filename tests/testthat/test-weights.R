@@ -569,10 +569,14 @@ test_that("ATE works for binary cases", {
 
   expect_identical(weights, weights5)
 
+  # The weights record the exposure type they were built for, which the
+  # right-hand side is written without. What each weight function records is
+  # pinned in test-psw-records.R; this test is about the values.
   expect_equal(
     weights,
     psw(c(1.11, 1.43, 2.50, 1.43), "ate"),
-    tolerance = 0.01
+    tolerance = 0.01,
+    ignore_attr = "exposure_type"
   )
 })
 
@@ -1608,7 +1612,13 @@ test_that("ATE works for continuous cases", {
     "Using unstabilized weights for continuous exposures is not recommended."
   )
 
-  expect_equal(weights, psw(wts, "ate"))
+  # The weights record the exposure type and the density they are a ratio of,
+  # neither of which the right-hand side is written with. What each weight
+  # function records is pinned in test-psw-records.R; this test is about the
+  # values.
+  exposure_records <- c("exposure_type", "density_meta")
+
+  expect_equal(weights, psw(wts, "ate"), ignore_attr = exposure_records)
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
     stabilized_weights <- wt_ate(
@@ -1620,7 +1630,11 @@ test_that("ATE works for continuous cases", {
     "Treating `.exposure` as continuous"
   )
 
-  expect_equal(stabilized_weights, psw(stb_wts, "ate", stabilized = TRUE))
+  expect_equal(
+    stabilized_weights,
+    psw(stb_wts, "ate", stabilized = TRUE),
+    ignore_attr = exposure_records
+  )
 })
 
 test_that("stabilized weights use P(A=1) and P(A=0) as numerators", {

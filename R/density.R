@@ -150,6 +150,21 @@ print.propensity_density <- function(x, ...) {
   invisible(x)
 }
 
+# Two specifications describe the same density when they name the same family
+# with the same parameters. The function is left out of the comparison for the
+# families that build one: each constructor writes a fresh closure, so two
+# specifications built the same way in two calls hold functions that evaluate
+# alike and are not `identical()`. A density the user wrote has no parameters to
+# be told apart by, and the function on it is the object the user supplied
+# rather than one a constructor built, so there it is the comparison.
+density_specs_agree <- function(x, y) {
+  if (!identical(x$family, y$family) || !identical(x$params, y$params)) {
+    return(FALSE)
+  }
+
+  !identical(x$family, "function") || identical(x$fn, y$fn)
+}
+
 # A parameter reads back the way it was written: a rule or kernel name in
 # quotes, a number bare.
 format_density_param <- function(value) {

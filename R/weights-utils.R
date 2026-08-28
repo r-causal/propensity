@@ -1075,6 +1075,17 @@ calculate_weight_from_modified_ps <- function(
   base_wt
 }
 
+# What the weights record about the exposure they were built for. The type is
+# the one the weight function resolved, and the density record is read off the
+# weights the formula returned: only the continuous ATE formula writes one, and
+# only there is a weight a ratio of densities.
+record_exposure_attrs <- function(psw_obj, wts, exposure_type) {
+  attr(psw_obj, "exposure_type") <- exposure_type
+  attr(psw_obj, "density_meta") <- attr(wts, "density_meta")
+
+  psw_obj
+}
+
 # Helper to preserve categorical attributes on psw objects
 preserve_categorical_attrs <- function(psw_obj, wts, exposure_type) {
   if (exposure_type == "categorical") {

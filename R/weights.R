@@ -281,6 +281,13 @@
 #'   - `trimmed`: logical, whether the propensity scores were trimmed.
 #'   - `truncated`: logical, whether the propensity scores were truncated.
 #'   - `calibrated`: logical, whether the propensity scores were calibrated.
+#'   - `exposure_type`: character, the type of exposure the weights were built
+#'     for, read back with [exposure_type()].
+#'   - `density_meta`: for a continuous exposure, whose weights are a ratio of
+#'     densities, the record of that ratio: the density family, the numerator
+#'     that stabilized the weights, and where the residual spread came from.
+#'     Read back with [density_meta()], and `NULL` for a binary or categorical
+#'     exposure.
 #'
 #' @examples
 #' # -- Binary exposure, numeric propensity scores ----------------------
@@ -522,7 +529,9 @@ wt_ate.numeric <- function(
   )
 
   # Preserve categorical attributes if they exist
-  preserve_categorical_attrs(psw_obj, wts, exposure_type)
+  psw_obj <- preserve_categorical_attrs(psw_obj, wts, exposure_type)
+
+  record_exposure_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -679,6 +688,22 @@ ate_continuous <- function(
     )
   }
 
+  # What the weights are a ratio of, recorded on them for a reader to inspect
+  # and for `ipw()` to rebuild the same weights from. The record travels back
+  # with the weights rather than beside them so that it reaches the `psw` the
+  # same way the categorical attributes do.
+  attr(wt, "density_meta") <- new_density_meta(
+    density = dens_normal(),
+    numerator = if (!isTRUE(stabilize)) {
+      "none"
+    } else if (is.null(stabilization_score)) {
+      "marginal"
+    } else {
+      "score"
+    },
+    sigma = if (is.null(.sigma)) "pooled" else "supplied"
+  )
+
   wt
 }
 
@@ -785,13 +810,15 @@ wt_att.numeric <- function(
   # Preserve categorical attributes if they exist
   psw_obj <- preserve_categorical_attrs(psw_obj, wts, exposure_type)
 
-  record_binary_focal_level(
+  psw_obj <- record_binary_focal_level(
     psw_obj,
     .exposure = .exposure,
     exposure_type = exposure_type,
     .focal_level = .focal_level,
     .reference_level = .reference_level
   )
+
+  record_exposure_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -982,13 +1009,15 @@ wt_atu.numeric <- function(
   # Preserve categorical attributes if they exist
   psw_obj <- preserve_categorical_attrs(psw_obj, wts, exposure_type)
 
-  record_binary_focal_level(
+  psw_obj <- record_binary_focal_level(
     psw_obj,
     .exposure = .exposure,
     exposure_type = exposure_type,
     .focal_level = .focal_level,
     .reference_level = .reference_level
   )
+
+  record_exposure_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -1177,7 +1206,9 @@ wt_atm.numeric <- function(
   psw_obj <- psw(wts, "atm")
 
   # Preserve categorical attributes if they exist
-  preserve_categorical_attrs(psw_obj, wts, exposure_type)
+  psw_obj <- preserve_categorical_attrs(psw_obj, wts, exposure_type)
+
+  record_exposure_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -1367,7 +1398,9 @@ wt_ato.numeric <- function(
   psw_obj <- psw(wts, "ato")
 
   # Preserve categorical attributes if they exist
-  preserve_categorical_attrs(psw_obj, wts, exposure_type)
+  psw_obj <- preserve_categorical_attrs(psw_obj, wts, exposure_type)
+
+  record_exposure_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export
@@ -1556,7 +1589,9 @@ wt_entropy.numeric <- function(
   psw_obj <- psw(wts, "entropy")
 
   # Preserve categorical attributes if they exist
-  preserve_categorical_attrs(psw_obj, wts, exposure_type)
+  psw_obj <- preserve_categorical_attrs(psw_obj, wts, exposure_type)
+
+  record_exposure_attrs(psw_obj, wts, exposure_type)
 }
 
 #' @export

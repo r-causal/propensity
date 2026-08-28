@@ -1547,7 +1547,8 @@ test_that("the record of what an operation dropped stays off its result", {
       "calibrated",
       "class",
       "n_categories",
-      "category_names"
+      "category_names",
+      "exposure_type"
     )
   )
 })

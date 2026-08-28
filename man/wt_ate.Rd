@@ -323,6 +323,13 @@ these attributes:
 \item \code{trimmed}: logical, whether the propensity scores were trimmed.
 \item \code{truncated}: logical, whether the propensity scores were truncated.
 \item \code{calibrated}: logical, whether the propensity scores were calibrated.
+\item \code{exposure_type}: character, the type of exposure the weights were built
+for, read back with \code{\link[=exposure_type]{exposure_type()}}.
+\item \code{density_meta}: for a continuous exposure, whose weights are a ratio of
+densities, the record of that ratio: the density family, the numerator
+that stabilized the weights, and where the residual spread came from.
+Read back with \code{\link[=density_meta]{density_meta()}}, and \code{NULL} for a binary or categorical
+exposure.
 }
 }
 \description{
