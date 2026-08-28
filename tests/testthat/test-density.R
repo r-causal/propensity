@@ -22,7 +22,9 @@ density_z <- function(n = 40, seed = 2024) {
 kernel_oracle <- function(
   z,
   fit_on = z,
-  range = range(z),
+  # Qualified because the argument's own name would otherwise shadow the
+  # function the default calls.
+  range = base::range(z),
   bw = "nrd0",
   adjust = 1,
   kernel = "gaussian",
@@ -246,6 +248,17 @@ test_that("as_density_spec() wraps a bare function", {
   # The wrap is `dens_fn()`, so it refuses what `dens_fn()` refuses.
   expect_error(
     as_density_spec(function() 1),
+    class = "propensity_density_error"
+  )
+})
+
+test_that("as_density_spec() refuses more than one string", {
+  expect_error(
+    as_density_spec(c("normal", "laplace")),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    as_density_spec(character(0)),
     class = "propensity_density_error"
   )
 })
@@ -475,6 +488,54 @@ test_that("density_eval() checks what a user function returns", {
   )
 })
 
+test_that("density_eval() refuses a kernel it cannot fit", {
+  z <- density_z(n = 10)
+
+  # Residuals that do not vary leave the estimate no range to be fit over,
+  # which `stats::approxfun()` reaches as a warning before it reaches it as an
+  # error.
+  expect_error(
+    density_eval(dens_kernel(), rep(0.5, 10)),
+    class = "propensity_density_error"
+  )
+
+  # A bandwidth is read from the spread of at least two residuals.
+  expect_error(
+    density_eval(dens_kernel(), 0.5),
+    class = "propensity_density_error"
+  )
+
+  # A missing residual is refused here rather than by `stats::density()`,
+  # whichever of the two arguments it arrives in.
+  expect_error(
+    density_eval(dens_kernel(), c(z[-1], NA)),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    density_eval(dens_kernel(), c(z, NA), fit_on = z),
+    class = "propensity_density_error"
+  )
+})
+
+test_that("density_eval() drops the shape of a matrix result", {
+  z <- density_z(n = 10)
+
+  expect_equal(
+    density_eval(dens_fn(function(r) matrix(stats::dnorm(r), ncol = 1)), z),
+    stats::dnorm(z)
+  )
+
+  # A matrix that holds more than one value per observation is still the wrong
+  # length, whatever its shape.
+  expect_error(
+    density_eval(
+      dens_fn(function(r) cbind(stats::dnorm(r), stats::dnorm(r))),
+      z
+    ),
+    class = "propensity_density_error"
+  )
+})
+
 # ---- print and format -------------------------------------------------------
 
 # The printed forms are pinned as exact text here rather than by snapshot: the
@@ -510,4 +571,69 @@ test_that("print() wraps the format in angle brackets", {
     "<density: function>",
     fixed = TRUE
   )
+})
+
+# ---- refusal messages -------------------------------------------------------
+
+# What each refusal says, and the class it carries. A name-like argument is
+# matched with `rlang::arg_match()`, which corrects a near miss against the list
+# of names and raises rlang's own error, so the bandwidth rule names and the
+# kernel names are refused the same way the family strings are. A value-shaped
+# argument is refused with `propensity_density_error`.
+
+test_that("the constructors say what they refuse", {
+  expect_propensity_error(dens_t(df = -1))
+  expect_propensity_error(dens_t(df = c(2, 4)))
+  expect_propensity_error(dens_t(df = "4"))
+  expect_propensity_error(dens_kernel(bw = 0))
+  expect_propensity_error(dens_kernel(bw = "silverman"))
+  expect_propensity_error(dens_kernel(adjust = "1"))
+  expect_propensity_error(dens_kernel(kernel = "gausian"))
+  expect_propensity_error(dens_kernel(n = 512.5))
+  expect_propensity_error(dens_fn("dnorm"))
+  expect_propensity_error(dens_fn(function() 1))
+})
+
+test_that("as_density_spec() says what it refuses", {
+  expect_propensity_error(as_density_spec("kernal"))
+  expect_propensity_error(as_density_spec(1))
+})
+
+test_that("check_density_values() says what went wrong", {
+  z <- density_z(n = 4)
+
+  expect_propensity_error(check_density_values("a", 4))
+  expect_propensity_error(check_density_values(c(0.1, 0.2), 4))
+  expect_propensity_error(check_density_values(c(0.1, NA, 0.3, 0.4), 4, z = z))
+  expect_propensity_error(
+    check_density_values(c(0.1, -0.2, Inf, 0.4), 4, z = z)
+  )
+  expect_propensity_error(check_density_values(rep(0, 4), 4, z = z))
+  expect_propensity_error(
+    check_density_values(c(-1, 1, 1, 1), 4, what = ".numerator", z = z)
+  )
+})
+
+test_that("a kernel that cannot be fit says why", {
+  z <- density_z(n = 10)
+
+  expect_propensity_error(density_eval(dens_kernel(), rep(0.5, 10)))
+  expect_propensity_error(density_eval(dens_kernel(), 0.5))
+  expect_propensity_error(density_eval(dens_kernel(), c(z[-1], NA)))
+  expect_propensity_error(density_eval(dens_kernel(), c(z, NA), fit_on = z))
+})
+
+test_that("as_density_spec() says what it refuses more than one of", {
+  expect_propensity_error(as_density_spec(c("normal", "laplace")))
+})
+
+test_that("a refusal names the function the density was supplied to", {
+  z <- density_z(n = 5)
+  weight_from_density <- function(.density) {
+    density_eval(as_density_spec(.density), z)
+  }
+
+  expect_propensity_error(weight_from_density("kernal"))
+  expect_propensity_error(weight_from_density(function(r) -stats::dnorm(r)))
+  expect_propensity_error(weight_from_density(dens_fn(function(r) r)))
 })
