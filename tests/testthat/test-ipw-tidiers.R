@@ -404,10 +404,9 @@ expect_tidy_wraps_frame <- function(
 # tidier: the outcome model's coefficients, the standard errors the joint block
 # implies, and the normal statistics those two make. Reading them from the
 # accessors is what keeps the tidied table and the printed one the same numbers,
-# which is also why the p-value takes the form causalgenerics prints this reading
-# with, `2 * pnorm(-abs(z))`, rather than the `2 * (1 - pnorm(abs(z)))` the
-# marginal estimates table was built with, a form that loses its significant
-# digits in the far tail.
+# and the p-value is written the way causalgenerics writes it for this reading,
+# `2 * pnorm(-abs(z))`, which reads the tail the statistic falls in directly and
+# so keeps its significant digits however far out that tail the statistic lands.
 conditional_expectations <- function(result, conf_level = 0.95) {
   estimate <- stats::coef(result, effects = "conditional")
   std_error <- sqrt(diag(stats::vcov(result, effects = "conditional")))
