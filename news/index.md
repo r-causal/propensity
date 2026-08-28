@@ -2,6 +2,70 @@
 
 ## propensity 0.1.0.9000 (development version)
 
+- A continuous-exposure
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  fit whose outcome model reads the exposure through more than one
+  design column, such as `y ~ A + I(A^2)` or a basis like `poly(A, 2)`
+  or `splines::ns(A, 3)`, now records the conditional reading and says
+  so once. No coefficient of a curve is the effect of the exposure,
+  since the dose response has a different slope at every dose, so there
+  is no marginal reading of such a fit to present.
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  refuses `effects = "marginal"` with an error of class
+  `propensity_ipw_effects_error`, and the result declares the
+  conditional reading as the only one it supports, so
+  [`as_marginal()`](https://r-causal.github.io/causalgenerics/reference/ipw-modes.html),
+  [`coef()`](https://rdrr.io/r/stats/coef.html),
+  [`vcov()`](https://rdrr.io/r/stats/vcov.html),
+  [`confint()`](https://rdrr.io/r/stats/confint.html),
+  [`tidy()`](https://generics.r-lib.org/reference/tidy.html), and
+  [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html) refuse
+  it with an error of class
+  `causalgenerics_unsupported_reading_marginal`. Marginalizing the curve
+  over the observed doses is a separate estimand that this package does
+  not compute; use the marginaleffects package on the conditional
+  result: `avg_slopes()` for slopes, `avg_comparisons()` for contrasts,
+  and `avg_predictions()` for causal dose-response functions
+  (<https://marginaleffects.com/chapters/interactions.html>). A fit
+  whose exposure enters through one column is unchanged. A caller who
+  names no reading includes a wrapper that forwards the whole `effects`
+  default, which is a set of readings rather than one of them, so such a
+  call is announced and given the conditional reading rather than
+  refused for the reading the default resolves to first.
+
+- A binary or categorical
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  result now reports the counterfactual mean at each exposure level, one
+  row per level under the effect label `"mean"`, ahead of the contrasts
+  built from those means. A risk difference is now read beside the two
+  risks it is a difference of, on either standard error route and within
+  each stratum of a `.by` request. The rows are covered by the stored
+  covariance and carried by
+  [`coef()`](https://rdrr.io/r/stats/coef.html),
+  [`vcov()`](https://rdrr.io/r/stats/vcov.html),
+  [`confint()`](https://rdrr.io/r/stats/confint.html),
+  [`tidy()`](https://generics.r-lib.org/reference/tidy.html),
+  [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html), and
+  the pooled results, and `exponentiate = TRUE` leaves them alone, a
+  counterfactual risk being no kind of ratio.
+
+- The p-value of a reported row now comes from the upper tail of the
+  normal distribution directly rather than from one minus the lower
+  tail, which carries no precision past about 1e-16 and returned an
+  exact zero for any test statistic beyond about 8. The counterfactual
+  mean rows often make such a statistic, a fitted risk being large
+  beside its standard error. The printed report is unchanged, since a
+  p-value that small prints as `< 2.2e-16` either way, but the value the
+  result stores now carries its magnitude.
+
+- The `estimates` frame of a binary
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  result gains the `contrast` column a categorical result already
+  carried, naming the level each mean row belongs to and the pair of
+  levels each contrast row compares, such as `"1 vs 0"`. Row labels on
+  every surface of the result name that contrast, so code matching a
+  label such as `"rd"` exactly needs `"rd 1 vs 0"`.
+
 - The exposure-type machinery that resolves `exposure_type` and detects
   the type of an exposure now lives in causalgenerics, where the other
   packages in the ecosystem can reach it, and propensity calls it there

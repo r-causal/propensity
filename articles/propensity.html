@@ -124,21 +124,18 @@ that case you need to supply the exposure too:</p>
 <span><span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">dat</span><span class="op">$</span><span class="va">z</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
 <span><span class="co">#&gt; &lt;psw{estimand = ate}[100]&gt;</span></span>
-<span><span class="co">#&gt;   [1]  1.237569  1.962759  2.211732  1.312977  1.974772  1.918957  3.413991</span></span>
-<span><span class="co">#&gt;   [8]  1.844849  1.223426  2.048453  1.409967  1.189795  1.283684  2.580633</span></span>
-<span><span class="co">#&gt;  [15]  1.439961  1.771951  1.627989  3.438494  1.092310  1.379591  1.414973</span></span>
-<span><span class="co">#&gt;  [22]  1.142879  2.132832  2.539924  1.264028  1.584122  1.614753  1.115628</span></span>
-<span><span class="co">#&gt;  [29]  2.235160  1.641530  1.598952  1.767794  1.494051  2.039262  3.465881</span></span>
-<span><span class="co">#&gt;  [36]  1.174226  1.511863  1.832668  1.135144  2.045876  2.067593  2.960898</span></span>
-<span><span class="co">#&gt;  [43]  1.724205  2.807457  1.296458  1.487979  1.433057  3.287998  2.085343</span></span>
-<span><span class="co">#&gt;  [50]  2.000254  1.845028  1.286187  1.207434  2.360698  1.840088  1.704295</span></span>
-<span><span class="co">#&gt;  [57]  1.642486  2.362152 12.582758  2.974447  1.677742  1.704949  2.553764</span></span>
-<span><span class="co">#&gt;  [64]  1.438721  1.711034  1.227343  1.812465  1.409825  1.518867  3.314572</span></span>
-<span><span class="co">#&gt;  [71]  1.404951  1.799540  2.354036  1.941761  1.909359  1.731474  2.080547</span></span>
-<span><span class="co">#&gt;  [78]  2.731912  1.606549  3.350612  1.327948  2.103802  2.178471  2.018730</span></span>
-<span><span class="co">#&gt;  [85]  3.813295  1.864473  2.078958  1.959235  1.747083  1.907159  3.853789</span></span>
-<span><span class="co">#&gt;  [92]  1.584359  2.693732  1.644175  1.286716  1.788770  3.037240  1.416308</span></span>
-<span><span class="co">#&gt;  [99]  1.474800  1.619529</span></span></code></pre></div>
+<span><span class="co">#&gt;   [1]  1.237569  1.962759  2.211732  1.312977  1.974772  1.918957  3.413991  1.844849  1.223426</span></span>
+<span><span class="co">#&gt;  [10]  2.048453  1.409967  1.189795  1.283684  2.580633  1.439961  1.771951  1.627989  3.438494</span></span>
+<span><span class="co">#&gt;  [19]  1.092310  1.379591  1.414973  1.142879  2.132832  2.539924  1.264028  1.584122  1.614753</span></span>
+<span><span class="co">#&gt;  [28]  1.115628  2.235160  1.641530  1.598952  1.767794  1.494051  2.039262  3.465881  1.174226</span></span>
+<span><span class="co">#&gt;  [37]  1.511863  1.832668  1.135144  2.045876  2.067593  2.960898  1.724205  2.807457  1.296458</span></span>
+<span><span class="co">#&gt;  [46]  1.487979  1.433057  3.287998  2.085343  2.000254  1.845028  1.286187  1.207434  2.360698</span></span>
+<span><span class="co">#&gt;  [55]  1.840088  1.704295  1.642486  2.362152 12.582758  2.974447  1.677742  1.704949  2.553764</span></span>
+<span><span class="co">#&gt;  [64]  1.438721  1.711034  1.227343  1.812465  1.409825  1.518867  3.314572  1.404951  1.799540</span></span>
+<span><span class="co">#&gt;  [73]  2.354036  1.941761  1.909359  1.731474  2.080547  2.731912  1.606549  3.350612  1.327948</span></span>
+<span><span class="co">#&gt;  [82]  2.103802  2.178471  2.018730  3.813295  1.864473  2.078958  1.959235  1.747083  1.907159</span></span>
+<span><span class="co">#&gt;  [91]  3.853789  1.584359  2.693732  1.644175  1.286716  1.788770  3.037240  1.416308  1.474800</span></span>
+<span><span class="co">#&gt; [100]  1.619529</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="step-3-estimate-causal-effects">Step 3: Estimate causal effects<a class="anchor" aria-label="anchor" href="#step-3-estimate-causal-effects"></a>
@@ -165,10 +162,12 @@ method instead:</p>
 <span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Marginal estimates:</span></span>
-<span><span class="co">#&gt;         estimate std.err      z ci.lower ci.upper conf.level  p.value   </span></span>
-<span><span class="co">#&gt; rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **</span></span>
-<span><span class="co">#&gt; log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **</span></span>
-<span><span class="co">#&gt; log(or)  1.32884 0.46176 2.8778  0.42381  2.23387       0.95 0.004005 **</span></span>
+<span><span class="co">#&gt;                estimate  std.err      z ci.lower ci.upper conf.level   p.value    </span></span>
+<span><span class="co">#&gt; mean 0         0.321135 0.069594 4.6144  0.18473  0.45754       0.95 3.942e-06 ***</span></span>
+<span><span class="co">#&gt; mean 1         0.641133 0.075977 8.4385  0.49222  0.79004       0.95 &lt; 2.2e-16 ***</span></span>
+<span><span class="co">#&gt; rd 1 vs 0      0.319997 0.103584 3.0892  0.11698  0.52302       0.95  0.002007 ** </span></span>
+<span><span class="co">#&gt; log(rr) 1 vs 0 0.691374 0.248114 2.7865  0.20508  1.17767       0.95  0.005328 ** </span></span>
+<span><span class="co">#&gt; log(or) 1 vs 0 1.328843 0.461758 2.8778  0.42381  2.23387       0.95  0.004005 ** </span></span>
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 </div>
@@ -300,16 +299,14 @@ data-driven threshold:</p>
 <span><span class="co">#&gt; [1] 0.9</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $keep_idx</span></span>
-<span><span class="co">#&gt;   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21 </span></span>
-<span><span class="co">#&gt;   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21 </span></span>
-<span><span class="co">#&gt;  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36  37  38  39  40  41 </span></span>
-<span><span class="co">#&gt;  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36  37  38  39  40  41 </span></span>
-<span><span class="co">#&gt;  42  43  44  45  46  47  48  49  50  51  52  53  54  55  56  57  58  60  61  62 </span></span>
-<span><span class="co">#&gt;  42  43  44  45  46  47  48  49  50  51  52  53  54  55  56  57  58  60  61  62 </span></span>
-<span><span class="co">#&gt;  63  64  65  66  67  68  69  70  71  72  73  74  75  76  77  78  79  80  81  82 </span></span>
-<span><span class="co">#&gt;  63  64  65  66  67  68  69  70  71  72  73  74  75  76  77  78  79  80  81  82 </span></span>
-<span><span class="co">#&gt;  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 </span></span>
-<span><span class="co">#&gt;  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 </span></span>
+<span><span class="co">#&gt;   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21  22  23  24  25  26 </span></span>
+<span><span class="co">#&gt;   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  20  21  22  23  24  25  26 </span></span>
+<span><span class="co">#&gt;  27  28  29  30  31  32  33  34  35  36  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51 </span></span>
+<span><span class="co">#&gt;  27  28  29  30  31  32  33  34  35  36  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51 </span></span>
+<span><span class="co">#&gt;  52  53  54  55  56  57  58  60  61  62  63  64  65  66  67  68  69  70  71  72  73  74  75  76  77 </span></span>
+<span><span class="co">#&gt;  52  53  54  55  56  57  58  60  61  62  63  64  65  66  67  68  69  70  71  72  73  74  75  76  77 </span></span>
+<span><span class="co">#&gt;  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 </span></span>
+<span><span class="co">#&gt;  78  79  80  81  82  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $trimmed_idx</span></span>
 <span><span class="co">#&gt; [1] 19 59</span></span>
@@ -391,8 +388,11 @@ sample.</p>
 <div class="section level3">
 <h3 id="binary-outcomes">Binary outcomes<a class="anchor" aria-label="anchor" href="#binary-outcomes"></a>
 </h3>
-<p>For binary outcomes, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> returns three effect
-measures: the risk difference, log risk ratio, and log odds ratio:</p>
+<p>For binary outcomes, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> returns the marginal risk
+under each exposure level, then three effect measures built from those
+risks: the risk difference, log risk ratio, and log odds ratio. The
+<code>contrast</code> column names the level a mean row belongs to and
+the pair of levels an effect measure compares:</p>
 <div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">result</span></span>
 <span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
@@ -406,35 +406,42 @@ measures: the risk difference, log risk ratio, and log odds ratio:</p>
 <span><span class="co">#&gt;   Call: glm(formula = y ~ z, family = binomial(), data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Marginal estimates:</span></span>
-<span><span class="co">#&gt;         estimate std.err      z ci.lower ci.upper conf.level  p.value   </span></span>
-<span><span class="co">#&gt; rd       0.32000 0.10358 3.0892  0.11698  0.52302       0.95 0.002007 **</span></span>
-<span><span class="co">#&gt; log(rr)  0.69137 0.24811 2.7865  0.20508  1.17767       0.95 0.005328 **</span></span>
-<span><span class="co">#&gt; log(or)  1.32884 0.46176 2.8778  0.42381  2.23387       0.95 0.004005 **</span></span>
+<span><span class="co">#&gt;                estimate  std.err      z ci.lower ci.upper conf.level   p.value    </span></span>
+<span><span class="co">#&gt; mean 0         0.321135 0.069594 4.6144  0.18473  0.45754       0.95 3.942e-06 ***</span></span>
+<span><span class="co">#&gt; mean 1         0.641133 0.075977 8.4385  0.49222  0.79004       0.95 &lt; 2.2e-16 ***</span></span>
+<span><span class="co">#&gt; rd 1 vs 0      0.319997 0.103584 3.0892  0.11698  0.52302       0.95  0.002007 ** </span></span>
+<span><span class="co">#&gt; log(rr) 1 vs 0 0.691374 0.248114 2.7865  0.20508  1.17767       0.95  0.005328 ** </span></span>
+<span><span class="co">#&gt; log(or) 1 vs 0 1.328843 0.461758 2.8778  0.42381  2.23387       0.95  0.004005 ** </span></span>
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 <p><code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code> pulls the estimates into a data
 frame:</p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span>
-<span><span class="co">#&gt;      term  estimate std.error statistic     p.value</span></span>
-<span><span class="co">#&gt; 1      rd 0.3199973 0.1035844  3.089243 0.002006669</span></span>
-<span><span class="co">#&gt; 2 log(rr) 0.6913736 0.2481136  2.786520 0.005327738</span></span>
-<span><span class="co">#&gt; 3 log(or) 1.3288426 0.4617580  2.877790 0.004004714</span></span></code></pre></div>
+<span><span class="co">#&gt;      term contrast  estimate  std.error statistic      p.value</span></span>
+<span><span class="co">#&gt; 1    mean        0 0.3211354 0.06959360  4.614439 3.941578e-06</span></span>
+<span><span class="co">#&gt; 2    mean        1 0.6411327 0.07597704  8.438507 3.214169e-17</span></span>
+<span><span class="co">#&gt; 3      rd   1 vs 0 0.3199973 0.10358436  3.089243 2.006669e-03</span></span>
+<span><span class="co">#&gt; 4 log(rr)   1 vs 0 0.6913736 0.24811365  2.786520 5.327738e-03</span></span>
+<span><span class="co">#&gt; 5 log(or)   1 vs 0 1.3288426 0.46175800  2.877790 4.004714e-03</span></span></code></pre></div>
 <p>Use <code>exponentiate = TRUE</code> to get risk ratios and odds
 ratios on their natural scale. The standard errors, z-statistics, and
 p-values stay on the log scale:</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span>, exponentiate <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   term  estimate std.error statistic     p.value</span></span>
-<span><span class="co">#&gt; 1   rd 0.3199973 0.1035844  3.089243 0.002006669</span></span>
-<span><span class="co">#&gt; 2   rr 1.9964559 0.2481136  2.786520 0.005327738</span></span>
-<span><span class="co">#&gt; 3   or 3.7766699 0.4617580  2.877790 0.004004714</span></span></code></pre></div>
+<span><span class="co">#&gt;   term contrast  estimate  std.error statistic      p.value</span></span>
+<span><span class="co">#&gt; 1 mean        0 0.3211354 0.06959360  4.614439 3.941578e-06</span></span>
+<span><span class="co">#&gt; 2 mean        1 0.6411327 0.07597704  8.438507 3.214169e-17</span></span>
+<span><span class="co">#&gt; 3   rd   1 vs 0 0.3199973 0.10358436  3.089243 2.006669e-03</span></span>
+<span><span class="co">#&gt; 4   rr   1 vs 0 1.9964559 0.24811365  2.786520 5.327738e-03</span></span>
+<span><span class="co">#&gt; 5   or   1 vs 0 3.7766699 0.46175800  2.877790 4.004714e-03</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="continuous-outcomes">Continuous outcomes<a class="anchor" aria-label="anchor" href="#continuous-outcomes"></a>
 </h3>
-<p>For continuous outcomes, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> returns the mean
-difference. Use <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code> for the outcome model:</p>
+<p>For continuous outcomes, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> returns the marginal mean
+under each exposure level and the difference between them. Use
+<code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code> for the outcome model:</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">y_cont</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">+</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="va">z</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">+</span> <span class="fl">0.2</span> <span class="op">*</span> <span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
 <span><span class="va">dat</span><span class="op">$</span><span class="va">y_cont</span> <span class="op">&lt;-</span> <span class="va">y_cont</span></span>
@@ -451,8 +458,10 @@ difference. Use <code><a href="https://rdrr.io/r/stats/lm.html" class="external-
 <span><span class="co">#&gt;   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Marginal estimates:</span></span>
-<span><span class="co">#&gt;      estimate std.err     z ci.lower ci.upper conf.level   p.value    </span></span>
-<span><span class="co">#&gt; diff  0.92737 0.20395 4.547  0.52763   1.3271       0.95 5.443e-06 ***</span></span>
+<span><span class="co">#&gt;             estimate std.err      z ci.lower ci.upper conf.level   p.value    </span></span>
+<span><span class="co">#&gt; mean 0       1.90947 0.13958 13.681  1.63591   2.1830       0.95 &lt; 2.2e-16 ***</span></span>
+<span><span class="co">#&gt; mean 1       2.83684 0.16397 17.301  2.51546   3.1582       0.95 &lt; 2.2e-16 ***</span></span>
+<span><span class="co">#&gt; diff 1 vs 0  0.92737 0.20395  4.547  0.52763   1.3271       0.95 5.443e-06 ***</span></span>
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 </div>

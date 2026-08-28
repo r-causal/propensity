@@ -3,10 +3,13 @@
 [`tidy()`](https://generics.r-lib.org/reference/tidy.html) returns the
 estimates of a
 [`pool_ipw()`](https://r-causal.github.io/causalgenerics/reference/pool_ipw.html)
-result as a tibble using the column names broom conventions use. There
-is one row per effect measure, and one row per effect measure per
-contrast for a categorical exposure, in the order the pooled result
-stores them. Nothing is dropped.
+result as a tibble using the column names broom conventions use. It
+holds the rows the results themselves report: for a binary or
+categorical exposure one row per exposure level, under the term
+`"mean"`, and then one row per effect measure per contrast of levels;
+for a continuous exposure one row per reported coefficient. The rows
+arrive in the order the pooled result stores them and nothing is
+dropped.
 
 Those columns are the ones the pooled result's own coercion surface
 reports, so this method is that surface read as a tibble rather than a
@@ -31,10 +34,11 @@ above. The conditional reading is the outcome models' coefficient
 surface, pooled the same way: one row per coefficient, from the block of
 the joint estimation that carries the uncertainty of having estimated
 the weights from the same data. The two readings return the same columns
-in the same order, with one exception: the `contrast` column that names
-the pair of exposure levels a row compares belongs to the marginal
-reading of a categorical pool alone, and that pool's conditional reading
-returns the same table one column narrower.
+in the same order, with one exception: the `contrast` column belongs to
+the marginal reading. A binary and a categorical pool both carry it
+there, naming the exposure level each mean row belongs to and the pair
+of levels each effect measure compares, and the conditional reading of
+either returns the same table one column narrower.
 
 ## Usage
 
@@ -125,17 +129,20 @@ row per pooled estimate and the columns:
 
 - `term`:
 
-  The effect measure, such as `"rd"`, `"log(rr)"`, `"log(or)"`,
-  `"diff"`, `"slope"`, or `"coef"`, or the coefficient name in the
+  The effect measure, such as `"mean"` for a counterfactual mean, or
+  `"rd"`, `"log(rr)"`, `"log(or)"`, `"diff"`, `"slope"`, or `"coef"` for
+  the measures built from them, or the coefficient name in the
   conditional reading.
 
 - `contrast`:
 
-  The contrast the row reports, such as `"b vs a"` for a categorical
-  exposure or the coefficient name on a surface whose rows are named
-  after their coefficients. Present only in the marginal reading, and
-  there only where a row reports one: the conditional reading names each
-  coefficient in `term` and returns no `contrast` column.
+  What the row is about: the exposure level a `"mean"` row belongs to,
+  such as `"0"` or `"b"`; the pair of levels an effect measure compares,
+  such as `"1 vs 0"` or `"b vs a"`; or the coefficient name on a surface
+  whose rows are named after their coefficients. Present only in the
+  marginal reading, and there only where a row reports one: the
+  conditional reading names each coefficient in `term` and returns no
+  `contrast` column.
 
 - `estimate`:
 
@@ -201,20 +208,24 @@ fits <- with(imp, {
 #> ℹ Treating `.exposure` as binary
 
 tidy(pool_ipw(fits))
-#> # A tibble: 3 × 6
-#>   term    estimate std.error statistic    df p.value
-#>   <chr>      <dbl>     <dbl>     <dbl> <dbl>   <dbl>
-#> 1 rd         0.152    0.0810      1.88  134.  0.0625
-#> 2 log(rr)    0.315    0.174       1.80  134.  0.0733
-#> 3 log(or)    0.614    0.332       1.85  134.  0.0668
+#> # A tibble: 5 × 7
+#>   term    contrast estimate std.error statistic    df  p.value
+#>   <chr>   <chr>       <dbl>     <dbl>     <dbl> <dbl>    <dbl>
+#> 1 mean    0           0.412    0.0595      6.91  136. 1.68e-10
+#> 2 mean    1           0.564    0.0551     10.2   138. 1.29e-18
+#> 3 rd      1 vs 0      0.152    0.0810      1.88  134. 6.25e- 2
+#> 4 log(rr) 1 vs 0      0.315    0.174       1.80  134. 7.33e- 2
+#> 5 log(or) 1 vs 0      0.614    0.332       1.85  134. 6.68e- 2
 
 tidy(pool_ipw(fits), conf.int = TRUE, exponentiate = TRUE)
-#> # A tibble: 3 × 8
-#>   term  estimate std.error statistic    df p.value conf.low conf.high
-#>   <chr>    <dbl>     <dbl>     <dbl> <dbl>   <dbl>    <dbl>     <dbl>
-#> 1 rd       0.152    0.0810      1.88  134.  0.0625 -0.00803     0.312
-#> 2 rr       1.37     0.174       1.80  134.  0.0733  0.970       1.93 
-#> 3 or       1.85     0.332       1.85  134.  0.0668  0.958       3.56 
+#> # A tibble: 5 × 9
+#>   term  contrast estimate std.error statistic    df  p.value conf.low conf.high
+#>   <chr> <chr>       <dbl>     <dbl>     <dbl> <dbl>    <dbl>    <dbl>     <dbl>
+#> 1 mean  0           0.412    0.0595      6.91  136. 1.68e-10  0.294       0.529
+#> 2 mean  1           0.564    0.0551     10.2   138. 1.29e-18  0.455       0.673
+#> 3 rd    1 vs 0      0.152    0.0810      1.88  134. 6.25e- 2 -0.00803     0.312
+#> 4 rr    1 vs 0      1.37     0.174       1.80  134. 7.33e- 2  0.970       1.93 
+#> 5 or    1 vs 0      1.85     0.332       1.85  134. 6.68e- 2  0.958       3.56 
 
 # The outcome models' coefficients, pooled the same way
 tidy(pool_ipw(fits), effects = "conditional")

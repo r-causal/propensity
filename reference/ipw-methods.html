@@ -26,9 +26,11 @@ The multinom method estimates causal effects for a categorical exposure
 from a fitted nnet::multinom() propensity score model and a weighted
 outcome model. Standard errors are computed by M-estimation; the
 linearization method is not available for categorical exposures. For a
-K-level exposure, effects are reported for each non-reference level against
-the reference (first) factor level, and the estimates table gains a
-contrast column naming the pair of levels each row compares.
+K-level exposure, the counterfactual mean at each level is reported first,
+under the effect label &quot;mean&quot;, and then the effects for each non-reference
+level against the reference (first) factor level. The contrast column names
+the level each mean row belongs to and the pair of levels each effect row
+compares, as it does for a binary exposure.
 The lm method estimates the causal dose-response effect for a continuous
 exposure from a fitted stats::lm() (or gaussian-family stats::glm())
 propensity score model of the exposure and a weighted marginal structural
@@ -42,6 +44,32 @@ exposure coefficient keeps the eight-column contract with no contrast column
 and labels its row &quot;slope&quot; at an identity link; a dose-response curve such
 as y ~ A + I(A^2) reports one row per coefficient under &quot;coef&quot;, gaining a
 contrast column that names them.
+A curve is also the one shape of fit that has a single reading. An exposure
+entering the outcome model through more than one design column, whether
+written as y ~ A + I(A^2) or as a basis such as poly(A, 2),
+splines::ns(A, 3), or splines::bs(A, 3), has no coefficient that is the
+effect of the exposure, because the dose response has a different slope at
+every dose. ipw() records the conditional reading for such a fit and
+reports it once as a message. Asking ipw() itself for
+effects = &quot;marginal&quot; is refused with an error of class
+propensity_ipw_effects_error; the result declares the conditional reading
+as the only one it supports, so causalgenerics::as_marginal(),
+stats::coef(), stats::vcov(), stats::confint(), generics::tidy(),
+and as.data.frame() refuse it from the result class instead, with an error
+of class causalgenerics_unsupported_reading_marginal. Marginalizing the
+curve over the observed doses is a separate estimand that this package does
+not compute; use the marginaleffects package on the conditional
+result: avg_slopes() for slopes, avg_comparisons() for contrasts, and
+avg_predictions() for causal dose-response functions. A basis
+term reading a covariate rather than the exposure is a covariate term however
+many columns it expands to, so it contributes no row and leaves the reading
+marginal.
+A model frame records the term rather than the variables inside it, so the
+frame of a fit whose exposure enters through poly() or a spline holds no
+exposure column and .data must supply one. The propensity score design is
+then rebuilt through the model's terms object, whose predvars attribute
+records the basis the model was fit with, so the rebuilt columns are the
+fitted ones.
 ipw() is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
 and a fitted weighted outcome model; ipw() computes causal effect estimates
@@ -81,9 +109,11 @@ The multinom method estimates causal effects for a categorical exposure
 from a fitted nnet::multinom() propensity score model and a weighted
 outcome model. Standard errors are computed by M-estimation; the
 linearization method is not available for categorical exposures. For a
-K-level exposure, effects are reported for each non-reference level against
-the reference (first) factor level, and the estimates table gains a
-contrast column naming the pair of levels each row compares.
+K-level exposure, the counterfactual mean at each level is reported first,
+under the effect label &quot;mean&quot;, and then the effects for each non-reference
+level against the reference (first) factor level. The contrast column names
+the level each mean row belongs to and the pair of levels each effect row
+compares, as it does for a binary exposure.
 The lm method estimates the causal dose-response effect for a continuous
 exposure from a fitted stats::lm() (or gaussian-family stats::glm())
 propensity score model of the exposure and a weighted marginal structural
@@ -97,6 +127,32 @@ exposure coefficient keeps the eight-column contract with no contrast column
 and labels its row &quot;slope&quot; at an identity link; a dose-response curve such
 as y ~ A + I(A^2) reports one row per coefficient under &quot;coef&quot;, gaining a
 contrast column that names them.
+A curve is also the one shape of fit that has a single reading. An exposure
+entering the outcome model through more than one design column, whether
+written as y ~ A + I(A^2) or as a basis such as poly(A, 2),
+splines::ns(A, 3), or splines::bs(A, 3), has no coefficient that is the
+effect of the exposure, because the dose response has a different slope at
+every dose. ipw() records the conditional reading for such a fit and
+reports it once as a message. Asking ipw() itself for
+effects = &quot;marginal&quot; is refused with an error of class
+propensity_ipw_effects_error; the result declares the conditional reading
+as the only one it supports, so causalgenerics::as_marginal(),
+stats::coef(), stats::vcov(), stats::confint(), generics::tidy(),
+and as.data.frame() refuse it from the result class instead, with an error
+of class causalgenerics_unsupported_reading_marginal. Marginalizing the
+curve over the observed doses is a separate estimand that this package does
+not compute; use the marginaleffects package on the conditional
+result: avg_slopes() for slopes, avg_comparisons() for contrasts, and
+avg_predictions() for causal dose-response functions. A basis
+term reading a covariate rather than the exposure is a covariate term however
+many columns it expands to, so it contributes no row and leaves the reading
+marginal.
+A model frame records the term rather than the variables inside it, so the
+frame of a fit whose exposure enters through poly() or a spline holds no
+exposure column and .data must supply one. The propensity score design is
+then rebuilt through the model's terms object, whose predvars attribute
+records the basis the model was fit with, so the rebuilt columns are the
+fitted ones.
 ipw() is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
 and a fitted weighted outcome model; ipw() computes causal effect estimates
@@ -175,9 +231,11 @@ container reaches <code><a href="https://r-causal.github.io/causalgenerics/refer
 from a fitted <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> propensity score model and a weighted
 outcome model. Standard errors are computed by M-estimation; the
 linearization method is not available for categorical exposures. For a
-K-level exposure, effects are reported for each non-reference level against
-the reference (first) factor level, and the estimates table gains a
-<code>contrast</code> column naming the pair of levels each row compares.</p>
+K-level exposure, the counterfactual mean at each level is reported first,
+under the effect label <code>"mean"</code>, and then the effects for each non-reference
+level against the reference (first) factor level. The <code>contrast</code> column names
+the level each mean row belongs to and the pair of levels each effect row
+compares, as it does for a binary exposure.</p>
 <p>The <code>lm</code> method estimates the causal dose-response effect for a continuous
 exposure from a fitted <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">stats::lm()</a></code> (or gaussian-family <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code>)
 propensity score model of the exposure and a weighted marginal structural
@@ -191,6 +249,32 @@ exposure coefficient keeps the eight-column contract with no contrast column
 and labels its row <code>"slope"</code> at an identity link; a dose-response curve such
 as <code>y ~ A + I(A^2)</code> reports one row per coefficient under <code>"coef"</code>, gaining a
 contrast column that names them.</p>
+<p>A curve is also the one shape of fit that has a single reading. An exposure
+entering the outcome model through more than one design column, whether
+written as <code>y ~ A + I(A^2)</code> or as a basis such as <code>poly(A, 2)</code>,
+<code>splines::ns(A, 3)</code>, or <code>splines::bs(A, 3)</code>, has no coefficient that is the
+effect of the exposure, because the dose response has a different slope at
+every dose. <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> records the conditional reading for such a fit and
+reports it once as a message. Asking <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> itself for
+<code>effects = "marginal"</code> is refused with an error of class
+<code>propensity_ipw_effects_error</code>; the result declares the conditional reading
+as the only one it supports, so <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">causalgenerics::as_marginal()</a></code>,
+<code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">stats::coef()</a></code>, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code>, <code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code>, <code><a href="https://generics.r-lib.org/reference/tidy.html" class="external-link">generics::tidy()</a></code>,
+and <code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code> refuse it from the result class instead, with an error
+of class <code>causalgenerics_unsupported_reading_marginal</code>. Marginalizing the
+curve over the observed doses is a separate estimand that this package does
+not compute; use the <span class="pkg">marginaleffects</span> package on the conditional
+result: <code>avg_slopes()</code> for slopes, <code>avg_comparisons()</code> for contrasts, and
+<code>avg_predictions()</code> for causal dose-response functions. A basis
+term reading a covariate rather than the exposure is a covariate term however
+many columns it expands to, so it contributes no row and leaves the reading
+marginal.</p>
+<p>A model frame records the term rather than the variables inside it, so the
+frame of a fit whose exposure enters through <code><a href="https://rdrr.io/r/stats/poly.html" class="external-link">poly()</a></code> or a spline holds no
+exposure column and <code>.data</code> must supply one. The propensity score design is
+then rebuilt through the model's terms object, whose <code>predvars</code> attribute
+records the basis the model was fit with, so the rebuilt columns are the
+fitted ones.</p>
 <p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> is a bring-your-own-model (BYOM) inverse probability weighted
 estimator for causal inference. You supply a fitted propensity score model
 and a fitted weighted outcome model; <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> computes causal effect estimates
@@ -417,6 +501,17 @@ nothing else. <code><a href="https://r-causal.github.io/causalgenerics/reference
 <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw-modes.html" class="external-link">causalgenerics::as_conditional()</a></code> move a result between the two readings
 afterwards, and the accessors take an <code>effects</code> argument of their own for a
 single call.</p>
+<p>One kind of fit has a single reading rather than two. A continuous exposure
+entering <code>outcome_mod</code> through more than one design column, such as a
+<code><a href="https://rdrr.io/r/stats/poly.html" class="external-link">poly()</a></code> or spline dose response, has no coefficient that is the effect of
+the exposure, because a curve has a different slope at every dose. Such a
+result records the conditional reading and says so once. <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> refuses
+<code>effects = "marginal"</code> itself with an error of class
+<code>propensity_ipw_effects_error</code>, and the result declares the conditional
+reading as the only one it supports, so the accessors refuse it from the
+result class with an error of class
+<code>causalgenerics_unsupported_reading_marginal</code>. See the continuous exposure
+section below.</p>
 <p>The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
@@ -461,11 +556,12 @@ registers for the shared class: <code><a href="https://rdrr.io/r/stats/coef.html
 the reported effects, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code> for their covariance,
 <code><a href="https://rdrr.io/r/stats/nobs.html" class="external-link">stats::nobs()</a></code> and <code><a href="https://rdrr.io/r/stats/df.residual.html" class="external-link">stats::df.residual()</a></code> for the counts describing the
 fit, and <code><a href="https://rdrr.io/r/stats/weights.html" class="external-link">stats::weights()</a></code> for the <code><a href="psw.html">psw()</a></code> vector the outcome model was
-fit with. Coefficients are named for the effect measure, and for the effect
-measure and the contrast together where a categorical exposure reports one
-row per contrast. Which surface <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">stats::coef()</a></code>, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code>, and
-<code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code> report follows the presentation mode the result records,
-described under <code>effects</code> above.</p>
+fit with. Coefficients are named for the effect measure and the contrast
+together, the contrast being the level a counterfactual mean belongs to or
+the pair of levels an effect measure compares, and for the subgroup as well
+where <code>.by</code> reports one row per subgroup. Which surface <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">stats::coef()</a></code>,
+<code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code>, and <code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code> report follows the presentation
+mode the result records, described under <code>effects</code> above.</p>
 <p>Under <code>se_method = "mestimation"</code> the stored <code>wt_mod</code> and <code>outcome_mod</code> are
 the models supplied, carrying their block of the joint sandwich. Calling
 <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">stats::vcov()</a></code> on either reports a covariance that accounts for the whole
@@ -505,7 +601,17 @@ for anything other than <code>"ate"</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="effect-measures">Effect measures<a class="anchor" aria-label="anchor" href="#effect-measures"></a></h2>
-    <p>For a binary exposure, the reported measures depend on the outcome model. A
+    <p>A binary or categorical exposure reports the counterfactual mean at each
+exposure level before the contrasts built from those means. Those rows carry
+the effect label <code>"mean"</code> and lead the table, one per level in level order
+with the reference level first. Each is the outcome model's prediction with
+every unit set to that level, averaged over the sample under the estimand's
+tilt, so a binomial outcome reports the marginal risk under each level and a
+continuous one reports the marginal mean. Reading a risk difference beside
+the two risks it is a difference of is what those rows are for: a difference
+of 0.05 is a different finding at risks of 0.02 and 0.07 than at 0.50 and
+0.55.</p>
+<p>For a binary exposure, the reported measures depend on the outcome model. A
 binary outcome (<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> with <code>family = binomial()</code>) returns three
 measures:</p><ul><li><p><code>rd</code>: Risk difference (marginal risk in exposed minus unexposed)</p></li>
 <li><p><code>log(rr)</code>: Log risk ratio</p></li>
@@ -513,10 +619,14 @@ measures:</p><ul><li><p><code>rd</code>: Risk difference (marginal risk in expos
 </ul><p>A continuous outcome (<code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">stats::lm()</a></code> or <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> with
 <code>family = gaussian()</code>) returns only the difference in means (<code>diff</code>).</p>
 <p>For a categorical exposure, the same measures are reported for each
-non-reference level against the reference (first) factor level. The estimates
-table gains a <code>contrast</code> column naming the pair of levels each row compares
-(for example <code>"b vs a"</code>), so a K-level exposure produces one block of
-measures per non-reference level.</p>
+non-reference level against the reference (first) factor level, so a K-level
+exposure produces one block of measures per non-reference level.</p>
+<p>The estimates table of either exposure carries a <code>contrast</code> column naming
+what each row is about: the level a mean row belongs to, and the pair of
+levels a contrast row compares, written <code>"1 vs 0"</code> or <code>"b vs a"</code> in the
+levels the models were fit on. A binary exposure names its one pair the same
+way a categorical one names each of its several, so the two tables are read
+alike.</p>
 <p>For a continuous exposure, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> reports the exposure coefficients of the
 weighted marginal structural outcome model. A model with one exposure
 coefficient reports one row and no <code>contrast</code> column, and a dose-response
@@ -565,13 +675,18 @@ scale.</p>
     <h2 id="effect-modification">Effect modification<a class="anchor" aria-label="anchor" href="#effect-modification"></a></h2>
     <p><code>.by</code> names a modifier and asks for the effect within each of its levels
 alongside the effect for the sample as a whole. The reported rows come in
-three blocks, in this order:</p><ul><li><p>the overall rows, unchanged from the fit without <code>.by</code>, under the group
-label <code>"overall"</code>;</p></li>
-<li><p>one block per level of the modifier, under a <code>"var = value"</code> label such as
-<code>"sex = female"</code>;</p></li>
-<li><p>one block per non-reference level against the reference level, which is the
-modifier's first level, under a <code>"var = value vs var = value"</code> label.</p></li>
-</ul><p>A stratum's effect is g-computation restricted to that stratum: the outcome
+four blocks, in this order:</p><ul><li><p>the overall rows, unchanged from the fit without <code>.by</code>, the counterfactual
+means and then the contrasts, under the group label <code>"overall"</code>;</p></li>
+<li><p>the counterfactual mean at each exposure level within each level of the
+modifier, under a <code>"var = value"</code> label such as <code>"sex = female"</code>;</p></li>
+<li><p>one block of contrasts per level of the modifier, under the same labels;</p></li>
+<li><p>one block of contrasts per non-reference level against the reference level,
+which is the modifier's first level, under a
+<code>"var = value vs var = value"</code> label.</p></li>
+</ul><p>The last block reports no means of its own. Its rows compare the effects in
+two strata, and a difference of two effects belongs to neither stratum's
+population, so there is no level whose mean it would be.</p>
+<p>A stratum's effect is g-computation restricted to that stratum: the outcome
 model predicts each unit's outcome at each exposure level, and the
 predictions are averaged over the units of the stratum, weighted by the
 estimand's tilt. What a stratum row estimates is therefore the effect in that
@@ -591,11 +706,12 @@ level.</p>
 and <code>.by</code> crosses those contrasts with the strata: every block holds each
 contrast on each reported measure, so a K-level exposure with S strata
 reports the whole-sample block and then S + (S - 1) blocks of (K - 1)
-contrasts. A row is named by three things there, the measure, the contrast,
-and the subgroup, and the <code>estimates</code> frame carries <code>contrast</code> and <code>group</code> in
-that order after <code>effect</code>. Within a block the ordering is the one an
-ungrouped categorical fit already uses, contrast-major and measure-minor, so
-a contrast's measures sit together; the blocks themselves run group-major.</p>
+contrasts, beside S blocks of K means. A row is named by three things, the
+measure, the contrast, and the subgroup, and the <code>estimates</code> frame carries
+<code>contrast</code> and <code>group</code> in that order after <code>effect</code>. Within a contrast block
+the ordering is the one an ungrouped fit already uses, contrast-major and
+measure-minor, so a contrast's measures sit together; the blocks themselves
+run group-major.</p>
 <p>The stratum rows and the stratum contrasts report the risk difference and the
 log risk ratio for a binary outcome, and the difference in means for a
 continuous one. They report no odds ratio. An odds ratio is noncollapsible,
@@ -1083,19 +1199,29 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         estimate  std.err      z  ci.lower ci.upper conf.level p.value  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd      0.142304 0.070204 2.0270 0.0047068  0.27990       0.95 0.04266 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 0.280314 0.142195 1.9713 0.0016172  0.55901       0.95 0.04869 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) 0.573392 0.286710 1.9999 0.0114518  1.13533       0.95 0.04551 *</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                estimate  std.err       z  ci.lower ci.upper conf.level p.value</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0         0.439827 0.050624  8.6881 0.3406056  0.53905       0.95 &lt; 2e-16</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1         0.582131 0.048746 11.9421 0.4865905  0.67767       0.95 &lt; 2e-16</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0      0.142304 0.070204  2.0270 0.0047068  0.27990       0.95 0.04266</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 0.280314 0.142195  1.9713 0.0016172  0.55901       0.95 0.04869</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) 1 vs 0 0.573392 0.286710  1.9999 0.0114518  1.13533       0.95 0.04551</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                   </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0         ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1         ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0      *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) 1 vs 0 *  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ---</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Exponentiate log-RR and log-OR to get RR and OR</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">result</span>, exponentiate <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   term  estimate  std.error statistic    p.value</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1   rd 0.1423042 0.07020402  2.027009 0.04266153</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2   rr 1.3235458 0.14219501  1.971337 0.04868533</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3   or 1.7742759 0.28670966  1.999906 0.04551042</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   term contrast  estimate  std.error statistic      p.value</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1 mean        0 0.4398270 0.05062412  8.688092 3.685785e-18</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2 mean        1 0.5821312 0.04874616 11.942094 7.140277e-33</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3   rd   1 vs 0 0.1423042 0.07020402  2.027009 4.266153e-02</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4   rr   1 vs 0 1.3235458 0.14219501  1.971337 4.868533e-02</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5   or   1 vs 0 1.7742759 0.28670966  1.999906 4.551042e-02</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Continuous outcome example</span></span></span>
 <span class="r-in"><span><span class="va">y_cont</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">+</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="va">z</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span></span>
@@ -1113,8 +1239,14 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: lm(formula = y_cont ~ z, data = dat, weights = wts) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>      estimate std.err      z ci.lower ci.upper conf.level   p.value    </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> diff  0.90057 0.13661 6.5923  0.63282   1.1683       0.95 4.331e-11 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             estimate  std.err       z ci.lower ci.upper conf.level   p.value</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0      1.980510 0.105395 18.7913  1.77394   2.1871       0.95 &lt; 2.2e-16</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1      2.881082 0.090094 31.9788  2.70450   3.0577       0.95 &lt; 2.2e-16</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> diff 1 vs 0 0.900572 0.136610  6.5923  0.63282   1.1683       0.95 4.331e-11</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0      ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1      ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> diff 1 vs 0 ***</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ---</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1</span>
 <span class="r-in"><span></span></span>
@@ -1145,26 +1277,38 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     weights = wts_grp) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                             estimate   std.err       z    ci.lower ci.upper</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd overall                  0.141072  0.070930  1.9889  0.00205201 0.280091</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) overall             0.282732  0.146153  1.9345 -0.00372240 0.569186</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) overall             0.568087  0.289473  1.9625  0.00073072 1.135444</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = a                  0.254583  0.099646  2.5549  0.05928135 0.449885</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = a             0.503992  0.220170  2.2891  0.07246776 0.935517</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = b                  0.027560  0.098203  0.2806 -0.16491347 0.220033</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = b             0.056401  0.200510  0.2813 -0.33659204 0.449393</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = b vs grp = a      -0.227023  0.138856 -1.6350 -0.49917523 0.045129</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = b vs grp = a -0.447591  0.295023 -1.5171 -1.02582580 0.130643</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                            conf.level p.value  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd overall                       0.95 0.04671 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) overall                  0.95 0.05305 .</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) overall                  0.95 0.04971 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = a                       0.95 0.01062 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = a                  0.95 0.02207 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = b                       0.95 0.77898  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = b                  0.95 0.77849  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = b vs grp = a            0.95 0.10206  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = b vs grp = a       0.95 0.12923  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                                    estimate   std.err       z    ci.lower</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 overall                     0.431743  0.050756  8.5062  0.33226201</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 overall                     0.572814  0.048951 11.7019  0.47687248</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 overall                  0.141072  0.070930  1.9889  0.00205201</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 overall             0.282732  0.146153  1.9345 -0.00372240</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) 1 vs 0 overall             0.568087  0.289473  1.9625  0.00073072</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 grp = a                     0.388489  0.075881  5.1197  0.23976443</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 grp = a                     0.643072  0.063420 10.1399  0.51877097</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 grp = b                     0.474996  0.066425  7.1509  0.34480583</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 grp = b                     0.502556  0.074269  6.7667  0.35699105</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = a                  0.254583  0.099646  2.5549  0.05928135</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = a             0.503992  0.220170  2.2891  0.07246776</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = b                  0.027560  0.098203  0.2806 -0.16491347</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = b             0.056401  0.200510  0.2813 -0.33659204</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = b vs grp = a      -0.227023  0.138856 -1.6350 -0.49917523</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = b vs grp = a -0.447591  0.295023 -1.5171 -1.02582580</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                                   ci.upper conf.level   p.value    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 overall                    0.531223       0.95 &lt; 2.2e-16 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 overall                    0.668756       0.95 &lt; 2.2e-16 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 overall                 0.280091       0.95   0.04671 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 overall            0.569186       0.95   0.05305 .  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) 1 vs 0 overall            1.135444       0.95   0.04971 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 grp = a                    0.537214       0.95 3.060e-07 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 grp = a                    0.767374       0.95 &lt; 2.2e-16 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 grp = b                    0.605186       0.95 8.622e-13 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 grp = b                    0.648121       0.95 1.318e-11 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = a                 0.449885       0.95   0.01062 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = a            0.935517       0.95   0.02207 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = b                 0.220033       0.95   0.77898    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = b            0.449393       0.95   0.77849    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = b vs grp = a      0.045129       0.95   0.10206    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = b vs grp = a 0.130643       0.95   0.12923    </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ---</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1</span>
 <span class="r-in"><span></span></span>
@@ -1204,26 +1348,38 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     weights = wts_stab) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                             estimate   std.err       z    ci.lower ci.upper</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd overall                  0.141111  0.070936  1.9893  0.00207874 0.280143</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) overall             0.282784  0.146168  1.9347 -0.00369977 0.569268</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) overall             0.568249  0.289503  1.9628  0.00083438 1.135664</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = a                  0.254181  0.099876  2.5450  0.05842836 0.449934</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = a             0.503168  0.220709  2.2798  0.07058732 0.935749</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = b                  0.028041  0.098089  0.2859 -0.16420945 0.220292</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = b             0.057374  0.200232  0.2865 -0.33507324 0.449820</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = b vs grp = a      -0.226140  0.139012 -1.6268 -0.49859853 0.046319</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = b vs grp = a -0.445795  0.295444 -1.5089 -1.02485404 0.133265</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                            conf.level p.value  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd overall                       0.95 0.04667 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) overall                  0.95 0.05303 .</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) overall                  0.95 0.04966 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = a                       0.95 0.01093 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = a                  0.95 0.02262 *</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = b                       0.95 0.77497  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = b                  0.95 0.77447  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd grp = b vs grp = a            0.95 0.10379  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) grp = b vs grp = a       0.95 0.13132  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                                    estimate   std.err       z    ci.lower</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 overall                     0.431772  0.050787  8.5016  0.33223140</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 overall                     0.572883  0.048948 11.7038  0.47694619</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 overall                  0.141111  0.070936  1.9893  0.00207874</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 overall             0.282784  0.146168  1.9347 -0.00369977</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) 1 vs 0 overall             0.568249  0.289503  1.9628  0.00083438</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 grp = a                     0.388684  0.076110  5.1069  0.23951204</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 grp = a                     0.642865  0.063444 10.1329  0.51851776</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 grp = b                     0.474860  0.066369  7.1548  0.34477918</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 grp = b                     0.502901  0.074211  6.7766  0.35744987</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = a                  0.254181  0.099876  2.5450  0.05842836</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = a             0.503168  0.220709  2.2798  0.07058732</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = b                  0.028041  0.098089  0.2859 -0.16420945</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = b             0.057374  0.200232  0.2865 -0.33507324</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = b vs grp = a      -0.226140  0.139012 -1.6268 -0.49859853</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = b vs grp = a -0.445795  0.295444 -1.5089 -1.02485404</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                                   ci.upper conf.level   p.value    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 overall                    0.531313       0.95 &lt; 2.2e-16 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 overall                    0.668820       0.95 &lt; 2.2e-16 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 overall                 0.280143       0.95   0.04667 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 overall            0.569268       0.95   0.05303 .  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) 1 vs 0 overall            1.135664       0.95   0.04966 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 grp = a                    0.537856       0.95 3.275e-07 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 grp = a                    0.767212       0.95 &lt; 2.2e-16 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 0 grp = b                    0.604941       0.95 8.377e-13 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean 1 grp = b                    0.648353       0.95 1.230e-11 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = a                 0.449934       0.95   0.01093 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = a            0.935749       0.95   0.02262 *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = b                 0.220292       0.95   0.77497    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = b            0.449820       0.95   0.77447    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd 1 vs 0 grp = b vs grp = a      0.046319       0.95   0.10379    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) 1 vs 0 grp = b vs grp = a 0.133265       0.95   0.13132    </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ---</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1</span>
 <span class="r-in"><span></span></span>
@@ -1263,9 +1419,13 @@ weighting.</p></div>
 <span class="r-in"><span><span class="co"># dose, so `.data` supplies the exposure.</span></span></span>
 <span class="r-in"><span><span class="va">msm_curve</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y_dose</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/stats/poly.html" class="external-link">poly</a></span><span class="op">(</span><span class="va">a</span>, <span class="fl">2</span><span class="op">)</span>, data <span class="op">=</span> <span class="va">dat</span>, weights <span class="op">=</span> <span class="va">wts_cont</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_cont</span>, <span class="va">msm_curve</span>, .data <span class="op">=</span> <span class="va">dat</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> `ipw()` reports only the conditional reading because the exposure enters `outcome_mod` through more than one term, such as a spline or polynomial.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> With a nonlinear dose-response, no single coefficient is the effect of the exposure, so there is no marginal effect to report.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Use the <span style="color: #0000BB;">marginaleffects</span> package to marginalize over the dose: `avg_slopes()` for slopes, `avg_comparisons()` for contrasts, and `avg_predictions()` for causal dose-response functions. See <span style="color: #0000BB; font-style: italic;">&lt;https://marginaleffects.com/chapters/interactions.html&gt;</span>.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Set `effects = "conditional"` to silence this message.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Inverse Probability Weight Estimator</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Estimand: ATE </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Effects: marginal (population-averaged) </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Effects: conditional (outcome model) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Weight Estimator:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: lm(formula = a ~ x1, data = dat) </span>
@@ -1273,13 +1433,11 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Outcome Model:</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Call: lm(formula = y_dose ~ poly(a, 2), data = dat, weights = wts_cont) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                  estimate std.err       z ci.lower ci.upper conf.level</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> coef poly(a, 2)1   6.3538  1.4784  4.2977   3.4561  9.25145       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> coef poly(a, 2)2  -2.1089  1.2525 -1.6838  -4.5637  0.34582       0.95</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                    p.value    </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> coef poly(a, 2)1 1.726e-05 ***</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> coef poly(a, 2)2   0.09221 .  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Conditional estimates (outcome model):</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             Estimate Std. Error z value  Pr(&gt;|z|)    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> (Intercept)  1.21010    0.11507 10.5160 &lt; 2.2e-16 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> poly(a, 2)1  6.35379    1.47843  4.2977 1.726e-05 ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> poly(a, 2)2 -2.10894    1.25245 -1.6838   0.09221 .  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ---</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1</span>
 <span class="r-in"><span></span></span>
@@ -1308,20 +1466,26 @@ weighting.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     weights = wts_cat) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Marginal estimates:</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                estimate  std.err      z ci.lower ci.upper conf.level  p.value</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd b vs a      0.170980 0.067926 2.5171 0.037847  0.30411       0.95 0.011831</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) b vs a 0.387821 0.160396 2.4179 0.073451  0.70219       0.95 0.015610</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) b vs a 0.699153 0.283716 2.4643 0.143079  1.25523       0.95 0.013729</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd c vs a      0.209194 0.070015 2.9878 0.071966  0.34642       0.95 0.002810</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) c vs a 0.457206 0.159807 2.8610 0.143990  0.77042       0.95 0.004223</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) c vs a 0.853695 0.294111 2.9026 0.277247  1.43014       0.95 0.003700</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd b vs a      * </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) b vs a * </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) b vs a * </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> rd c vs a      **</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) c vs a **</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) c vs a **</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                estimate  std.err       z ci.lower ci.upper conf.level   p.value</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean a         0.360894 0.047526  7.5936 0.267745  0.45404       0.95 3.111e-14</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean b         0.531874 0.048166 11.0425 0.437470  0.62628       0.95 &lt; 2.2e-16</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean c         0.570088 0.051072 11.1625 0.469989  0.67019       0.95 &lt; 2.2e-16</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd b vs a      0.170980 0.067926  2.5171 0.037847  0.30411       0.95  0.011831</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) b vs a 0.387821 0.160396  2.4179 0.073451  0.70219       0.95  0.015610</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) b vs a 0.699153 0.283716  2.4643 0.143079  1.25523       0.95  0.013729</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd c vs a      0.209194 0.070015  2.9878 0.071966  0.34642       0.95  0.002810</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) c vs a 0.457206 0.159807  2.8610 0.143990  0.77042       0.95  0.004223</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) c vs a 0.853695 0.294111  2.9026 0.277247  1.43014       0.95  0.003700</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                   </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean a         ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean b         ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> mean c         ***</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd b vs a      *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) b vs a *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) b vs a *  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> rd c vs a      ** </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(rr) c vs a ** </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> log(or) c vs a ** </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ---</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1</span>
 </code></pre></div>

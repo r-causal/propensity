@@ -120,16 +120,17 @@ ipw(ps_a, em_mod, .by = v)
 #>   Call: lm(formula = y ~ a * v, data = dat, weights = w_a) 
 #> 
 #> Marginal estimates:
-#>                          estimate  std.err      z ci.lower ci.upper conf.level
-#> diff overall             1.434758 0.051168 28.040  1.33447   1.5350       0.95
-#> diff v = low             0.920464 0.069938 13.161  0.78339   1.0575       0.95
-#> diff v = high            1.953183 0.073289 26.650  1.80954   2.0968       0.95
-#> diff v = high vs v = low 1.032719 0.102924 10.034  0.83099   1.2344       0.95
-#>                            p.value    
-#> diff overall             < 2.2e-16 ***
-#> diff v = low             < 2.2e-16 ***
-#> diff v = high            < 2.2e-16 ***
-#> diff v = high vs v = low < 2.2e-16 ***
+#>                                 estimate  std.err      z ci.lower ci.upper conf.level   p.value    
+#> mean 0 overall                  1.375819 0.034348 40.055  1.30850   1.4431       0.95 < 2.2e-16 ***
+#> mean 1 overall                  2.810577 0.039774 70.663  2.73262   2.8885       0.95 < 2.2e-16 ***
+#> diff 1 vs 0 overall             1.434758 0.051168 28.040  1.33447   1.5350       0.95 < 2.2e-16 ***
+#> mean 0 v = low                  1.239646 0.041393 29.948  1.15852   1.3208       0.95 < 2.2e-16 ***
+#> mean 1 v = low                  2.160110 0.056806 38.026  2.04877   2.2714       0.95 < 2.2e-16 ***
+#> mean 0 v = high                 1.513086 0.054746 27.638  1.40579   1.6204       0.95 < 2.2e-16 ***
+#> mean 1 v = high                 3.466269 0.049330 70.267  3.36958   3.5630       0.95 < 2.2e-16 ***
+#> diff 1 vs 0 v = low             0.920464 0.069938 13.161  0.78339   1.0575       0.95 < 2.2e-16 ***
+#> diff 1 vs 0 v = high            1.953183 0.073289 26.650  1.80954   2.0968       0.95 < 2.2e-16 ***
+#> diff 1 vs 0 v = high vs v = low 1.032719 0.102924 10.034  0.83099   1.2344       0.95 < 2.2e-16 ***
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
@@ -181,26 +182,16 @@ joint_fit
 #>   Call: lm(formula = y ~ a * e, data = dat, weights = w_joint) 
 #> 
 #> Marginal estimates:
-#>                               estimate  std.err       z ci.lower ci.upper
-#> mean a = 0, e = 0 overall     1.198370 0.052887 22.6591  1.09471  1.30203
-#> mean a = 1, e = 0 overall     2.227287 0.054681 40.7327  2.12011  2.33446
-#> mean a = 0, e = 1 overall     1.524161 0.045885 33.2172  1.43423  1.61409
-#> mean a = 1, e = 1 overall     3.053515 0.044054 69.3132  2.96717  3.13986
-#> diff a: 1 vs 0 e = 0          1.028917 0.075456 13.6360  0.88103  1.17681
-#> diff a: 1 vs 0 e = 1          1.529354 0.062107 24.6244  1.40763  1.65108
-#> diff e: 1 vs 0 a = 0          0.325791 0.069820  4.6661  0.18895  0.46264
-#> diff e: 1 vs 0 a = 1          0.826228 0.065501 12.6140  0.69785  0.95461
-#> diff a: 1 vs 0 e = 1 vs e = 0 0.500437 0.095685  5.2300  0.31290  0.68798
-#>                               conf.level   p.value    
-#> mean a = 0, e = 0 overall           0.95 < 2.2e-16 ***
-#> mean a = 1, e = 0 overall           0.95 < 2.2e-16 ***
-#> mean a = 0, e = 1 overall           0.95 < 2.2e-16 ***
-#> mean a = 1, e = 1 overall           0.95 < 2.2e-16 ***
-#> diff a: 1 vs 0 e = 0                0.95 < 2.2e-16 ***
-#> diff a: 1 vs 0 e = 1                0.95 < 2.2e-16 ***
-#> diff e: 1 vs 0 a = 0                0.95 3.069e-06 ***
-#> diff e: 1 vs 0 a = 1                0.95 < 2.2e-16 ***
-#> diff a: 1 vs 0 e = 1 vs e = 0       0.95 1.695e-07 ***
+#>                               estimate  std.err       z ci.lower ci.upper conf.level   p.value    
+#> mean a = 0, e = 0 overall     1.198370 0.052887 22.6591  1.09471  1.30203       0.95 < 2.2e-16 ***
+#> mean a = 1, e = 0 overall     2.227287 0.054681 40.7327  2.12011  2.33446       0.95 < 2.2e-16 ***
+#> mean a = 0, e = 1 overall     1.524161 0.045885 33.2172  1.43423  1.61409       0.95 < 2.2e-16 ***
+#> mean a = 1, e = 1 overall     3.053515 0.044054 69.3132  2.96717  3.13986       0.95 < 2.2e-16 ***
+#> diff a: 1 vs 0 e = 0          1.028917 0.075456 13.6360  0.88103  1.17681       0.95 < 2.2e-16 ***
+#> diff a: 1 vs 0 e = 1          1.529354 0.062107 24.6244  1.40763  1.65108       0.95 < 2.2e-16 ***
+#> diff e: 1 vs 0 a = 0          0.325791 0.069820  4.6661  0.18895  0.46264       0.95 3.069e-06 ***
+#> diff e: 1 vs 0 a = 1          0.826228 0.065501 12.6140  0.69785  0.95461       0.95 < 2.2e-16 ***
+#> diff a: 1 vs 0 e = 1 vs e = 0 0.500437 0.095685  5.2300  0.31290  0.68798       0.95 1.695e-07 ***
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
@@ -341,26 +332,38 @@ ipw(ps_a, emb_mod, .by = v)
 #>     weights = w_a) 
 #> 
 #> Marginal estimates:
-#>                             estimate  std.err       z  ci.lower ci.upper
-#> rd overall                  0.225203 0.021977 10.2473  0.182129  0.26828
-#> log(rr) overall             0.509889 0.054266  9.3960  0.403528  0.61625
-#> log(or) overall             0.926150 0.094087  9.8436  0.741743  1.11056
-#> rd v = low                  0.134847 0.030509  4.4199  0.075051  0.19464
-#> log(rr) v = low             0.384900 0.088198  4.3640  0.212035  0.55777
-#> rd v = high                 0.316284 0.031639  9.9968  0.254273  0.37829
-#> log(rr) v = high            0.593443 0.070192  8.4545  0.455869  0.73102
-#> rd v = high vs v = low      0.181437 0.044136  4.1108  0.094931  0.26794
-#> log(rr) v = high vs v = low 0.208543 0.113040  1.8449 -0.013011  0.43010
-#>                             conf.level   p.value    
-#> rd overall                        0.95 < 2.2e-16 ***
-#> log(rr) overall                   0.95 < 2.2e-16 ***
-#> log(or) overall                   0.95 < 2.2e-16 ***
-#> rd v = low                        0.95 9.873e-06 ***
-#> log(rr) v = low                   0.95 1.277e-05 ***
-#> rd v = high                       0.95 < 2.2e-16 ***
-#> log(rr) v = high                  0.95 < 2.2e-16 ***
-#> rd v = high vs v = low            0.95 3.943e-05 ***
-#> log(rr) v = high vs v = low       0.95   0.06506 .  
+#>                                    estimate  std.err       z  ci.lower ci.upper conf.level
+#> mean 0 overall                     0.338597 0.016109 21.0189  0.307023  0.37017       0.95
+#> mean 1 overall                     0.563799 0.015292 36.8694  0.533828  0.59377       0.95
+#> rd 1 vs 0 overall                  0.225203 0.021977 10.2473  0.182129  0.26828       0.95
+#> log(rr) 1 vs 0 overall             0.509889 0.054266  9.3960  0.403528  0.61625       0.95
+#> log(or) 1 vs 0 overall             0.926150 0.094087  9.8436  0.741743  1.11056       0.95
+#> mean 0 v = low                     0.287234 0.019854 14.4673  0.248321  0.32615       0.95
+#> mean 1 v = low                     0.422081 0.023254 18.1507  0.376503  0.46766       0.95
+#> mean 0 v = high                    0.390372 0.025330 15.4113  0.340726  0.44002       0.95
+#> mean 1 v = high                    0.706656 0.019007 37.1779  0.669402  0.74391       0.95
+#> rd 1 vs 0 v = low                  0.134847 0.030509  4.4199  0.075051  0.19464       0.95
+#> log(rr) 1 vs 0 v = low             0.384900 0.088198  4.3640  0.212035  0.55777       0.95
+#> rd 1 vs 0 v = high                 0.316284 0.031639  9.9968  0.254273  0.37829       0.95
+#> log(rr) 1 vs 0 v = high            0.593443 0.070192  8.4545  0.455869  0.73102       0.95
+#> rd 1 vs 0 v = high vs v = low      0.181437 0.044136  4.1108  0.094931  0.26794       0.95
+#> log(rr) 1 vs 0 v = high vs v = low 0.208543 0.113040  1.8449 -0.013011  0.43010       0.95
+#>                                      p.value    
+#> mean 0 overall                     < 2.2e-16 ***
+#> mean 1 overall                     < 2.2e-16 ***
+#> rd 1 vs 0 overall                  < 2.2e-16 ***
+#> log(rr) 1 vs 0 overall             < 2.2e-16 ***
+#> log(or) 1 vs 0 overall             < 2.2e-16 ***
+#> mean 0 v = low                     < 2.2e-16 ***
+#> mean 1 v = low                     < 2.2e-16 ***
+#> mean 0 v = high                    < 2.2e-16 ***
+#> mean 1 v = high                    < 2.2e-16 ***
+#> rd 1 vs 0 v = low                  9.873e-06 ***
+#> log(rr) 1 vs 0 v = low             1.277e-05 ***
+#> rd 1 vs 0 v = high                 < 2.2e-16 ***
+#> log(rr) 1 vs 0 v = high            < 2.2e-16 ***
+#> rd 1 vs 0 v = high vs v = low      3.943e-05 ***
+#> log(rr) 1 vs 0 v = high vs v = low   0.06506 .  
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
@@ -393,16 +396,14 @@ refuses it:
 marginal_e <- glm(e ~ l, data = dat, family = binomial())
 joint_wt_models(a = ps_a, e = marginal_e)
 #> Error in `joint_wt_models()`:
-#> ! `joint_wt_models()` requires the second model to condition on the
-#>   first treatment.
+#> ! `joint_wt_models()` requires the second model to condition on the first treatment.
 #> ✖ `e` does not read "a" on its right-hand side.
-#> ℹ A joint weight factorizes as f(a | L) f(e | a, L). The product of two
-#>   marginal models, f(a | L) f(e | L), is a different quantity, and it is not
-#>   the joint weight wherever "e" depends on "a".
-#> ℹ Nothing downstream can tell the two apart: the product is an ordinary vector
-#>   of positive numbers either way.
-#> ℹ Add "a" to the formula of `e`, and model that dependence flexibly rather than
-#>   as a single additive term.
+#> ℹ A joint weight factorizes as f(a | L) f(e | a, L). The product of two marginal models, f(a | L)
+#>   f(e | L), is a different quantity, and it is not the joint weight wherever "e" depends on "a".
+#> ℹ Nothing downstream can tell the two apart: the product is an ordinary vector of positive numbers
+#>   either way.
+#> ℹ Add "a" to the formula of `e`, and model that dependence flexibly rather than as a single
+#>   additive term.
 ```
 
 The refusal exists because nothing downstream can catch the mistake.
