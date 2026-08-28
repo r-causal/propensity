@@ -19,59 +19,102 @@ sim_continuous <- function(seed = 2024, n = 800) {
   data.frame(x1, x2, A, yc, yb)
 }
 
+# The same simulation with an exposure that is positive everywhere, which a
+# propensity model with a log link needs: the link takes the log of the
+# response to start its iteration, and a dose that can be zero or negative has
+# no such start. The dose is the one above shifted up rather than exponentiated,
+# so it stays conditionally normal with a single spread and the density the
+# weights divide by is the density the dose has. The columns are named as they
+# are in `sim_continuous()` so that every formula the fixtures below write reads
+# either simulation.
+sim_continuous_positive <- function(seed = 2024, n = 800) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  A <- 5 + 0.8 * x1 - 0.4 * x2 + rnorm(n)
+  yc <- 1 + 0.6 * A + 0.5 * x1 - 0.3 * x2 + rnorm(n)
+  yb <- rbinom(n, 1, plogis(-3 + 0.3 * A + 0.3 * x1 - 0.2 * x2))
+  data.frame(x1, x2, A, yc, yb)
+}
+
 # ---- model fitting ----------------------------------------------------------
 
 # Continuous ATE weights from a numeric fitted propensity, always computed
 # silently. Stabilized weights are the recommended default for a continuous
-# exposure; stabilize = FALSE emits an alert unless quieted.
+# exposure; stabilize = FALSE emits an alert unless quieted. `.density`,
+# `numerator`, and `.sigma` are the three choices a set of continuous weights
+# records, and every one of them changes what `ipw()` has to rebuild.
 continuous_weights <- function(
   fitted_ps,
   A,
   stabilize = TRUE,
-  stab_score = NULL
+  stab_score = NULL,
+  .density = "normal",
+  numerator = "marginal",
+  .sigma = NULL
 ) {
   withr::with_options(
     list(propensity.quiet = TRUE),
     wt_ate(
       fitted_ps,
       A,
+      .sigma = .sigma,
       exposure_type = "continuous",
       stabilize = stabilize,
-      stabilization_score = stab_score
+      stabilization_score = stab_score,
+      .density = .density,
+      numerator = numerator
     )
   )
 }
 
 # Fit the propensity score model of A on the covariates, build continuous ATE
 # weights from its fitted values, and fit a weighted MSM. `ps_type` selects the
-# lm or the gaussian-family glm form of the propensity model; the two share
-# fitted values and so produce identical weights. `msm_rhs` allows a
-# multiple-term right-hand side for the MSM guard. The weights are kept as a psw
-# object so the estimand survives into the outcome model frame for detection. The
-# quasibinomial MSM tightens its IRLS tolerance so its coefficients sit at the
-# weighted MLE to well below the point-estimate comparison tolerance.
+# lm, the gaussian-family glm, or the log-link gaussian glm form of the
+# propensity model; the first two share fitted values and so produce identical
+# weights, and the third needs the positive exposure `sim_continuous_positive()`
+# simulates. `msm_rhs` allows a multiple-term right-hand side for the MSM guard.
+# `.density`, `numerator`, and `.sigma` are passed through to the weights. The
+# weights are kept as a psw object so the estimand survives into the outcome
+# model frame for detection. The quasibinomial MSM tightens its IRLS tolerance
+# so its coefficients sit at the weighted MLE to well below the point-estimate
+# comparison tolerance, and the log-link propensity model tightens its own for
+# the same reason: the stacked score is solved to a tighter root than the IRLS
+# default stops at.
 fit_continuous_models <- function(
   dat,
-  ps_type = c("lm", "glm"),
+  ps_type = c("lm", "glm", "glm_log"),
   outcome_family = c("gaussian", "binomial"),
   stabilize = TRUE,
   stab_score = NULL,
-  msm_rhs = "A"
+  msm_rhs = "A",
+  .density = "normal",
+  numerator = "marginal",
+  .sigma = NULL
 ) {
   ps_type <- match.arg(ps_type)
   outcome_family <- match.arg(outcome_family)
 
-  ps_mod <- if (ps_type == "lm") {
-    lm(A ~ x1 + x2, data = dat)
-  } else {
-    glm(A ~ x1 + x2, data = dat, family = gaussian())
-  }
+  ps_mod <- switch(
+    ps_type,
+    lm = lm(A ~ x1 + x2, data = dat),
+    glm = glm(A ~ x1 + x2, data = dat, family = gaussian()),
+    glm_log = glm(
+      A ~ x1 + x2,
+      data = dat,
+      family = gaussian(link = "log"),
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+  )
   fitted_ps <- as.double(fitted(ps_mod))
   wts <- continuous_weights(
     fitted_ps,
     dat$A,
     stabilize = stabilize,
-    stab_score = stab_score
+    stab_score = stab_score,
+    .density = .density,
+    numerator = numerator,
+    .sigma = .sigma
   )
 
   outcome_var <- if (outcome_family == "binomial") "yb" else "yc"
@@ -505,51 +548,15 @@ test_that("ipw_spec_continuous rejects an unsupported outcome family", {
 
 # ---- continuous-path link validation ----------------------------------------
 #
-# Two continuous-path inputs are rejected at entry with a classed error naming
-# the supported links. Left to their downstream failures both mislead: a
-# gaussian propensity model with a non-identity link reconstructs its linear
-# predictor as the fitted mean, so the weights the user built from fitted() no
-# longer match and the weights-mismatch error blames the weights instead of the
-# unsupported link; a probit marginal structural model passes the family check
-# but has no continuous effect label, so it errors late with a terse internal
-# message. (A gaussian-identity glm ps model, already covered by the
-# gaussian-glm routing test above, and a logit msm, covered by the effect-label
-# test above, must keep working; the log-link msm below adds the one supported
-# msm link not otherwise exercised.)
-
-test_that("ipw() rejects a non-identity link on the continuous propensity model", {
-  dat <- sim_continuous()
-  withr::local_seed(7)
-  dat$Apos <- exp(0.3 + 0.4 * dat$x1 - 0.2 * dat$x2 + 0.3 * rnorm(nrow(dat)))
-  dat$ypos <- 1 + 0.6 * dat$Apos + 0.5 * dat$x1 + rnorm(nrow(dat))
-  ps_mod <- suppressWarnings(
-    glm(Apos ~ x1 + x2, data = dat, family = gaussian(link = "log"))
-  )
-  wts <- continuous_weights(fitted(ps_mod), dat$Apos)
-  msm <- lm(ypos ~ Apos, data = dat, weights = wts)
-
-  # class propensity_ipw_link_error is the natural fit; the implementer may
-  # adjust it, but the error must name the unsupported propensity model link
-  # rather than blame the outcome model weights.
-  expect_error(
-    ipw(ps_mod, msm),
-    class = "propensity_ipw_link_error"
-  )
-})
-
-test_that("the continuous propensity-link error names the unsupported link", {
-  dat <- sim_continuous()
-  withr::local_seed(7)
-  dat$Apos <- exp(0.3 + 0.4 * dat$x1 - 0.2 * dat$x2 + 0.3 * rnorm(nrow(dat)))
-  dat$ypos <- 1 + 0.6 * dat$Apos + 0.5 * dat$x1 + rnorm(nrow(dat))
-  ps_mod <- suppressWarnings(
-    glm(Apos ~ x1 + x2, data = dat, family = gaussian(link = "log"))
-  )
-  wts <- continuous_weights(fitted(ps_mod), dat$Apos)
-  msm <- lm(ypos ~ Apos, data = dat, weights = wts)
-
-  expect_snapshot(error = TRUE, ipw(ps_mod, msm))
-})
+# The marginal structural model is rejected at entry with a classed error naming
+# the supported links. Left to its downstream failure it misleads: a probit
+# marginal structural model passes the family check but has no continuous effect
+# label, so it errors late with a terse internal message. (A gaussian-identity
+# glm ps model, already covered by the gaussian-glm routing test above, and a
+# logit msm, covered by the effect-label test above, must keep working; the
+# log-link msm below adds the one supported msm link not otherwise exercised.
+# The propensity model's own link is the registry's business, and the log link
+# it supports is pinned with the rest of the registry below.)
 
 test_that("ipw() rejects a non-identity link on the continuous marginal structural model", {
   dat <- sim_continuous()
@@ -854,7 +861,9 @@ test_that("ipw() refuses continuous weights built with an observation-level `.si
 
   # `ipw()` stacks a single pooled residual variance, so weights spread by the
   # model's leave-one-out standard deviations are not a function of the stacked
-  # parameters at any value and cannot survive the consistency check.
+  # parameters at any value. The weights record the spread they were built with,
+  # so the refusal names it directly rather than reaching the consistency check
+  # and reporting a disagreement between two vectors.
   sigma_wts <- wt_ate(
     as.double(fitted(ps_mod)),
     dat$A,
@@ -866,7 +875,7 @@ test_that("ipw() refuses continuous weights built with an observation-level `.si
 
   expect_error(
     ipw(ps_mod, outcome_mod),
-    class = "propensity_ipw_weights_mismatch_error"
+    class = "propensity_ipw_sigma_error"
   )
 
   # The same weights without `.sigma` take the pooled default and are accepted,
@@ -1139,4 +1148,370 @@ test_that("ipw() continuous stores no contrast column under either name", {
     expect_false("contrast" %in% names(est))
     expect_false("comparison" %in% names(est))
   }
+})
+
+# ---- the model registry -----------------------------------------------------
+#
+# What `ipw()` can stack for a continuous exposure is the set of propensity
+# model classes whose score it can write down: a plain lm, and a gaussian glm
+# read through its link. Everything else is either refused by class, because the
+# stacked score would describe a model the user never fit, or refused as a
+# standard error the M-estimation path cannot produce, which is a different
+# refusal with a different remedy.
+
+test_that("ipw() stacks a log-link gaussian propensity model", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_positive()
+  mods <- fit_continuous_models(dat, ps_type = "glm_log")
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(mods$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+
+  # The propensity block leads theta, so the coefficients the sandwich solves
+  # for are the first ones it reports, and they are the coefficients the user
+  # fit: the stacked score is the log-link score rather than the least-squares
+  # one, which would sit at a different root.
+  theta <- coef(res$fit)
+  ps_block <- theta[seq_along(coef(mods$ps_mod))]
+  expect_equal(
+    unname(ps_block),
+    unname(coef(mods$ps_mod)),
+    tolerance = 1e-6
+  )
+})
+
+test_that("ipw() continuous refuses an lm subclass it does not know", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+
+  # A subclass reaches the lm method by inheritance, and nothing downstream can
+  # tell that its coefficients are not the least-squares root, so the registry
+  # refuses any class it was not written for and says which ones it was.
+  unknown <- structure(mods$ps_mod, class = c("mymodel", "lm"))
+
+  err <- expect_error(
+    ipw(unknown, mods$outcome_mod),
+    class = "propensity_class_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "mymodel", fixed = TRUE)
+  expect_match(msg, "lm", fixed = TRUE)
+  expect_match(msg, "glm", fixed = TRUE)
+})
+
+test_that("ipw() refuses a gam propensity model as a method it cannot produce", {
+  skip_if_not_installed("mgcv")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+
+  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  # An additive fit chooses its smoothing by REML, which no estimating equation
+  # here reproduces, so the sandwich is unavailable rather than the model being
+  # wrong. The refusal names the standard error method that does work and the
+  # argument that method needs.
+  err <- expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_se_method_unavailable_error"
+  )
+  expect_s3_class(err, "propensity_method_error")
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "bootstrap", fixed = TRUE)
+  expect_match(msg, ".data", fixed = TRUE)
+})
+
+test_that("ipw() refuses kernel-density weights as a method it cannot produce", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat, .density = "kernel")
+
+  # A kernel bandwidth is chosen from the residuals rather than written as a
+  # function of the parameters, so the weights are not differentiable in theta
+  # and the sandwich has nothing to differentiate. The class is the same one the
+  # gam refusal carries: what is unavailable is the method, not the model.
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_se_method_unavailable_error"
+  )
+  expect_s3_class(err, "propensity_method_error")
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(err)),
+    "bootstrap",
+    fixed = TRUE
+  )
+})
+
+test_that("ipw() stacks a density the user wrote", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(
+    dat,
+    .density = function(z) stats::dt(z, df = 5)
+  )
+
+  # A density the user supplies is a closure the weights carry, and the sandwich
+  # calls it as given: nothing about it depends on the parameters except the
+  # standardized residual it is read at.
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(mods$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+})
+
+# ---- densities and numerators end to end ------------------------------------
+#
+# The combinations the sandwich has to rebuild weights for. Each is a family and
+# a numerator; the spread is pooled throughout, which is the case a fixed
+# `.sigma` and an observation-level one are held against below.
+continuous_density_cases <- list(
+  list(.density = dens_t(4), numerator = "marginal"),
+  list(.density = "laplace", numerator = "marginal"),
+  list(.density = "normal", numerator = "integrated"),
+  list(.density = dens_t(4), numerator = "integrated")
+)
+
+test_that("ipw() continuous point estimates match the MSM coefficient for every density", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+
+  for (case in continuous_density_cases) {
+    mods <- fit_continuous_models(
+      dat,
+      .density = case$.density,
+      numerator = case$numerator
+    )
+    res <- ipw(mods$ps_mod, mods$outcome_mod)
+    expect_equal(
+      res$estimates$estimate,
+      unname(coef(mods$outcome_mod)[["A"]]),
+      tolerance = 1e-8
+    )
+    expect_true(is.finite(res$estimates$std.err) && res$estimates$std.err > 0)
+  }
+})
+
+test_that("the weights ipw() rebuilds at its seed are the weights it was given", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+
+  # The preflight compares the two at a relative tolerance of 1e-6 before
+  # solving anything. They agree far more closely than that when the sandwich
+  # reads the same density, numerator, and spread the weights recorded, so this
+  # holds them to the arithmetic rather than to the guard.
+  cases <- c(
+    continuous_density_cases,
+    list(list(.density = "normal", numerator = "marginal"))
+  )
+  for (case in cases) {
+    mods <- fit_continuous_models(
+      dat,
+      .density = case$.density,
+      numerator = case$numerator
+    )
+    spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+    layout <- ipw_theta_layout(spec)
+    expect_equal(
+      as.double(ipw_weights_at_init(spec, layout)),
+      as.double(mods$wts),
+      tolerance = 1e-12
+    )
+    expect_s3_class(ipw(mods$ps_mod, mods$outcome_mod), "ipw")
+  }
+})
+
+test_that("a log-link propensity model rebuilds its weights at the seed too", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_positive()
+  mods <- fit_continuous_models(dat, ps_type = "glm_log")
+
+  spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(mods$wts),
+    tolerance = 1e-12
+  )
+})
+
+test_that("an integrated numerator stacks no marginal moments", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat, numerator = "integrated")
+
+  # The numerator is the conditional density averaged over the units, which is
+  # built from the propensity block and the data alone, so there is nothing left
+  # for a stabilization block to estimate.
+  spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  expect_length(layout$idx$stab, 0L)
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  theta_names <- names(coef(res$fit))
+  expect_false("mu_a" %in% theta_names)
+  expect_false("sigma2_a" %in% theta_names)
+})
+
+# ---- the spread the weights were built with ---------------------------------
+
+test_that("ipw() accepts a fixed scalar `.sigma` as a constant", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+
+  # A spread the user fixed is a number rather than a parameter, so the ps block
+  # is the coefficients alone and the conditional variance is the square of what
+  # was supplied. The value is deliberately away from the pooled residual
+  # standard deviation, so weights rebuilt at the pooled spread would not match.
+  mods <- fit_continuous_models(dat, .sigma = 1.25)
+
+  spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  expect_length(layout$idx$ps, ncol(spec$ps$X))
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(mods$wts),
+    tolerance = 1e-12
+  )
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  expect_false("sigma2_d" %in% names(coef(res$fit)))
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(mods$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+})
+
+# ---- what the weights record and what the spec reads ------------------------
+
+test_that("ipw_spec_continuous reads the density, numerator, and spread off the weights", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+
+  mods <- fit_continuous_models(
+    dat,
+    .density = dens_t(3),
+    numerator = "integrated"
+  )
+  spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+  expect_true(density_specs_agree(spec$density, dens_t(3)))
+  expect_equal(spec$numerator, "integrated")
+  expect_equal(spec$sigma$kind, "pooled")
+  expect_null(spec$sigma$value)
+
+  fixed <- fit_continuous_models(dat, .sigma = 1.25)
+  spec_fixed <- ipw_spec_continuous(fixed$ps_mod, fixed$outcome_mod)
+  expect_equal(spec_fixed$sigma$kind, "fixed")
+  expect_equal(spec_fixed$sigma$value, 1.25)
+})
+
+test_that("ipw() reads weights carrying no density record as a normal ratio", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+
+  # Weights written by hand, and weights built before the record existed, say
+  # only that they were stabilized. That is the normal marginal ratio, which is
+  # what the weights were, so the fit is the fit the recorded weights give.
+  plain <- psw(as.double(mods$wts), estimand = "ate", stabilized = TRUE)
+  plain_mod <- lm(yc ~ A, data = dat, weights = plain)
+
+  res_plain <- ipw(mods$ps_mod, plain_mod)
+  res_recorded <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_equal(
+    res_plain$estimates$estimate,
+    res_recorded$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_plain$estimates$std.err,
+    res_recorded$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+# ---- standard-error oracles for the new routes ------------------------------
+
+test_that("the sandwich SE for a heavy-tailed integrated ratio tracks a bootstrap", {
+  skip_if_not_installed("deli")
+  skip_on_cran()
+
+  dat <- sim_continuous(seed = 2024, n = 600)
+  mods <- fit_continuous_models(
+    dat,
+    .density = dens_t(4),
+    numerator = "integrated"
+  )
+  mest_se <- ipw(mods$ps_mod, mods$outcome_mod)$estimates$std.err
+
+  boot_slope <- function(d) {
+    ps <- lm(A ~ x1 + x2, data = d)
+    w <- continuous_weights(
+      as.double(fitted(ps)),
+      d$A,
+      .density = dens_t(4),
+      numerator = "integrated"
+    )
+    msm <- lm(yc ~ A, data = d, weights = as.double(w))
+    unname(coef(msm)[["A"]])
+  }
+
+  withr::local_seed(918)
+  reps <- 400L
+  n <- nrow(dat)
+  boot <- vapply(
+    seq_len(reps),
+    function(i) {
+      boot_slope(dat[sample.int(n, n, replace = TRUE), , drop = FALSE])
+    },
+    numeric(1)
+  )
+
+  boot_se <- stats::sd(boot)
+  expect_lt(abs(mest_se - boot_se) / boot_se, 0.15)
+})
+
+test_that("the sandwich SE for a log-link propensity model tracks a bootstrap", {
+  skip_if_not_installed("deli")
+  skip_on_cran()
+
+  dat <- sim_continuous_positive(seed = 2024, n = 600)
+  mods <- fit_continuous_models(dat, ps_type = "glm_log")
+  mest_se <- ipw(mods$ps_mod, mods$outcome_mod)$estimates$std.err
+
+  boot_slope <- function(d) {
+    ps <- glm(
+      A ~ x1 + x2,
+      data = d,
+      family = gaussian(link = "log"),
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+    w <- continuous_weights(as.double(fitted(ps)), d$A)
+    msm <- lm(yc ~ A, data = d, weights = as.double(w))
+    unname(coef(msm)[["A"]])
+  }
+
+  withr::local_seed(4102)
+  reps <- 400L
+  n <- nrow(dat)
+  boot <- vapply(
+    seq_len(reps),
+    function(i) {
+      boot_slope(dat[sample.int(n, n, replace = TRUE), , drop = FALSE])
+    },
+    numeric(1)
+  )
+
+  boot_se <- stats::sd(boot)
+  expect_lt(abs(mest_se - boot_se) / boot_se, 0.15)
 })

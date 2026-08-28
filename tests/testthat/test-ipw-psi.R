@@ -46,6 +46,21 @@ sim_continuous <- function(seed = 77, n = 400) {
   data.frame(x1, x2, A, y, yb)
 }
 
+# The same simulation with an exposure that is positive everywhere, which a
+# log-link propensity model needs to start its iteration. The dose is the one
+# above shifted up rather than exponentiated, so it stays conditionally normal
+# with a single spread. The columns are named as they are in `sim_continuous()`,
+# so `continuous_spec()` reads either one.
+sim_continuous_positive <- function(seed = 77, n = 400) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  A <- 5 + 0.7 * x1 - 0.3 * x2 + rnorm(n)
+  y <- 1 + 0.6 * A + 0.4 * x1 + rnorm(n)
+  yb <- rbinom(n, 1, plogis(-3 + 0.5 * A + 0.3 * x1))
+  data.frame(x1, x2, A, y, yb)
+}
+
 # ---- shared builders --------------------------------------------------------
 
 # Counterfactual design matrix: set the exposure column to a fixed value and
@@ -260,13 +275,34 @@ categorical_spec <- function(
   )
 }
 
+# A continuous spec, built by hand the way `ipw_spec_continuous()` builds one.
+# `ps_type` selects the propensity model and, with it, the link the ps score is
+# written on; `.density`, `numerator`, and `.sigma` are the three choices the
+# weights record, and the spec reads the first two straight off that record.
+# The spread is the exception: the record says only where it came from, so a
+# fixed one is carried here as the number it was.
 continuous_spec <- function(
   dat,
   stabilize = TRUE,
   stab_score = NULL,
-  outcome_family = "gaussian"
+  outcome_family = "gaussian",
+  ps_type = c("lm", "glm_log"),
+  .density = "normal",
+  numerator = "marginal",
+  .sigma = NULL
 ) {
-  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  ps_type <- match.arg(ps_type)
+  ps_mod <- if (ps_type == "lm") {
+    lm(A ~ x1 + x2, data = dat)
+  } else {
+    glm(
+      A ~ x1 + x2,
+      data = dat,
+      family = gaussian(link = "log"),
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+  }
+  ps_link <- if (ps_type == "lm") "identity" else "log"
   fitted_ps <- as.double(fitted(ps_mod))
   A <- dat$A
   wts <- withr::with_options(
@@ -274,11 +310,15 @@ continuous_spec <- function(
     wt_ate(
       fitted_ps,
       A,
+      .sigma = .sigma,
       exposure_type = "continuous",
       stabilize = stabilize,
-      stabilization_score = stab_score
+      stabilization_score = stab_score,
+      .density = .density,
+      numerator = numerator
     )
   )
+  meta <- density_meta(wts)
 
   outcome_var <- if (outcome_family == "binomial") "yb" else "y"
   msm_fmla <- stats::reformulate("A", response = outcome_var)
@@ -302,11 +342,18 @@ continuous_spec <- function(
     exposure = A,
     ps = list(
       X = model.matrix(ps_mod),
-      link = NULL,
+      link = ps_link,
       coefs = coef(ps_mod),
       k = NULL
     ),
     stab = list(stabilized = isTRUE(stabilize), score = stab_score),
+    density = meta$density,
+    numerator = meta$numerator,
+    sigma = if (is.null(.sigma)) {
+      list(kind = "pooled", value = NULL)
+    } else {
+      list(kind = "fixed", value = .sigma)
+    },
     outcome = list(
       X = model.matrix(msm),
       y = dat[[outcome_var]],
@@ -1057,4 +1104,162 @@ test_that("build_ipw_psi is root-seeded at init for continuous stabilized logist
     stabilize = TRUE,
     outcome_family = "binomial"
   ))
+})
+
+# ---- the densities, numerators, and spreads the stacked system carries ------
+#
+# A continuous exposure's weights are a ratio of densities, and the stacked
+# system has to rebuild that ratio from theta at every evaluation. Which
+# parameters it needs depends on how the weights were built: the family and the
+# spread decide the propensity block, and the numerator decides whether there is
+# a stabilization block at all.
+
+test_that("build_ipw_psi is root-seeded for a log-link propensity model", {
+  expect_root_seeded(continuous_spec(
+    sim_continuous_positive(),
+    ps_type = "glm_log"
+  ))
+})
+
+test_that("build_ipw_psi is root-seeded for a t-density marginal ratio", {
+  expect_root_seeded(continuous_spec(sim_continuous(), .density = dens_t(3)))
+})
+
+test_that("build_ipw_psi is root-seeded for a laplace-density marginal ratio", {
+  expect_root_seeded(continuous_spec(sim_continuous(), .density = "laplace"))
+})
+
+test_that("build_ipw_psi is root-seeded for a normal integrated ratio", {
+  expect_root_seeded(continuous_spec(
+    sim_continuous(),
+    numerator = "integrated"
+  ))
+})
+
+test_that("build_ipw_psi is root-seeded for a t-density integrated ratio", {
+  expect_root_seeded(continuous_spec(
+    sim_continuous(),
+    .density = dens_t(3),
+    numerator = "integrated"
+  ))
+})
+
+test_that("build_ipw_psi is root-seeded for a fixed scalar spread", {
+  expect_root_seeded(continuous_spec(sim_continuous(), .sigma = 1.25))
+})
+
+test_that("build_ipw_psi is root-seeded for a density the user wrote", {
+  expect_root_seeded(continuous_spec(
+    sim_continuous(),
+    .density = function(z) stats::dt(z, df = 5)
+  ))
+})
+
+# ---- theta partitions for the continuous variants ---------------------------
+
+test_that("ipw_theta_layout partitions theta for a log-link continuous spec", {
+  # A link changes what the propensity score block means, not how much of it
+  # there is: the coefficients and the one conditional variance.
+  spec <- continuous_spec(sim_continuous_positive(), ps_type = "glm_log")
+  layout <- ipw_theta_layout(spec)
+  expect_layout_partition(
+    layout,
+    list(
+      ps = ncol(spec$ps$X) + 1,
+      stab = 2,
+      out = ncol(spec$outcome$X),
+      mu = 0,
+      contrast = 0,
+      by_mu = 0,
+      by_contrast = 0
+    )
+  )
+})
+
+test_that("ipw_theta_layout gives an integrated numerator no stabilization block", {
+  # The marginalized conditional density is a function of the propensity block
+  # and the data, so there is nothing left for the stabilization block to
+  # estimate; only a marginal numerator carries the exposure's own moments.
+  spec <- continuous_spec(sim_continuous(), numerator = "integrated")
+  layout <- ipw_theta_layout(spec)
+  expect_layout_partition(
+    layout,
+    list(
+      ps = ncol(spec$ps$X) + 1,
+      stab = 0,
+      out = ncol(spec$outcome$X),
+      mu = 0,
+      contrast = 0,
+      by_mu = 0,
+      by_contrast = 0
+    )
+  )
+})
+
+test_that("ipw_theta_layout stacks no variance parameter for a fixed spread", {
+  # A spread the caller fixed is a constant the weights were built with rather
+  # than something the data estimate, so the propensity block is the
+  # coefficients alone.
+  spec <- continuous_spec(sim_continuous(), .sigma = 1.25)
+  layout <- ipw_theta_layout(spec)
+  expect_layout_partition(
+    layout,
+    list(
+      ps = ncol(spec$ps$X),
+      stab = 2,
+      out = ncol(spec$outcome$X),
+      mu = 0,
+      contrast = 0,
+      by_mu = 0,
+      by_contrast = 0
+    )
+  )
+})
+
+# ---- the rows the continuous blocks are ------------------------------------
+
+test_that("the continuous stabilization block is deli's mean and variance", {
+  # The marginal numerator is read at the exposure's own mean and variance, and
+  # those two moments are exactly the estimating equations deli writes for them.
+  spec <- continuous_spec(sim_continuous())
+  layout <- ipw_theta_layout(spec)
+  psi <- build_ipw_psi(spec, layout)
+
+  rows <- psi(layout$init)[layout$idx$stab, , drop = FALSE]
+  expect_equal(
+    unname(rows),
+    unname(deli::ee_mean_variance(
+      layout$init[layout$idx$stab],
+      y = spec$exposure
+    ))
+  )
+})
+
+test_that("the continuous ps block for a log link is deli's glm score", {
+  # The conditional mean is exp(X alpha) under a log link, so the score is the
+  # one deli writes for a normal glm with that link and the variance row reads
+  # its residuals rather than the least-squares ones.
+  spec <- continuous_spec(sim_continuous_positive(), ps_type = "glm_log")
+  layout <- ipw_theta_layout(spec)
+  psi <- build_ipw_psi(spec, layout)
+
+  theta <- layout$init
+  rows <- psi(theta)[layout$idx$ps, , drop = FALSE]
+
+  n_alpha <- ncol(spec$ps$X)
+  alpha <- theta[layout$idx$ps][seq_len(n_alpha)]
+  sigma2_d <- theta[layout$idx$ps][[n_alpha + 1]]
+  mu <- exp(as.vector(spec$ps$X %*% alpha))
+  expected <- rbind(
+    deli::ee_glm(
+      alpha,
+      X = spec$ps$X,
+      y = spec$exposure,
+      distribution = "normal",
+      link = "log"
+    ),
+    matrix((spec$exposure - mu)^2 - sigma2_d, nrow = 1)
+  )
+
+  expect_equal(unname(rows), unname(expected))
 })
