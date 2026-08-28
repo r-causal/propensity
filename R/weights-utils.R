@@ -1276,40 +1276,34 @@ extract_propensity_from_df <- function(
   .propensity[[col_pos]]
 }
 
-# Helper function to extract propensity scores from GLM objects
-extract_propensity_from_glm <- function(
-  .propensity,
+# The propensity score a fitted model reports, read according to the exposure it
+# is a model of. A binary exposure needs the probability of the exposure, which
+# only the binomial families fit; a continuous exposure needs a conditional mean
+# with a single spread, which `extract_continuous_ps()` reads from the classes
+# that fit one.
+extract_model_propensity <- function(
+  model,
+  exposure_type,
   call = rlang::caller_env()
 ) {
-  # Check if it's a valid GLM object
-  if (!inherits(.propensity, "glm")) {
-    abort(
-      "`.propensity` must be a GLM object.",
-      call = call,
-      error_class = "propensity_glm_type_error"
-    )
+  if (identical(exposure_type, "binary")) {
+    check_binary_model_family(model, call = call)
+
+    return(stats::predict(model, type = "response"))
   }
 
-  # Check if it's a binomial GLM for binary propensity scores
-  if (
-    !is.null(.propensity$family) &&
-      .propensity$family$family == "binomial"
-  ) {
-    # Get predicted probabilities
-    ps_vec <- stats::predict(.propensity, type = "response")
-  } else {
-    # For non-binomial GLMs, get linear predictor
-    ps_vec <- stats::fitted(.propensity)
+  if (identical(exposure_type, "continuous")) {
+    return(extract_continuous_ps(model, call = call)$mu)
   }
 
-  ps_vec
+  abort_categorical_model(model, call = call)
 }
 
 # Helper function to handle common data frame method pattern
 # This encapsulates the logic used across all weight function data.frame methods
 #
 # The deprecated arguments are resolved here rather than downstream, for the
-# same reason as in `prepare_glm_weight_args()`: the resolved focal level
+# same reason as in `prepare_model_weight_args()`: the resolved focal level
 # decides which column carries `.propensity`, and mapping it twice would emit
 # the deprecation warning twice, so the numeric method receives the mapped
 # levels and no deprecated arguments.
@@ -1458,21 +1452,23 @@ fmla_eval_left <- function(mod, data) {
   left
 }
 
-# Helper function to handle optional exposure in GLM methods
-extract_exposure_from_glm <- function(
-  glm_obj,
+# Helper function to handle optional exposure in the model methods
+extract_exposure_from_model <- function(
+  model,
   .exposure = NULL
 ) {
   if (is.null(.exposure)) {
-    # Extract exposure from GLM
-    .exposure <- fmla_extract_left_vctr(glm_obj)
-    exposure_name <- fmla_extract_left_chr(glm_obj)
-    alert_info("Using exposure variable {.val {exposure_name}} from GLM model")
+    # Extract the exposure from the model's response
+    .exposure <- fmla_extract_left_vctr(model)
+    exposure_name <- fmla_extract_left_chr(model)
+    alert_info(
+      "Using exposure variable {.val {exposure_name}} from the propensity score model"
+    )
   }
   .exposure
 }
 
-# Shared preparation for the GLM methods of the weight functions.
+# Shared preparation for the model methods of the weight functions.
 #
 # Fitted values report the probability of the level the response's default
 # coding treats as focal: the second factor level, or the second sorted value.
@@ -1484,8 +1480,8 @@ extract_exposure_from_glm <- function(
 # resolved focal level is needed to decide whether to invert, and mapping it
 # twice would emit the deprecation warning twice, so the numeric method
 # receives the mapped levels and no deprecated arguments.
-prepare_glm_weight_args <- function(
-  glm_obj,
+prepare_model_weight_args <- function(
+  model,
   .exposure,
   exposure_type,
   valid_exposure_types,
@@ -1497,7 +1493,7 @@ prepare_glm_weight_args <- function(
   call = rlang::caller_env(),
   user_env = rlang::caller_env(2)
 ) {
-  .exposure <- extract_exposure_from_glm(glm_obj, .exposure)
+  .exposure <- extract_exposure_from_model(model, .exposure)
   exposure_type <- causalgenerics::match_exposure_type(
     exposure_type,
     .exposure,
@@ -1520,7 +1516,7 @@ prepare_glm_weight_args <- function(
     call = call
   )
 
-  ps_vec <- extract_propensity_from_glm(glm_obj, call = call)
+  ps_vec <- extract_model_propensity(model, exposure_type, call = call)
 
   invert <- identical(exposure_type, "binary") &&
     !resolved_focal_is_default(

@@ -22,8 +22,8 @@
 #'   supports binary and continuous exposures only.
 #'
 #' `.propensity` accepts a numeric vector of predicted probabilities, a
-#' `data.frame` or matrix of per-level probabilities, a fitted `glm` object, or
-#' a modified propensity score created by [ps_trim()], [ps_trunc()],
+#' `data.frame` or matrix of per-level probabilities, a fitted propensity score
+#' model, or a modified propensity score created by [ps_trim()], [ps_trunc()],
 #' [ps_refit()], or [ps_calibrate()].
 #'
 #' All functions return a [`psw`] object -- a numeric vector that tracks the
@@ -222,12 +222,35 @@
 #' units that have one, and a kernel is fit on those. A propensity score
 #' [ps_trim()] set aside is the ordinary way this arises.
 #'
+#' The conditional means in `.propensity` can be read from the model that fit
+#' them. `wt_ate()` and `wt_cens()` take a fitted [lm()], a [glm()] fit with
+#' [gaussian()] under any of its links, an [mgcv::gam()] fit with [gaussian()],
+#' and a [MASS::rlm()], and read the exposure from the model's response when
+#' `.exposure` is not supplied. Each of these reports its conditional mean on
+#' the scale of the exposure, so a log, inverse, or square root link never has
+#' to be undone.
+#'
+#' A family whose spread changes with its fitted values, such as [poisson()] or
+#' `quasi(variance = "mu")`, describes a different density for every unit, which
+#' a single spread cannot stand in for, and is refused with an error of class
+#' `propensity_model_family_error`. `quasi(variance = "constant")` is the
+#' gaussian variance under another name and is accepted. A model of a binary
+#' exposure is held to the same rule from the other side: only [binomial()] and
+#' `quasibinomial()` fit the probability those weights divide by, so a model of
+#' a conditional mean is refused there whatever its fitted values happen to fall
+#' on, a linear probability model included.
+#'
 #' \eqn{\sigma} is the pooled residual standard deviation
 #' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies a single
-#' standard deviation, or one for each unit, which the `glm` methods do not do
+#' standard deviation, or one for each unit, which the model methods do not do
 #' on their own. The marginal density is spread by \eqn{s_A} whatever `.sigma`
 #' says, the spread of the exposure itself being no business of the conditional
 #' model's.
+#'
+#' Every model class is spread that same way, [MASS::rlm()] included. `rlm`
+#' reports a robust scale estimate of its own in `fit$s`, which resists the
+#' extreme residuals rather than pooling all of them; pass `.sigma = fit$s` to
+#' be spread by it instead.
 #'
 #' [ipw()] models the conditional density with a single pooled residual
 #' variance, estimated jointly with the rest of the parameter vector. Weights
@@ -257,13 +280,21 @@
 #'     ones alike, including the default choice of column described under
 #'     `.propensity_col`. That argument is itself a formal of the data frame
 #'     methods only, so selecting a column by name means passing a data frame.
-#'   * A fitted **`glm`** object -- fitted values are extracted automatically.
+#'   * A fitted **propensity score model** -- fitted values are extracted
+#'     automatically. For a binary exposure that is a [glm()] fit with
+#'     [binomial()] or `quasibinomial()`. For a continuous exposure it is a
+#'     model of the conditional mean: [lm()], a [glm()] fit with [gaussian()]
+#'     under any of its links, an [mgcv::gam()] fit with [gaussian()], or a
+#'     [MASS::rlm()]. Handing either exposure type a model of the other, or a
+#'     family whose spread changes with its fitted values, is an error of class
+#'     `propensity_model_family_error`; see **Continuous exposures** in
+#'     Details.
 #'   * A modified propensity score created by [ps_trim()], [ps_trunc()],
 #'     [ps_refit()], or [ps_calibrate()].
 #'
 #'   For a binary exposure, `.propensity` is the probability of the focal
 #'   level, so a numeric vector must be supplied on the scale of whichever
-#'   level `.focal_level` or `.reference_level` resolves to. The `glm` methods
+#'   level `.focal_level` or `.reference_level` resolves to. The model methods
 #'   derive it from the fitted values, which give the probability of the
 #'   response's second level, and subtract them from one when the resolved
 #'   focal level is the first level instead. A data frame or matrix reduces to
@@ -275,8 +306,9 @@
 #' @param .exposure The exposure (treatment) variable. For binary exposures, a
 #'   numeric 0/1 vector, logical, or two-level factor. For categorical
 #'   exposures, a factor or character vector. For continuous exposures, a
-#'   numeric vector. Optional when `.propensity` is a `glm` object (extracted
-#'   from the model). Missing values are not counted as a level of their own,
+#'   numeric vector. Optional when `.propensity` is a fitted model, in which
+#'   case it is the model's response. Missing values are not counted as a level
+#'   of their own,
 #'   and are carried through to the weights as missing.
 #' @param exposure_type Type of exposure: `"auto"` (default), `"binary"`,
 #'   `"categorical"`, or `"continuous"`. `"auto"` detects the type from
@@ -287,7 +319,7 @@
 #' @param .sigma Observation-level standard deviations of the conditional
 #'   density for continuous exposures, one per observation (e.g.,
 #'   `influence(model)$sigma`). Optional: with none supplied, including when
-#'   `.propensity` is a `glm` object, the conditional density uses the pooled
+#'   `.propensity` is a fitted model, the conditional density uses the pooled
 #'   residual standard deviation of `.exposure` around `.propensity`. Weights
 #'   built with an observation-level `.sigma` cannot be used with [ipw()]; see
 #'   **Continuous exposures** in Details.
@@ -437,6 +469,12 @@
 #'
 #' # Exposure is extracted from the model automatically
 #' wt_ate(ps_model)
+#'
+#' # -- Continuous exposure from a fitted model -------------------------
+#' dose <- 1 + 0.5 * x1 - 0.3 * x2 + rnorm(100)
+#' dose_model <- lm(dose ~ x1 + x2)
+#'
+#' wt_ate(dose_model, dose, exposure_type = "continuous", stabilize = TRUE)
 #'
 #' # -- Data frame input ------------------------------------------------
 #' ps_df <- data.frame(
@@ -739,7 +777,59 @@ wt_ate.glm <- function(
 ) {
   check_call_arg(call)
 
-  args <- prepare_glm_weight_args(
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_ate",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_ate.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    .sigma = .sigma,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    .density = .density,
+    numerator = numerator,
+    call = call,
+    ...
+  )
+}
+
+# The model classes that fit a conditional mean reach this method: `lm()` itself,
+# and `MASS::rlm()`, which inherits from it. A `glm` reaches its own method,
+# which is otherwise the same route.
+#' @export
+wt_ate.lm <- function(
+  .propensity,
+  .exposure = NULL,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical", "continuous"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...,
+  .density = "normal",
+  numerator = c("marginal", "integrated"),
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+
+  args <- prepare_model_weight_args(
     .propensity,
     .exposure,
     exposure_type = exposure_type,
@@ -1028,7 +1118,7 @@ wt_att.glm <- function(
 ) {
   check_call_arg(call)
 
-  args <- prepare_glm_weight_args(
+  args <- prepare_model_weight_args(
     .propensity,
     .exposure,
     exposure_type = exposure_type,
@@ -1227,7 +1317,7 @@ wt_atu.glm <- function(
 ) {
   check_call_arg(call)
 
-  args <- prepare_glm_weight_args(
+  args <- prepare_model_weight_args(
     .propensity,
     .exposure,
     exposure_type = exposure_type,
@@ -1418,7 +1508,7 @@ wt_atm.glm <- function(
 ) {
   check_call_arg(call)
 
-  args <- prepare_glm_weight_args(
+  args <- prepare_model_weight_args(
     .propensity,
     .exposure,
     exposure_type = exposure_type,
@@ -1610,7 +1700,7 @@ wt_ato.glm <- function(
 ) {
   check_call_arg(call)
 
-  args <- prepare_glm_weight_args(
+  args <- prepare_model_weight_args(
     .propensity,
     .exposure,
     exposure_type = exposure_type,
@@ -1801,7 +1891,7 @@ wt_entropy.glm <- function(
 ) {
   check_call_arg(call)
 
-  args <- prepare_glm_weight_args(
+  args <- prepare_model_weight_args(
     .propensity,
     .exposure,
     exposure_type = exposure_type,
@@ -2033,7 +2123,59 @@ wt_cens.glm <- function(
 ) {
   check_call_arg(call)
 
-  args <- prepare_glm_weight_args(
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "continuous"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_cens",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_cens.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    .sigma = .sigma,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    .density = .density,
+    numerator = numerator,
+    call = call,
+    ...
+  )
+}
+
+# The model classes that fit a conditional mean reach this method: `lm()` itself,
+# and `MASS::rlm()`, which inherits from it. A `glm` reaches its own method,
+# which is otherwise the same route.
+#' @export
+wt_cens.lm <- function(
+  .propensity,
+  .exposure = NULL,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "continuous"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  stabilize = FALSE,
+  stabilization_score = NULL,
+  ...,
+  .density = "normal",
+  numerator = c("marginal", "integrated"),
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+
+  args <- prepare_model_weight_args(
     .propensity,
     .exposure,
     exposure_type = exposure_type,

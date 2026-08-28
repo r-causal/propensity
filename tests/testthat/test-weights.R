@@ -4332,7 +4332,8 @@ test_that("data frame methods error appropriately", {
 })
 
 test_that("GLM methods error appropriately", {
-  # Non-GLM object
+  # A linear model of a binary exposure: fitted conditional means are not the
+  # probability the weights divide by, whatever they happen to fall on.
   expect_propensity_error(
     wt_ate(lm(mpg ~ wt, data = mtcars), rep(0:1, 16))
   )

@@ -66,6 +66,33 @@
   The weights record the numerator they were built from; read it back with
   `density_meta()`.
 
+* `wt_ate()` and `wt_cens()` now read a continuous exposure's conditional means
+  from the model that fit them, rather than from a `glm()` alone. Both gain an
+  `lm` method, which a `MASS::rlm()` reaches by inheritance, and their `glm`
+  method reads a `gaussian()` fit under any of its links as well as an
+  `mgcv::gam()` fit with it. Each of these classes reports its conditional mean
+  on the scale of the exposure, so a log, inverse, or square root link never has
+  to be undone, and every one of them is spread by the same pooled residual root
+  mean square. `rlm` reports a robust scale estimate of its own in `fit$s`,
+  which resists the extreme residuals rather than pooling all of them, and is
+  used only when it is asked for with `.sigma = fit$s`. A family whose
+  spread changes with its fitted values, such as `poisson()` or
+  `quasi(variance = "mu")`, describes a different density for every unit, which
+  a single spread cannot stand in for, and is refused with an error of class
+  `propensity_model_family_error`. `quasi(variance = "constant")` is the
+  gaussian variance under another name and is accepted.
+
+  The binary path is now held to the same rule from the other side, which
+  changes what some calls return. Only `binomial()` and `quasibinomial()` fit
+  the probability those weights divide by, so a gaussian model of a zero-one
+  response, an `lm()` included, is refused with the same error class rather than
+  having its fitted values read as propensity scores. A linear probability model
+  is not held to the unit interval, so the refusal reads the model rather than
+  the values it fitted, and comes before the check on the range of a propensity
+  score. The estimands whose weights are not a ratio of densities take no model
+  of a continuous exposure: `wt_att()`, `wt_atu()`, `wt_atm()`, `wt_ato()`, and
+  `wt_entropy()` have no `lm` method.
+
 * A continuous-exposure `ipw()` fit whose outcome model reads the exposure
   through more than one design column, such as `y ~ A + I(A^2)` or a basis like
   `poly(A, 2)` or `splines::ns(A, 3)`, now records the conditional reading and

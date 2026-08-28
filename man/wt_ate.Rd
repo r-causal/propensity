@@ -219,14 +219,22 @@ shapes are read the same way, for categorical exposures and for binary
 ones alike, including the default choice of column described under
 \code{.propensity_col}. That argument is itself a formal of the data frame
 methods only, so selecting a column by name means passing a data frame.
-\item A fitted \strong{\code{glm}} object -- fitted values are extracted automatically.
+\item A fitted \strong{propensity score model} -- fitted values are extracted
+automatically. For a binary exposure that is a \code{\link[=glm]{glm()}} fit with
+\code{\link[=binomial]{binomial()}} or \code{quasibinomial()}. For a continuous exposure it is a
+model of the conditional mean: \code{\link[=lm]{lm()}}, a \code{\link[=glm]{glm()}} fit with \code{\link[=gaussian]{gaussian()}}
+under any of its links, an \code{\link[mgcv:gam]{mgcv::gam()}} fit with \code{\link[=gaussian]{gaussian()}}, or a
+\code{\link[MASS:rlm]{MASS::rlm()}}. Handing either exposure type a model of the other, or a
+family whose spread changes with its fitted values, is an error of class
+\code{propensity_model_family_error}; see \strong{Continuous exposures} in
+Details.
 \item A modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
 \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
 }
 
 For a binary exposure, \code{.propensity} is the probability of the focal
 level, so a numeric vector must be supplied on the scale of whichever
-level \code{.focal_level} or \code{.reference_level} resolves to. The \code{glm} methods
+level \code{.focal_level} or \code{.reference_level} resolves to. The model methods
 derive it from the fitted values, which give the probability of the
 response's second level, and subtract them from one when the resolved
 focal level is the first level instead. A data frame or matrix reduces to
@@ -239,14 +247,15 @@ first.}
 \item{.exposure}{The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
 exposures, a factor or character vector. For continuous exposures, a
-numeric vector. Optional when \code{.propensity} is a \code{glm} object (extracted
-from the model). Missing values are not counted as a level of their own,
+numeric vector. Optional when \code{.propensity} is a fitted model, in which
+case it is the model's response. Missing values are not counted as a level
+of their own,
 and are carried through to the weights as missing.}
 
 \item{.sigma}{Observation-level standard deviations of the conditional
 density for continuous exposures, one per observation (e.g.,
 \code{influence(model)$sigma}). Optional: with none supplied, including when
-\code{.propensity} is a \code{glm} object, the conditional density uses the pooled
+\code{.propensity} is a fitted model, the conditional density uses the pooled
 residual standard deviation of \code{.exposure} around \code{.propensity}. Weights
 built with an observation-level \code{.sigma} cannot be used with \code{\link[=ipw]{ipw()}}; see
 \strong{Continuous exposures} in Details.
@@ -403,8 +412,8 @@ supports binary and continuous exposures only.
 }
 
 \code{.propensity} accepts a numeric vector of predicted probabilities, a
-\code{data.frame} or matrix of per-level probabilities, a fitted \code{glm} object, or
-a modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
+\code{data.frame} or matrix of per-level probabilities, a fitted propensity score
+model, or a modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
 \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
 
 All functions return a \code{\link{psw}} object -- a numeric vector that tracks the
@@ -609,12 +618,35 @@ standardized residual, and so no weight: the density is asked only about the
 units that have one, and a kernel is fit on those. A propensity score
 \code{\link[=ps_trim]{ps_trim()}} set aside is the ordinary way this arises.
 
+The conditional means in \code{.propensity} can be read from the model that fit
+them. \code{wt_ate()} and \code{wt_cens()} take a fitted \code{\link[=lm]{lm()}}, a \code{\link[=glm]{glm()}} fit with
+\code{\link[=gaussian]{gaussian()}} under any of its links, an \code{\link[mgcv:gam]{mgcv::gam()}} fit with \code{\link[=gaussian]{gaussian()}},
+and a \code{\link[MASS:rlm]{MASS::rlm()}}, and read the exposure from the model's response when
+\code{.exposure} is not supplied. Each of these reports its conditional mean on
+the scale of the exposure, so a log, inverse, or square root link never has
+to be undone.
+
+A family whose spread changes with its fitted values, such as \code{\link[=poisson]{poisson()}} or
+\code{quasi(variance = "mu")}, describes a different density for every unit, which
+a single spread cannot stand in for, and is refused with an error of class
+\code{propensity_model_family_error}. \code{quasi(variance = "constant")} is the
+gaussian variance under another name and is accepted. A model of a binary
+exposure is held to the same rule from the other side: only \code{\link[=binomial]{binomial()}} and
+\code{quasibinomial()} fit the probability those weights divide by, so a model of
+a conditional mean is refused there whatever its fitted values happen to fall
+on, a linear probability model included.
+
 \eqn{\sigma} is the pooled residual standard deviation
 \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies a single
-standard deviation, or one for each unit, which the \code{glm} methods do not do
+standard deviation, or one for each unit, which the model methods do not do
 on their own. The marginal density is spread by \eqn{s_A} whatever \code{.sigma}
 says, the spread of the exposure itself being no business of the conditional
 model's.
+
+Every model class is spread that same way, \code{\link[MASS:rlm]{MASS::rlm()}} included. \code{rlm}
+reports a robust scale estimate of its own in \code{fit$s}, which resists the
+extreme residuals rather than pooling all of them; pass \code{.sigma = fit$s} to
+be spread by it instead.
 
 \code{\link[=ipw]{ipw()}} models the conditional density with a single pooled residual
 variance, estimated jointly with the rest of the parameter vector. Weights
@@ -678,6 +710,12 @@ ps_model <- glm(trt2 ~ x1 + x2, family = binomial)
 
 # Exposure is extracted from the model automatically
 wt_ate(ps_model)
+
+# -- Continuous exposure from a fitted model -------------------------
+dose <- 1 + 0.5 * x1 - 0.3 * x2 + rnorm(100)
+dose_model <- lm(dose ~ x1 + x2)
+
+wt_ate(dose_model, dose, exposure_type = "continuous", stabilize = TRUE)
 
 # -- Data frame input ------------------------------------------------
 ps_df <- data.frame(

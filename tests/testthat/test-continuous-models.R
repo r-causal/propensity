@@ -533,3 +533,53 @@ test_that("the other estimands take no linear model", {
     }
   }
 })
+
+# ---- the refusals as the caller reads them ----------------------------------
+
+test_that("a model of the wrong kind is refused by what it was fit with", {
+  counts <- round(continuous_model_data$positive * 5)
+
+  binary_lm <- lm(binary ~ x, data = continuous_model_data)
+  binary_gaussian <- glm(
+    binary ~ x,
+    data = continuous_model_data,
+    family = gaussian()
+  )
+  poisson_fit <- glm(
+    counts ~ x + z,
+    data = continuous_model_data,
+    family = poisson()
+  )
+  quasi_fit <- glm(
+    positive ~ x + z,
+    data = continuous_model_data,
+    family = quasi(link = "log", variance = "mu")
+  )
+
+  expect_propensity_error(
+    wt_ate(binary_lm, continuous_model_data$binary, exposure_type = "binary")
+  )
+  expect_propensity_error(
+    wt_ate(
+      binary_gaussian,
+      continuous_model_data$binary,
+      exposure_type = "binary"
+    )
+  )
+  expect_propensity_error(
+    wt_ate(
+      poisson_fit,
+      continuous_model_data$dose,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  )
+  expect_propensity_error(
+    wt_ate(
+      quasi_fit,
+      continuous_model_data$dose,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  )
+})
