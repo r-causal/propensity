@@ -2539,7 +2539,7 @@ ipw_linearization_estimates <- function(
     ci.lower = ci.lower,
     ci.upper = ci.upper,
     conf.level = conf_level,
-    p.value = 2 * (1 - pnorm(abs(z)))
+    p.value = 2 * pnorm(abs(z), lower.tail = FALSE)
   )
 }
 

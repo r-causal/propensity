@@ -29,6 +29,14 @@
   and the pooled results, and `exponentiate = TRUE` leaves them alone, a
   counterfactual risk being no kind of ratio.
 
+* The p-value of a reported row now comes from the upper tail of the normal
+  distribution directly rather than from one minus the lower tail, which carries
+  no precision past about 1e-16 and returned an exact zero for any test
+  statistic beyond about 8. The counterfactual mean rows often make such a
+  statistic, a fitted risk being large beside its standard error. The printed
+  report is unchanged, since a p-value that small prints as `< 2.2e-16` either
+  way, but the value the result stores now carries its magnitude.
+
 * The `estimates` frame of a binary `ipw()` result gains the `contrast` column a
   categorical result already carried, naming the level each mean row belongs to
   and the pair of levels each contrast row compares, such as `"1 vs 0"`. Row

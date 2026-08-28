@@ -2616,7 +2616,7 @@ ipw_mestimation_estimates <- function(
   z_val <- stats::qnorm(1 - (1 - conf_level) / 2)
   ci.lower <- estimate - z_val * std.err
   ci.upper <- estimate + z_val * std.err
-  p.value <- 2 * (1 - stats::pnorm(abs(z)))
+  p.value <- 2 * stats::pnorm(abs(z), lower.tail = FALSE)
 
   out <- data.frame(
     effect = effect,
