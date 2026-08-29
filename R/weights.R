@@ -46,20 +46,25 @@
 #'   level, where rows sum to 1.
 #' - **Continuous**: `.exposure` is a numeric vector. `.propensity` is a
 #'   vector of conditional means (fitted values). Weights are a ratio of
-#'   densities, whose family is chosen by `.density`; stabilization is strongly
-#'   recommended.
+#'   densities, whose family is chosen by `.density`, and are stabilized
+#'   unless `stabilize = FALSE` asks otherwise.
 #' - **Auto** (default): Detects the exposure type from `.exposure`.
 #'
 #' ## Stabilization
 #'
-#' Setting `stabilize = TRUE` multiplies the base weight by an estimate of
-#' P(A) (binary) or f_A(A) (continuous), reducing variance. When no
-#' `stabilization_score` is supplied, that estimate is the marginal mean of
-#' `.exposure` for a binary or categorical exposure, and for a continuous
-#' exposure the marginal density of the family `.density` names, evaluated at
-#' the population mean and standard deviation of `.exposure`. Stabilization is
-#' supported for ATE and censoring weights (`wt_ate()` and `wt_cens()`) and is
-#' strongly recommended for continuous exposures.
+#' Stabilization multiplies the base weight by an estimate of P(A) (binary) or
+#' f_A(A) (continuous), reducing variance. When no `stabilization_score` is
+#' supplied, that estimate is the marginal mean of `.exposure` for a binary or
+#' categorical exposure, and for a continuous exposure the marginal density of
+#' the family `.density` names, evaluated at the population mean and standard
+#' deviation of `.exposure`. Stabilization is supported for ATE and censoring
+#' weights (`wt_ate()` and `wt_cens()`) alone.
+#'
+#' Whether it is applied is read from the exposure type unless `stabilize` says
+#' so outright. A continuous exposure is stabilized, since the unstabilized
+#' ratio carries the exposure's own units and is not a form of the weights the
+#' package recommends; a binary or categorical exposure is left unstabilized,
+#' and `stabilize = TRUE` asks for it there.
 #'
 #' For a continuous exposure, `numerator` chooses how that marginal density is
 #' arrived at. `"marginal"`, the default, reads the family `.density` names at
@@ -390,9 +395,14 @@
 #'   level the exposure never takes is an error. Automatically detected if not
 #'   supplied.
 #' @param ... These dots are for future extensions and must be empty.
-#' @param stabilize If `TRUE`, multiply weights by an estimate of the marginal
-#'   treatment probability (binary) or density (continuous). Only supported by
-#'   `wt_ate()` and `wt_cens()`. See **Stabilization** in Details.
+#' @param stabilize Whether to multiply the weights by an estimate of the
+#'   marginal treatment probability (binary) or density (continuous). `NULL`,
+#'   the default, reads the answer from the exposure type: a continuous
+#'   exposure is stabilized, and a binary or categorical exposure is not.
+#'   `TRUE` and `FALSE` ask for one or the other outright, and an unstabilized
+#'   continuous exposure reports that its weights are not the recommended ones.
+#'   Only supported by `wt_ate()` and `wt_cens()`. See **Stabilization** in
+#'   Details.
 #' @param stabilization_score Optional stabilization multiplier to use instead
 #'   of the default described under **Stabilization**: the marginal mean of
 #'   `.exposure`, or its marginal normal density for a continuous exposure.
@@ -404,7 +414,8 @@
 #'   `propensity_stabilization_score_error`. A per-observation score is recorded
 #'   on the result and is dropped, with a warning, by any operation that changes
 #'   the length of the weight vector, since it cannot be re-indexed for the new
-#'   length. Ignored when `stabilize = FALSE`.
+#'   length. Ignored when stabilization is off, whether because `stabilize` is
+#'   `FALSE` or because the exposure type resolves the default that way.
 #' @param .propensity_col Column to use when `.propensity` is a data frame
 #'   with a binary exposure. Accepts a column name (quoted or unquoted) or
 #'   numeric index. Whichever column is selected is read as the probability of
@@ -479,7 +490,8 @@
 #' dose <- 1 + 0.5 * x1 - 0.3 * x2 + rnorm(100)
 #' dose_model <- lm(dose ~ x1 + x2)
 #'
-#' wt_ate(dose_model, dose, exposure_type = "continuous", stabilize = TRUE)
+#' # A continuous exposure is stabilized without being asked
+#' wt_ate(dose_model, dose, exposure_type = "continuous")
 #'
 #' # -- Data frame input ------------------------------------------------
 #' ps_df <- data.frame(
@@ -549,7 +561,7 @@ wt_ate <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -568,7 +580,7 @@ wt_ate.default <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -587,7 +599,7 @@ wt_ate.numeric <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -619,6 +631,12 @@ wt_ate.numeric <- function(
     announce = !be_quiet(),
     call = call
   )
+
+  # The default for `stabilize` is read from the exposure type, so it can only
+  # be resolved once the type is known. Every other route funnels through this
+  # method and forwards `stabilize` unchanged, so this is the single place the
+  # per-type default is decided.
+  stabilize <- resolve_stabilize(stabilize, exposure_type)
 
   check_sigma(.sigma, exposure_type, length(.exposure), call = call)
 
@@ -732,7 +750,7 @@ wt_ate.data.frame <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -771,7 +789,7 @@ wt_ate.glm <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -823,7 +841,7 @@ wt_ate.lm <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -1973,7 +1991,7 @@ wt_cens <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -1992,7 +2010,7 @@ wt_cens.default <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2011,7 +2029,7 @@ wt_cens.numeric <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2083,7 +2101,7 @@ wt_cens.data.frame <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2122,7 +2140,7 @@ wt_cens.glm <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2174,7 +2192,7 @@ wt_cens.lm <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2227,7 +2245,7 @@ wt_ate.ps_trim <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2362,7 +2380,7 @@ wt_ate.ps_trunc <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2553,7 +2571,7 @@ wt_cens.ps_trim <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2588,7 +2606,7 @@ wt_cens.ps_trunc <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2747,7 +2765,7 @@ wt_ate.ps_calib <- function(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -2910,7 +2928,7 @@ wt_cens.ps_calib <- function(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",

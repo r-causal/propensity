@@ -25,7 +25,7 @@ wt_ate(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -41,7 +41,7 @@ wt_ate(
   exposure_type = c("auto", "binary", "categorical", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -184,7 +184,7 @@ wt_cens(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -200,7 +200,7 @@ wt_cens(
   exposure_type = c("auto", "binary", "continuous"),
   .focal_level = NULL,
   .reference_level = NULL,
-  stabilize = FALSE,
+  stabilize = NULL,
   stabilization_score = NULL,
   ...,
   .density = "normal",
@@ -290,9 +290,14 @@ other level focal, with the same consequence for \code{.propensity}, and a
 level the exposure never takes is an error. Automatically detected if not
 supplied.}
 
-\item{stabilize}{If \code{TRUE}, multiply weights by an estimate of the marginal
-treatment probability (binary) or density (continuous). Only supported by
-\code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in Details.}
+\item{stabilize}{Whether to multiply the weights by an estimate of the
+marginal treatment probability (binary) or density (continuous). \code{NULL},
+the default, reads the answer from the exposure type: a continuous
+exposure is stabilized, and a binary or categorical exposure is not.
+\code{TRUE} and \code{FALSE} ask for one or the other outright, and an unstabilized
+continuous exposure reports that its weights are not the recommended ones.
+Only supported by \code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in
+Details.}
 
 \item{stabilization_score}{Optional stabilization multiplier to use instead
 of the default described under \strong{Stabilization}: the marginal mean of
@@ -305,7 +310,8 @@ or value is refused with an error of class
 \code{propensity_stabilization_score_error}. A per-observation score is recorded
 on the result and is dropped, with a warning, by any operation that changes
 the length of the weight vector, since it cannot be re-indexed for the new
-length. Ignored when \code{stabilize = FALSE}.}
+length. Ignored when stabilization is off, whether because \code{stabilize} is
+\code{FALSE} or because the exposure type resolves the default that way.}
 
 \item{...}{These dots are for future extensions and must be empty.}
 
@@ -436,22 +442,27 @@ levels. \code{.propensity} must be a matrix or data frame with one column per
 level, where rows sum to 1.
 \item \strong{Continuous}: \code{.exposure} is a numeric vector. \code{.propensity} is a
 vector of conditional means (fitted values). Weights are a ratio of
-densities, whose family is chosen by \code{.density}; stabilization is strongly
-recommended.
+densities, whose family is chosen by \code{.density}, and are stabilized
+unless \code{stabilize = FALSE} asks otherwise.
 \item \strong{Auto} (default): Detects the exposure type from \code{.exposure}.
 }
 }
 
 \subsection{Stabilization}{
 
-Setting \code{stabilize = TRUE} multiplies the base weight by an estimate of
-P(A) (binary) or f_A(A) (continuous), reducing variance. When no
-\code{stabilization_score} is supplied, that estimate is the marginal mean of
-\code{.exposure} for a binary or categorical exposure, and for a continuous
-exposure the marginal density of the family \code{.density} names, evaluated at
-the population mean and standard deviation of \code{.exposure}. Stabilization is
-supported for ATE and censoring weights (\code{wt_ate()} and \code{wt_cens()}) and is
-strongly recommended for continuous exposures.
+Stabilization multiplies the base weight by an estimate of P(A) (binary) or
+f_A(A) (continuous), reducing variance. When no \code{stabilization_score} is
+supplied, that estimate is the marginal mean of \code{.exposure} for a binary or
+categorical exposure, and for a continuous exposure the marginal density of
+the family \code{.density} names, evaluated at the population mean and standard
+deviation of \code{.exposure}. Stabilization is supported for ATE and censoring
+weights (\code{wt_ate()} and \code{wt_cens()}) alone.
+
+Whether it is applied is read from the exposure type unless \code{stabilize} says
+so outright. A continuous exposure is stabilized, since the unstabilized
+ratio carries the exposure's own units and is not a form of the weights the
+package recommends; a binary or categorical exposure is left unstabilized,
+and \code{stabilize = TRUE} asks for it there.
 
 For a continuous exposure, \code{numerator} chooses how that marginal density is
 arrived at. \code{"marginal"}, the default, reads the family \code{.density} names at
@@ -720,7 +731,8 @@ wt_ate(ps_model)
 dose <- 1 + 0.5 * x1 - 0.3 * x2 + rnorm(100)
 dose_model <- lm(dose ~ x1 + x2)
 
-wt_ate(dose_model, dose, exposure_type = "continuous", stabilize = TRUE)
+# A continuous exposure is stabilized without being asked
+wt_ate(dose_model, dose, exposure_type = "continuous")
 
 # -- Data frame input ------------------------------------------------
 ps_df <- data.frame(

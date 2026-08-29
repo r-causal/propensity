@@ -1,5 +1,16 @@
 # propensity 0.1.0.9000 (development version)
 
+* `wt_ate()` and `wt_cens()` now default `stabilize` to `NULL`, which is
+  resolved once the exposure type is known: a continuous exposure is stabilized
+  and a binary or categorical exposure is not. This is a change in behavior for
+  a continuous exposure. A call that does not name `stabilize` now returns the
+  ratio of the marginal density to the conditional one, where it previously
+  returned the reciprocal of the conditional density alone and reported that
+  those weights are not the ones the package recommends. The unstabilized ratio
+  remains available with `stabilize = FALSE`, and still reports itself. A
+  binary or categorical exposure is unchanged, and an explicit `TRUE` or
+  `FALSE` is honored wherever it was before.
+
 * `ipw()` now stacks the propensity score models, densities, and numerators a
   continuous exposure's weights can be built from, rather than the one it
   supported before. The propensity score model may be an `lm()` or a gaussian

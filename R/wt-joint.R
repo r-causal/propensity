@@ -114,7 +114,8 @@ joint_wt_response <- function(model) {
 #' A continuous component must be stabilized. The unstabilized density ratio
 #' \eqn{1 / f(A | L)} has a heavy right tail on its own, and multiplying it by a
 #' second weight inherits that tail, leaving the product with no usable
-#' variance. Build a continuous component with `stabilize = TRUE`. A binary or
+#' variance. A continuous component is stabilized unless it was built with
+#' `stabilize = FALSE`, so the requirement is met by default. A binary or
 #' categorical component needs no stabilization and is accepted either way.
 #'
 #' Any numerator that stabilizes the ratio satisfies the requirement, and any
@@ -192,15 +193,10 @@ joint_wt_response <- function(model) {
 #' is_joint_wt(w)
 #' joint_wt_meta(w)
 #'
-#' # A continuous component must be stabilized
+#' # A continuous component must be stabilized, which it is by default
 #' d <- 0.5 + 0.6 * x1 - 0.7 * a + rnorm(n)
 #' mod_d <- lm(d ~ a * x1, data = dat)
-#' w_d <- wt_ate(
-#'   fitted(mod_d),
-#'   d,
-#'   exposure_type = "continuous",
-#'   stabilize = TRUE
-#' )
+#' w_d <- wt_ate(fitted(mod_d), d, exposure_type = "continuous")
 #' # Each component records the exposure type it weights, so the product knows
 #' # which of them is the dose without being told
 #' joint_wt_meta(wt_joint(wt_ate(mod_a), w_d))

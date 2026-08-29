@@ -496,6 +496,21 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
   invisible(TRUE)
 }
 
+# The default for `stabilize` is read from the exposure type rather than fixed
+# once. A continuous exposure is weighted by a density ratio whose denominator
+# carries the exposure's own units, so only the stabilized form of those weights
+# is recommended, and it is what an unnamed `stabilize` asks for. A binary or
+# categorical exposure is weighted by a probability ratio that needs no such
+# numerator, so it stays unstabilized, as it always has been. An explicit `TRUE`
+# or `FALSE` is passed through untouched.
+resolve_stabilize <- function(stabilize, exposure_type) {
+  if (!is.null(stabilize)) {
+    return(stabilize)
+  }
+
+  identical(exposure_type, "continuous")
+}
+
 # The conditional spread of a continuous exposure, checked where the exposure
 # type it belongs to is known. `.sigma` is read straight into a normal density,
 # so a value that is not a number reaches the density as though it were one, and

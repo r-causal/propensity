@@ -391,8 +391,6 @@ test_that("the modified-score methods leave a binary exposure unstabilized", {
 # ---- ipw() ------------------------------------------------------------------
 
 test_that("ipw() reads a continuous fit built with the default as stabilized", {
-  skip_if_not_installed("deli")
-
   set.seed(20250904)
   n <- 400
   x1 <- rnorm(n)

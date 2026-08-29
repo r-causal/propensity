@@ -1106,18 +1106,14 @@
 #' ipw(ps_grp, outcome_stab, .by = grp)
 #'
 #' # Continuous exposure: an lm propensity model of the dose on covariates,
-#' # stabilized weights, and a weighted marginal structural outcome model
+#' # weights, which are stabilized by default for a continuous exposure, and a
+#' # weighted marginal structural outcome model
 #' a <- 0.5 + 0.8 * x1 + rnorm(n)
 #' y_dose <- 1 + 0.6 * a + 0.3 * x1 + rnorm(n)
 #' dat$a <- a
 #' dat$y_dose <- y_dose
 #' ps_cont <- lm(a ~ x1, data = dat)
-#' wts_cont <- wt_ate(
-#'   fitted(ps_cont),
-#'   a,
-#'   exposure_type = "continuous",
-#'   stabilize = TRUE
-#' )
+#' wts_cont <- wt_ate(fitted(ps_cont), a, exposure_type = "continuous")
 #' msm <- lm(y_dose ~ a, data = dat, weights = wts_cont)
 #' ipw(ps_cont, msm)
 #'

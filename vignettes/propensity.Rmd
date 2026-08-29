@@ -277,15 +277,16 @@ continuous and categorical treatments.
 
 ### Continuous exposures
 
-For continuous exposures, weights use density ratios. Stabilization is
-usually a good idea here:
+For continuous exposures, weights use density ratios. These are stabilized by
+default, since the unstabilized ratio carries the exposure's own units and has
+a heavy right tail; pass `stabilize = FALSE` to turn that off:
 
 ```{r continuous-exposure, eval = FALSE}
 # Fit a model for the continuous exposure
 ps_cont <- glm(continuous_exposure ~ x1 + x2, data = dat, family = gaussian())
 
-# Stabilized weights (strongly recommended for continuous exposures)
-wts_cont <- wt_ate(ps_cont, stabilize = TRUE)
+# Stabilized weights, which is what a continuous exposure gets by default
+wts_cont <- wt_ate(ps_cont)
 ```
 
 ### Categorical exposures

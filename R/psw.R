@@ -354,7 +354,7 @@ stabilization_score <- function(wt) {
 #'
 #' dose <- rnorm(20)
 #' mu <- 0.3 * ps
-#' w <- wt_ate(mu, dose, exposure_type = "continuous", stabilize = TRUE)
+#' w <- wt_ate(mu, dose, exposure_type = "continuous")
 #'
 #' exposure_type(w)
 #' density_meta(w)
