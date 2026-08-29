@@ -1607,7 +1607,8 @@ test_that("ATE works for continuous cases", {
       predict(denom_model),
       .exposure = mtcars$mpg,
       .sigma = model_sigma,
-      exposure_type = "continuous"
+      exposure_type = "continuous",
+      stabilize = FALSE
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )
@@ -5830,7 +5831,8 @@ test_that("unstabilized continuous ATE weights invert the normalized conditional
       fixture$fitted,
       fixture$exposure,
       .sigma = fixture$sigma,
-      exposure_type = "continuous"
+      exposure_type = "continuous",
+      stabilize = FALSE
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )
@@ -5859,7 +5861,8 @@ test_that("continuous ATE weights fall back to the pooled residual standard devi
     unstabilized <- wt_ate(
       fixture$fitted,
       fixture$exposure,
-      exposure_type = "continuous"
+      exposure_type = "continuous",
+      stabilize = FALSE
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )
@@ -5955,7 +5958,8 @@ test_that("continuous `.sigma` weights record the usual psw metadata", {
       fixture$fitted,
       fixture$exposure,
       .sigma = fixture$sigma,
-      exposure_type = "continuous"
+      exposure_type = "continuous",
+      stabilize = FALSE
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )

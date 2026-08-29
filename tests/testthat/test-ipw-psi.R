@@ -883,7 +883,7 @@ test_that("ipw_weight_fn reproduces continuous ate weights at fitted params", {
 
   oracle_unstab <- withr::with_options(
     list(propensity.quiet = TRUE),
-    wt_ate(fitted_ps, A, exposure_type = "continuous")
+    wt_ate(fitted_ps, A, exposure_type = "continuous", stabilize = FALSE)
   )
   oracle_stab <- wt_ate(
     fitted_ps,
