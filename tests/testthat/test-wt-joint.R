@@ -94,8 +94,33 @@ joint_wt_weights <- function(dat, mods) {
       dat$d2,
       exposure_type = "continuous",
       stabilize = TRUE
+    )),
+    # The same dose weighted by a heavier-tailed density and at a spread the
+    # caller fixed, which are two of the things the density record carries and
+    # which the product has to carry per component.
+    d_t = quiet(wt_ate(
+      as.double(fitted(mods$d)),
+      dat$d,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = dens_t(4)
+    )),
+    d_fixed_sigma = quiet(wt_ate(
+      as.double(fitted(mods$d)),
+      dat$d,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .sigma = 1.25
     ))
   )
+}
+
+# A weight vector carrying an estimand and a stabilization status and nothing
+# else, which is what `psw()` builds and what a caller who assembled a weight by
+# hand would hold. It records no exposure type, so it is the component
+# `wt_joint()` cannot read one off.
+recordless_psw <- function(w, stabilized = FALSE) {
+  psw(as.double(w), estimand = "ate", stabilized = stabilized)
 }
 
 # Everything a test needs, built once per test so nothing is shared across them.
@@ -178,7 +203,8 @@ test_that("wt_joint() multiplies two binary ate weights", {
     joint_wt_meta(joint),
     list(
       exposure_type = c("binary", "binary"),
-      stabilized = c(FALSE, FALSE)
+      stabilized = c(FALSE, FALSE),
+      density = list(NULL, NULL)
     )
   )
 
@@ -205,7 +231,8 @@ test_that("wt_joint() multiplies a binary weight by a stabilized continuous weig
     joint_wt_meta(joint),
     list(
       exposure_type = c("binary", "continuous"),
-      stabilized = c(FALSE, TRUE)
+      stabilized = c(FALSE, TRUE),
+      density = list(NULL, density_meta(fx$w$d))
     )
   )
 })
@@ -282,6 +309,198 @@ test_that("the product keeps its joint record through subsetting", {
   expect_identical(estimand(subset), "ate")
   expect_identical(is_stabilized(subset), is_stabilized(joint))
   expect_equal(as.double(subset), as.double(joint)[1:10], tolerance = 1e-12)
+})
+
+# ---- wt_joint(): what the components record ---------------------------------
+
+test_that("wt_joint() reads each component's recorded exposure type", {
+  fx <- joint_wt_fixture()
+
+  # A psw built by a weight function records the exposure type it was built
+  # for, so the caller no longer has to repeat it. What the product records is
+  # what the components record, in the order they were given.
+  joint <- wt_joint(fx$w$a, fx$w$d)
+  expect_identical(
+    joint_wt_meta(joint)$exposure_type,
+    c("binary", "continuous")
+  )
+  expect_identical(joint_wt_meta(joint)$stabilized, c(FALSE, TRUE))
+  expect_true(is_joint_wt(joint))
+  expect_equal(
+    as.double(joint),
+    as.double(fx$w$a) * as.double(fx$w$d),
+    tolerance = 1e-12
+  )
+
+  # The record is per component, so the joint record is the pair and the
+  # product itself records no single type: it weights two exposures.
+  expect_null(exposure_type(joint))
+
+  two_binary <- wt_joint(fx$w$a, fx$w$e)
+  expect_identical(
+    joint_wt_meta(two_binary)$exposure_type,
+    c("binary", "binary")
+  )
+
+  two_doses <- wt_joint(fx$w$d, fx$w$d2)
+  expect_identical(
+    joint_wt_meta(two_doses)$exposure_type,
+    c("continuous", "continuous")
+  )
+
+  # The stabilization requirement is decided from the types that were read, so
+  # a dose component that is not stabilized is refused without the caller
+  # having said it was a dose.
+  expect_error(
+    wt_joint(fx$w$a, fx$w$d_unstabilized),
+    class = "propensity_wt_joint_stabilize_error"
+  )
+})
+
+test_that("wt_joint() refuses a component that records no exposure type", {
+  fx <- joint_wt_fixture()
+  hand_built <- recordless_psw(fx$w$e)
+
+  # A weight assembled by hand records an estimand and a stabilization status
+  # and nothing about the exposure, so there is no type to read and the
+  # stabilization requirement could not be applied to it.
+  expect_error(
+    wt_joint(fx$w$a, hand_built),
+    class = "propensity_wt_joint_exposure_type_error"
+  )
+
+  # The refusal names the component it could not read, since the remedy is to
+  # say what that one weights.
+  expect_error(
+    wt_joint(hand_built, fx$w$e),
+    class = "propensity_wt_joint_exposure_type_error",
+    regexp = "w_a"
+  )
+  expect_error(
+    wt_joint(fx$w$a, hand_built),
+    class = "propensity_wt_joint_exposure_type_error",
+    regexp = "w_e"
+  )
+
+  # Saying it is what makes the same pair acceptable.
+  named <- wt_joint(fx$w$a, hand_built, exposure_type = c("binary", "binary"))
+  expect_true(is_joint_wt(named))
+  expect_identical(
+    joint_wt_meta(named)$exposure_type,
+    c("binary", "binary")
+  )
+})
+
+test_that("an explicit exposure_type wins over what the components record", {
+  fx <- joint_wt_fixture()
+
+  # Read off the record, the unstabilized dose is a dose and is refused. Named
+  # as a binary component it is accepted, and the record the product carries is
+  # the one the caller named: the argument decides, and the reading is what
+  # happens when there is no argument.
+  expect_error(
+    wt_joint(fx$w$a, fx$w$d_unstabilized),
+    class = "propensity_wt_joint_stabilize_error"
+  )
+  declared <- wt_joint(
+    fx$w$a,
+    fx$w$d_unstabilized,
+    exposure_type = c("binary", "binary")
+  )
+  expect_identical(
+    joint_wt_meta(declared)$exposure_type,
+    c("binary", "binary")
+  )
+
+  # An explicit value is validated exactly as before.
+  expect_error(
+    wt_joint(fx$w$a, fx$w$e, exposure_type = c("binary", "ordinal")),
+    class = "propensity_wt_joint_exposure_type_error"
+  )
+  expect_error(
+    wt_joint(fx$w$a, fx$w$e, exposure_type = "binary"),
+    class = "propensity_wt_joint_exposure_type_error"
+  )
+})
+
+test_that("the product records each component's density", {
+  fx <- joint_wt_fixture()
+
+  # A dose's weights are a ratio of densities, and which ratio they are is what
+  # the estimator has to rebuild. The product keeps each component's record in
+  # the order the components were given, so the dose's family, numerator, and
+  # spread survive the multiplication.
+  joint <- wt_joint(fx$w$a, fx$w$d)
+  density <- joint_wt_meta(joint)$density
+
+  expect_length(density, 2L)
+  expect_null(density[[1]])
+  expect_s3_class(density[[2]], "propensity_density_meta")
+  expect_true(density_specs_agree(density[[2]]$density, dens_normal()))
+  expect_identical(density[[2]]$numerator, "marginal")
+  expect_identical(density[[2]]$sigma, "pooled")
+  expect_null(density[[2]]$sigma_value)
+
+  # A binary component weights no density, so its slot is empty rather than
+  # absent: the record is one element per component either way.
+  expect_identical(
+    joint_wt_meta(wt_joint(fx$w$a, fx$w$e))$density,
+    list(NULL, NULL)
+  )
+
+  # The two choices that change the ratio, each read back off the product.
+  heavy <- wt_joint(fx$w$a, fx$w$d_t)
+  expect_true(density_specs_agree(
+    joint_wt_meta(heavy)$density[[2]]$density,
+    dens_t(4)
+  ))
+
+  fixed <- wt_joint(fx$w$a, fx$w$d_fixed_sigma)
+  expect_identical(joint_wt_meta(fixed)$density[[2]]$sigma, "supplied")
+  expect_equal(
+    joint_wt_meta(fixed)$density[[2]]$sigma_value,
+    1.25,
+    tolerance = 1e-12
+  )
+
+  # A dose in the first position records in the first slot, so the pair is
+  # positional rather than a single record the product happens to carry.
+  doses <- wt_joint(fx$w$d, fx$w$d2)
+  expect_identical(
+    joint_wt_meta(doses)$density,
+    list(density_meta(fx$w$d), density_meta(fx$w$d2))
+  )
+})
+
+test_that("multiplying two psw vectors does not build a joint weight", {
+  fx <- joint_wt_fixture()
+
+  # `wt_joint()` is how a joint weight is built. Arithmetic on two psw vectors
+  # gives their product and none of the record, which is the whole reason the
+  # constructor exists: the checks it applies cannot be applied afterwards.
+  expect_warning(
+    product <- fx$w$a * fx$w$d,
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_true(is_psw(product))
+  expect_false(is_joint_wt(product))
+  expect_null(joint_wt_meta(product))
+
+  # The two components record different exposure types and only one of them
+  # records a density, so neither describes the product and the combining rules
+  # drop both.
+  expect_null(exposure_type(product))
+  expect_null(density_meta(product))
+
+  # The values are the same numbers `wt_joint()` would give, which is what
+  # makes the missing record the only difference and the reason nothing
+  # downstream could notice it.
+  expect_equal(
+    as.double(product),
+    as.double(wt_joint(fx$w$a, fx$w$d)),
+    tolerance = 1e-12
+  )
 })
 
 # ---- wt_joint(): the refusals -----------------------------------------------
@@ -437,6 +656,50 @@ test_that("joint_wt_models() records each model's exposure type", {
     categorical$exposure_type,
     c(a = "binary", g = "categorical")
   )
+})
+
+test_that("joint_wt_models() reads a dose from a robust or an additive model", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("mgcv")
+  fx <- joint_wt_fixture()
+
+  # The classes a dose density can be read from are named rather than reached
+  # by inheritance: an `rlm` is an `lm` and a `gam` is a `glm`, so both would
+  # otherwise be typed by the branch written for the class they inherit from,
+  # and a class the package cannot read would be typed by it too.
+  robust <- MASS::rlm(d ~ a * x1, data = fx$dat, acc = 1e-10)
+  additive <- mgcv::gam(d ~ a + s(x1), data = fx$dat)
+
+  expect_identical(joint_wt_model_type(robust), "continuous")
+  expect_identical(joint_wt_model_type(additive), "continuous")
+
+  expect_identical(
+    joint_wt_models(a = fx$mods$a, d = robust)$exposure_type,
+    c(a = "binary", d = "continuous")
+  )
+  expect_identical(
+    joint_wt_models(a = fx$mods$a, d = additive)$exposure_type,
+    c(a = "binary", d = "continuous")
+  )
+})
+
+test_that("the unsupported-model refusal names the dose models it reads", {
+  fx <- joint_wt_fixture()
+  withr::local_seed(5302)
+  dat <- fx$dat
+  dat$k <- rpois(nrow(dat), 2)
+
+  # A count model is not a treatment model this package reads a density from,
+  # and the refusal is where a caller learns which classes it does read. The
+  # robust and additive fits belong on that list, since both are accepted.
+  counted <- glm(k ~ a + x1, data = dat, family = poisson())
+  err <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = counted),
+    class = "propensity_wt_joint_models_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "rlm", fixed = TRUE)
+  expect_match(msg, "gam", fixed = TRUE)
 })
 
 test_that("joint_wt_models() requires a discrete second model to condition on the first treatment", {
