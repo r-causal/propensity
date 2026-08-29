@@ -402,7 +402,16 @@ check_ipw_continuous_model <- function(entry, call = rlang::caller_env()) {
 # record existed. Both are the ratio the package has always built: a normal
 # density spread by the pooled residual standard deviation, over whatever their
 # stabilization says stabilized them.
-ipw_continuous_ratio <- function(wts, call = rlang::caller_env()) {
+#
+# `stacked` says whether the caller is going to differentiate the ratio. A
+# kernel density is refused only for the caller that is, since a route that
+# rebuilds the weights by calling `wt_ate()` again asks the density for nothing
+# a kernel cannot give.
+ipw_continuous_ratio <- function(
+  wts,
+  stacked = TRUE,
+  call = rlang::caller_env()
+) {
   meta <- density_meta(wts)
 
   if (is.null(meta)) {
@@ -416,7 +425,9 @@ ipw_continuous_ratio <- function(wts, call = rlang::caller_env()) {
     ))
   }
 
-  check_ipw_continuous_density(meta$density, call = call)
+  if (stacked) {
+    check_ipw_continuous_density(meta$density, call = call)
+  }
 
   list(
     density = meta$density,

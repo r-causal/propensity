@@ -67,11 +67,15 @@ result, rather than in the surface underneath.
 The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
-\code{se_method = "mestimation"} for a binary exposure, and the categorical and
-continuous routes, which run on M-estimation alone. A linearization fit
-stacks no such system and records no such block, so its conditional reading
-errors rather than reporting the covariance the outcome model computed for
-itself, which treats the estimated weights as fixed.}
+\code{se_method = "mestimation"} for a binary exposure, the categorical and
+joint routes, which run on M-estimation alone, and the continuous route
+under that method. \code{se_method = "bootstrap"} stacks no such system, and
+attaches instead the covariance of the outcome model's own coefficients
+across the replicates, which is what its conditional reading reports. A
+linearization fit stacks no system and records no covariance of either
+kind, so its conditional reading errors rather than reporting the
+covariance the outcome model computed for itself, which treats the
+estimated weights as fixed.}
 
 \item{parametric}{Accepted and ignored. \code{\link[mice:pool]{mice::pool()}} passes
 \code{parametric = TRUE} to every tidier it calls, to ask the models it was

@@ -17,7 +17,9 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "bootstrap"),
+  boot_reps = 500L,
+  boot_seed = NULL,
   effects = c("marginal", "conditional")
 )
 
@@ -30,7 +32,9 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "bootstrap"),
+  boot_reps = 500L,
+  boot_seed = NULL,
   .focal_level = NULL,
   effects = c("marginal", "conditional")
 )
@@ -44,7 +48,9 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "bootstrap"),
+  boot_reps = 500L,
+  boot_seed = NULL,
   effects = c("marginal", "conditional")
 )
 
@@ -57,7 +63,9 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "bootstrap"),
+  boot_reps = 500L,
+  boot_seed = NULL,
   effects = c("marginal", "conditional")
 )
 }
@@ -170,8 +178,21 @@ model.}
 \item{se_method}{Method for standard error estimation. \code{"mestimation"} (the
 default) stacks the propensity score, outcome, and estimand estimating
 equations and returns the empirical sandwich variance. \code{"linearization"}
-uses the influence-function linearization of Kostouraki et al. (2024). Both
-account for the uncertainty of estimating the propensity scores.
+uses the influence-function linearization of Kostouraki et al. (2024).
+\code{"bootstrap"} resamples the rows of \code{.data} and repeats the whole fit on
+each resample. All three account for the uncertainty of estimating the
+propensity scores.
+
+Which exposure types support which: \code{"mestimation"} supports every one of
+them; \code{"linearization"} supports a binary exposure alone; \code{"bootstrap"}
+supports a continuous exposure alone, and errors with class
+\code{propensity_method_error} for a binary or a categorical exposure and for a
+\code{\link[=joint_wt_models]{joint_wt_models()}} pair, each of which has a sandwich for every fit it
+accepts. \code{"bootstrap"} requires \code{.data} and is the method for the two
+continuous fits the sandwich has no equation for, an \code{\link[mgcv:gam]{mgcv::gam()}}
+propensity score model and weights built with a \code{"kernel"} density; see
+\strong{Continuous propensity score models} below.
+
 \code{"linearization"} supports only an outcome model of the exposure alone, fit
 with an intercept; a covariate-adjusted outcome model requires
 \code{"mestimation"}. For a binary or categorical exposure, both methods require
@@ -183,6 +204,19 @@ linearization route stores its outcome model unwrapped, so \code{\link[stats:vco
 \code{\link[stats:confint]{stats::confint()}}, and \code{\link[=tidy.ipw]{tidy()}} refuse
 \code{effects = "conditional"} there with a classed error rather than reporting
 the covariance the outcome model computed for itself.}
+
+\item{boot_reps}{Number of bootstrap replicates, a single positive whole
+number. Default is \code{500}. At least 50 of them must succeed, or the standard
+errors are refused. Supplying this under any other \code{se_method} errors with
+class \code{propensity_unsupported_arg_error}.}
+
+\item{boot_seed}{Seed the bootstrap replicates are drawn under, a single
+number or \code{NULL} (the default). With \code{NULL} the rows are resampled from the
+session's random state, so a seed set before the call reproduces the result
+the way it reproduces any other random draw. With a seed the draw is made
+under it and the session's random state is restored afterwards. Supplying
+this under any other \code{se_method} errors with class
+\code{propensity_unsupported_arg_error}.}
 
 \item{effects}{The presentation mode the result records, either \code{"marginal"}
 (the default) or \code{"conditional"}. The marginal reading reports the
@@ -209,12 +243,16 @@ section below.
 The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
-\code{se_method = "mestimation"} for a binary exposure, and the categorical and
-continuous routes, which run on M-estimation alone. A linearization fit
-stacks no such system and records no such block, so \code{\link[stats:vcov]{stats::vcov()}} and
-\code{\link[stats:confint]{stats::confint()}} error on its conditional reading, and printing it writes
-the coefficients under a note saying the standard errors are not reported
-rather than beside the ones the outcome model computed for itself.}
+\code{se_method = "mestimation"} for a binary exposure, the categorical and
+joint routes, which run on M-estimation alone, and the continuous route
+under that method. \code{se_method = "bootstrap"} stacks no such system, and
+attaches instead the covariance of the outcome model's own coefficients
+across the replicates, which is what its conditional reading reports. A
+linearization fit stacks no system and records no covariance of either
+kind, so \code{\link[stats:vcov]{stats::vcov()}} and \code{\link[stats:confint]{stats::confint()}} error on its conditional
+reading, and printing it writes the coefficients under a note saying the
+standard errors are not reported rather than beside the ones the outcome
+model computed for itself.}
 
 \item{.focal_level}{For the categorical (\code{multinom}) method with the \code{att}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
@@ -230,12 +268,19 @@ three of them take propensity-specific values:
 \describe{
 \item{\code{estimand}}{One of \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or
 \code{"entropy"}.}
-\item{\code{se_method}}{Either \code{"mestimation"} or \code{"linearization"}.}
+\item{\code{se_method}}{One of \code{"mestimation"}, \code{"linearization"}, or
+\code{"bootstrap"}.}
 \item{\code{fit}}{The fitted M-estimator object when \code{se_method} is
-\code{"mestimation"}, otherwise \code{NULL}. Calling \code{\link[stats:vcov]{stats::vcov()}} or
+\code{"mestimation"}. Calling \code{\link[stats:vcov]{stats::vcov()}} or
 \code{\link[generics:tidy]{generics::tidy()}} on this object exposes the full stacked system of
 estimating equations, including the propensity score, outcome, and
-estimand parameters.}
+estimand parameters. Under \code{"bootstrap"} it is a list of class
+\code{ipw_bootstrap} holding \code{reps}, one row per successful replicate and one
+column per reported effect; \code{seed}, the \code{boot_seed} supplied; \code{n_reps},
+the number of replicates asked for; \code{n_failed}, the number dropped;
+\code{vcov}, the covariance of the replicates; and \code{percentile}, their
+percentile bounds at \code{conf_level}, one row per reported effect. It is
+\code{NULL} under \code{"linearization"}, which solves no system.}
 }
 
 The result answers the standard model accessors, which causalgenerics
@@ -256,15 +301,27 @@ the models supplied, carrying their block of the joint sandwich. Calling
 system having been estimated from the same data, rather than the one the
 model's own fitting routine reports. The models supplied are left as they
 were fit. Linearization solves no such system, so its component models are
-stored unchanged.
+stored unchanged. Under \code{se_method = "bootstrap"} the stored \code{outcome_mod}
+carries the covariance of its own coefficients across the replicates, which
+is what the conditional reading reports, and the stored \code{wt_mod} is the
+model supplied: resampling solves no system the two models share, so there
+is no block of one to give it.
 }
 \description{
 The \code{joint_wt_models} method estimates the effects of a joint intervention on
 two treatments from the pair of fitted treatment models \code{\link[=joint_wt_models]{joint_wt_models()}}
 records and a weighted outcome model that reads both treatments. Standard
-errors are computed by M-estimation; the linearization method is not
-available. The only supported estimand is \code{"ate"}, which is what the product
-weights \code{\link[=wt_joint]{wt_joint()}} builds target.
+errors are computed by M-estimation. Neither \code{se_method = "linearization"}
+nor \code{se_method = "bootstrap"} is available here: the linearization path
+solves no stacked system, and the resampling method rebuilds the weights of
+one propensity score model of a continuous exposure rather than the product
+of two treatment models' weights. \code{boot_reps} and \code{boot_seed} describe that
+resampling, so they are refused on this route as well, with class
+\code{propensity_unsupported_arg_error} under the methods that resample nothing
+and with the method refusal when named alongside \code{se_method = "bootstrap"}.
+
+The only supported estimand is \code{"ate"}, which is what the product weights
+\code{\link[=wt_joint]{wt_joint()}} builds target.
 
 The second treatment may be a dose, in which case the surface is the marginal
 structural model's own coefficients rather than the cells of a crossing; see
@@ -288,13 +345,22 @@ container reaches \code{ipw()} those questions are settled.
 
 The \code{multinom} method estimates causal effects for a categorical exposure
 from a fitted \code{\link[nnet:multinom]{nnet::multinom()}} propensity score model and a weighted
-outcome model. Standard errors are computed by M-estimation; the
-linearization method is not available for categorical exposures. For a
-K-level exposure, the counterfactual mean at each level is reported first,
-under the effect label \code{"mean"}, and then the effects for each non-reference
-level against the reference (first) factor level. The \code{contrast} column names
-the level each mean row belongs to and the pair of levels each effect row
-compares, as it does for a binary exposure.
+outcome model. Standard errors are computed by M-estimation. Neither
+\code{se_method = "linearization"} nor \code{se_method = "bootstrap"} is available for
+a categorical exposure, and each is refused with an error of class
+\code{propensity_method_error}: the stacked system has a sandwich for every fit
+this exposure type accepts, and the resampling method is written for the
+continuous fits it has no equation for. \code{boot_reps} and \code{boot_seed} describe
+that resampling, so they are refused here as well, with class
+\code{propensity_unsupported_arg_error} under the methods that resample nothing
+and with the method refusal above when named alongside
+\code{se_method = "bootstrap"}.
+
+For a K-level exposure, the counterfactual mean at each level is reported
+first, under the effect label \code{"mean"}, and then the effects for each
+non-reference level against the reference (first) factor level. The
+\code{contrast} column names the level each mean row belongs to and the pair of
+levels each effect row compares, as it does for a binary exposure.
 
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
@@ -305,8 +371,18 @@ has no score for, are refused, as are the two fits that have no closed-form
 standard error, an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score model and weights built
 with a \code{"kernel"} density. See \strong{Continuous propensity score models} in
 \code{\link[=ipw]{ipw()}} for what each refusal says and what to do about it. The only
-supported estimand is \code{"ate"}. Standard errors are computed by M-estimation;
-the linearization method is not available for continuous exposures.
+supported estimand is \code{"ate"}.
+
+Standard errors are computed by M-estimation by default; the linearization
+method is not available for continuous exposures. \code{se_method = "bootstrap"}
+reports the spread of the whole fit repeated on \code{boot_reps} resamples of the
+rows of \code{.data}, which it therefore requires. It is the method for the two
+fits above, and it accepts every fit M-estimation accepts as well. The
+propensity score model and an \code{\link[mgcv:gam]{mgcv::gam()}} alike are refit on each
+resample, the weights are rebuilt from the record the supplied weights carry,
+and the marginal structural model is refit with them; the point estimate is
+the one the supplied models already produced. See \strong{Resampled standard
+errors} in \code{\link[=ipw]{ipw()}}.
 
 Every term of the marginal structural model that reads the exposure must read
 the exposure and nothing else, and the reported effects are the coefficients
@@ -844,8 +920,58 @@ chooses its bandwidth from the residuals of the propensity score model;
 neither is a function of the parameters that the sandwich could
 differentiate, so weights built from either have no closed-form standard
 error. Both raise an error of class
-\code{propensity_ipw_se_method_unavailable_error} naming the resampling method
-that does apply.
+\code{propensity_ipw_se_method_unavailable_error} naming
+\code{se_method = "bootstrap"}, the resampling method that does apply to them.
+}
+
+\subsection{Resampled standard errors}{
+
+\code{se_method = "bootstrap"} reports the spread of the whole fit repeated on
+\code{boot_reps} resamples of the rows of \code{.data}, which the method therefore
+requires. Each replicate draws a sample of the rows with replacement, refits
+the propensity score model on them through its own call, rebuilds the weights
+by calling \code{\link[=wt_ate]{wt_ate()}} with the density, the numerator, and the spread the
+supplied weights record, and refits the marginal structural model with those
+weights. Nothing is held fixed that the fit chose from the data: a kernel
+bandwidth is re-estimated on the residuals of each replicate and an additive
+model re-selects its smoothing parameters, which is what reaches the fits the
+sandwich cannot describe. A stabilizing score supplied for each observation
+travels with the rows it describes.
+
+The point estimate is not resampled. It is the coefficient the marginal
+structural model already reports, exactly as under \code{"mestimation"}, so the
+two methods differ in the interval they put around a number and not in the
+number. The reported interval is the normal approximation
+\verb{estimate +/- z * std.err} with \code{std.err} the standard deviation of the
+replicates, which is the interval every accessor of the result reads. The
+percentile bounds of the replicates are reported separately, in the
+\code{percentile} element of the returned \code{fit}, alongside the replicates
+themselves and their covariance.
+
+A replicate whose refits error, or that leaves a coefficient that is not
+finite, is dropped and counted in \code{fit$n_failed}. More than five percent of
+them dropped warns with class \code{propensity_ipw_bootstrap_warning}; fewer than
+50 successful replicates errors with class
+\code{propensity_ipw_bootstrap_error}, since a spread read from that few draws is
+not one to report. Resampling refits both models rather than differentiating
+them, so a run of several hundred replicates takes several hundred times as
+long as one fit.
+
+A marginal structural model whose exposure enters through a data-dependent
+basis, such as \code{poly()} or a spline with knots chosen from the data, is refit
+the same way as any other, so each replicate derives that basis from its own
+resample. What the replicates then describe is the whole procedure, the
+choice of basis included, rather than the coefficients of the one basis the
+supplied fit was written in. The two differ little at a sample size where the
+basis is stable, and a fit whose basis moves between resamples is one whose
+coefficients are worth reading with that in mind. Writing the basis out, as
+\code{y ~ A + I(A^2)}, holds it fixed across the replicates.
+
+Two things the method does not take. Weights built with an observation-level
+\code{.sigma} are refused as they are under \code{"mestimation"}: the spread is a
+function of the data that no refit reproduces, so the replicate would rebuild
+weights the user never built. \code{.by} is refused for a continuous exposure
+whichever method is asked for.
 
 Every other density \code{\link[=wt_ate]{wt_ate()}} builds a ratio in is stacked as it was built:
 the normal, Laplace, and Student t families, and a density you wrote

@@ -33,9 +33,17 @@
 #' The `joint_wt_models` method estimates the effects of a joint intervention on
 #' two treatments from the pair of fitted treatment models [joint_wt_models()]
 #' records and a weighted outcome model that reads both treatments. Standard
-#' errors are computed by M-estimation; the linearization method is not
-#' available. The only supported estimand is `"ate"`, which is what the product
-#' weights [wt_joint()] builds target.
+#' errors are computed by M-estimation. Neither `se_method = "linearization"`
+#' nor `se_method = "bootstrap"` is available here: the linearization path
+#' solves no stacked system, and the resampling method rebuilds the weights of
+#' one propensity score model of a continuous exposure rather than the product
+#' of two treatment models' weights. `boot_reps` and `boot_seed` describe that
+#' resampling, so they are refused on this route as well, with class
+#' `propensity_unsupported_arg_error` under the methods that resample nothing
+#' and with the method refusal when named alongside `se_method = "bootstrap"`.
+#'
+#' The only supported estimand is `"ate"`, which is what the product weights
+#' [wt_joint()] builds target.
 #'
 #' The second treatment may be a dose, in which case the surface is the marginal
 #' structural model's own coefficients rather than the cells of a crossing; see
@@ -68,12 +76,15 @@ ipw.joint_wt_models <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "bootstrap"),
+  boot_reps = 500L,
+  boot_seed = NULL,
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
+  check_ipw_boot_args(se_method, !missing(boot_reps), !missing(boot_seed))
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
 
@@ -81,7 +92,7 @@ ipw.joint_wt_models <- function(
   # it was fit with, so there is nothing here for `ps_link` to override.
   check_ipw_ps_link_absent(ps_link, "joint treatment")
 
-  # Both refusals come before anything is read off the models, so a request this
+  # The refusals come before anything is read off the models, so a request this
   # route will not answer is refused on its own terms. `.by` is refused before
   # any modifier could be resolved, and so before the outcome model could be
   # diagnosed for a term a refused request would never use.
@@ -128,6 +139,10 @@ check_ipw_joint_models_method <- function(
   se_method,
   call = rlang::caller_env()
 ) {
+  if (identical(se_method, "bootstrap")) {
+    abort_ipw_boot_joint(call = call)
+  }
+
   if (!identical(se_method, "linearization")) {
     return(invisible(TRUE))
   }

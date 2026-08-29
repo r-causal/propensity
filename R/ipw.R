@@ -113,8 +113,21 @@
 #' @param se_method Method for standard error estimation. `"mestimation"` (the
 #'   default) stacks the propensity score, outcome, and estimand estimating
 #'   equations and returns the empirical sandwich variance. `"linearization"`
-#'   uses the influence-function linearization of Kostouraki et al. (2024). Both
-#'   account for the uncertainty of estimating the propensity scores.
+#'   uses the influence-function linearization of Kostouraki et al. (2024).
+#'   `"bootstrap"` resamples the rows of `.data` and repeats the whole fit on
+#'   each resample. All three account for the uncertainty of estimating the
+#'   propensity scores.
+#'
+#'   Which exposure types support which: `"mestimation"` supports every one of
+#'   them; `"linearization"` supports a binary exposure alone; `"bootstrap"`
+#'   supports a continuous exposure alone, and errors with class
+#'   `propensity_method_error` for a binary or a categorical exposure and for a
+#'   [joint_wt_models()] pair, each of which has a sandwich for every fit it
+#'   accepts. `"bootstrap"` requires `.data` and is the method for the two
+#'   continuous fits the sandwich has no equation for, an [mgcv::gam()]
+#'   propensity score model and weights built with a `"kernel"` density; see
+#'   **Continuous propensity score models** below.
+#'
 #'   `"linearization"` supports only an outcome model of the exposure alone, fit
 #'   with an intercept; a covariate-adjusted outcome model requires
 #'   `"mestimation"`. For a binary or categorical exposure, both methods require
@@ -126,6 +139,17 @@
 #'   [stats::confint()], and [`tidy()`][tidy.ipw()] refuse
 #'   `effects = "conditional"` there with a classed error rather than reporting
 #'   the covariance the outcome model computed for itself.
+#' @param boot_reps Number of bootstrap replicates, a single positive whole
+#'   number. Default is `500`. At least 50 of them must succeed, or the standard
+#'   errors are refused. Supplying this under any other `se_method` errors with
+#'   class `propensity_unsupported_arg_error`.
+#' @param boot_seed Seed the bootstrap replicates are drawn under, a single
+#'   number or `NULL` (the default). With `NULL` the rows are resampled from the
+#'   session's random state, so a seed set before the call reproduces the result
+#'   the way it reproduces any other random draw. With a seed the draw is made
+#'   under it and the session's random state is restored afterwards. Supplying
+#'   this under any other `se_method` errors with class
+#'   `propensity_unsupported_arg_error`.
 #' @param effects The presentation mode the result records, either `"marginal"`
 #'   (the default) or `"conditional"`. The marginal reading reports the
 #'   population-averaged causal contrasts; the conditional reading reports the
@@ -151,12 +175,16 @@
 #'   The covariance the conditional reading reports is the outcome block of the
 #'   jointly estimated sandwich, which every route that stacks estimating
 #'   equations attaches to the outcome model it stores:
-#'   `se_method = "mestimation"` for a binary exposure, and the categorical and
-#'   continuous routes, which run on M-estimation alone. A linearization fit
-#'   stacks no such system and records no such block, so [stats::vcov()] and
-#'   [stats::confint()] error on its conditional reading, and printing it writes
-#'   the coefficients under a note saying the standard errors are not reported
-#'   rather than beside the ones the outcome model computed for itself.
+#'   `se_method = "mestimation"` for a binary exposure, the categorical and
+#'   joint routes, which run on M-estimation alone, and the continuous route
+#'   under that method. `se_method = "bootstrap"` stacks no such system, and
+#'   attaches instead the covariance of the outcome model's own coefficients
+#'   across the replicates, which is what its conditional reading reports. A
+#'   linearization fit stacks no system and records no covariance of either
+#'   kind, so [stats::vcov()] and [stats::confint()] error on its conditional
+#'   reading, and printing it writes the coefficients under a note saying the
+#'   standard errors are not reported rather than beside the ones the outcome
+#'   model computed for itself.
 #' @param ... These dots are for future extensions and must be empty. They
 #'   separate the two models from the remaining arguments, which must therefore
 #'   be supplied by name. Anything left in them, such as a `.data` argument
@@ -638,8 +666,57 @@
 #' neither is a function of the parameters that the sandwich could
 #' differentiate, so weights built from either have no closed-form standard
 #' error. Both raise an error of class
-#' `propensity_ipw_se_method_unavailable_error` naming the resampling method
-#' that does apply.
+#' `propensity_ipw_se_method_unavailable_error` naming
+#' `se_method = "bootstrap"`, the resampling method that does apply to them.
+#'
+#' ## Resampled standard errors
+#'
+#' `se_method = "bootstrap"` reports the spread of the whole fit repeated on
+#' `boot_reps` resamples of the rows of `.data`, which the method therefore
+#' requires. Each replicate draws a sample of the rows with replacement, refits
+#' the propensity score model on them through its own call, rebuilds the weights
+#' by calling [wt_ate()] with the density, the numerator, and the spread the
+#' supplied weights record, and refits the marginal structural model with those
+#' weights. Nothing is held fixed that the fit chose from the data: a kernel
+#' bandwidth is re-estimated on the residuals of each replicate and an additive
+#' model re-selects its smoothing parameters, which is what reaches the fits the
+#' sandwich cannot describe. A stabilizing score supplied for each observation
+#' travels with the rows it describes.
+#'
+#' The point estimate is not resampled. It is the coefficient the marginal
+#' structural model already reports, exactly as under `"mestimation"`, so the
+#' two methods differ in the interval they put around a number and not in the
+#' number. The reported interval is the normal approximation
+#' `estimate +/- z * std.err` with `std.err` the standard deviation of the
+#' replicates, which is the interval every accessor of the result reads. The
+#' percentile bounds of the replicates are reported separately, in the
+#' `percentile` element of the returned `fit`, alongside the replicates
+#' themselves and their covariance.
+#'
+#' A replicate whose refits error, or that leaves a coefficient that is not
+#' finite, is dropped and counted in `fit$n_failed`. More than five percent of
+#' them dropped warns with class `propensity_ipw_bootstrap_warning`; fewer than
+#' 50 successful replicates errors with class
+#' `propensity_ipw_bootstrap_error`, since a spread read from that few draws is
+#' not one to report. Resampling refits both models rather than differentiating
+#' them, so a run of several hundred replicates takes several hundred times as
+#' long as one fit.
+#'
+#' A marginal structural model whose exposure enters through a data-dependent
+#' basis, such as `poly()` or a spline with knots chosen from the data, is refit
+#' the same way as any other, so each replicate derives that basis from its own
+#' resample. What the replicates then describe is the whole procedure, the
+#' choice of basis included, rather than the coefficients of the one basis the
+#' supplied fit was written in. The two differ little at a sample size where the
+#' basis is stable, and a fit whose basis moves between resamples is one whose
+#' coefficients are worth reading with that in mind. Writing the basis out, as
+#' `y ~ A + I(A^2)`, holds it fixed across the replicates.
+#'
+#' Two things the method does not take. Weights built with an observation-level
+#' `.sigma` are refused as they are under `"mestimation"`: the spread is a
+#' function of the data that no refit reproduces, so the replicate would rebuild
+#' weights the user never built. `.by` is refused for a continuous exposure
+#' whichever method is asked for.
 #'
 #' Every other density [wt_ate()] builds a ratio in is stacked as it was built:
 #' the normal, Laplace, and Student t families, and a density you wrote
@@ -886,12 +963,19 @@
 #' \describe{
 #'   \item{`estimand`}{One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or
 #'     `"entropy"`.}
-#'   \item{`se_method`}{Either `"mestimation"` or `"linearization"`.}
+#'   \item{`se_method`}{One of `"mestimation"`, `"linearization"`, or
+#'     `"bootstrap"`.}
 #'   \item{`fit`}{The fitted M-estimator object when `se_method` is
-#'     `"mestimation"`, otherwise `NULL`. Calling [stats::vcov()] or
+#'     `"mestimation"`. Calling [stats::vcov()] or
 #'     [generics::tidy()] on this object exposes the full stacked system of
 #'     estimating equations, including the propensity score, outcome, and
-#'     estimand parameters.}
+#'     estimand parameters. Under `"bootstrap"` it is a list of class
+#'     `ipw_bootstrap` holding `reps`, one row per successful replicate and one
+#'     column per reported effect; `seed`, the `boot_seed` supplied; `n_reps`,
+#'     the number of replicates asked for; `n_failed`, the number dropped;
+#'     `vcov`, the covariance of the replicates; and `percentile`, their
+#'     percentile bounds at `conf_level`, one row per reported effect. It is
+#'     `NULL` under `"linearization"`, which solves no system.}
 #' }
 #'
 #'   The result answers the standard model accessors, which causalgenerics
@@ -912,7 +996,11 @@
 #'   system having been estimated from the same data, rather than the one the
 #'   model's own fitting routine reports. The models supplied are left as they
 #'   were fit. Linearization solves no such system, so its component models are
-#'   stored unchanged.
+#'   stored unchanged. Under `se_method = "bootstrap"` the stored `outcome_mod`
+#'   carries the covariance of its own coefficients across the replicates, which
+#'   is what the conditional reading reports, and the stored `wt_mod` is the
+#'   model supplied: resampling solves no system the two models share, so there
+#'   is no block of one to give it.
 #'
 #' @examples
 #' # Simulate data with a confounder, binary exposure, and binary outcome
@@ -1036,12 +1124,15 @@ ipw.glm <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "bootstrap"),
+  boot_reps = 500L,
+  boot_seed = NULL,
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
+  check_ipw_boot_args(se_method, !missing(boot_reps), !missing(boot_seed))
 
   # Whether the caller named a reading, read before `arg_match()` resolves the
   # default and loses the distinction. The continuous route needs it: a fit
@@ -1071,6 +1162,20 @@ ipw.glm <- function(
   if (identical(wt_mod$family$family, "gaussian")) {
     check_ipw_by_exposure(.by)
 
+    if (identical(se_method, "bootstrap")) {
+      return(ipw_continuous_bootstrap(
+        wt_mod,
+        outcome_mod,
+        .data = .data,
+        estimand = estimand,
+        ps_link = ps_link,
+        conf_level = conf_level,
+        boot_reps = boot_reps,
+        boot_seed = boot_seed,
+        effects = if (effects_named) effects
+      ))
+    }
+
     return(ipw_continuous_estimate(
       wt_mod,
       outcome_mod,
@@ -1081,6 +1186,14 @@ ipw.glm <- function(
       se_method = se_method,
       effects = if (effects_named) effects
     ))
+  }
+
+  # Everything below this point is a binary exposure, which has a sandwich for
+  # every fit it accepts. The resampling method is written for the continuous
+  # route alone, and the refusal comes after the routing above so that a
+  # continuous exposure reaches the method rather than the refusal.
+  if (identical(se_method, "bootstrap")) {
+    abort_ipw_boot_exposure("binary")
   }
 
   # Both standard error methods accept only the link `wt_mod` was fit with, so

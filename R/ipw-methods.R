@@ -1,13 +1,22 @@
 #' @description
 #' The `multinom` method estimates causal effects for a categorical exposure
 #' from a fitted [nnet::multinom()] propensity score model and a weighted
-#' outcome model. Standard errors are computed by M-estimation; the
-#' linearization method is not available for categorical exposures. For a
-#' K-level exposure, the counterfactual mean at each level is reported first,
-#' under the effect label `"mean"`, and then the effects for each non-reference
-#' level against the reference (first) factor level. The `contrast` column names
-#' the level each mean row belongs to and the pair of levels each effect row
-#' compares, as it does for a binary exposure.
+#' outcome model. Standard errors are computed by M-estimation. Neither
+#' `se_method = "linearization"` nor `se_method = "bootstrap"` is available for
+#' a categorical exposure, and each is refused with an error of class
+#' `propensity_method_error`: the stacked system has a sandwich for every fit
+#' this exposure type accepts, and the resampling method is written for the
+#' continuous fits it has no equation for. `boot_reps` and `boot_seed` describe
+#' that resampling, so they are refused here as well, with class
+#' `propensity_unsupported_arg_error` under the methods that resample nothing
+#' and with the method refusal above when named alongside
+#' `se_method = "bootstrap"`.
+#'
+#' For a K-level exposure, the counterfactual mean at each level is reported
+#' first, under the effect label `"mean"`, and then the effects for each
+#' non-reference level against the reference (first) factor level. The
+#' `contrast` column names the level each mean row belongs to and the pair of
+#' levels each effect row compares, as it does for a binary exposure.
 #'
 #' @param .focal_level For the categorical (`multinom`) method with the `att`
 #'   or `atu` estimand, the focal exposure level. If `NULL`, it is taken from
@@ -25,13 +34,16 @@ ipw.multinom <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "bootstrap"),
+  boot_reps = 500L,
+  boot_seed = NULL,
   .focal_level = NULL,
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
+  check_ipw_boot_args(se_method, !missing(boot_reps), !missing(boot_seed))
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
 
@@ -50,6 +62,14 @@ ipw.multinom <- function(
       ),
       error_class = "propensity_method_error"
     )
+  }
+
+  # The resampling method is written for the continuous route alone. A
+  # categorical exposure has a sandwich for every fit it accepts, so nothing
+  # here needs a method that repeats the fit, and routing one into the loop that
+  # repeats it would rebuild a density ratio these weights never were.
+  if (identical(se_method, "bootstrap")) {
+    abort_ipw_boot_exposure("categorical")
   }
 
   # Guards first, on the weights that fit the outcome model, mirroring ipw.glm:
@@ -90,8 +110,18 @@ ipw.multinom <- function(
 #' standard error, an [mgcv::gam()] propensity score model and weights built
 #' with a `"kernel"` density. See **Continuous propensity score models** in
 #' [ipw()] for what each refusal says and what to do about it. The only
-#' supported estimand is `"ate"`. Standard errors are computed by M-estimation;
-#' the linearization method is not available for continuous exposures.
+#' supported estimand is `"ate"`.
+#'
+#' Standard errors are computed by M-estimation by default; the linearization
+#' method is not available for continuous exposures. `se_method = "bootstrap"`
+#' reports the spread of the whole fit repeated on `boot_reps` resamples of the
+#' rows of `.data`, which it therefore requires. It is the method for the two
+#' fits above, and it accepts every fit M-estimation accepts as well. The
+#' propensity score model and an [mgcv::gam()] alike are refit on each
+#' resample, the weights are rebuilt from the record the supplied weights carry,
+#' and the marginal structural model is refit with them; the point estimate is
+#' the one the supplied models already produced. See **Resampled standard
+#' errors** in [ipw()].
 #'
 #' Every term of the marginal structural model that reads the exposure must read
 #' the exposure and nothing else, and the reported effects are the coefficients
@@ -141,12 +171,15 @@ ipw.lm <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "bootstrap"),
+  boot_reps = 500L,
+  boot_seed = NULL,
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
+  check_ipw_boot_args(se_method, !missing(boot_reps), !missing(boot_seed))
 
   # Read before `arg_match()` resolves the default, for the reason `ipw.glm()`
   # reads it, and reading a forwarded set of readings as naming nothing for the
@@ -158,6 +191,20 @@ ipw.lm <- function(
 
   check_ipw_by_method(.by, se_method)
   check_ipw_by_exposure(.by)
+
+  if (identical(se_method, "bootstrap")) {
+    return(ipw_continuous_bootstrap(
+      wt_mod,
+      outcome_mod,
+      .data = .data,
+      estimand = estimand,
+      ps_link = ps_link,
+      conf_level = conf_level,
+      boot_reps = boot_reps,
+      boot_seed = boot_seed,
+      effects = if (effects_named) effects
+    ))
+  }
 
   ipw_continuous_estimate(
     wt_mod,

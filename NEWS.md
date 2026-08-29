@@ -46,6 +46,27 @@
   two point to a Huber refit or to `se_method = "bootstrap"`; the last points to
   a larger `maxit` or a looser `acc`.
 
+* `ipw()` gains `se_method = "bootstrap"` for a continuous exposure, along with
+  the `boot_reps` and `boot_seed` arguments that describe it. Resampling repeats
+  the whole fit rather than differentiating it, so it reaches the two continuous
+  fits the sandwich has no equation for, an `mgcv::gam()` propensity score model
+  and weights built with a `"kernel"` density, which until now had no standard
+  error at all. Each replicate resamples the rows of `.data`, which the method
+  requires, refits the propensity score model on them, rebuilds the weights from
+  the record the supplied weights carry, and refits the marginal structural
+  model with them; a kernel bandwidth is re-estimated and an additive model
+  re-selects its smoothing parameters along the way, which is the point of
+  resampling. The point estimate is not resampled, so it is the coefficient the
+  marginal structural model already reported and the two methods differ in the
+  interval rather than in the number. The reported interval is the normal
+  approximation, which is what every accessor of the result reads; the
+  percentile bounds, the replicates, and their covariance are in the returned
+  `fit`. Replicates whose refits fail are dropped and counted, which warns above
+  five percent and refuses the standard errors below fifty successes. A binary
+  or categorical exposure, and a `joint_wt_models()` pair, are refused the
+  method by name, since M-estimation has a sandwich for every fit they accept;
+  `boot_reps` and `boot_seed` are refused there for the same reason.
+
 * `wt_ate()` and `wt_cens()` gain a `.density` argument, which chooses the
   family of the conditional density a continuous exposure's weights are a ratio
   of. That density was a normal one and nothing else before, which is a strong

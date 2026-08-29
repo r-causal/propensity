@@ -2431,8 +2431,10 @@ test_that("ipw() continuous bootstrap warns when more than five percent of repli
     }
   )
 
-  res <- expect_warning(
-    ipw(
+  # `expect_warning()` returns the condition it captured rather than the value
+  # of the expression, so the result is bound inside the expression.
+  expect_warning(
+    res <- ipw(
       mods$ps_mod,
       mods$outcome_mod,
       .data = dat,
@@ -2510,5 +2512,81 @@ test_that("ipw() continuous bootstrap errors when fewer than fifty replicates su
     gsub("[[:space:]]+", " ", conditionMessage(err)),
     "50",
     fixed = TRUE
+  )
+})
+
+# ---- what the bootstrap refusals say ----------------------------------------
+
+test_that("ipw() continuous bootstrap refusals read well", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous(n = 300)
+  mods <- fit_continuous_models(dat)
+
+  expect_propensity_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "bootstrap")
+  )
+
+  expect_propensity_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .data = dat, boot_reps = 100L)
+  )
+
+  expect_propensity_error(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      .data = dat,
+      se_method = "bootstrap",
+      boot_reps = 40L,
+      boot_seed = 1L
+    )
+  )
+})
+
+test_that("ipw() refuses the bootstrap for a binary exposure in so many words", {
+  skip_if_not_installed("deli")
+  withr::local_seed(2024)
+  n <- 300
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x1))
+  y <- rbinom(n, 1, plogis(-0.5 + 0.8 * z + 0.3 * x1))
+  bin <- data.frame(x1, z, y)
+
+  ps_mod <- glm(z ~ x1, data = bin, family = binomial())
+  wts <- wt_ate(ps_mod)
+  outcome_mod <- glm(y ~ z, data = bin, family = quasibinomial(), weights = wts)
+
+  expect_propensity_error(
+    ipw(ps_mod, outcome_mod, .data = bin, se_method = "bootstrap")
+  )
+})
+
+test_that("ipw() says how many bootstrap replicates it dropped", {
+  skip_if_not_installed("deli")
+  skip_on_cran()
+
+  dat <- sim_continuous(n = 300)
+  mods <- fit_continuous_models(dat)
+
+  drawn <- 0L
+  testthat::local_mocked_bindings(
+    ipw_boot_once = function(idx, ...) {
+      drawn <<- drawn + 1L
+      if (drawn %% 5L == 0L) {
+        c(A = NA_real_)
+      } else {
+        c(A = 0.6 + drawn / 1000)
+      }
+    }
+  )
+
+  expect_propensity_warning(
+    ipw(
+      mods$ps_mod,
+      mods$outcome_mod,
+      .data = dat,
+      se_method = "bootstrap",
+      boot_reps = 100L,
+      boot_seed = 1L
+    )
   )
 })

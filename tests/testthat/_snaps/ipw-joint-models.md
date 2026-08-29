@@ -39,3 +39,23 @@
       x The cell means and every contrast built from them are parameters of the stacked estimating equations, and the linearization path solves no such system.
       i Use `se_method = "mestimation"` for a joint treatment model.
 
+# ipw() refuses the bootstrap on the two-model route
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ipw()`:
+      ! `ipw()` supports "bootstrap" standard errors only for a continuous exposure weighted by one propensity score model.
+      x `wt_mod` is a pair of treatment models, and each replicate rebuilds the weights of one model rather than the product of two.
+      i Use `se_method = "mestimation"`, which builds a sandwich variance for every fit a joint treatment model accepts.
+
+# ipw() refuses boot_reps and boot_seed on the two-model route
+
+    Code
+      expr
+    Condition <propensity_unsupported_arg_error>
+      Error in `ipw()`:
+      ! `boot_reps` is not supported with "mestimation" standard errors.
+      x `boot_reps` describes the resampling, and "mestimation" resamples nothing.
+      i Use `se_method = "bootstrap"`, or drop `boot_reps`.
+
