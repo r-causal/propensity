@@ -4,15 +4,29 @@ The `joint_wt_models` method estimates the effects of a joint
 intervention on two treatments from the pair of fitted treatment models
 [`joint_wt_models()`](https://r-causal.github.io/propensity/reference/joint_wt_models.md)
 records and a weighted outcome model that reads both treatments.
-Standard errors are computed by M-estimation; the linearization method
-is not available. The only supported estimand is `"ate"`, which is what
-the product weights
+Standard errors are computed by M-estimation.
+`se_method = "linearization"` is not available here: the linearization
+path solves no stacked system, and the cell means and every contrast
+built from them are parameters of one.
+
+The only supported estimand is `"ate"`, which is what the product
+weights
 [`wt_joint()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
 builds target.
 
 The second treatment may be a dose, in which case the surface is the
 marginal structural model's own coefficients rather than the cells of a
-crossing; see **Joint exposures**.
+crossing. The dose model is read through the same registry the
+single-treatment route reads, so an
+[`stats::lm()`](https://rdrr.io/r/stats/lm.html), a gaussian
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html) at an identity or a
+log link, and a [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html)
+fit with the Huber psi are stacked, and the dose component's weights may
+be any density ratio
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+builds. A dose model or a density the stacked system cannot
+differentiate is refused rather than resampled, since this route has no
+resampling method; see **Joint exposures**.
 
 This is the second of the two routes to a joint intervention. The other
 declares the crossing with
@@ -39,29 +53,51 @@ The `multinom` method estimates causal effects for a categorical
 exposure from a fitted
 [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html)
 propensity score model and a weighted outcome model. Standard errors are
-computed by M-estimation; the linearization method is not available for
-categorical exposures. For a K-level exposure, the counterfactual mean
-at each level is reported first, under the effect label `"mean"`, and
-then the effects for each non-reference level against the reference
-(first) factor level. The `contrast` column names the level each mean
-row belongs to and the pair of levels each effect row compares, as it
-does for a binary exposure.
+computed by M-estimation. `se_method = "linearization"` is not available
+for a categorical exposure and is refused with an error of class
+`propensity_method_error`: the stacked system has a sandwich for every
+fit this exposure type accepts.
+
+For a K-level exposure, the counterfactual mean at each level is
+reported first, under the effect label `"mean"`, and then the effects
+for each non-reference level against the reference (first) factor level.
+The `contrast` column names the level each mean row belongs to and the
+pair of levels each effect row compares, as it does for a binary
+exposure.
 
 The `lm` method estimates the causal dose-response effect for a
 continuous exposure from a fitted
 [`stats::lm()`](https://rdrr.io/r/stats/lm.html) (or gaussian-family
 [`stats::glm()`](https://rdrr.io/r/stats/glm.html)) propensity score
 model of the exposure and a weighted marginal structural outcome model.
-The only supported estimand is `"ate"`. Standard errors are computed by
-M-estimation; the linearization method is not available for continuous
-exposures. Every term of the marginal structural model that reads the
-exposure must read the exposure and nothing else, and the reported
-effects are the coefficients those terms contribute, labeled `"log(or)"`
-for a logit-link outcome and `"log(rr)"` for a log-link one. A model
-with one exposure coefficient keeps the eight-column contract with no
-contrast column and labels its row `"slope"` at an identity link; a
-dose-response curve such as `y ~ A + I(A^2)` reports one row per
-coefficient under `"coef"`, gaining a contrast column that names them.
+A [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) fit with the
+Huber psi reaches this method by inheritance and is stacked at its own
+score. A gaussian model is read through its link, which may be identity
+or log; the other gaussian links, and every class the stacked system has
+no score for, are refused, as are the two fits that have no closed-form
+standard error, an
+[`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) propensity score
+model and weights built with a `"kernel"` density. See **Continuous
+propensity score models** in
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+for what each refusal says and what to do about it. The only supported
+estimand is `"ate"`.
+
+Standard errors are computed by M-estimation; the linearization method
+is not available for continuous exposures. The package offers no
+resampling method, so a fit the stacked system cannot write has no
+standard error here, and the refusal points at a bootstrap of the whole
+pipeline written by hand. See **Continuous propensity score models** in
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
+
+Every term of the marginal structural model that reads the exposure must
+read the exposure and nothing else, and the reported effects are the
+coefficients those terms contribute, labeled `"log(or)"` for a
+logit-link outcome and `"log(rr)"` for a log-link one. A model with one
+exposure coefficient keeps the eight-column contract with no contrast
+column and labels its row `"slope"` at an identity link; a dose-response
+curve such as `y ~ A + I(A^2)` reports one row per coefficient under
+`"coef"`, gaining a contrast column that names them.
 
 A curve is also the one shape of fit that has a single reading. An
 exposure entering the outcome model through more than one design column,
@@ -113,10 +149,10 @@ supports binary, categorical, and continuous exposures. For a binary or
 categorical exposure, a binary outcome returns the risk difference, log
 risk ratio, and log odds ratio, and a continuous outcome returns the
 difference in means. A continuous exposure is supplied through an
-[`stats::lm()`](https://rdrr.io/r/stats/lm.html) or identity-link
-gaussian [`stats::glm()`](https://rdrr.io/r/stats/glm.html) propensity
-score model with a weighted marginal structural outcome model whose link
-is identity, logit, or log, and
+[`stats::lm()`](https://rdrr.io/r/stats/lm.html) or gaussian
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html) propensity score
+model with a weighted marginal structural outcome model whose link is
+identity, logit, or log, and
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
 reports the single exposure coefficient of that model. A subclass of
 either propensity score model, such as a robust or an additive fit,
@@ -331,15 +367,28 @@ ipw(
   equations and returns the empirical sandwich variance.
   `"linearization"` uses the influence-function linearization of
   Kostouraki et al. (2024). Both account for the uncertainty of
-  estimating the propensity scores. `"linearization"` supports only an
-  outcome model of the exposure alone, fit with an intercept; a
-  covariate-adjusted outcome model requires `"mestimation"`. For a
-  binary or categorical exposure, both methods require an outcome model
-  that can represent a baseline, so a numeric no-intercept coding such
-  as `y ~ z - 1` errors on either. The standard errors of the
-  conditional reading described under `effects` require `"mestimation"`
-  as well: the linearization route stores its outcome model unwrapped,
-  so [`stats::vcov()`](https://rdrr.io/r/stats/vcov.html),
+  estimating the propensity scores.
+
+  Which exposure types support which: `"mestimation"` supports every one
+  of them; `"linearization"` supports a binary exposure alone. A binary
+  or a categorical exposure has a sandwich for every fit it accepts. A
+  few continuous fits have no sandwich, and the package computes no
+  standard error for them: an
+  [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) propensity
+  score model and weights built with a `"kernel"` density are refused,
+  and so is a [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) fit
+  the stacked system cannot write. See **Continuous propensity score
+  models** below.
+
+  `"linearization"` supports only an outcome model of the exposure
+  alone, fit with an intercept; a covariate-adjusted outcome model
+  requires `"mestimation"`. For a binary or categorical exposure, both
+  methods require an outcome model that can represent a baseline, so a
+  numeric no-intercept coding such as `y ~ z - 1` errors on either. The
+  standard errors of the conditional reading described under `effects`
+  require `"mestimation"` as well: the linearization route stores its
+  outcome model unwrapped, so
+  [`stats::vcov()`](https://rdrr.io/r/stats/vcov.html),
   [`stats::confint()`](https://rdrr.io/r/stats/confint.html), and
   [`tidy()`](https://r-causal.github.io/propensity/reference/tidy.ipw.md)
   refuse `effects = "conditional"` there with a classed error rather
@@ -376,9 +425,10 @@ ipw(
   The covariance the conditional reading reports is the outcome block of
   the jointly estimated sandwich, which every route that stacks
   estimating equations attaches to the outcome model it stores:
-  `se_method = "mestimation"` for a binary exposure, and the categorical
-  and continuous routes, which run on M-estimation alone. A
-  linearization fit stacks no such system and records no such block, so
+  `se_method = "mestimation"` for a binary exposure, the categorical and
+  joint routes, which run on M-estimation alone, and the continuous
+  route under that method. A linearization fit stacks no system and
+  records no covariance of either kind, so
   [`stats::vcov()`](https://rdrr.io/r/stats/vcov.html) and
   [`stats::confint()`](https://rdrr.io/r/stats/confint.html) error on
   its conditional reading, and printing it writes the coefficients under
@@ -411,17 +461,17 @@ propensity-specific values:
 
 - `se_method`:
 
-  Either `"mestimation"` or `"linearization"`.
+  One of `"mestimation"` or `"linearization"`.
 
 - `fit`:
 
-  The fitted M-estimator object when `se_method` is `"mestimation"`,
-  otherwise `NULL`. Calling
-  [`stats::vcov()`](https://rdrr.io/r/stats/vcov.html) or
+  The fitted M-estimator object when `se_method` is `"mestimation"`.
+  Calling [`stats::vcov()`](https://rdrr.io/r/stats/vcov.html) or
   [`generics::tidy()`](https://generics.r-lib.org/reference/tidy.html)
   on this object exposes the full stacked system of estimating
   equations, including the propensity score, outcome, and estimand
-  parameters.
+  parameters. It is `NULL` under `"linearization"`, which solves no
+  system.
 
 The result answers the standard model accessors, which causalgenerics
 registers for the shared class:
@@ -832,10 +882,9 @@ M-estimation alone.
 ### A joint intervention with a dose
 
 The second treatment may be a dose rather than a second discrete
-treatment, recorded with an
-[`stats::lm()`](https://rdrr.io/r/stats/lm.html) or an identity-link
-gaussian [`stats::glm()`](https://rdrr.io/r/stats/glm.html) and weighted
-with a stabilized density ratio, which
+treatment, recorded with any of the classes the single-treatment route
+reads a conditional density from, and weighted with a stabilized density
+ratio, which
 [`wt_joint()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
 requires of a continuous component. A dose has no cells, so there is no
 crossing to report counterfactual risks over: the surface is the
@@ -918,9 +967,52 @@ model, so the outcome model frame is never asked for a column it does
 not hold.
 
 The dose model contributes its coefficients and the conditional variance
-its density ratio divides by, and the stabilizing numerator contributes
-the dose's two marginal moments, all as parameters of the same stacked
-system.
+its density ratio divides by, and a marginal stabilizing numerator
+contributes the dose's two marginal moments, all as parameters of the
+same stacked system.
+
+#### The dose model and the ratio its weights are
+
+The dose model goes through the registry described under **Continuous
+propensity score models**, so the classes and links this route stacks
+are the ones the single-treatment route stacks: an
+[`stats::lm()`](https://rdrr.io/r/stats/lm.html), a gaussian
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html) fit with an identity
+or a log link, and a
+[`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) fit with the
+Huber psi. A gaussian dose model fit with another link errors with class
+`propensity_ipw_link_error`, and a robust fit whose score the system
+cannot write raises the same conditions it raises for a single dose.
+
+The dose component's weights may be any ratio
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+builds: a heavier-tailed `.density`, `numerator = "integrated"`, or a
+single `.sigma` the caller fixed.
+[`wt_joint()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
+records each component's ratio on the product, and the stacked system
+rebuilds the dose factor from that record, so what is differentiated is
+the weight the outcome model was fit with. An integrated numerator is
+built from the dose block and the data alone, so it adds no
+stabilization parameters; a fixed scalar `.sigma` is a known constant,
+so the dose block is its coefficients alone and none of that number's
+uncertainty is carried. A spread supplied for each observation has no
+counterpart in the system and errors with class
+`propensity_ipw_sigma_error`.
+
+A dose component built with a `stabilization_score` is the one numerator
+this route cannot reproduce. The product records that the numerator was
+a score without recording the vector it was, so the system rebuilds the
+dose weights from the exposure's own marginal moments and the
+weight-consistency check reports the difference. Weight the dose on its
+own to use a numerator computed by hand.
+
+An [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) dose model,
+and dose weights built with a `"kernel"` density, are refused with class
+`propensity_ipw_se_method_unavailable_error`. Neither is a function of
+the parameters that the sandwich could differentiate, and the package
+has no second method to fall back on, so the refusal points at building
+the dose weights from a model and a density the stacked system can
+write, or at bootstrapping the whole fit by hand.
 
 ## Variance estimation
 
@@ -941,13 +1033,15 @@ M-estimation standard errors are available for all exposure types:
 binary (from a [`stats::glm()`](https://rdrr.io/r/stats/glm.html)
 propensity score model), categorical (from a
 [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) model),
-and continuous (from an [`stats::lm()`](https://rdrr.io/r/stats/lm.html)
-or identity-link gaussian
-[`stats::glm()`](https://rdrr.io/r/stats/glm.html) model). The `atm`
-weight `pmin(e, 1 - e)` is not differentiable at a propensity score of
-`0.5`; deli's central finite difference straddles the kink there and
-averages the one-sided slopes. Its effect on the variance is negligible
-unless many observations sit at exactly `0.5`.
+and continuous (from an
+[`stats::lm()`](https://rdrr.io/r/stats/lm.html), a gaussian
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html), or a
+[`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) model; see
+**Continuous propensity score models** below). The `atm` weight
+`pmin(e, 1 - e)` is not differentiable at a propensity score of `0.5`;
+deli's central finite difference straddles the kink there and averages
+the one-sided slopes. Its effect on the variance is negligible unless
+many observations sit at exactly `0.5`.
 
 M-estimation standard errors for a categorical exposure allocate memory
 roughly linearly in the number of observations, on the order of 70 to 90
@@ -956,6 +1050,89 @@ observations allocates on the order of hundreds of megabytes. The cost
 comes from the stacked estimating-equation machinery rather than any
 single term, and for very large samples you can expect long,
 garbage-collection-heavy fits. This is expected behavior.
+
+### Continuous propensity score models
+
+A continuous exposure's weights are a ratio of densities centered on the
+conditional mean the propensity score model fits, so the stacked system
+carries that model's own score. Three classes supply one: an
+[`stats::lm()`](https://rdrr.io/r/stats/lm.html), a gaussian
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html) fit with an identity
+or a log link, and a
+[`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) fit with the
+Huber psi. A gaussian model fit with any other link is refused by name,
+because the coefficients its iteration stops at are not a tight enough
+root to seed the stacked solve from; refit it with one of the two links
+or as an [`stats::lm()`](https://rdrr.io/r/stats/lm.html). Any other
+class errors, since solving it here would report a propensity score
+model that was never fit.
+
+A [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) is stacked as
+the Huber score its coefficients are the root of, clipped where the fit
+itself clipped: at the psi's own constant, which is the constant a
+caller passed as `k` when they passed one, times the scale the fit
+settled on. That scale enters the location score as a known constant. It
+solves an equation of its own that the stacked system does not write, so
+none of its sampling variability is propagated, and the standard errors
+are those of a Huber score read at a scale treated as fixed. The spread
+of the conditional density is a separate quantity, and is the pooled
+residual spread there as it is for every other class.
+
+Weights built with `.sigma = fit$s`, the robust scale, are read as the
+fixed spread they are, but that combination is usually a poor choice:
+the robust scale resists the very residuals the density is meant to
+spread over, so on contaminated data the conditional density is far
+narrower than the residuals are, and the ratio can collapse onto an
+effective sample size of about one. Leave `.sigma` unset unless you have
+a reason to hold the spread at a particular value.
+
+Three robust fits are refused. One fit with a psi that is not Huber, and
+one fit with `method = "MM"`, which starts from a high-breakdown fit and
+finishes on a redescending psi, are the roots of equations the stacked
+system does not write; both error with class
+`propensity_ipw_robust_psi_error`. One whose iteration stopped short of
+its own tolerance is the root of nothing, and errors with class
+`propensity_ipw_convergence_error`. The first two point to a Huber refit
+or to a bootstrap of the whole fit written by hand; the last points to a
+larger `maxit` or a looser `acc`, which is what a fit needs to reach its
+own tolerance.
+
+Every density
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+builds a ratio in is stacked as it was built: the normal, Laplace, and
+Student t families, and a density you wrote yourself, under either the
+marginal or the integrated numerator.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+reads the family, the numerator, and the spread off the record the
+weights carry and rebuilds the same ratio at each value of the parameter
+vector, so the weights it differentiates are the weights the outcome
+model was fit with. A marginal numerator contributes the exposure's two
+marginal moments to the parameter vector; an integrated one is built
+from the propensity score block and the data alone and contributes none.
+Weights carrying no such record, including any written with
+[`psw()`](https://r-causal.github.io/propensity/reference/psw.md) by
+hand, are read as the normal ratio the package built before the record
+existed.
+
+Two fits are refused for the standard error rather than for the model.
+An [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) chooses how
+much to smooth by REML, and a `"kernel"` density chooses its bandwidth
+from the residuals of the propensity score model; neither is a function
+of the parameters that the sandwich could differentiate, so weights
+built from either have no closed-form standard error. Both raise an
+error of class `propensity_ipw_se_method_unavailable_error`. The package
+offers no resampling method of its own, so the remedy the refusal names
+is a bootstrap of the whole pipeline written by hand: resample the rows,
+refit the propensity score model, rebuild the weights with
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+and refit the outcome model on each resample, then read the spread of
+the coefficient across the resamples. Doing it that way rather than
+inside
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+keeps what each replicate re-estimates, such as a kernel bandwidth or a
+smoothing parameter, under the writer's control.
+
+### Standard errors by linearization
 
 Setting `se_method = "linearization"` instead uses the
 influence-function linearization of Kostouraki et al. (2024). It is
@@ -1154,17 +1331,21 @@ model. The outcome model weights must match the values implied by the
 propensity score model; a mismatch errors, on both standard error
 methods.
 
-For a continuous exposure that requirement fixes the spread of the
+For a continuous exposure that requirement bears on the spread of the
 conditional density.
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
 stacks a single pooled residual variance alongside the propensity score
 coefficients, so the weights it rebuilds are the ones
 [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-produces with its pooled default. Weights built with an
+produces with its pooled default. A single `.sigma` is taken instead as
+a known constant: the weights are rebuilt at the number that was
+supplied, and the stacked system carries none of that number's
+uncertainty, which is what fixing a spread says. Weights built with an
 observation-level `.sigma`, such as `influence(model)$sigma`, are a
 different function of the data with no counterpart in the stacked
-system, and the consistency check refuses them. Refit the weights
-without `.sigma` to use
+system, and are refused before anything is solved, with an error of
+class `propensity_ipw_sigma_error`. Rebuild the weights with the pooled
+default or with one number to use
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
 
 The propensity score model must not separate the exposure. A model whose
@@ -1256,7 +1437,7 @@ ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 
 # Step 2: Calculate ATE weights and fit a weighted outcome model
 wts <- wt_ate(ps_mod)
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 
@@ -1331,7 +1512,7 @@ ipw(ps_mod, outcome_cont)
 dat$grp <- factor(rep(c("a", "b"), length.out = n))
 ps_grp <- glm(z ~ x1 + grp, data = dat, family = binomial())
 wts_grp <- wt_ate(ps_grp)
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 outcome_grp <- glm(
   y ~ z * grp + x1,
@@ -1398,7 +1579,7 @@ wts_stab <- wt_ate(
   stabilize = TRUE,
   stabilization_score = ifelse(dat$z == 1, p_grp, 1 - p_grp)
 )
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 sd(wts_grp)
 #> [1] 0.402489
@@ -1459,18 +1640,16 @@ ipw(ps_grp, outcome_stab, .by = grp)
 #> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 # Continuous exposure: an lm propensity model of the dose on covariates,
-# stabilized weights, and a weighted marginal structural outcome model
+# weights, which are stabilized by default for a continuous exposure, and a
+# weighted marginal structural outcome model
 a <- 0.5 + 0.8 * x1 + rnorm(n)
 y_dose <- 1 + 0.6 * a + 0.3 * x1 + rnorm(n)
 dat$a <- a
 dat$y_dose <- y_dose
 ps_cont <- lm(a ~ x1, data = dat)
-wts_cont <- wt_ate(
-  fitted(ps_cont),
-  a,
-  exposure_type = "continuous",
-  stabilize = TRUE
-)
+wts_cont <- wt_ate(ps_cont)
+#> ℹ Using exposure variable "a" from the propensity score model
+#> ℹ Treating `.exposure` as continuous
 msm <- lm(y_dose ~ a, data = dat, weights = wts_cont)
 ipw(ps_cont, msm)
 #> Inverse Probability Weight Estimator
@@ -1512,7 +1691,7 @@ ipw(ps_cont, msm_curve, .data = dat)
 #>             Estimate Std. Error z value  Pr(>|z|)    
 #> (Intercept)  1.21010    0.11507 10.5160 < 2.2e-16 ***
 #> poly(a, 2)1  6.35379    1.47843  4.2977 1.726e-05 ***
-#> poly(a, 2)2 -2.10894    1.25245 -1.6838   0.09221 .  
+#> poly(a, 2)2 -2.10894    1.25245 -1.6839   0.09221 .  
 #> ---
 #> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 

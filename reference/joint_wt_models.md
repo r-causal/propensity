@@ -28,9 +28,12 @@ is_joint_wt_models(x)
   binary treatment, a
   [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) for a
   categorical one, and an
-  [`stats::lm()`](https://rdrr.io/r/stats/lm.html) or gaussian
-  [`stats::glm()`](https://rdrr.io/r/stats/glm.html) for a continuous
-  one.
+  [`stats::lm()`](https://rdrr.io/r/stats/lm.html), a gaussian
+  [`stats::glm()`](https://rdrr.io/r/stats/glm.html), a gaussian
+  [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html), or a
+  [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) for a
+  continuous one. Each class is recognized by name rather than by
+  inheritance, so a subclass of one of them is not read as its parent.
 
 - x:
 

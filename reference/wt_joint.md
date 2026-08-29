@@ -14,7 +14,7 @@ product a joint weight rather than an arbitrary one.
 ## Usage
 
 ``` r
-wt_joint(w_a, w_e, exposure_type = c("binary", "binary"))
+wt_joint(w_a, w_e, exposure_type = NULL)
 
 is_joint_wt(x)
 
@@ -36,12 +36,11 @@ joint_wt_meta(x)
 
   A character vector of length two naming each component's exposure
   type, one of `"binary"`, `"categorical"`, or `"continuous"`, in the
-  order the components were given. Defaults to two binary components.
-  The types are supplied rather than read off the weights, because a
-  [`psw()`](https://r-causal.github.io/propensity/reference/psw.md)
-  records its estimand and its stabilization but not the kind of
-  exposure it weights, and the stabilization requirement needs to tell a
-  continuous component from a binary one.
+  order the components were given. Defaults to the types the components
+  record, which is what a weight function writes on the weights it
+  builds. A value given here is used instead of what they record, and a
+  component recording no type, such as one assembled by hand, is refused
+  unless both types are named.
 
 - x:
 
@@ -55,8 +54,9 @@ of the elementwise product, carrying a `joint_wt_meta` record.
 
 `is_joint_wt()` returns a single logical.
 
-`joint_wt_meta()` returns the record as a list with two elements, or
-`NULL` for weights that are not a product:
+`joint_wt_meta()` returns the record as a list of three elements, each
+one per component and in the order the components were given, or `NULL`
+for weights that are not a product:
 
 - `exposure_type`:
 
@@ -65,6 +65,13 @@ of the elementwise product, carrying a `joint_wt_meta` record.
 - `stabilized`:
 
   Whether each component was stabilized, in order.
+
+- `density`:
+
+  Each component's density record, as
+  [`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  returns it, in order. A component weighting a discrete exposure is
+  `NULL`, since its weights are no ratio of densities.
 
 The record names the components rather than the observations, so it
 survives subsetting and every other operation that keeps the vector a
@@ -93,9 +100,17 @@ weight in a way that is equally invisible.
 A continuous component must be stabilized. The unstabilized density
 ratio \\1 / f(A \| L)\\ has a heavy right tail on its own, and
 multiplying it by a second weight inherits that tail, leaving the
-product with no usable variance. Build a continuous component with
-`stabilize = TRUE`. A binary or categorical component needs no
-stabilization and is accepted either way.
+product with no usable variance. A continuous component is stabilized
+unless it was built with `stabilize = FALSE`, so the requirement is met
+by default. A binary or categorical component needs no stabilization and
+is accepted either way.
+
+Any numerator that stabilizes the ratio satisfies the requirement, and
+any density the ratio is read in is accepted: a component built with
+`numerator = "integrated"`, with a heavier-tailed `.density`, or with a
+`stabilization_score` of its own is stabilized as much as the default
+marginal one is. What each component was built with is recorded per
+component rather than merged, so the product carries both answers.
 
 ## What the product records
 
@@ -136,9 +151,9 @@ mod_a <- glm(a ~ x1, data = dat, family = binomial())
 mod_e <- glm(e ~ a * x1, data = dat, family = binomial())
 
 w <- wt_joint(wt_ate(mod_a), wt_ate(mod_e))
-#> ℹ Using exposure variable "a" from GLM model
+#> ℹ Using exposure variable "a" from the propensity score model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Using exposure variable "e" from GLM model
+#> ℹ Using exposure variable "e" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 head(w)
 #> <psw{estimand = ate}[6]>
@@ -154,23 +169,40 @@ joint_wt_meta(w)
 #> $stabilized
 #> [1] FALSE FALSE
 #> 
+#> $density
+#> $density[[1]]
+#> NULL
+#> 
+#> $density[[2]]
+#> NULL
+#> 
+#> 
 
-# A continuous component must be stabilized
+# A continuous component must be stabilized, which it is by default
 d <- 0.5 + 0.6 * x1 - 0.7 * a + rnorm(n)
 mod_d <- lm(d ~ a * x1, data = dat)
-w_d <- wt_ate(
-  fitted(mod_d),
-  d,
-  exposure_type = "continuous",
-  stabilize = TRUE
-)
-joint_wt_meta(wt_joint(wt_ate(mod_a), w_d, c("binary", "continuous")))
-#> ℹ Using exposure variable "a" from GLM model
+w_d <- wt_ate(mod_d)
+#> ℹ Using exposure variable "d" from the propensity score model
+#> ℹ Treating `.exposure` as continuous
+# Each component records the exposure type it weights, so the product knows
+# which of them is the dose without being told
+joint_wt_meta(wt_joint(wt_ate(mod_a), w_d))
+#> ℹ Using exposure variable "a" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 #> $exposure_type
 #> [1] "binary"     "continuous"
 #> 
 #> $stabilized
 #> [1] FALSE  TRUE
+#> 
+#> $density
+#> $density[[1]]
+#> NULL
+#> 
+#> $density[[2]]
+#> density:   normal
+#> numerator: marginal
+#> sigma:     pooled
+#> 
 #> 
 ```

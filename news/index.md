@@ -2,6 +2,314 @@
 
 ## propensity 0.1.0.9000 (development version)
 
+- [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  and
+  [`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  gain a `.density` argument, which chooses the family of the
+  conditional density a continuous exposure’s weights are a ratio of.
+  That density was a normal one and nothing else before, which is a
+  strong claim to make about the residuals of a model for a dose.
+  `.density` accepts the strings `"normal"` (the default), `"laplace"`,
+  and `"kernel"`; a specification built by the new
+  [`dens_normal()`](https://r-causal.github.io/propensity/reference/dens_normal.md),
+  [`dens_laplace()`](https://r-causal.github.io/propensity/reference/dens_normal.md),
+  [`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md),
+  [`dens_kernel()`](https://r-causal.github.io/propensity/reference/dens_normal.md),
+  or
+  [`dens_fn()`](https://r-causal.github.io/propensity/reference/dens_normal.md);
+  or a bare function of one argument. A tail heavier than the normal’s,
+  from
+  [`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+  or `"laplace"`, holds down the weight of a unit whose exposure the
+  model fits poorly, and a kernel estimate assumes no shape at all, at
+  the cost of a density that is not a smooth function of the model’s
+  parameters. `.density` sits after `...`, so it is supplied by name,
+  and it describes a continuous exposure alone: a family other than the
+  default is refused for a binary or categorical exposure, whose weights
+  are not a ratio of densities, the way `.sigma` already was.
+
+  Both densities in the ratio are now evaluated on a standardized
+  residual, `(A - mu) / sigma` for the conditional density and the
+  exposure standardized by its own mean and standard deviation for the
+  marginal one, and each is divided by the spread that standardized it.
+  That factor is the Jacobian of the change of variable, and it returns
+  both densities to the exposure’s own units, so every family is read on
+  one scale and the normal family returns the weights the package
+  returned before, to within a rounding error in the last binary digit.
+  Whatever the density gives back is checked before it becomes a weight:
+  one finite, non-negative value for each standardized residual, and not
+  zero at every one of them. Anything else is an error of class
+  `propensity_density_error` whose message reports the standardized
+  residuals it failed at. What the ratio was built from is recorded on
+  the weights and read back with
+  [`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md).
+
+- [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  and
+  [`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  gain a `numerator` argument, which chooses how the marginal density
+  that stabilizes a continuous exposure’s weights is arrived at.
+  `"marginal"`, the default and the behavior of every earlier version,
+  reads the family `.density` names at the population mean and standard
+  deviation of the exposure; those two moments are parameters of the
+  weights, and
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  estimates them alongside the rest of its parameter vector.
+  `"integrated"` marginalizes the conditional density numerically
+  instead, averaging it over the units at each of 50 points spanning the
+  exposure and interpolating that average back to each observed
+  exposure, which is what WeightIt has done since version 2.0.0 and is
+  what makes the two packages’ continuous weights agree. It estimates no
+  parameters of its own.
+
+  The default did not change, and it was studied before it was left
+  alone: a simulation study run for this package compared the two over
+  linear, skewed, heteroskedastic, heavy-tailed, and bimodal designs.
+  The integrated numerator never improved bias, root mean squared error,
+  or weighted covariate balance by more than Monte Carlo noise,
+  including in the scenarios drawn to favor marginalizing, and in the
+  heavy-tailed cells it was worse: it inflated the root mean squared
+  error, and in some replicates the interpolated density came back
+  negative. `"integrated"` is offered for agreement with WeightIt, and
+  for a conditional density whose marginal has no closed form in the
+  same family. Because it is read off an interpolation rather than a
+  formula, it can dip below zero where the density on the grid comes
+  close to it; the interpolated values are held to the same output check
+  any density is held to, so that becomes an error of class
+  `propensity_density_error` rather than a negative weight. An
+  integrated numerator needs a conditional density to marginalize, so it
+  is refused with an error of class `propensity_numerator_error` for a
+  binary or categorical exposure, with `stabilize = FALSE`, with a
+  `stabilization_score`, and with any `.sigma`. A unit whose exposure or
+  fitted conditional mean is missing is not read by the average and has
+  no weight, as it has none under any other numerator, and a model with
+  nothing to condition on gives weights of exactly one rather than the
+  grid’s approximation to them.
+
+- [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  and
+  [`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  now read a continuous exposure’s conditional means from the model that
+  fit them, rather than from a
+  [`glm()`](https://rdrr.io/r/stats/glm.html) alone. Both gain an `lm`
+  method, which a [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html)
+  reaches by inheritance, and their `glm` method reads a
+  [`gaussian()`](https://rdrr.io/r/stats/family.html) fit under any of
+  its links as well as an
+  [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) fit with it.
+  Each of these classes reports its conditional mean on the scale of the
+  exposure, so a log, inverse, or square root link never has to be
+  undone, and every one of them uses the same pooled residual spread.
+  `rlm` reports a robust scale estimate of its own in `fit$s`, which
+  resists the extreme residuals rather than pooling all of them, and is
+  used only when it is asked for with `.sigma = fit$s`. A family whose
+  spread changes with its fitted values, such as
+  [`poisson()`](https://rdrr.io/r/stats/family.html) or
+  `quasi(variance = "mu")`, describes a different density for every
+  unit, which a single spread cannot stand in for, and is refused with
+  an error of class `propensity_model_family_error`.
+  `quasi(variance = "constant")` is the gaussian variance under another
+  name and is accepted.
+
+  The binary path is now held to the same rule from the other side,
+  which changes what some calls return. Only
+  [`binomial()`](https://rdrr.io/r/stats/family.html) and
+  [`quasibinomial()`](https://rdrr.io/r/stats/family.html) fit the
+  probability those weights divide by, so a gaussian model of a zero-one
+  response, an [`lm()`](https://rdrr.io/r/stats/lm.html) included, is
+  refused with the same error class rather than having its fitted values
+  read as propensity scores. A linear probability model is not held to
+  the unit interval, so the refusal reads the model rather than the
+  values it fitted, and comes before the check on the range of a
+  propensity score. The estimands whose weights are not a ratio of
+  densities take no model of a continuous exposure:
+  [`wt_att()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+  [`wt_atu()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+  [`wt_atm()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+  [`wt_ato()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+  and
+  [`wt_entropy()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  have no `lm` method.
+
+- Weights now record the exposure they were built for, and the new
+  [`exposure_type()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  and
+  [`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  accessors read those records back.
+  [`exposure_type()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  returns `"binary"`, `"categorical"`, or `"continuous"`, and `NULL` for
+  weights built without an exposure to describe, such as those written
+  with [`psw()`](https://r-causal.github.io/propensity/reference/psw.md)
+  directly.
+  [`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  describes the ratio a continuous exposure’s weights are, and returns
+  `NULL` for weights that are no such ratio. Its elements are `density`,
+  the specification of the conditional density family; `numerator`, what
+  stabilized the weights, which is `"marginal"` for the marginal density
+  of the exposure, `"integrated"` for the conditional density
+  marginalized over the units, `"score"` for a `stabilization_score` the
+  caller supplied, and `"none"` for weights that were not stabilized;
+  `sigma`, where the residual spread came from, either `"pooled"` or
+  `"supplied"`; and `sigma_value`, the number a single supplied spread
+  was, which is `NULL` for a pooled spread and for one supplied per
+  observation. A spread that is one number is a constant the weights can
+  be rebuilt from, which is what
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  needs of it; a spread that changes with the observation is not, so the
+  record holds where it came from and nothing more.
+
+  Both records describe the exposure rather than the units, so neither
+  holds a length of its own and both survive subsetting, arithmetic, and
+  anything else that changes the number of weights. Combining two sets
+  of weights that record either of them differently drops the record
+  they disagree on, with a warning of class
+  `propensity_metadata_conflict_warning`. A result that no longer
+  records an exposure type is not described as continuous, so it drops
+  any density record along with it.
+
+- [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  now stacks the propensity score models, densities, and numerators a
+  continuous exposure’s weights can be built from, rather than the one
+  it supported before. The propensity score model may be an
+  [`lm()`](https://rdrr.io/r/stats/lm.html) or a gaussian
+  [`glm()`](https://rdrr.io/r/stats/glm.html) read through an identity
+  or a log link, and the weights may be a ratio in any density family
+  [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  offers, under either numerator.
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  reads the family, the numerator, and the spread off the record the
+  weights carry and rebuilds the same ratio at every value of the
+  parameter vector, so the weights the sandwich differentiates are the
+  weights the outcome model was fit with. Weights that carry no record,
+  including any written with
+  [`psw()`](https://r-causal.github.io/propensity/reference/psw.md) by
+  hand, are read as the normal ratio the package built before the record
+  existed.
+
+  Two fits are now refused for the standard error rather than for the
+  model, with an error of class
+  `propensity_ipw_se_method_unavailable_error`: an
+  [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) propensity
+  score model, whose smoothing is chosen by REML, and weights built with
+  a `"kernel"` density, whose bandwidth is chosen from the residuals.
+  Neither is a function of the parameters that the sandwich could
+  differentiate. The package computes no standard error for either fit,
+  so the refusal points at a bootstrap of the whole pipeline written by
+  hand: resample the rows, refit the propensity score model, rebuild the
+  weights with
+  [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+  and refit the outcome model on each resample. A gaussian model fit
+  with an inverse or square-root link is refused by name, because the
+  coefficients its iteration stops at are not a tight enough root to
+  seed the stacked solve from, and any other class is refused as before,
+  now naming the classes that are supported.
+
+  A single `.sigma` is now accepted, as a known constant: the weights
+  are rebuilt at the number that was supplied, and the stacked system
+  carries none of that number’s uncertainty. Weights built with an
+  observation-level `.sigma` are refused before anything is solved, with
+  an error of class `propensity_ipw_sigma_error` naming the spread,
+  where they previously reached the weight-consistency check and were
+  reported as two vectors that disagree. The number a fixed spread is
+  rebuilt at is the `sigma_value` the weights record.
+
+- [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  now stacks a [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html)
+  propensity score model of a continuous exposure, which it refused
+  before. A robust fit minimizes its own loss rather than the sum of
+  squares, so the stacked system carries the Huber score its
+  coefficients are the root of, clipped where the fit itself clipped: at
+  the psi’s own constant, including one a caller passed as `k`, times
+  the scale the fit settled on. That scale enters the score as a known
+  constant whose sampling variability is not propagated, and the spread
+  of the conditional density is the pooled residual spread, as it is for
+  every other class. A fit with a psi other than Huber, and one fit with
+  `method = "MM"`, which finishes on a redescending psi, are refused
+  with an error of class `propensity_ipw_robust_psi_error`; one whose
+  iteration stopped short of its own tolerance is refused with
+  `propensity_ipw_convergence_error`. The first two point to a Huber
+  refit or to a bootstrap of the whole fit written by hand; the last
+  points to a larger `maxit` or a looser `acc`.
+
+- [`wt_joint()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
+  now reads each component’s exposure type off the component rather than
+  being told it. A weight function records the type of exposure it
+  weighted, so `exposure_type` defaults to what the two components
+  record and is supplied only to override them or to describe a weight
+  that records nothing, such as one assembled with
+  [`psw()`](https://r-causal.github.io/propensity/reference/psw.md) by
+  hand. A component that records no type is refused, naming which of the
+  two it was, because the requirement that a continuous component be
+  stabilized cannot be applied to a component whose exposure is unknown.
+
+  The record
+  [`joint_wt_meta()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
+  returns gains a `density` element, one per component in the order the
+  components were given: the
+  [`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  record of a component weighting a dose, and `NULL` for one weighting a
+  discrete treatment, whose weights are no ratio of densities. What each
+  component was built from is kept per component rather than merged, so
+  a product carries the family, the numerator, and the spread of the
+  dose it multiplied.
+
+- The joint sandwich now stacks the dose models and the density ratios
+  the single-treatment route stacks. The dose model of a
+  [`joint_wt_models()`](https://r-causal.github.io/propensity/reference/joint_wt_models.md)
+  pair goes through the same registry, so a gaussian
+  [`glm()`](https://rdrr.io/r/stats/glm.html) at a log link and a
+  [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) fit with the
+  Huber psi are stacked at the score their own coefficients solve, where
+  before the dose block was the least-squares one whatever the fit was.
+  The dose component’s weights may be a ratio in any density family,
+  under either numerator, and at a spread the caller fixed:
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  reads all three off the product’s per-component record and rebuilds
+  the dose factor from them at every value of the parameter vector. An
+  integrated numerator adds no stabilization parameters, since it is
+  built from the dose block and the data alone, and a single `.sigma` is
+  carried as a known constant, so the dose block is its coefficients
+  alone.
+
+  An [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) dose model
+  previously passed both the container and the stacked system, where it
+  was silently stacked as though it were an identity-link
+  [`glm()`](https://rdrr.io/r/stats/glm.html) of its own basis columns;
+  it is now refused, along with dose weights built with a `"kernel"`
+  density, with an error of class
+  `propensity_ipw_se_method_unavailable_error`. The package computes no
+  standard error for either fit, so the refusal points at building the
+  dose weights from a model and a density the stacked system can write,
+  or at bootstrapping the whole joint fit by hand. A gaussian dose model
+  at an inverse or square-root link is refused by name, as it is for a
+  single dose, and a dose component built with a `stabilization_score`
+  still reaches the weight-consistency check, which now names the score
+  as the cause.
+
+  [`joint_wt_models()`](https://r-causal.github.io/propensity/reference/joint_wt_models.md)
+  reads its supported classes by name rather than by inheritance, so an
+  [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) and a
+  [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) are recognized
+  as the dose models they are rather than as the
+  [`glm()`](https://rdrr.io/r/stats/glm.html) and the
+  [`lm()`](https://rdrr.io/r/stats/lm.html) they inherit from, and an
+  unfamiliar subclass of either is no longer typed as its parent.
+
+- [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  and
+  [`wt_cens()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+  now default `stabilize` to `NULL`, which is resolved once the exposure
+  type is known: a continuous exposure is stabilized and a binary or
+  categorical exposure is not. This is a change in behavior for a
+  continuous exposure. A call that does not name `stabilize` now returns
+  the ratio of the marginal density to the conditional one, where it
+  previously returned the reciprocal of the conditional density alone
+  and reported that those weights are not the ones the package
+  recommends. The unstabilized ratio remains available with
+  `stabilize = FALSE`, and still reports itself. A binary or categorical
+  exposure is unchanged, and an explicit `TRUE` or `FALSE` is honored
+  wherever it was before.
+
 - A continuous-exposure
   [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
   fit whose outcome model reads the exposure through more than one
@@ -132,11 +440,11 @@
   nothing downstream can tell apart, and
   [`wt_joint()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
   requires a continuous component to be stabilized. The second treatment
-  may be a dose, recorded with an
-  [`lm()`](https://rdrr.io/r/stats/lm.html) or an identity-link gaussian
-  [`glm()`](https://rdrr.io/r/stats/glm.html), in which case there are
-  no cells to report and the surface is the marginal structural model’s
-  own coefficients. A model written in bare treatment terms reports rows
+  may be a dose, recorded with any of the classes
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  reads a conditional density from, in which case there are no cells to
+  report and the surface is the marginal structural model’s own
+  coefficients. A model written in bare treatment terms reports rows
   naming the treatment each one varies and where it is evaluated; every
   other treatment-reading model, a transformed term or a basis such as
   [`poly()`](https://rdrr.io/r/stats/poly.html) or

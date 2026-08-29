@@ -52,7 +52,7 @@ to get ATE weights. It pulls out the fitted values and exposure for you:
 ``` r
 
 wts <- wt_ate(ps_mod)
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 outcome_mod <- glm(y ~ z, data = dat, family = binomial(), weights = wts)
 #> Warning in eval(family$initialize): non-integer #successes in a binomial glm!
@@ -157,13 +157,13 @@ To switch estimands, just swap the weight function:
 ``` r
 
 wts_ate <- wt_ate(ps_mod)
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 wts_att <- wt_att(ps_mod)
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 wts_ato <- wt_ato(ps_mod)
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 ```
 
@@ -194,12 +194,12 @@ down-weight observations where overlap is poor:
 ``` r
 
 summary(wt_ato(ps_mod))
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 #> 0.08451 0.30539 0.43830 0.43370 0.52629 0.92053
 summary(wt_atm(ps_mod))
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 #> 0.09231 0.43965 0.78036 0.70946 1.00000 1.00000
@@ -461,17 +461,90 @@ continuous and categorical treatments.
 
 ### Continuous exposures
 
-For continuous exposures, weights use density ratios. Stabilization is
-usually a good idea here:
+For a continuous exposure, the propensity score model is a model of the
+dose itself, and the weights are a ratio of densities: the marginal
+density of the dose over the conditional density the model fits.
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+reads the conditional means from an
+[`lm()`](https://rdrr.io/r/stats/lm.html), a gaussian
+[`glm()`](https://rdrr.io/r/stats/glm.html), an
+[`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html), or a
+[`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html), along with the
+dose the model was fit on. The ratio is stabilized by default, since the
+unstabilized version carries the exposure’s own units and has a heavy
+right tail; pass `stabilize = FALSE` to turn that off.
 
 ``` r
 
-# Fit a model for the continuous exposure
-ps_cont <- glm(continuous_exposure ~ x1 + x2, data = dat, family = gaussian())
+set.seed(13)
+dat$a <- 0.5 + 0.7 * dat$x1 - 0.3 * dat$x2 + rnorm(n)
+dat$y_dose <- 1 + 0.4 * dat$a + 0.3 * dat$x1 + rnorm(n)
 
-# Stabilized weights (strongly recommended for continuous exposures)
-wts_cont <- wt_ate(ps_cont, stabilize = TRUE)
+ps_dose <- lm(a ~ x1 + x2, data = dat)
+wts_dose <- wt_ate(ps_dose)
+#> ℹ Using exposure variable "a" from the propensity score model
+#> ℹ Treating `.exposure` as continuous
+
+# What the weights record about the ratio they are
+density_meta(wts_dose)
+#> density:   normal
+#> numerator: marginal
+#> sigma:     pooled
 ```
+
+The default reads that ratio in the normal family, which is a strong
+claim about the residuals of a dose model. `.density` chooses another
+family, and a heavier tail holds down the weight of a unit whose dose
+the model fits poorly:
+
+``` r
+
+wts_t <- wt_ate(ps_dose, .density = dens_t(df = 4))
+#> ℹ Using exposure variable "a" from the propensity score model
+#> ℹ Treating `.exposure` as continuous
+summary(wts_t)
+#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#>  0.1577  0.5619  0.7310  0.8714  0.9051  3.8192
+```
+
+Pass the dose model and a weighted marginal structural model to
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+for the dose-response slope. Its standard errors come from M-estimation,
+which stacks the dose model, the density ratio, and the outcome model as
+one system:
+
+``` r
+
+msm <- lm(y_dose ~ a, data = dat, weights = wts_dose)
+ipw(ps_dose, msm)
+#> Inverse Probability Weight Estimator
+#> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
+#> 
+#> Weight Estimator:
+#>   Call: lm(formula = a ~ x1 + x2, data = dat) 
+#> 
+#> Outcome Model:
+#>   Call: lm(formula = y_dose ~ a, data = dat, weights = wts_dose) 
+#> 
+#> Marginal estimates:
+#>       estimate std.err      z ci.lower ci.upper conf.level   p.value    
+#> slope  0.40112 0.10426 3.8474  0.19678  0.60546       0.95 0.0001194 ***
+#> ---
+#> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+Two continuous fits have no such system: an
+[`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) chooses how much
+to smooth from the data, and a `"kernel"` density chooses its bandwidth
+from the residuals.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+refuses both for the standard error rather than for the model, and
+points at a bootstrap of the whole pipeline written by hand: resample
+the rows, refit the dose model, rebuild the weights with
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md),
+and refit the marginal structural model on each resample, then read the
+spread of the slope across the resamples.
 
 ### Categorical exposures
 

@@ -135,6 +135,20 @@ double vector, with its storage type normalized and any names dropped,
 so a score written `1L` and one written `1` are the same score and
 combine without conflict.
 
+### The exposure records
+
+Weights built by
+[`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
+and its relatives also record the exposure they were built for:
+`exposure_type` names its type, and `density_meta` describes the ratio
+of densities that weights for a continuous exposure are. Both are read
+back with
+[`exposure_type()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+and
+[`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md),
+and both describe the exposure rather than the units, so neither carries
+a length of its own.
+
 A zero-length `psw` is a prototype: it records what a result built from
 it will carry rather than describing observations of its own, so a
 per-observation score on one is recorded as given and checked for length
@@ -163,15 +177,24 @@ operand names stands for the result; the result is stabilized only when
 both operands are, and it is marked as trimmed, truncated, or calibrated
 when either operand is. The remaining attributes, the
 `stabilization_score`, the records left by a modified propensity score,
-and the attributes describing a categorical exposure, are carried by
-agreement: one only a single operand records carries, and one both
-record with the same value carries. One they record differently is
-dropped, since neither value describes the result, and a warning of
-class `propensity_metadata_conflict_warning` names it, once for each
-attribute dropped that way and whatever order the inputs were given in.
-The rule is applied per operation, so an attribute one operation drops
-for a disagreement can be carried again by a later operation whose
-operands agree.
+the attributes describing a categorical exposure, and the exposure
+records, are carried by agreement: one only a single operand records
+carries, and one both record with the same value carries. One they
+record differently is dropped, since neither value describes the result,
+and a warning of class `propensity_metadata_conflict_warning` names it,
+once for each attribute dropped that way and whatever order the inputs
+were given in. The rule is applied per operation, so an attribute one
+operation drops for a disagreement can be carried again by a later
+operation whose operands agree. Two density records agree when they name
+the same family with the same parameters and the same numerator and
+residual spread, so weights built the same way in two calls agree even
+though each call builds its own copy of the function that evaluates the
+density.
+
+A `density_meta` record describes a continuous exposure, so a result
+that drops `exposure_type` for a disagreement drops the density record
+with it, without a second warning: the record has nothing left to be
+about.
 
 A `stabilization_score` is carried only when the result is stabilized,
 which takes both operands. A result that is not stabilized drops the
@@ -184,7 +207,8 @@ Concatenation appends one set of observations to another, so the
 positions a modification record names would describe units from the
 other input; those records are dropped from the result whether or not
 the inputs agree on them. The categorical attributes name exposure
-levels rather than positions and carry when the inputs agree.
+levels rather than positions, and the exposure records describe the
+exposure rather than any unit, so both carry when the inputs agree.
 
 Subsetting with `[` preserves class and attributes for vector
 subscripts. Two kinds of attribute hold one value per observation and so
@@ -225,9 +249,10 @@ record present and refuses only when the record is absent entirely.
 
 The result of any of these operations stays a `psw` and keeps every
 other attribute, including its stabilized, trimmed, truncated, and
-calibrated status, and the attributes describing a categorical exposure,
-which name the exposure levels rather than the units and so mean the
-same thing at any length.
+calibrated status, the attributes describing a categorical exposure,
+which name the exposure levels rather than the units, and the exposure
+records, which describe the exposure rather than any unit, so both mean
+the same thing at any length.
 
 Matrix or array subscripts intentionally drop the `psw` class and return
 a plain numeric vector via base R linear indexing; this is required so

@@ -20,8 +20,8 @@ supports binary and continuous exposures only.
 
 
 .propensity accepts a numeric vector of predicted probabilities, a
-data.frame or matrix of per-level probabilities, a fitted glm object, or
-a modified propensity score created by ps_trim(), ps_trunc(),
+data.frame or matrix of per-level probabilities, a fitted propensity score
+model, or a modified propensity score created by ps_trim(), ps_trunc(),
 ps_refit(), or ps_calibrate().
 All functions return a psw object – a numeric vector that tracks the
 estimand, stabilization status, and any trimming or truncation applied.'><meta property="og:description" content='Compute inverse probability weights for causal inference under different
@@ -45,8 +45,8 @@ supports binary and continuous exposures only.
 
 
 .propensity accepts a numeric vector of predicted probabilities, a
-data.frame or matrix of per-level probabilities, a fitted glm object, or
-a modified propensity score created by ps_trim(), ps_trunc(),
+data.frame or matrix of per-level probabilities, a fitted propensity score
+model, or a modified propensity score created by ps_trim(), ps_trunc(),
 ps_refit(), or ps_calibrate().
 All functions return a psw object – a numeric vector that tracks the
 estimand, stabilization status, and any trimming or truncation applied.'><meta property="og:image" content="https://r-causal.github.io/propensity/logo.png"></head><body>
@@ -106,8 +106,8 @@ these to adjust for censoring in survival analysis, not for treatment
 weighting. Remaining uncensored is a two-level event, so <code>wt_cens()</code>
 supports binary and continuous exposures only.</p></li>
 </ul><p><code>.propensity</code> accepts a numeric vector of predicted probabilities, a
-<code>data.frame</code> or matrix of per-level probabilities, a fitted <code>glm</code> object, or
-a modified propensity score created by <code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_trunc.html">ps_trunc()</a></code>,
+<code>data.frame</code> or matrix of per-level probabilities, a fitted propensity score
+model, or a modified propensity score created by <code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_trunc.html">ps_trunc()</a></code>,
 <code><a href="ps_refit.html">ps_refit()</a></code>, or <code><a href="ps_calibrate.html">ps_calibrate()</a></code>.</p>
 <p>All functions return a <code><a href="psw.html">psw</a></code> object – a numeric vector that tracks the
 estimand, stabilization status, and any trimming or truncation applied.</p>
@@ -122,9 +122,11 @@ estimand, stabilization status, and any trimming or truncation applied.</p>
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .reference_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  stabilize <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
+<span>  .density <span class="op">=</span> <span class="st">"normal"</span>,</span>
+<span>  numerator <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"marginal"</span>, <span class="st">"integrated"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
@@ -137,9 +139,11 @@ estimand, stabilization status, and any trimming or truncation applied.</p>
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"categorical"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .reference_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  stabilize <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
+<span>  .density <span class="op">=</span> <span class="st">"normal"</span>,</span>
+<span>  numerator <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"marginal"</span>, <span class="st">"integrated"</span><span class="op">)</span>,</span>
 <span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span></span>
@@ -283,9 +287,11 @@ estimand, stabilization status, and any trimming or truncation applied.</p>
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .reference_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  stabilize <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
+<span>  .density <span class="op">=</span> <span class="st">"normal"</span>,</span>
+<span>  numerator <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"marginal"</span>, <span class="st">"integrated"</span><span class="op">)</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
@@ -298,9 +304,11 @@ estimand, stabilization status, and any trimming or truncation applied.</p>
 <span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"binary"</span>, <span class="st">"continuous"</span><span class="op">)</span>,</span>
 <span>  .focal_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .reference_level <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  stabilize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  stabilize <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stabilization_score <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
+<span>  .density <span class="op">=</span> <span class="st">"normal"</span>,</span>
+<span>  numerator <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"marginal"</span>, <span class="st">"integrated"</span><span class="op">)</span>,</span>
 <span>  .propensity_col <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .treated <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  .untreated <span class="op">=</span> <span class="cn">NULL</span></span>
@@ -318,12 +326,20 @@ shapes are read the same way, for categorical exposures and for binary
 ones alike, including the default choice of column described under
 <code>.propensity_col</code>. That argument is itself a formal of the data frame
 methods only, so selecting a column by name means passing a data frame.</p></li>
-<li><p>A fitted <strong><code>glm</code></strong> object – fitted values are extracted automatically.</p></li>
+<li><p>A fitted <strong>propensity score model</strong> – fitted values are extracted
+automatically. For a binary exposure that is a <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> fit with
+<code><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial()</a></code> or <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">quasibinomial()</a></code>. For a continuous exposure it is a
+model of the conditional mean: <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code>, a <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> fit with <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">gaussian()</a></code>
+under any of its links, an <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam()</a></code> fit with <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">gaussian()</a></code>, or a
+<code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code>. Handing either exposure type a model of the other, or a
+family whose spread changes with its fitted values, is an error of class
+<code>propensity_model_family_error</code>; see <strong>Continuous exposures</strong> in
+Details.</p></li>
 <li><p>A modified propensity score created by <code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_trunc.html">ps_trunc()</a></code>,
 <code><a href="ps_refit.html">ps_refit()</a></code>, or <code><a href="ps_calibrate.html">ps_calibrate()</a></code>.</p></li>
 </ul><p>For a binary exposure, <code>.propensity</code> is the probability of the focal
 level, so a numeric vector must be supplied on the scale of whichever
-level <code>.focal_level</code> or <code>.reference_level</code> resolves to. The <code>glm</code> methods
+level <code>.focal_level</code> or <code>.reference_level</code> resolves to. The model methods
 derive it from the fitted values, which give the probability of the
 response's second level, and subtract them from one when the resolved
 focal level is the first level instead. A data frame or matrix reduces to
@@ -338,21 +354,27 @@ first.</p></dd>
 <dd><p>The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
 exposures, a factor or character vector. For continuous exposures, a
-numeric vector. Optional when <code>.propensity</code> is a <code>glm</code> object (extracted
-from the model). Missing values are not counted as a level of their own,
+numeric vector. Optional when <code>.propensity</code> is a fitted model, in which
+case it is the model's response. Missing values are not counted as a level
+of their own,
 and are carried through to the weights as missing.</p></dd>
 
 
 <dt id="arg--sigma">.sigma<a class="anchor" aria-label="anchor" href="#arg--sigma"></a></dt>
-<dd><p>Observation-level standard deviations of the conditional
-density for continuous exposures, one per observation (e.g.,
-<code>influence(model)$sigma</code>). Optional: with none supplied, including when
-<code>.propensity</code> is a <code>glm</code> object, the conditional density uses the pooled
-residual standard deviation of <code>.exposure</code> around <code>.propensity</code>. Weights
-built with an observation-level <code>.sigma</code> cannot be used with <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code>; see
-<strong>Continuous exposures</strong> in Details.</p>
-<p>Must be numeric, holding either a single standard deviation or one per
-observation, and applies only to continuous exposures. <code>.sigma</code> sits in
+<dd><p>The residual spread of the conditional density for continuous
+exposures: a single standard deviation applied to every unit, or one for
+each observation (e.g., <code>influence(model)$sigma</code>). Optional: with none
+supplied, including when <code>.propensity</code> is a fitted model, the conditional
+density uses the pooled residual spread of <code>.exposure</code> around
+<code>.propensity</code>.</p>
+<p>The two shapes differ downstream. A single spread is a constant the weights
+can be rebuilt from, so it is recorded in <code><a href="exposure_type.html">density_meta()</a></code> as <code>sigma_value</code>
+and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> reads it as a spread held fixed, propagating none of its
+uncertainty. A spread supplied for each observation is a function of the
+data that nothing rebuilds, so the record holds where it came from and
+nothing more, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> refuses such weights; see <strong>Continuous
+exposures</strong> in Details.</p>
+<p>Must be numeric, and applies only to continuous exposures. <code>.sigma</code> sits in
 the third position, which is where a value meant for <code>exposure_type</code>
 arrives when it is supplied without a name, so anything else is refused
 with an error of class <code>propensity_sigma_error</code>.</p></dd>
@@ -389,9 +411,14 @@ supplied.</p></dd>
 
 
 <dt id="arg-stabilize">stabilize<a class="anchor" aria-label="anchor" href="#arg-stabilize"></a></dt>
-<dd><p>If <code>TRUE</code>, multiply weights by an estimate of the marginal
-treatment probability (binary) or density (continuous). Only supported by
-<code>wt_ate()</code> and <code>wt_cens()</code>. See <strong>Stabilization</strong> in Details.</p></dd>
+<dd><p>Whether to multiply the weights by an estimate of the
+marginal treatment probability (binary) or density (continuous). <code>NULL</code>,
+the default, reads the answer from the exposure type: a continuous
+exposure is stabilized, and a binary or categorical exposure is not.
+<code>TRUE</code> and <code>FALSE</code> ask for one or the other outright, and an unstabilized
+continuous exposure reports that its weights are not the recommended ones.
+Only supported by <code>wt_ate()</code> and <code>wt_cens()</code>. See <strong>Stabilization</strong> in
+Details.</p></dd>
 
 
 <dt id="arg-stabilization-score">stabilization_score<a class="anchor" aria-label="anchor" href="#arg-stabilization-score"></a></dt>
@@ -406,11 +433,52 @@ or value is refused with an error of class
 <code>propensity_stabilization_score_error</code>. A per-observation score is recorded
 on the result and is dropped, with a warning, by any operation that changes
 the length of the weight vector, since it cannot be re-indexed for the new
-length. Ignored when <code>stabilize = FALSE</code>.</p></dd>
+length. Ignored when stabilization is off, whether because <code>stabilize</code> is
+<code>FALSE</code> or because the exposure type resolves the default that way.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>These dots are for future extensions and must be empty.</p></dd>
+
+
+<dt id="arg--density">.density<a class="anchor" aria-label="anchor" href="#arg--density"></a></dt>
+<dd><p>The family of the conditional density for continuous
+exposures, described under <strong>Continuous exposures</strong> in Details. One of the
+strings <code>"normal"</code> (the default), <code>"laplace"</code>, or <code>"kernel"</code>; a
+specification built by <code><a href="dens_normal.html">dens_normal()</a></code>, <code><a href="dens_normal.html">dens_laplace()</a></code>, <code><a href="dens_normal.html">dens_t()</a></code>,
+<code><a href="dens_normal.html">dens_kernel()</a></code>, or <code><a href="dens_normal.html">dens_fn()</a></code>; or a bare function of the standardized
+residual, which is wrapped with <code><a href="dens_normal.html">dens_fn()</a></code>.</p>
+<p>A function is called on the whole vector of standardized residuals at once
+rather than on one residual at a time, and is called a second time on the
+standardized exposure when the marginal numerator stabilizes the weights.
+Each call must return one finite, non-negative value for each value it was
+given, not every one of them zero. Anything else is refused with an error of
+class <code>propensity_density_error</code>, which is also what a family other than the
+default gets for a binary or categorical exposure, whose weights are not a
+ratio of densities. The default is accepted for every exposure type and
+ignored outside a continuous one.</p>
+<p><code>.density</code> sits after <code>...</code> and so can only be supplied by name. The family
+the weights were built from is recorded on the result and read back with
+<code><a href="exposure_type.html">density_meta()</a></code>.</p></dd>
+
+
+<dt id="arg-numerator">numerator<a class="anchor" aria-label="anchor" href="#arg-numerator"></a></dt>
+<dd><p>How the marginal density that stabilizes a continuous
+exposure's weights is obtained, described under <strong>Stabilization</strong> in
+Details. Either <code>"marginal"</code>, the default, which reads the family
+<code>.density</code> names at the population mean and standard deviation of
+<code>.exposure</code>, or <code>"integrated"</code>, which averages the conditional density
+over the units on a grid spanning <code>.exposure</code> and interpolates the result
+back to each observed exposure.</p>
+<p><code>"integrated"</code> describes a continuous exposure alone, and needs a
+conditional density to marginalize: it is refused with an error of class
+<code>propensity_numerator_error</code> for a binary or categorical exposure, with
+<code>stabilize = FALSE</code>, with a <code>stabilization_score</code>, and with any <code>.sigma</code>.
+The default is accepted for every exposure type and ignored outside a
+continuous one.</p>
+<p><code>numerator</code> sits after <code>...</code> and so can only be supplied by name. The
+numerator the weights were built from is recorded on the result and read
+back with <code><a href="exposure_type.html">density_meta()</a></code>.</p></dd>
 
 
 <dt id="arg--treated">.treated<a class="anchor" aria-label="anchor" href="#arg--treated"></a></dt>
@@ -447,6 +515,13 @@ these attributes:</p><ul><li><p><code>estimand</code>: character, e.g. <code>"at
 <li><p><code>trimmed</code>: logical, whether the propensity scores were trimmed.</p></li>
 <li><p><code>truncated</code>: logical, whether the propensity scores were truncated.</p></li>
 <li><p><code>calibrated</code>: logical, whether the propensity scores were calibrated.</p></li>
+<li><p><code>exposure_type</code>: character, the type of exposure the weights were built
+for, read back with <code><a href="exposure_type.html">exposure_type()</a></code>.</p></li>
+<li><p><code>density_meta</code>: for a continuous exposure, whose weights are a ratio of
+densities, the record of that ratio: the density family, the numerator
+that stabilized the weights, and where the residual spread came from.
+Read back with <code><a href="exposure_type.html">density_meta()</a></code>, and <code>NULL</code> for a binary or categorical
+exposure.</p></li>
 </ul></div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -466,8 +541,9 @@ or a matrix or data frame holding it in one of its columns.</p></li>
 levels. <code>.propensity</code> must be a matrix or data frame with one column per
 level, where rows sum to 1.</p></li>
 <li><p><strong>Continuous</strong>: <code>.exposure</code> is a numeric vector. <code>.propensity</code> is a
-vector of conditional means (fitted values). Weights use a normal density
-ratio; stabilization is strongly recommended.</p></li>
+vector of conditional means (fitted values). Weights are a ratio of
+densities, whose family is chosen by <code>.density</code>, and are stabilized
+unless <code>stabilize = FALSE</code> asks otherwise.</p></li>
 <li><p><strong>Auto</strong> (default): Detects the exposure type from <code>.exposure</code>.</p></li>
 </ul></div>
 
@@ -475,19 +551,54 @@ ratio; stabilization is strongly recommended.</p></li>
 <h3 id="stabilization">Stabilization<a class="anchor" aria-label="anchor" href="#stabilization"></a></h3>
 
 
-<p>Setting <code>stabilize = TRUE</code> multiplies the base weight by an estimate of
-P(A) (binary) or f_A(A) (continuous), reducing variance. When no
-<code>stabilization_score</code> is supplied, that estimate is the marginal mean of
-<code>.exposure</code> for a binary or categorical exposure, and for a continuous
-exposure the marginal normal density evaluated at the population mean and
-standard deviation of <code>.exposure</code>. Stabilization is supported for ATE and
-censoring weights (<code>wt_ate()</code> and <code>wt_cens()</code>) and is strongly recommended
-for continuous exposures.</p>
+<p>Stabilization multiplies the base weight by an estimate of P(A) (binary) or
+f_A(A) (continuous), reducing variance. When no <code>stabilization_score</code> is
+supplied, that estimate is the marginal mean of <code>.exposure</code> for a binary or
+categorical exposure, and for a continuous exposure the marginal density of
+the family <code>.density</code> names, evaluated at the population mean and standard
+deviation of <code>.exposure</code>. Stabilization is supported for ATE and censoring
+weights (<code>wt_ate()</code> and <code>wt_cens()</code>) alone.</p>
+<p>Whether it is applied is read from the exposure type unless <code>stabilize</code> says
+so outright. A continuous exposure is stabilized, since the unstabilized
+ratio carries the exposure's own units and is not a form of the weights the
+package recommends; a binary or categorical exposure is left unstabilized,
+and <code>stabilize = TRUE</code> asks for it there.</p>
+<p>For a continuous exposure, <code>numerator</code> chooses how that marginal density is
+arrived at. <code>"marginal"</code>, the default, reads the family <code>.density</code> names at
+the population mean and standard deviation of <code>.exposure</code>. Those two moments
+are parameters of the weights, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> estimates them alongside the rest
+of its parameter vector, so the standard errors account for the numerator
+having been estimated. <code>"integrated"</code> marginalizes the conditional density
+numerically instead: it averages \(f_{A|X}(t \mid X_i)\) over the units at
+each of 50 points spanning <code>.exposure</code>, then interpolates that average back
+to each observed exposure with a cubic spline. It estimates no parameters of
+its own, and it is what WeightIt has done since version 2.0.0.</p>
+<p>The two agree whenever the family is normal and the fitted conditional means
+are themselves normal, since an average of normal densities centered on
+normally distributed means is again a normal density. They separate as
+those means grow skewed or bimodal, or as the family's tails grow heavier
+than the normal's.</p>
+<p>The marginal numerator is the default because it is the published convention
+(Robins et al., 2000; Naimi et al., 2014) and because it held up: in a
+simulation study run for this package, over linear, skewed, heteroskedastic,
+heavy-tailed, and bimodal designs, marginalizing never improved bias, root
+mean squared error, or weighted covariate balance by more than Monte Carlo
+noise, including in the scenarios drawn to favor it, and in the heavy-tailed
+cells it was worse: it inflated the root mean squared error, and in some
+replicates the interpolated density came back negative. The integrated
+numerator is here for
+agreement with WeightIt, and for a conditional density whose marginal has no
+closed form in the same family. Being read off an interpolation rather than
+a formula, it can dip below zero where the density on the grid comes close
+to it, which is refused with an error of class <code>propensity_density_error</code>
+rather than turned into a negative weight.</p>
 <p>The default numerator conditions on nothing, and <code>stabilization_score</code>
-replaces it with one of your own. The case that pays is a numerator
-conditioning on a variable the model the estimates are read from also reads,
-such as an effect modifier. Fit that numerator and evaluate it at the
-exposure each unit actually took, which is the shape the default already has:</p>
+replaces it with one of your own, which leaves <code>numerator</code> nothing to
+choose: the two cannot be supplied together. The case that pays is a
+numerator conditioning on a variable the model the estimates are read from
+also reads, such as an effect modifier. Fit that numerator and evaluate it at
+the exposure each unit actually took, which is the shape the default already
+has:</p>
 <p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a>num <span class="ot">&lt;-</span> <span class="fu">glm</span>(A <span class="sc">~</span> V, <span class="at">data =</span> dat, <span class="at">family =</span> <span class="fu">binomial</span>())</span>
 <span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">fitted</span>(num)</span>
 <span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="fu">wt_ate</span>(ps_mod, <span class="at">stabilize =</span> <span class="cn">TRUE</span>,</span>
@@ -509,7 +620,11 @@ overlap. You can address them by:</p><ul><li><p>Choosing an overlap-focused esti
 <li><p>Trimming (<code><a href="ps_trim.html">ps_trim()</a></code>) or truncating (<code><a href="ps_trunc.html">ps_trunc()</a></code>) propensity scores
 before computing weights.</p></li>
 <li><p>Calibrating weights with <code><a href="ps_calibrate.html">ps_calibrate()</a></code>.</p></li>
-<li><p>Stabilizing ATE weights (<code>stabilize = TRUE</code>).</p></li>
+<li><p>Stabilizing ATE and censoring weights: a continuous exposure is stabilized
+by default, and a binary or categorical one is with <code>stabilize = TRUE</code>.</p></li>
+<li><p>Choosing a heavier-tailed <code>.density</code> for a continuous exposure, which
+holds down the weight of a unit whose exposure the propensity score model
+fits poorly.</p></li>
 </ul><p>See the <a href="https://CRAN.R-project.org/package=halfmoon" class="external-link">halfmoon</a> package
 for weight diagnostics and visualization.</p>
 </div>
@@ -568,21 +683,74 @@ moment constraints rather than tilting a fitted propensity score.</p>
 
 <p>Weights use the density ratio
 \(w = f_A(A) / f_{A|X}(A \mid X)\), where \(f_A\) is the marginal
-density and \(f_{A|X}\) is the conditional density (both assumed
-normal). Only <code>wt_ate()</code> and <code>wt_cens()</code> support continuous exposures.</p>
-<p>The marginal density is evaluated at the population mean and standard
-deviation of <code>.exposure</code>. The conditional density is centered on
-<code>.propensity</code> and spread by the propensity model's residual standard
-deviation. That spread is the pooled residual standard deviation
-\(\sqrt{\mathrm{mean}((A - \hat{A})^2)}\) unless <code>.sigma</code> supplies an
-observation-level standard deviation for each unit, which the <code>glm</code> methods
-do not do on their own.</p>
+density of the exposure and \(f_{A|X}\) is the conditional density the
+propensity model estimates. Only <code>wt_ate()</code> and <code>wt_cens()</code> support
+continuous exposures.</p>
+<p>Both densities are read on a standardized residual. The conditional density
+is evaluated at \(z_i = (A_i - \hat{A}_i) / \sigma\), where
+\(\hat{A}_i\) is the fitted conditional mean in <code>.propensity</code> and
+\(\sigma\) is the residual spread; the marginal density is evaluated at
+\(z^A_i = (A_i - \bar{A}) / s_A\), where \(\bar{A}\) and \(s_A\) are
+the population mean and standard deviation of <code>.exposure</code>. Each density is
+then divided by the spread that standardized it, the Jacobian of that change
+of variable, which returns both to the exposure's own units so that each
+integrates to one:</p>
+<p>$$w_i = \frac{g(z^A_i) / s_A}{g(z_i) / \sigma}$$</p>
+<p><code>.density</code> chooses the family \(g\):</p><table class="table table"><tr><td><code>.density</code></td><td>\(g(z)\)</td></tr><tr><td><code>"normal"</code>, <code><a href="dens_normal.html">dens_normal()</a></code></td><td>the standard normal density, the default</td></tr><tr><td><code>"laplace"</code>, <code><a href="dens_normal.html">dens_laplace()</a></code></td><td>\(\exp(-\lvert z \rvert) / 2\)</td></tr><tr><td><code><a href="dens_normal.html">dens_t()</a></code></td><td>Student's t with <code>df</code> degrees of freedom</td></tr><tr><td><code>"kernel"</code>, <code><a href="dens_normal.html">dens_kernel()</a></code></td><td>a kernel density estimate of the standardized residuals</td></tr><tr><td><code><a href="dens_normal.html">dens_fn()</a></code>, or a bare function</td><td>a density you write yourself</td></tr></table><p>The numerator and the denominator take the same family, so the choice
+describes the shape of the residuals rather than the estimand. A heavier tail
+than the normal's, such as <code><a href="dens_normal.html">dens_t()</a></code> or <code>"laplace"</code>, holds down the weight
+of a unit whose exposure the model fits poorly, and <code>"kernel"</code> assumes no
+shape at all, at the cost of a density that is not a smooth function of the
+model's parameters. A <code>stabilization_score</code> replaces the numerator outright
+and <code>stabilize = FALSE</code> leaves it out, so under either the family describes
+the denominator alone. Under <code>numerator = "integrated"</code> it describes both
+again, the numerator there being the same conditional density averaged over
+the units rather than the same family read at the exposure's own moments;
+see <strong>Stabilization</strong>.</p>
+<p>A unit whose exposure or fitted conditional mean is missing has no
+standardized residual, and so no weight: the density is asked only about the
+units that have one, and a kernel is fit on those. A propensity score
+<code><a href="ps_trim.html">ps_trim()</a></code> set aside is the ordinary way this arises.</p>
+<p>The conditional means in <code>.propensity</code> can be read from the model that fit
+them. <code>wt_ate()</code> and <code>wt_cens()</code> take a fitted <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code>, a <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> fit with
+<code><a href="https://rdrr.io/r/stats/family.html" class="external-link">gaussian()</a></code> under any of its links, an <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam()</a></code> fit with <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">gaussian()</a></code>,
+and a <code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code>, and read the exposure from the model's response when
+<code>.exposure</code> is not supplied. Each of these reports its conditional mean on
+the scale of the exposure, so a log, inverse, or square root link never has
+to be undone.</p>
+<p>A family whose spread changes with its fitted values, such as <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">poisson()</a></code> or
+<code>quasi(variance = "mu")</code>, describes a different density for every unit, which
+a single spread cannot stand in for, and is refused with an error of class
+<code>propensity_model_family_error</code>. <code>quasi(variance = "constant")</code> is the
+gaussian variance under another name and is accepted. A model of a binary
+exposure is held to the same rule from the other side: only <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial()</a></code> and
+<code><a href="https://rdrr.io/r/stats/family.html" class="external-link">quasibinomial()</a></code> fit the probability those weights divide by, so a model of
+a conditional mean is refused there whatever its fitted values happen to fall
+on, a linear probability model included.</p>
+<p>\(\sigma\) is the pooled residual spread
+\(\sqrt{\mathrm{mean}((A - \hat{A})^2)}\) unless <code>.sigma</code> supplies a single
+standard deviation, or one for each unit, which the model methods do not do
+on their own. The marginal density is spread by \(s_A\) whatever <code>.sigma</code>
+says, the spread of the exposure itself being no business of the conditional
+model's.</p>
+<p>Every model class is spread that same way, <code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code> included. <code>rlm</code>
+reports a robust scale estimate of its own in <code>fit$s</code>, which resists the
+extreme residuals rather than pooling all of them; pass <code>.sigma = fit$s</code> to
+be spread by it instead. That is rarely what you want on the data a robust
+fit is used for: the scale resists the very residuals the conditional density
+is meant to spread over, so the ratio can concentrate on a handful of units.
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> stacks a robust fit's own score with that scale held fixed as a known
+constant, and reads <code>.sigma = fit$s</code> as a fixed spread in the same way,
+propagating the uncertainty of neither.</p>
 <p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> models the conditional density with a single pooled residual
-variance, estimated jointly with the rest of the parameter vector. Weights
-built with an observation-level <code>.sigma</code> therefore have no counterpart in
-that estimating equation, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> rejects them in its weight consistency
-check. Build weights with the pooled default when the outcome model is
-headed for <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code>.</p>
+variance, estimated jointly with the rest of the parameter vector. A single
+<code>.sigma</code> is taken instead as a known constant: the weights are rebuilt at the
+number that was supplied, and the stacked system carries none of that
+number's uncertainty. An observation-level <code>.sigma</code> is a different function
+of the data with no counterpart in that estimating equation, and is refused
+before anything is solved, with an error of class
+<code>propensity_ipw_sigma_error</code>. Build weights with the pooled default, or with
+one number, when the outcome model is headed for <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code>.</p>
 </div>
 
 <div class="section">
@@ -623,9 +791,20 @@ Medical Research</em>, 29(12), 3721–3756. (Entropy weights)</p>
 <p>Hirano, K., &amp; Imbens, G. W. (2004). The propensity score with continuous
 treatments. In <em>Applied Bayesian Modeling and Causal Inference from
 Incomplete-Data Perspectives</em> (pp. 73–84).</p>
+<p>Robins, J. M., Hernán, M. A., &amp; Brumback, B. (2000). Marginal structural
+models and causal inference in epidemiology. <em>Epidemiology</em>, 11(5),
+550–560.</p>
+<p>Naimi, A. I., Moodie, E. E. M., Auger, N., &amp; Kaufman, J. S. (2014).
+Constructing inverse probability weights for continuous exposures: a
+comparison of methods. <em>Epidemiology</em>, 25(2), 292–299.</p>
 <p>Austin, P. C., &amp; Stuart, E. A. (2015). Moving towards best practice when
 using inverse probability of treatment weighting (IPTW). <em>Statistics in
 Medicine</em>, 34(28), 3661–3679.</p>
+<p>Greifer, N. <em>WeightIt: Weighting for Covariate Balance in Observational
+Studies</em>. R package.
+<a href="https://CRAN.R-project.org/package=WeightIt" class="external-link">https://CRAN.R-project.org/package=WeightIt</a> (the integrated
+numerator, which WeightIt has computed for continuous treatments since
+version 2.0.0)</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -802,7 +981,7 @@ g-computation estimate to the same target population.</p></li>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Exposure is extracted from the model automatically</span></span></span>
 <span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_model</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"trt2"</span> from GLM model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"trt2"</span> from the propensity score model</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[100]&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   [1] 1.772299 2.816364 1.919886 2.059945 1.590514 2.019637 1.592626 3.675866</span>
@@ -818,6 +997,58 @@ g-computation estimate to the same target population.</p></li>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  [81] 1.406166 3.813823 1.982021 2.553269 1.982884 1.957207 1.440986 1.560568</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  [89] 1.603633 1.885138 1.584638 2.218637 1.630055 1.585865 1.872610 1.274698</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  [97] 1.393716 1.394134 1.800220 1.778728</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># -- Continuous exposure from a fitted model -------------------------</span></span></span>
+<span class="r-in"><span><span class="va">dose</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="op">+</span> <span class="fl">0.5</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">-</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">100</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">dose_model</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">dose</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># The exposure is read from the model, and a continuous exposure is</span></span></span>
+<span class="r-in"><span><span class="co"># stabilized without being asked</span></span></span>
+<span class="r-in"><span><span class="va">w_dose</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span><span class="va">dose_model</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"dose"</span> from the propensity score model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># A tail heavier than the normal's holds down the weight of a unit whose</span></span></span>
+<span class="r-in"><span><span class="co"># dose the model fits poorly</span></span></span>
+<span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">dose_model</span>, .density <span class="op">=</span> <span class="fu"><a href="dens_normal.html">dens_t</a></span><span class="op">(</span>df <span class="op">=</span> <span class="fl">4</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"dose"</span> from the propensity score model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate; stabilized}[100]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   [1] 1.8646342 0.9733784 0.8752609 0.8688423 0.7479327 0.7798293 0.9016771</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   [8] 0.7597835 0.6310464 0.6911070 0.7999152 0.7082642 0.8020596 0.7990152</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [15] 0.5044498 0.7911563 0.7468465 0.9357483 0.9238356 0.8522952 0.9048531</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [22] 0.5633915 0.6523243 1.1495582 0.3374106 0.7535244 1.3004884 0.7506499</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [29] 0.7409988 1.7593253 0.8070058 0.7424372 0.8403367 1.0590076 1.0785524</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [36] 0.3059582 1.0582182 1.3140401 0.8689788 0.9671610 1.1106228 1.4415967</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [43] 1.6841604 0.7055659 0.5493660 2.4236372 0.5417968 0.4050666 2.2863800</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [50] 0.5851142 0.7353432 1.6511412 1.0393921 0.7953566 1.1868726 1.0917254</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [57] 0.8642301 1.1409825 1.0153774 0.7270439 0.4827268 0.9199718 1.2137686</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [64] 0.4873167 0.5196829 1.0329573 0.7868673 0.6905860 0.6315537 0.9681556</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [71] 1.6544586 0.9066800 0.8659805 0.1618948 0.5878388 0.7318754 1.2574093</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [78] 0.8112021 0.9306485 0.9048382 0.8503056 0.6369130 0.9173769 0.7515608</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [85] 0.8473410 0.9312568 0.5513774 1.4042470 2.4415982 1.3000206 0.8634111</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [92] 1.0266033 1.0473099 0.8128075 0.3222650 0.4487284 0.9522881 1.0692692</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [99] 0.9326978 0.3828823</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># The stabilizing numerator can marginalize the conditional density over the</span></span></span>
+<span class="r-in"><span><span class="co"># units instead of reading the same family at the exposure's own moments</span></span></span>
+<span class="r-in"><span><span class="va">w_int</span> <span class="op">&lt;-</span> <span class="fu">wt_ate</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">dose_model</span>,</span></span>
+<span class="r-in"><span>  .density <span class="op">=</span> <span class="fu"><a href="dens_normal.html">dens_t</a></span><span class="op">(</span>df <span class="op">=</span> <span class="fl">4</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  numerator <span class="op">=</span> <span class="st">"integrated"</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"dose"</span> from the propensity score model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># What each set of weights records about the ratio it is</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="exposure_type.html">density_meta</a></span><span class="op">(</span><span class="va">w_dose</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> density:   normal</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> numerator: marginal</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sigma:     pooled</span>
+<span class="r-in"><span><span class="fu"><a href="exposure_type.html">density_meta</a></span><span class="op">(</span><span class="va">w_int</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> density:   t(df = 4)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> numerator: integrated</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sigma:     pooled</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># -- Data frame input ------------------------------------------------</span></span></span>
 <span class="r-in"><span><span class="va">ps_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span></span>
@@ -840,13 +1071,13 @@ g-computation estimate to the same target population.</p></li>
 <span class="r-in"><span><span class="fu">wt_cens</span><span class="op">(</span><span class="va">cens_ps</span>, <span class="va">cens_ind</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = uncensored}[50]&gt;</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1] 1.116412 1.447081 1.644465 1.108844 1.394494 1.217840 1.263824 3.727943</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [9] 1.503634 1.333104 1.218367 1.278290 1.203561 1.169213 1.298047 1.361360</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [17] 1.660049 1.663092 1.054599 2.760604 3.945306 1.174730 1.162941 1.104729</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [25] 1.230385 1.156509 1.115406 1.227788 1.139434 2.551015 1.340626 1.103498</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [33] 1.209817 1.082758 2.943590 1.407391 1.134443 1.056929 1.402849 2.502609</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [41] 1.055677 1.533923 1.620017 1.235981 3.477837 1.274250 1.138436 1.602240</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [49] 1.185878 1.072937</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1] 1.083078 1.265968 9.835512 1.243399 1.199165 4.524070 1.153452 1.091492</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [9] 1.127185 1.599997 1.662887 1.617418 1.107057 1.247371 3.446433 1.068590</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [17] 1.239284 1.272276 3.764746 1.404803 1.132586 1.626884 3.667167 1.111347</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [25] 1.184439 1.191086 3.594604 1.259226 1.543126 1.143215 1.098416 3.043524</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [33] 7.675660 1.236511 1.069308 2.903103 1.275362 1.104237 1.105709 1.643950</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [41] 1.062066 1.296044 1.358309 1.340223 1.580968 2.912338 1.347898 1.389593</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [49] 1.341669 1.415592</span>
 <span class="r-in"><span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/causal-weights.html" class="external-link">estimand</a></span><span class="op">(</span><span class="fu">wt_cens</span><span class="op">(</span><span class="va">cens_ps</span>, <span class="va">cens_ind</span><span class="op">)</span><span class="op">)</span>  <span class="co"># "uncensored"</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "uncensored"</span>

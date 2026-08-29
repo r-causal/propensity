@@ -149,7 +149,7 @@ dat <- data.frame(x1, z, y)
 
 ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 wts <- wt_ate(ps_mod)
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 result <- ipw(ps_mod, outcome_mod)

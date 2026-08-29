@@ -74,8 +74,10 @@ that cannot be detected from the weight vector afterwards.</p>
 <dd><p>Exactly two fitted treatment models, each named for the treatment
 it fits. The order is the factorization's order. Supported models are a
 binomial <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> for a binary treatment, a <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> for a
-categorical one, and an <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">stats::lm()</a></code> or gaussian <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> for a
-continuous one.</p></dd>
+categorical one, and an <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">stats::lm()</a></code>, a gaussian <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code>, a
+gaussian <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam()</a></code>, or a <code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code> for a continuous one. Each class
+is recognized by name rather than by inheritance, so a subclass of one of
+them is not read as its parent.</p></dd>
 
 
 <dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>

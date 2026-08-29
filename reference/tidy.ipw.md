@@ -132,12 +132,12 @@ tidy(
   The covariance the conditional reading reports is the outcome block of
   the jointly estimated sandwich, which every route that stacks
   estimating equations attaches to the outcome model it stores:
-  `se_method = "mestimation"` for a binary exposure, and the categorical
-  and continuous routes, which run on M-estimation alone. A
-  linearization fit stacks no such system and records no such block, so
-  its conditional reading errors rather than reporting the covariance
-  the outcome model computed for itself, which treats the estimated
-  weights as fixed.
+  `se_method = "mestimation"` for a binary exposure, the categorical and
+  joint routes, which run on M-estimation alone, and the continuous
+  route under that method. A linearization fit stacks no system and
+  records no covariance of either kind, so its conditional reading
+  errors rather than reporting the covariance the outcome model computed
+  for itself, which treats the estimated weights as fixed.
 
 - parametric:
 
@@ -232,7 +232,7 @@ dat <- data.frame(x1, z, y)
 
 ps_mod <- glm(z ~ x1, data = dat, family = binomial())
 wts <- wt_ate(ps_mod)
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
 result <- ipw(ps_mod, outcome_mod)

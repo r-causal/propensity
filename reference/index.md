@@ -6,6 +6,19 @@
   : Augment an inverse probability weighted result with per-observation
   columns
 
+- [`dens_normal()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+  [`dens_laplace()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+  [`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+  [`dens_kernel()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+  [`dens_fn()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+  : Density specifications for continuous exposures
+
+- [`exposure_type()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  [`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  [`format(`*`<propensity_density_meta>`*`)`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  [`print(`*`<propensity_density_meta>`*`)`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+  : What a set of weights records about the exposure
+
 - [`glance(`*`<ipw>`*`)`](https://r-causal.github.io/propensity/reference/glance.ipw.md)
   : Glance at an inverse probability weighted result
 

@@ -79,9 +79,9 @@ fits <- with(imp, {
   om <- glm(y ~ z, family = quasibinomial(), weights = w)
   ipw(ps, om)
 })
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
-#> ℹ Using exposure variable "z" from GLM model
+#> ℹ Using exposure variable "z" from the propensity score model
 #> ℹ Treating `.exposure` as binary
 
 glance(pool_ipw(fits))

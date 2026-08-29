@@ -126,6 +126,36 @@
 <span><span class="co">#&gt; ---</span></span>
 <span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 <p>By default, <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> computes standard errors by M-estimation, stacking the propensity score and outcome estimating equations so the uncertainty of estimating the propensity scores is carried into the standard errors. Set <code>se_method = "linearization"</code> for the influence-function method (binary exposures with an exposure-only outcome model).</p>
+<p>A continuous exposure follows the same three steps. The propensity score model is a model of the dose, such as an <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code>, and the weights are a ratio of densities rather than a function of a propensity score:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># A dose, and an outcome that depends on it</span></span>
+<span><span class="va">dat</span><span class="op">$</span><span class="va">a</span> <span class="op">&lt;-</span> <span class="fl">0.4</span> <span class="op">+</span> <span class="fl">0.7</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">x1</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
+<span><span class="va">dat</span><span class="op">$</span><span class="va">y_dose</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="op">+</span> <span class="fl">0.5</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">a</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">x1</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># The weights are stabilized by default for a continuous exposure</span></span>
+<span><span class="va">ps_dose</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">a</span> <span class="op">~</span> <span class="va">x1</span>, data <span class="op">=</span> <span class="va">dat</span><span class="op">)</span></span>
+<span><span class="va">wts_dose</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_dose</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ℹ Using exposure variable "a" from the propensity score model</span></span>
+<span><span class="co">#&gt; ℹ Treating `.exposure` as continuous</span></span>
+<span></span>
+<span><span class="co"># The outcome model is a marginal structural model of the dose</span></span>
+<span><span class="va">msm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y_dose</span> <span class="op">~</span> <span class="va">a</span>, data <span class="op">=</span> <span class="va">dat</span>, weights <span class="op">=</span> <span class="va">wts_dose</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_dose</span>, <span class="va">msm</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
+<span><span class="co">#&gt; Estimand: ATE </span></span>
+<span><span class="co">#&gt; Effects: marginal (population-averaged) </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Weight Estimator:</span></span>
+<span><span class="co">#&gt;   Call: lm(formula = a ~ x1, data = dat) </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Outcome Model:</span></span>
+<span><span class="co">#&gt;   Call: lm(formula = y_dose ~ a, data = dat, weights = wts_dose) </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Marginal estimates:</span></span>
+<span><span class="co">#&gt;       estimate std.err      z ci.lower ci.upper conf.level   p.value    </span></span>
+<span><span class="co">#&gt; slope  0.62419 0.14291 4.3679   0.3441  0.90428       0.95 1.255e-05 ***</span></span>
+<span><span class="co">#&gt; ---</span></span>
+<span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="estimands">Estimands<a class="anchor" aria-label="anchor" href="#estimands"></a>

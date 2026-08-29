@@ -106,7 +106,7 @@ regression:</p>
 weights. It pulls out the fitted values and exposure for you:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wts</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from the propensity score model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
 <span><span class="va">outcome_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">z</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span>, weights <span class="op">=</span> <span class="va">wts</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Warning in eval(family$initialize): non-integer #successes in a binomial glm!</span></span></code></pre></div>
@@ -224,13 +224,13 @@ on that below).</p>
 <p>To switch estimands, just swap the weight function:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wts_ate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from the propensity score model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
 <span><span class="va">wts_att</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_att</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from the propensity score model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
 <span><span class="va">wts_ato</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ato</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from the propensity score model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span></code></pre></div>
 </div>
 <div class="section level2">
@@ -253,12 +253,12 @@ options.</p>
 where overlap is poor:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="../reference/wt_ate.html">wt_ato</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from the propensity score model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
 <span><span class="co">#&gt; 0.08451 0.30539 0.43830 0.43370 0.52629 0.92053</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="../reference/wt_ate.html">wt_atm</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from the propensity score model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
 <span><span class="co">#&gt; 0.09231 0.43965 0.78036 0.70946 1.00000 1.00000</span></span></code></pre></div>
@@ -474,21 +474,78 @@ continuous and categorical treatments.</p>
 <div class="section level3">
 <h3 id="continuous-exposures">Continuous exposures<a class="anchor" aria-label="anchor" href="#continuous-exposures"></a>
 </h3>
-<p>For continuous exposures, weights use density ratios. Stabilization
-is usually a good idea here:</p>
+<p>For a continuous exposure, the propensity score model is a model of
+the dose itself, and the weights are a ratio of densities: the marginal
+density of the dose over the conditional density the model fits.
+<code><a href="../reference/wt_ate.html">wt_ate()</a></code> reads the conditional means from an
+<code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code>, a gaussian <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code>, an
+<code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam()</a></code>, or a <code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code>, along with the
+dose the model was fit on. The ratio is stabilized by default, since the
+unstabilized version carries the exposure’s own units and has a heavy
+right tail; pass <code>stabilize = FALSE</code> to turn that off.</p>
 <div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Fit a model for the continuous exposure</span></span>
-<span><span class="va">ps_cont</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">continuous_exposure</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">gaussian</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">13</span><span class="op">)</span></span>
+<span><span class="va">dat</span><span class="op">$</span><span class="va">a</span> <span class="op">&lt;-</span> <span class="fl">0.5</span> <span class="op">+</span> <span class="fl">0.7</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">x1</span> <span class="op">-</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
+<span><span class="va">dat</span><span class="op">$</span><span class="va">y_dose</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="op">+</span> <span class="fl">0.4</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">a</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">dat</span><span class="op">$</span><span class="va">x1</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Stabilized weights (strongly recommended for continuous exposures)</span></span>
-<span><span class="va">wts_cont</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_cont</span>, stabilize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">ps_dose</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">a</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">dat</span><span class="op">)</span></span>
+<span><span class="va">wts_dose</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_dose</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from the propensity score model</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span></span>
+<span></span>
+<span><span class="co"># What the weights record about the ratio they are</span></span>
+<span><span class="fu"><a href="../reference/exposure_type.html">density_meta</a></span><span class="op">(</span><span class="va">wts_dose</span><span class="op">)</span></span>
+<span><span class="co">#&gt; density:   normal</span></span>
+<span><span class="co">#&gt; numerator: marginal</span></span>
+<span><span class="co">#&gt; sigma:     pooled</span></span></code></pre></div>
+<p>The default reads that ratio in the normal family, which is a strong
+claim about the residuals of a dose model. <code>.density</code> chooses
+another family, and a heavier tail holds down the weight of a unit whose
+dose the model fits poorly:</p>
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">wts_t</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_dose</span>, .density <span class="op">=</span> <span class="fu"><a href="../reference/dens_normal.html">dens_t</a></span><span class="op">(</span>df <span class="op">=</span> <span class="fl">4</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from the propensity score model</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">wts_t</span><span class="op">)</span></span>
+<span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
+<span><span class="co">#&gt;  0.1577  0.5619  0.7310  0.8714  0.9051  3.8192</span></span></code></pre></div>
+<p>Pass the dose model and a weighted marginal structural model to
+<code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> for the dose-response slope. Its standard errors come
+from M-estimation, which stacks the dose model, the density ratio, and
+the outcome model as one system:</p>
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">msm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y_dose</span> <span class="op">~</span> <span class="va">a</span>, data <span class="op">=</span> <span class="va">dat</span>, weights <span class="op">=</span> <span class="va">wts_dose</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_dose</span>, <span class="va">msm</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Inverse Probability Weight Estimator</span></span>
+<span><span class="co">#&gt; Estimand: ATE </span></span>
+<span><span class="co">#&gt; Effects: marginal (population-averaged) </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Weight Estimator:</span></span>
+<span><span class="co">#&gt;   Call: lm(formula = a ~ x1 + x2, data = dat) </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Outcome Model:</span></span>
+<span><span class="co">#&gt;   Call: lm(formula = y_dose ~ a, data = dat, weights = wts_dose) </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Marginal estimates:</span></span>
+<span><span class="co">#&gt;       estimate std.err      z ci.lower ci.upper conf.level   p.value    </span></span>
+<span><span class="co">#&gt; slope  0.40112 0.10426 3.8474  0.19678  0.60546       0.95 0.0001194 ***</span></span>
+<span><span class="co">#&gt; ---</span></span>
+<span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span></code></pre></div>
+<p>Two continuous fits have no such system: an <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam()</a></code>
+chooses how much to smooth from the data, and a <code>"kernel"</code>
+density chooses its bandwidth from the residuals. <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code>
+refuses both for the standard error rather than for the model, and
+points at a bootstrap of the whole pipeline written by hand: resample
+the rows, refit the dose model, rebuild the weights with
+<code><a href="../reference/wt_ate.html">wt_ate()</a></code>, and refit the marginal structural model on each
+resample, then read the spread of the slope across the resamples.</p>
 </div>
 <div class="section level3">
 <h3 id="categorical-exposures">Categorical exposures<a class="anchor" aria-label="anchor" href="#categorical-exposures"></a>
 </h3>
 <p>For multi-level treatments, pass a matrix or data frame of predicted
 probabilities with one column per level:</p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Multinomial propensity scores (one column per treatment level)</span></span>
 <span><span class="va">ps_matrix</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span><span class="va">multinom_model</span>, type <span class="op">=</span> <span class="st">"probs"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_matrix</span>, <span class="va">exposure</span>, exposure_type <span class="op">=</span> <span class="st">"categorical"</span><span class="op">)</span></span>
@@ -503,7 +560,7 @@ probabilities with one column per level:</p>
 reflect treatment probabilities. Where trimming and truncation deal with
 the tails, calibration reshapes the whole distribution. It supports
 logistic calibration (the default) and isotonic regression:</p>
-<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ps_calibrated</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ps_calibrate.html">ps_calibrate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">dat</span><span class="op">$</span><span class="va">z</span>, method <span class="op">=</span> <span class="st">"logistic"</span>, smooth <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/is_ps_calibrated.html">is_ps_calibrated</a></span><span class="op">(</span><span class="va">ps_calibrated</span><span class="op">)</span></span>
 <span></span>
@@ -514,7 +571,7 @@ logistic calibration (the default) and isotonic regression:</p>
 </h3>
 <p><code><a href="../reference/wt_ate.html">wt_cens()</a></code> calculates inverse probability of censoring
 weights for survival or longitudinal analyses:</p>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Model the probability of being uncensored</span></span>
 <span><span class="va">cens_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">uncensored</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">wts_cens</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_cens</a></span><span class="op">(</span><span class="va">cens_mod</span><span class="op">)</span></span>

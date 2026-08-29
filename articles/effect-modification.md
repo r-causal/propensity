@@ -156,17 +156,16 @@ describes the recipe under **Effect modification**.
 Now the other question. Both treatments are intervened on, so both need
 treatment models. The second conditions on the first, which is the
 factorization a joint weight actually has.
+[`wt_joint()`](https://r-causal.github.io/propensity/reference/wt_joint.md)
+reads each component’s exposure type off the component, so nothing has
+to say which of the two is which.
 
 ``` r
 
 ps_e <- glm(e ~ a * l, data = dat, family = binomial())
 
 models <- joint_wt_models(a = ps_a, e = ps_e)
-w_joint <- wt_joint(
-  w_a,
-  wt_ate(ps_e),
-  exposure_type = c("binary", "binary")
-)
+w_joint <- wt_joint(w_a, wt_ate(ps_e))
 
 joint_mod <- lm(y ~ a * e, data = dat, weights = w_joint)
 joint_fit <- ipw(models, joint_mod)

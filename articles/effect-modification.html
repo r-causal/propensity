@@ -209,16 +209,14 @@ modification</strong>.</p>
 </h2>
 <p>Now the other question. Both treatments are intervened on, so both
 need treatment models. The second conditions on the first, which is the
-factorization a joint weight actually has.</p>
+factorization a joint weight actually has. <code><a href="../reference/wt_joint.html">wt_joint()</a></code> reads
+each component’s exposure type off the component, so nothing has to say
+which of the two is which.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ps_e</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">e</span> <span class="op">~</span> <span class="va">a</span> <span class="op">*</span> <span class="va">l</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">models</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/joint_wt_models.html">joint_wt_models</a></span><span class="op">(</span>a <span class="op">=</span> <span class="va">ps_a</span>, e <span class="op">=</span> <span class="va">ps_e</span><span class="op">)</span></span>
-<span><span class="va">w_joint</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_joint.html">wt_joint</a></span><span class="op">(</span></span>
-<span>  <span class="va">w_a</span>,</span>
-<span>  <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_e</span><span class="op">)</span>,</span>
-<span>  exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"binary"</span>, <span class="st">"binary"</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
+<span><span class="va">w_joint</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_joint.html">wt_joint</a></span><span class="op">(</span><span class="va">w_a</span>, <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_e</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">joint_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">a</span> <span class="op">*</span> <span class="va">e</span>, data <span class="op">=</span> <span class="va">dat</span>, weights <span class="op">=</span> <span class="va">w_joint</span><span class="op">)</span></span>
 <span><span class="va">joint_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">models</span>, <span class="va">joint_mod</span><span class="op">)</span></span>

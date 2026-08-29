@@ -212,11 +212,13 @@ result, rather than in the surface underneath.</p>
 <p>The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
-<code>se_method = "mestimation"</code> for a binary exposure, and the categorical and
-continuous routes, which run on M-estimation alone. A linearization fit
-stacks no such system and records no such block, so its conditional reading
-errors rather than reporting the covariance the outcome model computed for
-itself, which treats the estimated weights as fixed.</p></dd>
+<code>se_method = "mestimation"</code> for a binary exposure, the categorical and
+joint routes, which run on M-estimation alone, and the continuous route
+under that method. A linearization fit stacks no system and records no
+covariance of either kind, so its conditional reading errors rather than
+reporting the
+covariance the outcome model computed for itself, which treats the
+estimated weights as fixed.</p></dd>
 
 
 <dt id="arg-parametric">parametric<a class="anchor" aria-label="anchor" href="#arg-parametric"></a></dt>
@@ -292,7 +294,7 @@ imputation section of <code><a href="https://r-causal.github.io/causalgenerics/r
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">ps_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">z</span> <span class="op">~</span> <span class="va">x1</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">wts</span> <span class="op">&lt;-</span> <span class="fu"><a href="wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_mod</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from GLM model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"z"</span> from the propensity score model</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-in"><span><span class="va">outcome_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">z</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">quasibinomial</a></span><span class="op">(</span><span class="op">)</span>, weights <span class="op">=</span> <span class="va">wts</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw</a></span><span class="op">(</span><span class="va">ps_mod</span>, <span class="va">outcome_mod</span><span class="op">)</span></span></span>

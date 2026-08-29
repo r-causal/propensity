@@ -64,7 +64,7 @@ checks that make the product a joint weight rather than an arbitrary one.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">wt_joint</span><span class="op">(</span><span class="va">w_a</span>, <span class="va">w_e</span>, exposure_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"binary"</span>, <span class="st">"binary"</span><span class="op">)</span><span class="op">)</span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">wt_joint</span><span class="op">(</span><span class="va">w_a</span>, <span class="va">w_e</span>, exposure_type <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">is_joint_wt</span><span class="op">(</span><span class="va">x</span><span class="op">)</span></span>
 <span></span>
@@ -86,11 +86,11 @@ the second, whose model conditions on the first.</p></dd>
 <dt id="arg-exposure-type">exposure_type<a class="anchor" aria-label="anchor" href="#arg-exposure-type"></a></dt>
 <dd><p>A character vector of length two naming each component's
 exposure type, one of <code>"binary"</code>, <code>"categorical"</code>, or <code>"continuous"</code>, in
-the order the components were given. Defaults to two binary components. The
-types are supplied rather than read off the weights, because a <code><a href="psw.html">psw()</a></code>
-records its estimand and its stabilization but not the kind of exposure it
-weights, and the stabilization requirement needs to tell a continuous
-component from a binary one.</p></dd>
+the order the components were given. Defaults to the types the components
+record, which is what a weight function writes on the weights it builds. A
+value given here is used instead of what they record, and a component
+recording no type, such as one assembled by hand, is refused unless both
+types are named.</p></dd>
 
 
 <dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
@@ -102,12 +102,18 @@ component from a binary one.</p></dd>
     <p><code>wt_joint()</code> returns a <code><a href="psw.html">psw()</a></code> vector of the elementwise product, carrying a
 <code>joint_wt_meta</code> record.</p>
 <p><code>is_joint_wt()</code> returns a single logical.</p>
-<p><code>joint_wt_meta()</code> returns the record as a list with two elements, or <code>NULL</code>
-for weights that are not a product:</p><dl><dt><code>exposure_type</code></dt>
+<p><code>joint_wt_meta()</code> returns the record as a list of three elements, each one
+per component and in the order the components were given, or <code>NULL</code> for
+weights that are not a product:</p><dl><dt><code>exposure_type</code></dt>
 <dd><p>The two components' exposure types, in order.</p></dd>
 
 <dt><code>stabilized</code></dt>
 <dd><p>Whether each component was stabilized, in order.</p></dd>
+
+<dt><code>density</code></dt>
+<dd><p>Each component's density record, as <code><a href="exposure_type.html">density_meta()</a></code>
+returns it, in order. A component weighting a discrete exposure is
+<code>NULL</code>, since its weights are no ratio of densities.</p></dd>
 
 
 </dl><p>The record names the components rather than the observations, so it survives
@@ -134,8 +140,15 @@ is equally invisible.</p>
     <p>A continuous component must be stabilized. The unstabilized density ratio
 \(1 / f(A | L)\) has a heavy right tail on its own, and multiplying it by a
 second weight inherits that tail, leaving the product with no usable
-variance. Build a continuous component with <code>stabilize = TRUE</code>. A binary or
+variance. A continuous component is stabilized unless it was built with
+<code>stabilize = FALSE</code>, so the requirement is met by default. A binary or
 categorical component needs no stabilization and is accepted either way.</p>
+<p>Any numerator that stabilizes the ratio satisfies the requirement, and any
+density the ratio is read in is accepted: a component built with
+<code>numerator = "integrated"</code>, with a heavier-tailed <code>.density</code>, or with a
+<code>stabilization_score</code> of its own is stabilized as much as the default
+marginal one is. What each component was built with is recorded per component
+rather than merged, so the product carries both answers.</p>
     </div>
     <div class="section level2">
     <h2 id="what-the-product-records">What the product records<a class="anchor" aria-label="anchor" href="#what-the-product-records"></a></h2>
@@ -169,9 +182,9 @@ models, and <code><a href="wt_ate.html">wt_ate()</a></code> for building the com
 <span class="r-in"><span><span class="va">mod_e</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">e</span> <span class="op">~</span> <span class="va">a</span> <span class="op">*</span> <span class="va">x1</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">w</span> <span class="op">&lt;-</span> <span class="fu">wt_joint</span><span class="op">(</span><span class="fu"><a href="wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">mod_a</span><span class="op">)</span>, <span class="fu"><a href="wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">mod_e</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from GLM model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from the propensity score model</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"e"</span> from GLM model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"e"</span> from the propensity score model</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">w</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[6]&gt;</span>
@@ -187,24 +200,41 @@ models, and <code><a href="wt_ate.html">wt_ate()</a></code> for building the com
 <span class="r-out co"><span class="r-pr">#&gt;</span> $stabilized</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE FALSE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $density</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $density[[1]]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $density[[2]]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># A continuous component must be stabilized</span></span></span>
+<span class="r-in"><span><span class="co"># A continuous component must be stabilized, which it is by default</span></span></span>
 <span class="r-in"><span><span class="va">d</span> <span class="op">&lt;-</span> <span class="fl">0.5</span> <span class="op">+</span> <span class="fl">0.6</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">-</span> <span class="fl">0.7</span> <span class="op">*</span> <span class="va">a</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">mod_d</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">d</span> <span class="op">~</span> <span class="va">a</span> <span class="op">*</span> <span class="va">x1</span>, data <span class="op">=</span> <span class="va">dat</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">w_d</span> <span class="op">&lt;-</span> <span class="fu"><a href="wt_ate.html">wt_ate</a></span><span class="op">(</span></span></span>
-<span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/stats/fitted.values.html" class="external-link">fitted</a></span><span class="op">(</span><span class="va">mod_d</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>  <span class="va">d</span>,</span></span>
-<span class="r-in"><span>  exposure_type <span class="op">=</span> <span class="st">"continuous"</span>,</span></span>
-<span class="r-in"><span>  stabilize <span class="op">=</span> <span class="cn">TRUE</span></span></span>
-<span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="fu">joint_wt_meta</span><span class="op">(</span><span class="fu">wt_joint</span><span class="op">(</span><span class="fu"><a href="wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">mod_a</span><span class="op">)</span>, <span class="va">w_d</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"binary"</span>, <span class="st">"continuous"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from GLM model</span>
+<span class="r-in"><span><span class="va">w_d</span> <span class="op">&lt;-</span> <span class="fu"><a href="wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">mod_d</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"d"</span> from the propensity score model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span>
+<span class="r-in"><span><span class="co"># Each component records the exposure type it weights, so the product knows</span></span></span>
+<span class="r-in"><span><span class="co"># which of them is the dose without being told</span></span></span>
+<span class="r-in"><span><span class="fu">joint_wt_meta</span><span class="op">(</span><span class="fu">wt_joint</span><span class="op">(</span><span class="fu"><a href="wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">mod_a</span><span class="op">)</span>, <span class="va">w_d</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from the propensity score model</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $exposure_type</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "binary"     "continuous"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $stabilized</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE  TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $density</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $density[[1]]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $density[[2]]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> density:   normal</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> numerator: marginal</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sigma:     pooled</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
