@@ -46,6 +46,23 @@ fit_multinom <- function(formula) {
   nnet::multinom(formula, data = categorical_model_data, trace = FALSE)
 }
 
+# The agreement each route is held to. Comparing the attributes whole holds the
+# estimand, the exposure type, and the record a categorical `psw` keeps of its
+# levels and its focal level to the numeric route's, alongside the weights.
+expect_same_weights <- function(weights, oracle, label = NULL) {
+  testthat::expect_equal(
+    as.numeric(weights),
+    as.numeric(oracle),
+    tolerance = 1e-12,
+    label = label
+  )
+  testthat::expect_identical(
+    attributes(weights),
+    attributes(oracle),
+    label = label
+  )
+}
+
 # ---- the categorical path ---------------------------------------------------
 
 test_that("a multinomial fit gives the weights its fitted probabilities give", {
@@ -93,6 +110,92 @@ test_that("the fitted probabilities are matched to the exposure's levels", {
     as.numeric(weights),
     as.numeric(oracle),
     tolerance = 1e-12
+  )
+})
+
+test_that("a tilting estimand reads a multinomial fit's probabilities", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(trt ~ x1 + x2)
+  trt <- categorical_model_data$trt
+  probs <- stats::predict(fit, type = "probs")
+
+  # The estimands whose tilt is a function of the propensity scores themselves
+  # rather than of a level singled out. The tilt is read off the same matrix the
+  # ATE weights are read off, so the route to it is the same route.
+  estimands <- list(atm = wt_atm, ato = wt_ato, entropy = wt_entropy)
+
+  for (estimand_name in names(estimands)) {
+    weight_fn <- estimands[[estimand_name]]
+
+    expect_same_weights(
+      weight_fn(fit, trt, exposure_type = "categorical"),
+      weight_fn(probs, trt, exposure_type = "categorical"),
+      label = estimand_name
+    )
+  }
+})
+
+test_that("a focal estimand reads a multinomial fit at every focal level", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(trt ~ x1 + x2)
+  trt <- categorical_model_data$trt
+  probs <- stats::predict(fit, type = "probs")
+
+  # `wt_atc()` is a copy of `wt_atu()` and gives the weights that name reaches,
+  # so the alias is held to the same agreement rather than only to the method it
+  # dispatches to.
+  estimands <- list(att = wt_att, atu = wt_atu, atc = wt_atc)
+
+  for (estimand_name in names(estimands)) {
+    weight_fn <- estimands[[estimand_name]]
+
+    for (focal in levels(trt)) {
+      expect_same_weights(
+        weight_fn(
+          fit,
+          trt,
+          .focal_level = focal,
+          exposure_type = "categorical"
+        ),
+        weight_fn(
+          probs,
+          trt,
+          .focal_level = focal,
+          exposure_type = "categorical"
+        ),
+        label = paste(estimand_name, "with focal =", focal)
+      )
+    }
+  }
+})
+
+test_that("a focal estimand of a multinomial fit needs a focal level", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(trt ~ x1 + x2)
+  trt <- categorical_model_data$trt
+  probs <- stats::predict(fit, type = "probs")
+
+  # Which level the weights tilt toward is nothing a categorical fit records, so
+  # the model route asks for it on the same terms the numeric route does.
+  expect_error(
+    wt_att(probs, trt, exposure_type = "categorical"),
+    class = "propensity_focal_required_error"
+  )
+  expect_error(
+    wt_att(fit, trt, exposure_type = "categorical"),
+    class = "propensity_focal_required_error"
+  )
+
+  expect_error(
+    wt_atu(probs, trt, exposure_type = "categorical"),
+    class = "propensity_focal_required_error"
+  )
+  expect_error(
+    wt_atu(fit, trt, exposure_type = "categorical"),
+    class = "propensity_focal_required_error"
   )
 })
 
@@ -154,6 +257,35 @@ test_that("naming the other level of a two-level fit inverts its probabilities",
   )))
 })
 
+test_that("a two-level multinomial fit is tilted as a binary exposure", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(a2 ~ x1 + x2)
+  a2 <- categorical_model_data$a2
+  ps <- as.numeric(stats::fitted(fit))
+
+  # The single probability a two-level fit reports is what every binary formula
+  # reads, so each estimand gives what it gives that probability.
+  estimands <- list(
+    att = wt_att,
+    atu = wt_atu,
+    atc = wt_atc,
+    atm = wt_atm,
+    ato = wt_ato,
+    entropy = wt_entropy
+  )
+
+  for (estimand_name in names(estimands)) {
+    weight_fn <- estimands[[estimand_name]]
+
+    expect_same_weights(
+      weight_fn(fit, a2),
+      weight_fn(ps, a2),
+      label = estimand_name
+    )
+  }
+})
+
 # ---- the exposure the model already holds -----------------------------------
 
 test_that("a multinomial fit reads its own exposure and says which it read", {
@@ -175,6 +307,18 @@ test_that("a multinomial fit reads its own exposure and says which it read", {
   expect_identical(as.numeric(from_model), as.numeric(supplied))
 })
 
+test_that("a tilting estimand reads the exposure the fit holds", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(trt ~ x1 + x2)
+  trt <- categorical_model_data$trt
+
+  # Reading the exposure off the model is a step the route takes before any
+  # estimand is computed, so an estimand that tilts is given the same exposure
+  # the ATE weights are.
+  expect_same_weights(wt_ato(fit), wt_ato(fit, trt))
+})
+
 # ---- the fits the route refuses ---------------------------------------------
 
 test_that("a multinomial fit refuses a continuous exposure", {
@@ -188,6 +332,23 @@ test_that("a multinomial fit refuses a continuous exposure", {
   # the model.
   expect_error(
     wt_ate(
+      fit,
+      categorical_model_data$x1,
+      exposure_type = "continuous"
+    ),
+    class = "causalgenerics_unsupported_exposure_type"
+  )
+})
+
+test_that("a tilting estimand refuses a continuous exposure too", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(trt ~ x1 + x2)
+
+  # The types the route offers are a property of the model rather than of the
+  # estimand, so every weight function reads the same set of them.
+  expect_error(
+    wt_att(
       fit,
       categorical_model_data$x1,
       exposure_type = "continuous"
@@ -261,6 +422,29 @@ test_that("censoring weights take no multinomial fit", {
   )
 })
 
+# ---- the methods the route registers ----------------------------------------
+
+test_that("every weight function for an exposure has a multinomial method", {
+  # A `multinom` inherits from nothing these generics have a method for, so a
+  # weight function reaches such a fit only through a method registered for the
+  # class itself. `wt_atc()` is a copy of `wt_atu()` and dispatches under that
+  # name, so its row asks that the alias reach a method rather than that a
+  # method be registered under the alias.
+  generics <- c(
+    "wt_ate",
+    "wt_att",
+    "wt_atu",
+    "wt_atc",
+    "wt_atm",
+    "wt_ato",
+    "wt_entropy"
+  )
+
+  for (generic in generics) {
+    expect_no_error(utils::getS3method(generic, "multinom"))
+  }
+})
+
 # ---- agreement with WeightIt ------------------------------------------------
 
 test_that("multinomial weights match WeightIt for every estimand", {
@@ -295,8 +479,6 @@ test_that("multinomial weights match WeightIt for every estimand", {
     ignore_attr = "names"
   )
 
-  # The tilting estimands have no multinomial method yet, so everything below
-  # fails until they gain one.
   for (focal in levels(trt)) {
     expect_equal(
       as.numeric(wt_att(
