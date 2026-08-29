@@ -1589,7 +1589,14 @@ ipw_spec_continuous <- function(
   check_ipw_offset(outcome_mod, call = call)
   check_ipw_outcome_response(outcome_mod, call = call)
   check_ipw_outcome_family(outcome_mod, call = call)
-  check_ipw_continuous_links(ps_mod, outcome_mod, call = call)
+  check_ipw_continuous_outcome_link(outcome_mod, call = call)
+
+  # The propensity score model decides which score the stacked system carries
+  # and how the conditional mean is read back from it. A model this path has no
+  # score for is refused here, whether because no equation describes it or
+  # because the class is not one this path knows at all.
+  ps_model <- ipw_continuous_model(ps_mod, call = call)
+  check_ipw_continuous_model(ps_model, call = call)
 
   # A propensity model fit with prior case weights would need a weighted score in
   # the stacked system; the ee_regression ps block is unweighted, so the fitted
@@ -1641,6 +1648,11 @@ ipw_spec_continuous <- function(
   }
 
   wts <- extract_weights(outcome_mod)
+
+  # What ratio of densities the weights are, which is what the stacked system
+  # has to rebuild. The record travels on the weights; weights that carry none
+  # are read as the ratio every earlier version of the package built.
+  ratio <- ipw_continuous_ratio(wts, call = call)
 
   # Membership first, so that a value naming no estimand at all is reported as
   # that on this path too. The restriction below says the estimand asked for is
@@ -1712,7 +1724,7 @@ ipw_spec_continuous <- function(
     exposure = exposure,
     ps = list(
       X = ps_X,
-      link = NULL,
+      link = ps_model$link,
       coefs = stats::coef(ps_mod),
       k = NULL
     ),
@@ -1720,6 +1732,9 @@ ipw_spec_continuous <- function(
       stabilized = is_stabilized(wts),
       score = stabilization_score(wts)
     ),
+    density = ratio$density,
+    numerator = ratio$numerator,
+    sigma = ratio$sigma,
     outcome = list(
       X = out_X,
       y = ipw_outcome_numeric(outcome),
@@ -1971,23 +1986,10 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       )
     },
     continuous = {
-      n_alpha <- ncol(spec$ps$X)
-      alpha <- th_ps[seq_len(n_alpha)]
-      sigma2_d <- th_ps[[n_alpha + 1]]
-      fitted_ps <- as.vector(spec$ps$X %*% alpha)
-      mu_a <- if (length(th_stab)) th_stab[[1]] else NULL
-      sigma2_a <- if (length(th_stab)) th_stab[[2]] else NULL
-      weight_fn(
-        fitted_ps,
-        spec$exposure,
-        list(
-          sigma2_d = sigma2_d,
-          mu_a = mu_a,
-          sigma2_a = sigma2_a,
-          score = score,
-          stabilized = spec$stab$stabilized
-        )
-      )
+      # The same inputs the psi builder reads at the same theta, so the weights
+      # compared here are the weights the solve differentiates.
+      inputs <- ipw_continuous_inputs(spec, th_ps, th_stab)
+      weight_fn(inputs$mu, spec$exposure, inputs$extras)
     }
   )
 }
@@ -2009,6 +2011,12 @@ ipw_check_weight_consistency <- function(
     # A joint spec weights two treatments, and the causes a mismatch can have
     # depend on what each of them is rather than on the pair being joint.
     components = spec$ps$types,
+    # What the weights were rebuilt as, so that a mismatch reports the ratio
+    # that was taken rather than leaving the density and the numerator among the
+    # unnamed possibilities.
+    ratio = if (identical(spec$exposure_type, "continuous")) {
+      spec[c("density", "numerator")]
+    },
     call = call
   )
 }
@@ -2024,6 +2032,7 @@ ipw_compare_weights <- function(
   exposure_type,
   estimand,
   components = NULL,
+  ratio = NULL,
   call = rlang::caller_env()
 ) {
   recomputed <- as.double(recomputed)
@@ -2091,12 +2100,26 @@ ipw_compare_weights <- function(
     } else {
       NULL
     }
+    # A continuous exposure's weights are a ratio, and the ratio the stacked
+    # system took is read off what the weights record. Naming it keeps the
+    # message from leaving the density and the numerator among the causes when
+    # they are the two the system already agreed with.
+    ratio_hint <- if (
+      identical(exposure_type, "continuous") && !is.null(ratio)
+    ) {
+      "{.fun ipw} rebuilt these weights as a {.val {format(ratio$density)}} \\
+      density with a {.val {ratio$numerator}} numerator, which is what they \\
+      record."
+    }
     msg <- c(
       "The {.val {estimand}} weights recomputed from {.arg wt_mod} differ \\
       from the weights supplied to {.arg outcome_mod} (compared at relative \\
       tolerance 1e-6).",
       i = resolved_cause
     )
+    if (!is.null(ratio_hint)) {
+      msg <- c(msg, i = ratio_hint)
+    }
     if (!is.null(focal_hint)) {
       msg <- c(msg, i = focal_hint)
     }

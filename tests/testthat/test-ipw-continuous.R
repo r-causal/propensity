@@ -885,20 +885,36 @@ test_that("ipw() refuses continuous weights built with an observation-level `.si
   expect_s3_class(ipw(ps_mod, pooled_outcome_mod), "ipw")
 })
 
+test_that("the observation-level spread refusal names both spreads it takes", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  sigma_wts <- wt_ate(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    .sigma = influence(ps_mod)$sigma,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  outcome_mod <- lm(yc ~ A, data = dat, weights = sigma_wts)
+
+  expect_propensity_error(ipw(ps_mod, outcome_mod))
+})
+
 # ---- propensity model class validation --------------------------------------
 #
-# The continuous path stacks an ordinary least-squares score block for the
-# propensity model, so the M-estimator solves its coefficients to the
-# least-squares root no matter how the supplied model was actually fit. An lm
-# subclass whose coefficients are not that root would therefore yield estimates
-# for a propensity model the user never fit, and no downstream guard catches it:
-# MASS::rlm carries class c("rlm", "lm") and so reaches the lm method, and the
-# weights built from its fitted values agree with the weights recomputed at the
-# seeded init, so the weight-consistency preflight passes. The same holds
-# through the gaussian-family branch of the glm method, which routes a gaussian
-# mgcv::gam to the identical path. The continuous path therefore accepts only a
-# plain lm or a gaussian glm and rejects any other subclass at entry, naming the
-# class it was given.
+# The continuous path stacks the score of the propensity model the registry
+# recognizes, so a class it does not recognize would be solved to the root of an
+# equation the supplied model was not fit by. An lm subclass whose coefficients
+# are not that root would therefore yield estimates for a propensity model the
+# user never fit, and no downstream guard catches it: MASS::rlm carries class
+# c("rlm", "lm") and so reaches the lm method, and the weights built from its
+# fitted values agree with the weights recomputed at the seeded init, so the
+# weight-consistency preflight passes. The same holds through the
+# gaussian-family branch of the glm method, which routes a gaussian mgcv::gam to
+# the identical path. Both are refused at entry, naming the class they were
+# given; which refusal each one gets is pinned with the rest of the registry
+# below.
 
 # A fixture whose robust and least-squares propensity fits genuinely disagree:
 # adding a block of large outliers to the exposure pulls the least-squares fit
@@ -1205,6 +1221,44 @@ test_that("ipw() continuous refuses an lm subclass it does not know", {
   expect_match(msg, "glm", fixed = TRUE)
 })
 
+test_that("the unknown-subclass error names the classes that are supported", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat)
+  unknown <- structure(mods$ps_mod, class = c("mymodel", "lm"))
+
+  expect_propensity_error(ipw(unknown, mods$outcome_mod))
+})
+
+test_that("ipw() refuses a propensity link it cannot write the score for", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_positive()
+
+  # An identity link is least squares and a log link is the score deli writes
+  # for a normal model of exp(X alpha). The remaining gaussian links are refused
+  # by name: the coefficients an IRLS iteration stops at under one of them are
+  # not a tight enough root to seed the solve from, so a stacked system built on
+  # them would not sit where the user's fit does.
+  for (link in c("inverse", "sqrt")) {
+    ps_mod <- glm(A ~ x1 + x2, data = dat, family = gaussian(link = link))
+    wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+    msm <- lm(yc ~ A, data = dat, weights = wts)
+
+    err <- expect_error(ipw(ps_mod, msm), class = "propensity_ipw_link_error")
+    expect_match(conditionMessage(err), link, fixed = TRUE)
+  }
+})
+
+test_that("the continuous propensity-link error names the link and the remedy", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_positive()
+  ps_mod <- glm(A ~ x1 + x2, data = dat, family = gaussian(link = "inverse"))
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_propensity_error(ipw(ps_mod, msm))
+})
+
 test_that("ipw() refuses a gam propensity model as a method it cannot produce", {
   skip_if_not_installed("mgcv")
   skip_if_not_installed("deli")
@@ -1228,6 +1282,17 @@ test_that("ipw() refuses a gam propensity model as a method it cannot produce", 
   expect_match(msg, ".data", fixed = TRUE)
 })
 
+test_that("the unavailable-method error explains what the sandwich cannot do", {
+  skip_if_not_installed("mgcv")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_propensity_error(ipw(ps_mod, msm))
+})
+
 test_that("ipw() refuses kernel-density weights as a method it cannot produce", {
   skip_if_not_installed("deli")
   dat <- sim_continuous()
@@ -1247,6 +1312,14 @@ test_that("ipw() refuses kernel-density weights as a method it cannot produce", 
     "bootstrap",
     fixed = TRUE
   )
+})
+
+test_that("the kernel-density refusal names the bandwidth as the reason", {
+  skip_if_not_installed("deli")
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(dat, .density = "kernel")
+
+  expect_propensity_error(ipw(mods$ps_mod, mods$outcome_mod))
 })
 
 test_that("ipw() stacks a density the user wrote", {

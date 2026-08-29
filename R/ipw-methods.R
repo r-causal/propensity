@@ -84,12 +84,19 @@ ipw.multinom <- function(
 #' The `lm` method estimates the causal dose-response effect for a continuous
 #' exposure from a fitted [stats::lm()] (or gaussian-family [stats::glm()])
 #' propensity score model of the exposure and a weighted marginal structural
-#' outcome model. The only supported estimand is `"ate"`. Standard errors are
-#' computed by M-estimation; the linearization method is not available for
-#' continuous exposures. Every term of the marginal structural model that reads
-#' the exposure must read the exposure and nothing else, and the reported
-#' effects are the coefficients those terms contribute, labeled `"log(or)"` for
-#' a logit-link outcome and `"log(rr)"` for a log-link one. A model with one
+#' outcome model. A gaussian model is read through its link, which may be
+#' identity or log; the other gaussian links, and every class the stacked system
+#' has no score for, are refused, as are the two fits that have no closed-form
+#' standard error, an [mgcv::gam()] propensity score model and weights built
+#' with a `"kernel"` density. See **Continuous propensity score models** in
+#' [ipw()] for what each refusal says and what to do about it. The only
+#' supported estimand is `"ate"`. Standard errors are computed by M-estimation;
+#' the linearization method is not available for continuous exposures.
+#'
+#' Every term of the marginal structural model that reads the exposure must read
+#' the exposure and nothing else, and the reported effects are the coefficients
+#' those terms contribute, labeled `"log(or)"` for a logit-link outcome and
+#' `"log(rr)"` for a log-link one. A model with one
 #' exposure coefficient keeps the eight-column contract with no contrast column
 #' and labels its row `"slope"` at an identity link; a dose-response curve such
 #' as `y ~ A + I(A^2)` reports one row per coefficient under `"coef"`, gaining a

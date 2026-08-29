@@ -176,31 +176,61 @@ ipw_categorical_weight_fn <- function(estimand) {
   }
 }
 
-# Continuous weight registry (ate only). `ps` is the fitted mean X alpha,
+# Continuous weight registry (ate only). `ps` is the fitted conditional mean,
 # `exposure` the continuous A, and `extras` carries the conditional variance
-# sigma2_d, the marginal moments mu_a and sigma2_a, the fixed stabilization
-# score, and the stabilized flag. Replicates ate_continuous() exactly, including
-# the silent unstabilized branch (the registry never emits the alert). The
-# conditional spread is the single pooled parameter sigma2_d, so weights built
-# with an observation-level `.sigma` have no counterpart here.
+# sigma2_d, the density the ratio is taken in, the numerator that stabilized it,
+# the marginal moments mu_a and sigma2_a, the evaluation grid an integrated
+# numerator marginalizes over, the fixed stabilization score, and the stabilized
+# flag.
+#
+# The ratio itself is `continuous_density_ratio()`, the same function
+# `ate_continuous()` builds the weights with, so the weights rebuilt at a value
+# of theta are the weights the user was given whenever the parameters agree,
+# rather than a second implementation that has to be kept in step with the
+# first. The registry never emits the alert the unstabilized branch of
+# `wt_ate()` does.
+#
+# Weights that record no density took the normal family, and their numerator is
+# read off the stabilization the way `ate_continuous()` reads it: a score the
+# caller fixed, the marginal density, or nothing at all.
 ipw_continuous_weight_fn <- function(estimand) {
   function(ps, exposure, extras) {
-    f_den <- stats::dnorm(exposure, mean = ps, sd = sqrt(extras$sigma2_d))
-    wt <- 1 / f_den
-
-    if (isTRUE(extras$stabilized) && is.null(extras$score)) {
-      f_num <- stats::dnorm(
-        exposure,
-        mean = extras$mu_a,
-        sd = sqrt(extras$sigma2_a)
-      )
-      wt * f_num
-    } else if (isTRUE(extras$stabilized) && !is.null(extras$score)) {
-      wt * extras$score
-    } else {
-      wt
+    density <- extras$density
+    if (is.null(density)) {
+      density <- dens_normal()
     }
+
+    numerator <- extras$numerator
+    if (is.null(numerator)) {
+      numerator <- ipw_continuous_numerator(extras$stabilized, extras$score)
+    }
+
+    continuous_density_ratio(
+      exposure = exposure,
+      mu = ps,
+      sigma = sqrt(extras$sigma2_d),
+      density = density,
+      numerator = numerator,
+      mu_a = extras$mu_a,
+      sigma_a = if (!is.null(extras$sigma2_a)) sqrt(extras$sigma2_a),
+      score = extras$score,
+      grid = extras$grid
+    )
   }
+}
+
+# What stabilized a set of weights that left no record of it: a score the caller
+# supplied, the marginal density of the exposure, or nothing.
+ipw_continuous_numerator <- function(stabilized, score) {
+  if (!isTRUE(stabilized)) {
+    return("none")
+  }
+
+  if (!is.null(score)) {
+    return("score")
+  }
+
+  "marginal"
 }
 
 # ---- theta layout -----------------------------------------------------------
@@ -570,11 +600,22 @@ ipw_categorical_seed_tilt <- function(spec, levs) {
 
 ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   alpha <- spec$ps$coefs
-  fitted_ps <- as.vector(spec$ps$X %*% alpha)
-  sigma2_d <- mean((spec$exposure - fitted_ps)^2)
-  ps_block <- c(alpha, sigma2_d = sigma2_d)
+  fitted_ps <- ipw_continuous_link_fns(spec$ps$link)$mean(spec$ps$X, alpha)
 
-  if (spec$stab$stabilized && is.null(spec$stab$score)) {
+  # A spread the caller fixed is a constant the weights were built with rather
+  # than a quantity the data estimate, so the block is the coefficients alone
+  # and nothing in the stacked system carries its uncertainty.
+  ps_block <- if (identical(spec$sigma$kind, "fixed")) {
+    alpha
+  } else {
+    c(alpha, sigma2_d = mean((spec$exposure - fitted_ps)^2))
+  }
+
+  # Only the marginal density of the exposure is read at parameters of its own.
+  # A marginalized conditional density is built from the propensity score block
+  # and the data, and a fixed score and unstabilized weights carry no numerator
+  # to estimate, so none of the three leaves a stabilization block behind.
+  if (identical(spec$numerator, "marginal")) {
     mu_a <- mean(spec$exposure)
     sigma2_a <- mean((spec$exposure - mu_a)^2)
     stab_block <- c(mu_a = mu_a, sigma2_a = sigma2_a)
@@ -977,50 +1018,92 @@ ipw_psi_continuous <- function(
   y <- spec$outcome$y
   family <- spec$outcome$family
   out_link <- spec$outcome$link
-  score <- spec$stab$score
-  stabilized <- spec$stab$stabilized
-  n_alpha <- ncol(x_ps)
+  link_fns <- ipw_continuous_link_fns(spec$ps$link)
+
+  # The grid an integrated numerator marginalizes over is fixed by the exposure
+  # rather than by theta, so it is built once here and read at every evaluation.
+  # Rebuilding it inside the closure would leave it unchanged and cost the
+  # sandwich a pass over the data for each of its finite differences.
+  grid <- ipw_continuous_grid(spec)
 
   function(theta) {
     th_ps <- theta[idx$ps]
     th_stab <- theta[idx$stab]
     th_out <- theta[idx$out]
 
-    alpha <- th_ps[seq_len(n_alpha)]
-    sigma2_d <- th_ps[[n_alpha + 1]]
+    inputs <- ipw_continuous_inputs(spec, th_ps, th_stab, grid = grid)
 
-    ps_score <- deli::ee_regression(alpha, X = x_ps, y = a, model = "linear")
-    fitted_ps <- as.vector(x_ps %*% alpha)
-    var_row <- matrix((a - fitted_ps)^2 - sigma2_d, nrow = 1)
-    ps_rows <- rbind(ps_score, var_row)
+    ps_score <- link_fns$score(inputs$alpha, x_ps, a)
 
-    if (length(th_stab)) {
-      mu_a <- th_stab[[1]]
-      sigma2_a <- th_stab[[2]]
-      stab_rows <- rbind(
-        matrix(a - mu_a, nrow = 1),
-        matrix((a - mu_a)^2 - sigma2_a, nrow = 1)
-      )
+    # A spread the caller fixed is a constant, and a constant has no equation.
+    # The conditional variance is estimated only where the weights took the
+    # pooled residual spread, which is the moment this row is.
+    ps_rows <- if (identical(spec$sigma$kind, "fixed")) {
+      ps_score
     } else {
-      mu_a <- NULL
-      sigma2_a <- NULL
-      stab_rows <- NULL
+      rbind(
+        ps_score,
+        matrix((a - inputs$mu)^2 - inputs$extras$sigma2_d, nrow = 1)
+      )
     }
 
-    w <- weight_fn(
-      fitted_ps,
-      a,
-      list(
-        sigma2_d = sigma2_d,
-        mu_a = mu_a,
-        sigma2_a = sigma2_a,
-        score = score,
-        stabilized = stabilized
-      )
-    )
+    stab_rows <- if (length(th_stab)) {
+      deli::ee_mean_variance(th_stab, y = a)
+    }
+
+    w <- weight_fn(inputs$mu, a, inputs$extras)
 
     out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
 
     ipw_stack(list(ps_rows, stab_rows, out_rows))
   }
+}
+
+# What the continuous weight function reads at one value of theta: the
+# conditional mean the propensity score block implies under its link, and the
+# rest of the density ratio's inputs. The preflight that rebuilds the weights
+# once and the psi that rebuilds them at every evaluation both come through
+# here, so the two cannot compute a different weight from the same parameters.
+ipw_continuous_inputs <- function(
+  spec,
+  th_ps,
+  th_stab,
+  grid = ipw_continuous_grid(spec)
+) {
+  n_alpha <- ncol(spec$ps$X)
+  alpha <- th_ps[seq_len(n_alpha)]
+  sigma2_d <- if (identical(spec$sigma$kind, "fixed")) {
+    spec$sigma$value^2
+  } else {
+    th_ps[[n_alpha + 1L]]
+  }
+
+  list(
+    alpha = alpha,
+    mu = ipw_continuous_link_fns(spec$ps$link)$mean(spec$ps$X, alpha),
+    extras = list(
+      sigma2_d = sigma2_d,
+      mu_a = if (length(th_stab)) th_stab[[1]],
+      sigma2_a = if (length(th_stab)) th_stab[[2]],
+      score = spec$stab$score,
+      stabilized = spec$stab$stabilized,
+      density = spec$density,
+      numerator = spec$numerator,
+      grid = grid
+    )
+  )
+}
+
+# The points an integrated numerator averages the conditional density over,
+# which `wt_ate()` builds from the exposure of the units it weights. The grid is
+# a function of the data alone, so holding it fixed across the solve is what
+# makes the weights the sandwich differentiates the weights the user was given.
+ipw_continuous_grid <- function(spec) {
+  if (!identical(spec$numerator, "integrated")) {
+    return(NULL)
+  }
+
+  present <- spec$exposure[!is.na(spec$exposure)]
+
+  seq(min(present), max(present), length.out = continuous_grid_n)
 }

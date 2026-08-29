@@ -121,7 +121,10 @@ test_that("the record accessors read what the weights carry", {
 
   expect_identical(exposure_type(w), "continuous")
   expect_type(density_meta(w), "list")
-  expect_named(density_meta(w), c("density", "numerator", "sigma"))
+  expect_named(
+    density_meta(w),
+    c("density", "numerator", "sigma", "sigma_value")
+  )
 })
 
 test_that("the record accessors report weights that carry nothing", {
@@ -236,6 +239,41 @@ test_that("continuous weights record where the residual spread came from", {
     .sigma = c(0.1, 0.12, 0.14, 0.11, 0.13, 0.15)
   )
   expect_identical(density_meta(per_observation)$sigma, "supplied")
+})
+
+test_that("continuous weights record a single supplied spread as its value", {
+  # A spread that is one number describes the conditional density of every unit,
+  # so it is a constant the ratio can be rebuilt from and the record keeps it.
+  # A pooled spread is a function of the data rather than a number the caller
+  # chose, and a spread supplied per observation is a different density for each
+  # unit; neither is one constant, so neither leaves a value behind.
+  expect_null(density_meta(continuous_records_psw())$sigma_value)
+
+  supplied <- continuous_records_psw(.sigma = 0.12)
+  expect_identical(density_meta(supplied)$sigma_value, 0.12)
+
+  per_observation <- continuous_records_psw(
+    .sigma = c(0.1, 0.12, 0.14, 0.11, 0.13, 0.15)
+  )
+  expect_null(density_meta(per_observation)$sigma_value)
+})
+
+test_that("combining weights spread by different numbers drops the density", {
+  # Two records that agree on everything but the number the spread was fixed at
+  # describe two different ratios, so the combination is described by neither.
+  first <- continuous_records_psw(.sigma = 0.12)
+  second <- continuous_records_psw(.sigma = 0.2)
+
+  out <- NULL
+  expect_warning(
+    out <- c(first, second),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(density_meta(out))
+
+  # The same number twice is the same ratio twice, and the record survives.
+  same <- expect_silent(c(first, continuous_records_psw(.sigma = 0.12)))
+  expect_identical(density_meta(same)$sigma_value, 0.12)
 })
 
 test_that("continuous censoring weights record both", {

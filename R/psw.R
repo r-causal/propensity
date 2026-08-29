@@ -309,9 +309,9 @@ stabilization_score <- function(wt) {
 #' returns `NULL` for weights that were built without an exposure to describe,
 #' such as those written with [psw()] directly.
 #'
-#' `density_meta()` returns a record of three choices, and `NULL` for weights
-#' that are not a ratio of densities, which is every set of weights for a binary
-#' or categorical exposure:
+#' `density_meta()` returns a record of what the ratio was built from, and
+#' `NULL` for weights that are not a ratio of densities, which is every set of
+#' weights for a binary or categorical exposure:
 #'
 #' * `density`, the specification of the conditional density family, as built
 #'   by [dens_normal()] and its relatives.
@@ -322,6 +322,11 @@ stabilization_score <- function(wt) {
 #' * `sigma`, where the residual spread of the conditional density came from:
 #'   `"pooled"` for the pooled residual standard deviation, and `"supplied"`
 #'   for a `.sigma` the caller gave.
+#' * `sigma_value`, the single spread the caller supplied, and `NULL` for a
+#'   pooled spread and for one supplied per observation. A spread that is one
+#'   number is a constant the weights can be rebuilt from, which is what
+#'   [ipw()] needs of it; a spread that changes with the observation is not,
+#'   so the record holds where it came from and nothing more.
 #'
 #' @param wt A `psw` or `causal_wts` object.
 #' @param x A density record, as returned by `density_meta()`.
@@ -330,7 +335,7 @@ stabilization_score <- function(wt) {
 #' @return
 #' * `exposure_type()`: a single string, or `NULL`.
 #' * `density_meta()`: a list of class `propensity_density_meta` with the
-#'   elements `density`, `numerator`, and `sigma`, or `NULL`.
+#'   elements `density`, `numerator`, `sigma`, and `sigma_value`, or `NULL`.
 #' * `print()` and `format()`: the record, invisibly, and a character vector of
 #'   one line per element.
 #'
@@ -367,11 +372,19 @@ density_meta <- function(wt) {
 }
 
 # What weights that are a ratio of densities record about the ratio: the
-# specification that evaluates the density, which numerator stabilized them, and
-# where the residual spread came from.
-new_density_meta <- function(density, numerator, sigma) {
+# specification that evaluates the density, which numerator stabilized them,
+# where the residual spread came from, and, when that spread is a single number
+# the caller supplied, the number itself. A spread of one number is a constant
+# the ratio can be rebuilt from; one number per observation is not, and is
+# recorded only as having been supplied.
+new_density_meta <- function(density, numerator, sigma, sigma_value = NULL) {
   structure(
-    list(density = density, numerator = numerator, sigma = sigma),
+    list(
+      density = density,
+      numerator = numerator,
+      sigma = sigma,
+      sigma_value = sigma_value
+    ),
     class = "propensity_density_meta"
   )
 }
@@ -402,6 +415,7 @@ print.propensity_density_meta <- function(x, ...) {
 density_meta_agrees <- function(x, y) {
   identical(x$numerator, y$numerator) &&
     identical(x$sigma, y$sigma) &&
+    identical(x$sigma_value, y$sigma_value) &&
     density_specs_agree(x$density, y$density)
 }
 

@@ -299,12 +299,19 @@ compares, as it does for a binary exposure.
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
 propensity score model of the exposure and a weighted marginal structural
-outcome model. The only supported estimand is \code{"ate"}. Standard errors are
-computed by M-estimation; the linearization method is not available for
-continuous exposures. Every term of the marginal structural model that reads
-the exposure must read the exposure and nothing else, and the reported
-effects are the coefficients those terms contribute, labeled \code{"log(or)"} for
-a logit-link outcome and \code{"log(rr)"} for a log-link one. A model with one
+outcome model. A gaussian model is read through its link, which may be
+identity or log; the other gaussian links, and every class the stacked system
+has no score for, are refused, as are the two fits that have no closed-form
+standard error, an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score model and weights built
+with a \code{"kernel"} density. See \strong{Continuous propensity score models} in
+\code{\link[=ipw]{ipw()}} for what each refusal says and what to do about it. The only
+supported estimand is \code{"ate"}. Standard errors are computed by M-estimation;
+the linearization method is not available for continuous exposures.
+
+Every term of the marginal structural model that reads the exposure must read
+the exposure and nothing else, and the reported effects are the coefficients
+those terms contribute, labeled \code{"log(or)"} for a logit-link outcome and
+\code{"log(rr)"} for a log-link one. A model with one
 exposure coefficient keeps the eight-column contract with no contrast column
 and labels its row \code{"slope"} at an identity link; a dose-response curve such
 as \code{y ~ A + I(A^2)} reports one row per coefficient under \code{"coef"}, gaining a
@@ -347,11 +354,12 @@ process.
 \code{ipw()} supports binary, categorical, and continuous exposures. For a binary
 or categorical exposure, a binary outcome returns the risk difference, log
 risk ratio, and log odds ratio, and a continuous outcome returns the
-difference in means. A continuous exposure is supplied through an \code{\link[stats:lm]{stats::lm()}}
-or identity-link gaussian \code{\link[stats:glm]{stats::glm()}} propensity score model with a weighted
-marginal structural outcome model whose link is identity, logit, or log, and
-\code{ipw()} reports the single exposure coefficient of that model. A subclass of
-either propensity score model, such as a robust or an additive fit, errors.
+difference in means. A continuous exposure is supplied through an
+\code{\link[stats:lm]{stats::lm()}} or gaussian \code{\link[stats:glm]{stats::glm()}} propensity score model with a
+weighted marginal structural outcome model whose link is identity, logit, or
+log, and \code{ipw()} reports the single exposure coefficient of that model. A
+subclass of either propensity score model, such as a robust or an additive
+fit, errors.
 }
 \section{Workflow}{
 \code{ipw()} is designed around a three-step workflow:
@@ -782,12 +790,42 @@ and Boos (2002) for the M-estimation framework.
 
 M-estimation standard errors are available for all exposure types: binary
 (from a \code{\link[stats:glm]{stats::glm()}} propensity score model), categorical (from a
-\code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}} or
-identity-link gaussian \code{\link[stats:glm]{stats::glm()}} model). The \code{atm} weight
+\code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}} or gaussian
+\code{\link[stats:glm]{stats::glm()}} model; see \strong{Continuous propensity score models} below). The
+\code{atm} weight
 \code{pmin(e, 1 - e)} is not differentiable at a propensity score of \code{0.5}; deli's
 central finite difference straddles the kink there and averages the one-sided
 slopes. Its effect on the variance is negligible unless many observations sit
 at exactly \code{0.5}.
+\subsection{Continuous propensity score models}{
+
+A continuous exposure's weights are a ratio of densities centered on the
+conditional mean the propensity score model fits, so the stacked system
+carries that model's own score. Two classes supply one: an \code{\link[stats:lm]{stats::lm()}},
+and a gaussian \code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link. A gaussian
+model fit with any other link is refused by name, because the coefficients
+its iteration stops at are not a tight enough root to seed the stacked solve
+from; refit it with one of the two links or as an \code{\link[stats:lm]{stats::lm()}}. Any other
+class errors, since solving it here would report a propensity score model
+that was never fit.
+
+Two fits are refused for the standard error rather than for the model. An
+\code{\link[mgcv:gam]{mgcv::gam()}} chooses how much to smooth by REML, and a \code{"kernel"} density
+chooses its bandwidth from the residuals of the propensity score model;
+neither is a function of the parameters that the sandwich could
+differentiate, so weights built from either have no closed-form standard
+error. Both raise an error of class
+\code{propensity_ipw_se_method_unavailable_error} naming the resampling method
+that does apply.
+
+Every other density \code{\link[=wt_ate]{wt_ate()}} builds a ratio in is stacked as it was built:
+the normal, Laplace, and Student t families, and a density you wrote
+yourself, under either the marginal or the integrated numerator. \code{ipw()}
+reads the family, the numerator, and the spread off the record the weights
+carry and rebuilds the same ratio at each value of the parameter vector, so
+the weights it differentiates are the weights the outcome model was fit with.
+Weights carrying no such record, including any written with \code{\link[=psw]{psw()}} by hand,
+are read as the normal ratio the package built before the record existed.
 
 M-estimation standard errors for a categorical exposure allocate memory
 roughly linearly in the number of observations, on the order of 70 to 90
@@ -825,6 +863,7 @@ rejection is broader than that mechanism: a saturated factor coding such as
 it, but the linearization influence functions are derived for the intercept
 parameterization, so every no-intercept outcome model errors here. See \strong{Model requirements} for the baseline
 contract both methods impose.
+}
 }
 
 \section{Multiple imputation}{
@@ -956,14 +995,18 @@ Three further requirements apply to the weights and the propensity score
 model. The outcome model weights must match the values implied by the
 propensity score model; a mismatch errors, on both standard error methods.
 
-For a continuous exposure that requirement fixes the spread of the
+For a continuous exposure that requirement bears on the spread of the
 conditional density. \code{ipw()} stacks a single pooled residual variance
 alongside the propensity score coefficients, so the weights it rebuilds are
-the ones \code{\link[=wt_ate]{wt_ate()}} produces with its pooled default. Weights built with an
+the ones \code{\link[=wt_ate]{wt_ate()}} produces with its pooled default. A single \code{.sigma} is
+taken instead as a known constant: the weights are rebuilt at the number that
+was supplied, and the stacked system carries none of that number's
+uncertainty, which is what fixing a spread says. Weights built with an
 observation-level \code{.sigma}, such as \code{influence(model)$sigma}, are a different
-function of the data with no counterpart in the stacked system, and the
-consistency check refuses them. Refit the weights without \code{.sigma} to use
-\code{ipw()}.
+function of the data with no counterpart in the stacked system, and are
+refused before anything is solved, with an error of class
+\code{propensity_ipw_sigma_error}. Rebuild the weights with the pooled default or
+with one number to use \code{ipw()}.
 
 The propensity score model must not separate the exposure. A model whose
 covariates predict the exposure without error has no finite maximum likelihood

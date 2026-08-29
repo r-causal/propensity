@@ -26,7 +26,7 @@ density_meta(wt)
 \itemize{
 \item \code{exposure_type()}: a single string, or \code{NULL}.
 \item \code{density_meta()}: a list of class \code{propensity_density_meta} with the
-elements \code{density}, \code{numerator}, and \code{sigma}, or \code{NULL}.
+elements \code{density}, \code{numerator}, \code{sigma}, and \code{sigma_value}, or \code{NULL}.
 \item \code{print()} and \code{format()}: the record, invisibly, and a character vector of
 one line per element.
 }
@@ -50,9 +50,9 @@ density record along with it.
 returns \code{NULL} for weights that were built without an exposure to describe,
 such as those written with \code{\link[=psw]{psw()}} directly.
 
-\code{density_meta()} returns a record of three choices, and \code{NULL} for weights
-that are not a ratio of densities, which is every set of weights for a binary
-or categorical exposure:
+\code{density_meta()} returns a record of what the ratio was built from, and
+\code{NULL} for weights that are not a ratio of densities, which is every set of
+weights for a binary or categorical exposure:
 \itemize{
 \item \code{density}, the specification of the conditional density family, as built
 by \code{\link[=dens_normal]{dens_normal()}} and its relatives.
@@ -63,6 +63,11 @@ caller supplied, and \code{"none"} for weights that were not stabilized.
 \item \code{sigma}, where the residual spread of the conditional density came from:
 \code{"pooled"} for the pooled residual standard deviation, and \code{"supplied"}
 for a \code{.sigma} the caller gave.
+\item \code{sigma_value}, the single spread the caller supplied, and \code{NULL} for a
+pooled spread and for one supplied per observation. A spread that is one
+number is a constant the weights can be rebuilt from, which is what
+\code{\link[=ipw]{ipw()}} needs of it; a spread that changes with the observation is not,
+so the record holds where it came from and nothing more.
 }
 }
 \examples{

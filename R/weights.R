@@ -954,7 +954,12 @@ ate_continuous <- function(
   attr(wt, "density_meta") <- new_density_meta(
     density = .density,
     numerator = numerator,
-    sigma = if (is.null(.sigma)) "pooled" else "supplied"
+    sigma = if (is.null(.sigma)) "pooled" else "supplied",
+    # A spread of one number describes the conditional density of every unit, so
+    # it is a constant the ratio can be rebuilt from and the record keeps it. One
+    # number per observation describes each unit's density separately, and there
+    # is no constant to keep.
+    sigma_value = if (length(.sigma) == 1L) as.double(.sigma)
   )
 
   wt

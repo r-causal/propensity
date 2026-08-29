@@ -1,5 +1,36 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now stacks the propensity score models, densities, and numerators a
+  continuous exposure's weights can be built from, rather than the one it
+  supported before. The propensity score model may be an `lm()` or a gaussian
+  `glm()` read through an identity or a log link, and the weights may be a ratio
+  in any density family `wt_ate()` offers, under either numerator. `ipw()` reads
+  the family, the numerator, and the spread off the record the weights carry and
+  rebuilds the same ratio at every value of the parameter vector, so the weights
+  the sandwich differentiates are the weights the outcome model was fit with.
+  Weights that carry no record, including any written with `psw()` by hand, are
+  read as the normal ratio the package built before the record existed.
+
+  Two fits are now refused for the standard error rather than for the model, with
+  an error of class `propensity_ipw_se_method_unavailable_error`: an
+  `mgcv::gam()` propensity score model, whose smoothing is chosen by REML, and
+  weights built with a `"kernel"` density, whose bandwidth is chosen from the
+  residuals. Neither is a function of the parameters that the sandwich could
+  differentiate. A gaussian model fit with an inverse or square-root link is
+  refused by name, because the coefficients its iteration stops at are not a
+  tight enough root to seed the stacked solve from, and any other class is
+  refused as before, now naming the classes that are supported.
+
+  A single `.sigma` is now accepted, as a known constant: the weights are
+  rebuilt at the number that was supplied, and the stacked system carries none of
+  that number's uncertainty. Weights built with an observation-level `.sigma`
+  are refused before anything is solved, with an error of class
+  `propensity_ipw_sigma_error` naming the spread, where they previously reached
+  the weight-consistency check and were reported as two vectors that disagree.
+  To support that, the record `density_meta()` returns gains a `sigma_value`
+  element, which holds the number a single supplied spread was, and is `NULL`
+  for a pooled spread and for one supplied per observation.
+
 * `wt_ate()` and `wt_cens()` gain a `.density` argument, which chooses the
   family of the conditional density a continuous exposure's weights are a ratio
   of. That density was a normal one and nothing else before, which is a strong
