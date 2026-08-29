@@ -69,15 +69,15 @@
   method reads a `gaussian()` fit under any of its links as well as an
   `mgcv::gam()` fit with it. Each of these classes reports its conditional mean
   on the scale of the exposure, so a log, inverse, or square root link never has
-  to be undone, and every one of them is spread by the same pooled residual root
-  mean square. `rlm` reports a robust scale estimate of its own in `fit$s`,
-  which resists the extreme residuals rather than pooling all of them, and is
-  used only when it is asked for with `.sigma = fit$s`. A family whose
-  spread changes with its fitted values, such as `poisson()` or
-  `quasi(variance = "mu")`, describes a different density for every unit, which
-  a single spread cannot stand in for, and is refused with an error of class
-  `propensity_model_family_error`. `quasi(variance = "constant")` is the
-  gaussian variance under another name and is accepted.
+  to be undone, and every one of them uses the same pooled residual spread.
+  `rlm` reports a robust scale estimate of its own in `fit$s`, which resists the
+  extreme residuals rather than pooling all of them, and is used only when it is
+  asked for with `.sigma = fit$s`. A family whose spread changes with its fitted
+  values, such as `poisson()` or `quasi(variance = "mu")`, describes a different
+  density for every unit, which a single spread cannot stand in for, and is
+  refused with an error of class `propensity_model_family_error`.
+  `quasi(variance = "constant")` is the gaussian variance under another name and
+  is accepted.
 
   The binary path is now held to the same rule from the other side, which
   changes what some calls return. Only `binomial()` and `quasibinomial()` fit
@@ -154,9 +154,9 @@
   psi's own constant, including one a caller passed as `k`, times the scale the
   fit settled on. That scale enters the score as a known constant whose sampling
   variability is not propagated, and the spread of the conditional density is
-  the pooled residual root mean square, as it is for every other class. A fit
-  with a psi other than Huber, and one fit with `method = "MM"`, which finishes
-  on a redescending psi, are refused with an error of class
+  the pooled residual spread, as it is for every other class. A fit with a psi
+  other than Huber, and one fit with `method = "MM"`, which finishes on a
+  redescending psi, are refused with an error of class
   `propensity_ipw_robust_psi_error`; one whose iteration stopped short of its
   own tolerance is refused with `propensity_ipw_convergence_error`. The first
   two point to a Huber refit or to `se_method = "bootstrap"`; the last points to

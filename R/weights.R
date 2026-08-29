@@ -249,7 +249,7 @@
 #' a conditional mean is refused there whatever its fitted values happen to fall
 #' on, a linear probability model included.
 #'
-#' \eqn{\sigma} is the pooled residual standard deviation
+#' \eqn{\sigma} is the pooled residual spread
 #' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies a single
 #' standard deviation, or one for each unit, which the model methods do not do
 #' on their own. The marginal density is spread by \eqn{s_A} whatever `.sigma`
@@ -337,7 +337,7 @@
 #'   exposures: a single standard deviation applied to every unit, or one for
 #'   each observation (e.g., `influence(model)$sigma`). Optional: with none
 #'   supplied, including when `.propensity` is a fitted model, the conditional
-#'   density uses the pooled residual standard deviation of `.exposure` around
+#'   density uses the pooled residual spread of `.exposure` around
 #'   `.propensity`.
 #'
 #'   The two shapes differ downstream. A single spread is a constant the weights

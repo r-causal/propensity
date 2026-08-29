@@ -2131,7 +2131,7 @@ check_ipw_exposure_rebuild <- function(
       } else if (rebuilt) {
         # Carrying some of the fitted levels is enough here, and a constant
         # column carries exactly one: the rebuild re-levels the term's value
-        # against the whole set, so the design it lands on is the fitted one.
+        # against the whole set, so the design it is read on is the fitted one.
         all(levels(as.factor(probe)) %in% fit_levels)
       } else {
         identical(levels(as.factor(probe)), fit_levels)

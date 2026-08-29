@@ -513,8 +513,14 @@ continuous_integrated_ratio <- function(
   # A kernel is one estimate answering for both densities, so it is fit on the
   # standardized residuals over a range that covers them and the whole
   # standardized grid, which reaches further than they do. The parametric
-  # families have no fit and ignore both.
-  span <- range(c(z, standardized))
+  # families have no fit and ignore both, so the range is read only for a
+  # kernel: the grid holds one value per unit per grid point, and concatenating
+  # it with the residuals to take their range would copy all of it.
+  span <- if (identical(density$family, "kernel")) {
+    range(range(z), range(standardized))
+  } else {
+    NULL
+  }
 
   f_den <- density_eval(
     density,
@@ -751,8 +757,13 @@ check_density_values <- function(
 ) {
   # Styled once, here, rather than by each message below: a template cannot
   # interpolate markup that arrives in a value, so the subject reaches the
-  # messages already written the way it reads.
-  subject <- if (what_is_arg) cli::format_inline("{.arg {what}}") else what
+  # messages already written the way it reads. The styling is deferred until a
+  # message is built, because the check almost always succeeds and formatting
+  # the subject costs more than every test below it put together.
+  delayedAssign(
+    "subject",
+    if (what_is_arg) cli::format_inline("{.arg {what}}") else what
+  )
 
   if (!is.numeric(p)) {
     abort(
