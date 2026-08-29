@@ -1099,11 +1099,17 @@ ipw_continuous_inputs <- function(
 # a function of the data alone, so holding it fixed across the solve is what
 # makes the weights the sandwich differentiates the weights the user was given.
 ipw_continuous_grid <- function(spec) {
-  if (!identical(spec$numerator, "integrated")) {
+  ipw_numerator_grid(spec$exposure, spec$numerator)
+}
+
+# The same grid built from an exposure vector, which the joint route holds one
+# of per component rather than one of outright.
+ipw_numerator_grid <- function(exposure, numerator) {
+  if (!identical(numerator, "integrated")) {
     return(NULL)
   }
 
-  present <- spec$exposure[!is.na(spec$exposure)]
+  present <- exposure[!is.na(exposure)]
 
   seq(min(present), max(present), length.out = continuous_grid_n)
 }

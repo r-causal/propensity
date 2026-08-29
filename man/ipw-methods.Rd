@@ -187,8 +187,11 @@ Which exposure types support which: \code{"mestimation"} supports every one of
 them; \code{"linearization"} supports a binary exposure alone; \code{"bootstrap"}
 supports a continuous exposure alone, and errors with class
 \code{propensity_method_error} for a binary or a categorical exposure and for a
-\code{\link[=joint_wt_models]{joint_wt_models()}} pair, each of which has a sandwich for every fit it
-accepts. \code{"bootstrap"} requires \code{.data} and is the method for the two
+\code{\link[=joint_wt_models]{joint_wt_models()}} pair. A binary or a categorical exposure has a sandwich
+for every fit it accepts; a joint pair has no resampling method yet, so a
+dose model or a density the sandwich has no equation for is refused there
+rather than resampled. \code{"bootstrap"} requires \code{.data} and is the method for
+the two
 continuous fits the sandwich has no equation for, an \code{\link[mgcv:gam]{mgcv::gam()}}
 propensity score model and weights built with a \code{"kernel"} density; see
 \strong{Continuous propensity score models} below.
@@ -324,8 +327,14 @@ The only supported estimand is \code{"ate"}, which is what the product weights
 \code{\link[=wt_joint]{wt_joint()}} builds target.
 
 The second treatment may be a dose, in which case the surface is the marginal
-structural model's own coefficients rather than the cells of a crossing; see
-\strong{Joint exposures}.
+structural model's own coefficients rather than the cells of a crossing. The
+dose model is read through the same registry the single-treatment route
+reads, so an \code{\link[stats:lm]{stats::lm()}}, a gaussian \code{\link[stats:glm]{stats::glm()}} at an identity or a log
+link, and a \code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi are stacked, and the dose
+component's weights may be any density ratio \code{\link[=wt_ate]{wt_ate()}} builds. A dose model
+or a density the stacked system cannot differentiate is refused rather than
+resampled, since this route has no resampling method; see \strong{Joint
+exposures}.
 
 This is the second of the two routes to a joint intervention. The other
 declares the crossing with \code{\link[causalgenerics:joint_exposure]{causalgenerics::joint_exposure()}} and weights it
@@ -765,12 +774,12 @@ and no \code{.by}. Standard errors come from M-estimation alone.
 \subsection{A joint intervention with a dose}{
 
 The second treatment may be a dose rather than a second discrete treatment,
-recorded with an \code{\link[stats:lm]{stats::lm()}} or an identity-link gaussian \code{\link[stats:glm]{stats::glm()}}
-and weighted with a stabilized density ratio, which \code{\link[=wt_joint]{wt_joint()}} requires of
-a continuous component. A dose has no cells, so there is no crossing to
-report counterfactual risks over: the surface is the marginal structural
-model's own coefficients, which for an identity-link model are exactly the
-weighted fit's coefficients.
+recorded with any of the classes the single-treatment route reads a
+conditional density from, and weighted with a stabilized density ratio, which
+\code{\link[=wt_joint]{wt_joint()}} requires of a continuous component. A dose has no cells, so
+there is no crossing to report counterfactual risks over: the surface is the
+marginal structural model's own coefficients, which for an identity-link
+model are exactly the weighted fit's coefficients.
 
 Which of two surfaces a fit reports is decided by the marginal structural
 model alone. A model written in bare treatment terms reports the vocabulary
@@ -843,8 +852,45 @@ model, so the outcome model frame is never asked for a column it does not
 hold.
 
 The dose model contributes its coefficients and the conditional variance its
-density ratio divides by, and the stabilizing numerator contributes the
-dose's two marginal moments, all as parameters of the same stacked system.
+density ratio divides by, and a marginal stabilizing numerator contributes
+the dose's two marginal moments, all as parameters of the same stacked
+system.
+}
+
+\subsection{The dose model and the ratio its weights are}{
+
+The dose model goes through the registry described under \strong{Continuous
+propensity score models}, so the classes and links this route stacks are the
+ones the single-treatment route stacks: an \code{\link[stats:lm]{stats::lm()}}, a gaussian
+\code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, and a \code{\link[MASS:rlm]{MASS::rlm()}} fit
+with the Huber psi. A gaussian dose model fit with another link errors with
+class \code{propensity_ipw_link_error}, and a robust fit whose score the system
+cannot write raises the same conditions it raises for a single dose.
+
+The dose component's weights may be any ratio \code{\link[=wt_ate]{wt_ate()}} builds: a
+heavier-tailed \code{.density}, \code{numerator = "integrated"}, or a single \code{.sigma}
+the caller fixed. \code{\link[=wt_joint]{wt_joint()}} records each component's ratio on the product,
+and the stacked system rebuilds the dose factor from that record, so what is
+differentiated is the weight the outcome model was fit with. An integrated
+numerator is built from the dose block and the data alone, so it adds no
+stabilization parameters; a fixed scalar \code{.sigma} is a known constant, so the
+dose block is its coefficients alone and none of that number's uncertainty is
+carried. A spread supplied for each observation has no counterpart in the
+system and errors with class \code{propensity_ipw_sigma_error}.
+
+A dose component built with a \code{stabilization_score} is the one numerator this
+route cannot reproduce. The product records that the numerator was a score
+without recording the vector it was, so the system rebuilds the dose weights
+from the exposure's own marginal moments and the weight-consistency check
+reports the difference. Weight the dose on its own to use a numerator
+computed by hand.
+
+An \code{\link[mgcv:gam]{mgcv::gam()}} dose model, and dose weights built with a \code{"kernel"}
+density, are refused with class
+\code{propensity_ipw_se_method_unavailable_error}. Neither is a function of the
+parameters that the sandwich could differentiate, and this route has no
+resampling method to fall back on, so the refusal names no remedy on it:
+weight the dose on its own, where \code{se_method = "bootstrap"} applies.
 }
 
 }

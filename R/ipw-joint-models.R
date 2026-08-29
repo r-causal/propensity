@@ -19,9 +19,11 @@
 # no crossing to construct and nothing to set every unit to: the surface is
 # coefficient-shaped rather than cell-shaped, reporting the marginal structural
 # model's own causal coefficients under labels written in the same vocabulary.
-# Its treatment block is a least-squares score carrying the conditional variance
-# of the density its weight divides by, and the stabilizing numerator that
-# density ratio needs is estimated alongside it.
+# Its treatment block is the score its own model solves, read through the same
+# registry the single-dose route reads, carrying the conditional variance of the
+# density its weight divides by; the stabilizing numerator that density ratio
+# needs is estimated alongside it when the numerator is one the system estimates
+# anything for.
 #
 # The stacked system carries both treatment models' score blocks, so the weights
 # entering the outcome score are recomputed from both blocks of theta on every
@@ -46,8 +48,14 @@
 #' [wt_joint()] builds target.
 #'
 #' The second treatment may be a dose, in which case the surface is the marginal
-#' structural model's own coefficients rather than the cells of a crossing; see
-#' **Joint exposures**.
+#' structural model's own coefficients rather than the cells of a crossing. The
+#' dose model is read through the same registry the single-treatment route
+#' reads, so an [stats::lm()], a gaussian [stats::glm()] at an identity or a log
+#' link, and a [MASS::rlm()] fit with the Huber psi are stacked, and the dose
+#' component's weights may be any density ratio [wt_ate()] builds. A dose model
+#' or a density the stacked system cannot differentiate is refused rather than
+#' resampled, since this route has no resampling method; see **Joint
+#' exposures**.
 #'
 #' This is the second of the two routes to a joint intervention. The other
 #' declares the crossing with [causalgenerics::joint_exposure()] and weights it
@@ -205,7 +213,22 @@ ipw_spec_joint_models <- function(
   # weight are neither the binomial nor the density-ratio ones this stack
   # carries.
   check_ipw_joint_models_types(models$exposure_type, call = call)
-  check_ipw_joint_models_dose_link(fits, types, names, call = call)
+
+  # A dose model is read through the registry the single-dose route reads, so
+  # which classes, families, and links can be stacked is one answer rather than
+  # two, and a fit that cannot be stacked is refused here with the registry's
+  # own reason. Only the second component may be a dose, which the check above
+  # has already settled.
+  dose_idx <- if (identical(types[[2]], "continuous")) 2L else NULL
+  dose_model <- NULL
+  if (!is.null(dose_idx)) {
+    dose_model <- ipw_continuous_model(
+      fits[[dose_idx]],
+      hint = ipw_joint_models_dose_hint(),
+      call = call
+    )
+    check_ipw_continuous_model(dose_model, call = call)
+  }
 
   # Every cell of the crossing is set at once, so an outcome model reading one
   # of the two treatments has no counterfactual design for three of the four
@@ -229,6 +252,30 @@ ipw_spec_joint_models <- function(
   wts <- extract_weights(outcome_mod)
   estimand <- check_estimand(wts, estimand, call = call)
 
+  # What ratio of densities the dose's weights are, which is what the stacked
+  # system has to rebuild. A product records one density per component, so the
+  # dose's record is read out of the joint record positionally; a product built
+  # before the record existed has none, and its dose is the ratio the package
+  # has always built.
+  ratio <- if (!is.null(dose_idx)) {
+    ipw_continuous_ratio_meta(
+      joint_wt_dose_density(wts, dose_idx),
+      stabilized = TRUE,
+      hint = ipw_joint_models_dose_hint(),
+      call = call
+    )
+  }
+
+  # A dose stabilized by a score the caller computed is the one numerator this
+  # route cannot rebuild: the product records that the numerator was a score
+  # without recording the vector it was. The system estimates the exposure's own
+  # marginal moments instead, and the weight-consistency preflight is what
+  # reports the difference, naming the score as the cause.
+  numerator <- ratio$numerator
+  if (identical(numerator, "score")) {
+    numerator <- "marginal"
+  }
+
   if (is_linear_regression(outcome_mod)) {
     family <- "gaussian"
     out_link <- "identity"
@@ -239,7 +286,7 @@ ipw_spec_joint_models <- function(
     contrasts <- c("rd", "log(rr)")
   }
 
-  dose <- identical(types[[2]], "continuous")
+  dose <- !is.null(dose_idx)
 
   if (dose) {
     # A dose has no cells, so there is no crossing to build, nothing to set
@@ -291,42 +338,68 @@ ipw_spec_joint_models <- function(
     )
   }
 
+  # A discrete treatment enters as the 0/1 indicator of its non-reference level,
+  # which is the coding its own binomial score is written against, and a dose
+  # enters as itself.
+  exposures <- lapply(seq_along(treatments), function(i) {
+    if (identical(types[[i]], "continuous")) {
+      as.double(treatments[[i]])
+    } else {
+      ipw_recode_binary_exposure(treatments[[i]])
+    }
+  })
+
+  # A dose model carries the conditional variance of its density in its block of
+  # theta, so its block is one wider than the model has coefficients. A spread
+  # the caller fixed is a known constant instead, which sits in no block at all.
+  widths <- lengths(coefs)
+  if (dose && identical(ratio$sigma$kind, "pooled")) {
+    widths[[dose_idx]] <- widths[[dose_idx]] + 1L
+  }
+
   list(
     exposure_type = "joint_models",
     estimand = estimand,
     n = n,
-    # A discrete treatment enters as the 0/1 indicator of its non-reference
-    # level, which is the coding its own binomial score is written against, and
-    # a dose enters as itself.
-    exposure = lapply(seq_along(treatments), function(i) {
-      if (identical(types[[i]], "continuous")) {
-        as.double(treatments[[i]])
-      } else {
-        ipw_recode_binary_exposure(treatments[[i]])
-      }
-    }),
+    exposure = exposures,
     ps = list(
       X = ps_X,
       link = vapply(
         seq_along(fits),
-        function(i) ipw_joint_models_link(fits[[i]], types[[i]]),
+        function(i) {
+          if (identical(types[[i]], "continuous")) {
+            dose_model$link
+          } else {
+            fits[[i]]$family$link
+          }
+        },
         character(1)
       ),
       # Per component rather than concatenated, since the seed interleaves each
       # dose model's conditional variance after its own coefficients.
       coefs = coefs,
-      # A dose model carries that variance in its block of theta, so its block
-      # is one wider than the model has coefficients.
-      widths = lengths(coefs) + (types == "continuous"),
+      widths = widths,
       types = types,
+      # The registry entry the dose's block is written from, which the psi and
+      # the preflight both rebuild that block out of rather than reaching back
+      # for the model itself.
+      kind = dose_model$kind,
+      huber_k = dose_model$huber_k,
       k = 2L
     ),
     # `wt_joint()` requires a continuous component to be stabilized, so a dose
-    # brings a stabilizing numerator with it and the system estimates the two
-    # marginal moments that numerator is built from. A component built with a
-    # fixed stabilization score is a different function of the data, and the
-    # weight-consistency preflight is what notices.
+    # brings a stabilizing numerator with it. Which numerator that is decides
+    # whether the system estimates anything for it: a marginal one is two
+    # moments of the exposure, and an integrated one is built from the dose
+    # block and the data alone.
     stab = list(stabilized = dose, score = NULL),
+    density = if (dose) ratio$density,
+    numerator = if (dose) numerator,
+    sigma = if (dose) ratio$sigma,
+    # The points an integrated numerator averages the conditional density over,
+    # which are a function of the exposure alone and so are fixed across the
+    # solve, as they were when `wt_joint()`'s dose component was built.
+    grid = if (dose) ipw_numerator_grid(exposures[[dose_idx]], numerator),
     outcome = list(
       X = model.matrix(outcome_mod),
       y = ipw_outcome_numeric(fmla_extract_left_vctr(outcome_mod)),
@@ -344,18 +417,6 @@ ipw_spec_joint_models <- function(
     focal_level = NULL,
     reference_level = if (!dose) cells[[1]]
   )
-}
-
-# The link a treatment model's score block is written against. A dose model is
-# fit by least squares, whose score is the identity-link one whether the model
-# arrived as an `lm` or as a gaussian `glm`; a discrete treatment model carries
-# the link its own family was fit with.
-ipw_joint_models_link <- function(fit, type) {
-  if (identical(type, "continuous")) {
-    return("identity")
-  }
-
-  fit$family$link
 }
 
 # The pairs of treatment types this route estimates: two binary treatments, or a
@@ -403,43 +464,28 @@ check_ipw_joint_models_types <- function(
   )
 }
 
-# A dose model's block is the least-squares score of the exposure on its
-# covariates, which is the score an identity-link fit sits at. A gaussian model
-# fit through another link has the same coefficients under a different
-# parameterization, and the block would put the seed off the root.
-check_ipw_joint_models_dose_link <- function(
-  fits,
-  types,
-  names,
-  call = rlang::caller_env()
-) {
-  bad <- which(vapply(
-    seq_along(fits),
-    function(i) {
-      identical(types[[i]], "continuous") &&
-        inherits(fits[[i]], "glm") &&
-        !identical(fits[[i]]$family$link, "identity")
-    },
-    logical(1)
-  ))
+# The remedy the dose refusals point to on this route. A single dose that cannot
+# be stacked is resampled instead; a joint intervention has no resampling method
+# yet, so the refusal says where the standard errors would have to come from
+# rather than naming an argument this route would refuse in turn.
+ipw_joint_models_dose_hint <- function() {
+  "A joint intervention has no resampling method yet, so this route builds
+   standard errors from the stacked system alone. Weight the dose on its own to
+   resample it, or build its weights from a model and a density the stacked
+   system can differentiate."
+}
 
-  if (length(bad) == 0) {
-    return(invisible(TRUE))
+# The dose component's density record, read positionally off the product. A
+# product built before the record existed carries none, which reads as the ratio
+# every earlier version of the package built.
+joint_wt_dose_density <- function(wts, dose) {
+  density <- joint_wt_meta(wts)$density
+
+  if (is.null(density)) {
+    return(NULL)
   }
 
-  name <- names[[bad[[1]]]]
-  link <- fits[[bad[[1]]]]$family$link
-
-  abort(
-    c(
-      "{.fun ipw} supports only an identity-link model of a dose.",
-      x = "The model named {.arg {name}} is a gaussian model with a \\
-      {.val {link}} link.",
-      i = "Refit it as an {.fun lm} or a gaussian glm with an identity link."
-    ),
-    error_class = "propensity_ipw_link_error",
-    call = call
-  )
+  density[[dose]]
 }
 
 # ---- the surfaces a dose reports --------------------------------------------
@@ -966,6 +1012,8 @@ ipw_joint_models_weight_fn <- function(
 ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
   ends <- cumsum(spec$ps$widths)
   starts <- c(1L, utils::head(ends, -1L) + 1L)
+  dose <- ipw_joint_models_dose(spec)
+  ps_fns <- if (!is.null(dose)) ipw_joint_models_dose_fns(spec)
 
   lapply(seq_along(spec$ps$X), function(i) {
     th <- th_ps[starts[[i]]:ends[[i]]]
@@ -981,28 +1029,66 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
     }
 
     alpha <- th[seq_len(ncol(x))]
-    sigma2_d <- th[[ncol(x) + 1L]]
+
+    # A spread the caller fixed is a known constant, and a constant sits in no
+    # block of theta: the dose block is its coefficients alone and the density
+    # is read at the number the weights record.
+    sigma2_d <- if (identical(spec$sigma$kind, "fixed")) {
+      spec$sigma$value^2
+    } else {
+      th[[ncol(x) + 1L]]
+    }
 
     list(
       type = "continuous",
       coefs = alpha,
       sigma2_d = sigma2_d,
-      ps = as.vector(x %*% alpha),
+      ps = ps_fns$mean(x, alpha),
       extras = list(
         sigma2_d = sigma2_d,
         mu_a = if (length(th_stab)) th_stab[[1]],
         sigma2_a = if (length(th_stab)) th_stab[[2]],
         score = spec$stab$score,
-        stabilized = spec$stab$stabilized
+        stabilized = spec$stab$stabilized,
+        # Which ratio the dose's weights are, so the factor rebuilt here is the
+        # factor `wt_joint()` multiplied rather than the one this route used to
+        # assume every dose was.
+        density = spec$density,
+        numerator = spec$numerator,
+        grid = spec$grid
       )
     )
   })
 }
 
-# One treatment model's score rows: the unweighted score its own fit sits at. A
-# dose model adds the row that estimates the conditional variance its density
-# ratio divides by, which is the mean squared residual of that same fit.
-ipw_joint_models_score_rows <- function(block, x, y, link) {
+# The mean and the score the dose model contributes, read off the spec's record
+# of its registry entry rather than off the model itself, so the psi that
+# rebuilds the block at every evaluation and the preflight that rebuilds it once
+# write the same equation from the same three values.
+ipw_joint_models_dose_fns <- function(spec) {
+  dose <- ipw_joint_models_dose(spec)
+
+  ipw_continuous_score_fns(
+    spec$ps$kind,
+    spec$ps$link[[dose]],
+    spec$ps$huber_k
+  )
+}
+
+# One treatment model's score rows: the unweighted score its own fit sits at,
+# which for a dose is the equation its registry entry names rather than least
+# squares whatever the fit was. A dose model adds the row that estimates the
+# conditional variance its density ratio divides by, which is the mean squared
+# residual read against that entry's conditional mean; a dose whose spread the
+# caller fixed carries no such row, because a constant has no equation.
+ipw_joint_models_score_rows <- function(
+  block,
+  x,
+  y,
+  link,
+  ps_fns = NULL,
+  sigma_row = TRUE
+) {
   if (!identical(block$type, "continuous")) {
     return(deli::ee_glm(
       block$coefs,
@@ -1013,23 +1099,25 @@ ipw_joint_models_score_rows <- function(block, x, y, link) {
     ))
   }
 
-  rbind(
-    deli::ee_regression(block$coefs, X = x, y = y, model = "linear"),
-    matrix((y - block$ps)^2 - block$sigma2_d, nrow = 1)
-  )
+  score <- ps_fns$score(block$coefs, x, y)
+
+  if (!sigma_row) {
+    return(score)
+  }
+
+  rbind(score, matrix((y - block$ps)^2 - block$sigma2_d, nrow = 1))
 }
 
 # The stabilizing numerator's rows: the two moments of the dose's own marginal
-# normal density, each the exact root of the row that estimates it.
+# density, each the exact root of the row that estimates it. They are stacked
+# only under a marginal numerator, which is the one numerator built from
+# anything the system has to estimate.
 ipw_joint_models_stab_rows <- function(th_stab, dose) {
   if (!length(th_stab)) {
     return(NULL)
   }
 
-  rbind(
-    matrix(dose - th_stab[[1]], nrow = 1),
-    matrix((dose - th_stab[[1]])^2 - th_stab[[2]], nrow = 1)
-  )
+  deli::ee_mean_variance(th_stab, y = dose)
 }
 
 # The index of the dose among the components, or NULL where both are discrete.
@@ -1041,10 +1129,15 @@ ipw_joint_models_dose <- function(spec) {
   if (length(dose)) dose[[1]] else NULL
 }
 
-# The treatment blocks' seed: each model's coefficients, and for a dose the
-# conditional variance of its density, which is the mean squared residual of its
-# own fit and the exact root of the row that estimates it.
+# The treatment blocks' seed: each model's coefficients, and for a dose whose
+# spread the system estimates, the conditional variance of its density, which is
+# the mean squared residual read against that model's own conditional mean and
+# the exact root of the row that estimates it. A dose whose spread the caller
+# fixed seeds its coefficients alone, since a constant is in no block.
 ipw_init_joint_models_ps <- function(spec) {
+  dose <- ipw_joint_models_dose(spec)
+  ps_fns <- if (!is.null(dose)) ipw_joint_models_dose_fns(spec)
+
   blocks <- lapply(seq_along(spec$ps$coefs), function(i) {
     alpha <- spec$ps$coefs[[i]]
 
@@ -1052,7 +1145,11 @@ ipw_init_joint_models_ps <- function(spec) {
       return(alpha)
     }
 
-    resid <- spec$exposure[[i]] - as.vector(spec$ps$X[[i]] %*% alpha)
+    if (identical(spec$sigma$kind, "fixed")) {
+      return(alpha)
+    }
+
+    resid <- spec$exposure[[i]] - ps_fns$mean(spec$ps$X[[i]], alpha)
     c(
       alpha,
       stats::setNames(mean(resid^2), paste0("sigma2_", spec$names[[i]]))
@@ -1069,7 +1166,7 @@ ipw_init_joint_models_ps <- function(spec) {
 ipw_init_joint_models_stab <- function(spec) {
   dose <- ipw_joint_models_dose(spec)
 
-  if (is.null(dose) || !spec$stab$stabilized || !is.null(spec$stab$score)) {
+  if (is.null(dose) || !identical(spec$numerator, "marginal")) {
     return(numeric(0))
   }
 
@@ -1145,6 +1242,8 @@ ipw_psi_joint_models <- function(
   joint <- spec$joint
   reporters <- ipw_joint_reporters(joint)
   dose <- ipw_joint_models_dose(spec)
+  ps_fns <- if (!is.null(dose)) ipw_joint_models_dose_fns(spec)
+  sigma_row <- !identical(spec$sigma$kind, "fixed")
 
   function(theta) {
     th_ps <- theta[idx$ps]
@@ -1165,7 +1264,9 @@ ipw_psi_joint_models <- function(
           blocks[[i]],
           ps_X[[i]],
           exposure[[i]],
-          ps_link[[i]]
+          ps_link[[i]],
+          ps_fns = ps_fns,
+          sigma_row = sigma_row
         )
       })
     )

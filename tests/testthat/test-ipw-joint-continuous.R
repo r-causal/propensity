@@ -146,7 +146,11 @@ fit_joint_dose <- function(dose_type, e_rhs, dat) {
       family = gaussian(link = "log"),
       control = glm.control(epsilon = 1e-14, maxit = 200)
     ),
-    rlm = MASS::rlm(fmla, data = dat, acc = 1e-10),
+    # `k` moves the psi's own threshold, which is where a caller writes one and
+    # is not the `k2` that tunes the scale estimator. A fit at the default
+    # threshold would be stacked correctly by a block that read either, so the
+    # fixture is fit away from it.
+    rlm = MASS::rlm(fmla, data = dat, acc = 1e-10, k = 2),
     gam = mgcv::gam(
       stats::reformulate(c("a", "s(x1)", "x2"), response = "e"),
       data = dat
@@ -1021,6 +1025,8 @@ test_that("ipw() refuses a dose model whose score it cannot write", {
   msg <- joint_error_message(ipw(fx$models, fx$outcome_mod))
   expect_match(msg, "joint", fixed = TRUE)
   expect_no_match(msg, "se_method = \"bootstrap\"", fixed = TRUE)
+
+  expect_propensity_error(ipw(fx$models, fx$outcome_mod))
 })
 
 test_that("ipw() refuses dose weights built from a kernel density", {
@@ -1040,6 +1046,8 @@ test_that("ipw() refuses dose weights built from a kernel density", {
   msg <- joint_error_message(ipw(fx$models, fx$outcome_mod))
   expect_match(msg, "joint", fixed = TRUE)
   expect_no_match(msg, "se_method = \"bootstrap\"", fixed = TRUE)
+
+  expect_propensity_error(ipw(fx$models, fx$outcome_mod))
 })
 
 test_that("the weights mismatch names the ratio the dose records", {
@@ -1075,6 +1083,8 @@ test_that("the weights mismatch names the ratio the dose records", {
   msg <- joint_error_message(ipw(models, outcome_mod))
   expect_match(msg, "t(df = 4)", fixed = TRUE)
   expect_match(msg, "marginal", fixed = TRUE)
+
+  expect_propensity_error(ipw(models, outcome_mod))
 })
 
 # ---- refusals ----------------------------------------------------------------

@@ -2041,8 +2041,9 @@ ipw_check_weight_consistency <- function(
     components = spec$ps$types,
     # What the weights were rebuilt as, so that a mismatch reports the ratio
     # that was taken rather than leaving the density and the numerator among the
-    # unnamed possibilities.
-    ratio = if (identical(spec$exposure_type, "continuous")) {
+    # unnamed possibilities. A dose records one whether it is the exposure or
+    # the second component of a joint one; every other spec records none.
+    ratio = if (!is.null(spec$density)) {
       spec[c("density", "numerator")]
     },
     call = call
@@ -2113,31 +2114,30 @@ ipw_compare_weights <- function(
     } else {
       NULL
     }
-    # A joint weight is a product, and a product records that a component was
-    # stabilized without recording the numerator either component was built
-    # with. The stacked system therefore estimates the dose's own marginal
-    # moments, and a component carrying a numerator of its own is a different
-    # function of the data that no parameter value reproduces. A single dose
-    # keeps its score, which is read off the weights and held fixed, so this
-    # cause belongs to the joint route alone.
+    # A joint weight is a product, and a product records that a component's
+    # numerator was a score without recording the score itself. The stacked
+    # system therefore estimates the dose's own marginal moments, and a
+    # component carrying a numerator of its own is a different function of the
+    # data that no parameter value reproduces. A single dose keeps its score,
+    # which is read off the weights and held fixed, so this cause belongs to
+    # the joint route alone.
     score_hint <- if (identical(exposure_type, "joint_models") && dose) {
       "A dose component built with a fixed {.arg stabilization_score} is one \\
-      cause: the product records that a component was stabilized and not the \\
-      numerator it was built with, so {.fun ipw} rebuilds the dose weights \\
+      cause: the product records that the numerator was a score without \\
+      recording the vector it was, so {.fun ipw} rebuilds the dose weights \\
       from the exposure's own marginal moments instead."
     } else {
       NULL
     }
-    # A continuous exposure's weights are a ratio, and the ratio the stacked
-    # system took is read off what the weights record. Naming it keeps the
-    # message from leaving the density and the numerator among the causes when
-    # they are the two the system already agreed with.
-    ratio_hint <- if (
-      identical(exposure_type, "continuous") && !is.null(ratio)
-    ) {
+    # A dose's weights are a ratio, and the ratio the stacked system took is
+    # read off what the weights record. Naming it keeps the message from
+    # leaving the density and the numerator among the causes when they are the
+    # two the system already agreed with, and names the substitution where
+    # there was one: a joint dose stabilized by a fixed score is rebuilt from
+    # the marginal moments, which is what the cause below explains.
+    ratio_hint <- if (!is.null(ratio)) {
       "{.fun ipw} rebuilt these weights as a {.val {format(ratio$density)}} \\
-      density with a {.val {ratio$numerator}} numerator, which is what they \\
-      record."
+      density with a {.val {ratio$numerator}} numerator."
     }
     msg <- c(
       "The {.val {estimand}} weights recomputed from {.arg wt_mod} differ \\

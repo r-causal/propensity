@@ -20,7 +20,16 @@
 # Lookup is in class order rather than by inheritance, so a `gam` is read as a
 # `gam` rather than as the `glm` it inherits from, and an `rlm` as an `rlm`
 # rather than as the `lm` it inherits from.
-ipw_continuous_model <- function(ps_mod, call = rlang::caller_env()) {
+#
+# `hint` is the remedy every refusal here ends on, which the route asking for
+# the entry supplies. A single continuous exposure is resampled instead, and a
+# route with no resampling method of its own says so rather than pointing at an
+# argument it would refuse.
+ipw_continuous_model <- function(
+  ps_mod,
+  hint = ipw_continuous_bootstrap_hint(),
+  call = rlang::caller_env()
+) {
   ps_class <- class(ps_mod)
 
   if (inherits(ps_mod, "gam")) {
@@ -40,13 +49,13 @@ ipw_continuous_model <- function(ps_mod, call = rlang::caller_env()) {
         x = "An additive model chooses how much to smooth by REML, and no \\
         estimating equation stacked here reproduces that choice, so the \\
         stacked system would describe a different fit.",
-        i = ipw_continuous_bootstrap_hint()
+        i = hint
       )
     ))
   }
 
   if (inherits(ps_mod, "rlm")) {
-    return(ipw_continuous_rlm_entry(ps_mod, ps_class))
+    return(ipw_continuous_rlm_entry(ps_mod, ps_class, hint = hint))
   }
 
   if (inherits(ps_mod, "glm")) {
@@ -103,7 +112,11 @@ ipw_continuous_model <- function(ps_mod, call = rlang::caller_env()) {
 # its uncertainty. That is a choice rather than an oversight: the MAD scale
 # solves an equation of its own that this stack does not write, and a fit whose
 # scale is uncertain enough for that to matter is better served by resampling.
-ipw_continuous_rlm_entry <- function(ps_mod, classes = class(ps_mod)) {
+ipw_continuous_rlm_entry <- function(
+  ps_mod,
+  classes = class(ps_mod),
+  hint = ipw_continuous_bootstrap_hint()
+) {
   psi_name <- ipw_rlm_psi_name(ps_mod)
   huber <- identical(psi_name, "MASS::psi.huber")
   mm <- identical(ipw_rlm_method(ps_mod), "MM")
@@ -134,7 +147,7 @@ ipw_continuous_rlm_entry <- function(ps_mod, classes = class(ps_mod)) {
         x = found,
         i = "Refit {.arg wt_mod} with {.fun MASS::psi.huber}, the default, \\
         whose threshold {.fun ipw} reads off the fit.",
-        i = ipw_continuous_bootstrap_hint()
+        i = hint
       )
     ))
   }
@@ -412,21 +425,37 @@ ipw_continuous_ratio <- function(
   stacked = TRUE,
   call = rlang::caller_env()
 ) {
-  meta <- density_meta(wts)
+  ipw_continuous_ratio_meta(
+    density_meta(wts),
+    stabilized = is_stabilized(wts),
+    score = stabilization_score(wts),
+    stacked = stacked,
+    call = call
+  )
+}
 
+# The same reading from the record itself, for the route whose weights carry
+# theirs somewhere other than on the vector. A product weight records one
+# density per component, so the dose's record is read out of `joint_wt_meta()`
+# and the stabilization that stands in for a missing one is read from there too.
+ipw_continuous_ratio_meta <- function(
+  meta,
+  stabilized,
+  score = NULL,
+  stacked = TRUE,
+  hint = ipw_continuous_bootstrap_hint(),
+  call = rlang::caller_env()
+) {
   if (is.null(meta)) {
     return(list(
       density = dens_normal(),
-      numerator = ipw_continuous_numerator(
-        is_stabilized(wts),
-        stabilization_score(wts)
-      ),
+      numerator = ipw_continuous_numerator(stabilized, score),
       sigma = list(kind = "pooled", value = NULL)
     ))
   }
 
   if (stacked) {
-    check_ipw_continuous_density(meta$density, call = call)
+    check_ipw_continuous_density(meta$density, hint = hint, call = call)
   }
 
   list(
@@ -473,7 +502,11 @@ ipw_continuous_spread <- function(meta, call = rlang::caller_env()) {
 # parameters that the sandwich could differentiate. The refusal is the one a
 # `gam` gets: what is unavailable is the standard error method rather than the
 # weights, which are exactly what they claim to be.
-check_ipw_continuous_density <- function(density, call = rlang::caller_env()) {
+check_ipw_continuous_density <- function(
+  density,
+  hint = ipw_continuous_bootstrap_hint(),
+  call = rlang::caller_env()
+) {
   if (!identical(density$family, "kernel")) {
     return(invisible(TRUE))
   }
@@ -485,7 +518,7 @@ check_ipw_continuous_density <- function(density, call = rlang::caller_env()) {
       x = "The bandwidth of a kernel estimate is chosen from the residuals of \\
       the propensity score model, so the weights are not a differentiable \\
       function of that model's parameters.",
-      i = ipw_continuous_bootstrap_hint()
+      i = hint
     ),
     error_class = c(
       "propensity_ipw_se_method_unavailable_error",

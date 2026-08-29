@@ -67,6 +67,51 @@
   method by name, since M-estimation has a sandwich for every fit they accept;
   `boot_reps` and `boot_seed` are refused there for the same reason.
 
+* `wt_joint()` now reads each component's exposure type off the component
+  rather than being told it. A weight function records the type of exposure it
+  weighted, so `exposure_type` defaults to what the two components record and is
+  supplied only to override them or to describe a weight that records nothing,
+  such as one assembled with `psw()` by hand. A component that records no type
+  is refused, naming which of the two it was, because the requirement that a
+  continuous component be stabilized cannot be applied to a component whose
+  exposure is unknown.
+
+  The record `joint_wt_meta()` returns gains a `density` element, one per
+  component in the order the components were given: the `density_meta()` record
+  of a component weighting a dose, and `NULL` for one weighting a discrete
+  treatment, whose weights are no ratio of densities. What each component was
+  built from is kept per component rather than merged, so a product carries the
+  family, the numerator, and the spread of the dose it multiplied.
+
+* The joint sandwich now stacks the dose models and the density ratios the
+  single-treatment route stacks. The dose model of a `joint_wt_models()` pair
+  goes through the same registry, so a gaussian `glm()` at a log link and a
+  `MASS::rlm()` fit with the Huber psi are stacked at the score their own
+  coefficients solve, where before the dose block was the least-squares one
+  whatever the fit was. The dose component's weights may be a ratio in any
+  density family, under either numerator, and at a spread the caller fixed:
+  `ipw()` reads all three off the product's per-component record and rebuilds
+  the dose factor from them at every value of the parameter vector. An
+  integrated numerator adds no stabilization parameters, since it is built from
+  the dose block and the data alone, and a single `.sigma` is carried as a known
+  constant, so the dose block is its coefficients alone.
+
+  An `mgcv::gam()` dose model previously passed both the container and the
+  stacked system, where it was silently stacked as though it were an
+  identity-link `glm()` of its own basis columns; it is now refused, along with
+  dose weights built with a `"kernel"` density, with an error of class
+  `propensity_ipw_se_method_unavailable_error`. This route has no resampling
+  method yet, so the refusal says so rather than naming one: weight the dose on
+  its own to reach `se_method = "bootstrap"`. A gaussian dose model at an
+  inverse or square-root link is refused by name, as it is for a single dose,
+  and a dose component built with a `stabilization_score` still reaches the
+  weight-consistency check, which now names the score as the cause.
+
+  `joint_wt_models()` reads its supported classes by name rather than by
+  inheritance, so an `mgcv::gam()` and a `MASS::rlm()` are recognized as the
+  dose models they are rather than as the `glm()` and the `lm()` they inherit
+  from, and an unfamiliar subclass of either is no longer typed as its parent.
+
 * `wt_ate()` and `wt_cens()` gain a `.density` argument, which chooses the
   family of the conditional density a continuous exposure's weights are a ratio
   of. That density was a normal one and nothing else before, which is a strong
@@ -255,9 +300,9 @@
   second model that does not condition on the first treatment, since the product
   of two marginal weights is a different quantity that nothing downstream can
   tell apart, and `wt_joint()` requires a continuous component to be stabilized.
-  The second treatment may be a dose, recorded with an `lm()` or an
-  identity-link gaussian `glm()`, in which case there are no cells to report and
-  the surface is the marginal structural model's own coefficients. A model
+  The second treatment may be a dose, recorded with any of the classes `ipw()`
+  reads a conditional density from, in which case there are no cells to report
+  and the surface is the marginal structural model's own coefficients. A model
   written in bare treatment terms reports rows naming the treatment each one
   varies and where it is evaluated; every other treatment-reading model, a
   transformed term or a basis such as `poly()` or `splines::ns()` among them,

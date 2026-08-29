@@ -1,3 +1,14 @@
+# wt_joint() refuses a component that records no exposure type
+
+    Code
+      expr
+    Condition <propensity_wt_joint_exposure_type_error>
+      Error in `wt_joint()`:
+      ! `wt_joint()` requires each component to record the exposure type it weights.
+      x `w_e` records none.
+      i A weight built by hand, or by a version of the package that did not record it, carries an estimand and a stabilization status and nothing about the exposure, so the requirement that a continuous component be stabilized could not be applied to it.
+      i Rebuild it with a weight function such as `wt_ate()`, or name both types in `exposure_type`, for example `exposure_type = c("binary", "continuous")`.
+
 # wt_joint() refuses a component that does not target the ate
 
     Code
@@ -51,7 +62,7 @@
       ! `exposure_type` must name the exposure type of each component.
       x "ordinal" is not a supported exposure type.
       i Supported types: "binary", "categorical", and "continuous".
-      i Supply one per component, in the order the components were given, for example `exposure_type = c("binary", "continuous")`.
+      i Supply one per component, in the order the components were given, for example `exposure_type = c("binary", "continuous")`, or leave `exposure_type` unset to read each component's own record.
 
 # joint_wt_models() requires a discrete second model to condition on the first treatment
 

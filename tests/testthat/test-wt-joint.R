@@ -382,6 +382,8 @@ test_that("wt_joint() refuses a component that records no exposure type", {
     regexp = "w_e"
   )
 
+  expect_propensity_error(wt_joint(fx$w$a, hand_built))
+
   # Saying it is what makes the same pair acceptable.
   named <- wt_joint(fx$w$a, hand_built, exposure_type = c("binary", "binary"))
   expect_true(is_joint_wt(named))
@@ -588,10 +590,10 @@ test_that("wt_joint() refuses a component that is not a propensity score weight"
 test_that("wt_joint() refuses an exposure_type that does not name both components", {
   fx <- joint_wt_fixture()
 
-  # The exposure types are supplied rather than read off the weights: a psw
-  # records its estimand and its stabilization but not the kind of exposure it
-  # weights, and the stabilization rule above needs to tell a continuous
-  # component from a binary one.
+  # A value supplied here is used in place of what the components record, so it
+  # is validated on its own terms: the stabilization rule above needs to tell a
+  # continuous component from a binary one, and a vector naming one type, or a
+  # type this package has no weights for, tells it neither.
   expect_error(
     wt_joint(fx$w$a, fx$w$e, exposure_type = "binary"),
     class = "propensity_wt_joint_exposure_type_error"
