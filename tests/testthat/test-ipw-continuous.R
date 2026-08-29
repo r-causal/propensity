@@ -70,20 +70,22 @@ continuous_weights <- function(
 
 # Fit the propensity score model of A on the covariates, build continuous ATE
 # weights from its fitted values, and fit a weighted MSM. `ps_type` selects the
-# lm, the gaussian-family glm, or the log-link gaussian glm form of the
-# propensity model; the first two share fitted values and so produce identical
-# weights, and the third needs the positive exposure `sim_continuous_positive()`
-# simulates. `msm_rhs` allows a multiple-term right-hand side for the MSM guard.
-# `.density`, `numerator`, and `.sigma` are passed through to the weights. The
-# weights are kept as a psw object so the estimand survives into the outcome
-# model frame for detection. The quasibinomial MSM tightens its IRLS tolerance
-# so its coefficients sit at the weighted MLE to well below the point-estimate
-# comparison tolerance, and the log-link propensity model tightens its own for
-# the same reason: the stacked score is solved to a tighter root than the IRLS
-# default stops at.
+# lm, the gaussian-family glm, the log-link gaussian glm, or the robust Huber
+# form of the propensity model; the first two share fitted values and so produce
+# identical weights, and the log-link one needs the positive exposure
+# `sim_continuous_positive()` simulates. `msm_rhs` allows a multiple-term
+# right-hand side for the MSM guard. `.density`, `numerator`, and `.sigma` are
+# passed through to the weights. The weights are kept as a psw object so the
+# estimand survives into the outcome model frame for detection. The
+# quasibinomial MSM tightens its IRLS tolerance so its coefficients sit at the
+# weighted MLE to well below the point-estimate comparison tolerance, and the
+# log-link and robust propensity models tighten their own for the same reason:
+# the stacked score is solved to a tighter root than the iteration's default
+# stops at. `rlm` stops on the relative change in its coefficients, so `acc`
+# rather than `epsilon` is what tightens it.
 fit_continuous_models <- function(
   dat,
-  ps_type = c("lm", "glm", "glm_log"),
+  ps_type = c("lm", "glm", "glm_log", "rlm"),
   outcome_family = c("gaussian", "binomial"),
   stabilize = TRUE,
   stab_score = NULL,
@@ -104,7 +106,8 @@ fit_continuous_models <- function(
       data = dat,
       family = gaussian(link = "log"),
       control = glm.control(epsilon = 1e-14, maxit = 200)
-    )
+    ),
+    rlm = MASS::rlm(A ~ x1 + x2, data = dat, acc = 1e-10)
   )
   fitted_ps <- as.double(fitted(ps_mod))
   wts <- continuous_weights(
@@ -907,14 +910,15 @@ test_that("the observation-level spread refusal names both spreads it takes", {
 # recognizes, so a class it does not recognize would be solved to the root of an
 # equation the supplied model was not fit by. An lm subclass whose coefficients
 # are not that root would therefore yield estimates for a propensity model the
-# user never fit, and no downstream guard catches it: MASS::rlm carries class
-# c("rlm", "lm") and so reaches the lm method, and the weights built from its
-# fitted values agree with the weights recomputed at the seeded init, so the
-# weight-consistency preflight passes. The same holds through the
-# gaussian-family branch of the glm method, which routes a gaussian mgcv::gam to
-# the identical path. Both are refused at entry, naming the class they were
+# user never fit, and no downstream guard catches it: an lm subclass reaches the
+# lm method by inheritance, and the weights built from its fitted values agree
+# with the weights recomputed at the seeded init, so the weight-consistency
+# preflight passes. The same holds through the gaussian-family branch of the glm
+# method, which routes a gaussian mgcv::gam to the identical path. Every class
+# the registry was not written for is refused at entry, naming the class it was
 # given; which refusal each one gets is pinned with the rest of the registry
-# below.
+# below. MASS::rlm is the one lm subclass with a score of its own, so it is
+# stacked rather than refused, on the terms pinned in the robust section below.
 
 # A fixture whose robust and least-squares propensity fits genuinely disagree:
 # adding a block of large outliers to the exposure pulls the least-squares fit
@@ -931,27 +935,13 @@ sim_continuous_outliers <- function(seed = 2024, n = 800, n_outliers = 40) {
   dat
 }
 
-test_that("ipw() rejects a robust linear propensity model on the continuous path", {
-  skip_if_not_installed("MASS")
+test_that("a least-squares propensity model still runs on the outlier fixture", {
   skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
-  ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat)
-  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
-  msm <- lm(yc ~ A, data = dat, weights = wts)
-
-  # The test pins the general propensity_error class rather than a specific
-  # subclass; what matters is that the error names the class it was handed
-  # instead of accepting the model and reporting the least-squares analysis.
-  expect_error(
-    ipw(ps_mod, msm),
-    class = "propensity_error",
-    regexp = "rlm"
-  )
-
-  # Control: on the same fixture a plain lm propensity model still runs. Parity
-  # between the lm and gaussian-glm routes is covered above by "ipw() routes a
-  # gaussian-family glm ps model identically to lm".
+  # The control for the robust section below: on the contaminated fixture the
+  # least-squares route is unchanged, so anything the robust route reports
+  # differently comes from the fit rather than from the data.
   lm_mod <- lm(A ~ x1 + x2, data = dat)
   lm_wts <- continuous_weights(as.double(fitted(lm_mod)), dat$A)
   lm_msm <- lm(yc ~ A, data = dat, weights = lm_wts)
@@ -1197,6 +1187,205 @@ test_that("ipw() stacks a log-link gaussian propensity model", {
   expect_equal(
     unname(ps_block),
     unname(coef(mods$ps_mod)),
+    tolerance = 1e-6
+  )
+})
+
+# ---- a robust Huber propensity model ----------------------------------------
+#
+# `MASS::rlm()` descends its own loss rather than the sum of squares, so its
+# coefficients are the root of the Huber score read at the scale the fit settled
+# on. The stacked system writes that score with deli, holding the fit's MAD
+# scale fixed as a known constant: rlm clips the standardized residual and deli
+# clips the raw one, so the two agree when deli's threshold is the psi's own
+# constant times that scale. The psi carries its constant in its formals, which
+# is where a caller's `k` is written and where the tuning constant of the scale
+# estimator, `k2`, is not. The spread the density ratio divides by is the pooled
+# residual root mean square, as it is for every other class; a caller who wants
+# the robust scale there passes it as `.sigma`, which is the fixed-spread path.
+#
+# Only the Huber psi is written here, at whatever threshold the fit clipped at.
+# A redescending psi and the MM method are the roots of other equations, and an
+# unconverged fit is the root of none, so all three are refused rather than
+# stacked at a point the user's fit does not occupy.
+
+test_that("ipw() stacks a robust Huber propensity model", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+  mods <- fit_continuous_models(dat, ps_type = "rlm")
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(mods$outcome_mod)[["A"]]),
+    tolerance = 1e-6
+  )
+
+  # The propensity block leads theta, so the coefficients the sandwich solves
+  # for are the first ones it reports, and they are the robust fit's rather than
+  # the least-squares ones the same design would give.
+  theta <- coef(res$fit)
+  ps_block <- theta[seq_along(coef(mods$ps_mod))]
+  expect_equal(unname(ps_block), unname(coef(mods$ps_mod)), tolerance = 1e-6)
+
+  # The contamination is what makes that distinction visible: the two fits
+  # disagree in the first decimal place on this fixture, so a stacked system
+  # that solved the least-squares score would report a different propensity
+  # model and be caught here.
+  lm_coefs <- coef(lm(A ~ x1 + x2, data = dat))
+  expect_gt(max(abs(unname(coef(mods$ps_mod)) - unname(lm_coefs))), 0.1)
+})
+
+test_that("the weights ipw() rebuilds at its seed match a robust fit's", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+  mods <- fit_continuous_models(dat, ps_type = "rlm")
+
+  # The weights a user would build straight from the fitted model, rather than
+  # from its fitted values, are the ones the preflight has to reproduce: the
+  # `rlm` method reads the exposure off the model's own response.
+  direct <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(mods$ps_mod, exposure_type = "continuous", stabilize = TRUE)
+  )
+  expect_equal(as.double(direct), as.double(mods$wts), tolerance = 1e-12)
+
+  spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(direct),
+    tolerance = 1e-12
+  )
+})
+
+test_that("ipw() stacks a robust fit whose psi threshold was retuned", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  # Passing `k` retunes the Huber psi rather than replacing it: `rlm` rewrites
+  # the formals of the psi it was given, so the fit is still a Huber fit and is
+  # still one the stacked system can write, at the threshold the caller chose.
+  # A guard that recognized the psi by identity alone would refuse this fit, and
+  # a score written at the fit's `k2` would sit at the root of an equation this
+  # fit does not solve.
+  ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, acc = 1e-10, k = 2)
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  res <- ipw(ps_mod, msm)
+
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(msm)[["A"]]),
+    tolerance = 1e-6
+  )
+
+  theta <- coef(res$fit)
+  ps_block <- theta[seq_along(coef(ps_mod))]
+  expect_equal(unname(ps_block), unname(coef(ps_mod)), tolerance = 1e-6)
+})
+
+test_that("ipw() refuses a robust fit whose psi it cannot write", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  ps_mod <- MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = MASS::psi.bisquare,
+    acc = 1e-10
+  )
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_robust_psi_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "psi.bisquare", fixed = TRUE)
+  expect_match(msg, "psi.huber", fixed = TRUE)
+  expect_match(msg, "bootstrap", fixed = TRUE)
+})
+
+test_that("ipw() refuses the MM method as an equation it cannot write", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  # MM starts from a high-breakdown fit and finishes on a redescending psi, so
+  # the refusal is the same one a psi the system cannot write gets.
+  ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, method = "MM")
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_robust_psi_error"
+  )
+})
+
+test_that("ipw() refuses a robust fit that did not converge", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  # A fit stopped after one step is not at the root of the Huber score, so the
+  # stacked system seeded from its coefficients would move away from them and
+  # report a fit the user never saw. rlm says so itself, and the refusal reads
+  # that flag rather than rediscovering it.
+  ps_mod <- suppressWarnings(MASS::rlm(A ~ x1 + x2, data = dat, maxit = 1))
+  expect_false(ps_mod$converged)
+
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_convergence_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "maxit", fixed = TRUE)
+})
+
+test_that("ipw() takes a robust fit's own scale as a fixed spread", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+
+  # The uncontaminated fixture, deliberately: `rlm` reports a scale that resists
+  # outliers, so on the contaminated data the conditional density read at that
+  # scale is far narrower than the residuals are and the ratio degenerates onto
+  # a handful of units. The combination being pinned here is the fixed spread,
+  # not the contamination.
+  dat <- sim_continuous()
+  ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, acc = 1e-10)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    .sigma = ps_mod$s
+  )
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  spec <- ipw_spec_continuous(ps_mod, msm)
+  layout <- ipw_theta_layout(spec)
+  expect_length(layout$idx$ps, ncol(spec$ps$X))
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(wts),
+    tolerance = 1e-12
+  )
+
+  res <- ipw(ps_mod, msm)
+  expect_false("sigma2_d" %in% names(coef(res$fit)))
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(msm)[["A"]]),
     tolerance = 1e-6
   )
 })
@@ -1575,6 +1764,46 @@ test_that("the sandwich SE for a log-link propensity model tracks a bootstrap", 
   }
 
   withr::local_seed(4102)
+  reps <- 400L
+  n <- nrow(dat)
+  boot <- vapply(
+    seq_len(reps),
+    function(i) {
+      boot_slope(dat[sample.int(n, n, replace = TRUE), , drop = FALSE])
+    },
+    numeric(1)
+  )
+
+  boot_se <- stats::sd(boot)
+  expect_lt(abs(mest_se - boot_se) / boot_se, 0.15)
+})
+
+test_that("the sandwich SE for a robust Huber propensity model tracks a bootstrap", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  skip_on_cran()
+
+  # The sandwich holds the fit's MAD scale fixed while the bootstrap re-estimates
+  # it on every resample, so the two are not the same calculation. On the
+  # contaminated fixture they still agree well inside the 15 percent band the
+  # other continuous oracles use, which is what says the fixed scale costs the
+  # standard error little: a prototype of this stack put the gap at 7 percent
+  # here, and at 4 percent on the uncontaminated simulation.
+  dat <- sim_continuous_outliers(seed = 2024, n = 600)
+  mods <- fit_continuous_models(dat, ps_type = "rlm")
+  mest_se <- ipw(mods$ps_mod, mods$outcome_mod)$estimates$std.err
+
+  boot_slope <- function(d) {
+    # A resample of a contaminated sample can need more than the default twenty
+    # steps to reach `acc`, and a replicate that stopped short would be fit at a
+    # different tolerance than the sample it is a resample of.
+    ps <- MASS::rlm(A ~ x1 + x2, data = d, acc = 1e-10, maxit = 100)
+    w <- continuous_weights(as.double(fitted(ps)), d$A)
+    msm <- lm(yc ~ A, data = d, weights = as.double(w))
+    unname(coef(msm)[["A"]])
+  }
+
+  withr::local_seed(918)
   reps <- 400L
   n <- nrow(dat)
   boot <- vapply(
