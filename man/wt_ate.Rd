@@ -646,7 +646,12 @@ model's.
 Every model class is spread that same way, \code{\link[MASS:rlm]{MASS::rlm()}} included. \code{rlm}
 reports a robust scale estimate of its own in \code{fit$s}, which resists the
 extreme residuals rather than pooling all of them; pass \code{.sigma = fit$s} to
-be spread by it instead.
+be spread by it instead. That is rarely what you want on the data a robust
+fit is used for: the scale resists the very residuals the conditional density
+is meant to spread over, so the ratio can concentrate on a handful of units.
+\code{\link[=ipw]{ipw()}} stacks a robust fit's own score with that scale held fixed as a known
+constant, and reads \code{.sigma = fit$s} as a fixed spread in the same way,
+propagating the uncertainty of neither.
 
 \code{\link[=ipw]{ipw()}} models the conditional density with a single pooled residual
 variance, estimated jointly with the rest of the parameter vector. Weights

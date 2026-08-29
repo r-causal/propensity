@@ -49,15 +49,47 @@
       x `wt_mod` reads the exposure through `log(Apos)`, an expression rather than a single column.
       i Fit `wt_mod` with the exposure itself as the response, adding it to the data as its own column first if it has to be computed.
 
+# the robust psi refusal names the psi it found and the remedy
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
+      x `wt_mod` was fit with `MASS::psi.bisquare()`.
+      i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      i Use `se_method = "bootstrap"`, passing the data the models were fit to in `.data`, which resamples the whole fit instead of stacking it.
+
+# the MM refusal names the method and the psi it finishes on
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
+      x `wt_mod` was fit with `method = "MM"`, which starts from a high-breakdown fit and finishes on `MASS::psi.bisquare()`.
+      i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      i Use `se_method = "bootstrap"`, passing the data the models were fit to in `.data`, which resamples the whole fit instead of stacking it.
+
+# the robust convergence refusal names the arguments that fix it
+
+    Code
+      expr
+    Condition <propensity_ipw_convergence_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot stack a <rlm/lm> propensity score model that did not converge.
+      x `wt_mod` reports `converged = FALSE`, so its coefficients are not the root of the score stacked here.
+      i Refit `wt_mod` with a larger `maxit`, or a looser `acc`, until it converges.
+
 # the unknown-subclass error names the classes that are supported
 
     Code
       expr
     Condition <propensity_class_error>
       Error in `ipw()`:
-      ! `ipw()` supports only `stats::lm()` or gaussian `stats::glm()` propensity score models for a continuous exposure.
+      ! `ipw()` supports only `stats::lm()`, gaussian `stats::glm()`, or `MASS::rlm()` propensity score models for a continuous exposure.
       x `wt_mod` has class <mymodel/lm>.
-      i A <gam> and an <rlm> are recognized and refused on their own terms; every other class reaches this refusal.
+      i A <gam> is recognized and refused on its own terms; every other class reaches this refusal.
       i Refit `wt_mod` with `stats::lm()` or `stats::glm(family = gaussian())`.
 
 # the continuous propensity-link error names the link and the remedy

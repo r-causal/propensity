@@ -600,7 +600,7 @@ ipw_categorical_seed_tilt <- function(spec, levs) {
 
 ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   alpha <- spec$ps$coefs
-  fitted_ps <- ipw_continuous_link_fns(spec$ps$link)$mean(spec$ps$X, alpha)
+  fitted_ps <- ipw_continuous_spec_fns(spec)$mean(spec$ps$X, alpha)
 
   # A spread the caller fixed is a constant the weights were built with rather
   # than a quantity the data estimate, so the block is the coefficients alone
@@ -1018,7 +1018,7 @@ ipw_psi_continuous <- function(
   y <- spec$outcome$y
   family <- spec$outcome$family
   out_link <- spec$outcome$link
-  link_fns <- ipw_continuous_link_fns(spec$ps$link)
+  ps_fns <- ipw_continuous_spec_fns(spec)
 
   # The grid an integrated numerator marginalizes over is fixed by the exposure
   # rather than by theta, so it is built once here and read at every evaluation.
@@ -1033,7 +1033,7 @@ ipw_psi_continuous <- function(
 
     inputs <- ipw_continuous_inputs(spec, th_ps, th_stab, grid = grid)
 
-    ps_score <- link_fns$score(inputs$alpha, x_ps, a)
+    ps_score <- ps_fns$score(inputs$alpha, x_ps, a)
 
     # A spread the caller fixed is a constant, and a constant has no equation.
     # The conditional variance is estimated only where the weights took the
@@ -1080,7 +1080,7 @@ ipw_continuous_inputs <- function(
 
   list(
     alpha = alpha,
-    mu = ipw_continuous_link_fns(spec$ps$link)$mean(spec$ps$X, alpha),
+    mu = ipw_continuous_spec_fns(spec)$mean(spec$ps$X, alpha),
     extras = list(
       sigma2_d = sigma2_d,
       mu_a = if (length(th_stab)) th_stab[[1]],

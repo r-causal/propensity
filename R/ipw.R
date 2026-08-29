@@ -583,8 +583,9 @@
 #'
 #' M-estimation standard errors are available for all exposure types: binary
 #' (from a [stats::glm()] propensity score model), categorical (from a
-#' [nnet::multinom()] model), and continuous (from an [stats::lm()] or gaussian
-#' [stats::glm()] model; see **Continuous propensity score models** below). The
+#' [nnet::multinom()] model), and continuous (from an [stats::lm()], a gaussian
+#' [stats::glm()], or a [MASS::rlm()] model; see **Continuous propensity score
+#' models** below). The
 #' `atm` weight
 #' `pmin(e, 1 - e)` is not differentiable at a propensity score of `0.5`; deli's
 #' central finite difference straddles the kink there and averages the one-sided
@@ -595,13 +596,41 @@
 #'
 #' A continuous exposure's weights are a ratio of densities centered on the
 #' conditional mean the propensity score model fits, so the stacked system
-#' carries that model's own score. Two classes supply one: an [stats::lm()],
-#' and a gaussian [stats::glm()] fit with an identity or a log link. A gaussian
-#' model fit with any other link is refused by name, because the coefficients
-#' its iteration stops at are not a tight enough root to seed the stacked solve
-#' from; refit it with one of the two links or as an [stats::lm()]. Any other
-#' class errors, since solving it here would report a propensity score model
-#' that was never fit.
+#' carries that model's own score. Three classes supply one: an [stats::lm()],
+#' a gaussian [stats::glm()] fit with an identity or a log link, and a
+#' [MASS::rlm()] fit with the Huber psi. A gaussian model fit with any other
+#' link is refused by name, because the coefficients its iteration stops at are
+#' not a tight enough root to seed the stacked solve from; refit it with one of
+#' the two links or as an [stats::lm()]. Any other class errors, since solving
+#' it here would report a propensity score model that was never fit.
+#'
+#' A [MASS::rlm()] is stacked as the Huber score its coefficients are the root
+#' of, clipped where the fit itself clipped: at the psi's own constant, which is
+#' the constant a caller passed as `k` when they passed one, times the scale the
+#' fit settled on. That scale enters the location score as a known constant. It
+#' solves an equation of its own that the stacked system does not write, so none
+#' of its sampling variability is propagated, and the standard errors are those
+#' of a Huber score read at a scale treated as fixed. The spread of the
+#' conditional density is a separate quantity, and is the pooled residual root
+#' mean square there as it is for every other class.
+#'
+#' Weights built with `.sigma = fit$s`, the robust scale, are read as the fixed
+#' spread they are, but that combination is usually a poor choice: the robust
+#' scale resists the very residuals the density is meant to spread over, so on
+#' contaminated data the conditional density is far narrower than the residuals
+#' are, and the ratio can collapse onto an effective sample size of about one.
+#' Leave `.sigma` unset unless you have a reason to hold the spread at a
+#' particular value.
+#'
+#' Three robust fits are refused. One fit with a psi that is not Huber, and one
+#' fit with `method = "MM"`, which starts from a high-breakdown fit and finishes
+#' on a redescending psi, are the roots of equations the stacked system does not
+#' write; both error with class `propensity_ipw_robust_psi_error`. One whose
+#' iteration stopped short of its own tolerance is the root of nothing, and
+#' errors with class `propensity_ipw_convergence_error`. The first two point to
+#' a Huber refit or to `se_method = "bootstrap"`; the last points to a larger
+#' `maxit` or a looser `acc`, which is what a fit needs to reach its own
+#' tolerance.
 #'
 #' Two fits are refused for the standard error rather than for the model. An
 #' [mgcv::gam()] chooses how much to smooth by REML, and a `"kernel"` density
@@ -1326,9 +1355,10 @@ ipw_continuous_estimate <- function(
   # The stacked system carries the propensity score model's own score and
   # rebuilds its design from the model formula, so the registry decides what can
   # be here: a class whose coefficients are not the root of any equation it
-  # writes, such as a robust fit, would drift silently to the root of the one it
-  # does write, and a class whose design is not the formula's, such as an
-  # additive fit's smooth basis, would be reconstructed as something else.
+  # writes, such as a robust fit descending a redescending loss, would drift
+  # silently to the root of the one it does write, and a class whose design is
+  # not the formula's, such as an additive fit's smooth basis, would be
+  # reconstructed as something else.
   # Either way the estimates would describe a propensity score model the user
   # never fit. The refusal runs before every other guard here so that a
   # recognized model with no sandwich is reported as the method it lacks rather

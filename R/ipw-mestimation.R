@@ -1724,7 +1724,9 @@ ipw_spec_continuous <- function(
     exposure = exposure,
     ps = list(
       X = ps_X,
+      kind = ps_model$kind,
       link = ps_model$link,
+      huber_k = ps_model$huber_k,
       coefs = stats::coef(ps_mod),
       k = NULL
     ),

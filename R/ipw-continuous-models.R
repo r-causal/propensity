@@ -46,21 +46,7 @@ ipw_continuous_model <- function(ps_mod, call = rlang::caller_env()) {
   }
 
   if (inherits(ps_mod, "rlm")) {
-    return(ipw_continuous_entry(
-      kind = "rlm",
-      classes = ps_class,
-      link = "identity",
-      stackable = FALSE,
-      error_class = "propensity_class_error",
-      reason = c(
-        "{.fun ipw} does not yet support a {.cls {entry$classes}} propensity \\
-        score model for a continuous exposure.",
-        x = "A robust fit descends its own loss, so its coefficients are not \\
-        the root of any equation stacked here.",
-        i = "Refit {.arg wt_mod} with {.fun stats::lm} or \\
-        {.code stats::glm(family = gaussian())}."
-      )
-    ))
+    return(ipw_continuous_rlm_entry(ps_mod, ps_class))
   }
 
   if (inherits(ps_mod, "glm")) {
@@ -86,11 +72,12 @@ ipw_continuous_model <- function(ps_mod, call = rlang::caller_env()) {
 
   abort(
     c(
-      "{.fun ipw} supports only {.fun stats::lm} or gaussian \\
-      {.fun stats::glm} propensity score models for a continuous exposure.",
+      "{.fun ipw} supports only {.fun stats::lm}, gaussian \\
+      {.fun stats::glm}, or {.fun MASS::rlm} propensity score models for a \\
+      continuous exposure.",
       x = "{.arg wt_mod} has class {.cls {ps_class}}.",
-      i = "A {.cls gam} and an {.cls rlm} are recognized and refused on their \\
-      own terms; every other class reaches this refusal.",
+      i = "A {.cls gam} is recognized and refused on its own terms; every \\
+      other class reaches this refusal.",
       i = "Refit {.arg wt_mod} with {.fun stats::lm} or \\
       {.code stats::glm(family = gaussian())}."
     ),
@@ -99,18 +86,164 @@ ipw_continuous_model <- function(ps_mod, call = rlang::caller_env()) {
   )
 }
 
+# The entry a robust fit gets, which is the one place a class carries a constant
+# of its own into the stacked system. `MASS::rlm()` minimizes a loss rather than
+# the sum of squares, so its coefficients are the root of the psi score read at
+# the scale the fit settled on, and that score is stacked here as deli's Huber
+# robust regression.
+#
+# The two clip the same residual on different scales: `rlm` clips the residual
+# divided by its scale estimate at the psi's own constant, and deli clips the
+# raw residual at `k`, so the equations agree when `k` is the product of the
+# two. The constant is read out of the psi's formals rather than out of `k2`,
+# because that is where `rlm` writes a caller's `k`; `k2` tunes the scale
+# estimator instead and is unchanged when the psi's threshold moves.
+#
+# The scale itself enters as a known constant, and the system carries none of
+# its uncertainty. That is a choice rather than an oversight: the MAD scale
+# solves an equation of its own that this stack does not write, and a fit whose
+# scale is uncertain enough for that to matter is better served by resampling.
+ipw_continuous_rlm_entry <- function(ps_mod, classes = class(ps_mod)) {
+  psi_name <- ipw_rlm_psi_name(ps_mod)
+  huber <- identical(psi_name, "MASS::psi.huber")
+  mm <- identical(ipw_rlm_method(ps_mod), "MM")
+
+  if (mm || !huber) {
+    found <- if (mm && !is.null(psi_name)) {
+      "{.arg wt_mod} was fit with {.code method = \"MM\"}, which starts from a
+       high-breakdown fit and finishes on {.fun {entry$psi}}."
+    } else if (mm) {
+      "{.arg wt_mod} was fit with {.code method = \"MM\"}, which starts from a
+       high-breakdown fit and finishes on a redescending psi."
+    } else if (is.null(psi_name)) {
+      "{.arg wt_mod} was fit with a psi function this path cannot recognize."
+    } else {
+      "{.arg wt_mod} was fit with {.fun {entry$psi}}."
+    }
+
+    return(ipw_continuous_entry(
+      kind = "rlm",
+      classes = classes,
+      link = "identity",
+      stackable = FALSE,
+      psi = psi_name,
+      error_class = "propensity_ipw_robust_psi_error",
+      reason = c(
+        "{.fun ipw} stacks only the Huber score of a {.cls {entry$classes}} \\
+        propensity score model of a continuous exposure.",
+        x = found,
+        i = "Refit {.arg wt_mod} with {.fun MASS::psi.huber}, the default, \\
+        whose threshold {.fun ipw} reads off the fit.",
+        i = ipw_continuous_bootstrap_hint()
+      )
+    ))
+  }
+
+  # A fit that stopped short of its own tolerance is not at the root of the
+  # score stacked here, so a system seeded from its coefficients would move away
+  # from them and report a propensity score model the user never saw.
+  if (!isTRUE(ps_mod$converged)) {
+    return(ipw_continuous_entry(
+      kind = "rlm",
+      classes = classes,
+      link = "identity",
+      stackable = FALSE,
+      psi = psi_name,
+      error_class = "propensity_ipw_convergence_error",
+      reason = c(
+        "{.fun ipw} cannot stack a {.cls {entry$classes}} propensity score \\
+        model that did not converge.",
+        x = "{.arg wt_mod} reports {.code converged = FALSE}, so its \\
+        coefficients are not the root of the score stacked here.",
+        i = "Refit {.arg wt_mod} with a larger {.arg maxit}, or a looser \\
+        {.arg acc}, until it converges."
+      )
+    ))
+  }
+
+  ipw_continuous_entry(
+    kind = "rlm",
+    classes = classes,
+    link = "identity",
+    stackable = TRUE,
+    psi = psi_name,
+    huber_k = as.numeric(formals(ps_mod$psi)$k) * ps_mod$s
+  )
+}
+
+# The method a robust fit was made by, which `rlm` records only in its call. A
+# caller who named it through a variable left an unevaluated symbol there, so
+# the call is evaluated in the environment the model's formula carries, which is
+# where that variable was written. A value that cannot be evaluated, or is not a
+# string, names no method here and reads as `NULL` rather than stopping the
+# lookup.
+ipw_rlm_method <- function(ps_mod) {
+  method <- ps_mod$call$method
+  if (is.null(method)) {
+    return(NULL)
+  }
+
+  value <- tryCatch(
+    eval(method, environment(stats::formula(ps_mod))),
+    error = function(e) NULL
+  )
+
+  if (!is.character(value) || length(value) != 1L) {
+    return(NULL)
+  }
+
+  value
+}
+
+# Which of MASS's psi functions a robust fit was given, or `NULL` for one this
+# path has no name for. `rlm` tunes a psi by rewriting its formals, so a fit
+# whose caller passed `k` no longer carries the function it was given and
+# `identical()` on the function itself reports the wrong answer. The body is
+# what the rewriting leaves alone, so that is what is compared.
+ipw_rlm_psi_name <- function(ps_mod) {
+  psi <- ps_mod$psi
+  if (!is.function(psi)) {
+    return(NULL)
+  }
+
+  known <- c(
+    "MASS::psi.huber" = MASS::psi.huber,
+    "MASS::psi.bisquare" = MASS::psi.bisquare,
+    "MASS::psi.hampel" = MASS::psi.hampel
+  )
+
+  match <- vapply(
+    known,
+    function(fn) identical(body(psi), body(fn)),
+    logical(1)
+  )
+
+  if (!any(match)) {
+    return(NULL)
+  }
+
+  names(known)[[which(match)[[1]]]]
+}
+
 # One entry of the registry. `mean` reconstructs the conditional mean from the
 # propensity score block of theta, and `score` writes the equation the model's
 # coefficients solve; both are the identity's least squares unless the entry
-# carries another link. A model that cannot be stacked carries neither, so a
-# caller reaching for one has already had to pass the refusal.
+# carries another link or another kind. A model that cannot be stacked carries
+# neither, so a caller reaching for one has already had to pass the refusal.
+#
+# `psi` and `huber_k` are the two things a robust fit carries that no other
+# entry has: the name of the psi it was fit with, which its refusal reads, and
+# the threshold its score clips the raw residual at, which the spec carries so
+# that the psi builder writes the same equation the registry did.
 ipw_continuous_entry <- function(
   kind,
   link,
   stackable,
   classes = kind,
   error_class = NULL,
-  reason = NULL
+  reason = NULL,
+  psi = NULL,
+  huber_k = NULL
 ) {
   entry <- list(
     kind = kind,
@@ -119,6 +252,8 @@ ipw_continuous_entry <- function(
     stackable = stackable,
     error_class = error_class,
     reason = reason,
+    psi = psi,
+    huber_k = huber_k,
     mean = NULL,
     score = NULL
   )
@@ -127,7 +262,40 @@ ipw_continuous_entry <- function(
     return(entry)
   }
 
-  utils::modifyList(entry, ipw_continuous_link_fns(link))
+  utils::modifyList(entry, ipw_continuous_score_fns(kind, link, huber_k))
+}
+
+# The mean and the score a stacked propensity score model contributes, keyed on
+# the registry entry's kind as well as its link. Every least squares fit is read
+# through its link alone, and a robust fit is the one kind whose score is a
+# different equation at the same identity link, so the kind is what separates
+# them.
+ipw_continuous_score_fns <- function(kind, link, huber_k = NULL) {
+  if (!identical(kind, "rlm")) {
+    return(ipw_continuous_link_fns(link))
+  }
+
+  list(
+    mean = function(X, alpha) as.vector(X %*% alpha),
+    score = function(alpha, X, y) {
+      deli::ee_robust_regression(
+        alpha,
+        X = X,
+        y = y,
+        model = "linear",
+        k = huber_k,
+        loss = "huber"
+      )
+    }
+  )
+}
+
+# The same pair read off a spec, which is what the psi builder and the preflight
+# that has to agree with it both hold. The spec records the kind, the link, and
+# the robust threshold rather than the model they came from, so the two rebuild
+# the propensity score block from the same three values.
+ipw_continuous_spec_fns <- function(spec) {
+  ipw_continuous_score_fns(spec$ps$kind, spec$ps$link, spec$ps$huber_k)
 }
 
 # The two things a link decides: how the conditional mean is read back from the
@@ -135,9 +303,9 @@ ipw_continuous_entry <- function(
 # identity link is ordinary least squares, and every other link is the score
 # deli writes for a normal model fit through it.
 #
-# A spec records the link rather than the model it came from, so the psi builder
-# and the preflight that has to agree with it read these from here as well,
-# which is what makes the two the same arithmetic.
+# A spec records the link and the kind rather than the model they came from, so
+# the psi builder and the preflight that has to agree with it read these from
+# here as well, which is what makes the two the same arithmetic.
 ipw_continuous_link_fns <- function(link) {
   inv_link <- ipw_inv_link(link)
 

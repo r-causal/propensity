@@ -31,6 +31,21 @@
   element, which holds the number a single supplied spread was, and is `NULL`
   for a pooled spread and for one supplied per observation.
 
+* `ipw()` now stacks a `MASS::rlm()` propensity score model of a continuous
+  exposure, which it refused before. A robust fit minimizes its own loss rather
+  than the sum of squares, so the stacked system carries the Huber score its
+  coefficients are the root of, clipped where the fit itself clipped: at the
+  psi's own constant, including one a caller passed as `k`, times the scale the
+  fit settled on. That scale enters the score as a known constant whose sampling
+  variability is not propagated, and the spread of the conditional density is
+  the pooled residual root mean square, as it is for every other class. A fit
+  with a psi other than Huber, and one fit with `method = "MM"`, which finishes
+  on a redescending psi, are refused with an error of class
+  `propensity_ipw_robust_psi_error`; one whose iteration stopped short of its
+  own tolerance is refused with `propensity_ipw_convergence_error`. The first
+  two point to a Huber refit or to `se_method = "bootstrap"`; the last points to
+  a larger `maxit` or a looser `acc`.
+
 * `wt_ate()` and `wt_cens()` gain a `.density` argument, which chooses the
   family of the conditional density a continuous exposure's weights are a ratio
   of. That density was a normal one and nothing else before, which is a strong

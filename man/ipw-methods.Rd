@@ -790,8 +790,9 @@ and Boos (2002) for the M-estimation framework.
 
 M-estimation standard errors are available for all exposure types: binary
 (from a \code{\link[stats:glm]{stats::glm()}} propensity score model), categorical (from a
-\code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}} or gaussian
-\code{\link[stats:glm]{stats::glm()}} model; see \strong{Continuous propensity score models} below). The
+\code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}}, a gaussian
+\code{\link[stats:glm]{stats::glm()}}, or a \code{\link[MASS:rlm]{MASS::rlm()}} model; see \strong{Continuous propensity score
+models} below). The
 \code{atm} weight
 \code{pmin(e, 1 - e)} is not differentiable at a propensity score of \code{0.5}; deli's
 central finite difference straddles the kink there and averages the one-sided
@@ -801,13 +802,41 @@ at exactly \code{0.5}.
 
 A continuous exposure's weights are a ratio of densities centered on the
 conditional mean the propensity score model fits, so the stacked system
-carries that model's own score. Two classes supply one: an \code{\link[stats:lm]{stats::lm()}},
-and a gaussian \code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link. A gaussian
-model fit with any other link is refused by name, because the coefficients
-its iteration stops at are not a tight enough root to seed the stacked solve
-from; refit it with one of the two links or as an \code{\link[stats:lm]{stats::lm()}}. Any other
-class errors, since solving it here would report a propensity score model
-that was never fit.
+carries that model's own score. Three classes supply one: an \code{\link[stats:lm]{stats::lm()}},
+a gaussian \code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, and a
+\code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi. A gaussian model fit with any other
+link is refused by name, because the coefficients its iteration stops at are
+not a tight enough root to seed the stacked solve from; refit it with one of
+the two links or as an \code{\link[stats:lm]{stats::lm()}}. Any other class errors, since solving
+it here would report a propensity score model that was never fit.
+
+A \code{\link[MASS:rlm]{MASS::rlm()}} is stacked as the Huber score its coefficients are the root
+of, clipped where the fit itself clipped: at the psi's own constant, which is
+the constant a caller passed as \code{k} when they passed one, times the scale the
+fit settled on. That scale enters the location score as a known constant. It
+solves an equation of its own that the stacked system does not write, so none
+of its sampling variability is propagated, and the standard errors are those
+of a Huber score read at a scale treated as fixed. The spread of the
+conditional density is a separate quantity, and is the pooled residual root
+mean square there as it is for every other class.
+
+Weights built with \code{.sigma = fit$s}, the robust scale, are read as the fixed
+spread they are, but that combination is usually a poor choice: the robust
+scale resists the very residuals the density is meant to spread over, so on
+contaminated data the conditional density is far narrower than the residuals
+are, and the ratio can collapse onto an effective sample size of about one.
+Leave \code{.sigma} unset unless you have a reason to hold the spread at a
+particular value.
+
+Three robust fits are refused. One fit with a psi that is not Huber, and one
+fit with \code{method = "MM"}, which starts from a high-breakdown fit and finishes
+on a redescending psi, are the roots of equations the stacked system does not
+write; both error with class \code{propensity_ipw_robust_psi_error}. One whose
+iteration stopped short of its own tolerance is the root of nothing, and
+errors with class \code{propensity_ipw_convergence_error}. The first two point to
+a Huber refit or to \code{se_method = "bootstrap"}; the last points to a larger
+\code{maxit} or a looser \code{acc}, which is what a fit needs to reach its own
+tolerance.
 
 Two fits are refused for the standard error rather than for the model. An
 \code{\link[mgcv:gam]{mgcv::gam()}} chooses how much to smooth by REML, and a \code{"kernel"} density

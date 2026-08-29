@@ -1314,6 +1314,23 @@ test_that("ipw() refuses a robust fit whose psi it cannot write", {
   expect_match(msg, "bootstrap", fixed = TRUE)
 })
 
+test_that("the robust psi refusal names the psi it found and the remedy", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  ps_mod <- MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = MASS::psi.bisquare,
+    acc = 1e-10
+  )
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_propensity_error(ipw(ps_mod, msm))
+})
+
 test_that("ipw() refuses the MM method as an equation it cannot write", {
   skip_if_not_installed("MASS")
   skip_if_not_installed("deli")
@@ -1329,6 +1346,38 @@ test_that("ipw() refuses the MM method as an equation it cannot write", {
     ipw(ps_mod, msm),
     class = "propensity_ipw_robust_psi_error"
   )
+})
+
+test_that("ipw() refuses the MM method named through a variable", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  # `rlm` records the method as it was written rather than as it was resolved,
+  # so a caller who named it through a variable leaves a symbol in the call. The
+  # refusal evaluates it rather than reading the symbol as a method name.
+  m <- "MM"
+  ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, method = m)
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_robust_psi_error"
+  )
+  expect_match(conditionMessage(err), "MM", fixed = TRUE)
+})
+
+test_that("the MM refusal names the method and the psi it finishes on", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, method = "MM")
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_propensity_error(ipw(ps_mod, msm))
 })
 
 test_that("ipw() refuses a robust fit that did not converge", {
@@ -1352,6 +1401,18 @@ test_that("ipw() refuses a robust fit that did not converge", {
   )
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "maxit", fixed = TRUE)
+})
+
+test_that("the robust convergence refusal names the arguments that fix it", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("deli")
+  dat <- sim_continuous_outliers()
+
+  ps_mod <- suppressWarnings(MASS::rlm(A ~ x1 + x2, data = dat, maxit = 1))
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_propensity_error(ipw(ps_mod, msm))
 })
 
 test_that("ipw() takes a robust fit's own scale as a fixed spread", {
