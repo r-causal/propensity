@@ -362,15 +362,27 @@ test_that("nothing in propensity calls the internal format_model_call helper", {
 })
 
 test_that("propensity builds its ipw result with causalgenerics' constructor", {
-  builders <- c("ipw.glm", "ipw_continuous_estimate", "ipw.multinom")
+  builders <- c(
+    "ipw.glm",
+    "ipw_continuous_estimate",
+    "ipw_continuous_bootstrap",
+    "ipw.multinom"
+  )
   constructors <- lapply(builders, ipw_constructors_called_by)
   names(constructors) <- builders
 
   # `ipw.glm()` builds a result on each of its two standard error paths; the
-  # other two builders construct once each.
+  # other three builders construct once each. The bootstrap route is its own
+  # builder because it solves no system, so it assembles a result from the
+  # replicates rather than from a stacked fit.
   expect_identical(
     lengths(constructors),
-    c(ipw.glm = 2L, ipw_continuous_estimate = 1L, ipw.multinom = 1L)
+    c(
+      ipw.glm = 2L,
+      ipw_continuous_estimate = 1L,
+      ipw_continuous_bootstrap = 1L,
+      ipw.multinom = 1L
+    )
   )
 
   upstream <- vapply(
@@ -383,7 +395,12 @@ test_that("propensity builds its ipw result with causalgenerics' constructor", {
 
   expect_identical(
     upstream,
-    c(ipw.glm = TRUE, ipw_continuous_estimate = TRUE, ipw.multinom = TRUE)
+    c(
+      ipw.glm = TRUE,
+      ipw_continuous_estimate = TRUE,
+      ipw_continuous_bootstrap = TRUE,
+      ipw.multinom = TRUE
+    )
   )
 })
 
