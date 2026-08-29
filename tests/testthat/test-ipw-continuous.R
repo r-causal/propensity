@@ -2590,3 +2590,103 @@ test_that("ipw() says how many bootstrap replicates it dropped", {
     )
   )
 })
+
+# ---- against WeightIt -------------------------------------------------------
+
+# WeightIt computes the same two-step sandwich for a weighted outcome model, so
+# its `glm_weightit(vcov = "asympt")` standard error is an independent
+# implementation of what `ipw()` reports here. The comparison is only
+# meaningful because the weights themselves are the same number: WeightIt's
+# default numerator for a continuous exposure is the integrated one and its
+# default density is normal, and both packages build the numerator from the
+# same 50-point grid interpolated with `stats::spline(method = "fmm")`, so the
+# weights agree to floating-point noise (pinned in detail in
+# test-weights-continuous.R).
+#
+# The two sandwiches are assembled differently and still agree to about seven
+# significant digits. WeightIt parameterizes the conditional variance as
+# `log(s2)`, which is a reparameterization the sandwich for the outcome
+# coefficients is invariant to; it folds the treatment score in through a
+# correction term rather than stacking one joint set of estimating equations,
+# which is the same sandwich for the outcome block algebraically; and it
+# differentiates its psi with its own numerical routine while `ipw()` uses
+# deli's central differences. What is left is the difference between two
+# numerical derivatives of the same function at the same root. The observed
+# relative gap at this fixture is under 1e-7 for every density, so the band
+# below is set far tighter than a percentage-level check would be while still
+# leaving three orders of magnitude of headroom for a different BLAS.
+#
+# The kernel density is left out: it makes the weights a non-smooth function of
+# the parameters, so neither package offers M-estimation for it. The marginal
+# numerator is left out too, because WeightIt has no equivalent of it and there
+# is nothing to compare against; its standard errors are checked against the
+# nonparametric bootstrap oracle earlier in this file.
+
+test_that("ipw() continuous m-estimation standard errors match WeightIt", {
+  skip_on_cran()
+  skip_if_not_installed("deli")
+  skip_if_not_installed("WeightIt", "2.0.0")
+
+  set.seed(123)
+  n <- 300
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  A <- 0.5 + 0.8 * x1 - 0.4 * x2 + rnorm(n)
+  yc <- 1 + 0.5 * A + x1 - 0.7 * x2 + rnorm(n)
+  dat <- data.frame(x1 = x1, x2 = x2, A = A, yc = yc)
+
+  densities <- list(
+    list(ours = "normal", theirs = NULL),
+    list(ours = dens_t(df = 4), theirs = "dt_4"),
+    list(ours = "laplace", theirs = "dlaplace")
+  )
+
+  for (dens in densities) {
+    mods <- fit_continuous_models(
+      dat,
+      ps_type = "glm",
+      .density = dens$ours,
+      numerator = "integrated"
+    )
+    ours <- ipw(mods$ps_mod, mods$outcome_mod)
+
+    theirs_wt <- if (is.null(dens$theirs)) {
+      WeightIt::weightit(A ~ x1 + x2, data = dat, method = "glm")
+    } else {
+      WeightIt::weightit(
+        A ~ x1 + x2,
+        data = dat,
+        method = "glm",
+        density = dens$theirs
+      )
+    }
+    theirs <- WeightIt::glm_weightit(
+      yc ~ A,
+      data = dat,
+      weightit = theirs_wt,
+      vcov = "asympt"
+    )
+
+    # The premise of the comparison: both packages weight by the same numbers.
+    expect_equal(
+      as.numeric(mods$wts),
+      as.numeric(theirs_wt$weights),
+      tolerance = 1e-10,
+      ignore_attr = TRUE
+    )
+
+    expect_equal(nrow(ours$estimates), 1L)
+    expect_equal(ours$estimates$effect, "slope")
+    expect_equal(
+      ours$estimates$estimate,
+      unname(coef(theirs)[["A"]]),
+      tolerance = 1e-8
+    )
+    expect_equal(
+      ours$estimates$std.err,
+      sqrt(vcov(theirs)["A", "A"]),
+      tolerance = 1e-4,
+      ignore_attr = TRUE
+    )
+  }
+})
