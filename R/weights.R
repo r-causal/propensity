@@ -306,10 +306,15 @@
 #'     [binomial()] or `quasibinomial()`. For a continuous exposure it is a
 #'     model of the conditional mean: [lm()], a [glm()] fit with [gaussian()]
 #'     under any of its links, an [mgcv::gam()] fit with [gaussian()], or a
-#'     [MASS::rlm()]. Handing either exposure type a model of the other, or a
+#'     [MASS::rlm()]. For a categorical exposure it is an [nnet::multinom()],
+#'     whose fitted values hold the probability of every level; a multinomial
+#'     fit of two levels reports a single probability and is read as a model of
+#'     a binary exposure. Handing one exposure type a model of another, or a
 #'     family whose spread changes with its fitted values, is an error of class
-#'     `propensity_model_family_error`; see **Continuous exposures** in
-#'     Details.
+#'     `propensity_model_family_error`. The one exception is the multinomial
+#'     fit, which offers no continuous type at all, so naming one for it is an
+#'     error of class `causalgenerics_unsupported_exposure_type`. See
+#'     **Exposure types** and **Continuous exposures** in Details.
 #'   * A modified propensity score created by [ps_trim()], [ps_trunc()],
 #'     [ps_refit()], or [ps_calibrate()].
 #'
@@ -541,6 +546,22 @@
 #' cens_ind <- rbinom(50, 1, cens_ps)
 #' wt_cens(cens_ps, cens_ind)
 #' estimand(wt_cens(cens_ps, cens_ind))  # "uncensored"
+#'
+#' @examplesIf requireNamespace("nnet", quietly = TRUE)
+#' # -- Categorical exposure from a multinomial fit ---------------------
+#' set.seed(5)
+#' x3 <- rnorm(100)
+#' dose_level <- factor(sample(c("low", "mid", "high"), 100, replace = TRUE))
+#' cat_model <- nnet::multinom(dose_level ~ x3, trace = FALSE)
+#'
+#' # The fit reports one probability per level, and the exposure and its level
+#' # order are read from the model
+#' wt_ate(cat_model)
+#'
+#' # The same weights from the fitted matrix, which needs the exposure and its
+#' # type supplied
+#' ps_mat <- predict(cat_model, type = "probs")
+#' wt_ate(ps_mat, dose_level, exposure_type = "categorical")
 #'
 #' @references
 #' Barrett, M., D'Agostino McGowan, L., & Gerke, T. *Causal Inference in R*.

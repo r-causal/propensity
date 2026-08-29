@@ -9,9 +9,10 @@
   itself. `wt_atc()` is a copy of `wt_atu()` and reaches the same method. A
   fit of only two levels reports one probability rather than a column for each
   and is read as a model of a binary exposure, including the inversion that
-  naming the other level as focal calls for. A fit of more levels than the
-  exposure has, and a fit of a matrix of counts, which records no levels to
-  match the exposure against, are both refused with an error of class
+  naming the other level as focal calls for. A fit of more than two levels
+  weighted against a binary exposure, which fits no single probability to read
+  there, and a fit of a matrix of counts, which records no levels to match the
+  exposure against, are both refused with an error of class
   `propensity_model_family_error`. `wt_cens()` takes no multinomial fit,
   since censoring is not an exposure whose levels the weights spread across.
 

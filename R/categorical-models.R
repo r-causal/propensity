@@ -133,8 +133,8 @@ abort_categorical_model <- function(model, call = rlang::caller_env()) {
       "Weights for a categorical exposure need a probability for every level.",
       x = "{.arg .propensity} is {.cls {class(model)[[1]]}}, which fits one
            value for each unit rather than one for each level.",
-      i = "Pass a matrix or data frame with one column per level, such as the
-           fitted values of {.fun nnet::multinom}."
+      i = "Pass a fitted {.fun nnet::multinom}, or a matrix or data frame with
+           one column per level, such as that model's fitted values."
     ),
     error_class = "propensity_model_family_error",
     call = call
