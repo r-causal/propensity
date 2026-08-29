@@ -86,11 +86,9 @@
 #'   equations attaches to the outcome model it stores:
 #'   `se_method = "mestimation"` for a binary exposure, the categorical and
 #'   joint routes, which run on M-estimation alone, and the continuous route
-#'   under that method. `se_method = "bootstrap"` stacks no such system, and
-#'   attaches instead the covariance of the outcome model's own coefficients
-#'   across the replicates, which is what its conditional reading reports. A
-#'   linearization fit stacks no system and records no covariance of either
-#'   kind, so its conditional reading errors rather than reporting the
+#'   under that method. A linearization fit stacks no system and records no
+#'   covariance of either kind, so its conditional reading errors rather than
+#'   reporting the
 #'   covariance the outcome model computed for itself, which treats the
 #'   estimated weights as fixed.
 #' @param parametric Accepted and ignored. [mice::pool()] passes

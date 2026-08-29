@@ -1,23 +1,3 @@
-# the categorical bootstrap refusals read well
-
-    Code
-      expr
-    Condition <propensity_method_error>
-      Error in `ipw()`:
-      ! `ipw()` supports "bootstrap" standard errors only for a continuous exposure.
-      x `wt_mod` is a propensity score model of a categorical exposure.
-      i Use `se_method = "mestimation"`, which builds a sandwich variance for every fit this exposure type accepts.
-
----
-
-    Code
-      expr
-    Condition <propensity_unsupported_arg_error>
-      Error in `ipw()`:
-      ! `boot_reps` is not supported with "mestimation" standard errors.
-      x `boot_reps` describes the resampling, and "mestimation" resamples nothing.
-      i Use `se_method = "bootstrap"`, or drop `boot_reps`.
-
 # ipw() categorical print output is stable
 
     Code

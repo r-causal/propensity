@@ -318,9 +318,11 @@ ipw(ps_dose, msm)
 
 Two continuous fits have no such system: an `mgcv::gam()` chooses how much to
 smooth from the data, and a `"kernel"` density chooses its bandwidth from the
-residuals. Both are refused by M-estimation and reached with
-`se_method = "bootstrap"`, which repeats the whole fit on resamples of `.data`
-instead of differentiating it.
+residuals. `ipw()` refuses both for the standard error rather than for the
+model, and points at a bootstrap of the whole pipeline written by hand:
+resample the rows, refit the dose model, rebuild the weights with `wt_ate()`,
+and refit the marginal structural model on each resample, then read the spread
+of the slope across the resamples.
 
 ### Categorical exposures
 

@@ -35,14 +35,9 @@
 #' The `joint_wt_models` method estimates the effects of a joint intervention on
 #' two treatments from the pair of fitted treatment models [joint_wt_models()]
 #' records and a weighted outcome model that reads both treatments. Standard
-#' errors are computed by M-estimation. Neither `se_method = "linearization"`
-#' nor `se_method = "bootstrap"` is available here: the linearization path
-#' solves no stacked system, and the resampling method rebuilds the weights of
-#' one propensity score model of a continuous exposure rather than the product
-#' of two treatment models' weights. `boot_reps` and `boot_seed` describe that
-#' resampling, so they are refused on this route as well, with class
-#' `propensity_unsupported_arg_error` under the methods that resample nothing
-#' and with the method refusal when named alongside `se_method = "bootstrap"`.
+#' errors are computed by M-estimation. `se_method = "linearization"` is not
+#' available here: the linearization path solves no stacked system, and the cell
+#' means and every contrast built from them are parameters of one.
 #'
 #' The only supported estimand is `"ate"`, which is what the product weights
 #' [wt_joint()] builds target.
@@ -84,15 +79,12 @@ ipw.joint_wt_models <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization", "bootstrap"),
-  boot_reps = 500L,
-  boot_seed = NULL,
+  se_method = c("mestimation", "linearization"),
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
   .by <- rlang::enquo(.by)
   se_method <- rlang::arg_match(se_method)
-  check_ipw_boot_args(se_method, !missing(boot_reps), !missing(boot_seed))
   effects <- rlang::arg_match(effects)
   assert_class(outcome_mod, c("glm", "lm"))
 
@@ -147,10 +139,6 @@ check_ipw_joint_models_method <- function(
   se_method,
   call = rlang::caller_env()
 ) {
-  if (identical(se_method, "bootstrap")) {
-    abort_ipw_boot_joint(call = call)
-  }
-
   if (!identical(se_method, "linearization")) {
     return(invisible(TRUE))
   }
@@ -464,15 +452,16 @@ check_ipw_joint_models_types <- function(
   )
 }
 
-# The remedy the dose refusals point to on this route. A single dose that cannot
-# be stacked is resampled instead; a joint intervention has no resampling method
-# yet, so the refusal says where the standard errors would have to come from
-# rather than naming an argument this route would refuse in turn.
+# The remedy the dose refusals point to on this route. The package computes no
+# standard error for a fit the stacked system cannot write, here or anywhere
+# else, so the refusal says where the standard errors would have to come from
+# and leaves the resampling to the user.
 ipw_joint_models_dose_hint <- function() {
-  "A joint intervention has no resampling method yet, so this route builds
-   standard errors from the stacked system alone. Weight the dose on its own to
-   resample it, or build its weights from a model and a density the stacked
-   system can differentiate."
+  "This route builds standard errors from the stacked system alone. Build the
+   dose weights from a model and a density that system can differentiate, or
+   bootstrap the whole joint fit yourself: resample the rows, refit both
+   treatment models, rebuild the weights with {.fn wt_joint}, and refit the
+   outcome model on each resample."
 }
 
 # The dose component's density record, read positionally off the product. A

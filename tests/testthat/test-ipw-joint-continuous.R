@@ -1019,12 +1019,13 @@ test_that("ipw() refuses a dose model whose score it cannot write", {
     class = "propensity_ipw_se_method_unavailable_error"
   )
 
-  # The remedy the single-dose route points to is resampling, which this route
-  # does not have yet, so the refusal has to say where it is and must not send
-  # a caller to an argument that would be refused as well.
+  # Both routes point at a bootstrap the user writes, and this one says it in
+  # its own terms: the weights a replicate rebuilds are the product weights of
+  # two treatment models rather than the dose ratio of one.
   msg <- joint_error_message(ipw(fx$models, fx$outcome_mod))
   expect_match(msg, "joint", fixed = TRUE)
-  expect_no_match(msg, "se_method = \"bootstrap\"", fixed = TRUE)
+  expect_match(msg, "wt_joint", fixed = TRUE)
+  expect_no_match(msg, "wt_ate", fixed = TRUE)
 
   expect_propensity_error(ipw(fx$models, fx$outcome_mod))
 })
@@ -1045,7 +1046,8 @@ test_that("ipw() refuses dose weights built from a kernel density", {
 
   msg <- joint_error_message(ipw(fx$models, fx$outcome_mod))
   expect_match(msg, "joint", fixed = TRUE)
-  expect_no_match(msg, "se_method = \"bootstrap\"", fixed = TRUE)
+  expect_match(msg, "wt_joint", fixed = TRUE)
+  expect_no_match(msg, "wt_ate", fixed = TRUE)
 
   expect_propensity_error(ipw(fx$models, fx$outcome_mod))
 })

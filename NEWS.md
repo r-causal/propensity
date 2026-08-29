@@ -133,10 +133,14 @@
   `mgcv::gam()` propensity score model, whose smoothing is chosen by REML, and
   weights built with a `"kernel"` density, whose bandwidth is chosen from the
   residuals. Neither is a function of the parameters that the sandwich could
-  differentiate. A gaussian model fit with an inverse or square-root link is
-  refused by name, because the coefficients its iteration stops at are not a
-  tight enough root to seed the stacked solve from, and any other class is
-  refused as before, now naming the classes that are supported.
+  differentiate. The package computes no standard error for either fit, so the
+  refusal points at a bootstrap of the whole pipeline written by hand: resample
+  the rows, refit the propensity score model, rebuild the weights with
+  `wt_ate()`, and refit the outcome model on each resample. A gaussian model fit
+  with an inverse or square-root link is refused by name, because the
+  coefficients its iteration stops at are not a tight enough root to seed the
+  stacked solve from, and any other class is refused as before, now naming the
+  classes that are supported.
 
   A single `.sigma` is now accepted, as a known constant: the weights are
   rebuilt at the number that was supplied, and the stacked system carries none of
@@ -159,29 +163,8 @@
   redescending psi, are refused with an error of class
   `propensity_ipw_robust_psi_error`; one whose iteration stopped short of its
   own tolerance is refused with `propensity_ipw_convergence_error`. The first
-  two point to a Huber refit or to `se_method = "bootstrap"`; the last points to
-  a larger `maxit` or a looser `acc`.
-
-* `ipw()` gains `se_method = "bootstrap"` for a continuous exposure, along with
-  the `boot_reps` and `boot_seed` arguments that describe it. Resampling repeats
-  the whole fit rather than differentiating it, so it reaches the two continuous
-  fits the sandwich has no equation for, an `mgcv::gam()` propensity score model
-  and weights built with a `"kernel"` density, which until now had no standard
-  error at all. Each replicate resamples the rows of `.data`, which the method
-  requires, refits the propensity score model on them, rebuilds the weights from
-  the record the supplied weights carry, and refits the marginal structural
-  model with them; a kernel bandwidth is re-estimated and an additive model
-  re-selects its smoothing parameters along the way, which is the point of
-  resampling. The point estimate is not resampled, so it is the coefficient the
-  marginal structural model already reported and the two methods differ in the
-  interval rather than in the number. The reported interval is the normal
-  approximation, which is what every accessor of the result reads; the
-  percentile bounds, the replicates, and their covariance are in the returned
-  `fit`. Replicates whose refits fail are dropped and counted, which warns above
-  five percent and refuses the standard errors below fifty successes. A binary
-  or categorical exposure, and a `joint_wt_models()` pair, are refused the
-  method by name, since M-estimation has a sandwich for every fit they accept;
-  `boot_reps` and `boot_seed` are refused there for the same reason.
+  two point to a Huber refit or to a bootstrap of the whole fit written by hand;
+  the last points to a larger `maxit` or a looser `acc`.
 
 * `wt_joint()` now reads each component's exposure type off the component
   rather than being told it. A weight function records the type of exposure it
@@ -216,9 +199,10 @@
   stacked system, where it was silently stacked as though it were an
   identity-link `glm()` of its own basis columns; it is now refused, along with
   dose weights built with a `"kernel"` density, with an error of class
-  `propensity_ipw_se_method_unavailable_error`. This route has no resampling
-  method yet, so the refusal says so rather than naming one: weight the dose on
-  its own to reach `se_method = "bootstrap"`. A gaussian dose model at an
+  `propensity_ipw_se_method_unavailable_error`. The package computes no standard
+  error for either fit, so the refusal points at building the dose weights from
+  a model and a density the stacked system can write, or at bootstrapping the
+  whole joint fit by hand. A gaussian dose model at an
   inverse or square-root link is refused by name, as it is for a single dose,
   and a dose component built with a `stabilization_score` still reaches the
   weight-consistency check, which now names the score as the cause.

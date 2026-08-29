@@ -365,22 +365,18 @@ test_that("propensity builds its ipw result with causalgenerics' constructor", {
   builders <- c(
     "ipw.glm",
     "ipw_continuous_estimate",
-    "ipw_continuous_bootstrap",
     "ipw.multinom"
   )
   constructors <- lapply(builders, ipw_constructors_called_by)
   names(constructors) <- builders
 
   # `ipw.glm()` builds a result on each of its two standard error paths; the
-  # other three builders construct once each. The bootstrap route is its own
-  # builder because it solves no system, so it assembles a result from the
-  # replicates rather than from a stacked fit.
+  # other two builders construct once each.
   expect_identical(
     lengths(constructors),
     c(
       ipw.glm = 2L,
       ipw_continuous_estimate = 1L,
-      ipw_continuous_bootstrap = 1L,
       ipw.multinom = 1L
     )
   )
@@ -398,7 +394,6 @@ test_that("propensity builds its ipw result with causalgenerics' constructor", {
     c(
       ipw.glm = TRUE,
       ipw_continuous_estimate = TRUE,
-      ipw_continuous_bootstrap = TRUE,
       ipw.multinom = TRUE
     )
   )

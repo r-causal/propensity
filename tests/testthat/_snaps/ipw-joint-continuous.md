@@ -30,7 +30,7 @@
       Error in `ipw()`:
       ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> propensity score model of a continuous exposure.
       x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
-      i A joint intervention has no resampling method yet, so this route builds standard errors from the stacked system alone. Weight the dose on its own to resample it, or build its weights from a model and a density the stacked system can differentiate.
+      i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
 
 # ipw() refuses dose weights built from a kernel density
 
@@ -40,7 +40,7 @@
       Error in `ipw()`:
       ! `ipw()` cannot build a sandwich variance for weights built with a "kernel" density.
       x The bandwidth of a kernel estimate is chosen from the residuals of the propensity score model, so the weights are not a differentiable function of that model's parameters.
-      i A joint intervention has no resampling method yet, so this route builds standard errors from the stacked system alone. Weight the dose on its own to resample it, or build its weights from a model and a density the stacked system can differentiate.
+      i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
 
 # the weights mismatch names the ratio the dose records
 

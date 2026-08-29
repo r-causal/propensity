@@ -58,7 +58,7 @@
       ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
       x `wt_mod` was fit with `MASS::psi.bisquare()`.
       i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
-      i Use `se_method = "bootstrap"`, passing the data the models were fit to in `.data`, which resamples the whole fit instead of stacking it.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # the MM refusal names the method and the psi it finishes on
 
@@ -69,7 +69,7 @@
       ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
       x `wt_mod` was fit with `method = "MM"`, which starts from a high-breakdown fit and finishes on `MASS::psi.bisquare()`.
       i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
-      i Use `se_method = "bootstrap"`, passing the data the models were fit to in `.data`, which resamples the whole fit instead of stacking it.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # the robust convergence refusal names the arguments that fix it
 
@@ -110,7 +110,7 @@
       Error in `ipw()`:
       ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> propensity score model of a continuous exposure.
       x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
-      i Use `se_method = "bootstrap"`, passing the data the models were fit to in `.data`, which resamples the whole fit instead of stacking it.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # the kernel-density refusal names the bandwidth as the reason
 
@@ -120,56 +120,5 @@
       Error in `ipw()`:
       ! `ipw()` cannot build a sandwich variance for weights built with a "kernel" density.
       x The bandwidth of a kernel estimate is chosen from the residuals of the propensity score model, so the weights are not a differentiable function of that model's parameters.
-      i Use `se_method = "bootstrap"`, passing the data the models were fit to in `.data`, which resamples the whole fit instead of stacking it.
-
-# ipw() continuous bootstrap refusals read well
-
-    Code
-      expr
-    Condition <propensity_ipw_data_error>
-      Error in `ipw()`:
-      ! `ipw()` requires `.data` for "bootstrap" standard errors.
-      x Each replicate refits both models on a resample of the rows, and there are no rows to resample without `.data`.
-      i Supply the data the models were fit to in `.data`.
-
----
-
-    Code
-      expr
-    Condition <propensity_unsupported_arg_error>
-      Error in `ipw()`:
-      ! `boot_reps` is not supported with "mestimation" standard errors.
-      x `boot_reps` describes the resampling, and "mestimation" resamples nothing.
-      i Use `se_method = "bootstrap"`, or drop `boot_reps`.
-
----
-
-    Code
-      expr
-    Condition <propensity_ipw_bootstrap_error>
-      Error in `ipw()`:
-      ! `ipw()` needs at least 50 successful bootstrap replicates.
-      x 40 of 40 replicates succeeded, and 0 failed.
-      i Raise `boot_reps`, or refit the models on data every resample of them can be fit to.
-
-# ipw() refuses the bootstrap for a binary exposure in so many words
-
-    Code
-      expr
-    Condition <propensity_method_error>
-      Error in `ipw()`:
-      ! `ipw()` supports "bootstrap" standard errors only for a continuous exposure.
-      x `wt_mod` is a propensity score model of a binary exposure.
-      i Use `se_method = "mestimation"`, which builds a sandwich variance for every fit this exposure type accepts.
-
-# ipw() says how many bootstrap replicates it dropped
-
-    Code
-      out <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat, se_method = "bootstrap",
-      boot_reps = 100L, boot_seed = 1L)
-    Condition <propensity_ipw_bootstrap_warning>
-      Warning in `ipw()`:
-      20 of 100 bootstrap replicates failed and were dropped.
-      x A replicate fails when a refit errors or leaves a coefficient that is not finite, so the spread is the spread of the resamples the models could be fit to.
-      i Check whether either model is fit to something a resample of the rows can break, such as a factor covariate with a level so rare that a resample can leave it out.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 

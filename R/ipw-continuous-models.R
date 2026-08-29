@@ -22,12 +22,12 @@
 # rather than as the `lm` it inherits from.
 #
 # `hint` is the remedy every refusal here ends on, which the route asking for
-# the entry supplies. A single continuous exposure is resampled instead, and a
-# route with no resampling method of its own says so rather than pointing at an
-# argument it would refuse.
+# the entry supplies. The package computes no standard error for these fits, so
+# the remedy is a bootstrap of the whole pipeline written by hand; a route where
+# even that does not apply supplies a hint of its own.
 ipw_continuous_model <- function(
   ps_mod,
-  hint = ipw_continuous_bootstrap_hint(),
+  hint = ipw_continuous_resample_hint(),
   call = rlang::caller_env()
 ) {
   ps_class <- class(ps_mod)
@@ -115,7 +115,7 @@ ipw_continuous_model <- function(
 ipw_continuous_rlm_entry <- function(
   ps_mod,
   classes = class(ps_mod),
-  hint = ipw_continuous_bootstrap_hint()
+  hint = ipw_continuous_resample_hint()
 ) {
   psi_name <- ipw_rlm_psi_name(ps_mod)
   huber <- identical(psi_name, "MASS::psi.huber")
@@ -443,7 +443,7 @@ ipw_continuous_ratio_meta <- function(
   stabilized,
   score = NULL,
   stacked = TRUE,
-  hint = ipw_continuous_bootstrap_hint(),
+  hint = ipw_continuous_resample_hint(),
   call = rlang::caller_env()
 ) {
   if (is.null(meta)) {
@@ -504,7 +504,7 @@ ipw_continuous_spread <- function(meta, call = rlang::caller_env()) {
 # weights, which are exactly what they claim to be.
 check_ipw_continuous_density <- function(
   density,
-  hint = ipw_continuous_bootstrap_hint(),
+  hint = ipw_continuous_resample_hint(),
   call = rlang::caller_env()
 ) {
   if (!identical(density$family, "kernel")) {
@@ -528,10 +528,12 @@ check_ipw_continuous_density <- function(
   )
 }
 
-# The remedy both unavailable-method refusals point to. Resampling asks the
-# weights for nothing but their value, so it reaches the fits a stacked score
+# The remedy both unavailable-method refusals point to. The package computes no
+# standard error for these fits, but resampling asks the weights for nothing but
+# their value, so a bootstrap written by hand reaches what a stacked score
 # cannot describe.
-ipw_continuous_bootstrap_hint <- function() {
-  "Use {.code se_method = \"bootstrap\"}, passing the data the models were fit
-   to in {.arg .data}, which resamples the whole fit instead of stacking it."
+ipw_continuous_resample_hint <- function() {
+  "propensity has no resampling method; bootstrap the whole fit yourself:
+   resample the rows, refit the propensity score model, rebuild the weights with
+   {.fn wt_ate}, and refit the outcome model on each resample."
 }

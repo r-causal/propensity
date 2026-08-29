@@ -67,8 +67,9 @@ tailed still, and heavier the smaller \code{df} is.
 residuals, fit with \code{\link[stats:density]{stats::density()}} and interpolated to each
 observation. It assumes no family at all, at the cost of a density that
 is not a smooth function of the model's parameters: weights built from it
-have no closed-form standard error, and \code{\link[=ipw]{ipw()}} reports one for them under
-\code{se_method = "bootstrap"} alone.
+have no closed-form standard error, and \code{\link[=ipw]{ipw()}} reports none for them at
+all. Bootstrap the whole fit by hand to put an interval around such an
+estimate.
 \item \code{dens_fn()} is a density you write yourself.
 }
 }
