@@ -45,7 +45,8 @@ new_density_spec <- function(family, params = list(), fn = NULL) {
 #'   residuals, fit with [stats::density()] and interpolated to each
 #'   observation. It assumes no family at all, at the cost of a density that
 #'   is not a smooth function of the model's parameters: weights built from it
-#'   have no closed-form standard error.
+#'   have no closed-form standard error, and [ipw()] reports one for them under
+#'   `se_method = "bootstrap"` alone.
 #' * `dens_fn()` is a density you write yourself.
 #'
 #' @param df Degrees of freedom for Student's t, a single positive, finite

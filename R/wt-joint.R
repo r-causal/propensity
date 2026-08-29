@@ -196,7 +196,7 @@ joint_wt_response <- function(model) {
 #' # A continuous component must be stabilized, which it is by default
 #' d <- 0.5 + 0.6 * x1 - 0.7 * a + rnorm(n)
 #' mod_d <- lm(d ~ a * x1, data = dat)
-#' w_d <- wt_ate(fitted(mod_d), d, exposure_type = "continuous")
+#' w_d <- wt_ate(mod_d)
 #' # Each component records the exposure type it weights, so the product knows
 #' # which of them is the dose without being told
 #' joint_wt_meta(wt_joint(wt_ate(mod_a), w_d))

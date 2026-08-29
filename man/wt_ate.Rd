@@ -252,16 +252,22 @@ case it is the model's response. Missing values are not counted as a level
 of their own,
 and are carried through to the weights as missing.}
 
-\item{.sigma}{Observation-level standard deviations of the conditional
-density for continuous exposures, one per observation (e.g.,
-\code{influence(model)$sigma}). Optional: with none supplied, including when
-\code{.propensity} is a fitted model, the conditional density uses the pooled
-residual standard deviation of \code{.exposure} around \code{.propensity}. Weights
-built with an observation-level \code{.sigma} cannot be used with \code{\link[=ipw]{ipw()}}; see
-\strong{Continuous exposures} in Details.
+\item{.sigma}{The residual spread of the conditional density for continuous
+exposures: a single standard deviation applied to every unit, or one for
+each observation (e.g., \code{influence(model)$sigma}). Optional: with none
+supplied, including when \code{.propensity} is a fitted model, the conditional
+density uses the pooled residual standard deviation of \code{.exposure} around
+\code{.propensity}.
 
-Must be numeric, holding either a single standard deviation or one per
-observation, and applies only to continuous exposures. \code{.sigma} sits in
+The two shapes differ downstream. A single spread is a constant the weights
+can be rebuilt from, so it is recorded in \code{density_meta()} as \code{sigma_value}
+and \code{\link[=ipw]{ipw()}} reads it as a spread held fixed, propagating none of its
+uncertainty. A spread supplied for each observation is a function of the
+data that nothing rebuilds, so the record holds where it came from and
+nothing more, and \code{\link[=ipw]{ipw()}} refuses such weights; see \strong{Continuous
+exposures} in Details.
+
+Must be numeric, and applies only to continuous exposures. \code{.sigma} sits in
 the third position, which is where a value meant for \code{exposure_type}
 arrives when it is supplied without a name, so anything else is refused
 with an error of class \code{propensity_sigma_error}.}
@@ -527,7 +533,11 @@ overlap. You can address them by:
 \item Trimming (\code{\link[=ps_trim]{ps_trim()}}) or truncating (\code{\link[=ps_trunc]{ps_trunc()}}) propensity scores
 before computing weights.
 \item Calibrating weights with \code{\link[=ps_calibrate]{ps_calibrate()}}.
-\item Stabilizing ATE weights (\code{stabilize = TRUE}).
+\item Stabilizing ATE and censoring weights: a continuous exposure is stabilized
+by default, and a binary or categorical one is with \code{stabilize = TRUE}.
+\item Choosing a heavier-tailed \code{.density} for a continuous exposure, which
+holds down the weight of a unit whose exposure the propensity score model
+fits poorly.
 }
 
 See the \href{https://CRAN.R-project.org/package=halfmoon}{halfmoon} package
@@ -665,11 +675,14 @@ constant, and reads \code{.sigma = fit$s} as a fixed spread in the same way,
 propagating the uncertainty of neither.
 
 \code{\link[=ipw]{ipw()}} models the conditional density with a single pooled residual
-variance, estimated jointly with the rest of the parameter vector. Weights
-built with an observation-level \code{.sigma} therefore have no counterpart in
-that estimating equation, and \code{ipw()} rejects them in its weight consistency
-check. Build weights with the pooled default when the outcome model is
-headed for \code{ipw()}.
+variance, estimated jointly with the rest of the parameter vector. A single
+\code{.sigma} is taken instead as a known constant: the weights are rebuilt at the
+number that was supplied, and the stacked system carries none of that
+number's uncertainty. An observation-level \code{.sigma} is a different function
+of the data with no counterpart in that estimating equation, and is refused
+before anything is solved, with an error of class
+\code{propensity_ipw_sigma_error}. Build weights with the pooled default, or with
+one number, when the outcome model is headed for \code{\link[=ipw]{ipw()}}.
 }
 
 \subsection{Categorical exposures}{
@@ -731,8 +744,25 @@ wt_ate(ps_model)
 dose <- 1 + 0.5 * x1 - 0.3 * x2 + rnorm(100)
 dose_model <- lm(dose ~ x1 + x2)
 
-# A continuous exposure is stabilized without being asked
-wt_ate(dose_model, dose, exposure_type = "continuous")
+# The exposure is read from the model, and a continuous exposure is
+# stabilized without being asked
+w_dose <- wt_ate(dose_model)
+
+# A tail heavier than the normal's holds down the weight of a unit whose
+# dose the model fits poorly
+wt_ate(dose_model, .density = dens_t(df = 4))
+
+# The stabilizing numerator can marginalize the conditional density over the
+# units instead of reading the same family at the exposure's own moments
+w_int <- wt_ate(
+  dose_model,
+  .density = dens_t(df = 4),
+  numerator = "integrated"
+)
+
+# What each set of weights records about the ratio it is
+density_meta(w_dose)
+density_meta(w_int)
 
 # -- Data frame input ------------------------------------------------
 ps_df <- data.frame(
@@ -785,6 +815,12 @@ comparison of methods. \emph{Epidemiology}, 25(2), 292--299.
 Austin, P. C., & Stuart, E. A. (2015). Moving towards best practice when
 using inverse probability of treatment weighting (IPTW). \emph{Statistics in
 Medicine}, 34(28), 3661--3679.
+
+Greifer, N. \emph{WeightIt: Weighting for Covariate Balance in Observational
+Studies}. R package.
+\url{https://CRAN.R-project.org/package=WeightIt} (the integrated
+numerator, which WeightIt has computed for continuous treatments since
+version 2.0.0)
 }
 \seealso{
 \itemize{

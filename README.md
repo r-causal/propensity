@@ -89,6 +89,41 @@ of estimating the propensity scores is carried into the standard errors.
 Set `se_method = "linearization"` for the influence-function method
 (binary exposures with an exposure-only outcome model).
 
+A continuous exposure follows the same three steps. The propensity score
+model is a model of the dose, such as an `lm()`, and the weights are a
+ratio of densities rather than a function of a propensity score:
+
+``` r
+# A dose, and an outcome that depends on it
+dat$a <- 0.4 + 0.7 * dat$x1 + rnorm(n)
+dat$y_dose <- 1 + 0.5 * dat$a + 0.3 * dat$x1 + rnorm(n)
+
+# The weights are stabilized by default for a continuous exposure
+ps_dose <- lm(a ~ x1, data = dat)
+wts_dose <- wt_ate(ps_dose)
+#> ℹ Using exposure variable "a" from the propensity score model
+#> ℹ Treating `.exposure` as continuous
+
+# The outcome model is a marginal structural model of the dose
+msm <- lm(y_dose ~ a, data = dat, weights = wts_dose)
+ipw(ps_dose, msm)
+#> Inverse Probability Weight Estimator
+#> Estimand: ATE 
+#> Effects: marginal (population-averaged) 
+#> 
+#> Weight Estimator:
+#>   Call: lm(formula = a ~ x1, data = dat) 
+#> 
+#> Outcome Model:
+#>   Call: lm(formula = y_dose ~ a, data = dat, weights = wts_dose) 
+#> 
+#> Marginal estimates:
+#>       estimate std.err      z ci.lower ci.upper conf.level   p.value    
+#> slope  0.62419 0.14291 4.3679   0.3441  0.90428       0.95 1.255e-05 ***
+#> ---
+#> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
 ## Estimands
 
 Each weight function targets a different population:

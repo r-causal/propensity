@@ -1,15 +1,121 @@
 # propensity 0.1.0.9000 (development version)
 
-* `wt_ate()` and `wt_cens()` now default `stabilize` to `NULL`, which is
-  resolved once the exposure type is known: a continuous exposure is stabilized
-  and a binary or categorical exposure is not. This is a change in behavior for
-  a continuous exposure. A call that does not name `stabilize` now returns the
-  ratio of the marginal density to the conditional one, where it previously
-  returned the reciprocal of the conditional density alone and reported that
-  those weights are not the ones the package recommends. The unstabilized ratio
-  remains available with `stabilize = FALSE`, and still reports itself. A
-  binary or categorical exposure is unchanged, and an explicit `TRUE` or
-  `FALSE` is honored wherever it was before.
+* `wt_ate()` and `wt_cens()` gain a `.density` argument, which chooses the
+  family of the conditional density a continuous exposure's weights are a ratio
+  of. That density was a normal one and nothing else before, which is a strong
+  claim to make about the residuals of a model for a dose. `.density` accepts
+  the strings `"normal"` (the default), `"laplace"`, and `"kernel"`; a
+  specification built by the new `dens_normal()`, `dens_laplace()`,
+  `dens_t()`, `dens_kernel()`, or `dens_fn()`; or a bare function of one
+  argument. A tail heavier than the normal's, from `dens_t()` or `"laplace"`,
+  holds down the weight of a unit whose exposure the model fits poorly, and a
+  kernel estimate assumes no shape at all, at the cost of a density that is not
+  a smooth function of the model's parameters. `.density` sits after `...`, so
+  it is supplied by name, and it describes a continuous exposure alone: a
+  family other than the default is refused for a binary or categorical
+  exposure, whose weights are not a ratio of densities, the way `.sigma`
+  already was.
+
+  Both densities in the ratio are now evaluated on a standardized residual,
+  `(A - mu) / sigma` for the conditional density and the exposure standardized
+  by its own mean and standard deviation for the marginal one, and each is
+  divided by the spread that standardized it. That factor is the Jacobian of
+  the change of variable, and it returns both densities to the exposure's own
+  units, so every family is read on one scale and the normal family returns the
+  weights the package returned before, to within a rounding error in the last
+  binary digit. Whatever the density gives back is checked before it becomes a
+  weight: one finite, non-negative value for each standardized residual, and
+  not zero at every one of them. Anything else is an error of class
+  `propensity_density_error` whose message reports the standardized residuals
+  it failed at. What the ratio was built from is recorded on the weights and
+  read back with `density_meta()`.
+
+* `wt_ate()` and `wt_cens()` gain a `numerator` argument, which chooses how the
+  marginal density that stabilizes a continuous exposure's weights is arrived
+  at. `"marginal"`, the default and the behavior of every earlier version,
+  reads the family `.density` names at the population mean and standard
+  deviation of the exposure; those two moments are parameters of the weights,
+  and `ipw()` estimates them alongside the rest of its parameter vector.
+  `"integrated"` marginalizes the conditional density numerically instead,
+  averaging it over the units at each of 50 points spanning the exposure and
+  interpolating that average back to each observed exposure, which is what
+  WeightIt has done since version 2.0.0 and is what makes the two packages'
+  continuous weights agree. It estimates no parameters of its own.
+
+  The default did not change, and it was studied before it was left alone: a
+  simulation study run for this package compared the two over linear, skewed,
+  heteroskedastic, heavy-tailed, and bimodal designs. The integrated numerator
+  never improved bias, root mean squared error, or weighted covariate balance
+  by more than Monte Carlo noise, including in the scenarios drawn to favor
+  marginalizing, and in the heavy-tailed cells it was worse: it inflated the
+  root mean squared error, and in some replicates the interpolated density came
+  back negative. `"integrated"` is offered for agreement with WeightIt, and for
+  a conditional density whose marginal has no closed form in the same family.
+  Because it is read off an interpolation rather than a formula, it can dip
+  below zero where the density on the grid comes close to it; the interpolated
+  values are held to the same output check any density is held to, so that
+  becomes an error of class `propensity_density_error` rather than a negative
+  weight. An integrated numerator needs a conditional density to marginalize,
+  so it is refused with an error of class `propensity_numerator_error` for a
+  binary or categorical exposure, with `stabilize = FALSE`, with a
+  `stabilization_score`, and with any `.sigma`. A unit whose exposure or fitted
+  conditional mean is missing is not read by the average and has no weight, as
+  it has none under any other numerator, and a model with nothing to condition
+  on gives weights of exactly one rather than the grid's approximation to them.
+
+* `wt_ate()` and `wt_cens()` now read a continuous exposure's conditional means
+  from the model that fit them, rather than from a `glm()` alone. Both gain an
+  `lm` method, which a `MASS::rlm()` reaches by inheritance, and their `glm`
+  method reads a `gaussian()` fit under any of its links as well as an
+  `mgcv::gam()` fit with it. Each of these classes reports its conditional mean
+  on the scale of the exposure, so a log, inverse, or square root link never has
+  to be undone, and every one of them is spread by the same pooled residual root
+  mean square. `rlm` reports a robust scale estimate of its own in `fit$s`,
+  which resists the extreme residuals rather than pooling all of them, and is
+  used only when it is asked for with `.sigma = fit$s`. A family whose
+  spread changes with its fitted values, such as `poisson()` or
+  `quasi(variance = "mu")`, describes a different density for every unit, which
+  a single spread cannot stand in for, and is refused with an error of class
+  `propensity_model_family_error`. `quasi(variance = "constant")` is the
+  gaussian variance under another name and is accepted.
+
+  The binary path is now held to the same rule from the other side, which
+  changes what some calls return. Only `binomial()` and `quasibinomial()` fit
+  the probability those weights divide by, so a gaussian model of a zero-one
+  response, an `lm()` included, is refused with the same error class rather than
+  having its fitted values read as propensity scores. A linear probability model
+  is not held to the unit interval, so the refusal reads the model rather than
+  the values it fitted, and comes before the check on the range of a propensity
+  score. The estimands whose weights are not a ratio of densities take no model
+  of a continuous exposure: `wt_att()`, `wt_atu()`, `wt_atm()`, `wt_ato()`, and
+  `wt_entropy()` have no `lm` method.
+
+* Weights now record the exposure they were built for, and the new
+  `exposure_type()` and `density_meta()` accessors read those records back.
+  `exposure_type()` returns `"binary"`, `"categorical"`, or `"continuous"`, and
+  `NULL` for weights built without an exposure to describe, such as those
+  written with `psw()` directly. `density_meta()` describes the ratio a
+  continuous exposure's weights are, and returns `NULL` for weights that are no
+  such ratio. Its elements are `density`, the specification of the
+  conditional density family; `numerator`, what stabilized the weights, which is
+  `"marginal"` for the marginal density of the exposure, `"integrated"` for the
+  conditional density marginalized over the units, `"score"` for a
+  `stabilization_score` the caller supplied, and `"none"` for weights that were
+  not stabilized; `sigma`, where the residual spread came from, either
+  `"pooled"` or `"supplied"`; and `sigma_value`, the number a single supplied
+  spread was, which is `NULL` for a pooled spread and for one supplied per
+  observation. A spread that is one number is a constant the weights can be
+  rebuilt from, which is what `ipw()` needs of it; a spread that changes with
+  the observation is not, so the record holds where it came from and nothing
+  more.
+
+  Both records describe the exposure rather than the units, so neither holds a
+  length of its own and both survive subsetting, arithmetic, and anything else
+  that changes the number of weights. Combining two sets of weights that record
+  either of them differently drops the record they disagree on, with a warning
+  of class `propensity_metadata_conflict_warning`. A result that no longer
+  records an exposure type is not described as continuous, so it drops any
+  density record along with it.
 
 * `ipw()` now stacks the propensity score models, densities, and numerators a
   continuous exposure's weights can be built from, rather than the one it
@@ -38,9 +144,8 @@
   are refused before anything is solved, with an error of class
   `propensity_ipw_sigma_error` naming the spread, where they previously reached
   the weight-consistency check and were reported as two vectors that disagree.
-  To support that, the record `density_meta()` returns gains a `sigma_value`
-  element, which holds the number a single supplied spread was, and is `NULL`
-  for a pooled spread and for one supplied per observation.
+  The number a fixed spread is rebuilt at is the `sigma_value` the weights
+  record.
 
 * `ipw()` now stacks a `MASS::rlm()` propensity score model of a continuous
   exposure, which it refused before. A robust fit minimizes its own loss rather
@@ -123,98 +228,16 @@
   dose models they are rather than as the `glm()` and the `lm()` they inherit
   from, and an unfamiliar subclass of either is no longer typed as its parent.
 
-* `wt_ate()` and `wt_cens()` gain a `.density` argument, which chooses the
-  family of the conditional density a continuous exposure's weights are a ratio
-  of. That density was a normal one and nothing else before, which is a strong
-  claim to make about the residuals of a model for a dose. `.density` accepts
-  the strings `"normal"` (the default), `"laplace"`, and `"kernel"`; a
-  specification built by the new `dens_normal()`, `dens_laplace()`,
-  `dens_t()`, `dens_kernel()`, or `dens_fn()`; or a bare function of one
-  argument. A tail heavier than the normal's, from `dens_t()` or `"laplace"`,
-  holds down the weight of a unit whose exposure the model fits poorly, and a
-  kernel estimate assumes no shape at all, at the cost of a density that is not
-  a smooth function of the model's parameters. `.density` sits after `...`, so
-  it is supplied by name, and it describes a continuous exposure alone: a
-  family other than the default is refused for a binary or categorical
-  exposure, whose weights are not a ratio of densities, the way `.sigma`
-  already was.
-
-  Both densities in the ratio are now evaluated on a standardized residual,
-  `(A - mu) / sigma` for the conditional density and the exposure standardized
-  by its own mean and standard deviation for the marginal one, and each is
-  divided by the spread that standardized it. That factor is the Jacobian of
-  the change of variable, and it returns both densities to the exposure's own
-  units, so every family is read on one scale and the normal family returns the
-  weights the package returned before, to within a rounding error in the last
-  binary digit. Whatever the density gives back is checked before it becomes a
-  weight: one finite, non-negative value for each standardized residual, and
-  not zero at every one of them. Anything else is an error of class
-  `propensity_density_error` whose message reports the standardized residuals
-  it failed at. The weights record the family they were built from, alongside
-  the numerator that stabilized them and where the residual spread came from;
-  read it back with `density_meta()`.
-
-* `wt_ate()` and `wt_cens()` gain a `numerator` argument, which chooses how the
-  marginal density that stabilizes a continuous exposure's weights is arrived
-  at. `"marginal"`, the default and the behavior of every earlier version,
-  reads the family `.density` names at the population mean and standard
-  deviation of the exposure; those two moments are parameters of the weights,
-  and `ipw()` estimates them alongside the rest of its parameter vector.
-  `"integrated"` marginalizes the conditional density numerically instead,
-  averaging it over the units at each of 50 points spanning the exposure and
-  interpolating that average back to each observed exposure, which is what
-  WeightIt has done since version 2.0.0 and is what makes the two packages'
-  continuous weights agree. It estimates no parameters of its own.
-
-  The default did not change, and it was studied before it was left alone: a
-  simulation study run for this package compared the two over linear, skewed,
-  heteroskedastic, heavy-tailed, and bimodal designs. The integrated numerator
-  never improved bias, root mean squared error, or weighted covariate balance
-  by more than Monte Carlo noise, including in the scenarios drawn to favor
-  marginalizing, and in the heavy-tailed cells it was worse: it inflated the
-  root mean squared error, and in some replicates the interpolated density came
-  back negative. `"integrated"` is offered for agreement with WeightIt, and for
-  a conditional density whose marginal has no closed form in the same family.
-  Because it is read off an interpolation rather than a formula, it can dip
-  below zero where the density on the grid comes close to it; the interpolated
-  values are held to the same output check any density is held to, so that
-  becomes an error of class `propensity_density_error` rather than a negative
-  weight. An integrated numerator needs a conditional density to marginalize,
-  so it is refused with an error of class `propensity_numerator_error` for a
-  binary or categorical exposure, with `stabilize = FALSE`, with a
-  `stabilization_score`, and with any `.sigma`. A unit whose exposure or fitted
-  conditional mean is missing is not read by the average and has no weight, as
-  it has none under any other numerator, and a model with nothing to condition
-  on gives weights of exactly one rather than the grid's approximation to them.
-  The weights record the numerator they were built from; read it back with
-  `density_meta()`.
-
-* `wt_ate()` and `wt_cens()` now read a continuous exposure's conditional means
-  from the model that fit them, rather than from a `glm()` alone. Both gain an
-  `lm` method, which a `MASS::rlm()` reaches by inheritance, and their `glm`
-  method reads a `gaussian()` fit under any of its links as well as an
-  `mgcv::gam()` fit with it. Each of these classes reports its conditional mean
-  on the scale of the exposure, so a log, inverse, or square root link never has
-  to be undone, and every one of them is spread by the same pooled residual root
-  mean square. `rlm` reports a robust scale estimate of its own in `fit$s`,
-  which resists the extreme residuals rather than pooling all of them, and is
-  used only when it is asked for with `.sigma = fit$s`. A family whose
-  spread changes with its fitted values, such as `poisson()` or
-  `quasi(variance = "mu")`, describes a different density for every unit, which
-  a single spread cannot stand in for, and is refused with an error of class
-  `propensity_model_family_error`. `quasi(variance = "constant")` is the
-  gaussian variance under another name and is accepted.
-
-  The binary path is now held to the same rule from the other side, which
-  changes what some calls return. Only `binomial()` and `quasibinomial()` fit
-  the probability those weights divide by, so a gaussian model of a zero-one
-  response, an `lm()` included, is refused with the same error class rather than
-  having its fitted values read as propensity scores. A linear probability model
-  is not held to the unit interval, so the refusal reads the model rather than
-  the values it fitted, and comes before the check on the range of a propensity
-  score. The estimands whose weights are not a ratio of densities take no model
-  of a continuous exposure: `wt_att()`, `wt_atu()`, `wt_atm()`, `wt_ato()`, and
-  `wt_entropy()` have no `lm` method.
+* `wt_ate()` and `wt_cens()` now default `stabilize` to `NULL`, which is
+  resolved once the exposure type is known: a continuous exposure is stabilized
+  and a binary or categorical exposure is not. This is a change in behavior for
+  a continuous exposure. A call that does not name `stabilize` now returns the
+  ratio of the marginal density to the conditional one, where it previously
+  returned the reciprocal of the conditional density alone and reported that
+  those weights are not the ones the package recommends. The unstabilized ratio
+  remains available with `stabilize = FALSE`, and still reports itself. A
+  binary or categorical exposure is unchanged, and an explicit `TRUE` or
+  `FALSE` is honored wherever it was before.
 
 * A continuous-exposure `ipw()` fit whose outcome model reads the exposure
   through more than one design column, such as `y ~ A + I(A^2)` or a basis like

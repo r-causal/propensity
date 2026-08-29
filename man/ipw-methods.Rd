@@ -374,13 +374,14 @@ levels each effect row compares, as it does for a binary exposure.
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
 propensity score model of the exposure and a weighted marginal structural
-outcome model. A gaussian model is read through its link, which may be
-identity or log; the other gaussian links, and every class the stacked system
-has no score for, are refused, as are the two fits that have no closed-form
-standard error, an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score model and weights built
-with a \code{"kernel"} density. See \strong{Continuous propensity score models} in
-\code{\link[=ipw]{ipw()}} for what each refusal says and what to do about it. The only
-supported estimand is \code{"ate"}.
+outcome model. A \code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi reaches this method by
+inheritance and is stacked at its own score. A gaussian model is read through
+its link, which may be identity or log; the other gaussian links, and every
+class the stacked system has no score for, are refused, as are the two fits
+that have no closed-form standard error, an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score
+model and weights built with a \code{"kernel"} density. See \strong{Continuous
+propensity score models} in \code{\link[=ipw]{ipw()}} for what each refusal says and what to
+do about it. The only supported estimand is \code{"ate"}.
 
 Standard errors are computed by M-estimation by default; the linearization
 method is not available for continuous exposures. \code{se_method = "bootstrap"}
@@ -907,19 +908,25 @@ outcome model reports the contrast for that target population rather than the
 full-sample average. Stacking the models accounts for the uncertainty
 introduced by estimating the propensity scores, avoiding the underestimated
 standard errors that arise from treating estimated weights as fixed. See
-Stefanski
-and Boos (2002) for the M-estimation framework.
+Stefanski and Boos (2002) for the M-estimation framework.
 
 M-estimation standard errors are available for all exposure types: binary
 (from a \code{\link[stats:glm]{stats::glm()}} propensity score model), categorical (from a
 \code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}}, a gaussian
 \code{\link[stats:glm]{stats::glm()}}, or a \code{\link[MASS:rlm]{MASS::rlm()}} model; see \strong{Continuous propensity score
-models} below). The
-\code{atm} weight
+models} below). The \code{atm} weight
 \code{pmin(e, 1 - e)} is not differentiable at a propensity score of \code{0.5}; deli's
 central finite difference straddles the kink there and averages the one-sided
 slopes. Its effect on the variance is negligible unless many observations sit
 at exactly \code{0.5}.
+
+M-estimation standard errors for a categorical exposure allocate memory
+roughly linearly in the number of observations, on the order of 70 to 90
+kilobytes per observation for a single fit, so a sample of 10,000
+observations allocates on the order of hundreds of megabytes. The cost comes
+from the stacked estimating-equation machinery rather than any single term,
+and for very large samples you can expect long, garbage-collection-heavy
+fits. This is expected behavior.
 \subsection{Continuous propensity score models}{
 
 A continuous exposure's weights are a ratio of densities centered on the
@@ -939,8 +946,8 @@ fit settled on. That scale enters the location score as a known constant. It
 solves an equation of its own that the stacked system does not write, so none
 of its sampling variability is propagated, and the standard errors are those
 of a Huber score read at a scale treated as fixed. The spread of the
-conditional density is a separate quantity, and is the pooled residual root
-mean square there as it is for every other class.
+conditional density is a separate quantity, and is the pooled residual
+spread there as it is for every other class.
 
 Weights built with \code{.sigma = fit$s}, the robust scale, are read as the fixed
 spread they are, but that combination is usually a poor choice: the robust
@@ -959,6 +966,18 @@ errors with class \code{propensity_ipw_convergence_error}. The first two point t
 a Huber refit or to \code{se_method = "bootstrap"}; the last points to a larger
 \code{maxit} or a looser \code{acc}, which is what a fit needs to reach its own
 tolerance.
+
+Every density \code{\link[=wt_ate]{wt_ate()}} builds a ratio in is stacked as it was built: the
+normal, Laplace, and Student t families, and a density you wrote yourself,
+under either the marginal or the integrated numerator. \code{ipw()} reads the
+family, the numerator, and the spread off the record the weights carry and
+rebuilds the same ratio at each value of the parameter vector, so the weights
+it differentiates are the weights the outcome model was fit with. A marginal
+numerator contributes the exposure's two marginal moments to the parameter
+vector; an integrated one is built from the propensity score block and the
+data alone and contributes none. Weights carrying no such record, including
+any written with \code{\link[=psw]{psw()}} by hand, are read as the normal ratio the package
+built before the record existed.
 
 Two fits are refused for the standard error rather than for the model. An
 \code{\link[mgcv:gam]{mgcv::gam()}} chooses how much to smooth by REML, and a \code{"kernel"} density
@@ -1018,23 +1037,9 @@ Two things the method does not take. Weights built with an observation-level
 function of the data that no refit reproduces, so the replicate would rebuild
 weights the user never built. \code{.by} is refused for a continuous exposure
 whichever method is asked for.
+}
 
-Every other density \code{\link[=wt_ate]{wt_ate()}} builds a ratio in is stacked as it was built:
-the normal, Laplace, and Student t families, and a density you wrote
-yourself, under either the marginal or the integrated numerator. \code{ipw()}
-reads the family, the numerator, and the spread off the record the weights
-carry and rebuilds the same ratio at each value of the parameter vector, so
-the weights it differentiates are the weights the outcome model was fit with.
-Weights carrying no such record, including any written with \code{\link[=psw]{psw()}} by hand,
-are read as the normal ratio the package built before the record existed.
-
-M-estimation standard errors for a categorical exposure allocate memory
-roughly linearly in the number of observations, on the order of 70 to 90
-kilobytes per observation for a single fit, so a sample of 10,000
-observations allocates on the order of hundreds of megabytes. The cost comes
-from the stacked estimating-equation machinery rather than any single term,
-and for very large samples you can expect long, garbage-collection-heavy
-fits. This is expected behavior.
+\subsection{Standard errors by linearization}{
 
 Setting \code{se_method = "linearization"} instead uses the influence-function
 linearization of Kostouraki et al. (2024). It is available only for a binary
@@ -1062,8 +1067,8 @@ means no longer match the Hajek means the influence functions describe. The
 rejection is broader than that mechanism: a saturated factor coding such as
 \code{y ~ 0 + zf} does estimate both cell means, and the M-estimation path accepts
 it, but the linearization influence functions are derived for the intercept
-parameterization, so every no-intercept outcome model errors here. See \strong{Model requirements} for the baseline
-contract both methods impose.
+parameterization, so every no-intercept outcome model errors here. See
+\strong{Model requirements} for the baseline contract both methods impose.
 }
 }
 
@@ -1315,7 +1320,7 @@ y_dose <- 1 + 0.6 * a + 0.3 * x1 + rnorm(n)
 dat$a <- a
 dat$y_dose <- y_dose
 ps_cont <- lm(a ~ x1, data = dat)
-wts_cont <- wt_ate(fitted(ps_cont), a, exposure_type = "continuous")
+wts_cont <- wt_ate(ps_cont)
 msm <- lm(y_dose ~ a, data = dat, weights = wts_cont)
 ipw(ps_cont, msm)
 
