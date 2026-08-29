@@ -1,16 +1,19 @@
 # propensity 0.1.0.9000 (development version)
 
-* `wt_ate()` now takes a fitted `nnet::multinom()` model in `.propensity`, the
-  way it already took a `glm()` or an `lm()`. A multinomial fit reports a
-  probability for every level of the exposure, which is what a categorical
+* `wt_ate()`, `wt_att()`, `wt_atu()`, `wt_atm()`, `wt_ato()`, and
+  `wt_entropy()` now take a fitted `nnet::multinom()` model in `.propensity`,
+  the way they already took a `glm()` or an `lm()`. A multinomial fit reports
+  a probability for every level of the exposure, which is what a categorical
   exposure's weights are read off, so handing over the fit rather than its
   fitted matrix lets the exposure and its level order come from the model
-  itself. A fit of only two levels reports one probability rather than a column
-  for each and is read as a model of a binary exposure, including the inversion
-  that naming the other level as focal calls for. A fit of more levels than the
+  itself. `wt_atc()` is a copy of `wt_atu()` and reaches the same method. A
+  fit of only two levels reports one probability rather than a column for each
+  and is read as a model of a binary exposure, including the inversion that
+  naming the other level as focal calls for. A fit of more levels than the
   exposure has, and a fit of a matrix of counts, which records no levels to
   match the exposure against, are both refused with an error of class
-  `propensity_model_family_error`.
+  `propensity_model_family_error`. `wt_cens()` takes no multinomial fit,
+  since censoring is not an exposure whose levels the weights spread across.
 
 * `wt_ate()` and `wt_cens()` gain a `.density` argument, which chooses the
   family of the conditional density a continuous exposure's weights are a ratio
