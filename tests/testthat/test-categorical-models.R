@@ -1,12 +1,10 @@
 # The weights a fitted `nnet::multinom()` model gives, and the fits the route
 # refuses.
 #
-# None of this is true yet. `multinom` inherits from `nnet` alone, so a fit
-# reaches `wt_ate.default()` today and every test that asks for weights fails
-# with `propensity_method_error` from `abort_no_method()`. The refusals are
-# written against the classes the route will raise once the method exists,
-# rather than against the one the default method raises now, so they fail here
-# too wherever the class differs.
+# A `multinom` reaches a method of its own rather than through inheritance: the
+# class is `c("multinom", "nnet")`, so a fit that found no method here would
+# reach `wt_ate.default()` and be refused as a class the weights cannot be read
+# from.
 #
 # The contract each weighting test pins is the same one the model methods for a
 # continuous exposure hold to in tests/testthat/test-continuous-models.R: a
@@ -141,9 +139,18 @@ test_that("naming the other level of a two-level fit inverts its probabilities",
     tolerance = 1e-12
   )
 
+  # The inversion is what separates these weights from the ones the same call
+  # would give if the fitted probabilities were read as the probability of the
+  # focal level rather than of the other one. The default-focal weights are no
+  # such comparison: an ATE weight is the reciprocal of the probability of the
+  # level each unit was observed at, which both focal levels give.
   expect_false(isTRUE(all.equal(
     as.numeric(weights),
-    as.numeric(wt_ate(fit, a2))
+    as.numeric(wt_ate(
+      as.numeric(stats::fitted(fit)),
+      a2,
+      .focal_level = first_level
+    ))
   )))
 })
 
@@ -161,20 +168,9 @@ test_that("a multinomial fit reads its own exposure and says which it read", {
 
   withr::local_options(propensity.quiet = FALSE)
 
-  # The wording of both alerts is snapshotted once the route reaches them. Until
-  # then the call errors, and a snapshot recorded here would record the error
-  # rather than the messages, so the messages are matched by hand instead.
-  announcements <- character()
-  from_model <- withCallingHandlers(
-    wt_ate(fit),
-    message = function(cnd) {
-      announcements <<- c(announcements, conditionMessage(cnd))
-      invokeRestart("muffleMessage")
-    }
-  )
-
-  expect_match(announcements, "Using exposure variable", all = FALSE)
-  expect_match(announcements, "categorical", all = FALSE)
+  # Both alerts are the route's own account of what it decided: which variable
+  # it read as the exposure, and which type it resolved that variable to.
+  expect_snapshot(from_model <- wt_ate(fit))
 
   expect_identical(as.numeric(from_model), as.numeric(supplied))
 })

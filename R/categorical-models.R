@@ -1,0 +1,142 @@
+# The fitted models a categorical exposure's weights can be read from.
+#
+# The weights are read off a probability for every level, so what the model has
+# to supply is one fitted column per level of the exposure, named after the
+# level it belongs to. `nnet::multinom()` is the fit that reports that, and it
+# is the class named here: methods are resolved in class order, so a `multinom`
+# is read as a `multinom` rather than as the `nnet` it inherits from, and the
+# set of models a categorical exposure's weights can be built from is the set
+# of methods.
+#
+# A `multinom` of two levels is not a categorical fit. It reports a single
+# probability, the shape a binomial `glm` reports, and a two-level exposure
+# resolves as binary, so such a fit is read on the binary path instead. The
+# methods below hold both halves of that: what the categorical path reads, and
+# what the binary path accepts and reads.
+extract_categorical_ps <- function(model, call = rlang::caller_env()) {
+  UseMethod("extract_categorical_ps")
+}
+
+#' @export
+extract_categorical_ps.default <- function(model, call = rlang::caller_env()) {
+  abort_categorical_model(model, call = call)
+}
+
+# `fitted()` is the n by K matrix of level probabilities, carrying the levels as
+# its column names in the order the response was coded in. The order the
+# exposure was supplied in is the order the weights are read in, and
+# `check_ps_matrix()` matches the columns to it by name, so nothing is reordered
+# here.
+#
+# The response check that every model method runs first has already refused a
+# fit with no levels, so the columns are named whenever this is reached.
+#' @export
+extract_categorical_ps.multinom <- function(model, call = rlang::caller_env()) {
+  stats::fitted(model)
+}
+
+# A `multinom` fits a probability for every level and so has a single
+# probability to give only when it was fit to two of them. More levels than
+# that leave nothing to read as the probability of the exposure, which is what a
+# binary exposure needs.
+#' @export
+check_binary_model_family.multinom <- function(
+  model,
+  call = rlang::caller_env()
+) {
+  n_levels <- length(model$lev)
+
+  if (n_levels == 2L) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "Weights for a binary exposure need the probability of one of its two
+       levels.",
+      x = "{.arg .propensity} was fit to {n_levels} levels
+           ({.val {model$lev}}), so it fits no single probability to read
+           against a binary exposure.",
+      i = "Fit the propensity score model to the exposure being weighted, or
+           weight the exposure the model was fit to with
+           {.code exposure_type = \"categorical\"}."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}
+
+# A two-level fit reports one column, the probability of the second level, which
+# is the level the default coding treats as focal. Flattening it to a bare
+# vector gives the binary formulas the shape they read and is what
+# `prepare_model_weight_args()` inverts when the caller names the other level.
+#' @export
+extract_binary_ps.multinom <- function(model, call = rlang::caller_env()) {
+  as.numeric(stats::fitted(model))
+}
+
+# A `multinom` keeps no model frame, so `model.frame()` rebuilds one by
+# re-evaluating the fitting call in the environment the formula came from. That
+# environment no longer holds the arguments of a fit made inside a function, and
+# the rebuild fails there, which would leave the exposure unreadable for a model
+# fit by an ordinary wrapper.
+#
+# The fit records the response itself: `residuals` is the indicator matrix of
+# the observed level less the fitted probabilities, laid out in the order of
+# `lev`, so adding the fitted values back recovers the indicators exactly. A
+# two-level fit indicates the second level in its single column; more levels get
+# a column each, and the level indicated is the one whose column holds the one.
+#' @export
+extract_model_exposure.multinom <- function(model) {
+  indicators <- model$residuals + model$fitted.values
+
+  indicated <- if (ncol(indicators) == 1L) {
+    round(indicators[, 1L]) + 1L
+  } else {
+    max.col(indicators)
+  }
+
+  factor(model$lev[indicated], levels = model$lev)
+}
+
+# What a `multinom` was fit to. A matrix response is read as counts rather than
+# as a factor, so the fit records no levels, and its fitted values name no level
+# that could be matched to an exposure. The model methods run this before
+# anything reads the model, including before the exposure is taken off it, so
+# that a fit the route cannot read is reported as such rather than as whatever
+# the exposure detector makes of a matrix of counts.
+check_multinom_response <- function(model, call = rlang::caller_env()) {
+  if (length(model$lev) > 0) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "Weights need a propensity score model fit to the levels of the
+       exposure.",
+      x = "{.arg .propensity} was fit to a matrix response, which
+           {.fun nnet::multinom} reads as counts rather than as levels.",
+      i = "Refit the model with the exposure factor on the left-hand side, as
+           in {.code nnet::multinom(exposure ~ x)}."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}
+
+# A categorical exposure needs a probability for every level, which a model
+# reporting one fitted value per unit cannot give. The classes that fit one
+# value per unit reach this through the default method.
+abort_categorical_model <- function(model, call = rlang::caller_env()) {
+  abort(
+    c(
+      "Weights for a categorical exposure need a probability for every level.",
+      x = "{.arg .propensity} is {.cls {class(model)[[1]]}}, which fits one
+           value for each unit rather than one for each level.",
+      i = "Pass a matrix or data frame with one column per level, such as the
+           fitted values of {.fun nnet::multinom}."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}

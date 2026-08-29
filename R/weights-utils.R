@@ -1291,11 +1291,27 @@ extract_propensity_from_df <- function(
   .propensity[[col_pos]]
 }
 
+# Where a fitted model keeps the probability of a binary exposure. Most classes
+# report it through `predict(type = "response")`; a class whose `predict()`
+# method offers no such type, such as `nnet::multinom()`, has a method of its
+# own. The family check runs first, so a method here is only ever handed a
+# model that fits probabilities.
+extract_binary_ps <- function(model, call = rlang::caller_env()) {
+  UseMethod("extract_binary_ps")
+}
+
+#' @export
+extract_binary_ps.default <- function(model, call = rlang::caller_env()) {
+  stats::predict(model, type = "response")
+}
+
 # The propensity score a fitted model reports, read according to the exposure it
 # is a model of. A binary exposure needs the probability of the exposure, which
 # only the binomial families fit; a continuous exposure needs a conditional mean
 # with a single spread, which `extract_continuous_ps()` reads from the classes
-# that fit one.
+# that fit one; a categorical exposure needs a probability for every level,
+# which `extract_categorical_ps()` reads from the classes that fit one per
+# level.
 extract_model_propensity <- function(
   model,
   exposure_type,
@@ -1304,14 +1320,14 @@ extract_model_propensity <- function(
   if (identical(exposure_type, "binary")) {
     check_binary_model_family(model, call = call)
 
-    return(stats::predict(model, type = "response"))
+    return(extract_binary_ps(model, call = call))
   }
 
   if (identical(exposure_type, "continuous")) {
     return(extract_continuous_ps(model, call = call)$mu)
   }
 
-  abort_categorical_model(model, call = call)
+  extract_categorical_ps(model, call = call)
 }
 
 # Helper function to handle common data frame method pattern
@@ -1467,6 +1483,19 @@ fmla_eval_left <- function(mod, data) {
   left
 }
 
+# The exposure a fitted model was fit to. Most classes keep it in their model
+# frame, which is what the default method reads; a class that has to rebuild its
+# frame from the fitting call, and so cannot when that call is no longer
+# reachable, has a method of its own.
+extract_model_exposure <- function(model) {
+  UseMethod("extract_model_exposure")
+}
+
+#' @export
+extract_model_exposure.default <- function(model) {
+  fmla_extract_left_vctr(model)
+}
+
 # Helper function to handle optional exposure in the model methods
 extract_exposure_from_model <- function(
   model,
@@ -1474,7 +1503,7 @@ extract_exposure_from_model <- function(
 ) {
   if (is.null(.exposure)) {
     # Extract the exposure from the model's response
-    .exposure <- fmla_extract_left_vctr(model)
+    .exposure <- extract_model_exposure(model)
     exposure_name <- fmla_extract_left_chr(model)
     alert_info(
       "Using exposure variable {.val {exposure_name}} from the propensity score model"

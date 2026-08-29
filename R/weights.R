@@ -43,7 +43,11 @@
 #'   or a matrix or data frame holding it in one of its columns.
 #' - **Categorical**: `.exposure` is a factor or character vector with 3+
 #'   levels. `.propensity` must be a matrix or data frame with one column per
-#'   level, where rows sum to 1.
+#'   level, where rows sum to 1. `wt_ate()` also takes a fitted
+#'   [nnet::multinom()] and reads those columns off its fitted values, matching
+#'   them to the levels of `.exposure` by name. A multinomial fit of only two
+#'   levels reports a single probability and is read as a model of a binary
+#'   exposure.
 #' - **Continuous**: `.exposure` is a numeric vector. `.propensity` is a
 #'   vector of conditional means (fitted values). Weights are a ratio of
 #'   densities, whose family is chosen by `.density`, and are stabilized
@@ -893,6 +897,66 @@ wt_ate.lm <- function(
     .exposure,
     exposure_type = exposure_type,
     valid_exposure_types = c("auto", "binary", "categorical", "continuous"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_ate",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_ate.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    .sigma = .sigma,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    .density = .density,
+    numerator = numerator,
+    call = call,
+    ...
+  )
+}
+
+# The one class that fits a probability for every level of an exposure, which is
+# what a categorical exposure's weights are read off. It reaches a method of its
+# own because it inherits from neither `glm` nor `lm`: a `multinom` is
+# `c("multinom", "nnet")`, so without this the fit would reach the default
+# method. Dispatch is on `multinom` rather than on `nnet`, which is the neural
+# network the fit is built on and reports no probability of an exposure.
+#
+# A continuous exposure is not one of the types offered here. A probability for
+# each level is not a conditional mean with a spread, so there is no density for
+# the weights to be a ratio of.
+#' @export
+wt_ate.multinom <- function(
+  .propensity,
+  .exposure = NULL,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  stabilize = NULL,
+  stabilization_score = NULL,
+  ...,
+  .density = "normal",
+  numerator = c("marginal", "integrated"),
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  check_multinom_response(.propensity, call = call)
+
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,

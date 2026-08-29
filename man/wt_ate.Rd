@@ -445,7 +445,11 @@ two-level factor). \code{.propensity} is a numeric vector of P(treatment | X),
 or a matrix or data frame holding it in one of its columns.
 \item \strong{Categorical}: \code{.exposure} is a factor or character vector with 3+
 levels. \code{.propensity} must be a matrix or data frame with one column per
-level, where rows sum to 1.
+level, where rows sum to 1. \code{wt_ate()} also takes a fitted
+\code{\link[nnet:multinom]{nnet::multinom()}} and reads those columns off its fitted values, matching
+them to the levels of \code{.exposure} by name. A multinomial fit of only two
+levels reports a single probability and is read as a model of a binary
+exposure.
 \item \strong{Continuous}: \code{.exposure} is a numeric vector. \code{.propensity} is a
 vector of conditional means (fitted values). Weights are a ratio of
 densities, whose family is chosen by \code{.density}, and are stabilized
