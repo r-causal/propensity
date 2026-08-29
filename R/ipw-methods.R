@@ -1,13 +1,16 @@
 #' @description
 #' The `multinom` method estimates causal effects for a categorical exposure
 #' from a fitted [nnet::multinom()] propensity score model and a weighted
-#' outcome model. Standard errors are computed by M-estimation; the
-#' linearization method is not available for categorical exposures. For a
-#' K-level exposure, the counterfactual mean at each level is reported first,
-#' under the effect label `"mean"`, and then the effects for each non-reference
-#' level against the reference (first) factor level. The `contrast` column names
-#' the level each mean row belongs to and the pair of levels each effect row
-#' compares, as it does for a binary exposure.
+#' outcome model. Standard errors are computed by M-estimation.
+#' `se_method = "linearization"` is not available for a categorical exposure and
+#' is refused with an error of class `propensity_method_error`: the stacked
+#' system has a sandwich for every fit this exposure type accepts.
+#'
+#' For a K-level exposure, the counterfactual mean at each level is reported
+#' first, under the effect label `"mean"`, and then the effects for each
+#' non-reference level against the reference (first) factor level. The
+#' `contrast` column names the level each mean row belongs to and the pair of
+#' levels each effect row compares, as it does for a binary exposure.
 #'
 #' @param .focal_level For the categorical (`multinom`) method with the `att`
 #'   or `atu` estimand, the focal exposure level. If `NULL`, it is taken from
@@ -84,12 +87,25 @@ ipw.multinom <- function(
 #' The `lm` method estimates the causal dose-response effect for a continuous
 #' exposure from a fitted [stats::lm()] (or gaussian-family [stats::glm()])
 #' propensity score model of the exposure and a weighted marginal structural
-#' outcome model. The only supported estimand is `"ate"`. Standard errors are
-#' computed by M-estimation; the linearization method is not available for
-#' continuous exposures. Every term of the marginal structural model that reads
-#' the exposure must read the exposure and nothing else, and the reported
-#' effects are the coefficients those terms contribute, labeled `"log(or)"` for
-#' a logit-link outcome and `"log(rr)"` for a log-link one. A model with one
+#' outcome model. A [MASS::rlm()] fit with the Huber psi reaches this method by
+#' inheritance and is stacked at its own score. A gaussian model is read through
+#' its link, which may be identity or log; the other gaussian links, and every
+#' class the stacked system has no score for, are refused, as are the two fits
+#' that have no closed-form standard error, an [mgcv::gam()] propensity score
+#' model and weights built with a `"kernel"` density. See **Continuous
+#' propensity score models** in [ipw()] for what each refusal says and what to
+#' do about it. The only supported estimand is `"ate"`.
+#'
+#' Standard errors are computed by M-estimation; the linearization method is not
+#' available for continuous exposures. The package offers no resampling method,
+#' so a fit the stacked system cannot write has no standard error here, and the
+#' refusal points at a bootstrap of the whole pipeline written by hand. See
+#' **Continuous propensity score models** in [ipw()].
+#'
+#' Every term of the marginal structural model that reads the exposure must read
+#' the exposure and nothing else, and the reported effects are the coefficients
+#' those terms contribute, labeled `"log(or)"` for a logit-link outcome and
+#' `"log(rr)"` for a log-link one. A model with one
 #' exposure coefficient keeps the eight-column contract with no contrast column
 #' and labels its row `"slope"` at an identity link; a dose-response curve such
 #' as `y ~ A + I(A^2)` reports one row per coefficient under `"coef"`, gaining a

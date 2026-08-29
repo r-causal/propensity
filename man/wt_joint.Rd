@@ -6,7 +6,7 @@
 \alias{joint_wt_meta}
 \title{Product weights for a joint intervention on two treatments}
 \usage{
-wt_joint(w_a, w_e, exposure_type = c("binary", "binary"))
+wt_joint(w_a, w_e, exposure_type = NULL)
 
 is_joint_wt(x)
 
@@ -21,11 +21,11 @@ the second, whose model conditions on the first.}
 
 \item{exposure_type}{A character vector of length two naming each component's
 exposure type, one of \code{"binary"}, \code{"categorical"}, or \code{"continuous"}, in
-the order the components were given. Defaults to two binary components. The
-types are supplied rather than read off the weights, because a \code{\link[=psw]{psw()}}
-records its estimand and its stabilization but not the kind of exposure it
-weights, and the stabilization requirement needs to tell a continuous
-component from a binary one.}
+the order the components were given. Defaults to the types the components
+record, which is what a weight function writes on the weights it builds. A
+value given here is used instead of what they record, and a component
+recording no type, such as one assembled by hand, is refused unless both
+types are named.}
 
 \item{x}{An object to test, or the weights to read the record from.}
 }
@@ -35,11 +35,15 @@ component from a binary one.}
 
 \code{is_joint_wt()} returns a single logical.
 
-\code{joint_wt_meta()} returns the record as a list with two elements, or \code{NULL}
-for weights that are not a product:
+\code{joint_wt_meta()} returns the record as a list of three elements, each one
+per component and in the order the components were given, or \code{NULL} for
+weights that are not a product:
 \describe{
 \item{\code{exposure_type}}{The two components' exposure types, in order.}
 \item{\code{stabilized}}{Whether each component was stabilized, in order.}
+\item{\code{density}}{Each component's density record, as \code{\link[=density_meta]{density_meta()}}
+returns it, in order. A component weighting a discrete exposure is
+\code{NULL}, since its weights are no ratio of densities.}
 }
 
 The record names the components rather than the observations, so it survives
@@ -77,8 +81,16 @@ is equally invisible.
 A continuous component must be stabilized. The unstabilized density ratio
 \eqn{1 / f(A | L)} has a heavy right tail on its own, and multiplying it by a
 second weight inherits that tail, leaving the product with no usable
-variance. Build a continuous component with \code{stabilize = TRUE}. A binary or
+variance. A continuous component is stabilized unless it was built with
+\code{stabilize = FALSE}, so the requirement is met by default. A binary or
 categorical component needs no stabilization and is accepted either way.
+
+Any numerator that stabilizes the ratio satisfies the requirement, and any
+density the ratio is read in is accepted: a component built with
+\code{numerator = "integrated"}, with a heavier-tailed \code{.density}, or with a
+\code{stabilization_score} of its own is stabilized as much as the default
+marginal one is. What each component was built with is recorded per component
+rather than merged, so the product carries both answers.
 }
 
 \section{What the product records}{
@@ -111,16 +123,13 @@ estimand(w)
 is_joint_wt(w)
 joint_wt_meta(w)
 
-# A continuous component must be stabilized
+# A continuous component must be stabilized, which it is by default
 d <- 0.5 + 0.6 * x1 - 0.7 * a + rnorm(n)
 mod_d <- lm(d ~ a * x1, data = dat)
-w_d <- wt_ate(
-  fitted(mod_d),
-  d,
-  exposure_type = "continuous",
-  stabilize = TRUE
-)
-joint_wt_meta(wt_joint(wt_ate(mod_a), w_d, c("binary", "continuous")))
+w_d <- wt_ate(mod_d)
+# Each component records the exposure type it weights, so the product knows
+# which of them is the dose without being told
+joint_wt_meta(wt_joint(wt_ate(mod_a), w_d))
 
 }
 \seealso{

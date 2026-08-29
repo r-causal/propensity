@@ -277,16 +277,52 @@ continuous and categorical treatments.
 
 ### Continuous exposures
 
-For continuous exposures, weights use density ratios. Stabilization is
-usually a good idea here:
+For a continuous exposure, the propensity score model is a model of the dose
+itself, and the weights are a ratio of densities: the marginal density of the
+dose over the conditional density the model fits. `wt_ate()` reads the
+conditional means from an `lm()`, a gaussian `glm()`, an `mgcv::gam()`, or a
+`MASS::rlm()`, along with the dose the model was fit on. The ratio is
+stabilized by default, since the unstabilized version carries the exposure's
+own units and has a heavy right tail; pass `stabilize = FALSE` to turn that
+off.
 
-```{r continuous-exposure, eval = FALSE}
-# Fit a model for the continuous exposure
-ps_cont <- glm(continuous_exposure ~ x1 + x2, data = dat, family = gaussian())
+```{r continuous-exposure}
+set.seed(13)
+dat$a <- 0.5 + 0.7 * dat$x1 - 0.3 * dat$x2 + rnorm(n)
+dat$y_dose <- 1 + 0.4 * dat$a + 0.3 * dat$x1 + rnorm(n)
 
-# Stabilized weights (strongly recommended for continuous exposures)
-wts_cont <- wt_ate(ps_cont, stabilize = TRUE)
+ps_dose <- lm(a ~ x1 + x2, data = dat)
+wts_dose <- wt_ate(ps_dose)
+
+# What the weights record about the ratio they are
+density_meta(wts_dose)
 ```
+
+The default reads that ratio in the normal family, which is a strong claim
+about the residuals of a dose model. `.density` chooses another family, and a
+heavier tail holds down the weight of a unit whose dose the model fits poorly:
+
+```{r continuous-density}
+wts_t <- wt_ate(ps_dose, .density = dens_t(df = 4))
+summary(wts_t)
+```
+
+Pass the dose model and a weighted marginal structural model to `ipw()` for
+the dose-response slope. Its standard errors come from M-estimation, which
+stacks the dose model, the density ratio, and the outcome model as one system:
+
+```{r continuous-ipw}
+msm <- lm(y_dose ~ a, data = dat, weights = wts_dose)
+ipw(ps_dose, msm)
+```
+
+Two continuous fits have no such system: an `mgcv::gam()` chooses how much to
+smooth from the data, and a `"kernel"` density chooses its bandwidth from the
+residuals. `ipw()` refuses both for the standard error rather than for the
+model, and points at a bootstrap of the whole pipeline written by hand:
+resample the rows, refit the dose model, rebuild the weights with `wt_ate()`,
+and refit the marginal structural model on each resample, then read the spread
+of the slope across the resamples.
 
 ### Categorical exposures
 

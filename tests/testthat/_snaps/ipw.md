@@ -53,7 +53,7 @@
     Condition <propensity_method_error>
       Error in `ipw()`:
       ! `ipw()` does not know how to handle `wt_mod` of class <not_a_model>.
-      i `wt_mod` must be a fitted propensity score model: a <glm> for a binary exposure, an <lm> or gaussian identity-link <glm> for a continuous exposure, or a <multinom> for a categorical exposure.
+      i `wt_mod` must be a fitted propensity score model: a <glm> for a binary exposure, an <lm> or gaussian <glm> for a continuous exposure, or a <multinom> for a categorical exposure.
 
 ---
 

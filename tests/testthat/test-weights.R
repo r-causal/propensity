@@ -569,10 +569,14 @@ test_that("ATE works for binary cases", {
 
   expect_identical(weights, weights5)
 
+  # The weights record the exposure type they were built for, which the
+  # right-hand side is written without. What each weight function records is
+  # pinned in test-psw-records.R; this test is about the values.
   expect_equal(
     weights,
     psw(c(1.11, 1.43, 2.50, 1.43), "ate"),
-    tolerance = 0.01
+    tolerance = 0.01,
+    ignore_attr = "exposure_type"
   )
 })
 
@@ -1603,12 +1607,19 @@ test_that("ATE works for continuous cases", {
       predict(denom_model),
       .exposure = mtcars$mpg,
       .sigma = model_sigma,
-      exposure_type = "continuous"
+      exposure_type = "continuous",
+      stabilize = FALSE
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )
 
-  expect_equal(weights, psw(wts, "ate"))
+  # The weights record the exposure type and the density they are a ratio of,
+  # neither of which the right-hand side is written with. What each weight
+  # function records is pinned in test-psw-records.R; this test is about the
+  # values.
+  exposure_records <- c("exposure_type", "density_meta")
+
+  expect_equal(weights, psw(wts, "ate"), ignore_attr = exposure_records)
   withr::local_options(propensity.quiet = FALSE)
   expect_message(
     stabilized_weights <- wt_ate(
@@ -1620,7 +1631,11 @@ test_that("ATE works for continuous cases", {
     "Treating `.exposure` as continuous"
   )
 
-  expect_equal(stabilized_weights, psw(stb_wts, "ate", stabilized = TRUE))
+  expect_equal(
+    stabilized_weights,
+    psw(stb_wts, "ate", stabilized = TRUE),
+    ignore_attr = exposure_records
+  )
 })
 
 test_that("stabilized weights use P(A=1) and P(A=0) as numerators", {
@@ -4318,7 +4333,8 @@ test_that("data frame methods error appropriately", {
 })
 
 test_that("GLM methods error appropriately", {
-  # Non-GLM object
+  # A linear model of a binary exposure: fitted conditional means are not the
+  # probability the weights divide by, whatever they happen to fall on.
   expect_propensity_error(
     wt_ate(lm(mpg ~ wt, data = mtcars), rep(0:1, 16))
   )
@@ -5815,7 +5831,8 @@ test_that("unstabilized continuous ATE weights invert the normalized conditional
       fixture$fitted,
       fixture$exposure,
       .sigma = fixture$sigma,
-      exposure_type = "continuous"
+      exposure_type = "continuous",
+      stabilize = FALSE
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )
@@ -5844,7 +5861,8 @@ test_that("continuous ATE weights fall back to the pooled residual standard devi
     unstabilized <- wt_ate(
       fixture$fitted,
       fixture$exposure,
-      exposure_type = "continuous"
+      exposure_type = "continuous",
+      stabilize = FALSE
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )
@@ -5940,7 +5958,8 @@ test_that("continuous `.sigma` weights record the usual psw metadata", {
       fixture$fitted,
       fixture$exposure,
       .sigma = fixture$sigma,
-      exposure_type = "continuous"
+      exposure_type = "continuous",
+      stabilize = FALSE
     ),
     "Using unstabilized weights for continuous exposures is not recommended."
   )

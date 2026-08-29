@@ -170,8 +170,18 @@ model.}
 \item{se_method}{Method for standard error estimation. \code{"mestimation"} (the
 default) stacks the propensity score, outcome, and estimand estimating
 equations and returns the empirical sandwich variance. \code{"linearization"}
-uses the influence-function linearization of Kostouraki et al. (2024). Both
-account for the uncertainty of estimating the propensity scores.
+uses the influence-function linearization of Kostouraki et al. (2024).
+Both account for the uncertainty of estimating the propensity scores.
+
+Which exposure types support which: \code{"mestimation"} supports every one of
+them; \code{"linearization"} supports a binary exposure alone. A binary or a
+categorical exposure has a sandwich for every fit it accepts. A few
+continuous fits have no sandwich, and the package computes no standard
+error for them: an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score model and weights built
+with a \code{"kernel"} density are refused, and so is a \code{\link[MASS:rlm]{MASS::rlm()}} fit the
+stacked system cannot write. See \strong{Continuous propensity score models}
+below.
+
 \code{"linearization"} supports only an outcome model of the exposure alone, fit
 with an intercept; a covariate-adjusted outcome model requires
 \code{"mestimation"}. For a binary or categorical exposure, both methods require
@@ -209,12 +219,14 @@ section below.
 The covariance the conditional reading reports is the outcome block of the
 jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
-\code{se_method = "mestimation"} for a binary exposure, and the categorical and
-continuous routes, which run on M-estimation alone. A linearization fit
-stacks no such system and records no such block, so \code{\link[stats:vcov]{stats::vcov()}} and
-\code{\link[stats:confint]{stats::confint()}} error on its conditional reading, and printing it writes
-the coefficients under a note saying the standard errors are not reported
-rather than beside the ones the outcome model computed for itself.}
+\code{se_method = "mestimation"} for a binary exposure, the categorical and
+joint routes, which run on M-estimation alone, and the continuous route
+under that method. A
+linearization fit stacks no system and records no covariance of either
+kind, so \code{\link[stats:vcov]{stats::vcov()}} and \code{\link[stats:confint]{stats::confint()}} error on its conditional
+reading, and printing it writes the coefficients under a note saying the
+standard errors are not reported rather than beside the ones the outcome
+model computed for itself.}
 
 \item{.focal_level}{For the categorical (\code{multinom}) method with the \code{att}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
@@ -230,12 +242,13 @@ three of them take propensity-specific values:
 \describe{
 \item{\code{estimand}}{One of \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or
 \code{"entropy"}.}
-\item{\code{se_method}}{Either \code{"mestimation"} or \code{"linearization"}.}
+\item{\code{se_method}}{One of \code{"mestimation"} or \code{"linearization"}.}
 \item{\code{fit}}{The fitted M-estimator object when \code{se_method} is
-\code{"mestimation"}, otherwise \code{NULL}. Calling \code{\link[stats:vcov]{stats::vcov()}} or
+\code{"mestimation"}. Calling \code{\link[stats:vcov]{stats::vcov()}} or
 \code{\link[generics:tidy]{generics::tidy()}} on this object exposes the full stacked system of
 estimating equations, including the propensity score, outcome, and
-estimand parameters.}
+estimand parameters. It is \code{NULL} under \code{"linearization"}, which solves
+no system.}
 }
 
 The result answers the standard model accessors, which causalgenerics
@@ -262,13 +275,22 @@ stored unchanged.
 The \code{joint_wt_models} method estimates the effects of a joint intervention on
 two treatments from the pair of fitted treatment models \code{\link[=joint_wt_models]{joint_wt_models()}}
 records and a weighted outcome model that reads both treatments. Standard
-errors are computed by M-estimation; the linearization method is not
-available. The only supported estimand is \code{"ate"}, which is what the product
-weights \code{\link[=wt_joint]{wt_joint()}} builds target.
+errors are computed by M-estimation. \code{se_method = "linearization"} is not
+available here: the linearization path solves no stacked system, and the cell
+means and every contrast built from them are parameters of one.
+
+The only supported estimand is \code{"ate"}, which is what the product weights
+\code{\link[=wt_joint]{wt_joint()}} builds target.
 
 The second treatment may be a dose, in which case the surface is the marginal
-structural model's own coefficients rather than the cells of a crossing; see
-\strong{Joint exposures}.
+structural model's own coefficients rather than the cells of a crossing. The
+dose model is read through the same registry the single-treatment route
+reads, so an \code{\link[stats:lm]{stats::lm()}}, a gaussian \code{\link[stats:glm]{stats::glm()}} at an identity or a log
+link, and a \code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi are stacked, and the dose
+component's weights may be any density ratio \code{\link[=wt_ate]{wt_ate()}} builds. A dose model
+or a density the stacked system cannot differentiate is refused rather than
+resampled, since this route has no resampling method; see \strong{Joint
+exposures}.
 
 This is the second of the two routes to a joint intervention. The other
 declares the crossing with \code{\link[causalgenerics:joint_exposure]{causalgenerics::joint_exposure()}} and weights it
@@ -288,23 +310,39 @@ container reaches \code{ipw()} those questions are settled.
 
 The \code{multinom} method estimates causal effects for a categorical exposure
 from a fitted \code{\link[nnet:multinom]{nnet::multinom()}} propensity score model and a weighted
-outcome model. Standard errors are computed by M-estimation; the
-linearization method is not available for categorical exposures. For a
-K-level exposure, the counterfactual mean at each level is reported first,
-under the effect label \code{"mean"}, and then the effects for each non-reference
-level against the reference (first) factor level. The \code{contrast} column names
-the level each mean row belongs to and the pair of levels each effect row
-compares, as it does for a binary exposure.
+outcome model. Standard errors are computed by M-estimation.
+\code{se_method = "linearization"} is not available for a categorical exposure and
+is refused with an error of class \code{propensity_method_error}: the stacked
+system has a sandwich for every fit this exposure type accepts.
+
+For a K-level exposure, the counterfactual mean at each level is reported
+first, under the effect label \code{"mean"}, and then the effects for each
+non-reference level against the reference (first) factor level. The
+\code{contrast} column names the level each mean row belongs to and the pair of
+levels each effect row compares, as it does for a binary exposure.
 
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
 propensity score model of the exposure and a weighted marginal structural
-outcome model. The only supported estimand is \code{"ate"}. Standard errors are
-computed by M-estimation; the linearization method is not available for
-continuous exposures. Every term of the marginal structural model that reads
-the exposure must read the exposure and nothing else, and the reported
-effects are the coefficients those terms contribute, labeled \code{"log(or)"} for
-a logit-link outcome and \code{"log(rr)"} for a log-link one. A model with one
+outcome model. A \code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi reaches this method by
+inheritance and is stacked at its own score. A gaussian model is read through
+its link, which may be identity or log; the other gaussian links, and every
+class the stacked system has no score for, are refused, as are the two fits
+that have no closed-form standard error, an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score
+model and weights built with a \code{"kernel"} density. See \strong{Continuous
+propensity score models} in \code{\link[=ipw]{ipw()}} for what each refusal says and what to
+do about it. The only supported estimand is \code{"ate"}.
+
+Standard errors are computed by M-estimation; the linearization method is not
+available for continuous exposures. The package offers no resampling method,
+so a fit the stacked system cannot write has no standard error here, and the
+refusal points at a bootstrap of the whole pipeline written by hand. See
+\strong{Continuous propensity score models} in \code{\link[=ipw]{ipw()}}.
+
+Every term of the marginal structural model that reads the exposure must read
+the exposure and nothing else, and the reported effects are the coefficients
+those terms contribute, labeled \code{"log(or)"} for a logit-link outcome and
+\code{"log(rr)"} for a log-link one. A model with one
 exposure coefficient keeps the eight-column contract with no contrast column
 and labels its row \code{"slope"} at an identity link; a dose-response curve such
 as \code{y ~ A + I(A^2)} reports one row per coefficient under \code{"coef"}, gaining a
@@ -347,11 +385,12 @@ process.
 \code{ipw()} supports binary, categorical, and continuous exposures. For a binary
 or categorical exposure, a binary outcome returns the risk difference, log
 risk ratio, and log odds ratio, and a continuous outcome returns the
-difference in means. A continuous exposure is supplied through an \code{\link[stats:lm]{stats::lm()}}
-or identity-link gaussian \code{\link[stats:glm]{stats::glm()}} propensity score model with a weighted
-marginal structural outcome model whose link is identity, logit, or log, and
-\code{ipw()} reports the single exposure coefficient of that model. A subclass of
-either propensity score model, such as a robust or an additive fit, errors.
+difference in means. A continuous exposure is supplied through an
+\code{\link[stats:lm]{stats::lm()}} or gaussian \code{\link[stats:glm]{stats::glm()}} propensity score model with a
+weighted marginal structural outcome model whose link is identity, logit, or
+log, and \code{ipw()} reports the single exposure coefficient of that model. A
+subclass of either propensity score model, such as a robust or an additive
+fit, errors.
 }
 \section{Workflow}{
 \code{ipw()} is designed around a three-step workflow:
@@ -681,12 +720,12 @@ and no \code{.by}. Standard errors come from M-estimation alone.
 \subsection{A joint intervention with a dose}{
 
 The second treatment may be a dose rather than a second discrete treatment,
-recorded with an \code{\link[stats:lm]{stats::lm()}} or an identity-link gaussian \code{\link[stats:glm]{stats::glm()}}
-and weighted with a stabilized density ratio, which \code{\link[=wt_joint]{wt_joint()}} requires of
-a continuous component. A dose has no cells, so there is no crossing to
-report counterfactual risks over: the surface is the marginal structural
-model's own coefficients, which for an identity-link model are exactly the
-weighted fit's coefficients.
+recorded with any of the classes the single-treatment route reads a
+conditional density from, and weighted with a stabilized density ratio, which
+\code{\link[=wt_joint]{wt_joint()}} requires of a continuous component. A dose has no cells, so
+there is no crossing to report counterfactual risks over: the surface is the
+marginal structural model's own coefficients, which for an identity-link
+model are exactly the weighted fit's coefficients.
 
 Which of two surfaces a fit reports is decided by the marginal structural
 model alone. A model written in bare treatment terms reports the vocabulary
@@ -759,8 +798,46 @@ model, so the outcome model frame is never asked for a column it does not
 hold.
 
 The dose model contributes its coefficients and the conditional variance its
-density ratio divides by, and the stabilizing numerator contributes the
-dose's two marginal moments, all as parameters of the same stacked system.
+density ratio divides by, and a marginal stabilizing numerator contributes
+the dose's two marginal moments, all as parameters of the same stacked
+system.
+}
+
+\subsection{The dose model and the ratio its weights are}{
+
+The dose model goes through the registry described under \strong{Continuous
+propensity score models}, so the classes and links this route stacks are the
+ones the single-treatment route stacks: an \code{\link[stats:lm]{stats::lm()}}, a gaussian
+\code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, and a \code{\link[MASS:rlm]{MASS::rlm()}} fit
+with the Huber psi. A gaussian dose model fit with another link errors with
+class \code{propensity_ipw_link_error}, and a robust fit whose score the system
+cannot write raises the same conditions it raises for a single dose.
+
+The dose component's weights may be any ratio \code{\link[=wt_ate]{wt_ate()}} builds: a
+heavier-tailed \code{.density}, \code{numerator = "integrated"}, or a single \code{.sigma}
+the caller fixed. \code{\link[=wt_joint]{wt_joint()}} records each component's ratio on the product,
+and the stacked system rebuilds the dose factor from that record, so what is
+differentiated is the weight the outcome model was fit with. An integrated
+numerator is built from the dose block and the data alone, so it adds no
+stabilization parameters; a fixed scalar \code{.sigma} is a known constant, so the
+dose block is its coefficients alone and none of that number's uncertainty is
+carried. A spread supplied for each observation has no counterpart in the
+system and errors with class \code{propensity_ipw_sigma_error}.
+
+A dose component built with a \code{stabilization_score} is the one numerator this
+route cannot reproduce. The product records that the numerator was a score
+without recording the vector it was, so the system rebuilds the dose weights
+from the exposure's own marginal moments and the weight-consistency check
+reports the difference. Weight the dose on its own to use a numerator
+computed by hand.
+
+An \code{\link[mgcv:gam]{mgcv::gam()}} dose model, and dose weights built with a \code{"kernel"}
+density, are refused with class
+\code{propensity_ipw_se_method_unavailable_error}. Neither is a function of the
+parameters that the sandwich could differentiate, and the package has no
+second method to fall back on, so the refusal points at building the dose
+weights from a model and a density the stacked system can write, or at
+bootstrapping the whole fit by hand.
 }
 
 }
@@ -777,13 +854,13 @@ outcome model reports the contrast for that target population rather than the
 full-sample average. Stacking the models accounts for the uncertainty
 introduced by estimating the propensity scores, avoiding the underestimated
 standard errors that arise from treating estimated weights as fixed. See
-Stefanski
-and Boos (2002) for the M-estimation framework.
+Stefanski and Boos (2002) for the M-estimation framework.
 
 M-estimation standard errors are available for all exposure types: binary
 (from a \code{\link[stats:glm]{stats::glm()}} propensity score model), categorical (from a
-\code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}} or
-identity-link gaussian \code{\link[stats:glm]{stats::glm()}} model). The \code{atm} weight
+\code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}}, a gaussian
+\code{\link[stats:glm]{stats::glm()}}, or a \code{\link[MASS:rlm]{MASS::rlm()}} model; see \strong{Continuous propensity score
+models} below). The \code{atm} weight
 \code{pmin(e, 1 - e)} is not differentiable at a propensity score of \code{0.5}; deli's
 central finite difference straddles the kink there and averages the one-sided
 slopes. Its effect on the variance is negligible unless many observations sit
@@ -796,6 +873,75 @@ observations allocates on the order of hundreds of megabytes. The cost comes
 from the stacked estimating-equation machinery rather than any single term,
 and for very large samples you can expect long, garbage-collection-heavy
 fits. This is expected behavior.
+\subsection{Continuous propensity score models}{
+
+A continuous exposure's weights are a ratio of densities centered on the
+conditional mean the propensity score model fits, so the stacked system
+carries that model's own score. Three classes supply one: an \code{\link[stats:lm]{stats::lm()}},
+a gaussian \code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, and a
+\code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi. A gaussian model fit with any other
+link is refused by name, because the coefficients its iteration stops at are
+not a tight enough root to seed the stacked solve from; refit it with one of
+the two links or as an \code{\link[stats:lm]{stats::lm()}}. Any other class errors, since solving
+it here would report a propensity score model that was never fit.
+
+A \code{\link[MASS:rlm]{MASS::rlm()}} is stacked as the Huber score its coefficients are the root
+of, clipped where the fit itself clipped: at the psi's own constant, which is
+the constant a caller passed as \code{k} when they passed one, times the scale the
+fit settled on. That scale enters the location score as a known constant. It
+solves an equation of its own that the stacked system does not write, so none
+of its sampling variability is propagated, and the standard errors are those
+of a Huber score read at a scale treated as fixed. The spread of the
+conditional density is a separate quantity, and is the pooled residual
+spread there as it is for every other class.
+
+Weights built with \code{.sigma = fit$s}, the robust scale, are read as the fixed
+spread they are, but that combination is usually a poor choice: the robust
+scale resists the very residuals the density is meant to spread over, so on
+contaminated data the conditional density is far narrower than the residuals
+are, and the ratio can collapse onto an effective sample size of about one.
+Leave \code{.sigma} unset unless you have a reason to hold the spread at a
+particular value.
+
+Three robust fits are refused. One fit with a psi that is not Huber, and one
+fit with \code{method = "MM"}, which starts from a high-breakdown fit and finishes
+on a redescending psi, are the roots of equations the stacked system does not
+write; both error with class \code{propensity_ipw_robust_psi_error}. One whose
+iteration stopped short of its own tolerance is the root of nothing, and
+errors with class \code{propensity_ipw_convergence_error}. The first two point to
+a Huber refit or to a bootstrap of the whole fit written by hand; the last
+points to a larger \code{maxit} or a looser \code{acc}, which is what a fit needs to
+reach its own tolerance.
+
+Every density \code{\link[=wt_ate]{wt_ate()}} builds a ratio in is stacked as it was built: the
+normal, Laplace, and Student t families, and a density you wrote yourself,
+under either the marginal or the integrated numerator. \code{ipw()} reads the
+family, the numerator, and the spread off the record the weights carry and
+rebuilds the same ratio at each value of the parameter vector, so the weights
+it differentiates are the weights the outcome model was fit with. A marginal
+numerator contributes the exposure's two marginal moments to the parameter
+vector; an integrated one is built from the propensity score block and the
+data alone and contributes none. Weights carrying no such record, including
+any written with \code{\link[=psw]{psw()}} by hand, are read as the normal ratio the package
+built before the record existed.
+
+Two fits are refused for the standard error rather than for the model. An
+\code{\link[mgcv:gam]{mgcv::gam()}} chooses how much to smooth by REML, and a \code{"kernel"} density
+chooses its bandwidth from the residuals of the propensity score model;
+neither is a function of the parameters that the sandwich could
+differentiate, so weights built from either have no closed-form standard
+error. Both raise an error of class
+\code{propensity_ipw_se_method_unavailable_error}. The package offers no
+resampling method of its own, so the remedy the refusal names is a bootstrap
+of the whole pipeline written by hand: resample the rows, refit the
+propensity score model, rebuild the weights with \code{\link[=wt_ate]{wt_ate()}}, and refit the
+outcome model on each resample, then read the spread of the coefficient
+across the resamples. Doing it that way rather than inside \code{ipw()} keeps what
+each replicate re-estimates, such as a kernel bandwidth or a smoothing
+parameter, under the writer's control.
+}
+
+\subsection{Standard errors by linearization}{
 
 Setting \code{se_method = "linearization"} instead uses the influence-function
 linearization of Kostouraki et al. (2024). It is available only for a binary
@@ -823,8 +969,9 @@ means no longer match the Hajek means the influence functions describe. The
 rejection is broader than that mechanism: a saturated factor coding such as
 \code{y ~ 0 + zf} does estimate both cell means, and the M-estimation path accepts
 it, but the linearization influence functions are derived for the intercept
-parameterization, so every no-intercept outcome model errors here. See \strong{Model requirements} for the baseline
-contract both methods impose.
+parameterization, so every no-intercept outcome model errors here. See
+\strong{Model requirements} for the baseline contract both methods impose.
+}
 }
 
 \section{Multiple imputation}{
@@ -956,14 +1103,18 @@ Three further requirements apply to the weights and the propensity score
 model. The outcome model weights must match the values implied by the
 propensity score model; a mismatch errors, on both standard error methods.
 
-For a continuous exposure that requirement fixes the spread of the
+For a continuous exposure that requirement bears on the spread of the
 conditional density. \code{ipw()} stacks a single pooled residual variance
 alongside the propensity score coefficients, so the weights it rebuilds are
-the ones \code{\link[=wt_ate]{wt_ate()}} produces with its pooled default. Weights built with an
+the ones \code{\link[=wt_ate]{wt_ate()}} produces with its pooled default. A single \code{.sigma} is
+taken instead as a known constant: the weights are rebuilt at the number that
+was supplied, and the stacked system carries none of that number's
+uncertainty, which is what fixing a spread says. Weights built with an
 observation-level \code{.sigma}, such as \code{influence(model)$sigma}, are a different
-function of the data with no counterpart in the stacked system, and the
-consistency check refuses them. Refit the weights without \code{.sigma} to use
-\code{ipw()}.
+function of the data with no counterpart in the stacked system, and are
+refused before anything is solved, with an error of class
+\code{propensity_ipw_sigma_error}. Rebuild the weights with the pooled default or
+with one number to use \code{ipw()}.
 
 The propensity score model must not separate the exposure. A model whose
 covariates predict the exposure without error has no finite maximum likelihood
@@ -1064,18 +1215,14 @@ outcome_stab <- glm(
 ipw(ps_grp, outcome_stab, .by = grp)
 
 # Continuous exposure: an lm propensity model of the dose on covariates,
-# stabilized weights, and a weighted marginal structural outcome model
+# weights, which are stabilized by default for a continuous exposure, and a
+# weighted marginal structural outcome model
 a <- 0.5 + 0.8 * x1 + rnorm(n)
 y_dose <- 1 + 0.6 * a + 0.3 * x1 + rnorm(n)
 dat$a <- a
 dat$y_dose <- y_dose
 ps_cont <- lm(a ~ x1, data = dat)
-wts_cont <- wt_ate(
-  fitted(ps_cont),
-  a,
-  exposure_type = "continuous",
-  stabilize = TRUE
-)
+wts_cont <- wt_ate(ps_cont)
 msm <- lm(y_dose ~ a, data = dat, weights = wts_cont)
 ipw(ps_cont, msm)
 

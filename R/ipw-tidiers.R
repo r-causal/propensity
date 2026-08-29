@@ -84,11 +84,13 @@
 #'   The covariance the conditional reading reports is the outcome block of the
 #'   jointly estimated sandwich, which every route that stacks estimating
 #'   equations attaches to the outcome model it stores:
-#'   `se_method = "mestimation"` for a binary exposure, and the categorical and
-#'   continuous routes, which run on M-estimation alone. A linearization fit
-#'   stacks no such system and records no such block, so its conditional reading
-#'   errors rather than reporting the covariance the outcome model computed for
-#'   itself, which treats the estimated weights as fixed.
+#'   `se_method = "mestimation"` for a binary exposure, the categorical and
+#'   joint routes, which run on M-estimation alone, and the continuous route
+#'   under that method. A linearization fit stacks no system and records no
+#'   covariance of either kind, so its conditional reading errors rather than
+#'   reporting the
+#'   covariance the outcome model computed for itself, which treats the
+#'   estimated weights as fixed.
 #' @param parametric Accepted and ignored. [mice::pool()] passes
 #'   `parametric = TRUE` to every tidier it calls, to ask the models it was
 #'   written against for their parametric coefficient table rather than for a

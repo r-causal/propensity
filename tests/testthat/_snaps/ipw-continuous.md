@@ -19,16 +19,6 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-# the continuous propensity-link error names the unsupported link
-
-    Code
-      ipw(ps_mod, msm)
-    Condition
-      Error in `ipw()`:
-      ! `ipw()` supports only an identity-link propensity score model for a continuous exposure.
-      x `wt_mod` is a gaussian model with a "log" link.
-      i Refit `wt_mod` as an `lm()` or a gaussian glm with an identity link.
-
 # the continuous ps_link error explains why the argument does not apply
 
     Code
@@ -36,8 +26,18 @@
     Condition
       Error in `ipw()`:
       ! `ipw()` does not accept `ps_link` for a continuous propensity score model.
-      x A continuous propensity score model has no link for `ps_link` to override.
+      x `ps_link` names the link of a binomial glm, which a continuous propensity score model is not.
       i Omit `ps_link`; it applies only to a binomial glm propensity score model.
+
+# the observation-level spread refusal names both spreads it takes
+
+    Code
+      expr
+    Condition <propensity_ipw_sigma_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support weights built with an observation-level `.sigma`.
+      x The weights supplied to `outcome_mod` record a spread for each observation, which has no counterpart in the stacked system: it estimates one conditional spread, or holds one fixed.
+      i Rebuild the weights with the pooled default, by leaving `.sigma` unset, or with a single `.sigma`, which `ipw()` takes as a known constant.
 
 # the transformed continuous propensity response error reads in the user's terms
 
@@ -48,4 +48,77 @@
       ! `ipw()` does not support a transformed response in the propensity score model.
       x `wt_mod` reads the exposure through `log(Apos)`, an expression rather than a single column.
       i Fit `wt_mod` with the exposure itself as the response, adding it to the data as its own column first if it has to be computed.
+
+# the robust psi refusal names the psi it found and the remedy
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
+      x `wt_mod` was fit with `MASS::psi.bisquare()`.
+      i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# the MM refusal names the method and the psi it finishes on
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
+      x `wt_mod` was fit with `method = "MM"`, which starts from a high-breakdown fit and finishes on `MASS::psi.bisquare()`.
+      i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# the robust convergence refusal names the arguments that fix it
+
+    Code
+      expr
+    Condition <propensity_ipw_convergence_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot stack a <rlm/lm> propensity score model that did not converge.
+      x `wt_mod` reports `converged = FALSE`, so its coefficients are not the root of the score stacked here.
+      i Refit `wt_mod` with a larger `maxit`, or a looser `acc`, until it converges.
+
+# the unknown-subclass error names the classes that are supported
+
+    Code
+      expr
+    Condition <propensity_class_error>
+      Error in `ipw()`:
+      ! `ipw()` supports only `stats::lm()`, gaussian `stats::glm()`, or `MASS::rlm()` propensity score models for a continuous exposure.
+      x `wt_mod` has class <mymodel/lm>.
+      i A <gam> is recognized and refused on its own terms; every other class reaches this refusal.
+      i Refit `wt_mod` with `stats::lm()` or `stats::glm(family = gaussian())`.
+
+# the continuous propensity-link error names the link and the remedy
+
+    Code
+      expr
+    Condition <propensity_ipw_link_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support the "inverse" link for the propensity score model of a continuous exposure.
+      x `wt_mod` is a gaussian model fit with the "inverse" link.
+      i Refit `wt_mod` with one of "identity" and "log", or as an `lm()`.
+
+# the unavailable-method error explains what the sandwich cannot do
+
+    Code
+      expr
+    Condition <propensity_ipw_se_method_unavailable_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> propensity score model of a continuous exposure.
+      x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# the kernel-density refusal names the bandwidth as the reason
+
+    Code
+      expr
+    Condition <propensity_ipw_se_method_unavailable_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot build a sandwich variance for weights built with a "kernel" density.
+      x The bandwidth of a kernel estimate is chosen from the residuals of the propensity score model, so the weights are not a differentiable function of that model's parameters.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 

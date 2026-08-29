@@ -6,6 +6,7 @@ BYOM
 Biometrics
 Biometrika
 Biostatistics
+Brumback
 CMD
 Codecov
 Crump
@@ -16,8 +17,10 @@ Estimand
 Estimands
 Faries
 Gerke
+Greifer
 Hajage
 Hajek
+Hernán
 Hirano
 Hotz
 IPTW
@@ -31,6 +34,8 @@ Leyrat
 Matchable
 Matsouaka
 Mitnik
+Moodie
+Naimi
 ORCID
 PSW
 Platt
@@ -41,6 +46,7 @@ SIGKDD
 Stefanski
 Subassignment
 Unstabilized
+WeightIt
 Winsorize
 Zadrozny
 Zaslavsky
@@ -67,6 +73,7 @@ framings
 glm
 glm's
 halfmoon
+heteroskedastic
 isotonic
 lifecycle
 lossy
@@ -88,6 +95,7 @@ quasibinomial
 quasipoisson
 rebuilder
 recentering
+redescending
 relevel
 renormalize
 renormalized

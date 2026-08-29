@@ -304,9 +304,11 @@
 
     Code
       expr
-    Condition <propensity_method_error>
+    Condition <propensity_model_family_error>
       Error in `wt_ate()`:
-      ! No method for objects of class lm
+      ! Weights for a binary exposure need a model of the probability of that exposure.
+      x `.propensity` is <lm>, whose fitted values are conditional means rather than probabilities.
+      i Fit the propensity score model with `binomial()`, or pass fitted probabilities to `.propensity` directly.
 
 ---
 

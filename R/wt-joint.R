@@ -15,9 +15,31 @@ joint_wt_exposure_types <- c("binary", "categorical", "continuous")
 
 # The model classes a treatment model may be, and the exposure type each one
 # implies, in the vocabulary the rest of the package uses for exposures.
+#
+# Each class is named rather than reached by inheritance, because the two the
+# package reads a dose from are subclasses of the two it reads other things
+# from: an `rlm` is an `lm` and a `gam` is a `glm`. Written as inheritance the
+# branch for the parent would type them, and it would type an unfamiliar
+# subclass of either parent along with them, which is how a model this package
+# cannot read a density from would pass silently.
 joint_wt_model_type <- function(model) {
+  classes <- class(model)
+
   if (inherits(model, "multinom")) {
     return("categorical")
+  }
+
+  if (inherits(model, "gam")) {
+    # An additive model of a dose is a gaussian one. Any other family fits
+    # something this package reads no treatment density from.
+    if (identical(model$family$family, "gaussian")) {
+      return("continuous")
+    }
+    return(NULL)
+  }
+
+  if (inherits(model, "rlm")) {
+    return("continuous")
   }
 
   if (inherits(model, "glm")) {
@@ -31,7 +53,7 @@ joint_wt_model_type <- function(model) {
     return(NULL)
   }
 
-  if (inherits(model, "lm")) {
+  if (identical(classes, "lm")) {
     return("continuous")
   }
 
@@ -92,8 +114,16 @@ joint_wt_response <- function(model) {
 #' A continuous component must be stabilized. The unstabilized density ratio
 #' \eqn{1 / f(A | L)} has a heavy right tail on its own, and multiplying it by a
 #' second weight inherits that tail, leaving the product with no usable
-#' variance. Build a continuous component with `stabilize = TRUE`. A binary or
+#' variance. A continuous component is stabilized unless it was built with
+#' `stabilize = FALSE`, so the requirement is met by default. A binary or
 #' categorical component needs no stabilization and is accepted either way.
+#'
+#' Any numerator that stabilizes the ratio satisfies the requirement, and any
+#' density the ratio is read in is accepted: a component built with
+#' `numerator = "integrated"`, with a heavier-tailed `.density`, or with a
+#' `stabilization_score` of its own is stabilized as much as the default
+#' marginal one is. What each component was built with is recorded per component
+#' rather than merged, so the product carries both answers.
 #'
 #' # What the product records
 #'
@@ -114,11 +144,11 @@ joint_wt_response <- function(model) {
 #'   the second, whose model conditions on the first.
 #' @param exposure_type A character vector of length two naming each component's
 #'   exposure type, one of `"binary"`, `"categorical"`, or `"continuous"`, in
-#'   the order the components were given. Defaults to two binary components. The
-#'   types are supplied rather than read off the weights, because a [psw()]
-#'   records its estimand and its stabilization but not the kind of exposure it
-#'   weights, and the stabilization requirement needs to tell a continuous
-#'   component from a binary one.
+#'   the order the components were given. Defaults to the types the components
+#'   record, which is what a weight function writes on the weights it builds. A
+#'   value given here is used instead of what they record, and a component
+#'   recording no type, such as one assembled by hand, is refused unless both
+#'   types are named.
 #' @param x An object to test, or the weights to read the record from.
 #'
 #' @return
@@ -127,11 +157,15 @@ joint_wt_response <- function(model) {
 #'
 #' `is_joint_wt()` returns a single logical.
 #'
-#' `joint_wt_meta()` returns the record as a list with two elements, or `NULL`
-#' for weights that are not a product:
+#' `joint_wt_meta()` returns the record as a list of three elements, each one
+#' per component and in the order the components were given, or `NULL` for
+#' weights that are not a product:
 #' \describe{
 #'   \item{`exposure_type`}{The two components' exposure types, in order.}
 #'   \item{`stabilized`}{Whether each component was stabilized, in order.}
+#'   \item{`density`}{Each component's density record, as [density_meta()]
+#'     returns it, in order. A component weighting a discrete exposure is
+#'     `NULL`, since its weights are no ratio of densities.}
 #' }
 #'
 #' The record names the components rather than the observations, so it survives
@@ -159,25 +193,25 @@ joint_wt_response <- function(model) {
 #' is_joint_wt(w)
 #' joint_wt_meta(w)
 #'
-#' # A continuous component must be stabilized
+#' # A continuous component must be stabilized, which it is by default
 #' d <- 0.5 + 0.6 * x1 - 0.7 * a + rnorm(n)
 #' mod_d <- lm(d ~ a * x1, data = dat)
-#' w_d <- wt_ate(
-#'   fitted(mod_d),
-#'   d,
-#'   exposure_type = "continuous",
-#'   stabilize = TRUE
-#' )
-#' joint_wt_meta(wt_joint(wt_ate(mod_a), w_d, c("binary", "continuous")))
+#' w_d <- wt_ate(mod_d)
+#' # Each component records the exposure type it weights, so the product knows
+#' # which of them is the dose without being told
+#' joint_wt_meta(wt_joint(wt_ate(mod_a), w_d))
 #'
 #' @name wt_joint
 NULL
 
 #' @rdname wt_joint
 #' @export
-wt_joint <- function(w_a, w_e, exposure_type = c("binary", "binary")) {
-  check_wt_joint_exposure_type(exposure_type)
+wt_joint <- function(w_a, w_e, exposure_type = NULL) {
+  # The class check comes first because everything after it reads a record off
+  # the components, and a bare numeric carries none of them.
   check_wt_joint_class(w_a, w_e)
+  exposure_type <- wt_joint_exposure_type(w_a, w_e, exposure_type)
+  check_wt_joint_exposure_type(exposure_type)
   check_wt_joint_length(w_a, w_e)
   check_wt_joint_estimand(w_a, w_e)
 
@@ -194,10 +228,61 @@ wt_joint <- function(w_a, w_e, exposure_type = c("binary", "binary")) {
   )
   attr(out, "joint_wt_meta") <- list(
     exposure_type = unname(exposure_type),
-    stabilized = unname(stabilized)
+    stabilized = unname(stabilized),
+    # A dose's weights are a ratio of densities, and which ratio they are is
+    # what an estimator has to rebuild them from. The slot is one per component,
+    # empty for a component weighting no density, so the record is read
+    # positionally either way.
+    density = list(density_meta(w_a), density_meta(w_e))
   )
 
   out
+}
+
+# The exposure types the product is built under: the ones the caller named, or
+# the ones the components recorded when the caller named none. A weight function
+# records the type it was given, so repeating it is the exception rather than
+# the rule, and a caller who does name it is taken at their word: the argument
+# decides and the reading is what happens in its absence.
+#
+# A component recording no type is refused rather than guessed at. The
+# stabilization requirement is a rule about doses, so a component whose type is
+# unknown is one the rule could not be applied to.
+wt_joint_exposure_type <- function(
+  w_a,
+  w_e,
+  declared,
+  call = rlang::caller_env()
+) {
+  if (!is.null(declared)) {
+    return(declared)
+  }
+
+  recorded <- list(exposure_type(w_a), exposure_type(w_e))
+  unrecorded <- vapply(recorded, is.null, logical(1))
+
+  if (!any(unrecorded)) {
+    return(unlist(recorded))
+  }
+
+  bad <- c("w_a", "w_e")[unrecorded]
+
+  abort(
+    c(
+      "{.fun wt_joint} requires each component to record the exposure type it \\
+      weights.",
+      x = "{.arg {bad}} record{?s/} none.",
+      i = "A weight built by hand, or by a version of the package that did \\
+      not record it, carries an estimand and a stabilization status and \\
+      nothing about the exposure, so the requirement that a continuous \\
+      component be stabilized could not be applied to it.",
+      i = "Rebuild {cli::qty(bad)}{?it/them} with a weight function such as \\
+      {.fun wt_ate}, or name both types in {.arg exposure_type}, for example \\
+      {.code exposure_type = c(\"binary\", \"continuous\")}."
+    ),
+    error_class = "propensity_wt_joint_exposure_type_error",
+    call = call
+  )
 }
 
 #' @rdname wt_joint
@@ -231,7 +316,8 @@ check_wt_joint_exposure_type <- function(
       x = problem,
       i = "Supported types: {.val {joint_wt_exposure_types}}.",
       i = "Supply one per component, in the order the components were given, \\
-      for example {.code exposure_type = c(\"binary\", \"continuous\")}."
+      for example {.code exposure_type = c(\"binary\", \"continuous\")}, or \\
+      leave {.arg exposure_type} unset to read each component's own record."
     ),
     error_class = "propensity_wt_joint_exposure_type_error",
     call = call
@@ -381,8 +467,10 @@ check_wt_joint_stabilize <- function(
 #' @param ... Exactly two fitted treatment models, each named for the treatment
 #'   it fits. The order is the factorization's order. Supported models are a
 #'   binomial [stats::glm()] for a binary treatment, a [nnet::multinom()] for a
-#'   categorical one, and an [stats::lm()] or gaussian [stats::glm()] for a
-#'   continuous one.
+#'   categorical one, and an [stats::lm()], a gaussian [stats::glm()], a
+#'   gaussian `mgcv::gam()`, or a `MASS::rlm()` for a continuous one. Each class
+#'   is recognized by name rather than by inheritance, so a subclass of one of
+#'   them is not read as its parent.
 #' @param x An object to test.
 #'
 #' @return
@@ -512,8 +600,9 @@ check_joint_wt_models_supported <- function(
         density from.",
         x = "The model named {.arg {bad[[1]]}} is {.cls {bad_class}}.",
         i = "Supported models: a binomial {.fun glm} for a binary treatment, \\
-        a {.fun nnet::multinom} for a categorical one, and an {.fun lm} or \\
-        gaussian {.fun glm} for a continuous one."
+        a {.fun nnet::multinom} for a categorical one, and an {.fun lm}, a \\
+        gaussian {.fun glm}, a gaussian {.fun mgcv::gam}, or a \\
+        {.fun MASS::rlm} for a continuous one."
       ),
       error_class = "propensity_wt_joint_models_error",
       call = call

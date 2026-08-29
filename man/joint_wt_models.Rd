@@ -13,8 +13,10 @@ is_joint_wt_models(x)
 \item{...}{Exactly two fitted treatment models, each named for the treatment
 it fits. The order is the factorization's order. Supported models are a
 binomial \code{\link[stats:glm]{stats::glm()}} for a binary treatment, a \code{\link[nnet:multinom]{nnet::multinom()}} for a
-categorical one, and an \code{\link[stats:lm]{stats::lm()}} or gaussian \code{\link[stats:glm]{stats::glm()}} for a
-continuous one.}
+categorical one, and an \code{\link[stats:lm]{stats::lm()}}, a gaussian \code{\link[stats:glm]{stats::glm()}}, a
+gaussian \code{mgcv::gam()}, or a \code{MASS::rlm()} for a continuous one. Each class
+is recognized by name rather than by inheritance, so a subclass of one of
+them is not read as its parent.}
 
 \item{x}{An object to test.}
 }

@@ -418,6 +418,14 @@ ipw_spec_binary <- function(
 # path recodes on the order the column declares and so requires it; the
 # categorical path resolves the column against `ps_mod$lev` instead and passes
 # `FALSE`, as does the continuous path, whose exposure has no levels.
+#
+# `ps_design` says whether the propensity score design is wanted at all. Every
+# route that stacks estimating equations multiplies that design by a block of
+# theta and needs it; the resampling route refits the propensity score model
+# instead and never forms it. Asking for it there is not merely wasted work: an
+# additive model's design is a smooth basis rather than the columns its formula
+# names, so rebuilding one from the formula would report a width that disagrees
+# with the fit for a model resampling handles perfectly well.
 ipw_extract_ps_design <- function(
   ps_mod,
   outcome_mod,
@@ -425,6 +433,7 @@ ipw_extract_ps_design <- function(
   exposure_name,
   counterfactual = TRUE,
   check_exposure_levels = FALSE,
+  ps_design = TRUE,
   call = rlang::caller_env()
 ) {
   # First, and independent of `.data`: the propensity model has to have a
@@ -437,7 +446,7 @@ ipw_extract_ps_design <- function(
     ps_extract <- tryCatch(
       list(
         exposure = fmla_extract_left_vctr(ps_mod),
-        ps_X = model.matrix(ps_mod)
+        ps_X = if (ps_design) model.matrix(ps_mod)
       ),
       error = function(e) e
     )
@@ -570,13 +579,16 @@ ipw_extract_ps_design <- function(
     # values in it, so they keep their place and this one covers what is left.
     check_ipw_data_complete(.data, required, call = call)
 
-    ps_X <- ipw_rebuild_design(
-      ps_mod,
-      stats::delete.response(stats::terms(ps_mod)),
-      .data,
-      call = call
-    )
-    check_ipw_ps_design_width(ps_X, ps_mod, call = call)
+    ps_X <- NULL
+    if (ps_design) {
+      ps_X <- ipw_rebuild_design(
+        ps_mod,
+        stats::delete.response(stats::terms(ps_mod)),
+        .data,
+        call = call
+      )
+      check_ipw_ps_design_width(ps_X, ps_mod, call = call)
+    }
   }
 
   list(exposure = exposure, outcome = outcome, ps_X = ps_X, mm_data = mm_data)
@@ -1576,11 +1588,22 @@ ipw_spec_categorical <- function(
   )
 }
 
+# `stacked` says which route the spec is being built for. A route that stacks
+# estimating equations needs a propensity score model whose score it can write
+# and weights it can differentiate, so it holds both to the registry's
+# `stackable` gate and to the density refusal that goes with it. Resampling asks
+# the models for nothing but a refit and the weights for nothing but their
+# value, so it lifts both gates and forms no propensity score design. Every
+# other requirement, the response, the offset, the marginal structural model's
+# terms, the estimand, and the spread the weights were built at, is a
+# requirement of the estimator rather than of the variance, and holds either
+# way.
 ipw_spec_continuous <- function(
   ps_mod,
   outcome_mod,
   .data = NULL,
   estimand = NULL,
+  stacked = TRUE,
   call = rlang::caller_env()
 ) {
   assert_class(ps_mod, c("glm", "lm"))
@@ -1589,7 +1612,16 @@ ipw_spec_continuous <- function(
   check_ipw_offset(outcome_mod, call = call)
   check_ipw_outcome_response(outcome_mod, call = call)
   check_ipw_outcome_family(outcome_mod, call = call)
-  check_ipw_continuous_links(ps_mod, outcome_mod, call = call)
+  check_ipw_continuous_outcome_link(outcome_mod, call = call)
+
+  # The propensity score model decides which score the stacked system carries
+  # and how the conditional mean is read back from it. A model this path has no
+  # score for is refused here, whether because no equation describes it or
+  # because the class is not one this path knows at all.
+  ps_model <- ipw_continuous_model(ps_mod, call = call)
+  if (stacked) {
+    check_ipw_continuous_model(ps_model, call = call)
+  }
 
   # A propensity model fit with prior case weights would need a weighted score in
   # the stacked system; the ee_regression ps block is unweighted, so the fitted
@@ -1622,6 +1654,7 @@ ipw_spec_continuous <- function(
     .data = .data,
     exposure_name = exposure_name,
     counterfactual = FALSE,
+    ps_design = stacked,
     call = call
   )
   exposure <- as.double(extracted$exposure)
@@ -1641,6 +1674,11 @@ ipw_spec_continuous <- function(
   }
 
   wts <- extract_weights(outcome_mod)
+
+  # What ratio of densities the weights are, which is what the stacked system
+  # has to rebuild. The record travels on the weights; weights that carry none
+  # are read as the ratio every earlier version of the package built.
+  ratio <- ipw_continuous_ratio(wts, stacked = stacked, call = call)
 
   # Membership first, so that a value naming no estimand at all is reported as
   # that on this path too. The restriction below says the estimand asked for is
@@ -1712,7 +1750,9 @@ ipw_spec_continuous <- function(
     exposure = exposure,
     ps = list(
       X = ps_X,
-      link = NULL,
+      kind = ps_model$kind,
+      link = ps_model$link,
+      huber_k = ps_model$huber_k,
       coefs = stats::coef(ps_mod),
       k = NULL
     ),
@@ -1720,6 +1760,9 @@ ipw_spec_continuous <- function(
       stabilized = is_stabilized(wts),
       score = stabilization_score(wts)
     ),
+    density = ratio$density,
+    numerator = ratio$numerator,
+    sigma = ratio$sigma,
     outcome = list(
       X = out_X,
       y = ipw_outcome_numeric(outcome),
@@ -1971,23 +2014,10 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       )
     },
     continuous = {
-      n_alpha <- ncol(spec$ps$X)
-      alpha <- th_ps[seq_len(n_alpha)]
-      sigma2_d <- th_ps[[n_alpha + 1]]
-      fitted_ps <- as.vector(spec$ps$X %*% alpha)
-      mu_a <- if (length(th_stab)) th_stab[[1]] else NULL
-      sigma2_a <- if (length(th_stab)) th_stab[[2]] else NULL
-      weight_fn(
-        fitted_ps,
-        spec$exposure,
-        list(
-          sigma2_d = sigma2_d,
-          mu_a = mu_a,
-          sigma2_a = sigma2_a,
-          score = score,
-          stabilized = spec$stab$stabilized
-        )
-      )
+      # The same inputs the psi builder reads at the same theta, so the weights
+      # compared here are the weights the solve differentiates.
+      inputs <- ipw_continuous_inputs(spec, th_ps, th_stab)
+      weight_fn(inputs$mu, spec$exposure, inputs$extras)
     }
   )
 }
@@ -2009,6 +2039,13 @@ ipw_check_weight_consistency <- function(
     # A joint spec weights two treatments, and the causes a mismatch can have
     # depend on what each of them is rather than on the pair being joint.
     components = spec$ps$types,
+    # What the weights were rebuilt as, so that a mismatch reports the ratio
+    # that was taken rather than leaving the density and the numerator among the
+    # unnamed possibilities. A dose records one whether it is the exposure or
+    # the second component of a joint one; every other spec records none.
+    ratio = if (!is.null(spec$density)) {
+      spec[c("density", "numerator")]
+    },
     call = call
   )
 }
@@ -2024,6 +2061,7 @@ ipw_compare_weights <- function(
   exposure_type,
   estimand,
   components = NULL,
+  ratio = NULL,
   call = rlang::caller_env()
 ) {
   recomputed <- as.double(recomputed)
@@ -2076,20 +2114,30 @@ ipw_compare_weights <- function(
     } else {
       NULL
     }
-    # A joint weight is a product, and a product records that a component was
-    # stabilized without recording the numerator either component was built
-    # with. The stacked system therefore estimates the dose's own marginal
-    # moments, and a component carrying a numerator of its own is a different
-    # function of the data that no parameter value reproduces. A single dose
-    # keeps its score, which is read off the weights and held fixed, so this
-    # cause belongs to the joint route alone.
+    # A joint weight is a product, and a product records that a component's
+    # numerator was a score without recording the score itself. The stacked
+    # system therefore estimates the dose's own marginal moments, and a
+    # component carrying a numerator of its own is a different function of the
+    # data that no parameter value reproduces. A single dose keeps its score,
+    # which is read off the weights and held fixed, so this cause belongs to
+    # the joint route alone.
     score_hint <- if (identical(exposure_type, "joint_models") && dose) {
       "A dose component built with a fixed {.arg stabilization_score} is one \\
-      cause: the product records that a component was stabilized and not the \\
-      numerator it was built with, so {.fun ipw} rebuilds the dose weights \\
+      cause: the product records that the numerator was a score without \\
+      recording the vector it was, so {.fun ipw} rebuilds the dose weights \\
       from the exposure's own marginal moments instead."
     } else {
       NULL
+    }
+    # A dose's weights are a ratio, and the ratio the stacked system took is
+    # read off what the weights record. Naming it keeps the message from
+    # leaving the density and the numerator among the causes when they are the
+    # two the system already agreed with, and names the substitution where
+    # there was one: a joint dose stabilized by a fixed score is rebuilt from
+    # the marginal moments, which is what the cause below explains.
+    ratio_hint <- if (!is.null(ratio)) {
+      "{.fun ipw} rebuilt these weights as a {.val {format(ratio$density)}} \\
+      density with a {.val {ratio$numerator}} numerator."
     }
     msg <- c(
       "The {.val {estimand}} weights recomputed from {.arg wt_mod} differ \\
@@ -2097,6 +2145,9 @@ ipw_compare_weights <- function(
       tolerance 1e-6).",
       i = resolved_cause
     )
+    if (!is.null(ratio_hint)) {
+      msg <- c(msg, i = ratio_hint)
+    }
     if (!is.null(focal_hint)) {
       msg <- c(msg, i = focal_hint)
     }
@@ -2609,24 +2660,53 @@ ipw_mestimation_estimates <- function(
     group <- rows$group
   }
 
-  estimate <- unname(co[idx])
-  std.err <- unname(se[idx])
-  z <- estimate / std.err
+  out <- ipw_estimates_frame(
+    effect = effect,
+    contrast = contrast,
+    group = group,
+    estimate = unname(co[idx]),
+    std.err = unname(se[idx]),
+    conf_level = conf_level
+  )
 
+  # The covariance of the reported effects, taken from the same rows and columns
+  # of the sandwich the standard errors came from. The effect measures are
+  # transformations of one another's marginal means, so they covary, and that
+  # part of the fit is recoverable from nowhere else in the result. The block
+  # arrives under the theta names, which are not unique across blocks and read as
+  # seeds rather than as effects, so it is relabeled the way every surface of the
+  # result labels its rows.
+  attr(out, "ipw_vcov") <- ipw_vcov_block(vc, idx, ipw_effect_labels(out))
+
+  out
+}
+
+# The estimates table itself: the reported rows, the normal-approximation
+# interval around each of them, and the columns that name them, in the layout
+# every `ipw()` route returns. What differs between routes is where the estimate
+# and the standard error come from, so that is all a route supplies. The
+# interval is the normal approximation on every one of them, which is what
+# `tidy()` and `pool_ipw()` read.
+ipw_estimates_frame <- function(
+  effect,
+  contrast,
+  group,
+  estimate,
+  std.err,
+  conf_level
+) {
+  z <- estimate / std.err
   z_val <- stats::qnorm(1 - (1 - conf_level) / 2)
-  ci.lower <- estimate - z_val * std.err
-  ci.upper <- estimate + z_val * std.err
-  p.value <- 2 * stats::pnorm(abs(z), lower.tail = FALSE)
 
   out <- data.frame(
     effect = effect,
     estimate = estimate,
     std.err = std.err,
     z = z,
-    ci.lower = ci.lower,
-    ci.upper = ci.upper,
+    ci.lower = estimate - z_val * std.err,
+    ci.upper = estimate + z_val * std.err,
     conf.level = conf_level,
-    p.value = p.value
+    p.value = 2 * stats::pnorm(abs(z), lower.tail = FALSE)
   )
 
   # The columns that name a row lead the table, in the order a label pastes
@@ -2646,15 +2726,6 @@ ipw_mestimation_estimates <- function(
   if (length(keys) > 1L) {
     out <- cbind(keys, out[setdiff(names(out), "effect")])
   }
-
-  # The covariance of the reported effects, taken from the same rows and columns
-  # of the sandwich the standard errors came from. The effect measures are
-  # transformations of one another's marginal means, so they covary, and that
-  # part of the fit is recoverable from nowhere else in the result. The block
-  # arrives under the theta names, which are not unique across blocks and read as
-  # seeds rather than as effects, so it is relabeled the way every surface of the
-  # result labels its rows.
-  attr(out, "ipw_vcov") <- ipw_vcov_block(vc, idx, ipw_effect_labels(out))
 
   out
 }

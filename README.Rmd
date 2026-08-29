@@ -76,6 +76,22 @@ ipw(ps_mod, outcome_mod)
 
 By default, `ipw()` computes standard errors by M-estimation, stacking the propensity score and outcome estimating equations so the uncertainty of estimating the propensity scores is carried into the standard errors. Set `se_method = "linearization"` for the influence-function method (binary exposures with an exposure-only outcome model).
 
+A continuous exposure follows the same three steps. The propensity score model is a model of the dose, such as an `lm()`, and the weights are a ratio of densities rather than a function of a propensity score:
+
+```{r usage-continuous}
+# A dose, and an outcome that depends on it
+dat$a <- 0.4 + 0.7 * dat$x1 + rnorm(n)
+dat$y_dose <- 1 + 0.5 * dat$a + 0.3 * dat$x1 + rnorm(n)
+
+# The weights are stabilized by default for a continuous exposure
+ps_dose <- lm(a ~ x1, data = dat)
+wts_dose <- wt_ate(ps_dose)
+
+# The outcome model is a marginal structural model of the dose
+msm <- lm(y_dose ~ a, data = dat, weights = wts_dose)
+ipw(ps_dose, msm)
+```
+
 ## Estimands
 
 Each weight function targets a different population:

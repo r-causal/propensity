@@ -115,6 +115,15 @@ an error of class \code{propensity_stabilization_score_error}. A score is record
 as a plain double vector, with its storage type normalized and any names
 dropped, so a score written \code{1L} and one written \code{1} are the same score and
 combine without conflict.
+}
+
+\subsection{The exposure records}{
+
+Weights built by \code{\link[=wt_ate]{wt_ate()}} and its relatives also record the exposure they
+were built for: \code{exposure_type} names its type, and \code{density_meta} describes
+the ratio of densities that weights for a continuous exposure are. Both are
+read back with \code{\link[=exposure_type]{exposure_type()}} and \code{\link[=density_meta]{density_meta()}}, and both describe the
+exposure rather than the units, so neither carries a length of its own.
 
 A zero-length \code{psw} is a prototype: it records what a result built from it
 will carry rather than describing observations of its own, so a
@@ -141,14 +150,23 @@ different estimands are pasted together, and an estimand only one operand
 names stands for the result; the result is stabilized only when both operands
 are, and it is marked as trimmed, truncated, or calibrated when either
 operand is. The remaining attributes, the \code{stabilization_score}, the records
-left by a modified propensity score, and the attributes describing a
-categorical exposure, are carried by agreement: one only a single operand
-records carries, and one both record with the same value carries. One they
-record differently is dropped, since neither value describes the result, and
-a warning of class \code{propensity_metadata_conflict_warning} names it, once for
-each attribute dropped that way and whatever order the inputs were given in.
-The rule is applied per operation, so an attribute one operation drops for a
+left by a modified propensity score, the attributes describing a categorical
+exposure, and the exposure records, are carried by agreement: one only a
+single operand records carries, and one both record with the same value
+carries. One they record differently is dropped, since neither value
+describes the result, and a warning of class
+\code{propensity_metadata_conflict_warning} names it, once for each attribute
+dropped that way and whatever order the inputs were given in. The rule is
+applied per operation, so an attribute one operation drops for a
 disagreement can be carried again by a later operation whose operands agree.
+Two density records agree when they name the same family with the same
+parameters and the same numerator and residual spread, so weights built the
+same way in two calls agree even though each call builds its own copy of the
+function that evaluates the density.
+
+A \code{density_meta} record describes a continuous exposure, so a result that
+drops \code{exposure_type} for a disagreement drops the density record with it,
+without a second warning: the record has nothing left to be about.
 
 A \code{stabilization_score} is carried only when the result is stabilized, which
 takes both operands. A result that is not stabilized drops the score without
@@ -160,7 +178,8 @@ plain numeric vector. Concatenation appends one set of observations to
 another, so the positions a modification record names would describe units
 from the other input; those records are dropped from the result whether or
 not the inputs agree on them. The categorical attributes name exposure levels
-rather than positions and carry when the inputs agree.
+rather than positions, and the exposure records describe the exposure rather
+than any unit, so both carry when the inputs agree.
 
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
 Two kinds of attribute hold one value per observation and so cannot be
@@ -196,9 +215,10 @@ entirely.
 
 The result of any of these operations stays a \code{psw} and keeps every other
 attribute, including its stabilized, trimmed, truncated, and calibrated
-status, and the attributes describing a categorical exposure, which name the
-exposure levels rather than the units and so mean the same thing at any
-length.
+status, the attributes describing a categorical exposure, which name the
+exposure levels rather than the units, and the exposure records, which
+describe the exposure rather than any unit, so both mean the same thing at
+any length.
 
 Matrix or array subscripts intentionally drop the \code{psw} class and return
 a plain numeric vector via base R linear indexing; this is required so

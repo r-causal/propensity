@@ -39,6 +39,14 @@
 #' dropped, so a score written `1L` and one written `1` are the same score and
 #' combine without conflict.
 #'
+#' ## The exposure records
+#'
+#' Weights built by [wt_ate()] and its relatives also record the exposure they
+#' were built for: `exposure_type` names its type, and `density_meta` describes
+#' the ratio of densities that weights for a continuous exposure are. Both are
+#' read back with [exposure_type()] and [density_meta()], and both describe the
+#' exposure rather than the units, so neither carries a length of its own.
+#'
 #' A zero-length `psw` is a prototype: it records what a result built from it
 #' will carry rather than describing observations of its own, so a
 #' per-observation score on one is recorded as given and checked for length when
@@ -63,14 +71,23 @@
 #' names stands for the result; the result is stabilized only when both operands
 #' are, and it is marked as trimmed, truncated, or calibrated when either
 #' operand is. The remaining attributes, the `stabilization_score`, the records
-#' left by a modified propensity score, and the attributes describing a
-#' categorical exposure, are carried by agreement: one only a single operand
-#' records carries, and one both record with the same value carries. One they
-#' record differently is dropped, since neither value describes the result, and
-#' a warning of class `propensity_metadata_conflict_warning` names it, once for
-#' each attribute dropped that way and whatever order the inputs were given in.
-#' The rule is applied per operation, so an attribute one operation drops for a
+#' left by a modified propensity score, the attributes describing a categorical
+#' exposure, and the exposure records, are carried by agreement: one only a
+#' single operand records carries, and one both record with the same value
+#' carries. One they record differently is dropped, since neither value
+#' describes the result, and a warning of class
+#' `propensity_metadata_conflict_warning` names it, once for each attribute
+#' dropped that way and whatever order the inputs were given in. The rule is
+#' applied per operation, so an attribute one operation drops for a
 #' disagreement can be carried again by a later operation whose operands agree.
+#' Two density records agree when they name the same family with the same
+#' parameters and the same numerator and residual spread, so weights built the
+#' same way in two calls agree even though each call builds its own copy of the
+#' function that evaluates the density.
+#'
+#' A `density_meta` record describes a continuous exposure, so a result that
+#' drops `exposure_type` for a disagreement drops the density record with it,
+#' without a second warning: the record has nothing left to be about.
 #'
 #' A `stabilization_score` is carried only when the result is stabilized, which
 #' takes both operands. A result that is not stabilized drops the score without
@@ -82,7 +99,8 @@
 #' another, so the positions a modification record names would describe units
 #' from the other input; those records are dropped from the result whether or
 #' not the inputs agree on them. The categorical attributes name exposure levels
-#' rather than positions and carry when the inputs agree.
+#' rather than positions, and the exposure records describe the exposure rather
+#' than any unit, so both carry when the inputs agree.
 #'
 #' Subsetting with `[` preserves class and attributes for vector subscripts.
 #' Two kinds of attribute hold one value per observation and so cannot be
@@ -118,9 +136,10 @@
 #'
 #' The result of any of these operations stays a `psw` and keeps every other
 #' attribute, including its stabilized, trimmed, truncated, and calibrated
-#' status, and the attributes describing a categorical exposure, which name the
-#' exposure levels rather than the units and so mean the same thing at any
-#' length.
+#' status, the attributes describing a categorical exposure, which name the
+#' exposure levels rather than the units, and the exposure records, which
+#' describe the exposure rather than any unit, so both mean the same thing at
+#' any length.
 #'
 #' Matrix or array subscripts intentionally drop the `psw` class and return
 #' a plain numeric vector via base R linear indexing; this is required so
@@ -267,6 +286,137 @@ is_stabilized <- function(wt) {
 #' @export
 stabilization_score <- function(wt) {
   attr(wt, "stabilization_score")
+}
+
+#' What a set of weights records about the exposure
+#'
+#' @description
+#' Weights carry two records describing the exposure they were built for.
+#' `exposure_type()` returns the type of exposure the weight function was
+#' given, and `density_meta()` returns the record left by weights whose value
+#' is a ratio of densities.
+#'
+#' Both describe the exposure rather than the units, so neither holds a length
+#' of its own: both survive subsetting, arithmetic, and anything else that
+#' changes the number of weights. Combining two sets of weights that record
+#' either of them differently drops the record they disagree on, with a warning
+#' of class `propensity_metadata_conflict_warning`. A result that no longer
+#' records an exposure type is not described as continuous, so it drops any
+#' density record along with it.
+#'
+#' @details
+#' `exposure_type()` returns `"binary"`, `"categorical"`, or `"continuous"`. It
+#' returns `NULL` for weights that were built without an exposure to describe,
+#' such as those written with [psw()] directly.
+#'
+#' `density_meta()` returns a record of what the ratio was built from, and
+#' `NULL` for weights that are not a ratio of densities, which is every set of
+#' weights for a binary or categorical exposure:
+#'
+#' * `density`, the specification of the conditional density family, as built
+#'   by [dens_normal()] and its relatives.
+#' * `numerator`, what stabilized the weights: `"marginal"` for the marginal
+#'   density of the exposure, `"integrated"` for the conditional density
+#'   marginalized over the units, `"score"` for a `stabilization_score` the
+#'   caller supplied, and `"none"` for weights that were not stabilized.
+#' * `sigma`, where the residual spread of the conditional density came from:
+#'   `"pooled"` for the pooled residual standard deviation, and `"supplied"`
+#'   for a `.sigma` the caller gave.
+#' * `sigma_value`, the single spread the caller supplied, and `NULL` for a
+#'   pooled spread and for one supplied per observation. A spread that is one
+#'   number is a constant the weights can be rebuilt from, which is what
+#'   [ipw()] needs of it; a spread that changes with the observation is not,
+#'   so the record holds where it came from and nothing more.
+#'
+#' @param wt A `psw` or `causal_wts` object.
+#' @param x A density record, as returned by `density_meta()`.
+#' @param ... Not used.
+#'
+#' @return
+#' * `exposure_type()`: a single string, or `NULL`.
+#' * `density_meta()`: a list of class `propensity_density_meta` with the
+#'   elements `density`, `numerator`, `sigma`, and `sigma_value`, or `NULL`.
+#' * `print()` and `format()`: the record, invisibly, and a character vector of
+#'   one line per element.
+#'
+#' @seealso [psw()] for the weight vector class and the rest of what it
+#'   records, and [wt_ate()] for the functions that write these records.
+#'
+#' @examples
+#' set.seed(1)
+#' ps <- runif(20, 0.2, 0.8)
+#' trt <- rbinom(20, 1, ps)
+#'
+#' # A binary exposure is weighted by propensity scores rather than by a
+#' # density, so there is no density to record.
+#' exposure_type(wt_ate(ps, trt))
+#' density_meta(wt_ate(ps, trt))
+#'
+#' dose <- rnorm(20)
+#' mu <- 0.3 * ps
+#' w <- wt_ate(mu, dose, exposure_type = "continuous")
+#'
+#' exposure_type(w)
+#' density_meta(w)
+#'
+#' @name exposure_type
+#' @export
+exposure_type <- function(wt) {
+  attr(wt, "exposure_type")
+}
+
+#' @rdname exposure_type
+#' @export
+density_meta <- function(wt) {
+  attr(wt, "density_meta")
+}
+
+# What weights that are a ratio of densities record about the ratio: the
+# specification that evaluates the density, which numerator stabilized them,
+# where the residual spread came from, and, when that spread is a single number
+# the caller supplied, the number itself. A spread of one number is a constant
+# the ratio can be rebuilt from; one number per observation is not, and is
+# recorded only as having been supplied.
+new_density_meta <- function(density, numerator, sigma, sigma_value = NULL) {
+  structure(
+    list(
+      density = density,
+      numerator = numerator,
+      sigma = sigma,
+      sigma_value = sigma_value
+    ),
+    class = "propensity_density_meta"
+  )
+}
+
+#' @rdname exposure_type
+#' @export
+format.propensity_density_meta <- function(x, ...) {
+  # `format()` pads the labels to the longest of them, so the three values read
+  # down the same column.
+  labels <- format(c("density:", "numerator:", "sigma:"))
+
+  paste(labels, c(format(x$density), x$numerator, x$sigma))
+}
+
+#' @rdname exposure_type
+#' @export
+print.propensity_density_meta <- function(x, ...) {
+  writeLines(format(x))
+
+  invisible(x)
+}
+
+# Two density records describe the same ratio when they say the same thing. They
+# are not compared by identity, the way every other carried attribute is,
+# because a record holds the function that evaluates the density and
+# `dens_normal()` builds a fresh closure on every call: two sets of weights
+# built the same way in two calls would otherwise be read as a disagreement.
+density_meta_agrees <- function(x, y) {
+  identical(x$numerator, y$numerator) &&
+    identical(x$sigma, y$sigma) &&
+    identical(x$sigma_value, y$sigma_value) &&
+    density_specs_agree(x$density, y$density)
 }
 
 #' @rdname psw
@@ -696,6 +846,12 @@ psw_modification_meta <- c("ps_trim_meta", "ps_trunc_meta", "ps_calib_meta")
 # rather than the units, so they carry no length of their own.
 psw_categorical_attrs <- c("n_categories", "category_names", "focal_category")
 
+# What the weights record about the exposure they were built for: its type, and,
+# for weights whose value is a ratio of densities, the record of that ratio.
+# Both describe the exposure rather than the units, so both carry no length of
+# their own and hold at any length.
+psw_exposure_attrs <- c("exposure_type", "density_meta")
+
 # A modification record is judged against `to`, the object supplying it: the
 # record was written for `to`'s observations, so data arriving at `to`'s length
 # is the only data those indices describe. `n` is the number of observations the
@@ -722,12 +878,14 @@ psw_joint_attr <- "joint_wt_meta"
 
 # Everything a psw carries beyond the six fields describing the weights as a
 # whole. The score and the modification records are indexed by observation; the
-# categorical attributes name exposure levels and the joint record names the two
-# components, so both of those hold at any length.
+# categorical attributes name exposure levels, the exposure records describe the
+# exposure, and the joint record names the two components, so all of those hold
+# at any length.
 psw_carried_attrs <- c(
   "stabilization_score",
   psw_modification_meta,
   psw_categorical_attrs,
+  psw_exposure_attrs,
   psw_joint_attr
 )
 
@@ -871,7 +1029,7 @@ merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
 
     value <- if (field %in% dropped) {
       NULL
-    } else if (is.null(x_value) || identical(x_value, y_value)) {
+    } else if (is.null(x_value) || psw_attrs_agree(field, x_value, y_value)) {
       y_value
     } else if (is.null(y_value)) {
       x_value
@@ -883,11 +1041,36 @@ merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
     attrs[field] <- list(value)
   }
 
+  # A density record describes a continuous exposure, and the exposure type is
+  # what says the result is one. A result that records no exposure type is not
+  # described as continuous, so the density record has nothing left to be about
+  # and goes with it, whether or not the other operand recorded a density to
+  # disagree with. That drop names no disagreement of its own, so it is not
+  # reported; it is named in `conflicted` so that a later pair of the same
+  # operation cannot carry it back.
+  exposure_dropped <- "exposure_type" %in% c(dropped, conflicts)
+  if (exposure_dropped && "density_meta" %in% names(attrs)) {
+    attrs["density_meta"] <- list(NULL)
+    dropped <- union(dropped, "density_meta")
+    conflicts <- setdiff(conflicts, "density_meta")
+  }
+
   list(
     attrs = attrs,
     conflicts = conflicts,
     conflicted = union(dropped, conflicts)
   )
+}
+
+# How two values of one carried attribute are compared. Identity is the question
+# for all but the density record, which holds a function that is written afresh
+# on every call and so is compared by what it says.
+psw_attrs_agree <- function(field, x, y) {
+  if (identical(field, "density_meta")) {
+    return(density_meta_agrees(x, y))
+  }
+
+  identical(x, y)
 }
 
 # Unlike a drop for length, which happens to records that also travel by routes
@@ -1007,8 +1190,14 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
   # from the other input. Nothing rebuilding the combined vector is handed the
   # offsets, so the records are left off the prototype whether or not the inputs
   # agree on them. The categorical attributes name exposure levels rather than
-  # positions and so mean the same thing at the combined length.
-  merged <- merge_psw_attrs(x, y, 0, fields = psw_categorical_attrs)
+  # positions, and the exposure records describe the exposure rather than any
+  # unit, so both mean the same thing at the combined length.
+  merged <- merge_psw_attrs(
+    x,
+    y,
+    0,
+    fields = c(psw_categorical_attrs, psw_exposure_attrs)
+  )
   if (length(merged$conflicts) > 0) {
     warn_conflicting_psw_attrs(merged$conflicts)
   }
