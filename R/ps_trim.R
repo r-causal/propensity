@@ -16,8 +16,10 @@
 #'   column taken is announced; `options(propensity.quiet = TRUE)` silences the
 #'   announcement. A matrix is held to the same open interval as a vector, so a
 #'   score of exactly 0 or 1 in any cell is refused and a separated multinomial
-#'   fit cannot be repaired by trimming it; see **Propensity scores at 0 and 1**
-#'   in [wt_ate()].
+#'   fit cannot be repaired by trimming it: setting an extreme score to missing
+#'   gains nothing from a score already at an endpoint. [ps_trunc()] reads the
+#'   closed interval for a categorical matrix and is the repair; see
+#'   **Propensity scores at 0 and 1** in [wt_ate()].
 #' @param method Trimming method. One of:
 #'
 #'   * **`"ps"`** (default): Fixed threshold. Observations with propensity

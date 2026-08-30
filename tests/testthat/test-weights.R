@@ -5865,12 +5865,15 @@ test_that("continuous ATE weights fall back to the pooled residual standard devi
   f_num <- continuous_marginal_density(fixture$exposure)
   f_den <- dnorm(fixture$exposure, mean = fixture$fitted, sd = pooled_sd)
 
-  stabilized <- wt_ate(
+  # The fitted values of this fixture track its exposure closely enough to put
+  # the weights past the finite-variance boundary, which these tests are not
+  # about: they are about which spread the weights were divided by.
+  stabilized <- muffle_variance_warning(wt_ate(
     fixture$fitted,
     fixture$exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  )
+  ))
   expect_equal(as.numeric(stabilized), f_num / f_den)
 
   withr::local_options(propensity.quiet = FALSE)
@@ -5909,13 +5912,15 @@ test_that("wt_ate() on a gaussian model pools the residual standard deviation un
 
   # A model carries no observation-level standard deviations of its own into
   # the weights, so the model route is the numeric route on its fitted values.
-  from_model <- wt_ate(model, exposure_type = "continuous", stabilize = TRUE)
-  from_numeric <- wt_ate(
+  from_model <- muffle_variance_warning(
+    wt_ate(model, exposure_type = "continuous", stabilize = TRUE)
+  )
+  from_numeric <- muffle_variance_warning(wt_ate(
     fitted(model),
     fixture$exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  )
+  ))
   expect_equal(as.numeric(from_model), as.numeric(from_numeric))
   expect_equal(
     as.numeric(from_model),

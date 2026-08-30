@@ -28,8 +28,10 @@ layout model predictions come in, and the first column otherwise. The
 column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
 announcement. A matrix is held to the same open interval as a vector, so a
 score of exactly 0 or 1 in any cell is refused and a separated multinomial
-fit cannot be repaired by trimming it; see \strong{Propensity scores at 0 and 1}
-in \code{\link[=wt_ate]{wt_ate()}}.}
+fit cannot be repaired by trimming it: setting an extreme score to missing
+gains nothing from a score already at an endpoint. \code{\link[=ps_trunc]{ps_trunc()}} reads the
+closed interval for a categorical matrix and is the repair; see
+\strong{Propensity scores at 0 and 1} in \code{\link[=wt_ate]{wt_ate()}}.}
 
 \item{method}{Trimming method. One of:
 \itemize{

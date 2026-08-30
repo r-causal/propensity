@@ -14,10 +14,13 @@
 #'   column data frame, which is the probability of the second level in the
 #'   layout model predictions come in, and the first column otherwise. The
 #'   column taken is announced; `options(propensity.quiet = TRUE)` silences the
-#'   announcement. A matrix is held to the same open interval as a vector, so a
-#'   score of exactly 0 or 1 in any cell is refused and a separated multinomial
-#'   fit cannot be repaired by truncating it; see **Propensity scores at 0 and
-#'   1** in [wt_ate()].
+#'   announcement. A vector is held to the open interval, so a score of exactly
+#'   0 or 1 is refused. A matrix is held to the closed interval instead: a cell
+#'   of exactly 0 or 1 is bounded rather than refused, which is how a separated
+#'   multinomial fit is repaired, and what comes back lies strictly inside
+#'   (0, 1). Anything outside \eqn{[0, 1]} is refused either way, and so is a
+#'   truncation whose own computed bounds leave a score at an endpoint; see
+#'   **Propensity scores at 0 and 1** in [wt_ate()].
 #' @param .exposure An exposure vector. Required for method `"cr"` (binary
 #'   exposure vector) and for categorical exposures (factor or character vector)
 #'   with any method.
@@ -444,10 +447,15 @@ ps_trunc.matrix <- function(
   # Transform to factor and validate
   .exposure <- transform_exposure_categorical(.exposure, call = call)
 
-  # Validate matrix
+  # Validate matrix. Truncation exists to pull a score at an endpoint back
+  # inside the interval, which is the repair a separated multinomial fit needs,
+  # so this route reads the closed interval: a cell of exactly 0 or 1 is bounded
+  # rather than refused. Everything outside [0, 1] is still refused, and so is
+  # any endpoint left standing after the bounds are applied.
   .propensity <- check_ps_matrix(
     .propensity,
     .exposure,
+    closed = TRUE,
     call = call
   )
 
@@ -552,6 +560,13 @@ ps_trunc.matrix <- function(
     upper_bound <- upper_threshold
   }
 
+  check_truncated_matrix_interior(
+    bounded,
+    lower_bound = lower_bound,
+    upper_bound = upper_bound,
+    call = call
+  )
+
   meta <- list(
     method = method,
     lower_bound = lower_bound,
@@ -568,6 +583,55 @@ ps_trunc.matrix <- function(
   }
 
   new_ps_trunc(bounded, meta)
+}
+
+# The categorical matrix route reads the closed interval because bounding a
+# score of exactly 0 or 1 is the repair it exists to make. What comes back has
+# to be a propensity score matrix the rest of the package will read, so the
+# result is held to the open interval the input was excused from.
+#
+# The case this catches is a `"pctl"` truncation of a matrix with enough zeros
+# in it that the lower quantile is itself zero: the bound is then the endpoint,
+# and the truncation pins those cells to where they already sat. The bound is
+# reported because it is what the caller has to replace.
+check_truncated_matrix_interior <- function(
+  bounded,
+  lower_bound,
+  upper_bound,
+  call = rlang::caller_env()
+) {
+  at_endpoint <- !is.na(bounded) & (bounded <= 0 | bounded >= 1)
+  if (!any(at_endpoint)) {
+    return(invisible(TRUE))
+  }
+
+  n_left <- sum(at_endpoint)
+
+  # Written out here rather than in the bullet: a threshold and a pair of
+  # bounds are two different sentences, and neither is a plural of the other.
+  bound_text <- if (is.na(upper_bound)) {
+    cli::format_inline(
+      "The threshold computed from the scores is
+       {.val {as.numeric(lower_bound)}}."
+    )
+  } else {
+    cli::format_inline(
+      "The bounds computed from the scores run from
+       {.val {as.numeric(lower_bound)}} to {.val {as.numeric(upper_bound)}}."
+    )
+  }
+
+  abort(
+    c(
+      "Truncation left {n_left} propensity score{?s} at 0 or 1.",
+      x = bound_text,
+      i = "A bound at an endpoint pins a score to where it already sat.",
+      i = "Supply {.arg lower} and {.arg upper} explicitly, inside the open
+           interval, so that every score is bounded away from 0 and 1."
+    ),
+    error_class = "propensity_range_error",
+    call = call
+  )
 }
 
 #' @export

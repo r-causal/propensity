@@ -1,5 +1,44 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_trunc()` now accepts a categorical propensity score matrix holding cells
+  of exactly 0 or 1, which it used to refuse before it could bound anything.
+  Truncation exists to pull an extreme score back toward the interior, and a
+  separated `nnet::multinom()` fit, whose softmax puts a unit's assigned level
+  at exactly 1 and can underflow the other columns to 0, is the case that most
+  needs it; until now such a matrix had no repair path inside the package at
+  all. The categorical matrix method therefore reads the closed interval, pins
+  every score below the threshold up to it, and renormalizes each row, and what
+  comes back lies strictly inside (0, 1) and weights like any other truncated
+  matrix. The relaxation stops there: `ps_trim()`, which sets extreme scores to
+  missing and gains nothing from an endpoint, the binary vector path, and the
+  weight functions all still refuse a score of exactly 0 or 1. A truncation
+  whose own bounds leave a score at an endpoint, which `method = "pctl"` can do
+  when the lower quantile of the scores is itself zero, is refused and names
+  the bound it computed so that `lower` and `upper` can be supplied explicitly.
+
+* Weights for a continuous exposure now refuse a conditional density of exactly
+  zero at a unit's own exposure rather than returning an infinite weight
+  without comment. That density is what the weights divide by, so a zero there
+  is the continuous counterpart of a propensity score of exactly 0 or 1, and it
+  arises whenever a light-tailed family is read at an outlying residual or a
+  kernel is read past the range it was fit on. The error names the observations
+  it happened at and points to a family with heavier tails, such as `dens_t()`
+  or `dens_kernel()`. Only the denominator is held to this: a zero in the
+  marginal density gives the unit a weight of zero, which is a legitimate
+  weight, and weights that are merely enormous are still returned.
+
+* Stabilized weights from the normal family now warn when the marginal variance
+  of the exposure reaches twice the variance of the conditional density. The
+  second moment of the density ratio exists only below that boundary, so past
+  it the weights have no finite variance and estimates built from them are
+  erratic however large the sample is. The weights are still returned, with a
+  warning of class `propensity_density_variance_warning` that names both
+  variances and suggests a propensity score model explaining more of the
+  exposure. The boundary belongs to the normal family read against the
+  exposure's own marginal density, so nothing is reported for an unstabilized
+  weight, a supplied stabilization score, an integrated numerator, another
+  family, or an observation-level `.sigma`.
+
 * The `ipw()` refusal of a `.by` selection that does not name exactly one
   modifier now branches its remedy on how many columns the selection reached.
   Crossing two variables into one column with `interaction()` is advice for a

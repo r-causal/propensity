@@ -941,9 +941,14 @@ transform_exposure_categorical <- function(
   .exposure
 }
 
+# `closed` widens the range check to the closed interval, for the one caller
+# whose job is to pull a score at an endpoint back inside: the categorical
+# matrix route of `ps_trunc()`. Everywhere else a score of exactly 0 or 1
+# leaves a weight undefined and is refused.
 check_ps_matrix <- function(
   ps_matrix,
   .exposure,
+  closed = FALSE,
   call = rlang::caller_env()
 ) {
   # Convert to matrix if data frame first
@@ -1001,7 +1006,7 @@ check_ps_matrix <- function(
   }
 
   check_ps_matrix_rowsums(ps_matrix, call = call)
-  check_ps_matrix_range(ps_matrix, call = call)
+  check_ps_matrix_range(ps_matrix, closed = closed, call = call)
 
   # Ensure columns are in the same order as factor levels
   # This is critical for correct weight calculation
@@ -1089,7 +1094,16 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
 # The refusal names `.propensity`, the argument every function that reads
 # propensity scores takes them in; reporting a bare range says nothing about
 # what the caller has to correct.
-check_ps_matrix_range <- function(ps_matrix, call = rlang::caller_env()) {
+#
+# `closed` reads the interval as [0, 1] instead, for a caller that bounds the
+# endpoints back inside rather than dividing by them. Anything outside the unit
+# interval is refused either way: a negative score and a score above one are not
+# probabilities, and no bound pulls them back into one.
+check_ps_matrix_range <- function(
+  ps_matrix,
+  closed = FALSE,
+  call = rlang::caller_env()
+) {
   # `min()` and `max()` compare strings rather than numbers, so a matrix that
   # is not made of numbers has to be refused before the bounds are read.
   if (!is.numeric(ps_matrix) && !is.logical(ps_matrix)) {
@@ -1113,12 +1127,26 @@ check_ps_matrix_range <- function(ps_matrix, call = rlang::caller_env()) {
 
   # An infinite score is out of bounds on the side it is infinite on, so the
   # bounds alone catch it.
-  if (lower <= 0 || upper >= 1) {
+  out_of_bounds <- if (closed) {
+    lower < 0 || upper > 1
+  } else {
+    lower <= 0 || upper >= 1
+  }
+
+  if (out_of_bounds) {
+    bound_bullet <- if (closed) {
+      "The bounds are inclusive here: a score of exactly 0 or 1 is one
+       truncation bounds, but a score outside the interval is not a
+       probability."
+    } else {
+      "The bounds are exclusive: a score of exactly 0 or 1 leaves the \\
+      weight undefined."
+    }
+
     abort(
       c(
         "All propensity scores must be between 0 and 1.",
-        i = "The bounds are exclusive: a score of exactly 0 or 1 leaves the \\
-        weight undefined.",
+        i = bound_bullet,
         i = "The range of values in {.arg .propensity} is \\
         {format(as.numeric(c(lower, upper)), nsmall = 1, digits = 1)}"
       ),

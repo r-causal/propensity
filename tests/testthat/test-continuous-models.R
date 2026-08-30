@@ -42,24 +42,29 @@ continuous_model_data <- local({
 # The weights a model route is asked for, and the weights the numeric route
 # gives for the same call when it is handed the model's fitted values rather
 # than the model. Every model method has to agree with the second.
+# Several of these fits explain more than half the variance of the exposure they
+# are fit to, which puts the stabilized normal weights past the finite-variance
+# boundary and raises the report that says so. These tests are written about
+# which fitted values and which spread a model route reads, so the report is
+# muffled on both sides of the comparison.
 continuous_model_wt <- function(fit, exposure, ..., .weight_fn = wt_ate) {
-  .weight_fn(
+  muffle_variance_warning(.weight_fn(
     fit,
     exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
     ...
-  )
+  ))
 }
 
 continuous_model_oracle <- function(fit, exposure, ..., .weight_fn = wt_ate) {
-  .weight_fn(
+  muffle_variance_warning(.weight_fn(
     as.numeric(stats::fitted(fit)),
     exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
     ...
-  )
+  ))
 }
 
 # ---- linear models ----------------------------------------------------------

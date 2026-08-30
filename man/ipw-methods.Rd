@@ -1144,9 +1144,13 @@ continuous exposure has no saturating inverse link and is not checked.
 The weight functions apply a stricter rule to the propensity scores they are
 handed: a categorical matrix holding an exact 0 or 1 anywhere is refused,
 whichever level the cell belongs to. A separated \code{\link[nnet:multinom]{nnet::multinom()}} fit is
-therefore stopped where its weights are built rather than here, and neither
-\code{\link[=ps_trim]{ps_trim()}} nor \code{\link[=ps_trunc]{ps_trunc()}} offers a way past that, since both validate a
-categorical matrix under the same open interval. See \strong{Propensity scores at 0
+therefore stopped where its weights are built rather than here. \code{\link[=ps_trunc]{ps_trunc()}}
+repairs such a matrix, its categorical matrix method reading the closed
+interval so that a cell at an endpoint is bounded rather than refused, while
+\code{\link[=ps_trim]{ps_trim()}} holds the open interval as the weight functions do. Weights built
+from a truncated score are their own refusal here, since \code{\link[=ipw]{ipw()}} cannot yet
+account for a modified propensity score, so a separated fit is repaired for
+the weight functions rather than for this one. See \strong{Propensity scores at 0
 and 1} in \code{\link[=wt_ate]{wt_ate()}} for the remedy.
 
 The propensity score model must also be fit without case weights, since the

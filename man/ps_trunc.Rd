@@ -26,10 +26,13 @@ a binary exposure is reduced to a single column: the second column of a two
 column data frame, which is the probability of the second level in the
 layout model predictions come in, and the first column otherwise. The
 column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
-announcement. A matrix is held to the same open interval as a vector, so a
-score of exactly 0 or 1 in any cell is refused and a separated multinomial
-fit cannot be repaired by truncating it; see \strong{Propensity scores at 0 and
-1} in \code{\link[=wt_ate]{wt_ate()}}.}
+announcement. A vector is held to the open interval, so a score of exactly
+0 or 1 is refused. A matrix is held to the closed interval instead: a cell
+of exactly 0 or 1 is bounded rather than refused, which is how a separated
+multinomial fit is repaired, and what comes back lies strictly inside
+(0, 1). Anything outside \eqn{[0, 1]} is refused either way, and so is a
+truncation whose own computed bounds leave a score at an endpoint; see
+\strong{Propensity scores at 0 and 1} in \code{\link[=wt_ate]{wt_ate()}}.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{

@@ -13,19 +13,24 @@ records_mu <- c(0.2, 0.3, 0.5, 0.6, 0.7, 0.85)
 # Continuous ATE weights, stabilized on the marginal density unless the caller
 # asks for something else. The arguments the record is written from are named
 # rather than passed through dots so that a fixture cannot collide with them.
+#
+# The fitted means track the exposure closely, so the weights sit past the
+# finite-variance boundary and say so. These tests are written about what the
+# weights record rather than about how well behaved they are, so the report is
+# muffled here.
 continuous_records_psw <- function(
   stabilize = TRUE,
   stabilization_score = NULL,
   .sigma = NULL
 ) {
-  wt_ate(
+  muffle_variance_warning(wt_ate(
     records_mu,
     records_exposure,
     .sigma = .sigma,
     exposure_type = "continuous",
     stabilize = stabilize,
     stabilization_score = stabilization_score
-  )
+  ))
 }
 
 records_binary_ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
@@ -277,12 +282,12 @@ test_that("combining weights spread by different numbers drops the density", {
 })
 
 test_that("continuous censoring weights record both", {
-  w <- wt_cens(
+  w <- muffle_variance_warning(wt_cens(
     records_mu,
     records_exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  )
+  ))
 
   expect_identical(estimand(w), "uncensored")
   expect_identical(exposure_type(w), "continuous")
@@ -542,12 +547,12 @@ test_that("weights that differ only in these records cast to each other", {
 test_that("weights from a trimmed propensity score carry the records", {
   trimmed <- ps_trim(records_mu, method = "ps", lower = 0.25, upper = 0.8)
 
-  w <- muffle_refit_warning(wt_ate(
+  w <- muffle_variance_warning(muffle_refit_warning(wt_ate(
     trimmed,
     records_exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  ))
+  )))
 
   expect_identical(estimand(w), "ate; trimmed")
   expect_identical(exposure_type(w), "continuous")
@@ -567,12 +572,12 @@ test_that("weights from a trimmed propensity score carry the records", {
 test_that("weights from a truncated propensity score carry the records", {
   truncated <- ps_trunc(records_mu, method = "ps", lower = 0.25, upper = 0.8)
 
-  w <- wt_ate(
+  w <- muffle_variance_warning(wt_ate(
     truncated,
     records_exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  )
+  ))
 
   expect_identical(estimand(w), "ate; truncated")
   expect_identical(exposure_type(w), "continuous")

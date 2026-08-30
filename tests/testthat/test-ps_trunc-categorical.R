@@ -1233,3 +1233,32 @@ test_that("the boundary matrix ps_trunc() repairs is refused everywhere else", {
     class = "propensity_range_error"
   )
 })
+
+test_that("a truncation whose own bounds sit at an endpoint is refused", {
+  fixture <- separated_trunc_fixture()
+
+  # A quantile of the scores themselves is a bound only if the scores hold one
+  # there. With four zeros among eighteen cells the lower quantile is zero, so
+  # the truncation would pin those cells to where they already sat, and the call
+  # says so rather than returning a matrix that is not a set of propensity
+  # scores.
+  expect_propensity_error(ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "pctl"
+  ))
+})
+
+test_that("the closed interval a categorical truncation reads is described", {
+  fixture <- separated_trunc_fixture()
+
+  outside <- fixture$ps_matrix
+  outside[4, ] <- c(-0.10, 0.60, 0.50)
+
+  expect_propensity_error(ps_trunc(
+    outside,
+    .exposure = fixture$exposure,
+    method = "ps",
+    lower = 0.01
+  ))
+})

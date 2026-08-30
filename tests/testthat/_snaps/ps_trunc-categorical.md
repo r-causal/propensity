@@ -43,3 +43,24 @@
       Warning in `ps_trunc()`:
       Propensity scores have already been truncated. Returning original object.
 
+# a truncation whose own bounds sit at an endpoint is refused
+
+    Code
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trunc()`:
+      ! Truncation left 5 propensity scores at 0 or 1.
+      x The bounds computed from the scores run from 0 to 0.966.
+      i A bound at an endpoint pins a score to where it already sat.
+      i Supply `lower` and `upper` explicitly, inside the open interval, so that every score is bounded away from 0 and 1.
+
+# the closed interval a categorical truncation reads is described
+
+    Code
+      expr
+    Condition <propensity_range_error>
+      Error in `ps_trunc()`:
+      ! All propensity scores must be between 0 and 1.
+      i The bounds are inclusive here: a score of exactly 0 or 1 is one truncation bounds, but a score outside the interval is not a probability.
+      i The range of values in `.propensity` is -0.1 and 1.0
+

@@ -88,6 +88,28 @@
       x 1 value of `.propensity` is infinite.
       i An infinite value leaves the spread of the conditional density infinite, so every weight is missing rather than that unit's alone. Drop those observations before weighting.
 
+# the zero-density refusal reads the way it is written
+
+    Code
+      expr
+    Condition <propensity_density_error>
+      Error in `wt_ate()`:
+      ! The conditional density is zero where the weight would divide by it.
+      x It is zero at 1 observation: 33.
+      i It failed at the standardized residual -2.19.
+      i A weight built from a conditional density of zero is infinite. Use a family with heavier tails, such as `dens_t()` or `dens_kernel()`.
+
+# the finite-variance report reads the way it is written
+
+    Code
+      out <- wt_ate(past$mu, past$exposure, exposure_type = "continuous", stabilize = TRUE)
+    Condition <propensity_density_variance_warning>
+      Warning in `wt_ate()`:
+      Stabilized normal weights have no finite variance for this exposure.
+      x The marginal variance of the exposure is 2.6, which is at least twice the conditional variance 1.09.
+      i The second moment of a stabilized normal density ratio exists only while the marginal variance stays below twice the conditional one. The weights are returned, but estimates built from them are erratic however large the sample is.
+      i A model that explains more of the exposure lowers the conditional variance, and a family with heavier tails, such as `dens_t()`, has a different boundary.
+
 # the refusals of an integrated numerator read the way they should
 
     Code

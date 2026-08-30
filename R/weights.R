@@ -163,11 +163,19 @@
 #' [nnet::multinom()] reaches the endpoints readily. Under separation the
 #' softmax puts the probability at a unit's assigned level at exactly 1 in
 #' double precision, and the columns for the other levels can underflow to
-#' exactly 0. Trimming is no way around the refusal: [ps_trim()] and
-#' [ps_trunc()] validate a categorical matrix under the same open interval and
-#' refuse it before either reaches a threshold. Bound the fitted probabilities
-#' away from 0 and 1 yourself, renormalizing each row to sum to 1, or refit the
-#' propensity score model so that it does not separate.
+#' exactly 0. [ps_trunc()] is the repair for such a matrix: its categorical
+#' matrix method reads the closed interval \eqn{[0, 1]}, so it accepts a cell of
+#' exactly 0 or 1, pins every score below its threshold up to it, and
+#' renormalizes each row to sum to 1. What it returns lies strictly inside
+#' (0, 1) and weights like any other truncated matrix. That relaxation belongs
+#' to the categorical matrix method alone: [ps_trim()] sets extreme scores to
+#' missing and gains nothing from an endpoint, so it holds the open interval,
+#' and so does the binary vector path of [ps_trunc()]. If the bounds a
+#' truncation computes for itself leave a score at an endpoint anyway, which
+#' `method = "pctl"` can do when the lower quantile of the scores is itself
+#' zero, the call is refused and names the bound it computed; supply `lower` and
+#' `upper` explicitly instead. Refitting the propensity score model so that it
+#' does not separate remains the alternative.
 #'
 #' ## Weight formulas
 #'
@@ -283,6 +291,29 @@
 #' before anything is solved, with an error of class
 #' `propensity_ipw_sigma_error`. Build weights with the pooled default, or with
 #' one number, when the outcome model is headed for [ipw()].
+#'
+#' A conditional density of exactly zero at a unit's own exposure is the
+#' continuous counterpart of a propensity score of exactly 0 or 1: the weight it
+#' leaves is infinite, and every estimate built from it is undefined. It is
+#' refused with an error of class `propensity_density_error` naming the
+#' observations it happened at. A light-tailed family at an outlying residual
+#' and a kernel read past the range it was fit on both reach it, so the remedy
+#' is a family with heavier tails, such as [dens_t()] or [dens_kernel()]. A zero
+#' in the numerator is not refused: a marginal density of zero is a weight of
+#' zero, which is a weight like any other.
+#'
+#' Stabilized weights from the normal family have a finite second moment only
+#' while the marginal variance of the exposure stays below twice the variance of
+#' the conditional density, \eqn{\mathrm{Var}(A) < 2\sigma^2}. Past that
+#' boundary the weights have no finite variance, and estimates built from them
+#' are erratic however large the sample is. Reaching it is reported with a
+#' warning of class `propensity_density_variance_warning`; the weights are still
+#' returned. A propensity score model that explains more of the exposure lowers
+#' \eqn{\sigma^2} and moves the boundary out, and a heavier-tailed family sits
+#' at a different one. The boundary is a property of the normal family read
+#' against the exposure's own marginal density, so nothing is reported for an
+#' unstabilized weight, a supplied `stabilization_score`, `numerator =
+#' "integrated"`, another family, or an observation-level `.sigma`.
 #'
 #' ### Categorical exposures
 #'
@@ -1091,6 +1122,18 @@ ate_continuous <- function(
     mu_a <- mean(.exposure, na.rm = TRUE)
     sigma_a <- sqrt(mean((.exposure - mu_a)^2, na.rm = TRUE))
   }
+
+  # Whether the weights this call is about to build have a finite second moment.
+  # The boundary is read here rather than inside the ratio so that it is
+  # reported once for a call the user made, and not again for every step of the
+  # estimating equations `ipw()` rebuilds the same weights from.
+  check_density_variance(
+    .density,
+    sigma = sigma_i,
+    sigma_a = sigma_a,
+    numerator = numerator,
+    call = call
+  )
 
   wt <- continuous_density_ratio(
     exposure = .exposure,

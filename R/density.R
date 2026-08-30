@@ -434,6 +434,7 @@ continuous_density_ratio <- function(
 
   z <- (exposure - mu) / sigma
   f_den <- density_eval_present(density, z, call = call) / sigma
+  check_density_denominator(f_den, z, call = call)
 
   if (identical(numerator, "none")) {
     return(1 / f_den)
@@ -577,6 +578,8 @@ continuous_integrated_ratio <- function(
     call = call
   ) /
     sigma
+
+  check_density_denominator(f_den, z, index = which(present), call = call)
 
   f_num <- continuous_numerator_integrated(
     exposure = exposure,
@@ -946,6 +949,102 @@ check_density_values <- function(
   }
 
   invisible(TRUE)
+}
+
+# Stabilized normal density-ratio weights have a finite second moment only while
+# the marginal variance of the exposure stays below twice the variance of the
+# conditional density. Past that boundary the weights have infinite variance,
+# and estimates built from them are erratic however large the sample is, so the
+# boundary is reported rather than left for the reader to work out.
+#
+# It is a property of the normal family read against the exposure's own marginal
+# density, so it is reported for that configuration alone: the normal family, a
+# marginal numerator, and one conditional spread describing every unit. A
+# heavier-tailed family sits at a different boundary, an integrated numerator
+# and a supplied stabilization score are not the marginal density, and a spread
+# for each observation is not a single conditional variance the marginal
+# variance can be read against.
+#
+# The report is a warning rather than a refusal because the weights are still
+# the weights the estimand asks for; what fails is the precision of anything
+# built from them.
+check_density_variance <- function(
+  density,
+  sigma,
+  sigma_a,
+  numerator,
+  call = rlang::caller_env()
+) {
+  reportable <- identical(numerator, "marginal") &&
+    identical(density$family, "normal") &&
+    length(sigma) == 1L &&
+    length(sigma_a) == 1L &&
+    !is.na(sigma) &&
+    !is.na(sigma_a)
+
+  if (!reportable || sigma_a^2 < 2 * sigma^2) {
+    return(invisible(TRUE))
+  }
+
+  var_a <- signif(sigma_a^2, 3)
+  var_d <- signif(sigma^2, 3)
+
+  warn(
+    c(
+      "Stabilized normal weights have no finite variance for this exposure.",
+      x = "The marginal variance of the exposure is {var_a}, which is at least
+           twice the conditional variance {var_d}.",
+      i = "The second moment of a stabilized normal density ratio exists only
+           while the marginal variance stays below twice the conditional one.
+           The weights are returned, but estimates built from them are erratic
+           however large the sample is.",
+      i = "A model that explains more of the exposure lowers the conditional
+           variance, and a family with heavier tails, such as {.fun dens_t},
+           has a different boundary."
+    ),
+    warning_class = "propensity_density_variance_warning",
+    call = call
+  )
+
+  invisible(TRUE)
+}
+
+# The conditional density is what a continuous exposure's weights divide by, so
+# a unit whose own exposure falls where that density is exactly zero has a
+# weight of infinity. It is the continuous form of a propensity score of exactly
+# 0 or 1, and is refused for the same reason: an infinite weight leaves every
+# estimate built from it undefined.
+#
+# Only the denominator is held to this. A zero in the numerator is a marginal
+# density that gives the unit no weight, which is a legitimate weight of zero.
+#
+# `index` maps the positions of `f_den` back to the observations they came from,
+# for a caller that dropped the missing units before evaluating the density.
+check_density_denominator <- function(
+  f_den,
+  z,
+  index = NULL,
+  call = rlang::caller_env()
+) {
+  zero <- !is.na(f_den) & f_den == 0
+  if (!any(zero)) {
+    return(invisible(TRUE))
+  }
+
+  units <- if (is.null(index)) which(zero) else index[zero]
+
+  abort(
+    c(
+      "The conditional density is zero where the weight would divide by it.",
+      x = "It is zero at {length(units)} observation{?s}: {units}.",
+      i = density_range_hint(z, zero),
+      i = "A weight built from a conditional density of zero is infinite. Use a
+           family with heavier tails, such as {.fun dens_t} or
+           {.fun dens_kernel}."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
 }
 
 # How extreme the standardized residuals were, over all of them or over the

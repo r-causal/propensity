@@ -55,7 +55,10 @@ continuous_weights <- function(
 ) {
   withr::with_options(
     list(propensity.quiet = TRUE),
-    wt_ate(
+    # A bootstrap resample of a fixture near the finite-variance boundary lands
+    # on either side of it, so the report is muffled here rather than left to
+    # arrive on whichever resamples happen to cross.
+    muffle_variance_warning(wt_ate(
       fitted_ps,
       A,
       .sigma = .sigma,
@@ -64,7 +67,7 @@ continuous_weights <- function(
       stabilization_score = stab_score,
       .density = .density,
       numerator = numerator
-    )
+    ))
   )
 }
 

@@ -100,13 +100,16 @@ test_that("continuous weights still equal the recorded normal weights", {
 
   for (problem in fixture) {
     for (case in problem$cases) {
-      weights <- wt_ate(
+      # Some of the recorded cases were built with a spread small enough to put
+      # the weights past the finite-variance boundary. The recorded values are
+      # what this test is about, so the report that says so is muffled.
+      weights <- muffle_variance_warning(wt_ate(
         problem$mu,
         problem$exposure,
         .sigma = case$sigma,
         exposure_type = "continuous",
         stabilize = case$stabilize
-      )
+      ))
 
       expect_equal(
         as.numeric(weights),
@@ -123,23 +126,23 @@ test_that("the normal family reproduces the recorded weights exactly", {
 
   for (problem in fixture) {
     for (case in problem$cases) {
-      by_string <- wt_ate(
+      by_string <- muffle_variance_warning(wt_ate(
         problem$mu,
         problem$exposure,
         .sigma = case$sigma,
         exposure_type = "continuous",
         stabilize = case$stabilize,
         .density = "normal"
-      )
+      ))
 
-      by_spec <- wt_ate(
+      by_spec <- muffle_variance_warning(wt_ate(
         problem$mu,
         problem$exposure,
         .sigma = case$sigma,
         exposure_type = "continuous",
         stabilize = case$stabilize,
         .density = dens_normal()
-      )
+      ))
 
       label <- paste(problem$seed, case$stabilize, case$sigma_kind)
 
@@ -1230,6 +1233,16 @@ test_that("a conditional density of zero is refused rather than weighted as infi
   expect_match(message, "heavier|dens_t|dens_kernel")
 })
 
+test_that("the zero-density refusal reads the way it is written", {
+  expect_propensity_error(wt_ate(
+    continuous_density_data$mu,
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = truncated_support_density()
+  ))
+})
+
 test_that("censoring weights refuse a conditional density of zero as well", {
   expect_error(
     wt_cens(
@@ -1353,6 +1366,17 @@ test_that("stabilized normal weights report an exposure past the finite-variance
   weights <- suppressWarnings(wt_past())
   expect_length(weights, past$n)
   expect_true(all(is.finite(as.numeric(weights))))
+})
+
+test_that("the finite-variance report reads the way it is written", {
+  past <- boundary_exposure(1.4)
+
+  expect_propensity_warning(wt_ate(
+    past$mu,
+    past$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  ))
 })
 
 test_that("the finite-variance boundary is read only where it holds", {
