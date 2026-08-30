@@ -28,6 +28,46 @@
       x `.exposure` is being treated as binary.
       i `.density` chooses the family of the conditional density a continuous exposure's weights are a ratio of. A binary exposure has a probability rather than a density, so leave `.density` unset for one.
 
+# the refusal of a matrix of conditional means reads plainly
+
+    Code
+      expr
+    Condition <propensity_ps_shape_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure need one conditional mean for each unit.
+      x `.propensity` is 60 by 2 and of class <matrix>.
+      i Pass a numeric vector of conditional means, such as the single column of `.propensity` that holds the mean of this exposure.
+
+---
+
+    Code
+      expr
+    Condition <propensity_ps_shape_error>
+      Error in `wt_cens()`:
+      ! Weights for a continuous exposure need one conditional mean for each unit.
+      x `.propensity` is 60 by 2 and of class <matrix>.
+      i Pass a numeric vector of conditional means, such as the single column of `.propensity` that holds the mean of this exposure.
+
+---
+
+    Code
+      expr
+    Condition <propensity_ps_shape_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure need a model of one conditional mean for each unit.
+      x `.propensity` is <mlm>, a fit of 2 responses, whose fitted values are 60 by 2.
+      i Fit the exposure on its own, or pass the conditional means of this exposure to `.propensity` as a numeric vector.
+
+---
+
+    Code
+      expr
+    Condition <propensity_ps_shape_error>
+      Error in `wt_cens()`:
+      ! Weights for a continuous exposure need a model of one conditional mean for each unit.
+      x `.propensity` is <mlm>, a fit of 2 responses, whose fitted values are 60 by 2.
+      i Fit the exposure on its own, or pass the conditional means of this exposure to `.propensity` as a numeric vector.
+
 # the refusals of an integrated numerator read the way they should
 
     Code

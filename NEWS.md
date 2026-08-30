@@ -1,5 +1,16 @@
 # propensity 0.1.0.9000 (development version)
 
+* `wt_ate()` and `wt_cens()` now refuse a `.propensity` that carries a
+  dimension when the exposure is continuous, with an error of class
+  `propensity_ps_shape_error`. A continuous exposure is weighted from one
+  conditional mean for each unit, but a matrix with a row for each unit passed
+  the length check, and the conditional density was then evaluated over every
+  cell of it, returning one weight for each entry rather than one for each
+  unit. The model route refuses a multi-response fit such as
+  `lm(cbind(dose, other) ~ x)` for the same reason, and refuses it while
+  reading the model, so the report names the fit rather than a length the
+  caller never wrote.
+
 * `wt_ate()`, `wt_att()`, `wt_atu()`, `wt_atm()`, `wt_ato()`, and
   `wt_entropy()` now take a fitted `nnet::multinom()` model in `.propensity`,
   the way they already took a `glm()` or an `lm()`. A multinomial fit reports

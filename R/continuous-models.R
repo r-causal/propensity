@@ -23,7 +23,42 @@ extract_continuous_ps.default <- function(model, call = rlang::caller_env()) {
 
 #' @export
 extract_continuous_ps.lm <- function(model, call = rlang::caller_env()) {
+  check_continuous_model_response(model, call = call)
+
   list(mu = stats::fitted(model))
+}
+
+# A model of several responses at once, such as `lm(cbind(a, b) ~ x)`, fits a
+# conditional mean for each of them and reports the whole set as a matrix. One
+# of those columns may well be the mean of the exposure, but nothing on this
+# route says which, so the fit is refused here rather than downstream, where a
+# matrix with a row for each unit is only ever described by a length that the
+# caller never wrote.
+check_continuous_model_response <- function(
+  model,
+  call = rlang::caller_env()
+) {
+  fitted_values <- stats::fitted(model)
+
+  if (!inherits(model, "mlm") && !is.matrix(fitted_values)) {
+    return(invisible(NULL))
+  }
+
+  dims <- dim(as.matrix(fitted_values))
+
+  abort(
+    c(
+      "Weights for a continuous exposure need a model of one conditional mean
+       for each unit.",
+      x = "{.arg .propensity} is {.cls {class(model)[[1]]}}, a fit of
+           {dims[[2]]} responses, whose fitted values are {dims[[1]]} by
+           {dims[[2]]}.",
+      i = "Fit the exposure on its own, or pass the conditional means of this
+           exposure to {.arg .propensity} as a numeric vector."
+    ),
+    error_class = "propensity_ps_shape_error",
+    call = call
+  )
 }
 
 # `MASS::rlm()` fits the same conditional mean by a weighted least squares

@@ -788,6 +788,38 @@ check_cr_groups_observed <- function(
   )
 }
 
+# The shape a continuous exposure's `.propensity` has to have. The weights are
+# a ratio of densities evaluated at one conditional mean for each unit, and the
+# arithmetic that evaluates them vectorizes over whatever it is handed, so a
+# matrix of means yields a weight for every cell rather than a weight for every
+# unit. Anything carrying a dimension is refused here, rather than left to
+# produce a result of the wrong length.
+check_continuous_ps_shape <- function(
+  .propensity,
+  call = rlang::caller_env()
+) {
+  dims <- dim(.propensity)
+
+  if (is.null(dims)) {
+    return(invisible(TRUE))
+  }
+
+  shape <- paste(dims, collapse = " by ")
+
+  abort(
+    c(
+      "Weights for a continuous exposure need one conditional mean for each
+       unit.",
+      x = "{.arg .propensity} is {shape} and of class
+           {.cls {class(.propensity)[[1]]}}.",
+      i = "Pass a numeric vector of conditional means, such as the single
+           column of {.arg .propensity} that holds the mean of this exposure."
+    ),
+    call = call,
+    error_class = "propensity_ps_shape_error"
+  )
+}
+
 check_lengths_match <- function(
   .propensity,
   .exposure,

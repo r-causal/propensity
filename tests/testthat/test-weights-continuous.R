@@ -612,6 +612,36 @@ test_that("a multi-response linear model is refused by the model route", {
   expect_error(wt_ate(fit), class = "propensity_ps_shape_error")
 })
 
+test_that("the refusal of a matrix of conditional means reads plainly", {
+  fit <- continuous_multi_response_fit()
+
+  expect_propensity_error(
+    wt_ate(
+      stats::fitted(fit),
+      continuous_density_data$exposure,
+      exposure_type = "continuous"
+    )
+  )
+
+  # Censoring weights reach the continuous formula through the same route, so
+  # the refusal is the same one, named for the function the user called.
+  expect_propensity_error(
+    wt_cens(
+      stats::fitted(fit),
+      continuous_density_data$exposure,
+      exposure_type = "continuous"
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(fit, continuous_density_data$exposure, exposure_type = "continuous")
+  )
+
+  expect_propensity_error(
+    wt_cens(fit, continuous_density_data$exposure, exposure_type = "continuous")
+  )
+})
+
 # ---- what the weights record ------------------------------------------------
 
 test_that("the weights record the density family they were built from", {

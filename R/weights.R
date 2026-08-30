@@ -718,6 +718,15 @@ wt_ate.numeric <- function(
     call = call
   )
 
+  # A continuous exposure is weighted from one conditional mean for each unit,
+  # so a `.propensity` with dimensions is refused before the lengths are
+  # compared. `check_lengths_match()` reads a matrix by its rows, so a matrix
+  # with a row for each unit passes it, and the conditional density is then
+  # evaluated over every cell rather than over one mean for each unit.
+  if (exposure_type == "continuous") {
+    check_continuous_ps_shape(.propensity, call = call)
+  }
+
   # The exposure supplies the number of observations the score is checked
   # against, so a `.propensity` of a different length has to be caught first.
   # Otherwise a score that matches `.propensity` is reported against the
