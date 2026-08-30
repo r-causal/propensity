@@ -557,6 +557,61 @@ test_that("the density cannot be supplied by position", {
   )
 })
 
+# A multi-response linear model of the fixture's exposure. Its fitted values are
+# a matrix of conditional means, one column for each response, rather than the
+# vector of conditional means a continuous exposure is weighted from.
+continuous_multi_response_fit <- function() {
+  fit_data <- data.frame(
+    x = continuous_density_data$x,
+    dose = continuous_density_data$exposure,
+    other = continuous_density_data$exposure - 0.5 * continuous_density_data$x
+  )
+
+  stats::lm(cbind(dose, other) ~ x, data = fit_data)
+}
+
+test_that("a continuous exposure refuses a matrix of conditional means", {
+  # A continuous exposure has one conditional mean for each unit. A matrix with
+  # as many rows as the exposure is long otherwise passes the length check, and
+  # the conditional density is then evaluated over every cell of it, giving one
+  # weight for each entry of the matrix rather than one for each unit.
+  fit <- continuous_multi_response_fit()
+
+  expect_error(
+    wt_ate(
+      stats::fitted(fit),
+      continuous_density_data$exposure,
+      exposure_type = "continuous"
+    ),
+    class = "propensity_ps_shape_error"
+  )
+
+  # The same conditional mean written as a vector is still weighted.
+  expect_length(
+    continuous_density_wt(),
+    continuous_density_data$n
+  )
+})
+
+test_that("a multi-response linear model is refused by the model route", {
+  fit <- continuous_multi_response_fit()
+
+  expect_error(
+    wt_ate(fit, continuous_density_data$exposure, exposure_type = "continuous"),
+    class = "propensity_ps_shape_error"
+  )
+
+  # Read without an exposure, the model route takes the fit's own response,
+  # which is the response matrix. The refusal has to come before the lengths
+  # are compared, so that the account is of the multi-response fit rather than
+  # of a length the caller never wrote.
+  expect_error(
+    wt_ate(fit, exposure_type = "continuous"),
+    class = "propensity_ps_shape_error"
+  )
+  expect_error(wt_ate(fit), class = "propensity_ps_shape_error")
+})
+
 # ---- what the weights record ------------------------------------------------
 
 test_that("the weights record the density family they were built from", {
