@@ -1344,9 +1344,14 @@ extract_binary_ps.default <- function(model, call = rlang::caller_env()) {
 # that fit one; a categorical exposure needs a probability for every level,
 # which `extract_categorical_ps()` reads from the classes that fit one per
 # level.
+#
+# `exposure_levels` carries the levels of the exposure being weighted, so that a
+# categorical model fit to some other set of them is reported against the model
+# rather than against the shape of what it returns.
 extract_model_propensity <- function(
   model,
   exposure_type,
+  exposure_levels = NULL,
   call = rlang::caller_env()
 ) {
   if (identical(exposure_type, "binary")) {
@@ -1359,7 +1364,7 @@ extract_model_propensity <- function(
     return(extract_continuous_ps(model, call = call)$mu)
   }
 
-  extract_categorical_ps(model, call = call)
+  extract_categorical_ps(model, exposure_levels, call = call)
 }
 
 # Helper function to handle common data frame method pattern
@@ -1592,7 +1597,19 @@ prepare_model_weight_args <- function(
     call = call
   )
 
-  ps_vec <- extract_model_propensity(model, exposure_type, call = call)
+  # The levels a categorical model has to report a probability for are the
+  # levels of the exposure it is weighting, read the way the categorical path
+  # reads them. The other exposure types have no levels to compare.
+  exposure_levels <- if (identical(exposure_type, "categorical")) {
+    levels(as.factor(.exposure))
+  }
+
+  ps_vec <- extract_model_propensity(
+    model,
+    exposure_type,
+    exposure_levels = exposure_levels,
+    call = call
+  )
 
   invert <- identical(exposure_type, "binary") &&
     !resolved_focal_is_default(

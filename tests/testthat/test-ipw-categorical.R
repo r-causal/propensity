@@ -1050,6 +1050,8 @@ test_that("ipw() rejects a two-level multinom propensity score model", {
     ipw(ps_mod, outcome_mod),
     class = "propensity_model_family_error"
   )
+
+  expect_propensity_error(ipw(ps_mod, outcome_mod))
 })
 
 # ---- guard against an invalid focal level -----------------------------------

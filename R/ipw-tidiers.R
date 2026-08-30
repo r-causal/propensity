@@ -779,16 +779,12 @@ augment_propensity_columns <- function(wt_mod) {
     ))
   }
 
+  # `predict(type = "probs")` is the matrix of level probabilities for a fit of
+  # three or more levels, which is every multinomial fit an `ipw` result can
+  # hold: a two-level fit, whose prediction is the single probability of the
+  # second level, is refused when the result is built.
   levels <- wt_mod$lev
   probs <- stats::predict(wt_mod, type = "probs")
-
-  # nnet::multinom() predicts a two-level exposure as the probability of the
-  # second level alone rather than as the matrix of level probabilities it
-  # returns for more levels.
-  if (!is.matrix(probs)) {
-    probs <- cbind(1 - probs, probs)
-    colnames(probs) <- levels
-  }
 
   rlang::set_names(
     lapply(levels, function(level) unname(probs[, level])),

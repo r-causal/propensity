@@ -13,12 +13,20 @@
 # resolves as binary, so such a fit is read on the binary path instead. The
 # methods below hold both halves of that: what the categorical path reads, and
 # what the binary path accepts and reads.
-extract_categorical_ps <- function(model, call = rlang::caller_env()) {
+extract_categorical_ps <- function(
+  model,
+  exposure_levels = NULL,
+  call = rlang::caller_env()
+) {
   UseMethod("extract_categorical_ps")
 }
 
 #' @export
-extract_categorical_ps.default <- function(model, call = rlang::caller_env()) {
+extract_categorical_ps.default <- function(
+  model,
+  exposure_levels = NULL,
+  call = rlang::caller_env()
+) {
   abort_categorical_model(model, call = call)
 }
 
@@ -31,8 +39,55 @@ extract_categorical_ps.default <- function(model, call = rlang::caller_env()) {
 # The response check that every model method runs first has already refused a
 # fit with no levels, so the columns are named whenever this is reached.
 #' @export
-extract_categorical_ps.multinom <- function(model, call = rlang::caller_env()) {
+extract_categorical_ps.multinom <- function(
+  model,
+  exposure_levels = NULL,
+  call = rlang::caller_env()
+) {
+  check_multinom_levels(model, exposure_levels, call = call)
+
   stats::fitted(model)
+}
+
+# The levels a `multinom` was fit to are the columns it reports, so a fit made
+# to some other set of levels than those of the exposure being weighted has no
+# column to read as the probability of each level. Comparing the two sets here
+# reports that as what it is, a model of something other than the exposure,
+# rather than leaving `check_ps_matrix()` to report the width of a matrix the
+# caller never built. Order is not part of the comparison, because the matrix
+# check matches the columns to the levels by name.
+#
+# An exposure of fewer than three levels is not a categorical exposure at all,
+# whatever the model was fit to, and `transform_exposure_categorical()` reports
+# that; the comparison leaves such an exposure to it.
+check_multinom_levels <- function(
+  model,
+  exposure_levels,
+  call = rlang::caller_env()
+) {
+  if (length(exposure_levels) < 3L) {
+    return(invisible(NULL))
+  }
+
+  if (setequal(as.character(exposure_levels), model$lev)) {
+    return(invisible(NULL))
+  }
+
+  n_levels <- length(model$lev)
+  n_exposure <- length(exposure_levels)
+
+  abort(
+    c(
+      "Weights for a categorical exposure need a probability for every level
+       of the exposure being weighted.",
+      x = "{.arg .propensity} was fit to {n_levels} level{?s}
+           ({.val {model$lev}}), and the exposure has {n_exposure}
+           ({.val {exposure_levels}}).",
+      i = "Fit the propensity score model to the exposure being weighted."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
 }
 
 # A `multinom` fits a probability for every level and so has a single

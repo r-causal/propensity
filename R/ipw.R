@@ -1702,6 +1702,33 @@ check_ipw_ps_link_absent <- function(
   invisible(TRUE)
 }
 
+# A `multinom` fit to two levels is a binary propensity score model written with
+# a multinomial fitter: it reports one probability, the shape a binomial glm
+# reports, and the weight functions read such a fit on the binary path. The
+# categorical stacked system has no multinomial coefficient block to build from
+# it, so the estimator refuses the pair of models here, before deli is asked for
+# a multinomial score it cannot write and reports the shortfall in terms of its
+# own arguments.
+check_ipw_multinom_levels <- function(wt_mod, call = rlang::caller_env()) {
+  if (!identical(length(wt_mod$lev), 2L)) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} needs a propensity score model of three or more exposure \\
+      levels for a categorical exposure.",
+      x = "{.arg wt_mod} was fit to 2 levels ({.val {wt_mod$lev}}), so it \\
+      fits the single probability of a binary exposure.",
+      i = "For a binary exposure, fit the propensity score model with \\
+      {.fun stats::glm} and {.code family = binomial()}; for a categorical \\
+      one, fit a {.fun nnet::multinom} to its three or more levels."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}
+
 # Require the propensity score model's response to be the exposure column
 # itself. Everything downstream names the exposure by deparsing that left-hand
 # side, so a left-hand side that is not a single symbol yields a vector of names

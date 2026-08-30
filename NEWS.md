@@ -1,5 +1,23 @@
 # propensity 0.1.0.9000 (development version)
 
+* The weight functions now refuse a fitted `nnet::multinom()` in `.propensity`
+  whose levels are not the levels of the categorical exposure being weighted,
+  with an error of class `propensity_model_family_error` naming both sets of
+  levels. A multinomial fit reports one column for each of its own levels, so a
+  fit made to some other set of them was reported by the matrix validator
+  instead, as the width of a propensity score matrix the caller never built.
+  This covers a fit of fewer levels than the exposure, including the two-level
+  fit whose single column read as a matrix of one, as well as a fit of more
+  levels or of differently named ones.
+
+* `ipw()` now refuses a two-level `nnet::multinom()` propensity score model,
+  with an error of class `propensity_model_family_error`. A fit of two levels
+  reports a single probability, which is a binary propensity score rather than
+  a categorical one, and the categorical stacked system has no multinomial
+  coefficient block to build from it. The refusal used to come from deli, in
+  terms of an estimating function and arguments the caller never wrote, and it
+  points instead at the binomial `glm()` route for a binary exposure.
+
 * `wt_ate()` and `wt_cens()` now refuse a `.propensity` that carries a
   dimension when the exposure is continuous, with an error of class
   `propensity_ps_shape_error`. A continuous exposure is weighted from one

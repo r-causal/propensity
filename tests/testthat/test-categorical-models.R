@@ -401,6 +401,8 @@ test_that("a two-level fit refuses a categorical exposure of three levels", {
   # matrix the caller never built.
   expect_match(message, ".propensity", fixed = TRUE)
   expect_no_match(message, "Matrix columns", fixed = TRUE)
+
+  expect_propensity_error(wt_ate(fit, trt, exposure_type = "categorical"))
 })
 
 test_that("a four-level fit refuses a categorical exposure of three levels", {
@@ -435,6 +437,8 @@ test_that("a four-level fit refuses a categorical exposure of three levels", {
   # counterpart's is, rather than about the width of a matrix.
   expect_match(message, ".propensity", fixed = TRUE)
   expect_no_match(message, "Matrix columns", fixed = TRUE)
+
+  expect_propensity_error(wt_ate(fit, trt, exposure_type = "categorical"))
 })
 
 test_that("a multinomial fit of a response matrix is refused", {

@@ -42,6 +42,7 @@ ipw.multinom <- function(
   # path; a multinomial propensity model has no such link, so reject a non-NULL
   # argument rather than silently ignoring it.
   check_ipw_ps_link_absent(ps_link, "multinomial")
+  check_ipw_multinom_levels(wt_mod)
 
   if (identical(se_method, "linearization")) {
     abort(
