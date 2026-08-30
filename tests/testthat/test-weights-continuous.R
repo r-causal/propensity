@@ -593,6 +593,33 @@ test_that("a continuous exposure refuses a matrix of conditional means", {
   )
 })
 
+test_that("a continuous exposure reads one column of conditional means", {
+  # A one-column matrix and a one-dimensional array each hold one conditional
+  # mean for each unit, which is the shape the weights are built from, so each
+  # is read as the vector it is rather than refused for carrying a dimension.
+  # Both weighted correctly before the shape guard was written, and what the
+  # guard is for is a matrix holding more than one mean for each unit.
+  oracle <- as.numeric(continuous_density_wt())
+
+  one_column <- wt_ate(
+    matrix(continuous_density_data$mu, ncol = 1),
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_s3_class(one_column, "psw")
+  expect_equal(as.numeric(one_column), oracle)
+
+  one_dimension <- wt_ate(
+    array(continuous_density_data$mu),
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_s3_class(one_dimension, "psw")
+  expect_equal(as.numeric(one_dimension), oracle)
+})
+
 test_that("a multi-response linear model is refused by the model route", {
   fit <- continuous_multi_response_fit()
 

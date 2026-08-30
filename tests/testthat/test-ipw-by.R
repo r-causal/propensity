@@ -611,19 +611,9 @@ test_that("a .by fit labels its coefficients, covariance, and printed rows alike
     list(labels, labels)
   )
 
-  # The printed label occupies a fixed-width field, so reading that field back
-  # and counting exact matches pins that every row is printed exactly once. A
-  # prefix test would accept the row for "rd 1 vs 0 v = 1 vs v = 0" as the row
-  # for "rd 1 vs 0 v = 1". The width is set wide enough that the estimate table
-  # is printed in one block rather than wrapped into several.
-  withr::local_options(width = 200)
-  printed <- capture.output(print(res))
-  fields <- trimws(
-    substr(printed, 1L, max(nchar(labels))),
-    which = "right"
-  )
-  counts <- vapply(labels, function(label) sum(fields == label), integer(1))
-  expect_identical(unname(counts), rep(1L, length(labels)))
+  # Every row is printed exactly once. Without the count, the row for
+  # "rd 1 vs 0 v = 1 vs v = 0" would answer for the row for "rd 1 vs 0 v = 1".
+  expect_printed_labels_once(res, labels)
 })
 
 test_that("the conditional reading of a .by fit is the ungrouped fit's", {

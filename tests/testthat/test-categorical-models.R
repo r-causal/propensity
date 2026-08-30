@@ -307,6 +307,20 @@ test_that("a multinomial fit reads its own exposure and says which it read", {
   expect_identical(as.numeric(from_model), as.numeric(supplied))
 })
 
+test_that("the quiet option silences what the model route says it read", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(trt ~ x1 + x2)
+
+  # The two alerts above are informational, and the option is how a caller turns
+  # them off. Every other test in the suite runs under it, so the silence is the
+  # condition the rest of the suite depends on and is asserted here rather than
+  # left to be inferred from tests that assert something else.
+  withr::local_options(propensity.quiet = TRUE)
+
+  expect_no_message(wt_ate(fit))
+})
+
 test_that("a tilting estimand reads the exposure the fit holds", {
   skip_if_not_installed("nnet")
 

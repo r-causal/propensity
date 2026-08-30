@@ -812,6 +812,42 @@ test_that("wt_joint() refuses an exposure_type that does not name both component
   )
 })
 
+test_that("the unsupported-type refusal is causalgenerics' refusal wrapped", {
+  fx <- joint_wt_fixture()
+
+  # Exposure-type vocabulary belongs to causalgenerics, which owns the list of
+  # types and refuses one it does not know. This function keeps its own class,
+  # because the same class also answers a vector of the wrong length and a
+  # component that records no type at all, neither of which causalgenerics has
+  # anything to say about. The refusal it raised is carried as the parent, so
+  # the reader is told what was wrong with the type as well as which argument
+  # was wrong.
+  err <- expect_error(
+    wt_joint(fx$w$a, fx$w$e, exposure_type = c("binary", "ordinal")),
+    class = "propensity_wt_joint_exposure_type_error"
+  )
+  expect_s3_class(err, "propensity_error")
+  expect_s3_class(err$parent, "condition")
+  expect_true(
+    inherits(err$parent, "causalgenerics_error") ||
+      inherits(err$parent, "rlib_error_arg_match")
+  )
+
+  # The length of the vector is this function's own requirement, and the refusal
+  # for it stays its own: there is no single type for causalgenerics to read.
+  short <- expect_error(
+    wt_joint(fx$w$a, fx$w$e, exposure_type = "binary"),
+    class = "propensity_wt_joint_exposure_type_error"
+  )
+  expect_null(short$parent)
+
+  # A pair of types the package supports still passes.
+  expect_s3_class(
+    wt_joint(fx$w$a, fx$w$e, exposure_type = c("binary", "binary")),
+    "psw"
+  )
+})
+
 # ---- joint_wt_models(): the container ---------------------------------------
 
 test_that("joint_wt_models() records the two treatment models in order", {

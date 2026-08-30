@@ -1032,6 +1032,49 @@ test_that("ipw() refuses dose weights built from a kernel density", {
   expect_propensity_error(ipw(fx$models, fx$outcome_mod))
 })
 
+test_that("ipw() refuses a dose link it cannot write the score for", {
+  dat <- sim_joint_continuous_positive()
+
+  # The single-treatment route refuses the remaining gaussian links by name,
+  # because the coefficients an IRLS iteration stops at under one of them are
+  # not a tight enough root to seed the solve from. A dose reached as the second
+  # component of a joint intervention is read by the same registry and is
+  # refused the same way.
+  for (link in c("inverse", "sqrt")) {
+    ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+    ps_e <- glm(
+      e ~ a + x1 + x2,
+      data = dat,
+      family = gaussian(link = link)
+    )
+    wts <- quiet_wt(wt_joint(
+      wt_ate(ps_a),
+      wt_ate(
+        as.double(fitted(ps_e)),
+        dat$e,
+        exposure_type = "continuous",
+        stabilize = TRUE
+      ),
+      exposure_type = c("binary", "continuous")
+    ))
+    outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+    models <- joint_wt_models(a = ps_a, e = ps_e)
+
+    err <- expect_error(
+      ipw(models, outcome_mod),
+      class = "propensity_ipw_link_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, link, fixed = TRUE)
+
+    # The refused model is the dose component, and the message names it. On
+    # this route `wt_mod` is the container the two treatment models arrived in,
+    # so a reader told to refit `wt_mod` is told to refit the wrong thing.
+    expect_match(msg, "`e`", fixed = TRUE)
+    expect_no_match(msg, "wt_mod", fixed = TRUE)
+  }
+})
+
 test_that("the weights mismatch names the ratio the dose records", {
   dat <- sim_joint_continuous()
 
@@ -1064,6 +1107,11 @@ test_that("the weights mismatch names the ratio the dose records", {
   msg <- joint_error_message(ipw(models, outcome_mod))
   expect_match(msg, "t(df = 4)", fixed = TRUE)
   expect_match(msg, "marginal", fixed = TRUE)
+
+  # A joint specification targets the joint ate and resolves no focal level, so
+  # a focal level is a cause that cannot apply here and naming it sends the
+  # reader after a setting the route never read.
+  expect_no_match(msg, "focal level", fixed = TRUE)
 
   expect_propensity_error(ipw(models, outcome_mod))
 })

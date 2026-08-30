@@ -2903,3 +2903,59 @@ test_that("the deprecated .treated on a fit is attributed to ps_trim()", {
   expect_match(messages[[1]], "ps_trim()", fixed = TRUE)
   expect_false(deprecation_misattributed(messages))
 })
+
+# ---- arguments the trimming never reads -------------------------------------
+
+test_that("ps_trim() refuses an argument it does not read", {
+  ps <- c(0.05, 0.2, 0.4, 0.6, 0.8, 0.95)
+
+  # A misspelled threshold is an argument the trimming has no use for, and
+  # accepting it silently trims at the default the caller believed they had
+  # replaced.
+  expect_error(ps_trim(ps, lowr = 0.2), class = "rlib_error_dots_nonempty")
+
+  # The model route forwards its dots to the route that reads them, so the
+  # refusal reaches a fit as well as a vector.
+  expect_error(
+    ps_trim(trim_binary_fit(), lowr = 0.2),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("ps_trim() refuses scores that are not numbers", {
+  # A character vector is coerced on its way to the range check, which reports
+  # values it read as missing rather than an argument of the wrong type, and
+  # what the caller passed is never named.
+  expect_error(ps_trim(c(0.2, "a")), class = "propensity_type_error")
+})
+
+# The methods take a `call` so that a condition names the function the caller
+# wrote rather than the method that answered it. Exposure-type detection raises
+# none of its own for an ordinary exposure, so the frame it would report against
+# is only visible from inside detection, which is what the mock is here to read.
+test_that("ps_trim() hands its own call to exposure-type detection", {
+  detection_call <- NULL
+  local_mocked_bindings(
+    detect_exposure_type = function(
+      .exposure,
+      arg = ".exposure",
+      announce = TRUE,
+      call = rlang::caller_env()
+    ) {
+      detection_call <<- call
+      "binary"
+    },
+    .package = "causalgenerics"
+  )
+
+  # The data frame method is where the detection call is made, and the routes
+  # that reach a method by a call rather than by dispatch hand it a frame of
+  # their own, so the test hands it one too.
+  ps_trim.data.frame(
+    data.frame(ps = c(0.2, 0.4, 0.6, 0.8)),
+    .exposure = c(0, 1, 0, 1),
+    call = quote(outer_caller())
+  )
+
+  expect_identical(detection_call, quote(outer_caller()))
+})

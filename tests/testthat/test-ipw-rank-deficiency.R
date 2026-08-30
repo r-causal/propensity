@@ -675,6 +675,41 @@ test_that("the collapsed standard error is reported once per fit", {
   expect_equal(seen, "propensity_ipw_degenerate_se_warning")
 })
 
+# A gaussian outcome that is constant in one arm and varies in the other, with
+# an outcome model that reads the exposure alone. Only the counterfactual mean
+# in the constant arm collapses: the other mean and the contrast between them
+# are ordinary estimates with a spread of their own.
+mean_only_degenerate_fit <- function() {
+  dat <- rank_data()
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- rank_weights(ps_mod)
+  dat$ymean <- ifelse(dat$z == 1, 1, dat$yc)
+  out <- lm(ymean ~ z, data = dat, weights = wts)
+  list(ps_mod = ps_mod, out = out, dat = dat)
+}
+
+test_that("a collapsed counterfactual mean is reported as a mean", {
+  mods <- mean_only_degenerate_fit()
+
+  for (method in c("mestimation", "linearization")) {
+    w <- expect_warning(
+      res <- ipw(mods$ps_mod, mods$out, se_method = method),
+      class = "propensity_ipw_degenerate_se_warning"
+    )
+
+    # One row collapses and it is a mean, so the report names that row and no
+    # other.
+    expect_identical(ipw_degenerate_se_rows(res$estimates), "mean for 1")
+    expect_match(rank_msg(w), "mean for 1", fixed = TRUE)
+
+    # The cause the message offers has to cover the row it named. A mean that
+    # is a fixed value is what an arm the outcome does not vary within reports,
+    # and speaking only of the contrast describes a row this fit reports with a
+    # spread.
+    expect_match(rank_msg(w), "counterfactual mean", fixed = TRUE)
+  }
+})
+
 # The same collapse on a categorical exposure, where the rows the report names
 # are qualified by the pair of levels each one compares. The label is built by
 # reading that column off the estimates table by name, and it spells the labels

@@ -220,6 +220,38 @@ test_that("non-numeric scores are refused before the range is read", {
   )
 })
 
+test_that("check_ps_matrix() refuses a matrix that is not made of numbers", {
+  exposure <- factor(c("a", "b", "c"))
+  ps <- matrix(
+    as.character(c(0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.3, 0.3, 0.3)),
+    nrow = 3,
+    dimnames = list(NULL, levels(exposure))
+  )
+
+  # The row sums are read before the range is, and `rowSums()` answers a matrix
+  # of strings with base R's own refusal, which names neither the argument the
+  # scores arrived in nor this package.
+  expect_error(
+    check_ps_matrix(ps, exposure),
+    class = "propensity_matrix_type_error"
+  )
+
+  # The routes that read a matrix of scores against an exposure reach the same
+  # check, so each of them reports the type rather than the row sums.
+  expect_error(
+    ps_trim(ps, .exposure = exposure),
+    class = "propensity_matrix_type_error"
+  )
+  expect_error(
+    ps_trunc(ps, .exposure = exposure),
+    class = "propensity_matrix_type_error"
+  )
+  expect_error(
+    wt_ate(as.data.frame(ps), exposure, exposure_type = "categorical"),
+    class = "propensity_matrix_type_error"
+  )
+})
+
 # ---- allocation guards ------------------------------------------------------
 # These two expectations are the red assertions: they state the allocation the
 # categorical route should need, and the current implementations do not meet
