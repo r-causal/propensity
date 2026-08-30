@@ -2174,3 +2174,96 @@ test_that("the categorical output surfaces name the contrast column contrast", {
   expect_false("comparison" %in% names(tidied))
   expect_identical(tidied$contrast, df$contrast)
 })
+
+# ---- recovering the data behind a multinom fit ------------------------------
+#
+# `nnet::multinom()` stores no model frame, so everything `ipw()` needs from the
+# fitting data is recovered by re-evaluating the fitting call. These tests pin
+# what that recovery owes the caller: the same estimates and standard errors the
+# `.data` route gives, one rebuild of the frame rather than one per thing read
+# off it, and the standing request for `.data` when the call can no longer be
+# evaluated at all.
+
+test_that("ipw() reads a multinom fit without .data", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  recovered <- ipw(mods$ps_mod, mods$outcome_mod)
+  supplied <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat)
+
+  expect_equal(
+    recovered$estimates$estimate,
+    supplied$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    recovered$estimates$std.err,
+    supplied$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ipw() rebuilds the frame behind a multinom fit once", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+
+  # The fitting data is reached through an active binding, so every evaluation
+  # of the fitting call is counted. The exposure is recoverable from the fit
+  # itself and the design is not, so one rebuild is what the route needs.
+  reads <- 0L
+  fit_env <- new.env(parent = environment())
+  makeActiveBinding(
+    "counted_dat",
+    function() {
+      reads <<- reads + 1L
+      dat
+    },
+    fit_env
+  )
+  fmla <- a ~ x1 + x2
+  environment(fmla) <- fit_env
+  ps_mod <- eval(
+    quote(nnet::multinom(
+      fmla,
+      data = counted_dat,
+      trace = FALSE,
+      reltol = 1e-14,
+      maxit = 2000
+    )),
+    fit_env
+  )
+
+  ps_named <- ps_matrix_named(ps_mod)
+  wts <- categorical_weights(ps_named, dat$a, "ate")
+  outcome_mod <- fit_outcome(dat, wts)
+
+  reads <- 0L
+  ipw(ps_mod, outcome_mod)
+
+  expect_identical(reads, 1L)
+})
+
+test_that("ipw() still asks for .data when the multinom call cannot be evaluated", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # The formula is written here, so its environment is this frame, and the
+  # fitting call names a variable that lives only inside the function below.
+  # Nothing can rebuild the frame once that function has returned, though the
+  # exposure is still readable off the fit.
+  fmla <- a ~ x1 + x2
+  fit_in_function <- function(fitting_data) {
+    nnet::multinom(fmla, data = fitting_data, trace = FALSE)
+  }
+  gone <- fit_in_function(dat)
+
+  expect_error(model.frame(gone))
+
+  err <- expect_error(
+    ipw(gone, mods$outcome_mod),
+    class = "propensity_ipw_data_error"
+  )
+  expect_match(conditionMessage(err), ".data", fixed = TRUE)
+})

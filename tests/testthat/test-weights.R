@@ -2979,13 +2979,29 @@ test_that("`wt_cens()` names itself in the deprecation on the numeric and glm ro
   expect_no_match(glm_deprecations[[1]], "wt_ate()", fixed = TRUE)
 })
 
-test_that("continuous exposures keep the positional data frame default", {
+test_that("continuous exposures refuse a data frame of several columns", {
+  # A binary exposure names its levels, so a frame of scores can be read against
+  # them and a column chosen. A continuous exposure names nothing: a frame of
+  # several conditional means offers no way to tell which one the weights are
+  # meant to be built from, and a column taken by position is as likely to be
+  # the wrong one. The caller is asked to name it.
   set.seed(2024)
   exposure <- rnorm(10)
   ps_df <- data.frame(first = rnorm(10), second = rnorm(10))
 
-  expect_equal(
+  expect_error(
     wt_ate(ps_df, exposure, exposure_type = "continuous", stabilize = TRUE),
+    class = "propensity_df_ambiguous_column_error"
+  )
+
+  expect_equal(
+    wt_ate(
+      ps_df,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .propensity_col = second
+    ),
     wt_ate(
       ps_df$second,
       exposure,
