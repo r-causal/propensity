@@ -582,6 +582,17 @@ test_that("a model of the wrong kind is refused by what it was fit with", {
       stabilize = TRUE
     )
   )
+
+  # A family with a link and no name is described by what it is missing, rather
+  # than by a pair of parentheses with nothing in front of them.
+  expect_propensity_error(
+    check_binary_model_family(
+      structure(
+        list(family = list(link = "logit")),
+        class = "unnamed_family_fit"
+      )
+    )
+  )
 })
 
 test_that("a family object without a name is refused rather than raising", {

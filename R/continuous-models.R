@@ -9,9 +9,10 @@
 #
 # Methods are resolved in class order, so a `gam` is read as a `gam` rather than
 # as the `glm` it inherits from, and an `rlm` as an `rlm` rather than as the
-# `lm` it inherits from. Each supported class is named here rather than reached
-# by inheritance, so that the set of models the weights can be built from is
-# the set of methods.
+# `lm` it inherits from: both are named so that they are reached before the
+# classes they inherit from. Other subclasses of `lm` are reached by
+# inheritance, which is what a fit that reports one conditional mean per unit
+# through `fitted()` needs, and all the `lm` method asks of a model.
 extract_continuous_ps <- function(model, call = rlang::caller_env()) {
   UseMethod("extract_continuous_ps")
 }
@@ -142,12 +143,22 @@ check_binary_model_family.default <- function(
 ) {
   family <- model[["family"]]
 
-  if (!is.null(family) && family$family %in% c("binomial", "quasibinomial")) {
+  # `isTRUE()` because a family object that carries no name answers the test
+  # with nothing at all, which `&&` can read as neither true nor false. A
+  # family like that is not one of the two, and is refused below by what it is
+  # missing.
+  binomial_family <- !is.null(family) &&
+    isTRUE(family$family %in% c("binomial", "quasibinomial"))
+
+  if (binomial_family) {
     return(invisible(NULL))
   }
 
   fitted_by <- if (is.null(family)) {
     "{.arg .propensity} is {.cls {class(model)[[1]]}}, whose fitted values are
+     conditional means rather than probabilities."
+  } else if (!family_is_named(family)) {
+    "{.arg .propensity} was fit with an unnamed family, whose fitted values are
      conditional means rather than probabilities."
   } else {
     "{.arg .propensity} was fit with {.code {model_family_label(family)}}, whose
@@ -167,13 +178,35 @@ check_binary_model_family.default <- function(
   )
 }
 
+# Whether a family object names itself. Every family built by `binomial()` and
+# its neighbors holds its name in `$family`, and a message about one is written
+# from that string; an object that carries a link and no name has nothing to be
+# written from, and is described by what it is rather than by what it is called.
+family_is_named <- function(family) {
+  rlang::is_string(family$family)
+}
+
 # How a family reads in a message. A `quasi()` family is named by its variance
 # function as well, that being what decides whether its fitted values have one
-# spread or many.
+# spread or many. An extended family names itself with the parameters it was fit
+# at, such as mgcv's `"Scaled t(Inf,1.012)"`, so a name is written as a call only
+# when it is a bare one: appending parentheses to a name that already reads as a
+# call writes one that could not be run.
 model_family_label <- function(family) {
+  # A family with no name has none to write. A refusal that has a fuller
+  # sentence for that case tests `family_is_named()` itself and never arrives
+  # here; this keeps the label readable for any that does not.
+  if (!family_is_named(family)) {
+    return("an unnamed family")
+  }
+
   if (identical(family$family, "quasi")) {
     return(paste0("quasi(variance = \"", family$varfun, "\")"))
   }
 
-  paste0(family$family, "()")
+  if (grepl("^[A-Za-z.][A-Za-z0-9._]*$", family$family)) {
+    return(paste0(family$family, "()"))
+  }
+
+  family$family
 }

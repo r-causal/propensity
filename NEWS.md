@@ -1,5 +1,39 @@
 # propensity 0.1.0.9000 (development version)
 
+* Weights for a continuous exposure with `numerator = "integrated"` now decide
+  whether the fitted conditional means hold a single number by reading their
+  spread against the spread of the residuals, rather than against a fixed floor
+  of about 1.5e-8. A ratio of densities is the same number whatever unit the
+  exposure is measured in, but that floor was not: an exposure recorded in
+  units far larger than the values it takes, such as a dose in kilograms when
+  the doses are millionths of one, has fitted means that vary by less than the
+  floor, so every weight came back as
+  exactly one with nothing said, as though the propensity score model had no
+  covariates in it. An intercept-only model still gives weights of exactly one,
+  which is the case the shortcut is there for.
+
+* A kernel density is now refused an infinite standardized residual, with an
+  error of class `propensity_density_error` saying how many of the residuals
+  are missing or infinite. An infinite residual among the values the ends of
+  the estimate are read from used to reach `stats::density()` as an error about
+  its own arguments, and one that arrived only in the values the kernel is fit
+  on reached nothing at all, leaving an estimate that integrates to less than
+  one. Two neighboring refusals read better as well: too few residuals to fit
+  on are now refused before the range they would be fit over is read from them,
+  which used to warn twice about missing arguments to `min()` first, and a
+  range whose ends are the wrong way round is described as reversed rather than
+  as residuals that do not vary.
+
+* A propensity score model that carries a family object with no name is now
+  refused, on the binary route, with an error of class
+  `propensity_model_family_error` naming the family it is missing, rather than
+  raising an error about a missing value where a true or false one is needed.
+  A family that names itself with the parameters it was fit at, such as the
+  `Scaled t(Inf,1.012)` of a scaled t model fit by mgcv, is also written in a
+  refusal as it names itself, rather
+  than with a pair of parentheses appended to a name that already reads as a
+  call.
+
 * Weighting a categorical exposure now reads each unit's propensity score
   directly out of the score matrix and validates that matrix in a single pass,
   rather than building an indicator matrix and a chain of full-length

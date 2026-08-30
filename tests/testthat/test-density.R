@@ -671,6 +671,8 @@ test_that("a kernel that cannot be fit says why", {
   expect_propensity_error(density_eval(dens_kernel(), 0.5))
   expect_propensity_error(density_eval(dens_kernel(), c(z[-1], NA)))
   expect_propensity_error(density_eval(dens_kernel(), c(z, NA), fit_on = z))
+  expect_propensity_error(density_eval(dens_kernel(), c(z, Inf)))
+  expect_propensity_error(density_eval(dens_kernel(), z, range = c(2, -2)))
 })
 
 test_that("as_density_spec() says what it refuses more than one of", {

@@ -433,10 +433,18 @@ continuous_grid_n <- 50L
 # Whether a vector holds one number, to within the arithmetic that produced it.
 # Fitted values that ought to be identical seldom are: an intercept-only model
 # reaches each of them through a decomposition, and the last few bits differ, so
-# counting distinct doubles would find several where the model means one. The
-# tolerance is relative to the size of the values, as `all.equal()`'s is.
-is_constant <- function(x) {
-  diff(range(x)) <= sqrt(.Machine$double.eps) * max(1, abs(mean(x)))
+# counting distinct doubles would find several where the model means one.
+#
+# `scale` is the size the spread of `x` is read against, and is the spread of
+# the residuals wherever this is called from. A density ratio is the same
+# number whatever unit the exposure is measured in, so the test that decides
+# which ratio to return has to be the same number too: a fixed floor of one
+# would read an exposure in nanograms as a single value and return weights of
+# one for a model that conditions on covariates. `abs(mean(x))` is kept in the
+# comparison so that values which are large and constant are still read as
+# constant, as `all.equal()` reads them.
+is_constant <- function(x, scale) {
+  diff(range(x)) <= sqrt(.Machine$double.eps) * max(scale, abs(mean(x)))
 }
 
 # The density ratio under an integrated numerator, which is the conditional
@@ -473,8 +481,10 @@ continuous_integrated_ratio <- function(
   # arithmetic that produced them rather than exactly, so the case is read from
   # the spread of the fitted means rather than from how many distinct doubles
   # they are. Fitted means that vary by that little leave weights of one either
-  # way; this returns the ones the model means.
-  if (length(mu) == 0 || is_constant(mu)) {
+  # way; this returns the ones the model means. How little that is depends on
+  # the units the exposure is measured in, so the spread of the fitted means is
+  # read against the spread of the residuals rather than against one.
+  if (length(mu) == 0 || is_constant(mu, scale = sigma)) {
     wt[present] <- 1
     return(wt)
   }
@@ -674,14 +684,41 @@ check_density_kernel_fit <- function(
   range,
   call = rlang::caller_env()
 ) {
-  if (anyNA(fit_on)) {
-    n_missing <- sum(is.na(fit_on))
+  # The sample size is read first because the range a kernel is fit over
+  # defaults to the range of the residuals, and `base::range()` of nothing at
+  # all warns about its missing arguments twice before it returns a pair of
+  # infinities. Nothing is learned from that pair, and the count below says
+  # everything there is to say about it.
+  if (length(fit_on) < 2) {
     abort(
       c(
-        "{.arg .density} cannot fit a kernel on missing standardized
+        "{.arg .density} cannot fit a kernel on fewer than two standardized
          residuals.",
-        x = "{n_missing} of them {?is/are} missing.",
-        i = "A missing exposure or fitted value leaves a missing residual.
+        x = "It was given {length(fit_on)} to fit on.",
+        i = "The bandwidth is chosen from the spread of the residuals, which
+             takes at least two of them. Use a parametric family, such as
+             {.fun dens_normal}, on a sample this small."
+      ),
+      error_class = "propensity_density_error",
+      call = call
+    )
+  }
+
+  # A residual that is infinite is refused alongside one that is missing. An
+  # infinite residual among the values the ends of the estimate are read from
+  # reaches `stats::density()` as an error about its own `from` and `to`; one
+  # that arrives only in `fit_on` reaches nothing at all, and leaves a kernel
+  # fit over a range its residuals overflow, which integrates to less than one
+  # with nothing said.
+  if (!all(is.finite(fit_on))) {
+    n_unusable <- sum(!is.finite(fit_on))
+    abort(
+      c(
+        "{.arg .density} cannot fit a kernel on missing or infinite
+         standardized residuals.",
+        x = "{n_unusable} of them {?is/are} missing or infinite.",
+        i = "A missing exposure or fitted value leaves a missing residual, and
+             an infinite exposure or a spread of zero leaves an infinite one.
              Drop those observations before weighting."
       ),
       error_class = "propensity_density_error",
@@ -703,22 +740,23 @@ check_density_kernel_fit <- function(
     )
   }
 
-  if (sum(is.finite(fit_on)) < 2) {
+  # Ends given the wrong way round are a range the caller wrote backwards, not
+  # residuals that do not vary, and are said to be that.
+  if (range[[2]] < range[[1]]) {
     abort(
       c(
-        "{.arg .density} cannot fit a kernel on fewer than two standardized
-         residuals.",
-        x = "It was given {sum(is.finite(fit_on))} to fit on.",
-        i = "The bandwidth is chosen from the spread of the residuals, which
-             takes at least two of them. Use a parametric family, such as
-             {.fun dens_normal}, on a sample this small."
+        "{.arg .density} cannot fit a kernel over a reversed range.",
+        x = "The range it was given runs from {.val {range[[1]]}} down to
+             {.val {range[[2]]}}.",
+        i = "A kernel is fit from the lower end of the range to the upper one.
+             Give the ends in that order."
       ),
       error_class = "propensity_density_error",
       call = call
     )
   }
 
-  if (range[[2]] <= range[[1]]) {
+  if (range[[2]] == range[[1]]) {
     abort(
       c(
         "{.arg .density} cannot fit a kernel on standardized residuals that do
