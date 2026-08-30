@@ -114,6 +114,23 @@ model_fits_levels.multinom <- function(model) {
   length(model$lev) > 2L
 }
 
+# The levels a fitted model reports a probability for, read off the fit itself.
+# A modification that reads no exposure still has to know which levels the
+# columns it is given belong to, and the fit records them, so nothing has to be
+# recovered from the data the model was fit to. This is the pair of
+# `model_fits_levels()`: a class that answers `TRUE` there reports a column for
+# every level and so has levels to name here.
+model_levels <- function(model) {
+  UseMethod("model_levels")
+}
+
+# `lev` is the response's levels in the order the columns of `fitted()` are laid
+# out in, which is the order the columns are named in.
+#' @export
+model_levels.multinom <- function(model) {
+  model$lev
+}
+
 # A `multinom` fits a probability for every level and so has a single
 # probability to give only when it was fit to two of them. More levels than
 # that leave nothing to read as the probability of the exposure, which is what a

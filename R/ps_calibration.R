@@ -557,8 +557,9 @@ ps_calibrate.multinom <- function(
 # Calibration reads one propensity score for each unit and the exposure those
 # scores are calibrated against, so a fit is always read for its probability of
 # a binary exposure. A fit of three or more levels reports a column for each of
-# them and no single probability to calibrate, which is what the binary reading
-# reports against the model.
+# them and no single probability to calibrate, which is refused here rather than
+# on the binary reading, whose remedy is about the weights a categorical
+# exposure takes and so has nothing to offer a caller calibrating scores.
 #
 # The default method is reached by a call rather than by dispatch, so it is
 # handed the frame the route was entered on. Left to its own, a refusal here
@@ -575,11 +576,14 @@ calibrate_from_model <- function(
   call,
   user_env
 ) {
+  if (model_fits_levels(model)) {
+    abort_calibrate_levels(model, call = call)
+  }
+
   args <- prepare_model_ps(
     model,
     .exposure,
     needs_exposure = TRUE,
-    levels_supported = FALSE,
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,
@@ -597,6 +601,28 @@ calibrate_from_model <- function(
     .focal_level = args$focal_level,
     .reference_level = args$reference_level,
     user_env = user_env,
+    call = call
+  )
+}
+
+# A fit of three or more levels holds one probability for each level and no
+# single score to calibrate. The remedy is calibration's own: each column is the
+# probability of one level, and calibrating it against the indicator for that
+# level is the reading the model has to offer.
+abort_calibrate_levels <- function(model, call = rlang::caller_env()) {
+  fit_levels <- model_levels(model)
+  n_levels <- length(fit_levels)
+
+  abort(
+    c(
+      "Calibration reads one propensity score for each unit.",
+      x = "{.arg .propensity} was fit to {n_levels} levels
+           ({.val {fit_levels}}), so it fits one probability for each level rather
+           than one for each unit.",
+      i = "Calibrate the columns of {.code fitted(fit)} one at a time against
+           the indicator for each level."
+    ),
+    error_class = "propensity_model_family_error",
     call = call
   )
 }

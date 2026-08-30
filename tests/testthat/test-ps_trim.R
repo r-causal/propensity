@@ -2820,3 +2820,86 @@ test_that("ps_trim() names the class of a fit it has no reading for", {
     ps_trim(lm(z ~ x1 + x2, data = trim_model_data), method = "ps")
   )
 })
+
+# The exposure is announced when it is read and not otherwise, so the message
+# reports a reading that happened. Trimming to a fixed threshold reads no
+# exposure; the preference scale and the common range do, and so does every
+# trimming of a matrix of scores, which holds its columns against the levels.
+test_that("ps_trim() announces the exposure it reads off a fit", {
+  withr::local_options(propensity.quiet = FALSE)
+  fit <- trim_binary_fit()
+
+  expect_no_message(ps_trim(fit, method = "ps"))
+  expect_message(ps_trim(fit, method = "pref"), "\"z\"")
+  expect_message(ps_trim(fit, method = "cr"), "\"z\"")
+})
+
+test_that("ps_trim() announces the exposure it reads off a multinomial fit", {
+  skip_if_not_installed("nnet")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fit <- trim_categorical_fit()
+
+  expect_message(ps_trim(fit, method = "ps"), "\"trt\"")
+  expect_message(ps_trim(fit, method = "optimal"), "\"trt\"")
+})
+
+# A fit reports the probability of the level the response's default coding
+# treats as focal, so naming the other level means trimming the complement of
+# what the fit reports.
+#
+# The bounds are asymmetric on purpose. Naming the other level turns each
+# preference score into its complement, and a symmetric window keeps the same
+# units either way, so it would report nothing about whether the scores were
+# inverted at all.
+trim_pref <- function(.propensity, ...) {
+  ps_trim(.propensity, method = "pref", lower = 0.2, upper = 0.6, ...)
+}
+
+test_that("ps_trim() inverts a fit's scores for a named focal level", {
+  fit <- trim_binary_fit()
+  inverted <- 1 - predict(fit, type = "response")
+
+  expect_same_trim(
+    trim_pref(fit, .focal_level = 0),
+    trim_pref(inverted, .exposure = trim_model_data$z, .focal_level = 0)
+  )
+  expect_false(identical(
+    ps_trim_meta(trim_pref(fit, .focal_level = 0))$keep_idx,
+    ps_trim_meta(trim_pref(fit))$keep_idx
+  ))
+})
+
+test_that("ps_trim() inverts a two-level multinomial fit for a named level", {
+  skip_if_not_installed("nnet")
+
+  fit <- trim_two_level_fit()
+  inverted <- 1 - as.numeric(fitted(fit))
+
+  expect_same_trim(
+    trim_pref(fit, .focal_level = "control"),
+    trim_pref(
+      inverted,
+      .exposure = trim_model_data$a2,
+      .focal_level = "control"
+    )
+  )
+  expect_false(identical(
+    ps_trim_meta(trim_pref(fit, .focal_level = "control"))$keep_idx,
+    ps_trim_meta(trim_pref(fit))$keep_idx
+  ))
+})
+
+# The model route maps the deprecated spelling itself, before the scores reach
+# the method that would map it again, so the reader is told about it once and
+# under the name of the function they called.
+test_that("the deprecated .treated on a fit is attributed to ps_trim()", {
+  messages <- deprecation_warnings_from_user(
+    quote(ps_trim(fit, method = "pref", .treated = 0)),
+    list(fit = trim_binary_fit())
+  )
+
+  expect_length(messages, 1)
+  expect_match(messages[[1]], "ps_trim()", fixed = TRUE)
+  expect_false(deprecation_misattributed(messages))
+})

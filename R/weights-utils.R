@@ -1655,22 +1655,16 @@ prepare_model_weight_args <- function(
 # reads one off the model and is not told about an exposure it makes no use of.
 #
 # `needs_exposure` is what the modification itself requires: trimming to the
-# preference scale or to a common range reads the exposure, and calibration
-# always does, while trimming to a fixed threshold does not. A named focal level
-# requires it too, because the fitted values report the probability of the level
-# the response's default coding treats as focal, so naming the other level means
-# inverting them, exactly as `prepare_model_weight_args()` does.
-#
-# `levels_supported` is whether the modifier reads a probability for every level
-# at all. Calibration reads one score for each unit, so a fit of three or more
-# levels is not one it can read; sending such a fit down the binary path is what
-# reports that against the model rather than against the shape of what it
-# returns.
+# preference scale or to a common range reads the exposure, trimming a matrix of
+# scores reads it to hold the columns against the levels, and calibration always
+# does, while a tilt and a trimming to a fixed threshold read none. A named focal
+# level requires it too, because the fitted values report the probability of the
+# level the response's default coding treats as focal, so naming the other level
+# means inverting them, exactly as `prepare_model_weight_args()` does.
 prepare_model_ps <- function(
   model,
   .exposure = NULL,
   needs_exposure = FALSE,
-  levels_supported = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
   .treated = NULL,
@@ -1698,17 +1692,24 @@ prepare_model_ps <- function(
     call = call
   )
 
-  if (levels_supported && model_fits_levels(model)) {
+  if (model_fits_levels(model)) {
     # The levels a categorical model has to report a probability for are the
     # levels of the exposure being modified, read the way the categorical path
-    # reads them.
-    .exposure <- extract_exposure_from_model(model, .exposure)
+    # reads them. A modification that reads no exposure has nothing to hold the
+    # columns against, and recovering one anyway would announce a reading that
+    # never happened, so the levels are taken off the fit, which records them.
+    if (needs_exposure || !is.null(.exposure)) {
+      .exposure <- extract_exposure_from_model(model, .exposure)
+      exposure_levels <- levels(as.factor(.exposure))
+    } else {
+      exposure_levels <- model_levels(model)
+    }
 
     return(list(
       propensity = extract_model_propensity(
         model,
         "categorical",
-        exposure_levels = levels(as.factor(.exposure)),
+        exposure_levels = exposure_levels,
         call = call
       ),
       exposure = .exposure,

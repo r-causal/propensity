@@ -7,9 +7,10 @@
   of three or more levels as one column per level, so a fit takes the same
   route its `predict()` or `fitted()` values would. The modifications that read
   an exposure take it off the model unless `.exposure` is supplied: trimming to
-  the preference scale or to a common range, optimal trimming, and calibration,
-  which reads one score per unit and so refuses a multinomial fit of three or
-  more levels. A model of a class none of these can read propensity scores
+  the preference scale or to a common range, every trimming and truncation of a
+  fit read as one column per level, and calibration, which reads one score per
+  unit and so refuses a multinomial fit of three or more levels. A tilt reads no
+  exposure and so takes nothing but the scores off a fit. A model of a class none of these can read propensity scores
   from, such as an `lm()`, is refused with an error of class
   `propensity_method_error` rather than reported as a propensity score out of
   range.

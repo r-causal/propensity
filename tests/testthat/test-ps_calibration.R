@@ -1778,3 +1778,60 @@ test_that("ps_calibrate() reports a multinomial fit of too many levels", {
 test_that("ps_calibrate() names the exposure it was not given", {
   expect_propensity_error(ps_calibrate(c(0.2, 0.4, 0.6, 0.8)))
 })
+
+# A fit reports the probability of the level the response's default coding
+# treats as focal, so naming the other level means calibrating the complement of
+# what the fit reports.
+test_that("ps_calibrate() inverts a fit's scores for a named focal level", {
+  fit <- calib_binary_fit()
+  inverted <- 1 - predict(fit, type = "response")
+
+  expect_same_calibration(
+    ps_calibrate(fit, .focal_level = 0, smooth = FALSE),
+    ps_calibrate(
+      inverted,
+      calib_model_data$z,
+      .focal_level = 0,
+      smooth = FALSE
+    )
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_calibrate(fit, .focal_level = 0, smooth = FALSE)),
+    as.numeric(ps_calibrate(fit, smooth = FALSE))
+  )))
+})
+
+test_that("ps_calibrate() inverts a two-level multinomial fit for a named level", {
+  skip_if_not_installed("nnet")
+
+  fit <- calib_two_level_fit()
+  inverted <- 1 - as.numeric(fitted(fit))
+
+  expect_same_calibration(
+    ps_calibrate(fit, .focal_level = "control", smooth = FALSE),
+    ps_calibrate(
+      inverted,
+      calib_model_data$a2,
+      .focal_level = "control",
+      smooth = FALSE
+    )
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_calibrate(fit, .focal_level = "control", smooth = FALSE)),
+    as.numeric(ps_calibrate(fit, smooth = FALSE))
+  )))
+})
+
+# The model route maps the deprecated spelling itself, before the scores reach
+# the method that would map it again, so the reader is told about it once and
+# under the name of the function they called.
+test_that("the deprecated .treated on a fit is attributed to ps_calibrate()", {
+  messages <- deprecation_warnings_from_user(
+    quote(ps_calibrate(fit, .treated = 0, smooth = FALSE)),
+    list(fit = calib_binary_fit())
+  )
+
+  expect_length(messages, 1)
+  expect_match(messages[[1]], "ps_calibrate()", fixed = TRUE)
+  expect_false(deprecation_misattributed(messages))
+})

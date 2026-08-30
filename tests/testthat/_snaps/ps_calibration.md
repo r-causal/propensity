@@ -106,9 +106,9 @@
       expr
     Condition <propensity_model_family_error>
       Error in `ps_calibrate()`:
-      ! Weights for a binary exposure need the probability of one of its two levels.
-      x `.propensity` was fit to 3 levels ("a", "b", and "c"), so it fits no single probability to read against a binary exposure.
-      i Fit the propensity score model to the exposure being weighted, or weight the exposure the model was fit to with `exposure_type = "categorical"`.
+      ! Calibration reads one propensity score for each unit.
+      x `.propensity` was fit to 3 levels ("a", "b", and "c"), so it fits one probability for each level rather than one for each unit.
+      i Calibrate the columns of `fitted(fit)` one at a time against the indicator for each level.
 
 # ps_calibrate() names the exposure it was not given
 

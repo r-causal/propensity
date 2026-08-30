@@ -729,7 +729,10 @@ ps_trunc_from_model <- function(
   args <- prepare_model_ps(
     model,
     .exposure,
-    needs_exposure = method == "cr",
+    # Truncating a matrix of scores reads the exposure whatever the method, to
+    # hold the columns against its levels, so a fit that reports a column for
+    # every level is read for its exposure too.
+    needs_exposure = method == "cr" || model_fits_levels(model),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,

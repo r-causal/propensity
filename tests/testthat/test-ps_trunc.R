@@ -1820,3 +1820,83 @@ test_that("ps_trunc() names the class of a fit it has no reading for", {
     ps_trunc(lm(z ~ x1 + x2, data = trunc_model_data), method = "ps")
   )
 })
+
+# The exposure is announced when it is read and not otherwise, so the message
+# reports a reading that happened. Bounding at a fixed threshold or a quantile
+# reads no exposure; the common range does, and so does every truncation of a
+# matrix of scores, which holds its columns against the levels.
+test_that("ps_trunc() announces the exposure it reads off a fit", {
+  withr::local_options(propensity.quiet = FALSE)
+  fit <- trunc_binary_fit()
+
+  expect_no_message(ps_trunc(fit, method = "ps"))
+  expect_no_message(ps_trunc(fit, method = "pctl"))
+  expect_message(ps_trunc(fit, method = "cr"), "\"z\"")
+})
+
+test_that("ps_trunc() announces the exposure it reads off a multinomial fit", {
+  skip_if_not_installed("nnet")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fit <- trunc_categorical_fit()
+
+  expect_message(ps_trunc(fit, method = "ps"), "\"trt\"")
+  expect_message(ps_trunc(fit, method = "pctl"), "\"trt\"")
+})
+
+# A fit reports the probability of the level the response's default coding
+# treats as focal, so naming the other level means bounding the complement of
+# what the fit reports.
+test_that("ps_trunc() inverts a fit's scores for a named focal level", {
+  fit <- trunc_binary_fit()
+  inverted <- 1 - predict(fit, type = "response")
+
+  expect_same_trunc(
+    ps_trunc(fit, method = "cr", .focal_level = 0),
+    ps_trunc(
+      inverted,
+      method = "cr",
+      .exposure = trunc_model_data$z,
+      .focal_level = 0
+    )
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_trunc(fit, method = "cr", .focal_level = 0)),
+    as.numeric(ps_trunc(fit, method = "cr"))
+  )))
+})
+
+test_that("ps_trunc() inverts a two-level multinomial fit for a named level", {
+  skip_if_not_installed("nnet")
+
+  fit <- trunc_two_level_fit()
+  inverted <- 1 - as.numeric(fitted(fit))
+
+  expect_same_trunc(
+    ps_trunc(fit, method = "cr", .focal_level = "control"),
+    ps_trunc(
+      inverted,
+      method = "cr",
+      .exposure = trunc_model_data$a2,
+      .focal_level = "control"
+    )
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_trunc(fit, method = "cr", .focal_level = "control")),
+    as.numeric(ps_trunc(fit, method = "cr"))
+  )))
+})
+
+# The model route maps the deprecated spelling itself, before the scores reach
+# the method that would map it again, so the reader is told about it once and
+# under the name of the function they called.
+test_that("the deprecated .treated on a fit is attributed to ps_trunc()", {
+  messages <- deprecation_warnings_from_user(
+    quote(ps_trunc(fit, method = "cr", .treated = 0)),
+    list(fit = trunc_binary_fit())
+  )
+
+  expect_length(messages, 1)
+  expect_match(messages[[1]], "ps_trunc()", fixed = TRUE)
+  expect_false(deprecation_misattributed(messages))
+})

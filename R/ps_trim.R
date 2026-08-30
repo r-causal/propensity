@@ -125,9 +125,9 @@
 #' "response")` and `fitted(fit)` give, and trimming a fit trims exactly what
 #' trimming those values would.
 #'
-#' The methods that read an exposure (`"pref"`, `"cr"`, and `"optimal"`) take
-#' it from the model when `.exposure` is not supplied, announcing the variable
-#' they read; `options(propensity.quiet = TRUE)` silences the announcement. An
+#' The methods that read an exposure (`"pref"`, `"cr"`, and every method on the
+#' categorical route) take it from the model when `.exposure` is not supplied,
+#' announcing the variable they read; `options(propensity.quiet = TRUE)` silences the announcement. An
 #' `.exposure` you supply is used instead, and a categorical model's columns
 #' are matched to its levels by name, so an exposure whose levels are ordered
 #' differently is still trimmed against the right column.
@@ -906,7 +906,11 @@ ps_trim_from_model <- function(
   args <- prepare_model_ps(
     model,
     .exposure,
-    needs_exposure = method %in% c("pref", "cr"),
+    # Trimming a matrix of scores reads the exposure whatever the method, both
+    # to hold the columns against its levels and to check that no group is
+    # trimmed away, so a fit that reports a column for every level is read for
+    # its exposure too.
+    needs_exposure = method %in% c("pref", "cr") || model_fits_levels(model),
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     .treated = .treated,

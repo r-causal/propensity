@@ -1074,3 +1074,24 @@ test_that("ps_tilt() names the class of a fit it has no reading for", {
     ps_tilt(lm(z ~ x1 + x2, data = tilt_model_data), "ato")
   )
 })
+
+# A tilt reads no exposure, so the model route recovers none. The levels the
+# columns of a multinomial fit belong to are recorded in the fit itself, and
+# announcing an exposure the tilt makes no use of would report a reading that
+# never happened.
+test_that("ps_tilt() reads no exposure off a multinomial fit", {
+  skip_if_not_installed("nnet")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fit <- tilt_categorical_fit()
+
+  expect_no_message(ps_tilt(fit, "ato"))
+  expect_no_message(ps_tilt(fit, "att", .focal_level = "b"))
+})
+
+test_that("ps_tilt() reads no exposure off a binomial fit", {
+  withr::local_options(propensity.quiet = FALSE)
+  fit <- tilt_binary_fit()
+
+  expect_no_message(ps_tilt(fit, "ato"))
+})
