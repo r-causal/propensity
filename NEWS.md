@@ -1,5 +1,34 @@
 # propensity 0.1.0.9000 (development version)
 
+* `dens_t()` gained `sigma_method`, which chooses how the spread of the
+  conditional density is estimated from the residuals of the propensity score
+  model. Every family, the t included, has always been spread by the root mean
+  square of those residuals, which is the maximum likelihood estimator of the
+  spread of a normal density but not of the scale of a t: the scale of a t is
+  smaller than its standard deviation by a factor that depends on the degrees of
+  freedom, and the root mean square is pulled outward by the large residuals a
+  heavy tail produces, which is what the family was chosen to accommodate.
+  `sigma_method = "mle"` now estimates the scale under the t itself, by the
+  score each residual enters through a bounded term of, so a residual far out in
+  the tail moves the estimate by less than it moves the root mean square. It
+  spreads the conditional density alone; the marginal density that stabilizes
+  the weights is still read at the exposure's own mean and root mean square.
+  Weights built that way record `sigma = "mle"` in `density_meta()`, and `ipw()`
+  stacks the score of the t for the scale in place of the moment equation the
+  pooled spread is the root of, so the sandwich accounts for having estimated
+  it. The
+  default is unchanged, and a `.sigma` supplied alongside `sigma_method = "mle"`
+  is refused with an error of class `propensity_density_error`, being a second
+  instruction about the same quantity.
+
+* Weights for a continuous exposure now print the record of the density ratio
+  they are under their values, as the three lines `density_meta()` renders. Two
+  sets of weights built from different families carry much the same numbers and
+  used to print identically, while what each is a ratio of is the difference
+  between them and is what `ipw()` rebuilds them from. Weights that carry no
+  such record, which is every set of weights for a binary or categorical
+  exposure, print exactly as they always have.
+
 * The data frame routes of the weight functions and the propensity score
   modifiers now read the prediction frames a fitted tidymodels model returns.
   A classification model predicted with `type = "prob"` names its columns

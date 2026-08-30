@@ -342,11 +342,12 @@ ipw_spec_joint_models <- function(
     }
   })
 
-  # A dose model carries the conditional variance of its density in its block of
-  # theta, so its block is one wider than the model has coefficients. A spread
-  # the caller fixed is a known constant instead, which sits in no block at all.
+  # A dose model whose spread the system estimates carries the conditional
+  # variance of its density in its block of theta, so its block is one wider
+  # than the model has coefficients. A spread the caller fixed is a known
+  # constant instead, which sits in no block at all.
   widths <- lengths(coefs)
-  if (dose && identical(ratio$sigma$kind, "pooled")) {
+  if (dose && !identical(ratio$sigma$kind, "fixed")) {
     widths[[dose_idx]] <- widths[[dose_idx]] + 1L
   }
 
@@ -1087,7 +1088,9 @@ ipw_joint_models_score_rows <- function(
   y,
   link,
   ps_fns = NULL,
-  sigma_row = TRUE
+  sigma_row = TRUE,
+  sigma = NULL,
+  density = NULL
 ) {
   if (!identical(block$type, "continuous")) {
     return(deli::ee_glm(
@@ -1105,7 +1108,10 @@ ipw_joint_models_score_rows <- function(
     return(score)
   }
 
-  rbind(score, matrix((y - block$ps)^2 - block$sigma2_d, nrow = 1))
+  rbind(
+    score,
+    ipw_continuous_sigma_row(sigma, y - block$ps, block$sigma2_d, density)
+  )
 }
 
 # The stabilizing numerator's rows: the two moments of the dose's own marginal
@@ -1130,10 +1136,10 @@ ipw_joint_models_dose <- function(spec) {
 }
 
 # The treatment blocks' seed: each model's coefficients, and for a dose whose
-# spread the system estimates, the conditional variance of its density, which is
-# the mean squared residual read against that model's own conditional mean and
-# the exact root of the row that estimates it. A dose whose spread the caller
-# fixed seeds its coefficients alone, since a constant is in no block.
+# spread the system estimates, the conditional variance of its density, read
+# against that model's own conditional mean and the exact root of the row that
+# estimates it. A dose whose spread the caller fixed seeds its coefficients
+# alone, since a constant is in no block.
 ipw_init_joint_models_ps <- function(spec) {
   dose <- ipw_joint_models_dose(spec)
   ps_fns <- if (!is.null(dose)) ipw_joint_models_dose_fns(spec)
@@ -1152,7 +1158,10 @@ ipw_init_joint_models_ps <- function(spec) {
     resid <- spec$exposure[[i]] - ps_fns$mean(spec$ps$X[[i]], alpha)
     c(
       alpha,
-      stats::setNames(mean(resid^2), paste0("sigma2_", spec$names[[i]]))
+      stats::setNames(
+        ipw_continuous_sigma2_seed(spec$sigma, resid, spec$density),
+        paste0("sigma2_", spec$names[[i]])
+      )
     )
   })
 
@@ -1266,7 +1275,9 @@ ipw_psi_joint_models <- function(
           exposure[[i]],
           ps_link[[i]],
           ps_fns = ps_fns,
-          sigma_row = sigma_row
+          sigma_row = sigma_row,
+          sigma = spec$sigma,
+          density = spec$density
         )
       })
     )

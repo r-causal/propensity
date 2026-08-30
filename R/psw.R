@@ -320,13 +320,20 @@ stabilization_score <- function(wt) {
 #'   marginalized over the units, `"score"` for a `stabilization_score` the
 #'   caller supplied, and `"none"` for weights that were not stabilized.
 #' * `sigma`, where the residual spread of the conditional density came from:
-#'   `"pooled"` for the pooled residual root mean square, and `"supplied"`
-#'   for a `.sigma` the caller gave.
+#'   `"pooled"` for the pooled residual root mean square, `"mle"` for the scale
+#'   a [dens_t()] built with `sigma_method = "mle"` estimates under the t
+#'   itself, and `"supplied"` for a `.sigma` the caller gave.
 #' * `sigma_value`, the single spread the caller supplied, and `NULL` for a
-#'   pooled spread and for one supplied per observation. A spread that is one
+#'   spread estimated from the residuals, by either estimator, and for one
+#'   supplied per observation. A spread that is one
 #'   number is a constant the weights can be rebuilt from, which is what
 #'   [ipw()] needs of it; a spread that changes with the observation is not,
 #'   so the record holds where it came from and nothing more.
+#'
+#' Weights that carry a density record print it under their values, as the
+#' three lines `format()` renders. Weights that carry none, which is every set
+#' of weights for a binary or categorical exposure, print exactly as they
+#' always have.
 #'
 #' @param wt A `psw` or `causal_wts` object.
 #' @param x A density record, as returned by `density_meta()`.
@@ -609,6 +616,24 @@ vec_ptype_full.psw <- function(x, ...) {
   } else {
     paste0("psw{estimand = ", estimand, stabilized, "}")
   }
+}
+
+#' @export
+#' @method obj_print_footer psw
+obj_print_footer.psw <- function(x, ...) {
+  meta <- density_meta(x)
+
+  # Weights that are not a ratio of densities record no ratio and print none:
+  # the header and the values, as they always have. The footer is the record's
+  # own `format()` method rather than a second rendering of the same lines, so
+  # the printed weights and the printed record cannot come to disagree.
+  if (is.null(meta)) {
+    return(invisible(x))
+  }
+
+  writeLines(format(meta))
+
+  invisible(x)
 }
 
 #' @export

@@ -409,6 +409,19 @@ test_that("weights that lost the record print no footer", {
   expect_false(any(grepl("^(density|numerator|sigma):", psw_printed(out))))
 })
 
+test_that("the printed weights read as they are pinned", {
+  # The whole of what printing writes, for weights that carry a record and for
+  # weights that do not: the footer is user-visible output, and the header and
+  # the values under it are what they were before there was one.
+  expect_snapshot({
+    print(continuous_records_psw())
+
+    print(continuous_records_psw(.density = dens_t(4)))
+
+    print(wt_ate(records_binary_ps, records_binary_exposure))
+  })
+})
+
 # ---- the records hold at any length -----------------------------------------
 
 test_that("the records survive operations that change the length", {

@@ -289,7 +289,10 @@ exposures} in Details.
 Must be numeric, and applies only to continuous exposures. \code{.sigma} sits in
 the third position, which is where a value meant for \code{exposure_type}
 arrives when it is supplied without a name, so anything else is refused
-with an error of class \code{propensity_sigma_error}.}
+with an error of class \code{propensity_sigma_error}. A spread you supply and a
+density built with \code{sigma_method = "mle"}, which estimates one from the
+residuals, are two instructions about the same quantity and are refused
+together with an error of class \code{propensity_density_error}.}
 
 \item{exposure_type}{Type of exposure: \code{"auto"} (default), \code{"binary"},
 \code{"categorical"}, or \code{"continuous"}. \code{"auto"} detects the type from
@@ -705,9 +708,11 @@ on, a linear probability model included.
 \eqn{\sigma} is the pooled residual spread
 \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies a single
 standard deviation, or one for each unit, which the model methods do not do
-on their own. The marginal density is spread by \eqn{s_A} whatever \code{.sigma}
-says, the spread of the exposure itself being no business of the conditional
-model's.
+on their own. \code{\link[=dens_t]{dens_t()}} offers a second estimator, the maximum likelihood
+scale of the t itself, through \code{sigma_method = "mle"}; see \strong{The spread of a
+t density} in its documentation. The marginal density is spread by
+\eqn{s_A} whatever the conditional spread was arrived at, the spread of the
+exposure itself being no business of the conditional model's.
 
 Every model class is spread that same way, \code{\link[MASS:rlm]{MASS::rlm()}} included. \code{rlm}
 reports a robust scale estimate of its own in \code{fit$s}, which resists the
@@ -719,8 +724,10 @@ is meant to spread over, so the ratio can concentrate on a handful of units.
 constant, and reads \code{.sigma = fit$s} as a fixed spread in the same way,
 propagating the uncertainty of neither.
 
-\code{\link[=ipw]{ipw()}} models the conditional density with a single pooled residual
-variance, estimated jointly with the rest of the parameter vector. A single
+\code{\link[=ipw]{ipw()}} models the conditional density with a single conditional variance,
+estimated jointly with the rest of the parameter vector, by the moment the
+pooled spread is the root of or, for a density built with
+\code{sigma_method = "mle"}, by the score of the t. A single
 \code{.sigma} is taken instead as a known constant: the weights are rebuilt at the
 number that was supplied, and the stacked system carries none of that
 number's uncertainty. An observation-level \code{.sigma} is a different function

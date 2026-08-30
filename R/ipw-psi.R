@@ -613,7 +613,14 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   ps_block <- if (identical(spec$sigma$kind, "fixed")) {
     alpha
   } else {
-    c(alpha, sigma2_d = mean((spec$exposure - fitted_ps)^2))
+    c(
+      alpha,
+      sigma2_d = ipw_continuous_sigma2_seed(
+        spec$sigma,
+        spec$exposure - fitted_ps,
+        spec$density
+      )
+    )
   }
 
   # Only the marginal density of the exposure is read at parameters of its own.
@@ -1041,14 +1048,19 @@ ipw_psi_continuous <- function(
     ps_score <- ps_fns$score(inputs$alpha, x_ps, a)
 
     # A spread the caller fixed is a constant, and a constant has no equation.
-    # The conditional variance is estimated only where the weights took the
-    # pooled residual spread, which is the moment this row is.
+    # The conditional variance is estimated only where the weights estimated it,
+    # by the equation the spread they were built with is the root of.
     ps_rows <- if (identical(spec$sigma$kind, "fixed")) {
       ps_score
     } else {
       rbind(
         ps_score,
-        matrix((a - inputs$mu)^2 - inputs$extras$sigma2_d, nrow = 1)
+        ipw_continuous_sigma_row(
+          spec$sigma,
+          a - inputs$mu,
+          inputs$extras$sigma2_d,
+          spec$density
+        )
       )
     }
 
@@ -1117,4 +1129,35 @@ ipw_numerator_grid <- function(exposure, numerator) {
   present <- exposure[!is.na(exposure)]
 
   seq(min(present), max(present), length.out = continuous_grid_n)
+}
+
+# The equation the stacked system estimates the conditional variance of the
+# density by, which is the equation the spread the weights were built with is
+# the root of. The pooled spread is the root mean square of the residuals, so
+# its row is the uncentered second moment; a scale fit by maximum likelihood is
+# the root of the score of the t itself for the scale, so its row is that score,
+# multiplied through by the scale so that each residual enters through a bounded
+# term.
+ipw_continuous_sigma_row <- function(sigma, residuals, sigma2_d, density) {
+  if (identical(sigma$kind, "mle")) {
+    df <- density$params$df
+
+    return(matrix(
+      (df + 1) * residuals^2 / (df * sigma2_d + residuals^2) - 1,
+      nrow = 1
+    ))
+  }
+
+  matrix(residuals^2 - sigma2_d, nrow = 1)
+}
+
+# The seed for that parameter: the exact root of whichever row estimates it, so
+# that the weights the system rebuilds at its starting value are the weights the
+# user was given.
+ipw_continuous_sigma2_seed <- function(sigma, residuals, density) {
+  if (identical(sigma$kind, "mle")) {
+    return(t_sigma_mle(residuals, density$params$df)^2)
+  }
+
+  mean(residuals^2)
 }

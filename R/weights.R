@@ -268,9 +268,11 @@
 #' \eqn{\sigma} is the pooled residual spread
 #' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies a single
 #' standard deviation, or one for each unit, which the model methods do not do
-#' on their own. The marginal density is spread by \eqn{s_A} whatever `.sigma`
-#' says, the spread of the exposure itself being no business of the conditional
-#' model's.
+#' on their own. [dens_t()] offers a second estimator, the maximum likelihood
+#' scale of the t itself, through `sigma_method = "mle"`; see **The spread of a
+#' t density** in its documentation. The marginal density is spread by
+#' \eqn{s_A} whatever the conditional spread was arrived at, the spread of the
+#' exposure itself being no business of the conditional model's.
 #'
 #' Every model class is spread that same way, [MASS::rlm()] included. `rlm`
 #' reports a robust scale estimate of its own in `fit$s`, which resists the
@@ -282,8 +284,10 @@
 #' constant, and reads `.sigma = fit$s` as a fixed spread in the same way,
 #' propagating the uncertainty of neither.
 #'
-#' [ipw()] models the conditional density with a single pooled residual
-#' variance, estimated jointly with the rest of the parameter vector. A single
+#' [ipw()] models the conditional density with a single conditional variance,
+#' estimated jointly with the rest of the parameter vector, by the moment the
+#' pooled spread is the root of or, for a density built with
+#' `sigma_method = "mle"`, by the score of the t. A single
 #' `.sigma` is taken instead as a known constant: the weights are rebuilt at the
 #' number that was supplied, and the stacked system carries none of that
 #' number's uncertainty. An observation-level `.sigma` is a different function
@@ -409,7 +413,10 @@
 #'   Must be numeric, and applies only to continuous exposures. `.sigma` sits in
 #'   the third position, which is where a value meant for `exposure_type`
 #'   arrives when it is supplied without a name, so anything else is refused
-#'   with an error of class `propensity_sigma_error`.
+#'   with an error of class `propensity_sigma_error`. A spread you supply and a
+#'   density built with `sigma_method = "mle"`, which estimates one from the
+#'   residuals, are two instructions about the same quantity and are refused
+#'   together with an error of class `propensity_density_error`.
 #' @param .density The family of the conditional density for continuous
 #'   exposures, described under **Continuous exposures** in Details. One of the
 #'   strings `"normal"` (the default), `"laplace"`, or `"kernel"`; a
@@ -766,6 +773,7 @@ wt_ate.numeric <- function(
   # in the same place and for the same reason.
   .density <- as_density_spec(.density, arg = ".density", call = call)
   check_density_arg(.density, exposure_type, call = call)
+  check_sigma_method(.sigma, .density, call = call)
 
   numerator <- rlang::arg_match(numerator, error_call = call)
   check_numerator(
@@ -1122,9 +1130,16 @@ ate_continuous <- function(
 
   # The conditional density f_{A|X}(A_i | X_i) is the one the propensity model
   # estimates, so its spread is the spread of that model's residuals: the
-  # observation-level `.sigma` when the caller supplies one, the pooled residual
-  # root mean square otherwise.
-  sigma_i <- continuous_sigma(.exposure, .propensity, .sigma)
+  # observation-level `.sigma` when the caller supplies one, the scale the
+  # density asks to be fit by maximum likelihood when it asks for one, and the
+  # pooled residual root mean square otherwise.
+  sigma_i <- continuous_sigma(
+    .exposure,
+    .propensity,
+    .sigma,
+    density = .density,
+    call = call
+  )
 
   # What divides the conditional density: nothing at all when the weights are
   # not stabilized, a score the caller supplied when there is one, and otherwise
@@ -1184,11 +1199,13 @@ ate_continuous <- function(
   attr(wt, "density_meta") <- new_density_meta(
     density = .density,
     numerator = numerator,
-    sigma = if (is.null(.sigma)) "pooled" else "supplied",
+    sigma = density_sigma_source(.sigma, .density),
     # A spread of one number describes the conditional density of every unit, so
     # it is a constant the ratio can be rebuilt from and the record keeps it. One
     # number per observation describes each unit's density separately, and there
-    # is no constant to keep.
+    # is no constant to keep. A spread estimated from the residuals, by either
+    # estimator, is a function of the data rather than a constant, so there is
+    # nothing to keep for it either.
     sigma_value = if (length(.sigma) == 1L) as.double(.sigma)
   )
 

@@ -488,15 +488,20 @@ ipw_continuous_ratio_meta <- function(
 }
 
 # The spread the stacked system reads the conditional density at. A pooled
-# spread is the residual moment the system estimates alongside the coefficients;
-# a single spread the caller supplied is a constant it holds fixed, carrying
-# none of its uncertainty, which is what fixing it says. A spread supplied for
-# each observation is neither: it is a function of the data that no parameter
-# value here reproduces, so it is refused before anything is solved rather than
-# reported afterwards as two vectors that disagree.
+# spread is the residual moment the system estimates alongside the coefficients,
+# and a scale fit by maximum likelihood is the score of the t estimated in the
+# same place; a single spread the caller supplied is a constant it holds fixed,
+# carrying none of its uncertainty, which is what fixing it says. A spread
+# supplied for each observation is neither: it is a function of the data that no
+# parameter value here reproduces, so it is refused before anything is solved
+# rather than reported afterwards as two vectors that disagree.
 ipw_continuous_spread <- function(meta, call = rlang::caller_env()) {
   if (identical(meta$sigma, "pooled")) {
     return(list(kind = "pooled", value = NULL))
+  }
+
+  if (identical(meta$sigma, "mle")) {
+    return(list(kind = "mle", value = NULL))
   }
 
   if (!is.null(meta$sigma_value)) {

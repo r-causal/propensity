@@ -181,3 +181,13 @@
       i It failed at standardized residuals from -1.5 to -1.27.
       i The marginalized density is interpolated back to the exposure with a cubic spline, which can dip below zero where the density on the grid comes close to it. Use `numerator` = "marginal", or a density with a heavier tail, to stabilize on a density that is positive everywhere.
 
+# a spread supplied and a spread estimated under the density are refused together
+
+    Code
+      expr
+    Condition <propensity_density_error>
+      Error in `wt_ate()`:
+      ! `sigma_method = "mle"` cannot be used with `.sigma`.
+      x `sigma_method = "mle"` estimates the scale of the conditional density from the residuals of the propensity score model, and `.sigma` is a spread of your own that replaces it.
+      i Drop `.sigma` to estimate the scale under the t density, or build the density with `sigma_method = "rms"` to spread the one you supplied.
+

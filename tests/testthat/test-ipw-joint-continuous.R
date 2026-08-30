@@ -932,6 +932,28 @@ test_that("a heavier-tailed dose density is the one the system rebuilds", {
   expect_joint_dose_estimates(res, fx$outcome_mod)
 })
 
+test_that("a dose scale fit by maximum likelihood is stacked at its own equation", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, .density = dens_t(4, sigma_method = "mle"))
+
+  # The dose records which estimator its scale was read with, so the scale sits
+  # in the dose block as the pooled spread does, and the row that estimates it
+  # is the equation the scale the weights were built at is the root of. A block
+  # stacked at the residual moment instead would be seeded away from its own
+  # root and would rebuild a different vector of weights.
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  layout <- expect_joint_weights_at_init(spec, fx$wts)
+  expect_length(
+    layout$idx$ps,
+    length(coef(fx$ps_a)) + length(coef(fx$ps_e)) + 1L
+  )
+  expect_joint_root_seeded(spec)
+
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_joint_dose_estimates(res, fx$outcome_mod)
+  expect_true("sigma2_e" %in% names(coef(res$fit)))
+})
+
 test_that("a fixed scalar sigma on the dose is a constant rather than a parameter", {
   dat <- sim_joint_continuous()
 

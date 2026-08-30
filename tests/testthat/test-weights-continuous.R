@@ -2666,3 +2666,17 @@ test_that("a maximum likelihood scale is fit on the residuals that are there", {
   expect_true(all(is.na(as.numeric(mle)[c(4, 19)])))
   expect_false(anyNA(as.numeric(mle)[-c(4, 19)]))
 })
+
+test_that("a spread supplied and a spread estimated under the density are refused together", {
+  # `.sigma` says the spread is a number of the caller's own, and
+  # `sigma_method = "mle"` says it is estimated from the residuals: two
+  # instructions about the same quantity, one of which would go unread whichever
+  # way the pairing was resolved.
+  expect_propensity_error(
+    continuous_t_wt(.density = dens_t(4, sigma_method = "mle"), .sigma = 0.9)
+  )
+
+  # The default estimator takes a supplied spread as every other family does, so
+  # what is refused is the pairing rather than the family.
+  expect_no_error(continuous_t_wt(.density = dens_t(4), .sigma = 0.9))
+})

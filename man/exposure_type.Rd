@@ -61,14 +61,21 @@ density of the exposure, \code{"integrated"} for the conditional density
 marginalized over the units, \code{"score"} for a \code{stabilization_score} the
 caller supplied, and \code{"none"} for weights that were not stabilized.
 \item \code{sigma}, where the residual spread of the conditional density came from:
-\code{"pooled"} for the pooled residual root mean square, and \code{"supplied"}
-for a \code{.sigma} the caller gave.
+\code{"pooled"} for the pooled residual root mean square, \code{"mle"} for the scale
+a \code{\link[=dens_t]{dens_t()}} built with \code{sigma_method = "mle"} estimates under the t
+itself, and \code{"supplied"} for a \code{.sigma} the caller gave.
 \item \code{sigma_value}, the single spread the caller supplied, and \code{NULL} for a
-pooled spread and for one supplied per observation. A spread that is one
+spread estimated from the residuals, by either estimator, and for one
+supplied per observation. A spread that is one
 number is a constant the weights can be rebuilt from, which is what
 \code{\link[=ipw]{ipw()}} needs of it; a spread that changes with the observation is not,
 so the record holds where it came from and nothing more.
 }
+
+Weights that carry a density record print it under their values, as the
+three lines \code{format()} renders. Weights that carry none, which is every set
+of weights for a binary or categorical exposure, print exactly as they
+always have.
 }
 \examples{
 set.seed(1)
