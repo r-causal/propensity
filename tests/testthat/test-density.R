@@ -74,12 +74,33 @@ test_that("dens_t() records its degrees of freedom", {
   spec <- dens_t(df = 4)
 
   expect_s3_class(spec, "propensity_density")
-  expect_named(spec, c("family", "params", "fn"))
+  expect_named(spec, c("family", "params", "fn", "sigma_method"))
   expect_identical(spec$family, "t")
   expect_named(spec$params, "df")
   expect_equal(spec$params$df, 4)
   expect_equal(spec$fn(z), stats::dt(z, df = 4))
   expect_equal(dens_t(df = 12)$fn(z), stats::dt(z, df = 12))
+})
+
+test_that("dens_t() records how its scale is estimated", {
+  # The scale of the standardized residuals is estimated by the root mean square
+  # that spreads every other family, or by maximum likelihood under the t
+  # itself. It is not a parameter of the density: `t(df = 4)` is the same
+  # density however its scale was arrived at, so the choice sits beside the
+  # parameters rather than among them, and the printed density is what it was.
+  expect_identical(dens_t(df = 4)$sigma_method, "rms")
+  expect_identical(dens_t(df = 4, sigma_method = "rms")$sigma_method, "rms")
+  expect_identical(dens_t(df = 4, sigma_method = "mle")$sigma_method, "mle")
+
+  expect_identical(dens_t(df = 4, sigma_method = "mle")$params, list(df = 4))
+  expect_identical(format(dens_t(df = 4, sigma_method = "mle")), "t(df = 4)")
+})
+
+test_that("dens_t() refuses a scale estimator it does not have", {
+  expect_error(
+    dens_t(df = 4, sigma_method = "median"),
+    class = "rlang_error"
+  )
 })
 
 test_that("dens_kernel() records its stats::density() controls", {

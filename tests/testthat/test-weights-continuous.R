@@ -2512,3 +2512,157 @@ test_that("integrated weights are the weights WeightIt gives", {
     )
   }
 })
+
+# ---- the t scale by maximum likelihood --------------------------------------
+
+# A continuous-exposure problem whose residuals come from a law with heavy
+# tails, which is what the t family is for. The root mean square of these
+# residuals is pulled out by the few large ones; the maximum likelihood scale of
+# the same t is not.
+continuous_t_data <- local({
+  set.seed(20260830)
+
+  n <- 400
+  x <- rnorm(n)
+  exposure <- 1 + 0.7 * x + rt(n, df = 3)
+
+  list(
+    x = x,
+    exposure = exposure,
+    mu = as.numeric(fitted(lm(exposure ~ x)))
+  )
+})
+
+continuous_t_residuals <- continuous_t_data$exposure - continuous_t_data$mu
+
+# Unstabilized weights for that problem, which are the conditional density and
+# nothing else. The marginal density that stabilizes weights is read at the
+# exposure's own moments, and what is under test here is the spread of the
+# conditional one.
+continuous_t_wt <- function(..., exposure = continuous_t_data$exposure) {
+  wt_ate(
+    continuous_t_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = FALSE,
+    ...
+  )
+}
+
+test_that("the t scale by maximum likelihood is the root of the t score", {
+  # The scale the weights were built at is not reported on its own, so it is
+  # read back through them: the same family spread by a number supplied by hand
+  # is the same ratio, and the two agree only if the package solved the equation
+  # the oracle solved.
+  scale <- t_scale_mle(continuous_t_residuals, df = 3)
+
+  mle <- continuous_t_wt(.density = dens_t(3, sigma_method = "mle"))
+  oracle <- continuous_t_wt(.density = dens_t(3), .sigma = scale)
+
+  expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
+})
+
+test_that("a maximum likelihood scale parts from the root mean square in heavy tails", {
+  rms <- continuous_t_wt(.density = dens_t(3))
+  mle <- continuous_t_wt(.density = dens_t(3, sigma_method = "mle"))
+
+  relative <- abs(as.numeric(mle) / as.numeric(rms) - 1)
+
+  # Neither set of weights is a rescaling of the other: the residuals that pull
+  # the root mean square out are the ones the two spreads disagree about most,
+  # and they are the units whose weights the choice of spread decides.
+  expect_gt(max(relative), 0.5)
+  expect_gt(mean(relative), 0.1)
+})
+
+test_that("the two spreads meet as the t approaches the normal", {
+  # A t with many degrees of freedom is the normal, and the maximum likelihood
+  # scale of a normal is its root mean square, so on residuals that are normal
+  # the two estimators answer the same question and answer it alike.
+  residuals <- continuous_density_data$exposure - continuous_density_data$mu
+  scale <- t_scale_mle(residuals, df = 1000)
+
+  expect_equal(scale, continuous_density_pooled(), tolerance = 0.005)
+
+  rms <- continuous_density_wt(stabilize = FALSE, .density = dens_t(1000))
+  mle <- continuous_density_wt(
+    stabilize = FALSE,
+    .density = dens_t(1000, sigma_method = "mle")
+  )
+
+  expect_lt(max(abs(as.numeric(mle) / as.numeric(rms) - 1)), 0.01)
+})
+
+test_that("the t family is spread by the root mean square unless asked otherwise", {
+  # The default is the estimator every family takes, so weights written the way
+  # they have always been written are the weights they have always been.
+  default <- continuous_t_wt(.density = dens_t(6))
+  asked <- continuous_t_wt(.density = dens_t(6, sigma_method = "rms"))
+
+  expect_identical(as.numeric(default), as.numeric(asked))
+  expect_identical(density_meta(default)$sigma, "pooled")
+  expect_identical(density_meta(asked)$sigma, "pooled")
+})
+
+test_that("weights record a maximum likelihood spread as a source of its own", {
+  mle <- continuous_t_wt(.density = dens_t(6, sigma_method = "mle"))
+
+  # A third source beside the pooled root mean square and a spread the caller
+  # supplied. It is estimated from the residuals, as the pooled one is, but by a
+  # different equation, and that is the equation `ipw()` has to solve to rebuild
+  # these weights.
+  expect_identical(density_meta(mle)$sigma, "mle")
+
+  # It is a function of the data rather than a number the caller chose, so there
+  # is no constant to keep, exactly as for the pooled spread.
+  expect_null(density_meta(mle)$sigma_value)
+})
+
+test_that("a maximum likelihood scale spreads the conditional density alone", {
+  # `.sigma` and `sigma_method` describe the same thing: the spread of the
+  # conditional density the weights divide by. The marginal density that
+  # stabilizes them is the exposure's own, read at the exposure's own mean and
+  # root mean square, which neither of them has ever changed.
+  scale <- t_scale_mle(continuous_t_residuals, df = 6)
+
+  stabilized <- wt_ate(
+    continuous_t_data$mu,
+    continuous_t_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(6, sigma_method = "mle")
+  )
+  oracle <- wt_ate(
+    continuous_t_data$mu,
+    continuous_t_data$exposure,
+    .sigma = scale,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(6)
+  )
+
+  expect_equal(as.numeric(stabilized), as.numeric(oracle), tolerance = 1e-8)
+})
+
+test_that("a maximum likelihood scale is fit on the residuals that are there", {
+  exposure <- continuous_t_data$exposure
+  exposure[c(4, 19)] <- NA
+
+  scale <- t_scale_mle(exposure - continuous_t_data$mu, df = 4)
+
+  mle <- continuous_t_wt(
+    exposure = exposure,
+    .density = dens_t(4, sigma_method = "mle")
+  )
+  oracle <- continuous_t_wt(
+    exposure = exposure,
+    .density = dens_t(4),
+    .sigma = scale
+  )
+
+  # A unit with no exposure has no residual for the likelihood to read and no
+  # weight to be given, and it is the only unit that comes back missing.
+  expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
+  expect_true(all(is.na(as.numeric(mle)[c(4, 19)])))
+  expect_false(anyNA(as.numeric(mle)[-c(4, 19)]))
+})

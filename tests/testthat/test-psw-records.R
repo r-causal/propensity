@@ -21,7 +21,8 @@ records_mu <- c(0.2, 0.3, 0.5, 0.6, 0.7, 0.85)
 continuous_records_psw <- function(
   stabilize = TRUE,
   stabilization_score = NULL,
-  .sigma = NULL
+  .sigma = NULL,
+  .density = "normal"
 ) {
   muffle_variance_warning(wt_ate(
     records_mu,
@@ -29,7 +30,8 @@ continuous_records_psw <- function(
     .sigma = .sigma,
     exposure_type = "continuous",
     stabilize = stabilize,
-    stabilization_score = stabilization_score
+    stabilization_score = stabilization_score,
+    .density = .density
   ))
 }
 
@@ -318,6 +320,93 @@ test_that("a density record prints the density, numerator, and spread", {
       "sigma:     supplied"
     )
   )
+})
+
+# ---- the density record under the printed weights ---------------------------
+
+# What printing a set of weights writes, at a width no line of it wraps at.
+psw_printed <- function(x) {
+  withr::local_options(width = 200)
+
+  utils::capture.output(print(x))
+}
+
+test_that("printing continuous weights writes the density record under them", {
+  w <- continuous_records_psw()
+  printed <- psw_printed(w)
+
+  # The footer is the record's own `format()` method rather than a second
+  # rendering of the same three lines, so the printed weights and the printed
+  # record cannot come to disagree.
+  expect_identical(utils::tail(printed, 3L), format(density_meta(w)))
+
+  expect_match(printed, "^density:\\s+normal$", all = FALSE)
+  expect_match(printed, "^numerator:\\s+marginal$", all = FALSE)
+  expect_match(printed, "^sigma:\\s+pooled$", all = FALSE)
+
+  # The header and the weights themselves are what they always were: the record
+  # is written under them and nothing else moves.
+  expect_length(printed, 5L)
+  expect_identical(printed[[1]], "<psw{estimand = ate; stabilized}[6]>")
+})
+
+test_that("the footer tells apart weights whose values print alike", {
+  # Two sets of weights built from different families carry the same estimand
+  # and, to a reader of the numbers, much the same weights. What each is a ratio
+  # of is the difference between them, and it is the footer that says so.
+  normal <- psw_printed(continuous_records_psw())
+  heavy <- psw_printed(continuous_records_psw(.density = dens_t(4)))
+
+  expect_identical(normal[[1]], heavy[[1]])
+  expect_match(heavy, "^density:\\s+t\\(df = 4\\)$", all = FALSE)
+  expect_false(any(grepl("^density:\\s+t", normal)))
+})
+
+test_that("binary and categorical weights print with no footer", {
+  weights <- list(
+    binary = wt_ate(records_binary_ps, records_binary_exposure),
+    categorical = wt_ate(
+      records_categorical_ps,
+      records_categorical_exposure
+    )
+  )
+
+  for (name in names(weights)) {
+    printed <- psw_printed(weights[[name]])
+
+    # Weights that are not a ratio of densities record no ratio and print none:
+    # the header and the values, exactly as they always have.
+    expect_identical(length(printed), 2L, label = name)
+    expect_false(
+      any(grepl("^(density|numerator|sigma):", printed)),
+      label = name
+    )
+  }
+})
+
+test_that("the footer follows the record through a shorter slice", {
+  w <- continuous_records_psw()
+  footer <- format(density_meta(w))
+
+  # The record describes the exposure the weights were built for rather than the
+  # units, so it survives a slice, and what is printed under the weights follows
+  # it.
+  expect_identical(utils::tail(psw_printed(w[1:3]), 3L), footer)
+  expect_identical(utils::tail(psw_printed(utils::head(w, 2L)), 3L), footer)
+})
+
+test_that("weights that lost the record print no footer", {
+  first <- continuous_records_psw(.sigma = 0.12)
+  second <- continuous_records_psw(.sigma = 0.2)
+
+  out <- NULL
+  expect_warning(
+    out <- c(first, second),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_null(density_meta(out))
+  expect_false(any(grepl("^(density|numerator|sigma):", psw_printed(out))))
 })
 
 # ---- the records hold at any length -----------------------------------------

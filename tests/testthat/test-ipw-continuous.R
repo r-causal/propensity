@@ -1942,3 +1942,64 @@ test_that("ipw() continuous m-estimation standard errors match WeightIt", {
     )
   }
 })
+
+# ---- a spread estimated by maximum likelihood -------------------------------
+
+test_that("ipw() solves the scale equation of a t spread by maximum likelihood", {
+  dat <- sim_continuous()
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  scale <- t_scale_mle(dat$A - as.double(fitted(ps_mod)), df = 6)
+
+  # The same weights twice: once with the scale the package estimates, once with
+  # the number it estimates supplied as a constant. The weights are equal, so
+  # the point estimates are, and what differs between the two fits is what the
+  # sandwich accounts for.
+  mle <- fit_continuous_models(dat, .density = dens_t(6, sigma_method = "mle"))
+  fixed <- fit_continuous_models(dat, .density = dens_t(6), .sigma = scale)
+  expect_equal(as.double(mle$wts), as.double(fixed$wts), tolerance = 1e-8)
+
+  res_mle <- ipw(mle$ps_mod, mle$outcome_mod)
+  res_fixed <- ipw(fixed$ps_mod, fixed$outcome_mod)
+
+  # The scale is a parameter of the stacked system under the name the moment
+  # equation gives it, and it is solved to the scale the weights were built at.
+  # A spread held fixed is no parameter at all.
+  expect_true("sigma2_d" %in% names(coef(res_mle$fit)))
+  expect_false("sigma2_d" %in% names(coef(res_fixed$fit)))
+  expect_equal(
+    unname(coef(res_mle$fit)[["sigma2_d"]]),
+    scale^2,
+    tolerance = 1e-6
+  )
+
+  expect_equal(
+    res_mle$estimates$estimate,
+    res_fixed$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_gt(
+    abs(res_mle$estimates$std.err / res_fixed$estimates$std.err - 1),
+    1e-4
+  )
+})
+
+test_that("ipw_spec_continuous reads a maximum likelihood spread off the weights", {
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(
+    dat,
+    .density = dens_t(6, sigma_method = "mle")
+  )
+
+  spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+
+  # A spread estimated by maximum likelihood is estimated alongside the
+  # coefficients, as the pooled one is, so the propensity block carries a row
+  # for it beyond the columns of the design.
+  expect_length(layout$idx$ps, ncol(spec$ps$X) + 1L)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(mods$wts),
+    tolerance = 1e-12
+  )
+})
