@@ -552,6 +552,10 @@ probabilities with one column per level:</p>
 <span></span>
 <span><span class="co"># ATT and ATU require specifying the focal level</span></span>
 <span><span class="fu"><a href="../reference/wt_ate.html">wt_att</a></span><span class="op">(</span><span class="va">ps_matrix</span>, <span class="va">exposure</span>, .focal_level <span class="op">=</span> <span class="st">"treated"</span><span class="op">)</span></span></code></pre></div>
+<p>The fitted model itself is also accepted, and reading the levels and
+the exposure off it saves supplying either:</p>
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">multinom_model</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="calibration">Calibration<a class="anchor" aria-label="anchor" href="#calibration"></a>
@@ -560,7 +564,7 @@ probabilities with one column per level:</p>
 reflect treatment probabilities. Where trimming and truncation deal with
 the tails, calibration reshapes the whole distribution. It supports
 logistic calibration (the default) and isotonic regression:</p>
-<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ps_calibrated</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ps_calibrate.html">ps_calibrate</a></span><span class="op">(</span><span class="va">ps</span>, <span class="va">dat</span><span class="op">$</span><span class="va">z</span>, method <span class="op">=</span> <span class="st">"logistic"</span>, smooth <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/is_ps_calibrated.html">is_ps_calibrated</a></span><span class="op">(</span><span class="va">ps_calibrated</span><span class="op">)</span></span>
 <span></span>
@@ -571,7 +575,7 @@ logistic calibration (the default) and isotonic regression:</p>
 </h3>
 <p><code><a href="../reference/wt_ate.html">wt_cens()</a></code> calculates inverse probability of censoring
 weights for survival or longitudinal analyses:</p>
-<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Model the probability of being uncensored</span></span>
 <span><span class="va">cens_mod</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">uncensored</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">dat</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">wts_cens</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_cens</a></span><span class="op">(</span><span class="va">cens_mod</span><span class="op">)</span></span>

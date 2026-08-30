@@ -331,10 +331,15 @@ automatically. For a binary exposure that is a <code><a href="https://rdrr.io/r/
 <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial()</a></code> or <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">quasibinomial()</a></code>. For a continuous exposure it is a
 model of the conditional mean: <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code>, a <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> fit with <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">gaussian()</a></code>
 under any of its links, an <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam()</a></code> fit with <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">gaussian()</a></code>, or a
-<code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code>. Handing either exposure type a model of the other, or a
+<code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code>. For a categorical exposure it is an <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code>,
+whose fitted values hold the probability of every level; a multinomial
+fit of two levels reports a single probability and is read as a model of
+a binary exposure. Handing one exposure type a model of another, or a
 family whose spread changes with its fitted values, is an error of class
-<code>propensity_model_family_error</code>; see <strong>Continuous exposures</strong> in
-Details.</p></li>
+<code>propensity_model_family_error</code>. The one exception is the multinomial
+fit, which offers no continuous type at all, so naming one for it is an
+error of class <code>causalgenerics_unsupported_exposure_type</code>. See
+<strong>Exposure types</strong> and <strong>Continuous exposures</strong> in Details.</p></li>
 <li><p>A modified propensity score created by <code><a href="ps_trim.html">ps_trim()</a></code>, <code><a href="ps_trunc.html">ps_trunc()</a></code>,
 <code><a href="ps_refit.html">ps_refit()</a></code>, or <code><a href="ps_calibrate.html">ps_calibrate()</a></code>.</p></li>
 </ul><p>For a binary exposure, <code>.propensity</code> is the probability of the focal
@@ -539,7 +544,11 @@ two-level factor). <code>.propensity</code> is a numeric vector of P(treatment |
 or a matrix or data frame holding it in one of its columns.</p></li>
 <li><p><strong>Categorical</strong>: <code>.exposure</code> is a factor or character vector with 3+
 levels. <code>.propensity</code> must be a matrix or data frame with one column per
-level, where rows sum to 1.</p></li>
+level, where rows sum to 1. Every weight function but <code>wt_cens()</code> also
+takes a fitted <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> and reads those columns off its fitted
+values, matching them to the levels of <code>.exposure</code> by name. A multinomial
+fit of only two levels reports a single probability and is read as a model
+of a binary exposure.</p></li>
 <li><p><strong>Continuous</strong>: <code>.exposure</code> is a numeric vector. <code>.propensity</code> is a
 vector of conditional means (fitted values). Weights are a ratio of
 densities, whose family is chosen by <code>.density</code>, and are stabilized
@@ -1082,6 +1091,50 @@ g-computation estimate to the same target population.</p></li>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as binary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "uncensored"</span>
 <span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># -- Categorical exposure from a multinomial fit ---------------------</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">5</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">x3</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">100</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">dose_level</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"low"</span>, <span class="st">"mid"</span>, <span class="st">"high"</span><span class="op">)</span>, <span class="fl">100</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">cat_model</span> <span class="op">&lt;-</span> <span class="fu">nnet</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">multinom</a></span><span class="op">(</span><span class="va">dose_level</span> <span class="op">~</span> <span class="va">x3</span>, trace <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># The fit reports one probability per level, and the exposure and its level</span></span></span>
+<span class="r-in"><span><span class="co"># order are read from the model</span></span></span>
+<span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">cat_model</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"dose_level"</span> from the propensity score model</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as categorical</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[100]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   [1] 2.627904 2.829846 3.375768 2.703487 3.632186 3.233032 2.657388 2.644156</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   [9] 3.113899 2.709502 3.539632 3.249417 2.609520 3.081511 2.610172 2.685315</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [17] 2.647216 3.656999 2.984049 2.675082 2.832620 2.823523 2.711684 3.445671</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [25] 2.850682 2.672211 3.575537 3.590855 3.224908 3.195973 2.725495 2.787071</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [33] 2.564519 2.812539 3.587106 3.489123 3.173263 3.038661 3.069665 3.304136</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [41] 2.694864 2.630910 3.060826 2.885123 2.658668 2.748277 2.624315 2.658366</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [49] 3.214893 2.691322 2.712655 3.357535 2.792821 2.647658 2.687614 2.621382</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [57] 2.865372 3.070283 3.316645 2.718015 3.155149 2.776314 3.189703 3.409303</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [65] 3.209603 2.668202 3.630985 3.117957 3.380608 3.112345 2.679760 3.291034</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [73] 2.728332 2.700167 2.734436 3.302117 3.493073 2.707990 2.996421 3.185624</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [81] 3.409654 3.072290 3.493442 3.048336 3.440244 3.224773 2.532538 2.657285</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [89] 3.061122 3.174848 2.783302 3.165692 2.909956 2.780810 2.813005 2.731683</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [97] 3.129433 3.179659 3.297815 3.317412</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># The same weights from the fitted matrix, which needs the exposure and its</span></span></span>
+<span class="r-in"><span><span class="co"># type supplied</span></span></span>
+<span class="r-in"><span><span class="va">ps_mat</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span><span class="va">cat_model</span>, type <span class="op">=</span> <span class="st">"probs"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">wt_ate</span><span class="op">(</span><span class="va">ps_mat</span>, <span class="va">dose_level</span>, exposure_type <span class="op">=</span> <span class="st">"categorical"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate}[100]&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   [1] 2.627904 2.829846 3.375768 2.703487 3.632186 3.233032 2.657388 2.644156</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   [9] 3.113899 2.709502 3.539632 3.249417 2.609520 3.081511 2.610172 2.685315</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [17] 2.647216 3.656999 2.984049 2.675082 2.832620 2.823523 2.711684 3.445671</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [25] 2.850682 2.672211 3.575537 3.590855 3.224908 3.195973 2.725495 2.787071</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [33] 2.564519 2.812539 3.587106 3.489123 3.173263 3.038661 3.069665 3.304136</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [41] 2.694864 2.630910 3.060826 2.885123 2.658668 2.748277 2.624315 2.658366</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [49] 3.214893 2.691322 2.712655 3.357535 2.792821 2.647658 2.687614 2.621382</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [57] 2.865372 3.070283 3.316645 2.718015 3.155149 2.776314 3.189703 3.409303</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [65] 3.209603 2.668202 3.630985 3.117957 3.380608 3.112345 2.679760 3.291034</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [73] 2.728332 2.700167 2.734436 3.302117 3.493073 2.707990 2.996421 3.185624</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [81] 3.409654 3.072290 3.493442 3.048336 3.440244 3.224773 2.532538 2.657285</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [89] 3.061122 3.174848 2.783302 3.165692 2.909956 2.780810 2.813005 2.731683</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [97] 3.129433 3.179659 3.297815 3.317412</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

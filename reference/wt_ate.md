@@ -269,11 +269,18 @@ wt_cens(
     [`gaussian()`](https://rdrr.io/r/stats/family.html) under any of its
     links, an [`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html) fit
     with [`gaussian()`](https://rdrr.io/r/stats/family.html), or a
-    [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html). Handing
-    either exposure type a model of the other, or a family whose spread
-    changes with its fitted values, is an error of class
-    `propensity_model_family_error`; see **Continuous exposures** in
-    Details.
+    [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html). For a
+    categorical exposure it is an
+    [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html),
+    whose fitted values hold the probability of every level; a
+    multinomial fit of two levels reports a single probability and is
+    read as a model of a binary exposure. Handing one exposure type a
+    model of another, or a family whose spread changes with its fitted
+    values, is an error of class `propensity_model_family_error`. The
+    one exception is the multinomial fit, which offers no continuous
+    type at all, so naming one for it is an error of class
+    `causalgenerics_unsupported_exposure_type`. See **Exposure types**
+    and **Continuous exposures** in Details.
 
   - A modified propensity score created by
     [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md),
@@ -518,7 +525,12 @@ error of class `causalgenerics_unsupported_exposure_type`.
 
 - **Categorical**: `.exposure` is a factor or character vector with 3+
   levels. `.propensity` must be a matrix or data frame with one column
-  per level, where rows sum to 1.
+  per level, where rows sum to 1. Every weight function but `wt_cens()`
+  also takes a fitted
+  [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) and
+  reads those columns off its fitted values, matching them to the levels
+  of `.exposure` by name. A multinomial fit of only two levels reports a
+  single probability and is read as a model of a binary exposure.
 
 - **Continuous**: `.exposure` is a numeric vector. `.propensity` is a
   vector of conditional means (fitted values). Weights are a ratio of
@@ -1140,4 +1152,49 @@ wt_cens(cens_ps, cens_ind)
 estimand(wt_cens(cens_ps, cens_ind))  # "uncensored"
 #> ℹ Treating `.exposure` as binary
 #> [1] "uncensored"
+
+# -- Categorical exposure from a multinomial fit ---------------------
+set.seed(5)
+x3 <- rnorm(100)
+dose_level <- factor(sample(c("low", "mid", "high"), 100, replace = TRUE))
+cat_model <- nnet::multinom(dose_level ~ x3, trace = FALSE)
+
+# The fit reports one probability per level, and the exposure and its level
+# order are read from the model
+wt_ate(cat_model)
+#> ℹ Using exposure variable "dose_level" from the propensity score model
+#> ℹ Treating `.exposure` as categorical
+#> <psw{estimand = ate}[100]>
+#>   [1] 2.627904 2.829846 3.375768 2.703487 3.632186 3.233032 2.657388 2.644156
+#>   [9] 3.113899 2.709502 3.539632 3.249417 2.609520 3.081511 2.610172 2.685315
+#>  [17] 2.647216 3.656999 2.984049 2.675082 2.832620 2.823523 2.711684 3.445671
+#>  [25] 2.850682 2.672211 3.575537 3.590855 3.224908 3.195973 2.725495 2.787071
+#>  [33] 2.564519 2.812539 3.587106 3.489123 3.173263 3.038661 3.069665 3.304136
+#>  [41] 2.694864 2.630910 3.060826 2.885123 2.658668 2.748277 2.624315 2.658366
+#>  [49] 3.214893 2.691322 2.712655 3.357535 2.792821 2.647658 2.687614 2.621382
+#>  [57] 2.865372 3.070283 3.316645 2.718015 3.155149 2.776314 3.189703 3.409303
+#>  [65] 3.209603 2.668202 3.630985 3.117957 3.380608 3.112345 2.679760 3.291034
+#>  [73] 2.728332 2.700167 2.734436 3.302117 3.493073 2.707990 2.996421 3.185624
+#>  [81] 3.409654 3.072290 3.493442 3.048336 3.440244 3.224773 2.532538 2.657285
+#>  [89] 3.061122 3.174848 2.783302 3.165692 2.909956 2.780810 2.813005 2.731683
+#>  [97] 3.129433 3.179659 3.297815 3.317412
+
+# The same weights from the fitted matrix, which needs the exposure and its
+# type supplied
+ps_mat <- predict(cat_model, type = "probs")
+wt_ate(ps_mat, dose_level, exposure_type = "categorical")
+#> <psw{estimand = ate}[100]>
+#>   [1] 2.627904 2.829846 3.375768 2.703487 3.632186 3.233032 2.657388 2.644156
+#>   [9] 3.113899 2.709502 3.539632 3.249417 2.609520 3.081511 2.610172 2.685315
+#>  [17] 2.647216 3.656999 2.984049 2.675082 2.832620 2.823523 2.711684 3.445671
+#>  [25] 2.850682 2.672211 3.575537 3.590855 3.224908 3.195973 2.725495 2.787071
+#>  [33] 2.564519 2.812539 3.587106 3.489123 3.173263 3.038661 3.069665 3.304136
+#>  [41] 2.694864 2.630910 3.060826 2.885123 2.658668 2.748277 2.624315 2.658366
+#>  [49] 3.214893 2.691322 2.712655 3.357535 2.792821 2.647658 2.687614 2.621382
+#>  [57] 2.865372 3.070283 3.316645 2.718015 3.155149 2.776314 3.189703 3.409303
+#>  [65] 3.209603 2.668202 3.630985 3.117957 3.380608 3.112345 2.679760 3.291034
+#>  [73] 2.728332 2.700167 2.734436 3.302117 3.493073 2.707990 2.996421 3.185624
+#>  [81] 3.409654 3.072290 3.493442 3.048336 3.440244 3.224773 2.532538 2.657285
+#>  [89] 3.061122 3.174848 2.783302 3.165692 2.909956 2.780810 2.813005 2.731683
+#>  [97] 3.129433 3.179659 3.297815 3.317412
 ```

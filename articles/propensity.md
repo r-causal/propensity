@@ -561,6 +561,14 @@ wt_ate(ps_matrix, exposure, exposure_type = "categorical")
 wt_att(ps_matrix, exposure, .focal_level = "treated")
 ```
 
+The fitted model itself is also accepted, and reading the levels and the
+exposure off it saves supplying either:
+
+``` r
+
+wt_ate(multinom_model)
+```
+
 ### Calibration
 
 [`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
