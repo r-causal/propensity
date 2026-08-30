@@ -452,7 +452,37 @@ test_that("a four-level fit refuses a categorical exposure of three levels", {
   expect_match(message, ".propensity", fixed = TRUE)
   expect_no_match(message, "Matrix columns", fixed = TRUE)
 
+  # Dropping the exposure's unused levels is no remedy for a fit reporting a
+  # level the exposure does not have, so that bullet belongs to the other
+  # direction of the mismatch alone.
+  expect_no_match(message, "droplevels", fixed = TRUE)
+
   expect_propensity_error(wt_ate(fit, trt, exposure_type = "categorical"))
+})
+
+test_that("an exposure carrying an unused level is sent to droplevels()", {
+  skip_if_not_installed("nnet")
+
+  # `nnet::multinom()` drops a level no unit took, so a fit made to an exposure
+  # with an empty level reports one column fewer than the exposure declares
+  # levels. The two sets disagree for a reason the caller can fix without
+  # refitting anything, and the refusal names it.
+  fit <- fit_multinom(trt ~ x1 + x2)
+  with_empty_level <- factor(
+    as.character(categorical_model_data$trt),
+    levels = c("a", "b", "c", "d")
+  )
+
+  expect_length(fit$lev, 3L)
+  expect_length(levels(with_empty_level), 4L)
+
+  err <- expect_error(
+    wt_ate(fit, with_empty_level, exposure_type = "categorical"),
+    class = "propensity_model_family_error"
+  )
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "droplevels", fixed = TRUE)
 })
 
 test_that("a multinomial fit of a response matrix is refused", {

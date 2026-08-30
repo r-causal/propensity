@@ -1919,6 +1919,48 @@ test_that("ps_trunc() refuses an argument it does not read", {
   )
 })
 
+test_that("ps_trunc() truncates a calibrated propensity score", {
+  set.seed(2026)
+  n <- 200
+  x <- rnorm(n)
+  exposure <- rbinom(n, 1, plogis(0.8 * x))
+  ps <- plogis(0.5 * x)
+  calibrated <- ps_calibrate(ps, exposure, smooth = FALSE)
+
+  # A calibrated score is a propensity score, and the weight functions take one
+  # by reading the scores it holds and recording that they were calibrated.
+  # Bounding them reads them the same way rather than refusing a vector of
+  # numbers for the class attached to it.
+  truncated <- ps_trunc(calibrated, method = "ps", lower = 0.1, upper = 0.9)
+
+  expect_s3_class(truncated, "ps_trunc")
+  expect_false(inherits(truncated, "ps_calib"))
+  expect_equal(
+    as.numeric(truncated),
+    as.numeric(ps_trunc(
+      as.numeric(calibrated),
+      method = "ps",
+      lower = 0.1,
+      upper = 0.9
+    ))
+  )
+
+  # What the class recorded is kept as metadata, so a score that was calibrated
+  # before it was bounded still says so.
+  meta <- ps_trunc_meta(truncated)
+  expect_true(isTRUE(meta$calibrated))
+
+  # A score that was never calibrated records nothing that says it was.
+  expect_false(isTRUE(
+    ps_trunc_meta(ps_trunc(
+      ps,
+      method = "ps",
+      lower = 0.1,
+      upper = 0.9
+    ))$calibrated
+  ))
+})
+
 test_that("ps_trunc() refuses scores that are not numbers", {
   # A character vector is coerced on its way to the range check, which reports
   # values it read as missing rather than an argument of the wrong type, and

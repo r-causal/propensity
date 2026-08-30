@@ -757,6 +757,13 @@ test_that("the weights mismatch on two binary treatments names no focal level", 
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_no_match(msg, "focal level", fixed = TRUE)
 
+  # On this route `wt_mod` is the container of the two treatment models rather
+  # than one propensity score model, so the remedy names what it holds. A
+  # reader told to refit the outcome model with weights from "this propensity
+  # score model" is being sent to a model the call never had.
+  expect_match(msg, "two treatment models", fixed = TRUE)
+  expect_no_match(msg, "this propensity score model", fixed = TRUE)
+
   expect_propensity_error(ipw(two$models, outcome_mod))
 })
 

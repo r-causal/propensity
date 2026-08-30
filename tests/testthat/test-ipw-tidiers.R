@@ -855,6 +855,34 @@ test_that("tidy() rejects a conf.level that is not one number inside (0, 1)", {
   )
 })
 
+test_that("tidy() reports the refusals of its arguments against tidy()", {
+  # The argument is validated by the result's own coercion surface, which the
+  # tidier delegates to. Reported against that delegation the refusal names a
+  # function the caller never wrote, so the tidier hands the surface its own
+  # call to report against.
+  skip_if_not(
+    "call" %in% names(formals(getS3method("as.data.frame", "ipw"))),
+    "the installed causalgenerics takes no call argument"
+  )
+
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  expect_identical(
+    condition_call_name(tidy(res, conf.int = TRUE, conf.level = 2)),
+    "tidy"
+  )
+  expect_identical(
+    condition_call_name(tidy(res, conf.level = "0.95")),
+    "tidy"
+  )
+  expect_identical(
+    condition_call_name(tidy(res, exponentiate = "yes")),
+    "tidy"
+  )
+})
+
 test_that("tidy() rejects the argument values the coercion surface refuses", {
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
@@ -2969,6 +2997,24 @@ test_that("the tidiers report a pooled conditional result", {
   # `glance()` describes the pooled fit rather than its estimates, so the
   # reading those estimates are in leaves the row it returns alone.
   expect_identical(glance(pooled), glance(pool_ipw(fits)))
+})
+
+test_that("the pooled tidier reports its refusals against tidy() too", {
+  skip_if_not(
+    "call" %in% names(formals(getS3method("as.data.frame", "ipw_pooled"))),
+    "the installed causalgenerics takes no call argument"
+  )
+
+  pooled <- fit_pooled_binary()
+
+  expect_identical(
+    condition_call_name(tidy(pooled, conf.int = TRUE, conf.level = 2)),
+    "tidy"
+  )
+  expect_identical(
+    condition_call_name(tidy(pooled, exponentiate = "yes")),
+    "tidy"
+  )
 })
 
 test_that("tidy() rejects an argument that lands in the pooled dots", {

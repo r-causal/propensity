@@ -1027,6 +1027,37 @@ test_that("ipw() rejects a two-level multinom propensity score model", {
   expect_propensity_error(ipw(ps_mod, outcome_mod))
 })
 
+test_that("ipw() rejects a multinom fit to a matrix response", {
+  skip_if_not_installed("nnet")
+
+  dat <- sim_categorical()
+  counts <- with(
+    dat,
+    cbind(
+      a = as.integer(a == "a"),
+      b = as.integer(a == "b"),
+      c = as.integer(a == "c")
+    )
+  )
+
+  # A matrix response is read as counts rather than as a factor, so the fit
+  # records no levels and its fitted columns name none. The weight path refuses
+  # such a fit, and the estimator has to refuse it in the same terms: without
+  # the guard the exposure is read as the deparsed response and the user is
+  # asked to put a column named "counts" in the outcome model.
+  ps_mod <- nnet::multinom(counts ~ x1 + x2, data = dat, trace = FALSE)
+  expect_length(ps_mod$lev, 0L)
+
+  mods <- fit_categorical_models(dat, "ate")
+
+  err <- expect_error(
+    ipw(ps_mod, mods$outcome_mod),
+    class = "propensity_model_family_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "matrix response", fixed = TRUE)
+})
+
 # ---- guard against an invalid focal level -----------------------------------
 
 test_that("ipw() rejects a focal level that is not an exposure level", {

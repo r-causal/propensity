@@ -567,6 +567,38 @@ test_that("density_eval() tells a reversed range from a range of no width", {
   expect_false(grepl("reversed", conditionMessage(constant)))
 })
 
+test_that("density_eval() refuses a range that is not two finite ends", {
+  z <- density_z(n = 10)
+
+  # The guard reads the ends of the range it was handed, so it has to hold that
+  # there are two of them and that each is a number a kernel can be fit to. An
+  # infinite end passed the missingness test and reached `stats::density()` as
+  # an error about its own `from` and `to`; a range of the wrong length was
+  # indexed for an end it does not have.
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(-Inf, 2)),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(-2, Inf)),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    density_eval(dens_kernel(), z, range = 2),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(-2, 0, 2)),
+    class = "propensity_density_error"
+  )
+
+  # A missing end is still refused as the missing end it is.
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(NA_real_, 2)),
+    class = "propensity_density_error"
+  )
+})
+
 test_that("density_eval() drops the shape of a matrix result", {
   z <- density_z(n = 10)
 

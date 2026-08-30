@@ -950,6 +950,31 @@ test_that("the unsupported-model refusal names the dose models it reads", {
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "rlm", fixed = TRUE)
   expect_match(msg, "gam", fixed = TRUE)
+
+  # What is refused is the family rather than the class: a `glm` is on the list
+  # of classes the container reads, and every model it rejects here is a class
+  # that is on that list fit to a family that is not. Naming only the class
+  # leaves the reader looking at a class the same message says is supported.
+  expect_match(msg, "poisson()", fixed = TRUE)
+})
+
+test_that("the unsupported-model refusal names the family of an additive fit", {
+  skip_if_not_installed("mgcv")
+  fx <- joint_wt_fixture()
+  withr::local_seed(5302)
+  dat <- fx$dat
+  dat$k <- rpois(nrow(dat), 2)
+
+  # An additive model is read as a dose model when it is gaussian and refused
+  # when it is not, and it is the family that decides, so it is the family the
+  # refusal names.
+  counted <- mgcv::gam(k ~ a + s(x1), data = dat, family = poisson())
+  err <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = counted),
+    class = "propensity_wt_joint_models_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "poisson()", fixed = TRUE)
 })
 
 test_that("joint_wt_models() requires a discrete second model to condition on the first treatment", {

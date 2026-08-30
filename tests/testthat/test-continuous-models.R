@@ -595,17 +595,47 @@ test_that("a model of the wrong kind is refused by what it was fit with", {
   )
 })
 
-test_that("a family object without a name is refused rather than raising", {
-  # A family that carries a link and no name answers the binomial test with
-  # nothing at all, which `&&` cannot read as true or false. It is a family the
-  # binary path cannot weight from, and it is refused in those terms.
-  unnamed <- structure(
-    list(family = list(link = "logit")),
-    class = "unnamed_family_fit"
+test_that("a family named with an empty string is described as unnamed", {
+  # A name of no characters is no name: written into the message it leaves a
+  # pair of backticks with nothing between them, which describes the family to
+  # nobody. Such a family is described the way one carrying no name at all is.
+  empty <- structure(
+    list(family = list(family = "", link = "logit")),
+    class = "empty_family_fit"
+  )
+
+  err <- expect_error(
+    check_binary_model_family(empty),
+    class = "propensity_model_family_error"
+  )
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "unnamed family", fixed = TRUE)
+  expect_no_match(message, "``", fixed = TRUE)
+
+  expect_identical(model_family_label(list(family = "")), "an unnamed family")
+})
+
+test_that("a family element that is not a family object is refused", {
+  # `$` on an atomic vector is an error of base R's rather than one of this
+  # package's, so a fit whose family element is a bare string reached the
+  # family test and raised there instead of being refused by it. Neither check
+  # can read such an element as a family, and both say so in their own terms.
+  atomic_binary <- structure(
+    list(family = "binomial"),
+    class = "atomic_family_fit"
+  )
+  atomic_continuous <- structure(
+    list(family = "gaussian"),
+    class = "atomic_family_fit"
   )
 
   expect_error(
-    check_binary_model_family(unnamed),
+    check_binary_model_family(atomic_binary),
+    class = "propensity_model_family_error"
+  )
+  expect_error(
+    check_continuous_model_family(atomic_continuous),
     class = "propensity_model_family_error"
   )
 })

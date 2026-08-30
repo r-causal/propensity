@@ -1434,6 +1434,29 @@ test_that("the unknown-subclass error names the classes that are supported", {
   expect_propensity_error(ipw(unknown, mods$outcome_mod))
 })
 
+test_that("ipw() refuses a propensity model fit without a formula", {
+  dat <- sim_continuous()
+
+  # A robust fit through the matrix interface records no formula and no terms.
+  # The weights read nothing but its fitted values, so it builds them, and then
+  # every `ipw()` route deparses the left-hand side of the formula to name the
+  # exposure and finds none there.
+  fit <- MASS::rlm(cbind(1, dat$x1, dat$x2), dat$A)
+  wts <- continuous_weights(as.numeric(fitted(fit)), dat$A)
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(fit, outcome_mod),
+    class = "propensity_ipw_response_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+
+  # The refusal names the interface the model has to be refit through, rather
+  # than reporting a subscript of a formula that was never written.
+  expect_match(msg, "formula", fixed = TRUE)
+  expect_match(msg, "wt_mod", fixed = TRUE)
+})
+
 test_that("ipw() refuses a propensity link it cannot write the score for", {
   dat <- sim_continuous_positive()
 

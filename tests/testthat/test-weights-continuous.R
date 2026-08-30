@@ -1099,6 +1099,71 @@ test_that("no residual at all leaves every weight missing", {
   }
 })
 
+test_that("an infinite exposure or fitted value is refused where it arrives", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+
+  infinite_exposure <- exposure
+  infinite_exposure[[3]] <- Inf
+  infinite_mu <- mu
+  infinite_mu[[5]] <- -Inf
+
+  # A missing value is a unit with nothing to weight and leaves that unit's
+  # weight missing. An infinite one is not that: the spread computed from it is
+  # infinite, so every weight comes back missing however few units carry the
+  # infinity, and under a kernel the residuals it leaves are refused as
+  # residuals that do not vary, which they do. Neither report names the value
+  # that caused it, so the value is refused where it arrives.
+  for (family in list("normal", dens_t(df = 4), "kernel")) {
+    expect_error(
+      wt_ate(
+        mu,
+        infinite_exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = family
+      ),
+      class = "propensity_density_error"
+    )
+
+    expect_error(
+      wt_ate(
+        infinite_mu,
+        exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = family
+      ),
+      class = "propensity_density_error"
+    )
+  }
+
+  err <- expect_error(
+    wt_ate(
+      mu,
+      infinite_exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_density_error"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "infinite", fixed = TRUE)
+  expect_match(message, ".exposure", fixed = TRUE)
+
+  # A missing value still weights the way it always has: the units that have a
+  # residual are weighted and the ones that do not are missing.
+  missing_exposure <- exposure
+  missing_exposure[[3]] <- NA_real_
+  weights <- expect_silent(wt_ate(
+    mu,
+    missing_exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  ))
+  expect_identical(which(is.na(as.numeric(weights))), 3L)
+})
+
 # ---- against WeightIt -------------------------------------------------------
 
 test_that("the denominator is the one WeightIt divides by", {
@@ -1407,6 +1472,46 @@ test_that("integrated weights do not depend on the units of the exposure", {
   expect_false(all(as.numeric(scaled) == 1))
 })
 
+test_that("integrated weights do not depend on where the exposure is centered", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+  offset <- 1e9
+
+  # A density ratio is invariant to the origin the dose is measured from as
+  # well as to the unit it is measured in: shifting the exposure and the fitted
+  # means by the same constant leaves every standardized residual and every
+  # standardized grid point where it was.
+  unshifted <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+
+  shifted <- wt_ate(
+    mu + offset,
+    exposure + offset,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+
+  # The comparison is to the precision doubles hold a shifted dose at, which is
+  # about seven digits below the shift itself.
+  expect_equal(
+    as.numeric(shifted),
+    as.numeric(unshifted),
+    tolerance = 1e-5
+  )
+
+  # The failure this guards against is silent: a constancy test whose floor is
+  # a fraction of the mean reads fitted means that differ by a unit or two at
+  # an offset of a billion as one number, and returns a weight of one for every
+  # unit of a model that conditions on a covariate.
+  expect_false(all(as.numeric(shifted) == 1))
+})
+
 test_that("is_constant() reads a spread against the scale it is on", {
   mu <- continuous_density_data$mu
   sigma <- continuous_density_pooled()
@@ -1422,6 +1527,21 @@ test_that("is_constant() reads a spread against the scale it is on", {
     rep(mean(mu) * 1e-9, length(mu)),
     scale = sigma * 1e-9
   ))
+
+  # An offset says nothing about how much the fitted means vary. Read against a
+  # floor that is a fraction of the mean, means that differ by a unit or two at
+  # an offset of a billion are one number, which they are not.
+  expect_false(is_constant(mu + 1e9, scale = sigma))
+
+  # What the offset term is for is still met: the fitted values of an
+  # intercept-only model at that offset spread over the last bits of the
+  # arithmetic that produced them, about 1e-5 here, and are one number as far
+  # as the model is concerned.
+  offset_intercept <- as.numeric(fitted(
+    lm(I(continuous_density_data$exposure + 1e9) ~ 1)
+  ))
+  expect_gt(diff(range(offset_intercept)), 0)
+  expect_true(is_constant(offset_intercept, scale = sigma))
 })
 
 test_that("an exposure that does not vary has no grid to be marginalized over", {
