@@ -86,12 +86,25 @@ check_continuous_model_family <- function(model, call = rlang::caller_env()) {
   )
 }
 
+# Whether a fitted model reports the probability of a binary exposure. Most
+# classes answer that from their family, which is what the default method
+# reads; a class that carries no family and still fits a probability, such as
+# `nnet::multinom()`, answers it from what it was fit to and has a method of its
+# own.
+check_binary_model_family <- function(model, call = rlang::caller_env()) {
+  UseMethod("check_binary_model_family")
+}
+
 # The families whose fitted values are the probability of the exposure. A model
 # of a conditional mean is not one of them, however close to a probability its
 # fitted values happen to fall: a linear probability model is not held to the
 # unit interval, so this reads the model rather than the values it fitted, and
 # reads it before the range of a propensity score is checked.
-check_binary_model_family <- function(model, call = rlang::caller_env()) {
+#' @export
+check_binary_model_family.default <- function(
+  model,
+  call = rlang::caller_env()
+) {
   family <- model[["family"]]
 
   if (!is.null(family) && family$family %in% c("binomial", "quasibinomial")) {
@@ -113,23 +126,6 @@ check_binary_model_family <- function(model, call = rlang::caller_env()) {
       x = fitted_by,
       i = "Fit the propensity score model with {.fun binomial}, or pass fitted
            probabilities to {.arg .propensity} directly."
-    ),
-    error_class = "propensity_model_family_error",
-    call = call
-  )
-}
-
-# A categorical exposure needs a probability for every level, which a model
-# reporting one fitted value per unit cannot give. The multinomial route takes a
-# matrix of those probabilities rather than the model that produced them.
-abort_categorical_model <- function(model, call = rlang::caller_env()) {
-  abort(
-    c(
-      "Weights for a categorical exposure need a probability for every level.",
-      x = "{.arg .propensity} is {.cls {class(model)[[1]]}}, which fits one
-           value for each unit rather than one for each level.",
-      i = "Pass a matrix or data frame with one column per level, such as the
-           fitted values of {.fun nnet::multinom}."
     ),
     error_class = "propensity_model_family_error",
     call = call

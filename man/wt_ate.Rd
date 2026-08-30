@@ -224,10 +224,15 @@ automatically. For a binary exposure that is a \code{\link[=glm]{glm()}} fit wit
 \code{\link[=binomial]{binomial()}} or \code{quasibinomial()}. For a continuous exposure it is a
 model of the conditional mean: \code{\link[=lm]{lm()}}, a \code{\link[=glm]{glm()}} fit with \code{\link[=gaussian]{gaussian()}}
 under any of its links, an \code{\link[mgcv:gam]{mgcv::gam()}} fit with \code{\link[=gaussian]{gaussian()}}, or a
-\code{\link[MASS:rlm]{MASS::rlm()}}. Handing either exposure type a model of the other, or a
+\code{\link[MASS:rlm]{MASS::rlm()}}. For a categorical exposure it is an \code{\link[nnet:multinom]{nnet::multinom()}},
+whose fitted values hold the probability of every level; a multinomial
+fit of two levels reports a single probability and is read as a model of
+a binary exposure. Handing one exposure type a model of another, or a
 family whose spread changes with its fitted values, is an error of class
-\code{propensity_model_family_error}; see \strong{Continuous exposures} in
-Details.
+\code{propensity_model_family_error}. The one exception is the multinomial
+fit, which offers no continuous type at all, so naming one for it is an
+error of class \code{causalgenerics_unsupported_exposure_type}. See
+\strong{Exposure types} and \strong{Continuous exposures} in Details.
 \item A modified propensity score created by \code{\link[=ps_trim]{ps_trim()}}, \code{\link[=ps_trunc]{ps_trunc()}},
 \code{\link[=ps_refit]{ps_refit()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}}.
 }
@@ -445,7 +450,11 @@ two-level factor). \code{.propensity} is a numeric vector of P(treatment | X),
 or a matrix or data frame holding it in one of its columns.
 \item \strong{Categorical}: \code{.exposure} is a factor or character vector with 3+
 levels. \code{.propensity} must be a matrix or data frame with one column per
-level, where rows sum to 1.
+level, where rows sum to 1. Every weight function but \code{wt_cens()} also
+takes a fitted \code{\link[nnet:multinom]{nnet::multinom()}} and reads those columns off its fitted
+values, matching them to the levels of \code{.exposure} by name. A multinomial
+fit of only two levels reports a single probability and is read as a model
+of a binary exposure.
 \item \strong{Continuous}: \code{.exposure} is a numeric vector. \code{.propensity} is a
 vector of conditional means (fitted values). Weights are a ratio of
 densities, whose family is chosen by \code{.density}, and are stabilized
@@ -779,6 +788,22 @@ cens_ind <- rbinom(50, 1, cens_ps)
 wt_cens(cens_ps, cens_ind)
 estimand(wt_cens(cens_ps, cens_ind))  # "uncensored"
 
+\dontshow{if (requireNamespace("nnet", quietly = TRUE)) withAutoprint(\{ # examplesIf}
+# -- Categorical exposure from a multinomial fit ---------------------
+set.seed(5)
+x3 <- rnorm(100)
+dose_level <- factor(sample(c("low", "mid", "high"), 100, replace = TRUE))
+cat_model <- nnet::multinom(dose_level ~ x3, trace = FALSE)
+
+# The fit reports one probability per level, and the exposure and its level
+# order are read from the model
+wt_ate(cat_model)
+
+# The same weights from the fitted matrix, which needs the exposure and its
+# type supplied
+ps_mat <- predict(cat_model, type = "probs")
+wt_ate(ps_mat, dose_level, exposure_type = "categorical")
+\dontshow{\}) # examplesIf}
 }
 \references{
 Barrett, M., D'Agostino McGowan, L., & Gerke, T. \emph{Causal Inference in R}.

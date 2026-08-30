@@ -43,7 +43,11 @@
 #'   or a matrix or data frame holding it in one of its columns.
 #' - **Categorical**: `.exposure` is a factor or character vector with 3+
 #'   levels. `.propensity` must be a matrix or data frame with one column per
-#'   level, where rows sum to 1.
+#'   level, where rows sum to 1. Every weight function but `wt_cens()` also
+#'   takes a fitted [nnet::multinom()] and reads those columns off its fitted
+#'   values, matching them to the levels of `.exposure` by name. A multinomial
+#'   fit of only two levels reports a single probability and is read as a model
+#'   of a binary exposure.
 #' - **Continuous**: `.exposure` is a numeric vector. `.propensity` is a
 #'   vector of conditional means (fitted values). Weights are a ratio of
 #'   densities, whose family is chosen by `.density`, and are stabilized
@@ -302,10 +306,15 @@
 #'     [binomial()] or `quasibinomial()`. For a continuous exposure it is a
 #'     model of the conditional mean: [lm()], a [glm()] fit with [gaussian()]
 #'     under any of its links, an [mgcv::gam()] fit with [gaussian()], or a
-#'     [MASS::rlm()]. Handing either exposure type a model of the other, or a
+#'     [MASS::rlm()]. For a categorical exposure it is an [nnet::multinom()],
+#'     whose fitted values hold the probability of every level; a multinomial
+#'     fit of two levels reports a single probability and is read as a model of
+#'     a binary exposure. Handing one exposure type a model of another, or a
 #'     family whose spread changes with its fitted values, is an error of class
-#'     `propensity_model_family_error`; see **Continuous exposures** in
-#'     Details.
+#'     `propensity_model_family_error`. The one exception is the multinomial
+#'     fit, which offers no continuous type at all, so naming one for it is an
+#'     error of class `causalgenerics_unsupported_exposure_type`. See
+#'     **Exposure types** and **Continuous exposures** in Details.
 #'   * A modified propensity score created by [ps_trim()], [ps_trunc()],
 #'     [ps_refit()], or [ps_calibrate()].
 #'
@@ -537,6 +546,22 @@
 #' cens_ind <- rbinom(50, 1, cens_ps)
 #' wt_cens(cens_ps, cens_ind)
 #' estimand(wt_cens(cens_ps, cens_ind))  # "uncensored"
+#'
+#' @examplesIf requireNamespace("nnet", quietly = TRUE)
+#' # -- Categorical exposure from a multinomial fit ---------------------
+#' set.seed(5)
+#' x3 <- rnorm(100)
+#' dose_level <- factor(sample(c("low", "mid", "high"), 100, replace = TRUE))
+#' cat_model <- nnet::multinom(dose_level ~ x3, trace = FALSE)
+#'
+#' # The fit reports one probability per level, and the exposure and its level
+#' # order are read from the model
+#' wt_ate(cat_model)
+#'
+#' # The same weights from the fitted matrix, which needs the exposure and its
+#' # type supplied
+#' ps_mat <- predict(cat_model, type = "probs")
+#' wt_ate(ps_mat, dose_level, exposure_type = "categorical")
 #'
 #' @references
 #' Barrett, M., D'Agostino McGowan, L., & Gerke, T. *Causal Inference in R*.
@@ -918,6 +943,66 @@ wt_ate.lm <- function(
   )
 }
 
+# The one class that fits a probability for every level of an exposure, which is
+# what a categorical exposure's weights are read off. It reaches a method of its
+# own because it inherits from neither `glm` nor `lm`: a `multinom` is
+# `c("multinom", "nnet")`, so without this the fit would reach the default
+# method. Dispatch is on `multinom` rather than on `nnet`, which is the neural
+# network the fit is built on and reports no probability of an exposure.
+#
+# A continuous exposure is not one of the types offered here. A probability for
+# each level is not a conditional mean with a spread, so there is no density for
+# the weights to be a ratio of.
+#' @export
+wt_ate.multinom <- function(
+  .propensity,
+  .exposure = NULL,
+  .sigma = NULL,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  stabilize = NULL,
+  stabilization_score = NULL,
+  ...,
+  .density = "normal",
+  numerator = c("marginal", "integrated"),
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  check_multinom_response(.propensity, call = call)
+
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_ate",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_ate.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    .sigma = .sigma,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    stabilize = stabilize,
+    stabilization_score = stabilization_score,
+    .density = .density,
+    numerator = numerator,
+    call = call,
+    ...
+  )
+}
+
 
 ate_binary <- function(
   .propensity,
@@ -1207,6 +1292,50 @@ wt_att.glm <- function(
   )
 }
 
+# The tilting estimands read the same matrix of level probabilities the ATE
+# weights read, so a multinomial fit reaches them on the same terms. See
+# `wt_ate.multinom()` for why the class needs a method of its own and why a
+# continuous exposure is not among the types offered.
+#' @export
+wt_att.multinom <- function(
+  .propensity,
+  .exposure = NULL,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  check_multinom_response(.propensity, call = call)
+
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_att",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_att.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    call = call,
+    ...
+  )
+}
+
 att_binary <- function(
   .propensity,
   .exposure,
@@ -1406,6 +1535,46 @@ wt_atu.glm <- function(
   )
 }
 
+#' @export
+wt_atu.multinom <- function(
+  .propensity,
+  .exposure = NULL,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  check_multinom_response(.propensity, call = call)
+
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_atu",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_atu.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    call = call,
+    ...
+  )
+}
+
 atu_binary <- function(
   .propensity,
   .exposure,
@@ -1571,6 +1740,46 @@ wt_atm.glm <- function(
   call = rlang::current_env()
 ) {
   check_call_arg(call)
+
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_atm",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_atm.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    call = call,
+    ...
+  )
+}
+
+#' @export
+wt_atm.multinom <- function(
+  .propensity,
+  .exposure = NULL,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  check_multinom_response(.propensity, call = call)
 
   args <- prepare_model_weight_args(
     .propensity,
@@ -1789,6 +1998,46 @@ wt_ato.glm <- function(
   )
 }
 
+#' @export
+wt_ato.multinom <- function(
+  .propensity,
+  .exposure = NULL,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  check_multinom_response(.propensity, call = call)
+
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_ato",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_ato.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    call = call,
+    ...
+  )
+}
+
 ato_binary <- function(
   .propensity,
   .exposure,
@@ -1954,6 +2203,46 @@ wt_entropy.glm <- function(
   call = rlang::current_env()
 ) {
   check_call_arg(call)
+
+  args <- prepare_model_weight_args(
+    .propensity,
+    .exposure,
+    exposure_type = exposure_type,
+    valid_exposure_types = c("auto", "binary", "categorical"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "wt_entropy",
+    call = call
+  )
+
+  # Call the numeric method
+  wt_entropy.numeric(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    exposure_type = args$exposure_type,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    call = call,
+    ...
+  )
+}
+
+#' @export
+wt_entropy.multinom <- function(
+  .propensity,
+  .exposure = NULL,
+  exposure_type = c("auto", "binary", "categorical"),
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  check_multinom_response(.propensity, call = call)
 
   args <- prepare_model_weight_args(
     .propensity,
