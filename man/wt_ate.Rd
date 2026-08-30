@@ -654,7 +654,11 @@ them. \code{wt_ate()} and \code{wt_cens()} take a fitted \code{\link[=lm]{lm()}}
 and a \code{\link[MASS:rlm]{MASS::rlm()}}, and read the exposure from the model's response when
 \code{.exposure} is not supplied. Each of these reports its conditional mean on
 the scale of the exposure, so a log, inverse, or square root link never has
-to be undone.
+to be undone. Any other subclass of \code{\link[=lm]{lm()}} is read as an \code{lm}, because the
+fitted conditional means are all the weights ask of a model. \code{\link[=ipw]{ipw()}} names
+the classes it supports instead of accepting a subclass on those terms: it
+stacks each model's own estimating equations, which it can only write for a
+score it knows.
 
 A family whose spread changes with its fitted values, such as \code{\link[=poisson]{poisson()}} or
 \code{quasi(variance = "mu")}, describes a different density for every unit, which

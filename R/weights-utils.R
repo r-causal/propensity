@@ -15,9 +15,32 @@ abort_no_method <- function(.propensity, call = rlang::caller_env()) {
 # them; anything else, a fitted model of a class the package has no method for
 # among it, carries no scores to read and is reported as such rather than as a
 # value out of range or a type the modifier cannot use.
+#
+# A vector that is atomic and holds something other than numbers is refused here
+# as well. The range check compares the scores against the two bounds, and a
+# character vector is coerced on the way there, so the values the caller wrote
+# are reported as missing scores rather than as an argument of a type the
+# modifiers have no score to read from.
 check_ps_method <- function(.propensity, call = rlang::caller_env()) {
   if (!is.atomic(.propensity) && !is.data.frame(.propensity)) {
     abort_no_method(.propensity, call = call)
+  }
+
+  numeric_scores <- is.data.frame(.propensity) ||
+    is.numeric(.propensity) ||
+    is.logical(.propensity)
+
+  if (!numeric_scores) {
+    abort(
+      c(
+        "{.arg .propensity} must be a numeric vector.",
+        x = "It is {.cls {class(.propensity)[[1]]}}, which holds no score to
+             read.",
+        i = "Pass the propensity scores as numbers between 0 and 1."
+      ),
+      error_class = "propensity_type_error",
+      call = call
+    )
   }
 
   invisible(NULL)
@@ -806,8 +829,15 @@ check_cr_groups_observed <- function(
 # a ratio of densities evaluated at one conditional mean for each unit, and the
 # arithmetic that evaluates them vectorizes over whatever it is handed, so a
 # matrix of means yields a weight for every cell rather than a weight for every
-# unit. Anything carrying a dimension is refused here, rather than left to
-# produce a result of the wrong length.
+# unit. Anything holding more than one mean for each unit is refused here,
+# rather than left to produce a result of the wrong length.
+#
+# A one-column matrix and a one-dimensional array hold one mean for each unit,
+# which is the shape the weights are built from, so the dimension is dropped and
+# the scores are read as the vector they are. `ps_calibrate()` drops a
+# single dimension for the same reason. The scores are returned rather than
+# checked in place, since the route that reads them has to read the shape this
+# settled on.
 check_continuous_ps_shape <- function(
   .propensity,
   call = rlang::caller_env()
@@ -815,7 +845,13 @@ check_continuous_ps_shape <- function(
   dims <- dim(.propensity)
 
   if (is.null(dims)) {
-    return(invisible(TRUE))
+    return(.propensity)
+  }
+
+  if (length(dims) == 1L || (length(dims) == 2L && dims[[2]] == 1L)) {
+    dim(.propensity) <- NULL
+
+    return(.propensity)
   }
 
   shape <- paste(dims, collapse = " by ")
@@ -919,6 +955,18 @@ check_ps_matrix <- function(
   if (!is.matrix(ps_matrix)) {
     abort(
       "For categorical exposures, `.propensity` must be a matrix or data frame.",
+      call = call,
+      error_class = "propensity_matrix_type_error"
+    )
+  }
+
+  # The row sums are read before the range is, and `rowSums()` answers a matrix
+  # that is not made of numbers with base R's own refusal, which names neither
+  # the argument the scores arrived in nor this package. The range check refuses
+  # the same matrix on its own, so the type is settled once, here, ahead of both.
+  if (!is.numeric(ps_matrix) && !is.logical(ps_matrix)) {
+    abort(
+      "{.arg .propensity} must be numeric.",
       call = call,
       error_class = "propensity_matrix_type_error"
     )

@@ -116,7 +116,7 @@
       Error in `wt_ate()`:
       ! `numerator` = "integrated" cannot be used with `.sigma`.
       x The marginalization reads the conditional density the propensity model estimated at every unit's fitted mean, and `.sigma` replaces the spread of that density with one of your own.
-      i Leave `.sigma` unset to spread the conditional density by the pooled residual standard deviation, or use `numerator` = "marginal", which takes a spread you supply.
+      i Leave `.sigma` unset to spread the conditional density by the pooled residual root mean square, or use `numerator` = "marginal", which takes a spread you supply.
 
 ---
 

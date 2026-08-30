@@ -70,9 +70,9 @@
     Condition <propensity_wt_joint_exposure_type_error>
       Error in `wt_joint()`:
       ! `exposure_type` must name the exposure type of each component.
-      x "ordinal" is not a supported exposure type.
-      i Supported types: "binary", "categorical", and "continuous".
       i Supply one per component, in the order the components were given, for example `exposure_type = c("binary", "continuous")`, or leave `exposure_type` unset to read each component's own record.
+      Caused by error in `wt_joint()`:
+      ! `exposure_type` must be one of "binary", "categorical", or "continuous", not "ordinal".
 
 # joint_wt_models() requires a discrete second model to condition on the first treatment
 

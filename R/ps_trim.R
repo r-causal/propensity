@@ -127,10 +127,11 @@
 #'
 #' The methods that read an exposure (`"pref"`, `"cr"`, and every method on the
 #' categorical route) take it from the model when `.exposure` is not supplied,
-#' announcing the variable they read; `options(propensity.quiet = TRUE)` silences the announcement. An
-#' `.exposure` you supply is used instead, and a categorical model's columns
-#' are matched to its levels by name, so an exposure whose levels are ordered
-#' differently is still trimmed against the right column.
+#' announcing the variable they read; `options(propensity.quiet = TRUE)`
+#' silences the announcement. An `.exposure` you supply is used instead, and a
+#' categorical model's columns are matched to its levels by name, so an exposure
+#' whose levels are ordered differently is still trimmed against the right
+#' column.
 #'
 #' ## Object behavior
 #'
@@ -338,6 +339,11 @@ ps_trim.default <- function(
   call = rlang::current_env()
 ) {
   check_call_arg(call)
+  # The dots reach every route but are read by none of them, so a misspelled
+  # bound such as `lowr` would trim at the default the caller believed they had
+  # replaced. The model methods forward their dots here, so the refusal covers
+  # a fit as well as a vector.
+  rlang::check_dots_empty(call = call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
   check_ps_method(.propensity, call = call)
   method <- rlang::arg_match(method, error_call = call)
@@ -539,6 +545,7 @@ ps_trim.matrix <- function(
   call = rlang::current_env()
 ) {
   check_call_arg(call)
+  rlang::check_dots_empty(call = call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
   # The generic offers every method, so match against that full set and then
@@ -746,7 +753,8 @@ ps_trim.data.frame <- function(
   if (!is.null(.exposure)) {
     exposure_type <- causalgenerics::detect_exposure_type(
       .exposure,
-      announce = !be_quiet()
+      announce = !be_quiet(),
+      call = call
     )
     if (exposure_type == "categorical") {
       ps_matrix <- as.matrix(.propensity)

@@ -207,12 +207,17 @@ ipw_spec_joint_models <- function(
   # two, and a fit that cannot be stacked is refused here with the registry's
   # own reason. Only the second component may be a dose, which the check above
   # has already settled.
+  #
+  # The refusal names the component rather than `wt_mod`, which here is the
+  # container the two treatment models arrived in: a reader told to refit
+  # `wt_mod` would be told to refit the wrong thing.
   dose_idx <- if (identical(types[[2]], "continuous")) 2L else NULL
   dose_model <- NULL
   if (!is.null(dose_idx)) {
     dose_model <- ipw_continuous_model(
       fits[[dose_idx]],
       hint = ipw_joint_models_dose_hint(),
+      label = names[[dose_idx]],
       call = call
     )
     check_ipw_continuous_model(dose_model, call = call)

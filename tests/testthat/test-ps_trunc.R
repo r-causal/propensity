@@ -1924,6 +1924,10 @@ test_that("ps_trunc() refuses scores that are not numbers", {
   # values it read as missing rather than an argument of the wrong type, and
   # what the caller passed is never named.
   expect_error(ps_trunc(c(0.2, "a")), class = "propensity_type_error")
+
+  # The refusal names the type that arrived and what a score is, which is the
+  # half of it the class does not carry.
+  expect_propensity_error(ps_trunc(c(0.2, "a")))
 })
 
 # The methods take a `call` so that a condition names the function the caller

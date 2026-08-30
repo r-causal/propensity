@@ -5,6 +5,8 @@
     Condition <propensity_type_error>
       Error in `ps_calibrate()`:
       ! `.propensity` must be a numeric vector.
+      x It is <character>, which holds no score to read.
+      i Pass the propensity scores as numbers between 0 and 1.
 
 # errors for out-of-range ps
 

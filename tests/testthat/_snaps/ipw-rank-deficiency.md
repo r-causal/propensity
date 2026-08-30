@@ -96,7 +96,7 @@
       Warning in `ipw()`:
       The standard errors reported for "mean for 0", "mean for 1", and "diff for 1 vs 0" are not meaningful.
       x They are zero, or so small beside the estimates they accompany that the test statistics and the intervals built from them carry no information.
-      i An exposure group the outcome does not vary within is one cause: the contrast is then a fixed value rather than a quantity with any spread. Check the outcome within each level of the exposure.
+      i An exposure group the outcome does not vary within is one cause: its counterfactual mean, and any contrast built on that mean, is then a fixed value rather than a quantity with any spread. Check the outcome within each level of the exposure.
       i The estimates are reported as they were computed.
     Output
       Inverse Probability Weight Estimator

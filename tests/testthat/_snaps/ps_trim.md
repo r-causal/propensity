@@ -242,3 +242,13 @@
       Error in `ps_trim()`:
       ! No method for objects of class lm
 
+# ps_trim() refuses scores that are not numbers
+
+    Code
+      expr
+    Condition <propensity_type_error>
+      Error in `ps_trim()`:
+      ! `.propensity` must be a numeric vector.
+      x It is <character>, which holds no score to read.
+      i Pass the propensity scores as numbers between 0 and 1.
+

@@ -34,7 +34,7 @@ test_that("wt_atc is an alias for wt_atu", {
   expect_identical(wts_atu_glm, wts_atc_glm)
 
   # Test with ps_trim
-  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  ps_trimmed <- ps_trim(ps, .exposure = exposure)
   # Suppress refit warnings - we're testing the alias behavior, not the warning
   suppressWarnings({
     wts_atu_trim <- wt_atu(ps_trimmed, exposure)
@@ -44,7 +44,7 @@ test_that("wt_atc is an alias for wt_atu", {
   expect_identical(wts_atu_trim, wts_atc_trim)
 
   # Test with ps_trunc
-  ps_truncated <- ps_trunc(ps, .exposure = exposure, trunc_at = 0.2)
+  ps_truncated <- ps_trunc(ps, .exposure = exposure)
   wts_atu_trunc <- wt_atu(ps_truncated, exposure)
   wts_atc_trunc <- wt_atc(ps_truncated, exposure)
 
@@ -157,7 +157,7 @@ test_that("psw objects can be multiplied together", {
   expect_false(is_stabilized(combined_mixed)) # Should be FALSE since only one is stabilized
 
   # Test with trimmed weights
-  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  ps_trimmed <- ps_trim(ps, .exposure = exposure)
   # Suppress refit warnings - we're testing combination behavior, not the warning
   suppressWarnings({
     wts_ate_trim <- wt_ate(ps_trimmed, exposure)
@@ -224,7 +224,7 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
   expect_equal(estimand(wts_cens_cont), "uncensored")
 
   # Test with ps_trim
-  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  ps_trimmed <- ps_trim(ps, .exposure = exposure)
   # Suppress refit warnings - we're testing wt_cens behavior, not the warning
   suppressWarnings({
     wts_cens_trim <- wt_cens(ps_trimmed, exposure)
@@ -234,7 +234,7 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
   expect_true(is_ps_trimmed(wts_cens_trim))
 
   # Test with ps_trunc
-  ps_truncated <- ps_trunc(ps, .exposure = exposure, trunc_at = 0.2)
+  ps_truncated <- ps_trunc(ps, .exposure = exposure)
   wts_cens_trunc <- wt_cens(ps_truncated, exposure)
 
   expect_equal(estimand(wts_cens_trunc), "uncensored; truncated")

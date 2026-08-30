@@ -730,6 +730,36 @@ test_that("ipw() refuses a joint fit whose weights are not the ate", {
   )
 })
 
+test_that("the weights mismatch on two binary treatments names no focal level", {
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+
+  # A joint product scaled after it was built is still the product the
+  # container asks for, so the route reaches the preflight that rebuilds the
+  # weights from the two models and reports that they disagree. A joint
+  # specification targets the joint ate and resolves no focal level, so naming
+  # a focal level among the causes would send the reader after a setting this
+  # route never read.
+  scaled <- two$wts * 1.5
+  expect_true(is_joint_wt(scaled))
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = scaled,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(two$models, outcome_mod),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_no_match(msg, "focal level", fixed = TRUE)
+
+  expect_propensity_error(ipw(two$models, outcome_mod))
+})
+
 test_that("ipw() refuses .by on the two-model route", {
   dat <- sim_joint_models()
   dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))

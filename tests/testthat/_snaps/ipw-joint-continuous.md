@@ -42,6 +42,17 @@
       x The bandwidth of a kernel estimate is chosen from the residuals of the propensity score model, so the weights are not a differentiable function of that model's parameters.
       i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
 
+# ipw() refuses a dose psi it cannot write, under the component's name
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
+      x `e` was fit with `MASS::psi.bisquare()`.
+      i Refit `e` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
+
 # the weights mismatch names the ratio the dose records
 
     Code
@@ -49,9 +60,9 @@
     Condition <propensity_ipw_weights_mismatch_error>
       Error in `ipw()`:
       ! The "ate" weights recomputed from `wt_mod` differ from the weights supplied to `outcome_mod` (compared at relative tolerance 1e-6).
-      i The estimand or the focal level the weights were built for may differ from the ones `ipw()` resolved.
+      i The estimand the weights were built for may differ from the one `ipw()` resolved.
       i `ipw()` rebuilt these weights as a "t(df = 4)" density with a "marginal" numerator.
-      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual standard deviation, which is what `wt_ate()` uses when no `.sigma` is given.
+      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual root mean square, which is what `wt_ate()` uses when no `.sigma` is given.
       i A dose component built with a fixed `stabilization_score` is one cause: the product records that the numerator was a score without recording the vector it was, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
@@ -110,9 +121,9 @@
     Condition <propensity_ipw_weights_mismatch_error>
       Error in `ipw()`:
       ! The "ate" weights recomputed from `wt_mod` differ from the weights supplied to `outcome_mod` (compared at relative tolerance 1e-6).
-      i The estimand or the focal level the weights were built for may differ from the ones `ipw()` resolved.
+      i The estimand the weights were built for may differ from the one `ipw()` resolved.
       i `ipw()` rebuilt these weights as a "normal" density with a "marginal" numerator.
-      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual standard deviation, which is what `wt_ate()` uses when no `.sigma` is given.
+      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual root mean square, which is what `wt_ate()` uses when no `.sigma` is given.
       i A dose component built with a fixed `stabilization_score` is one cause: the product records that the numerator was a score without recording the vector it was, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.

@@ -2076,9 +2076,11 @@ ipw_compare_weights <- function(
     # offers the causes as possibilities rather than naming the weights as the
     # fault.
     #
-    # A continuous exposure has no focal level, so its causes bullet names only
-    # the estimand.
-    resolved_cause <- if (exposure_type == "continuous") {
+    # Only a binary and a categorical exposure have a focal level, so the causes
+    # bullet names one only for them. A dose has none, and a joint specification
+    # targets the joint ate and resolves none, so naming it there would send the
+    # reader after a setting the route never read.
+    resolved_cause <- if (!exposure_type %in% c("binary", "categorical")) {
       "The estimand the weights were built for may differ from the one \\
       {.fun ipw} resolved."
     } else {
@@ -2109,7 +2111,7 @@ ipw_compare_weights <- function(
     sigma_hint <- if (dose) {
       "Weights built with an observation-level {.arg .sigma}, such as \\
       {.code influence(model)$sigma}, are one cause: {.fun ipw} models the \\
-      conditional density with a single pooled residual standard deviation, \\
+      conditional density with a single pooled residual root mean square, \\
       which is what {.fun wt_ate} uses when no {.arg .sigma} is given."
     } else {
       NULL
@@ -2412,8 +2414,9 @@ warn_ipw_degenerate_se <- function(estimates, call = rlang::caller_env()) {
       estimate{?s} {?it accompanies/they accompany} that the test statistic{?s} \\
       and the interval{?s} built from {?it/them} carry no information.",
       i = "An exposure group the outcome does not vary within is one cause: \\
-      the contrast is then a fixed value rather than a quantity with any \\
-      spread. Check the outcome within each level of the exposure.",
+      its counterfactual mean, and any contrast built on that mean, is then a \\
+      fixed value rather than a quantity with any spread. Check the outcome \\
+      within each level of the exposure.",
       i = "The estimates are reported as they were computed."
     ),
     warning_class = "propensity_ipw_degenerate_se_warning",

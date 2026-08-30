@@ -9,10 +9,6 @@
 # two marginal weights is an ordinary vector of positive numbers that nothing
 # downstream can tell from the real thing.
 
-# The exposure types a component may declare. A joint weight is a product over
-# two treatments, and each of them is weighted the way its own type is.
-joint_wt_exposure_types <- c("binary", "categorical", "continuous")
-
 # The model classes a treatment model may be, and the exposure type each one
 # implies, in the vocabulary the rest of the package uses for exposures.
 #
@@ -297,31 +293,64 @@ joint_wt_meta <- function(x) {
   attr(x, "joint_wt_meta")
 }
 
+# A joint weight is a product over two treatments, and each of them is weighted
+# the way its own type is. The vocabulary of exposure types belongs to
+# causalgenerics, so each entry is put to `match_exposure_type()` rather than
+# compared against a list kept here, and its refusal is carried as the parent of
+# this one: the reader is told what is wrong with the type by the package that
+# owns the answer, and which argument was wrong by the function they called.
+#
+# The length is this function's own requirement and keeps its own refusal.
+# `match_exposure_type()` reads one type, so a vector of any other length names
+# nothing it could be asked about.
 check_wt_joint_exposure_type <- function(
   exposure_type,
   call = rlang::caller_env()
 ) {
-  problem <- if (!is.character(exposure_type) || length(exposure_type) != 2) {
-    "{.arg exposure_type} names {length(exposure_type)} exposure type{?s}."
-  } else if (!all(exposure_type %in% joint_wt_exposure_types)) {
-    unsupported <- setdiff(exposure_type, joint_wt_exposure_types)
-    "{.val {unsupported}} {?is/are} not {?a/} supported exposure type{?s}."
-  } else {
-    return(invisible(TRUE))
+  if (!is.character(exposure_type) || length(exposure_type) != 2) {
+    abort(
+      c(
+        "{.arg exposure_type} must name the exposure type of each component.",
+        x = "{.arg exposure_type} names {length(exposure_type)} exposure \\
+        type{?s}.",
+        i = wt_joint_exposure_type_hint()
+      ),
+      error_class = "propensity_wt_joint_exposure_type_error",
+      call = call
+    )
   }
 
-  abort(
-    c(
-      "{.arg exposure_type} must name the exposure type of each component.",
-      x = problem,
-      i = "Supported types: {.val {joint_wt_exposure_types}}.",
-      i = "Supply one per component, in the order the components were given, \\
-      for example {.code exposure_type = c(\"binary\", \"continuous\")}, or \\
-      leave {.arg exposure_type} unset to read each component's own record."
-    ),
-    error_class = "propensity_wt_joint_exposure_type_error",
-    call = call
-  )
+  for (type in exposure_type) {
+    rlang::try_fetch(
+      causalgenerics::match_exposure_type(
+        type,
+        valid_types = c("binary", "categorical", "continuous"),
+        call = call
+      ),
+      error = function(cnd) {
+        abort(
+          c(
+            "{.arg exposure_type} must name the exposure type of each \\
+            component.",
+            i = wt_joint_exposure_type_hint()
+          ),
+          error_class = "propensity_wt_joint_exposure_type_error",
+          call = call,
+          parent = cnd
+        )
+      }
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# The remedy both refusals above end on, which is the same whichever of them
+# fired: the argument takes one type per component, or nothing at all.
+wt_joint_exposure_type_hint <- function() {
+  "Supply one per component, in the order the components were given, for \\
+  example {.code exposure_type = c(\"binary\", \"continuous\")}, or leave \\
+  {.arg exposure_type} unset to read each component's own record."
 }
 
 check_wt_joint_class <- function(w_a, w_e, call = rlang::caller_env()) {

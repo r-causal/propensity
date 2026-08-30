@@ -148,8 +148,8 @@ check_binary_model_family.multinom <- function(
 
   abort(
     c(
-      "Weights for a binary exposure need the probability of one of its two
-       levels.",
+      "A binary propensity score needs the probability of one of the
+       exposure's two levels.",
       x = "{.arg .propensity} was fit to {n_levels} levels
            ({.val {model$lev}}), so it fits no single probability to read
            against a binary exposure.",

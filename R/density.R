@@ -343,7 +343,7 @@ check_numerator <- function(
              model estimated at every unit's fitted mean, and {.arg .sigma}
              replaces the spread of that density with one of your own.",
         i = "Leave {.arg .sigma} unset to spread the conditional density by the
-             pooled residual standard deviation, or use {.arg numerator} =
+             pooled residual root mean square, or use {.arg numerator} =
              {.val marginal}, which takes a spread you supply."
       ),
       error_class = "propensity_numerator_error",

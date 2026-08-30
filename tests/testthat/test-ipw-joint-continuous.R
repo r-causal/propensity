@@ -1032,6 +1032,48 @@ test_that("ipw() refuses dose weights built from a kernel density", {
   expect_propensity_error(ipw(fx$models, fx$outcome_mod))
 })
 
+test_that("ipw() refuses a dose psi it cannot write, under the component's name", {
+  skip_if_not_installed("MASS")
+  dat <- sim_joint_continuous_outliers()
+
+  # A redescending psi is the root of an equation this path does not write, and
+  # the single-treatment route refuses it by name. Reached as the second
+  # component of a joint intervention the refusal is the same one, and it names
+  # the component rather than the container the two treatment models arrived
+  # in, since `wt_mod` is not a model the reader can refit.
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- MASS::rlm(
+    e ~ a + x1 + x2,
+    data = dat,
+    psi = MASS::psi.bisquare,
+    acc = 1e-10
+  )
+  wts <- quiet_wt(wt_joint(
+    wt_ate(ps_a),
+    wt_ate(
+      as.double(fitted(ps_e)),
+      dat$e,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    exposure_type = c("binary", "continuous")
+  ))
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+  models <- joint_wt_models(a = ps_a, e = ps_e)
+
+  expect_error(
+    ipw(models, outcome_mod),
+    class = "propensity_ipw_robust_psi_error"
+  )
+
+  msg <- joint_error_message(ipw(models, outcome_mod))
+  expect_match(msg, "psi.bisquare", fixed = TRUE)
+  expect_match(msg, "`e`", fixed = TRUE)
+  expect_no_match(msg, "wt_mod", fixed = TRUE)
+
+  expect_propensity_error(ipw(models, outcome_mod))
+})
+
 test_that("ipw() refuses a dose link it cannot write the score for", {
   dat <- sim_joint_continuous_positive()
 

@@ -270,6 +270,11 @@ ps_trunc.default <- function(
   call = rlang::current_env()
 ) {
   check_call_arg(call)
+  # The dots reach every route but are read by none of them, so a misspelled
+  # bound such as `lowr` would bound the scores at the default the caller
+  # believed they had replaced. The model methods forward their dots here, so
+  # the refusal covers a fit as well as a vector.
+  rlang::check_dots_empty(call = call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
   check_ps_method(.propensity, call = call)
   method <- rlang::arg_match(method, error_call = call)
@@ -383,6 +388,7 @@ ps_trunc.matrix <- function(
   call = rlang::current_env()
 ) {
   check_call_arg(call)
+  rlang::check_dots_empty(call = call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
   # The generic offers every method, so match against that full set and then
@@ -571,7 +577,8 @@ ps_trunc.data.frame <- function(
   if (!is.null(.exposure)) {
     exposure_type <- causalgenerics::detect_exposure_type(
       .exposure,
-      announce = !be_quiet()
+      announce = !be_quiet(),
+      call = call
     )
     if (exposure_type == "categorical") {
       ps_matrix <- as.matrix(.propensity)

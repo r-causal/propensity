@@ -241,7 +241,11 @@
 #' and a [MASS::rlm()], and read the exposure from the model's response when
 #' `.exposure` is not supplied. Each of these reports its conditional mean on
 #' the scale of the exposure, so a log, inverse, or square root link never has
-#' to be undone.
+#' to be undone. Any other subclass of [lm()] is read as an `lm`, because the
+#' fitted conditional means are all the weights ask of a model. [ipw()] names
+#' the classes it supports instead of accepting a subclass on those terms: it
+#' stacks each model's own estimating equations, which it can only write for a
+#' score it knows.
 #'
 #' A family whose spread changes with its fitted values, such as [poisson()] or
 #' `quasi(variance = "mu")`, describes a different density for every unit, which
@@ -719,12 +723,12 @@ wt_ate.numeric <- function(
   )
 
   # A continuous exposure is weighted from one conditional mean for each unit,
-  # so a `.propensity` with dimensions is refused before the lengths are
-  # compared. `check_lengths_match()` reads a matrix by its rows, so a matrix
-  # with a row for each unit passes it, and the conditional density is then
-  # evaluated over every cell rather than over one mean for each unit.
+  # so a `.propensity` holding more than one of them is refused before the
+  # lengths are compared. `check_lengths_match()` reads a matrix by its rows, so
+  # a matrix with a row for each unit passes it, and the conditional density is
+  # then evaluated over every cell rather than over one mean for each unit.
   if (exposure_type == "continuous") {
-    check_continuous_ps_shape(.propensity, call = call)
+    .propensity <- check_continuous_ps_shape(.propensity, call = call)
   }
 
   # The exposure supplies the number of observations the score is checked
@@ -1056,9 +1060,9 @@ ate_continuous <- function(
   call = rlang::caller_env()
 ) {
   # The conditional density f_{A|X}(A_i | X_i) is the one the propensity model
-  # estimates, so its spread is that model's residual standard deviation: the
+  # estimates, so its spread is the spread of that model's residuals: the
   # observation-level `.sigma` when the caller supplies one, the pooled residual
-  # standard deviation otherwise.
+  # root mean square otherwise.
   sigma_i <- continuous_sigma(.exposure, .propensity, .sigma)
 
   # What divides the conditional density: nothing at all when the weights are

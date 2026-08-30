@@ -320,7 +320,7 @@ stabilization_score <- function(wt) {
 #'   marginalized over the units, `"score"` for a `stabilization_score` the
 #'   caller supplied, and `"none"` for weights that were not stabilized.
 #' * `sigma`, where the residual spread of the conditional density came from:
-#'   `"pooled"` for the pooled residual standard deviation, and `"supplied"`
+#'   `"pooled"` for the pooled residual root mean square, and `"supplied"`
 #'   for a `.sigma` the caller gave.
 #' * `sigma_value`, the single spread the caller supplied, and `NULL` for a
 #'   pooled spread and for one supplied per observation. A spread that is one
@@ -1063,8 +1063,8 @@ merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
 }
 
 # How two values of one carried attribute are compared. Identity is the question
-# for all but the two records holding a density, which holds a function that is
-# written afresh on every call and so is compared by what it says.
+# for all but the two records holding a density, each of which holds a function
+# that is written afresh on every call and so is compared by what it says.
 psw_attrs_agree <- function(field, x, y) {
   if (identical(field, "density_meta")) {
     return(density_meta_agrees(x, y))

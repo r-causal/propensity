@@ -1,5 +1,50 @@
 # propensity 0.1.0.9000 (development version)
 
+* Breaking change: `ps_trim()` and `ps_trunc()` now refuse an argument they do
+  not read, with an error of class `rlib_error_dots_nonempty`. Both take `...`
+  and neither reads it, so a misspelled bound such as `ps_trim(ps, lowr = 0.2)`
+  was accepted in silence and the scores were trimmed at the default the caller
+  believed they had replaced. A call that reaches the refusal was doing
+  something other than what it said, so correcting the argument's name is the
+  whole of the fix.
+
+* `ps_trim()` and `ps_trunc()` now refuse propensity scores that are not
+  numbers, with an error of class `propensity_type_error` naming the type they
+  were given. A character vector was coerced on its way to the range check,
+  which then reported the values as missing scores and never said what had
+  arrived. `ps_calibrate()`, which already refused such a vector with the same
+  class, now names the type as well and says what a score is. A matrix of
+  scores that is not made of numbers is refused the same way, with an error of
+  class `propensity_matrix_type_error`, rather than reaching `rowSums()` and
+  being answered by base R in terms of neither the argument nor this package.
+
+* `wt_joint()` now reads the exposure types named in `exposure_type` through
+  causalgenerics, which owns that vocabulary for the ecosystem, rather than
+  through a list of its own. A type it does not know is still refused with an
+  error of class `propensity_wt_joint_exposure_type_error`, since the same class
+  also answers a vector of the wrong length and a component recording no type at
+  all, and causalgenerics' refusal is now carried as its parent.
+
+* A dose component `ipw()` cannot stack is now refused under the name of the
+  component rather than under `wt_mod`, which on the joint route is the
+  container the two treatment models arrived in. A reader told to refit
+  `wt_mod` was told to refit the wrong thing.
+
+* Several refusals and warnings read better. The refusals a binary propensity
+  score model reaches through `ps_trim()`, `ps_trunc()`, and `ps_tilt()` no
+  longer open by describing what weights need, since none of those functions
+  computes a weight; the warning about a standard error that collapsed now
+  names a counterfactual mean as well as a contrast, which is the row it
+  reports when an outcome is constant in one exposure group only; the
+  weights-mismatch report no longer offers the focal level as a cause on the
+  routes that resolve none; and the spread of a conditional density is named as
+  the pooled residual root mean square, which is what the package computes.
+
+* Weights for a continuous exposure now read a one-column matrix and a
+  one-dimensional array of conditional means as the vector of one mean per unit
+  that each of them is. Both weighted correctly before the shape guard was
+  added, and the guard is for a matrix holding more than one mean for each unit.
+
 * Weights for a continuous exposure with `numerator = "integrated"` now decide
   whether the fitted conditional means hold a single number by reading their
   spread against the spread of the residuals, rather than against a fixed floor
@@ -64,10 +109,10 @@
   the preference scale or to a common range, every trimming and truncation of a
   fit read as one column per level, and calibration, which reads one score per
   unit and so refuses a multinomial fit of three or more levels. A tilt reads no
-  exposure and so takes nothing but the scores off a fit. A model of a class none of these can read propensity scores
-  from, such as an `lm()`, is refused with an error of class
-  `propensity_method_error` rather than reported as a propensity score out of
-  range.
+  exposure and so takes nothing but the scores off a fit. A model of a class
+  none of these can read propensity scores from, such as an `lm()`, is refused
+  with an error of class `propensity_method_error` rather than reported as a
+  propensity score out of range.
 
 * The weight functions now refuse a fitted `nnet::multinom()` in `.propensity`
   whose levels are not the levels of the categorical exposure being weighted,
@@ -325,6 +370,10 @@
   inheritance, so an `mgcv::gam()` and a `MASS::rlm()` are recognized as the
   dose models they are rather than as the `glm()` and the `lm()` they inherit
   from, and an unfamiliar subclass of either is no longer typed as its parent.
+  A binomial `mgcv::gam()` is refused as a result. It was previously typed as a
+  binary treatment model through the `glm()` it inherits from, and only a
+  gaussian `mgcv::gam()`, which fits a dose, is a model this container reads a
+  treatment density from.
 
 * `wt_ate()` and `wt_cens()` now default `stabilize` to `NULL`, which is
   resolved once the exposure type is known: a continuous exposure is stabilized

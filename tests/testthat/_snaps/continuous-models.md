@@ -4,7 +4,7 @@
       expr
     Condition <propensity_model_family_error>
       Error in `wt_ate()`:
-      ! Weights for a binary exposure need a model of the probability of that exposure.
+      ! A binary propensity score needs a model of the probability of the exposure.
       x `.propensity` is <lm>, whose fitted values are conditional means rather than probabilities.
       i Fit the propensity score model with `binomial()`, or pass fitted probabilities to `.propensity` directly.
 
@@ -14,7 +14,7 @@
       expr
     Condition <propensity_model_family_error>
       Error in `wt_ate()`:
-      ! Weights for a binary exposure need a model of the probability of that exposure.
+      ! A binary propensity score needs a model of the probability of the exposure.
       x `.propensity` was fit with `gaussian()`, whose fitted values are conditional means rather than probabilities.
       i Fit the propensity score model with `binomial()`, or pass fitted probabilities to `.propensity` directly.
 
@@ -44,7 +44,7 @@
       expr
     Condition <propensity_model_family_error>
       Error:
-      ! Weights for a binary exposure need a model of the probability of that exposure.
+      ! A binary propensity score needs a model of the probability of the exposure.
       x `.propensity` was fit with an unnamed family, whose fitted values are conditional means rather than probabilities.
       i Fit the propensity score model with `binomial()`, or pass fitted probabilities to `.propensity` directly.
 

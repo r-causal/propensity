@@ -52,7 +52,7 @@ check_continuous_model_response <- function(
       "Weights for a continuous exposure need a model of one conditional mean
        for each unit.",
       x = "{.arg .propensity} is {.cls {class(model)[[1]]}}, a fit of
-           {dims[[2]]} responses, whose fitted values are {dims[[1]]} by
+           {dims[[2]]} response{?s}, whose fitted values are {dims[[1]]} by
            {dims[[2]]}.",
       i = "Fit the exposure on its own, or pass the conditional means of this
            exposure to {.arg .propensity} as a numeric vector."
@@ -167,7 +167,7 @@ check_binary_model_family.default <- function(
 
   abort(
     c(
-      "Weights for a binary exposure need a model of the probability of that
+      "A binary propensity score needs a model of the probability of the
        exposure.",
       x = fitted_by,
       i = "Fit the propensity score model with {.fun binomial}, or pass fitted

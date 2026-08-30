@@ -25,9 +25,15 @@
 # the entry supplies. The package computes no standard error for these fits, so
 # the remedy is a bootstrap of the whole pipeline written by hand; a route where
 # even that does not apply supplies a hint of its own.
+#
+# `label` is what a refusal calls the model it refused. The single-dose route
+# reads it out of `wt_mod`, which is the argument the model arrived in; the
+# joint route reads a dose out of a container of two models, where `wt_mod`
+# names the container and the component has a name of its own.
 ipw_continuous_model <- function(
   ps_mod,
   hint = ipw_continuous_resample_hint(),
+  label = "wt_mod",
   call = rlang::caller_env()
 ) {
   ps_class <- class(ps_mod)
@@ -36,6 +42,7 @@ ipw_continuous_model <- function(
     return(ipw_continuous_entry(
       kind = "gam",
       classes = ps_class,
+      label = label,
       link = ps_mod$family$link,
       stackable = FALSE,
       error_class = c(
@@ -55,7 +62,12 @@ ipw_continuous_model <- function(
   }
 
   if (inherits(ps_mod, "rlm")) {
-    return(ipw_continuous_rlm_entry(ps_mod, ps_class, hint = hint))
+    return(ipw_continuous_rlm_entry(
+      ps_mod,
+      ps_class,
+      hint = hint,
+      label = label
+    ))
   }
 
   if (inherits(ps_mod, "glm")) {
@@ -63,10 +75,10 @@ ipw_continuous_model <- function(
     # whose spread changes with its fitted values is refused before its link is
     # read: there is no single conditional density for the weights to divide by
     # and no equation here that its coefficients solve.
-    check_ipw_continuous_ps_family(ps_mod, call = call)
+    check_ipw_continuous_ps_family(ps_mod, label = label, call = call)
 
     link <- ps_mod$family$link
-    check_ipw_continuous_ps_link(link, call = call)
+    check_ipw_continuous_ps_link(link, label = label, call = call)
 
     return(ipw_continuous_entry(kind = "glm", link = link, stackable = TRUE))
   }
@@ -84,10 +96,10 @@ ipw_continuous_model <- function(
       "{.fun ipw} supports only {.fun stats::lm}, gaussian \\
       {.fun stats::glm}, or {.fun MASS::rlm} propensity score models for a \\
       continuous exposure.",
-      x = "{.arg wt_mod} has class {.cls {ps_class}}.",
+      x = "{.arg {label}} has class {.cls {ps_class}}.",
       i = "A {.cls gam} is recognized and refused on its own terms; every \\
       other class reaches this refusal.",
-      i = "Refit {.arg wt_mod} with {.fun stats::lm} or \\
+      i = "Refit {.arg {label}} with {.fun stats::lm} or \\
       {.code stats::glm(family = gaussian())}."
     ),
     error_class = "propensity_class_error",
@@ -115,7 +127,8 @@ ipw_continuous_model <- function(
 ipw_continuous_rlm_entry <- function(
   ps_mod,
   classes = class(ps_mod),
-  hint = ipw_continuous_resample_hint()
+  hint = ipw_continuous_resample_hint(),
+  label = "wt_mod"
 ) {
   psi_name <- ipw_rlm_psi_name(ps_mod)
   huber <- identical(psi_name, "MASS::psi.huber")
@@ -123,15 +136,15 @@ ipw_continuous_rlm_entry <- function(
 
   if (mm || !huber) {
     found <- if (mm && !is.null(psi_name)) {
-      "{.arg wt_mod} was fit with {.code method = \"MM\"}, which starts from a
+      "{.arg {entry$label}} was fit with {.code method = \"MM\"}, which starts from a
        high-breakdown fit and finishes on {.fun {entry$psi}}."
     } else if (mm) {
-      "{.arg wt_mod} was fit with {.code method = \"MM\"}, which starts from a
+      "{.arg {entry$label}} was fit with {.code method = \"MM\"}, which starts from a
        high-breakdown fit and finishes on a redescending psi."
     } else if (is.null(psi_name)) {
-      "{.arg wt_mod} was fit with a psi function this path cannot recognize."
+      "{.arg {entry$label}} was fit with a psi function this path cannot recognize."
     } else {
-      "{.arg wt_mod} was fit with {.fun {entry$psi}}."
+      "{.arg {entry$label}} was fit with {.fun {entry$psi}}."
     }
 
     return(ipw_continuous_entry(
@@ -140,12 +153,13 @@ ipw_continuous_rlm_entry <- function(
       link = "identity",
       stackable = FALSE,
       psi = psi_name,
+      label = label,
       error_class = "propensity_ipw_robust_psi_error",
       reason = c(
         "{.fun ipw} stacks only the Huber score of a {.cls {entry$classes}} \\
         propensity score model of a continuous exposure.",
         x = found,
-        i = "Refit {.arg wt_mod} with {.fun MASS::psi.huber}, the default, \\
+        i = "Refit {.arg {entry$label}} with {.fun MASS::psi.huber}, the default, \\
         whose threshold {.fun ipw} reads off the fit.",
         i = hint
       )
@@ -162,13 +176,14 @@ ipw_continuous_rlm_entry <- function(
       link = "identity",
       stackable = FALSE,
       psi = psi_name,
+      label = label,
       error_class = "propensity_ipw_convergence_error",
       reason = c(
         "{.fun ipw} cannot stack a {.cls {entry$classes}} propensity score \\
         model that did not converge.",
-        x = "{.arg wt_mod} reports {.code converged = FALSE}, so its \\
+        x = "{.arg {entry$label}} reports {.code converged = FALSE}, so its \\
         coefficients are not the root of the score stacked here.",
-        i = "Refit {.arg wt_mod} with a larger {.arg maxit}, or a looser \\
+        i = "Refit {.arg {entry$label}} with a larger {.arg maxit}, or a looser \\
         {.arg acc}, until it converges."
       )
     ))
@@ -256,11 +271,13 @@ ipw_continuous_entry <- function(
   error_class = NULL,
   reason = NULL,
   psi = NULL,
-  huber_k = NULL
+  huber_k = NULL,
+  label = "wt_mod"
 ) {
   entry <- list(
     kind = kind,
     classes = classes,
+    label = label,
     link = link,
     stackable = stackable,
     error_class = error_class,
@@ -343,6 +360,7 @@ ipw_continuous_link_fns <- function(link) {
 # which is the same model read from the other side.
 check_ipw_continuous_ps_family <- function(
   ps_mod,
+  label = "wt_mod",
   call = rlang::caller_env()
 ) {
   family <- ps_mod$family
@@ -354,9 +372,9 @@ check_ipw_continuous_ps_family <- function(
     c(
       "{.fun ipw} supports only a gaussian propensity score model for a \\
       continuous exposure.",
-      x = "{.arg wt_mod} was fit with \\
+      x = "{.arg {label}} was fit with \\
       {.code {model_family_label(family)}}.",
-      i = "Refit {.arg wt_mod} with {.fun stats::lm} or \\
+      i = "Refit {.arg {label}} with {.fun stats::lm} or \\
       {.code stats::glm(family = gaussian())}."
     ),
     error_class = "propensity_model_family_error",
@@ -372,7 +390,11 @@ check_ipw_continuous_ps_family <- function(
 # the root to seed the solve from.
 ipw_continuous_ps_links <- c("identity", "log")
 
-check_ipw_continuous_ps_link <- function(link, call = rlang::caller_env()) {
+check_ipw_continuous_ps_link <- function(
+  link,
+  label = "wt_mod",
+  call = rlang::caller_env()
+) {
   if (link %in% ipw_continuous_ps_links) {
     return(invisible(TRUE))
   }
@@ -381,9 +403,9 @@ check_ipw_continuous_ps_link <- function(link, call = rlang::caller_env()) {
     c(
       "{.fun ipw} does not support the {.val {link}} link for the propensity \\
       score model of a continuous exposure.",
-      x = "{.arg wt_mod} is a gaussian model fit with the {.val {link}} \\
+      x = "{.arg {label}} is a gaussian model fit with the {.val {link}} \\
       link.",
-      i = "Refit {.arg wt_mod} with one of {.val {ipw_continuous_ps_links}}, \\
+      i = "Refit {.arg {label}} with one of {.val {ipw_continuous_ps_links}}, \\
       or as an {.fun lm}."
     ),
     error_class = "propensity_ipw_link_error",
@@ -413,7 +435,7 @@ check_ipw_continuous_model <- function(entry, call = rlang::caller_env()) {
 #
 # Weights that carry no record were either written by hand or built before the
 # record existed. Both are the ratio the package has always built: a normal
-# density spread by the pooled residual standard deviation, over whatever their
+# density spread by the pooled residual root mean square, over whatever their
 # stabilization says stabilized them.
 #
 # `stacked` says whether the caller is going to differentiate the ratio. A

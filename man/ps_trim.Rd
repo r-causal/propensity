@@ -177,10 +177,11 @@ trimming those values would.
 
 The methods that read an exposure (\code{"pref"}, \code{"cr"}, and every method on the
 categorical route) take it from the model when \code{.exposure} is not supplied,
-announcing the variable they read; \code{options(propensity.quiet = TRUE)} silences the announcement. An
-\code{.exposure} you supply is used instead, and a categorical model's columns
-are matched to its levels by name, so an exposure whose levels are ordered
-differently is still trimmed against the right column.
+announcing the variable they read; \code{options(propensity.quiet = TRUE)}
+silences the announcement. An \code{.exposure} you supply is used instead, and a
+categorical model's columns are matched to its levels by name, so an exposure
+whose levels are ordered differently is still trimmed against the right
+column.
 }
 
 \subsection{Object behavior}{

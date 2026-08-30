@@ -61,7 +61,7 @@ density of the exposure, \code{"integrated"} for the conditional density
 marginalized over the units, \code{"score"} for a \code{stabilization_score} the
 caller supplied, and \code{"none"} for weights that were not stabilized.
 \item \code{sigma}, where the residual spread of the conditional density came from:
-\code{"pooled"} for the pooled residual standard deviation, and \code{"supplied"}
+\code{"pooled"} for the pooled residual root mean square, and \code{"supplied"}
 for a \code{.sigma} the caller gave.
 \item \code{sigma_value}, the single spread the caller supplied, and \code{NULL} for a
 pooled spread and for one supplied per observation. A spread that is one

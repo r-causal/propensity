@@ -828,10 +828,17 @@ test_that("the unsupported-type refusal is causalgenerics' refusal wrapped", {
   )
   expect_s3_class(err, "propensity_error")
   expect_s3_class(err$parent, "condition")
+
+  # The parent is raised outside this package: causalgenerics' own condition
+  # where it recognizes the type, and the `arg_match()` refusal it answers a
+  # type it has never heard of with. Either way it names the type, which is the
+  # half of the report this package has nothing to say about.
+  expect_false(inherits(err$parent, "propensity_error"))
   expect_true(
     inherits(err$parent, "causalgenerics_error") ||
-      inherits(err$parent, "rlib_error_arg_match")
+      inherits(err$parent, "rlang_error")
   )
+  expect_match(conditionMessage(err$parent), "ordinal", fixed = TRUE)
 
   # The length of the vector is this function's own requirement, and the refusal
   # for it stays its own: there is no single type for causalgenerics to read.

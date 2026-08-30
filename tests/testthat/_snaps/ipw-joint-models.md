@@ -19,6 +19,18 @@
       i A single treatment's weights are an ordinary <psw> of the right length and the right estimand, so nothing else would notice.
       i Build the weights with `wt_joint()` from the two components, and refit `outcome_mod` with them.
 
+# the weights mismatch on two binary treatments names no focal level
+
+    Code
+      expr
+    Condition <propensity_ipw_weights_mismatch_error>
+      Error in `ipw()`:
+      ! The "ate" weights recomputed from `wt_mod` differ from the weights supplied to `outcome_mod` (compared at relative tolerance 1e-6).
+      i The estimand the weights were built for may differ from the one `ipw()` resolved.
+      i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
+      i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
+      i Refit `outcome_mod` with weights from this propensity score model and estimand if the weights are the cause.
+
 # ipw() refuses .by on the two-model route
 
     Code
