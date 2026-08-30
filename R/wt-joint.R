@@ -734,6 +734,25 @@ check_joint_wt_models_factorization <- function(
     return(invisible(TRUE))
   }
 
+  # When the first model reads the second treatment, the same two fits supplied
+  # the other way round are a factorization already, so refitting is not the
+  # only way out. Which order is right is a claim about the order the treatments
+  # are assigned in, which the pair of models does not settle, so the message
+  # offers the swap rather than making it.
+  swap_call <- paste0(
+    "joint_wt_models(",
+    second,
+    " = ..., ",
+    first,
+    " = ...)"
+  )
+  swapped <- if (first_reads_second) {
+    "{.arg {first}} already reads {.val {second}}, so the pair in the other \\
+    order, {.code {swap_call}}, is the factorization f({second} | L) \\
+    f({first} | {second}, L). Supply them that way if that is the order the \\
+    treatments are assigned in."
+  }
+
   abort(
     c(
       "{.fun joint_wt_models} requires the second model to condition on the \\
@@ -747,7 +766,8 @@ check_joint_wt_models_factorization <- function(
       i = "Nothing downstream can tell the two apart: the product is an \\
       ordinary vector of positive numbers either way.",
       i = "Add {.val {first}} to the formula of {.arg {second}}, and model \\
-      that dependence flexibly rather than as a single additive term."
+      that dependence flexibly rather than as a single additive term.",
+      i = swapped
     ),
     error_class = "propensity_wt_joint_factorization_error",
     call = call

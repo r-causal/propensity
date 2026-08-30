@@ -796,6 +796,11 @@ check_ipw_joint_dose_coding <- function(
       ordered factor carries polynomial contrasts, and \\
       {.code options(contrasts = )} sets a coding for every factor in the \\
       session.",
+      i = "A model with no intercept, written {.code - 1} or {.code + 0}, \\
+      expands a factor treatment to an indicator for every level, so its first \\
+      column is the reference-level indicator rather than the 0/1 indicator \\
+      the rows describe. Keep the intercept, or code {.val {first}} as a 0/1 \\
+      numeric.",
       i = "Refit {.arg outcome_mod} with {.val {first}} as a 0/1 numeric, or as \\
       an unordered factor under treatment contrasts."
     ),

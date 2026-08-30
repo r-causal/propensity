@@ -1160,6 +1160,10 @@ test_that("the factorization refusal offers the swapped order when the pair is o
     class = "propensity_wt_joint_factorization_error"
   )
   expect_false(grepl("other order", conditionMessage(plain), fixed = TRUE))
+
+  expect_propensity_error(
+    joint_wt_models(a = fx$mods$a_on_e, e = fx$mods$e_marginal)
+  )
 })
 
 test_that("joint_wt_models() refuses arguments that do not name exactly two treatments", {

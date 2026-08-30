@@ -100,6 +100,7 @@
       x `a` and `a:e` in `outcome_mod` contribute a column coded some other way.
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
       i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
 
 ---
@@ -112,6 +113,7 @@
       x `a` and `a:e` in `outcome_mod` contribute a column coded some other way.
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
       i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
 
 # the weights mismatch names a fixed stabilization score
@@ -139,6 +141,7 @@
       x `a` in `outcome_mod` contributes a column coded some other way.
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
       i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
 
 # ipw() refuses .by on a joint continuous fit

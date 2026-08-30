@@ -29,6 +29,16 @@
       x It names 2 columns.
       i Effects are reported within the levels of a single variable. Cross two variables into one column, with `interaction()`, and name that column instead.
 
+---
+
+    Code
+      expr
+    Condition <propensity_ipw_by_arg_error>
+      Error in `ipw()`:
+      ! `.by` must name exactly one modifier.
+      x It names 0 columns.
+      i The selection matched no column of the outcome model's data. Name one column of it, or leave `.by` unset for the ungrouped fit.
+
 # .by refuses a modifier with missing values
 
     Code

@@ -167,13 +167,24 @@ ipw_by_column <- function(.by, data, call = rlang::caller_env()) {
   )
 
   if (!identical(length(loc), 1L)) {
+    # The two ways to miss one column want different advice. A selection that
+    # reached several columns has variables to cross into one; a selection that
+    # reached none has nothing to cross, and crossing is the wrong thing to
+    # reach for.
+    remedy <- if (length(loc) == 0L) {
+      "The selection matched no column of the outcome model's data. Name one \\
+      column of it, or leave {.arg .by} unset for the ungrouped fit."
+    } else {
+      "Effects are reported within the levels of a single variable. Cross two \\
+      variables into one column, with {.fun interaction}, and name that column \\
+      instead."
+    }
+
     abort(
       c(
         "{.arg .by} must name exactly one modifier.",
         x = "It names {length(loc)} column{?s}.",
-        i = "Effects are reported within the levels of a single variable. \\
-        Cross two variables into one column, with {.fun interaction}, and name \\
-        that column instead."
+        i = remedy
       ),
       error_class = "propensity_ipw_by_arg_error",
       call = call

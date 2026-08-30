@@ -783,6 +783,9 @@ test_that(".by refuses a selection that does not name exactly one modifier", {
     ipw(mods$ps_mod, mods$outcome_mod, .by = c(v, x1)),
     regexp = "interaction"
   )
+  expect_propensity_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = starts_with("nomatch"))
+  )
 })
 
 test_that(".by refuses a modifier with missing values", {

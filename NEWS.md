@@ -1,5 +1,29 @@
 # propensity 0.1.0.9000 (development version)
 
+* The `ipw()` refusal of a `.by` selection that does not name exactly one
+  modifier now branches its remedy on how many columns the selection reached.
+  Crossing two variables into one column with `interaction()` is advice for a
+  selection that reached more than one; a selection that reached none has
+  nothing to cross, and is now told to name a column of the outcome model's
+  data or to leave `.by` unset for the ungrouped fit.
+
+* The `joint_wt_models()` factorization refusal now offers the swapped order
+  when the pair supplied is a factorization written backwards. If the first
+  model already conditions on the second treatment, the same two fits given in
+  the other order are the factorization f(second | L) f(first | second, L) and
+  need no refitting, so the message names that alternative alongside the advice
+  to add the first treatment to the second model's formula. Which order is
+  right is a claim about the order the treatments are assigned in, so the
+  message offers the swap rather than making it.
+
+* The `ipw()` refusal of a joint marginal structural model whose treatment
+  column is coded some other way now names a dropped intercept as a cause. A
+  model written with `- 1` or `+ 0` expands a factor treatment to an indicator
+  for every level, so its first column is the reference-level indicator rather
+  than the 0/1 indicator the reported rows describe. The remedy already there,
+  to refit with the treatment as an unordered factor under treatment contrasts,
+  describes what such a caller has already done.
+
 * `ps_trim()` and `ps_trunc()` now accept a calibrated propensity score from
   `ps_calibrate()`, which they used to refuse with an assertion about the type
   of a vector, raised by their constructor and written about neither argument.

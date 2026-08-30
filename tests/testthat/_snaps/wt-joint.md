@@ -107,6 +107,19 @@
       i A sequential factorization has a first factor that is marginal in the second treatment, so such a pair are not the two factors of any factorization, in either order.
       i Refit the first treatment's model without "e".
 
+# the factorization refusal offers the swapped order when the pair is one reversed
+
+    Code
+      expr
+    Condition <propensity_wt_joint_factorization_error>
+      Error in `joint_wt_models()`:
+      ! `joint_wt_models()` requires the second model to condition on the first treatment.
+      x `e` does not read "a" on its right-hand side.
+      i A joint weight factorizes as f(a | L) f(e | a, L). The product of two marginal models, f(a | L) f(e | L), is a different quantity, and it is not the joint weight wherever "e" depends on "a".
+      i Nothing downstream can tell the two apart: the product is an ordinary vector of positive numbers either way.
+      i Add "a" to the formula of `e`, and model that dependence flexibly rather than as a single additive term.
+      i `a` already reads "e", so the pair in the other order, `joint_wt_models(e = ..., a = ...)`, is the factorization f(e | L) f(a | e, L). Supply them that way if that is the order the treatments are assigned in.
+
 # joint_wt_models() refuses arguments that do not name exactly two treatments
 
     Code

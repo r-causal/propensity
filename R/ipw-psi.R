@@ -347,15 +347,15 @@ ipw_contrast_value <- function(form, mu_hi, mu_lo, reporter = NULL) {
   suppressWarnings(ipw_contrast_transform(form, mu_hi, mu_lo))
 }
 
-# A reporter for one contrast block, or for the single binary contrast when
-# `contrast` is NULL. The solver revisits the same out-of-domain marginal means
-# on every step and again on every column of the bread, so each effect reports
-# once for the fit the reporter was built for.
+# A reporter for one block, labelled by the contrast, the stratum, or both, or
+# for the single binary contrast when `label` is NULL. The solver revisits the
+# same out-of-domain marginal means on every step and again on every column of
+# the bread, so each effect reports once for the fit the reporter was built for.
 #
 # The init path builds no reporter. It seeds theta from the fitted models and
 # the solver evaluates psi at that seed, so anything undefined there is reported
 # from the psi block instead of twice.
-ipw_contrast_reporter <- function(contrast = NULL) {
+ipw_contrast_reporter <- function(label = NULL) {
   reported <- new.env(parent = emptyenv())
 
   function(form) {
@@ -364,11 +364,11 @@ ipw_contrast_reporter <- function(contrast = NULL) {
     }
     reported[[form]] <- TRUE
 
-    headline <- if (is.null(contrast)) {
+    headline <- if (is.null(label)) {
       "The {.val {form}} effect is undefined at the marginal means the solver \\
       reached."
     } else {
-      "The {.val {form}} effect for {.val {contrast}} is undefined at the \\
+      "The {.val {form}} effect for {.val {label}} is undefined at the \\
       marginal means the solver reached."
     }
     domain <- switch(

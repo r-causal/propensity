@@ -1,6 +1,7 @@
 url: https://r-causal.github.io/propensity/
 template:
   bootstrap: 5
+  math-rendering: mathjax
 
 articles:
 - title: Articles
@@ -8,3 +9,66 @@ articles:
   contents:
   - propensity
   - effect-modification
+
+reference:
+- title: Overview
+  desc: A tour of the package, from weights to effect estimates.
+  contents:
+  - propensity-package
+- title: Weights
+  desc: Propensity score weights for each estimand, across binary, categorical,
+    and continuous exposures.
+  contents:
+  - wt_ate
+- title: Weight objects
+  desc: Construct propensity score weights and read what they record.
+  contents:
+  - psw
+  - exposure_type
+- title: Joint treatments
+  desc: Weights for a sequence of two treatments, from a factorized pair of
+    treatment models.
+  contents:
+  - joint_wt_models
+  - wt_joint
+- title: Continuous exposure densities
+  desc: The density families a continuous exposure's weights are built from.
+  contents:
+  - dens_normal
+- title: Trimming
+  desc: Restrict a set of propensity scores to a region of overlap, and refit the
+    model on what remains.
+  contents:
+  - ps_trim
+  - ps_trim_meta
+  - is_ps_trimmed
+  - is_unit_trimmed
+  - ps_refit
+  - is_refit
+- title: Truncation
+  desc: Bound extreme propensity scores in place rather than dropping them.
+  contents:
+  - ps_trunc
+  - ps_trunc_meta
+  - is_ps_truncated
+  - is_unit_truncated
+- title: Calibration and tilting
+  desc: Recalibrate fitted propensity scores, and evaluate the tilting function
+    an estimand implies.
+  contents:
+  - ps_calibrate
+  - is_ps_calibrated
+  - ps_tilt
+- title: Effect estimation
+  desc: Inverse probability weighted estimation and the surfaces its results are
+    read through.
+  contents:
+  - ipw-methods
+  - tidy.ipw
+  - glance.ipw
+  - augment.ipw
+  - tidy.ipw_pooled
+  - glance.ipw_pooled
+- title: Re-exports
+  contents:
+  - reexports
