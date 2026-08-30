@@ -311,6 +311,126 @@ test_that("the product keeps its joint record through subsetting", {
   expect_equal(as.double(subset), as.double(joint)[1:10], tolerance = 1e-12)
 })
 
+# ---- wt_joint(): combining product weights ----------------------------------
+
+test_that("the product keeps its joint record through combination", {
+  fx <- joint_wt_fixture()
+  joint <- wt_joint(fx$w$a, fx$w$e)
+
+  # Appending one set of product weights to another leaves every observation a
+  # product of the same two components, so the record describes the result as
+  # well as it describes either input and travels with it.
+  combined <- expect_silent(c(joint, joint))
+  expect_true(is_psw(combined))
+  expect_length(combined, 2L * length(joint))
+  expect_true(is_joint_wt(combined))
+  expect_identical(joint_wt_meta(combined), joint_wt_meta(joint))
+  expect_identical(estimand(combined), "ate")
+  expect_identical(is_stabilized(combined), is_stabilized(joint))
+  expect_equal(
+    as.double(combined),
+    rep(as.double(joint), 2),
+    tolerance = 1e-12
+  )
+
+  # `c()` settles its type through `vec_ptype2()`, so the vctrs entry point and
+  # the base one answer alike.
+  through_vctrs <- expect_silent(vctrs::vec_c(joint, joint))
+  expect_true(is_joint_wt(through_vctrs))
+  expect_identical(joint_wt_meta(through_vctrs), joint_wt_meta(joint))
+
+  # A column of weights stacked with the rest of its data frame settles the
+  # same way, which is how the record reaches a result assembled by row.
+  df <- tibble::tibble(id = seq_along(joint), wt = joint)
+  stacked <- expect_silent(vctrs::vec_rbind(df, df))
+  expect_s3_class(stacked$wt, "psw")
+  expect_true(is_joint_wt(stacked$wt))
+  expect_identical(joint_wt_meta(stacked$wt), joint_wt_meta(joint))
+})
+
+test_that("two products built the same way agree on the record", {
+  first <- wt_joint(joint_wt_fixture()$w$a, joint_wt_fixture()$w$d)
+  second <- wt_joint(joint_wt_fixture()$w$a, joint_wt_fixture()$w$d)
+
+  # The density slot holds the specification the ratio was read in, whose
+  # function is written afresh on every call, so two products built the same way
+  # hold two records that say the same thing and are not the same object. A
+  # merge comparing them by identity would report a disagreement between weights
+  # nothing distinguishes.
+  combined <- expect_silent(c(first, second))
+  expect_true(is_joint_wt(combined))
+  expect_identical(
+    joint_wt_meta(combined)$exposure_type,
+    c("binary", "continuous")
+  )
+  expect_identical(joint_wt_meta(combined)$stabilized, c(FALSE, TRUE))
+  expect_null(joint_wt_meta(combined)$density[[1]])
+  expect_identical(joint_wt_meta(combined)$density[[2]]$numerator, "marginal")
+  expect_identical(joint_wt_meta(combined)$density[[2]]$sigma, "pooled")
+})
+
+test_that("combining products read in different densities drops the record", {
+  fx <- joint_wt_fixture()
+  normal <- wt_joint(fx$w$a, fx$w$d)
+  heavier <- wt_joint(fx$w$a, fx$w$d_t)
+
+  # The two products weight the same pair of exposures and stabilize the same
+  # component, and differ in the density the dose's ratio was read in. That is
+  # the ratio an estimator would rebuild the weights from, so neither record
+  # describes the combination.
+  out <- NULL
+  cnd <- expect_warning(
+    out <- c(normal, heavier),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(out, "psw")
+  expect_length(out, 2L * length(normal))
+  expect_identical(estimand(out), "ate")
+  expect_false(is_joint_wt(out))
+  expect_null(joint_wt_meta(out))
+  expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("combining products over different exposures drops the record", {
+  fx <- joint_wt_fixture()
+  binary_dose <- wt_joint(fx$w$a, fx$w$d)
+  two_doses <- wt_joint(fx$w$d, fx$w$d2)
+
+  # A product of a binary weight and a dose weight is not the same kind of
+  # object as a product of two dose weights, and the record is what says which
+  # one a set of weights is.
+  out <- NULL
+  cnd <- expect_warning(
+    out <- c(binary_dose, two_doses),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(out, "psw")
+  expect_false(is_joint_wt(out))
+  expect_null(joint_wt_meta(out))
+  expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("combining a product with a plain psw carries the record", {
+  fx <- joint_wt_fixture()
+  joint <- wt_joint(fx$w$a, fx$w$e)
+  plain <- recordless_psw(fx$w$a)
+
+  # Weights recording nothing about a product have nothing to disagree with,
+  # which is the rule every carried attribute follows: the one operand that
+  # records the thing speaks for the result. A disagreement takes two records
+  # that say different things.
+  combined <- expect_silent(c(joint, plain))
+  expect_true(is_joint_wt(combined))
+  expect_identical(joint_wt_meta(combined), joint_wt_meta(joint))
+
+  # The rule does not depend on the order the two were written in.
+  reversed <- expect_silent(c(plain, joint))
+  expect_true(is_joint_wt(reversed))
+  expect_identical(joint_wt_meta(reversed), joint_wt_meta(joint))
+})
+
 # ---- wt_joint(): what the components record ---------------------------------
 
 test_that("wt_joint() reads each component's recorded exposure type", {
