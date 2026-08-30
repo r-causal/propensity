@@ -770,6 +770,19 @@ test_that(".by refuses a selection that does not name exactly one modifier", {
     ipw(mods$ps_mod, mods$outcome_mod, .by = starts_with("nomatch")),
     class = "propensity_error"
   )
+
+  # The remedy has to follow the count. Crossing two variables with
+  # `interaction()` is advice for a selection that reached more than one column;
+  # a selection that reached none has nothing to cross, and the thing to do is
+  # to name a column that is there.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = starts_with("nomatch")),
+    regexp = "matched no column"
+  )
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = c(v, x1)),
+    regexp = "interaction"
+  )
 })
 
 test_that(".by refuses a modifier with missing values", {

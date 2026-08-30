@@ -1538,6 +1538,16 @@ test_that("a bare-term model with no intercept is refused, not errored", {
     ipw(models, outcome_mod),
     class = "propensity_ipw_msm_error"
   )
+
+  # The remedy has to name the cause a reader of this fit is looking at. The
+  # treatment here is already an unordered factor under treatment contrasts, so
+  # the second half of the remedy describes what was done; only the dropped
+  # intercept explains why that was not enough.
+  expect_error(
+    ipw(models, outcome_mod),
+    regexp = "no intercept"
+  )
+
   expect_propensity_error(ipw(models, outcome_mod))
 })
 

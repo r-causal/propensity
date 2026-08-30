@@ -5143,7 +5143,7 @@ test_that("ATE weights match PSweight", {
   expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
 })
 
-test_that("Overlap (ATO) weights use different formula than PSweight", {
+test_that("Overlap (ATO) weights match PSweight", {
   skip_if_not_installed("PSweight")
   skip_on_cran()
 
@@ -5159,6 +5159,17 @@ test_that("Overlap (ATO) weights use different formula than PSweight", {
     exposure_type = "binary"
   )
 
+  # The overlap tilt is h(e) = e(1 - e) and the weight is h(e) divided by the
+  # probability of the exposure the unit took, which reduces to 1 - e for the
+  # treated and to e for the untreated. Both packages compute that quantity;
+  # the two only look different written as the tilt over the score.
+  trt <- PSweight::psdata_cl$trt
+  expect_equal(
+    as.numeric(our_weights),
+    ifelse(trt == 1, 1 - ps_fitted, ps_fitted),
+    ignore_attr = "names"
+  )
+
   # Calculate weights with PSweight
   psw_obj <- PSweight::SumStat(
     ps.formula = ps_formula,
@@ -5171,8 +5182,7 @@ test_that("Overlap (ATO) weights use different formula than PSweight", {
   psw_weights_norm <- psw_obj$ps.weights$overlap
 
   # Calculate sum of raw weights for each group to un-normalize
-  trt <- PSweight::psdata_cl$trt
-  raw_wts <- ps_fitted * (1 - ps_fitted) # ATO weights are same for both groups
+  raw_wts <- ifelse(trt == 1, 1 - ps_fitted, ps_fitted)
   sum_raw_trt1 <- sum(raw_wts[trt == 1])
   sum_raw_trt0 <- sum(raw_wts[trt == 0])
 
@@ -5181,11 +5191,8 @@ test_that("Overlap (ATO) weights use different formula than PSweight", {
   psw_weights_raw[trt == 1] <- psw_weights_norm[trt == 1] * sum_raw_trt1
   psw_weights_raw[trt == 0] <- psw_weights_norm[trt == 0] * sum_raw_trt0
 
-  # Our package uses (1-ps) for treated and ps for control
-  # PSweight uses ps*(1-ps) for both groups
-  # These are different formulations of overlap weights
-  # So we skip the direct comparison
-  skip("ATO formulas differ between packages")
+  # Compare
+  expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
 })
 
 test_that("Matching (ATM) weights match PSweight", {

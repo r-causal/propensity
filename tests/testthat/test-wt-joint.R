@@ -1128,6 +1128,40 @@ test_that("joint_wt_models() refuses a pair in which neither model conditions on
   )
 })
 
+test_that("the factorization refusal offers the swapped order when the pair is one reversed", {
+  fx <- joint_wt_fixture()
+
+  # `a_on_e` reads "e" and `e_marginal` does not read "a", so this pair is a
+  # factorization written backwards rather than a pair of marginal models. The
+  # refusal stands, since the order the caller wrote is not a factorization, but
+  # adding "a" to the second model is not the only way out: the same two fits
+  # supplied the other way round are f(e | L) f(a | e, L) and need no refitting.
+  # Which of the two is right is a modelling choice about the order the
+  # treatments are assigned in, so the message offers it rather than deciding.
+  expect_error(
+    joint_wt_models(a = fx$mods$a_on_e, e = fx$mods$e_marginal),
+    class = "propensity_wt_joint_factorization_error"
+  )
+  expect_error(
+    joint_wt_models(a = fx$mods$a_on_e, e = fx$mods$e_marginal),
+    regexp = "other order"
+  )
+
+  # The swapped pair really is accepted, which is what makes the advice advice.
+  expect_true(is_joint_wt_models(
+    joint_wt_models(e = fx$mods$e_marginal, a = fx$mods$a_on_e)
+  ))
+
+  # The other quadrant keeps the message it has: neither model reads the other's
+  # treatment, so there is no order in which this pair is a factorization and
+  # nothing to offer beyond refitting.
+  plain <- expect_error(
+    joint_wt_models(a = fx$mods$a, e = fx$mods$e_marginal),
+    class = "propensity_wt_joint_factorization_error"
+  )
+  expect_false(grepl("other order", conditionMessage(plain), fixed = TRUE))
+})
+
 test_that("joint_wt_models() refuses arguments that do not name exactly two treatments", {
   fx <- joint_wt_fixture()
 
