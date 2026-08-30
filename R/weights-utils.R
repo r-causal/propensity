@@ -1042,20 +1042,37 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
 # propensity scores takes them in; reporting a bare range says nothing about
 # what the caller has to correct.
 check_ps_matrix_range <- function(ps_matrix, call = rlang::caller_env()) {
-  ps_vals <- as.numeric(ps_matrix)
-  non_na_vals <- ps_vals[!is.na(ps_vals)]
+  # `min()` and `max()` compare strings rather than numbers, so a matrix that
+  # is not made of numbers has to be refused before the bounds are read.
+  if (!is.numeric(ps_matrix) && !is.logical(ps_matrix)) {
+    abort(
+      "{.arg .propensity} must be numeric.",
+      call = call,
+      error_class = "propensity_matrix_type_error"
+    )
+  }
 
-  if (
-    length(non_na_vals) > 0 &&
-      any(non_na_vals <= 0 | non_na_vals >= 1 | !is.finite(non_na_vals))
-  ) {
+  # Missing values are not scores, so they neither decide the bounds nor are
+  # refused. `min()` and `max()` skip them without copying the matrix, but they
+  # have no bounds to report when there is nothing left to read, so that case is
+  # answered first.
+  if (length(ps_matrix) == 0 || (anyNA(ps_matrix) && all(is.na(ps_matrix)))) {
+    return(invisible(TRUE))
+  }
+
+  lower <- min(ps_matrix, na.rm = TRUE)
+  upper <- max(ps_matrix, na.rm = TRUE)
+
+  # An infinite score is out of bounds on the side it is infinite on, so the
+  # bounds alone catch it.
+  if (lower <= 0 || upper >= 1) {
     abort(
       c(
         "All propensity scores must be between 0 and 1.",
         i = "The bounds are exclusive: a score of exactly 0 or 1 leaves the \\
         weight undefined.",
         i = "The range of values in {.arg .propensity} is \\
-        {format(range(non_na_vals), nsmall = 1, digits = 1)}"
+        {format(as.numeric(c(lower, upper)), nsmall = 1, digits = 1)}"
       ),
       call = call,
       error_class = "propensity_range_error"

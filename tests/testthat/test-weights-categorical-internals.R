@@ -211,6 +211,13 @@ test_that("non-numeric scores are refused before the range is read", {
     ps_tilt(ps, "ate"),
     class = "propensity_matrix_type_error"
   )
+
+  # The range check reads the bounds by comparison, which strings answer with
+  # an ordering of their own, so it refuses a matrix it cannot read as numbers.
+  expect_error(
+    check_ps_matrix_range(ps),
+    class = "propensity_matrix_type_error"
+  )
 })
 
 # ---- allocation guards ------------------------------------------------------

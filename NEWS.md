@@ -1,5 +1,12 @@
 # propensity 0.1.0.9000 (development version)
 
+* Weighting a categorical exposure now reads each unit's propensity score
+  directly out of the score matrix and validates that matrix in a single pass,
+  rather than building an indicator matrix and a chain of full-length
+  comparisons to answer the same questions. The weights are unchanged; the work
+  needed to produce them no longer grows several copies of the score matrix, so
+  large categorical problems are noticeably faster.
+
 * Combining two sets of product weights with `c()` or `vctrs::vec_c()` now
   carries the `joint_wt_meta` record that `wt_joint()` left on them, so
   `is_joint_wt()` and `joint_wt_meta()` read the same thing off the result that

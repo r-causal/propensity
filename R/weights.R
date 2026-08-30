@@ -2995,22 +2995,18 @@ calculate_categorical_weights <- function(
   k <- nlevels(.exposure)
   levels_exp <- levels(.exposure)
 
-  # Create indicator matrix for exposures
-  # Each row i has a 1 in column j if observation i has exposure level j
-  Z <- matrix(0, nrow = n, ncol = k)
-  for (j in 1:k) {
-    Z[.exposure == levels_exp[j], j] <- 1
-  }
+  # Extract the propensity score for each unit's actual exposure, e_{i,Z_i}.
+  # `check_ps_matrix()` has put the columns in level order, so the integer code
+  # of the exposure is the column to read.
+  e_actual <- ps_matrix[cbind(seq_len(n), as.integer(.exposure))]
 
-  # Extract the propensity score for each unit's actual exposure
-  # e_{i,Z_i} = sum over j of Z_{ij} * e_{ij}
-  e_actual <- rowSums(Z * ps_matrix)
-
-  # A unit with no observed level has an all-zero indicator row, so e_{i,Z_i}
-  # comes back as 0. There is no weight to give such a unit, so it is missing
-  # here just as it is on the binary and continuous paths.
+  # A unit whose level is missing has no column to read, so the index above
+  # already returns a missing score for it. A row holding any missing score is
+  # not a probability vector, so it has no score to read either. There is no
+  # weight to give either unit, so both are missing here just as they are on
+  # the binary and continuous paths.
   missing_exposure <- is.na(.exposure)
-  e_actual[missing_exposure] <- NA_real_
+  e_actual[!stats::complete.cases(ps_matrix)] <- NA_real_
 
   if (!estimand %in% ipw_estimands) {
     abort(
