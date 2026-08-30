@@ -145,7 +145,6 @@ contrast_rows <- function(estimates) {
 # ---- the row set a binary result reports -------------------------------------
 
 test_that("a binary mestimation fit leads with one mean row per exposure level", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   est <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")$estimates
@@ -164,7 +163,6 @@ test_that("a binary mestimation fit leads with one mean row per exposure level",
 })
 
 test_that("a binary gaussian outcome reports its means beside the difference", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat, outcome_family = "gaussian")
   est <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")$estimates
@@ -178,7 +176,6 @@ test_that("a binary gaussian outcome reports its means beside the difference", {
 })
 
 test_that("a binary contrast row is exactly the transform of the means beside it", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   est <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")$estimates
@@ -206,7 +203,6 @@ test_that("a binary contrast row is exactly the transform of the means beside it
 })
 
 test_that("the binary mean rows are the mu block of the stacked system", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -225,7 +221,6 @@ test_that("the binary mean rows are the mu block of the stacked system", {
 })
 
 test_that("the binary mean rows match a g-computation plug-in", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -244,7 +239,6 @@ test_that("the binary mean rows match a g-computation plug-in", {
 # ---- the two standard error routes agree -------------------------------------
 
 test_that("the two SE routes report the same mean rows", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   mest <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -300,7 +294,6 @@ test_that("a linearization fit reports its mean rows with usable inference", {
 # ---- the covariance covers the new rows --------------------------------------
 
 test_that("the stored covariance covers the binary mean rows on both routes", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   labels <- c(
@@ -340,7 +333,6 @@ test_that("the stored covariance covers the binary mean rows on both routes", {
 # ---- the accessors and tidiers carry the new rows ----------------------------
 
 test_that("the accessors report the binary mean rows", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -361,7 +353,6 @@ test_that("the accessors report the binary mean rows", {
 })
 
 test_that("tidy() reports the binary mean rows under term and contrast", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -375,7 +366,6 @@ test_that("tidy() reports the binary mean rows under term and contrast", {
 })
 
 test_that("tidy(exponentiate = TRUE) leaves the mean rows alone", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_binary(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -407,7 +397,6 @@ test_that("tidy(exponentiate = TRUE) leaves the mean rows alone", {
 
 test_that("a categorical fit reports one mean row per level in level order", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_level_means_categorical()
   mods <- fit_level_means_categorical(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -434,7 +423,6 @@ test_that("a categorical fit reports one mean row per level in level order", {
 
 test_that("the categorical mean rows match a g-computation plug-in", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_level_means_categorical()
   mods <- fit_level_means_categorical(dat)
   est <- ipw(mods$ps_mod, mods$outcome_mod)$estimates
@@ -456,7 +444,6 @@ test_that("the categorical mean rows match a g-computation plug-in", {
 
 test_that("each categorical contrast is the transform of the two means it names", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_level_means_categorical()
   mods <- fit_level_means_categorical(dat)
   est <- ipw(mods$ps_mod, mods$outcome_mod)$estimates
@@ -487,7 +474,6 @@ test_that("each categorical contrast is the transform of the two means it names"
 
 test_that("a categorical fit keys its covariance by the level each mean belongs to", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_level_means_categorical()
   mods <- fit_level_means_categorical(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -515,7 +501,6 @@ test_that("a categorical fit keys its covariance by the level each mean belongs 
 # ---- a `.by` request ---------------------------------------------------------
 
 test_that("a .by fit reports the means overall and within every stratum", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_by(dat)
   est <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)$estimates
@@ -537,7 +522,6 @@ test_that("a .by fit reports the means overall and within every stratum", {
 })
 
 test_that("a .by stratum contrast is the difference of that stratum's means", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_by(dat)
   est <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)$estimates
@@ -551,7 +535,6 @@ test_that("a .by stratum contrast is the difference of that stratum's means", {
 })
 
 test_that("a .by fit gives every mean row a usable standard error", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_by(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -578,7 +561,6 @@ test_that("a .by fit gives every mean row a usable standard error", {
 })
 
 test_that("a .by fit labels every mean row by level and stratum together", {
-  skip_if_not_installed("deli")
   dat <- sim_level_means_binary()
   mods <- fit_level_means_by(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)

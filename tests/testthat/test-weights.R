@@ -49,6 +49,16 @@ test_that("wt_atc is an alias for wt_atu", {
   wts_atc_trunc <- wt_atc(ps_truncated, exposure)
 
   expect_identical(wts_atu_trunc, wts_atc_trunc)
+
+  # Test with ps_calib. `wt_atc` is `wt_atu`, whose body dispatches on
+  # "wt_atu", so the alias reaches the modified-score methods under that name
+  # and needs no registrations of its own. Calibration fits a model, so it
+  # reads the hundred scores above rather than the four.
+  calibrated <- ps_calibrate(fitted(ps_model), treatment)
+  wts_atu_calib <- wt_atu(calibrated, treatment)
+  wts_atc_calib <- wt_atc(calibrated, treatment)
+
+  expect_identical(wts_atu_calib, wts_atc_calib)
 })
 
 test_that("wt_atc works with all object types", {

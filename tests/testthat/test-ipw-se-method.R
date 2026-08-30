@@ -1177,7 +1177,6 @@ test_that("linearization recodes a factor exposure for the att estimand", {
 })
 
 test_that("mestimation matches a factor exposure to the numeric fit", {
-  skip_if_not_installed("deli")
   for (factor_col in c("trt", "trt_rev")) {
     arms <- factor_numeric_arms(factor_exposure_data(), factor_col, wt_ate)
     res_fac <- ipw(
@@ -1420,7 +1419,6 @@ matrix_outcome_models <- function() {
 }
 
 test_that("a matrix-response outcome model errors on its shape without .data", {
-  skip_if_not_installed("deli")
   m <- matrix_outcome_models()
 
   # the fixture is the shape it claims to be
@@ -1473,7 +1471,6 @@ transformed_response_outcome <- function(response, dat, wts) {
 }
 
 test_that("a transformed single-column outcome response is not a matrix response", {
-  skip_if_not_installed("deli")
   # `log(y)` and friends make the formula's left-hand side a call rather than a
   # symbol, which is what the propensity guard rejects and what an early version
   # of this guard rejected too. They are ordinary single-column responses and
@@ -1500,7 +1497,6 @@ test_that("a transformed single-column outcome response is not a matrix response
 })
 
 test_that("a scale-transformed outcome response matches its precomputed column", {
-  skip_if_not_installed("deli")
   # The log and sqrt pair above leaves a plain vector in the model frame.
   # `scale()` leaves a one-column matrix there instead, so it is the shape the
   # precomputed cross-check has nothing to say about yet, and it is excluded
@@ -1523,7 +1519,6 @@ test_that("a scale-transformed outcome response matches its precomputed column",
 })
 
 test_that("the matrix-response outcome model error names the outcome model", {
-  skip_if_not_installed("deli")
   m <- matrix_outcome_models()
 
   expect_snapshot(
@@ -1533,7 +1528,6 @@ test_that("the matrix-response outcome model error names the outcome model", {
 })
 
 test_that("a matrix-response outcome model errors on its shape with .data", {
-  skip_if_not_installed("deli")
   # The .data route fails differently today, asking for a "cbind" column, so it
   # is pinned separately rather than folded into the test above.
   m <- matrix_outcome_models()
@@ -1564,7 +1558,6 @@ test_that("a matrix-response outcome model errors on its shape with .data", {
 # reference to compare a binomial one against.
 
 test_that("a log-transformed outcome response through .data matches the model-frame route", {
-  skip_if_not_installed("deli")
   m <- transformed_response_models()
   outcome_mod <- transformed_response_outcome("log(y)", m$dat, m$wts)
 
@@ -1578,7 +1571,6 @@ test_that("a log-transformed outcome response through .data matches the model-fr
 })
 
 test_that("a sqrt-transformed outcome response through .data matches the model-frame route", {
-  skip_if_not_installed("deli")
   m <- transformed_response_models()
   outcome_mod <- transformed_response_outcome("sqrt(y)", m$dat, m$wts)
 
@@ -1595,7 +1587,6 @@ test_that("a sqrt-transformed outcome response through .data matches the model-f
 })
 
 test_that("a scale-transformed outcome response through .data matches the model-frame route", {
-  skip_if_not_installed("deli")
   m <- transformed_response_models()
   outcome_mod <- transformed_response_outcome("scale(y)", m$dat, m$wts)
 
@@ -1617,7 +1608,6 @@ test_that("a scale-transformed outcome response through .data matches the model-
 })
 
 test_that("a covariate missing from .data is reported as the missing column", {
-  skip_if_not_installed("deli")
   # Guard for the pins above: the report has to keep working for a column that
   # really is absent, not go quiet along with the spurious ones.
   m <- transformed_response_models()
@@ -1636,7 +1626,6 @@ test_that("a covariate missing from .data is reported as the missing column", {
 })
 
 test_that("a .data missing the outcome column names the response, not its transformation", {
-  skip_if_not_installed("deli")
   m <- transformed_response_models()
   outcome_mod <- transformed_response_outcome("log(y)", m$dat, m$wts)
   without_y <- m$dat[setdiff(names(m$dat), "y")]
@@ -1653,7 +1642,6 @@ test_that("a .data missing the outcome column names the response, not its transf
 })
 
 test_that("a response the formula's environment holds is still a missing column", {
-  skip_if_not_installed("deli")
   # The response is evaluated rather than looked up, with the formula's own
   # environment as the enclosure, so a `.data` missing the column reaches
   # whatever that environment happens to bind and estimates on it with nothing
@@ -2356,7 +2344,6 @@ test_that("the ps_link mismatch error names both links", {
 })
 
 test_that("mestimation reports a mismatched ps_link as a weights mismatch", {
-  skip_if_not_installed("deli")
   # The deliberate boundary between the two paths, pinned so neither drifts into
   # the other. The membership guard checks only that the link is one this package
   # supports, and a supported-but-wrong link passes it. What catches the misuse
@@ -2432,7 +2419,6 @@ test_that("linearization deprecates a ps_link equal to the model's link", {
 })
 
 test_that("mestimation deprecates a ps_link equal to the model's link", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   mods <- se_link_fit(dat, "logit")
 
@@ -2455,7 +2441,6 @@ test_that("mestimation deprecates a ps_link equal to the model's link", {
 })
 
 test_that("omitting ps_link deprecates nothing on either path", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   mods <- se_link_fit(dat, "logit")
 
@@ -2583,7 +2568,6 @@ se_method_outcome_focal_lower <- function(dat, ps_mod, exposure_name, wt_fun) {
 }
 
 test_that("both paths reject att weights focal on 0 for a 0/1 exposure", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_focal_lower(dat, ps_mod, "z", wt_att)
@@ -2608,7 +2592,6 @@ test_that("both paths reject att weights focal on 0 for a 0/1 exposure", {
 })
 
 test_that("both paths reject atu weights focal on FALSE for a logical exposure", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   dat$zl <- as.logical(dat$z)
   ps_mod <- glm(zl ~ x1 + x2, data = dat, family = binomial())
@@ -2634,7 +2617,6 @@ test_that("both paths reject atu weights focal on FALSE for a logical exposure",
 })
 
 test_that("both paths reject a lower focal level without .data", {
-  skip_if_not_installed("deli")
   # The exposure comes from the propensity model's own frame when `.data` is
   # absent, so the guard has to reach the same values by that route.
   dat <- se_method_data()
@@ -2858,7 +2840,6 @@ test_that("linearization rejects a separated propensity model given .data", {
 })
 
 test_that("both SE methods reject a separated propensity model alike", {
-  skip_if_not_installed("deli")
   dat <- se_separation_data()
   mods <- se_separation_models(dat)
 
@@ -3024,7 +3005,6 @@ se_score_mest_rd <- function(dat, ps_mod, wts) {
 }
 
 test_that("mestimation accepts a scalar stabilization score and reproduces the unstabilized estimates", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   ps <- as.double(predict(ps_mod, type = "response"))
@@ -3061,7 +3041,6 @@ test_that("mestimation accepts a scalar stabilization score and reproduces the u
 })
 
 test_that("mestimation uses a per-observation stabilization score", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   ps <- as.double(predict(ps_mod, type = "response"))

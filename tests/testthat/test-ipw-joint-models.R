@@ -263,7 +263,6 @@ joint_models_expected_estimates <- function(mu, forms = c("rd", "log(rr)")) {
 
 test_that("the fixture fits both routes and the constructors accept them", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
 
   # Every cell of the crossing is populated, which the declared-exposure route
@@ -344,7 +343,6 @@ test_that("saturated parameterizations imply the same weights", {
 # ---- the reported surface ---------------------------------------------------
 
 test_that("ipw() over two treatment models reports the joint surface", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -384,7 +382,6 @@ test_that("ipw() over two treatment models reports the joint surface", {
 })
 
 test_that("ipw() over two treatment models hand-computes its cell risks and contrasts", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -411,7 +408,6 @@ test_that("ipw() over two treatment models hand-computes its cell risks and cont
 })
 
 test_that("ipw() over two treatment models reports diffs for a continuous outcome", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat, outcome_family = "gaussian")
   res <- ipw(two$models, two$outcome_mod)
@@ -435,7 +431,6 @@ test_that("ipw() over two treatment models reports diffs for a continuous outcom
 
 test_that("the two routes agree as estimators of the same joint effects", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
 
   two <- fit_joint_models_route(dat)
@@ -474,7 +469,6 @@ test_that("the two routes agree as estimators of the same joint effects", {
 
 test_that("saturated parameterizations make the two routes agree tightly", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_joint_models_saturated()
 
   two <- fit_joint_models_route(
@@ -511,7 +505,6 @@ test_that("saturated parameterizations make the two routes agree tightly", {
 # ---- standard errors ---------------------------------------------------------
 
 test_that("ipw() over two treatment models reports a usable standard error for every row", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -527,7 +520,6 @@ test_that("ipw() over two treatment models reports a usable standard error for e
 })
 
 test_that("the stacked system carries both treatment models", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -563,7 +555,6 @@ test_that("the stacked system carries both treatment models", {
 })
 
 test_that("the covariance of a two-model joint fit couples its blocks", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -598,7 +589,6 @@ test_that("the covariance of a two-model joint fit couples its blocks", {
 })
 
 test_that("a two-model joint fit labels every surface alike", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -634,7 +624,6 @@ test_that("a two-model joint fit labels every surface alike", {
 })
 
 test_that("the conditional reading of a two-model joint fit is the outcome model's", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   conditional <- causalgenerics::as_conditional(
@@ -662,7 +651,6 @@ test_that("the conditional reading of a two-model joint fit is the outcome model
 # ---- refusals ----------------------------------------------------------------
 
 test_that("ipw() refuses an outcome model that does not read both treatments", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
 
   # A joint surface sets both treatments at once, so an outcome model reading
@@ -685,7 +673,6 @@ test_that("ipw() refuses an outcome model that does not read both treatments", {
 })
 
 test_that("ipw() refuses weights that are not a joint product", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
 
@@ -717,7 +704,6 @@ test_that("ipw() refuses weights that are not a joint product", {
 })
 
 test_that("ipw() refuses a joint fit whose weights are not the ate", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
 
@@ -745,7 +731,6 @@ test_that("ipw() refuses a joint fit whose weights are not the ate", {
 })
 
 test_that("ipw() refuses .by on the two-model route", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))
   # The outcome model carries the modifier interacted with both treatments, so
@@ -763,7 +748,6 @@ test_that("ipw() refuses .by on the two-model route", {
 })
 
 test_that("ipw() refuses linearization standard errors on the two-model route", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
 

@@ -204,7 +204,6 @@ by_std_err <- function(estimates, effect, group) {
 # ---- the oracle, anchored against the ungrouped estimates -------------------
 
 test_that("the stratum oracle reproduces the ungrouped estimates over the whole sample", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   whole <- rep(TRUE, nrow(dat))
 
@@ -241,7 +240,6 @@ test_that("the stratum oracle reproduces the ungrouped estimates over the whole 
 })
 
 test_that("an ungrouped binary fit names no subgroups", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
@@ -263,7 +261,6 @@ test_that("an ungrouped binary fit names no subgroups", {
 # ---- the shape of a grouped result ------------------------------------------
 
 test_that("a .by fit orders its rows overall, then by stratum, then by stratum contrast", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -332,7 +329,6 @@ test_that("a .by fit orders its rows overall, then by stratum, then by stratum c
 })
 
 test_that("a .by fit reports no odds ratio outside its overall rows", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -344,7 +340,6 @@ test_that("a .by fit reports no odds ratio outside its overall rows", {
 })
 
 test_that("a .by fit leaves the overall rows it already reported unchanged", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   baseline <- ipw(mods$ps_mod, mods$outcome_mod)
   grouped <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -364,7 +359,6 @@ test_that("a .by fit leaves the overall rows it already reported unchanged", {
 })
 
 test_that(".by = NULL reports the frame an ungrouped fit reports", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   baseline <- ipw(mods$ps_mod, mods$outcome_mod)
   explicit <- ipw(mods$ps_mod, mods$outcome_mod, .by = NULL)
@@ -378,7 +372,6 @@ test_that(".by = NULL reports the frame an ungrouped fit reports", {
 # ---- point estimates --------------------------------------------------------
 
 test_that("a .by ate fit reports the stratum-specific risk differences and log risk ratios", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -407,7 +400,6 @@ test_that("a .by ate fit reports the stratum-specific risk differences and log r
 })
 
 test_that("a .by ate fit contrasts each stratum against the reference stratum", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -429,7 +421,6 @@ test_that("a .by ate fit contrasts each stratum against the reference stratum", 
 })
 
 test_that("a .by att fit weights each stratum mean by the tilt within the stratum", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, estimand = "att", outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -471,7 +462,6 @@ test_that("a .by att fit weights each stratum mean by the tilt within the stratu
 })
 
 test_that("a .by fit on a continuous outcome reports one diff row per stratum", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -523,7 +513,6 @@ test_that("a .by fit on a continuous outcome reports one diff row per stratum", 
 })
 
 test_that("a .by contrast recovers the simulated difference in effects", {
-  skip_if_not_installed("deli")
   dat <- sim_by_het()
   ps_mod <- glm(z ~ x + v, data = dat, family = binomial())
   wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
@@ -553,7 +542,6 @@ test_that("a .by contrast recovers the simulated difference in effects", {
 # ---- standard errors and labels ---------------------------------------------
 
 test_that("a .by fit reports a usable standard error for every row", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   est <- res$estimates
@@ -571,7 +559,6 @@ test_that("a .by fit reports a usable standard error for every row", {
 })
 
 test_that("a .by fit's covariance couples the groups it reports", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by(), outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   covariance <- vcov(res)
@@ -604,7 +591,6 @@ test_that("a .by fit's covariance couples the groups it reports", {
 })
 
 test_that("a .by fit labels its coefficients, covariance, and printed rows alike", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -625,16 +611,22 @@ test_that("a .by fit labels its coefficients, covariance, and printed rows alike
     list(labels, labels)
   )
 
+  # The printed label occupies a fixed-width field, so reading that field back
+  # and counting exact matches pins that every row is printed exactly once. A
+  # prefix test would accept the row for "rd 1 vs 0 v = 1 vs v = 0" as the row
+  # for "rd 1 vs 0 v = 1". The width is set wide enough that the estimate table
+  # is printed in one block rather than wrapped into several.
+  withr::local_options(width = 200)
   printed <- capture.output(print(res))
-  expect_true(all(vapply(
-    labels,
-    function(label) any(startsWith(printed, label)),
-    logical(1)
-  )))
+  fields <- trimws(
+    substr(printed, 1L, max(nchar(labels))),
+    which = "right"
+  )
+  counts <- vapply(labels, function(label) sum(fields == label), integer(1))
+  expect_identical(unname(counts), rep(1L, length(labels)))
 })
 
 test_that("the conditional reading of a .by fit is the ungrouped fit's", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   plain <- causalgenerics::as_conditional(ipw(mods$ps_mod, mods$outcome_mod))
   grouped <- causalgenerics::as_conditional(
@@ -651,7 +643,6 @@ test_that("the conditional reading of a .by fit is the ungrouped fit's", {
 # ---- the tidier surfaces ----------------------------------------------------
 
 test_that("as.data.frame() heads its subgroup column after the term column", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -691,7 +682,6 @@ test_that("as.data.frame() heads its subgroup column after the term column", {
 })
 
 test_that("tidy() carries the subgroup column", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -738,7 +728,6 @@ test_that(".by refuses linearization standard errors", {
 })
 
 test_that(".by refuses a continuous exposure", {
-  skip_if_not_installed("deli")
   dat <- sim_by_continuous()
   ps_mod <- lm(a ~ x1 + v, data = dat)
   wts <- withr::with_options(
@@ -760,7 +749,6 @@ test_that(".by refuses a continuous exposure", {
 })
 
 test_that(".by refuses a selection that does not name exactly one modifier", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   # Both columns the selection reaches are in the outcome model's frame, so what
   # is wrong with the request is how many it names rather than a name that is
@@ -795,7 +783,6 @@ test_that(".by refuses a selection that does not name exactly one modifier", {
 })
 
 test_that(".by refuses a modifier with missing values", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   dat$w <- factor(rep(c("lo", "hi"), length.out = nrow(dat)))
   dat$w[1] <- NA
@@ -814,7 +801,6 @@ test_that(".by refuses a modifier with missing values", {
 })
 
 test_that(".by refuses a numeric modifier", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   # The outcome model carries the exposure-by-modifier term, so the only thing
   # wrong with the request is the type of the modifier.
@@ -828,7 +814,6 @@ test_that(".by refuses a numeric modifier", {
 })
 
 test_that(".by refuses a stratum missing an exposure level", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   # Every unit of stratum "b" is exposed, so that stratum holds no unexposed arm
   # to contrast against and its effect is not estimable from the data. The
@@ -854,7 +839,6 @@ test_that(".by refuses a stratum missing an exposure level", {
 })
 
 test_that(".by warns when the outcome model has no exposure-by-modifier term", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, outcome_rhs = "z + v")
 

@@ -773,7 +773,6 @@ test_that("categorical weight functions reproduce the pre-refactor formulas", {
 # ---- the identity grid: ipw() -----------------------------------------------
 
 test_that("ipw() binary M-estimation results are unchanged for every estimand", {
-  skip_if_not_installed("deli")
   withr::local_options(propensity.quiet = TRUE)
   dat <- tilt_grid_binary()
 
@@ -800,7 +799,6 @@ test_that("ipw() binary linearization results are unchanged for every estimand i
 })
 
 test_that("ipw() categorical results are unchanged for every estimand", {
-  skip_if_not_installed("deli")
   skip_if_not_installed("nnet")
   withr::local_options(propensity.quiet = TRUE)
   dat <- tilt_grid_categorical()
@@ -816,7 +814,6 @@ test_that("ipw() categorical results are unchanged for every estimand", {
 })
 
 test_that("ipw() continuous results are unchanged", {
-  skip_if_not_installed("deli")
   withr::local_options(propensity.quiet = TRUE)
   dat <- tilt_grid_continuous()
   mods <- tilt_grid_continuous_models(dat)

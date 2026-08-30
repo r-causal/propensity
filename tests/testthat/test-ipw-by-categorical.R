@@ -293,7 +293,6 @@ by_cat_labels <- function(estimates) {
 
 test_that("the categorical stratum oracle reproduces the ungrouped estimates over the whole sample", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_by_categorical()
   whole <- rep(TRUE, nrow(dat))
   all_forms <- c("rd", "log(rr)", "log(or)")
@@ -342,7 +341,6 @@ test_that("the categorical stratum oracle reproduces the ungrouped estimates ove
 
 test_that("an ungrouped categorical fit names no subgroups", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
@@ -369,7 +367,6 @@ test_that("an ungrouped categorical fit names no subgroups", {
 
 test_that(".by = NULL reports the frame an ungrouped categorical fit reports", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   baseline <- ipw(mods$ps_mod, mods$outcome_mod)
   explicit <- ipw(mods$ps_mod, mods$outcome_mod, .by = NULL)
@@ -384,7 +381,6 @@ test_that(".by = NULL reports the frame an ungrouped categorical fit reports", {
 
 test_that("a .by categorical fit crosses its contrasts with its groups", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   est <- res$estimates
@@ -454,7 +450,6 @@ test_that("a .by categorical fit crosses its contrasts with its groups", {
 
 test_that("a .by categorical fit reports no odds ratio outside its overall rows", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -469,7 +464,6 @@ test_that("a .by categorical fit reports no odds ratio outside its overall rows"
 
 test_that("a .by categorical fit leaves the overall rows it already reported unchanged", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   baseline <- ipw(mods$ps_mod, mods$outcome_mod)
   grouped <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -494,7 +488,6 @@ test_that("a .by categorical fit leaves the overall rows it already reported unc
 
 test_that("a .by categorical ate fit reports each contrast within each stratum", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_by_categorical()
   mods <- fit_by_cat_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -517,7 +510,6 @@ test_that("a .by categorical ate fit reports each contrast within each stratum",
 
 test_that("a .by categorical ate fit contrasts each stratum against the reference stratum", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_by_categorical()
   mods <- fit_by_cat_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -534,7 +526,6 @@ test_that("a .by categorical ate fit contrasts each stratum against the referenc
 
 test_that("a .by categorical att fit weights each stratum mean by the tilt within the stratum", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_by_categorical()
   mods <- fit_by_cat_models(dat, estimand = "att")
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -569,7 +560,6 @@ test_that("a .by categorical att fit weights each stratum mean by the tilt withi
 
 test_that("a .by categorical fit on a continuous outcome reports one diff row per contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_by_categorical()
   mods <- fit_by_cat_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -623,7 +613,6 @@ test_that("a .by categorical fit on a continuous outcome reports one diff row pe
 
 test_that("a .by categorical fit reports a usable standard error for every row", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   est <- res$estimates
@@ -642,7 +631,6 @@ test_that("a .by categorical fit reports a usable standard error for every row",
 
 test_that("a .by categorical fit's covariance couples the groups and contrasts it reports", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   covariance <- vcov(res)
@@ -673,7 +661,6 @@ test_that("a .by categorical fit's covariance couples the groups and contrasts i
 
 test_that("a .by categorical fit labels its rows by effect, contrast, and subgroup", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -687,17 +674,23 @@ test_that("a .by categorical fit labels its rows by effect, contrast, and subgro
     list(labels, labels)
   )
 
+  # The printed label occupies a fixed-width field, so reading that field back
+  # and counting exact matches pins that every row is printed exactly once. A
+  # prefix test would accept the row for a longer label as the row for the
+  # shorter label it extends. The width is set wide enough that the estimate
+  # table is printed in one block rather than wrapped into several.
+  withr::local_options(width = 200)
   printed <- capture.output(print(res))
-  expect_true(all(vapply(
-    labels,
-    function(label) any(startsWith(printed, label)),
-    logical(1)
-  )))
+  fields <- trimws(
+    substr(printed, 1L, max(nchar(labels))),
+    which = "right"
+  )
+  counts <- vapply(labels, function(label) sum(fields == label), integer(1))
+  expect_identical(unname(counts), rep(1L, length(labels)))
 })
 
 test_that("the conditional reading of a .by categorical fit is the ungrouped fit's", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   plain <- causalgenerics::as_conditional(ipw(mods$ps_mod, mods$outcome_mod))
   grouped <- causalgenerics::as_conditional(
@@ -715,7 +708,6 @@ test_that("the conditional reading of a .by categorical fit is the ungrouped fit
 
 test_that("as.data.frame() heads its subgroup column after the contrast column", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -739,7 +731,6 @@ test_that("as.data.frame() heads its subgroup column after the contrast column",
 
 test_that("tidy() carries the contrast and the subgroup columns", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- fit_by_cat_models(sim_by_categorical())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -765,7 +756,6 @@ test_that("tidy() carries the contrast and the subgroup columns", {
 
 test_that("a .by categorical fit drops a modifier level no unit carries", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The modifier declares a third level the simulator never draws. An empty
   # stratum has no mean to standardize and no contrast to report, and the fits
   # themselves drop the level, so reading the modifier the way the models were
@@ -789,7 +779,6 @@ test_that("a .by categorical fit drops a modifier level no unit carries", {
 
 test_that(".by refuses a stratum missing one of a categorical exposure's levels", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_by_categorical()
   # Stratum "b" holds the exposure levels "a" and "b" and no unit of level "c",
   # so the contrast of "c" against the reference level is not estimable there
@@ -819,7 +808,6 @@ test_that(".by refuses a stratum missing one of a categorical exposure's levels"
 
 test_that(".by warns when a categorical outcome model has no exposure-by-modifier term", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_by_categorical()
   mods <- fit_by_cat_models(dat, outcome_rhs = "a + v + x1")
 

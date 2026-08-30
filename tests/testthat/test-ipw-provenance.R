@@ -365,19 +365,21 @@ test_that("propensity builds its ipw result with causalgenerics' constructor", {
   builders <- c(
     "ipw.glm",
     "ipw_continuous_estimate",
-    "ipw.multinom"
+    "ipw.multinom",
+    "ipw.joint_wt_models"
   )
   constructors <- lapply(builders, ipw_constructors_called_by)
   names(constructors) <- builders
 
   # `ipw.glm()` builds a result on each of its two standard error paths; the
-  # other two builders construct once each.
+  # other three builders construct once each.
   expect_identical(
     lengths(constructors),
     c(
       ipw.glm = 2L,
       ipw_continuous_estimate = 1L,
-      ipw.multinom = 1L
+      ipw.multinom = 1L,
+      ipw.joint_wt_models = 1L
     )
   )
 
@@ -394,7 +396,8 @@ test_that("propensity builds its ipw result with causalgenerics' constructor", {
     c(
       ipw.glm = TRUE,
       ipw_continuous_estimate = TRUE,
-      ipw.multinom = TRUE
+      ipw.multinom = TRUE,
+      ipw.joint_wt_models = TRUE
     )
   )
 })

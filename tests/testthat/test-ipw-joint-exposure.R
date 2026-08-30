@@ -280,7 +280,6 @@ test_that("joint_exposure() crosses the two treatments into the cells the fixtur
 
 test_that("the cell-mean oracle reproduces the vs-reference estimates a categorical fit reports", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   # The plain factor, not the declared exposure. Each cell against the reference
   # cell is what the categorical path reports for a four-level exposure, and it
@@ -328,7 +327,6 @@ test_that("the cell-mean oracle reproduces the vs-reference estimates a categori
 
 test_that("a plain factor over the same cells reports the vs-reference rows", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat, exposure_name = "plain")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -382,7 +380,6 @@ test_that("a plain factor over the same cells reports the vs-reference rows", {
 
 test_that("a joint exposure reports the four counterfactual cell risks", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -409,7 +406,6 @@ test_that("a joint exposure reports the four counterfactual cell risks", {
 
 test_that("a joint exposure orders its rows cells, then simple effects, then interaction", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -454,7 +450,6 @@ test_that("a joint exposure orders its rows cells, then simple effects, then int
 
 test_that("a joint exposure reports each component's effect within the other's levels", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -499,7 +494,6 @@ test_that("a joint exposure reports each component's effect within the other's l
 
 test_that("a joint exposure reports the additive and multiplicative interaction", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -560,7 +554,6 @@ test_that("a joint exposure reports the additive and multiplicative interaction"
 
 test_that("a joint exposure reports a usable standard error for every row", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -579,7 +572,6 @@ test_that("a joint exposure reports a usable standard error for every row", {
 
 test_that("a joint exposure's covariance couples the interaction with the cells it is built from", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -621,7 +613,6 @@ test_that("a joint exposure's covariance couples the interaction with the cells 
 
 test_that("a joint exposure on a continuous outcome reports means and differences", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -642,7 +633,6 @@ test_that("a joint exposure on a continuous outcome reports means and difference
 
 test_that("the declaration is what turns on the joint reporting", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   declared <- ipw(
     fit_joint_models(dat)$ps_mod,
@@ -665,7 +655,6 @@ test_that("the declaration is what turns on the joint reporting", {
 
 test_that("a joint fit labels its rows by effect, contrast, and cell or subgroup", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -690,7 +679,6 @@ test_that("a joint fit labels its rows by effect, contrast, and cell or subgroup
 
 test_that("the tidiers of a joint fit head the group column after the contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -729,7 +717,6 @@ test_that("the tidiers of a joint fit head the group column after the contrast",
 
 test_that("the conditional reading of a joint fit is the plain coefficient surface", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(dat)
   conditional <- causalgenerics::as_conditional(
@@ -759,7 +746,6 @@ test_that("the conditional reading of a joint fit is the plain coefficient surfa
 
 test_that("a joint exposure refuses a focal estimand", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   mods <- fit_joint_models(
     dat,
@@ -793,7 +779,6 @@ test_that("a joint exposure refuses a focal estimand", {
 
 test_that("a joint exposure refuses .by", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- joint_data()
   # The outcome model carries the exposure-by-modifier term, so the only thing
   # wrong with the request is the combination itself.

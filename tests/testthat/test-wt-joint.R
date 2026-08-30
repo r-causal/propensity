@@ -111,6 +111,15 @@ joint_wt_weights <- function(dat, mods) {
       exposure_type = "continuous",
       stabilize = TRUE,
       .sigma = 1.25
+    )),
+    # The same dose again, differing from `d` in the numerator of the ratio
+    # alone, which is the finest difference the density record carries.
+    d_integrated = quiet(wt_ate(
+      as.double(fitted(mods$d)),
+      dat$d,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      numerator = "integrated"
     ))
   )
 }
@@ -407,6 +416,70 @@ test_that("combining products over different exposures drops the record", {
   )
 
   expect_s3_class(out, "psw")
+  expect_false(is_joint_wt(out))
+  expect_null(joint_wt_meta(out))
+  expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("combining products that stabilize different components drops the record", {
+  fx <- joint_wt_fixture()
+  plain <- wt_joint(fx$w$a, fx$w$d)
+  both <- wt_joint(fx$w$a_stabilized, fx$w$d)
+
+  # The two products weight the same pair of exposures with the same density,
+  # and differ in whether the binary component's weight is stabilized. The
+  # product is marked stabilized when any component is, so both are, and the
+  # per-component record is the only thing that says which of the two the
+  # stabilization belongs to.
+  expect_true(is_stabilized(plain))
+  expect_true(is_stabilized(both))
+  expect_identical(joint_wt_meta(plain)$stabilized, c(FALSE, TRUE))
+  expect_identical(joint_wt_meta(both)$stabilized, c(TRUE, TRUE))
+
+  out <- NULL
+  cnd <- expect_warning(
+    out <- c(plain, both),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(out, "psw")
+  expect_length(out, 2L * length(plain))
+  expect_identical(estimand(out), "ate")
+  expect_false(is_joint_wt(out))
+  expect_null(joint_wt_meta(out))
+  expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("combining products read with different numerators drops the record", {
+  fx <- joint_wt_fixture()
+  marginal <- wt_joint(fx$w$a, fx$w$d)
+  integrated <- wt_joint(fx$w$a, fx$w$d_integrated)
+
+  # The finest difference the density record carries: the same dose, the same
+  # density family, the same spread, and a numerator read one way rather than
+  # the other. It is still the ratio an estimator would rebuild the weights
+  # from, so the record does not survive the disagreement.
+  expect_identical(
+    joint_wt_meta(marginal)$density[[2]]$numerator,
+    "marginal"
+  )
+  expect_identical(
+    joint_wt_meta(integrated)$density[[2]]$numerator,
+    "integrated"
+  )
+  expect_identical(
+    joint_wt_meta(marginal)$stabilized,
+    joint_wt_meta(integrated)$stabilized
+  )
+
+  out <- NULL
+  cnd <- expect_warning(
+    out <- c(marginal, integrated),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(out, "psw")
+  expect_length(out, 2L * length(marginal))
   expect_false(is_joint_wt(out))
   expect_null(joint_wt_meta(out))
   expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))

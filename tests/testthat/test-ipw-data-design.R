@@ -84,7 +84,6 @@ design_msg <- function(err) {
 # against the pre-converted factor model, at the end of this file.
 
 test_that("ipw() rejects an outcome model that factors the exposure without .data", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -100,7 +99,6 @@ test_that("ipw() rejects an outcome model that factors the exposure without .dat
 })
 
 test_that("the factored-exposure error names the term and the route that rebuilds it", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -111,7 +109,6 @@ test_that("the factored-exposure error names the term and the route that rebuild
 
 test_that("ipw() rejects a factored exposure in a categorical outcome model", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- design_data()
   dat$a <- design_categorical(dat)
   ps_mod <- nnet::multinom(a ~ x1, data = dat, trace = FALSE)
@@ -140,7 +137,6 @@ test_that("ipw() rejects a factored exposure in a categorical outcome model", {
 # reject these, so they carry the discrimination the guard has to make.
 
 test_that("ipw() accepts a numeric transformation of the exposure with .data", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -154,7 +150,6 @@ test_that("ipw() accepts a numeric transformation of the exposure with .data", {
 })
 
 test_that("a numeric transformation of the exposure still asks for .data", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -173,7 +168,6 @@ test_that("a numeric transformation of the exposure still asks for .data", {
 })
 
 test_that("ipw() accepts an exposure factored on levels the call fixes", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -188,7 +182,6 @@ test_that("ipw() accepts an exposure factored on levels the call fixes", {
 })
 
 test_that("an exposure factored on levels the call fixes still asks for .data", {
-  skip_if_not_installed("deli")
   # The levels rebuild, so the levels check passes it on to the check that asks
   # whether the variable is a column at all. The model frame holds the fitted
   # `cut()` values and no `z` column to set, so without `.data` the term is
@@ -208,7 +201,6 @@ test_that("an exposure factored on levels the call fixes still asks for .data", 
 })
 
 test_that("ipw() accepts a factored covariate that is not the exposure", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -222,7 +214,6 @@ test_that("ipw() accepts a factored covariate that is not the exposure", {
 })
 
 test_that("ipw() accepts a transformed covariate rebuilt from .data", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -243,7 +234,6 @@ test_that("ipw() accepts a transformed covariate rebuilt from .data", {
 # multiplies them by different numbers with nothing signaled.
 
 test_that("ipw() rejects a factor .data column where the outcome model fit a numeric", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -264,7 +254,6 @@ test_that("ipw() rejects a factor .data column where the outcome model fit a num
 })
 
 test_that("ipw() rejects a logical .data column where the outcome model fit a numeric", {
-  skip_if_not_installed("deli")
   # The same-width case, and the reason a design-width check cannot stand in for
   # a type check: a logical column takes one design column, exactly as the
   # fitted numeric did, so the rebuild conforms and the marginal means are
@@ -288,7 +277,6 @@ test_that("ipw() rejects a logical .data column where the outcome model fit a nu
 })
 
 test_that("ipw() rejects a numeric .data column where the outcome model fit a logical", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -307,7 +295,6 @@ test_that("ipw() rejects a numeric .data column where the outcome model fit a lo
 })
 
 test_that("ipw() rejects a factor .data column where the ps model fit a numeric", {
-  skip_if_not_installed("deli")
   # The propensity design has its own width check, which catches a level count
   # that disagrees. The type check is more specific and reports the column.
   dat <- design_data()
@@ -328,7 +315,6 @@ test_that("ipw() rejects a factor .data column where the ps model fit a numeric"
 })
 
 test_that("ipw() rejects a logical .data column where the ps model fit a numeric", {
-  skip_if_not_installed("deli")
   # Without a type check this reached the weight-consistency preflight, which
   # reports a disagreement about the estimand and the focal level.
   dat <- design_data()
@@ -349,7 +335,6 @@ test_that("ipw() rejects a logical .data column where the ps model fit a numeric
 })
 
 test_that("the mirrored type error names the column and both types", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -362,7 +347,6 @@ test_that("the mirrored type error names the column and both types", {
 })
 
 test_that("ipw() rejects a logical .data column where the models fit a factor", {
-  skip_if_not_installed("deli")
   # A logical column carries no levels for the rebuild to re-level against the
   # fit, so the type check rejects it whatever its width. Against a three-level
   # factor the rebuilt design is also one column short of the coefficients it
@@ -383,7 +367,6 @@ test_that("ipw() rejects a logical .data column where the models fit a factor", 
 })
 
 test_that("ipw() keeps accepting the .data types the models were fit on", {
-  skip_if_not_installed("deli")
   # The control for every rejection above: the same models, the same data, and
   # a factor covariate supplied as the factor it was fit as.
   dat <- design_data()
@@ -406,7 +389,6 @@ test_that("ipw() keeps accepting the .data types the models were fit on", {
 # then comes out of the propensity model's own frame.
 
 test_that("ipw() rejects a numeric .data exposure where the models fit a factor", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   dat$zf <- factor(dat$z)
   ps_mod <- glm(zf ~ x1, data = dat, family = binomial())
@@ -427,7 +409,6 @@ test_that("ipw() rejects a numeric .data exposure where the models fit a factor"
 })
 
 test_that("ipw() rejects a character .data exposure where the models fit a factor", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   dat$zf <- factor(dat$z)
   ps_mod <- glm(zf ~ x1, data = dat, family = binomial())
@@ -447,7 +428,6 @@ test_that("ipw() rejects a character .data exposure where the models fit a facto
 })
 
 test_that("a factor .data exposure supplied as the fitted factor still works", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   dat$zf <- factor(dat$z)
   ps_mod <- glm(zf ~ x1, data = dat, family = binomial())
@@ -460,7 +440,6 @@ test_that("a factor .data exposure supplied as the fitted factor still works", {
 })
 
 test_that("ipw() rejects a factor .data exposure where the models fit a numeric", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -477,7 +456,6 @@ test_that("ipw() rejects a factor .data exposure where the models fit a numeric"
 })
 
 test_that("ipw() rejects a factor .data exposure for a continuous exposure", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   dat$a <- 0.5 + 0.8 * dat$x1 + rnorm(nrow(dat))
   ps_mod <- lm(a ~ x1, data = dat)
@@ -511,7 +489,6 @@ test_that("ipw() rejects a factor .data exposure for a continuous exposure", {
 # sits at the shared extraction, before the conversion, so both paths reject it.
 
 test_that("ipw() rejects a character outcome column under mestimation", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -549,7 +526,6 @@ test_that("ipw() rejects a character outcome column under linearization", {
 })
 
 test_that("the character outcome error names the column and both types", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -566,7 +542,6 @@ test_that("the character outcome error names the column and both types", {
 
 test_that("ipw() rejects a character outcome column for a categorical exposure", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- design_data()
   dat$a <- design_categorical(dat)
   ps_mod <- nnet::multinom(a ~ x1, data = dat, trace = FALSE)
@@ -588,7 +563,6 @@ test_that("ipw() rejects a character outcome column for a categorical exposure",
 })
 
 test_that("ipw() rejects a factor outcome column where the models fit a numeric", {
-  skip_if_not_installed("deli")
   # A factor response is converted to an indicator for its non-first levels and
   # any other response is used as its own values, so the two codings are not
   # interchangeable and a mismatch changes the outcome values silently.
@@ -608,7 +582,6 @@ test_that("ipw() rejects a factor outcome column where the models fit a numeric"
 })
 
 test_that("a logical outcome column is the numeric coding the fit used", {
-  skip_if_not_installed("deli")
   # Logical and numeric responses are both converted by their own values, so
   # this direction is a working input rather than a mismatch.
   dat <- design_data()
@@ -633,7 +606,6 @@ test_that("a logical outcome column is the numeric coding the fit used", {
 # cannot be reconstructed at all.
 
 test_that("a missing .data column is still reported as the missing column", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -649,7 +621,6 @@ test_that("a missing .data column is still reported as the missing column", {
 })
 
 test_that("a wrong-sized .data is still reported as the row count", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -666,7 +637,6 @@ test_that("a wrong-sized .data is still reported as the row count", {
 })
 
 test_that("an outcome model with no exposure term is still reported as such", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -713,7 +683,6 @@ design_level_data <- function(seed = 3025, n = 400) {
 }
 
 test_that("ipw() is unchanged when .data re-levels an outcome factor covariate", {
-  skip_if_not_installed("deli")
   dat <- design_level_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -731,7 +700,6 @@ test_that("ipw() is unchanged when .data re-levels an outcome factor covariate",
 })
 
 test_that("ipw() is unchanged when .data supplies an outcome factor covariate as character", {
-  skip_if_not_installed("deli")
   # The fitted levels are not alphabetical, so a rebuild that re-levels the
   # character column on its own rebuilds a design the model was never fit on.
   dat <- design_level_data()
@@ -748,7 +716,6 @@ test_that("ipw() is unchanged when .data supplies an outcome factor covariate as
 })
 
 test_that("ipw() is unchanged when .data supplies an outcome factor covariate as an ordered factor", {
-  skip_if_not_installed("deli")
   dat <- design_level_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -766,7 +733,6 @@ test_that("ipw() is unchanged when .data supplies an outcome factor covariate as
 })
 
 test_that("ipw() is unchanged when .data declares a level the fit never saw", {
-  skip_if_not_installed("deli")
   # The fits drop unused levels, so a level no observation carries contributes
   # no column to the fitted design and none to the rebuilt one either. The
   # design is the fitted design and the analysis is unchanged.
@@ -787,7 +753,6 @@ test_that("ipw() is unchanged when .data declares a level the fit never saw", {
 })
 
 test_that("ipw() rejects a .data column holding a level the fit never saw", {
-  skip_if_not_installed("deli")
   # A declared level with no observations is the design the fit used; an
   # observed one is not, and there is no coefficient for it. This died raw as
   # "factor cov has new levels extra", which names neither `.data` nor `ipw()`.
@@ -810,7 +775,6 @@ test_that("ipw() rejects a .data column holding a level the fit never saw", {
 })
 
 test_that("the new-level rejection covers a column read through a call", {
-  skip_if_not_installed("deli")
   # `factor(num)` records its levels under the call rather than under `num`, so
   # the type check has no column to compare and the value reaches the rebuild.
   dat <- design_level_data()
@@ -831,7 +795,6 @@ test_that("the new-level rejection covers a column read through a call", {
 })
 
 test_that("the new-level error names the column and the values the fit never saw", {
-  skip_if_not_installed("deli")
   dat <- design_level_data()
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -860,7 +823,6 @@ design_level_response <- function(dat) {
 }
 
 test_that("ipw() rejects a response re-leveled against the fit under mestimation", {
-  skip_if_not_installed("deli")
   dat <- design_level_response(design_level_data())
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -895,7 +857,6 @@ test_that("ipw() rejects a response re-leveled against the fit under linearizati
 })
 
 test_that("the re-leveled response error names the column and the coding", {
-  skip_if_not_installed("deli")
   dat <- design_level_response(design_level_data())
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -908,7 +869,6 @@ test_that("the re-leveled response error names the column and the coding", {
 })
 
 test_that("a response supplied with the levels the fit recorded still works", {
-  skip_if_not_installed("deli")
   dat <- design_level_response(design_level_data())
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -930,7 +890,6 @@ test_that("a response supplied with the levels the fit recorded still works", {
 # levels instead and is unaffected.
 
 test_that("ipw() rejects a binary factor exposure re-leveled against the fit", {
-  skip_if_not_installed("deli")
   dat <- design_level_data()
   dat$zf <- factor(dat$z)
   ps_mod <- glm(zf ~ x1, data = dat, family = binomial())
@@ -967,7 +926,6 @@ test_that("the re-leveled binary exposure is rejected under linearization too", 
 })
 
 test_that("a binary factor exposure declaring an unused level still works", {
-  skip_if_not_installed("deli")
   # No observation carries the extra level, so the fitted coding is untouched.
   dat <- design_level_data()
   dat$zf <- factor(dat$z)
@@ -1006,7 +964,6 @@ design_level_categorical <- function(seed = 4127, n = 600) {
 
 test_that("a re-leveled categorical exposure is resolved rather than rejected", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The categorical path resolves the exposure against the propensity model's
   # own level order before anything reads it, so the supplied order says
   # nothing and this stays an accepted input.
@@ -1043,7 +1000,6 @@ test_that("a re-leveled categorical exposure is resolved rather than rejected", 
 # them is zero. That route keeps its rejection.
 
 test_that("ipw() accepts a factored binary exposure term with .data", {
-  skip_if_not_installed("deli")
   dat <- design_level_data()
   dat$zf <- factor(dat$z)
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
@@ -1058,7 +1014,6 @@ test_that("ipw() accepts a factored binary exposure term with .data", {
 })
 
 test_that("a factored binary exposure term rebuilds under non-default contrasts", {
-  skip_if_not_installed("deli")
   # The fit's own coding is carried into the rebuild rather than the default, so
   # a sum-coded exposure term reproduces the same marginal means.
   dat <- design_level_data()
@@ -1090,7 +1045,6 @@ test_that("a factored binary exposure term rebuilds under non-default contrasts"
 
 test_that("ipw() accepts a factored categorical exposure term with .data", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- design_level_categorical()
   ps_mod <- nnet::multinom(a ~ x1, data = dat, trace = FALSE)
   ps <- unname(predict(ps_mod, type = "probs"))
@@ -1108,7 +1062,6 @@ test_that("ipw() accepts a factored categorical exposure term with .data", {
 })
 
 test_that("the factored exposure term keeps its rejection without .data", {
-  skip_if_not_installed("deli")
   # The route asymmetry: the same models are accepted with `.data` and rejected
   # without it, because only the `.data` route re-evaluates the term.
   dat <- design_level_data()
@@ -1148,7 +1101,6 @@ test_that("the factored exposure term keeps its rejection without .data", {
 # working models or let the call through inside an interaction.
 
 test_that("ipw() rejects a call term mixing the exposure with a covariate without .data", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1164,7 +1116,6 @@ test_that("ipw() rejects a call term mixing the exposure with a covariate withou
 })
 
 test_that("the exposure-mixing term is accepted with .data and matches the interaction", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1177,7 +1128,6 @@ test_that("the exposure-mixing term is accepted with .data and matches the inter
 })
 
 test_that("a star interaction with the exposure gives the same estimates on both routes", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1189,7 +1139,6 @@ test_that("a star interaction with the exposure gives the same estimates on both
 })
 
 test_that("a colon interaction with the exposure gives the same estimates on both routes", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1201,7 +1150,6 @@ test_that("a colon interaction with the exposure gives the same estimates on bot
 })
 
 test_that("an interaction with a covariate that is not the exposure is left alone", {
-  skip_if_not_installed("deli")
   # The guard asks whether a term reads the exposure, so a call term over other
   # covariates is untouched on either route.
   dat <- design_data()
@@ -1215,7 +1163,6 @@ test_that("an interaction with a covariate that is not the exposure is left alon
 })
 
 test_that("the exposure-mixing rejection reads in the user's terms", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1225,7 +1172,6 @@ test_that("the exposure-mixing rejection reads in the user's terms", {
 })
 
 test_that("ipw() rejects an exposure call inside an interaction without .data", {
-  skip_if_not_installed("deli")
   # The term is `num:I(z * x1)`, an interaction, but the variable the frame
   # holds is `I(z * x1)`, which is as frozen at its fitted values as it is when
   # it stands alone. This ran silently and reported a risk difference the model
@@ -1245,7 +1191,6 @@ test_that("ipw() rejects an exposure call inside an interaction without .data", 
 })
 
 test_that("the interacted exposure call rebuilds from .data", {
-  skip_if_not_installed("deli")
   # The route that recomputes the variable at each counterfactual value gives
   # what the same interaction written over plain columns gives.
   dat <- design_data()
@@ -1260,7 +1205,6 @@ test_that("the interacted exposure call rebuilds from .data", {
 })
 
 test_that("ipw() rejects an identity call on the exposure inside an interaction", {
-  skip_if_not_installed("deli")
   # `I(z)` computes nothing at all, and the rejection is not of what the call
   # computes but of the frame column no counterfactual write reaches.
   dat <- design_data()
@@ -1276,7 +1220,6 @@ test_that("ipw() rejects an identity call on the exposure inside an interaction"
 })
 
 test_that("the identity call on the exposure matches the plain interaction with .data", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1289,7 +1232,6 @@ test_that("the identity call on the exposure matches the plain interaction with 
 })
 
 test_that("a call over other covariates inside an interaction is left alone", {
-  skip_if_not_installed("deli")
   # The question is whether the variable reads the exposure, not whether it is a
   # call, so a basis over another covariate is untouched at any order.
   dat <- design_data()
@@ -1341,7 +1283,6 @@ design_flag_data <- function() {
 }
 
 test_that("ipw() rejects an aligned logical where the outcome model fit a two-level factor", {
-  skip_if_not_installed("deli")
   dat <- design_flag_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1361,7 +1302,6 @@ test_that("ipw() rejects an aligned logical where the outcome model fit a two-le
 })
 
 test_that("ipw() rejects a flipped logical where the outcome model fit a two-level factor", {
-  skip_if_not_installed("deli")
   # The measured harm: this completed and reported estimates that differ from
   # the ones the factor column gives.
   dat <- design_flag_data()
@@ -1380,7 +1320,6 @@ test_that("ipw() rejects a flipped logical where the outcome model fit a two-lev
 })
 
 test_that("ipw() rejects a logical where the propensity model fit a two-level factor", {
-  skip_if_not_installed("deli")
   dat <- design_flag_data()
   ps_mod <- glm(z ~ x1 + grp, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1397,7 +1336,6 @@ test_that("ipw() rejects a logical where the propensity model fit a two-level fa
 })
 
 test_that("the logical-for-factor error names the column and both types", {
-  skip_if_not_installed("deli")
   dat <- design_flag_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1410,7 +1348,6 @@ test_that("the logical-for-factor error names the column and both types", {
 })
 
 test_that("a factor column supplied as character is still accepted", {
-  skip_if_not_installed("deli")
   # The control for the rejection above: a character vector carries its values,
   # which the rebuild re-levels against the fit, so it rebuilds the fitted
   # design and stays accepted.
@@ -1428,7 +1365,6 @@ test_that("a factor column supplied as character is still accepted", {
 })
 
 test_that("a logical column the models were fit on is still accepted", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1450,7 +1386,6 @@ test_that("a logical column the models were fit on is still accepted", {
 # signaled, so all three are rejected on the type.
 
 test_that("ipw() rejects an aligned factor where the models fit a logical", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1470,7 +1405,6 @@ test_that("ipw() rejects an aligned factor where the models fit a logical", {
 })
 
 test_that("ipw() rejects a reversed factor where the models fit a logical", {
-  skip_if_not_installed("deli")
   # The measured harm: this completed and reported estimates that differ from
   # the ones the logical column gives.
   dat <- design_data()
@@ -1489,7 +1423,6 @@ test_that("ipw() rejects a reversed factor where the models fit a logical", {
 })
 
 test_that("ipw() rejects a character column where the models fit a logical", {
-  skip_if_not_installed("deli")
   # `"FALSE"` sorts before `"TRUE"`, so this one reproduces the fitted design.
   # It is accepted only for as long as the values keep sorting that way, which
   # is nothing the column promises.
@@ -1512,7 +1445,6 @@ test_that("ipw() rejects a character column where the models fit a logical", {
 })
 
 test_that("ipw() rejects a factor where the propensity model fit a logical", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1 + flag, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1531,7 +1463,6 @@ test_that("ipw() rejects a factor where the propensity model fit a logical", {
 # ---- a response column with no levels ---------------------------------------
 
 test_that("ipw() reports a factor outcome column that declares no levels", {
-  skip_if_not_installed("deli")
   # A factor with no levels holds nothing but missing values, so the comparison
   # against the level the fit treats as the failure has no first level to read.
   # It reached that comparison and failed as a subscript out of bounds.
@@ -1564,7 +1495,6 @@ test_that("ipw() reports a factor outcome column that declares no levels", {
 # passed.
 
 test_that("ipw() reports missing values in a .data covariate", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1584,7 +1514,6 @@ test_that("ipw() reports missing values in a .data covariate", {
 })
 
 test_that("ipw() reports missing values in the .data exposure", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1601,7 +1530,6 @@ test_that("ipw() reports missing values in the .data exposure", {
 })
 
 test_that("ipw() reports missing values in the .data outcome", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1633,7 +1561,6 @@ test_that("ipw() reports missing values under linearization too", {
 })
 
 test_that("the missing-value report names the columns and their counts", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1647,7 +1574,6 @@ test_that("the missing-value report names the columns and their counts", {
 })
 
 test_that("a column .data holds but no model reads may still be missing", {
-  skip_if_not_installed("deli")
   # The guard covers the columns the designs are rebuilt from, which is what
   # `model.frame()` drops rows on. A column neither model reads is never
   # consulted and is left alone.
@@ -1665,7 +1591,6 @@ test_that("a column .data holds but no model reads may still be missing", {
 })
 
 test_that("models fit on data with missing values still work without .data", {
-  skip_if_not_installed("deli")
   # The model-frame route is unaffected: the fits dropped the incomplete rows
   # themselves, so every frame `ipw()` reads is already complete and aligned.
   dat <- design_data()
@@ -1693,7 +1618,6 @@ test_that("models fit on data with missing values still work without .data", {
 # interaction the message says they have.
 
 test_that("the exposure-mixing rejection keeps the interaction hint", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)
@@ -1704,7 +1628,6 @@ test_that("the exposure-mixing rejection keeps the interaction hint", {
 })
 
 test_that("the single-variable transformation rejection drops the interaction hint", {
-  skip_if_not_installed("deli")
   dat <- design_data()
   ps_mod <- glm(z ~ x1, data = dat, family = binomial())
   wts <- design_weights(ps_mod)

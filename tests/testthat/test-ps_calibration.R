@@ -468,6 +468,16 @@ test_that("smooth parameter is ignored for isotonic regression", {
 
 # Cross-validation tests against WeightIt and the probably package
 
+# `probably::cal_estimate_logistic()` loads butcher the first time it is called,
+# and butcher and generics both register `as.character.dev_topic`. propensity
+# has already loaded generics by then, so the second registration prints an S3
+# method overwrite note. The note is package-load output rather than a
+# condition a test can catch, so the calls that trigger it are made through this
+# helper, which quiets it along with the warnings the calibration fits raise.
+quiet_calibration <- function(expr) {
+  suppressPackageStartupMessages(suppressWarnings(expr))
+}
+
 test_that("ps_calibrate with smooth=FALSE matches WeightIt::calibrate for logistic calibration", {
   skip_if_not_installed("WeightIt")
 
@@ -571,7 +581,7 @@ test_that("ps_calibrate produces similar results to probably package", {
     .pred_1 = obs_ps
   )
 
-  suppressWarnings({
+  quiet_calibration({
     cal_data <- probably::cal_estimate_logistic(
       df,
       truth = treat,
@@ -628,7 +638,7 @@ test_that("ps_calibrate with smooth=TRUE matches probably's default behavior exa
     .pred_1 = ps
   )
 
-  suppressWarnings({
+  quiet_calibration({
     cal_data <- probably::cal_estimate_logistic(
       df,
       truth = treat,
@@ -668,7 +678,7 @@ test_that("ps_calibrate with smooth=FALSE matches probably's simple logistic exa
     .pred_1 = ps
   )
 
-  suppressWarnings({
+  quiet_calibration({
     cal_data <- probably::cal_estimate_logistic(
       df,
       truth = treat,

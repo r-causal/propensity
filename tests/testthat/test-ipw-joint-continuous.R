@@ -403,7 +403,6 @@ test_that("the continuous fixture builds the container and the product weights",
 })
 
 test_that("a single-term dose model still reports one slope with no contrast column", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_curve()
   fx <- fit_dose_msm(dat, "e")
   res <- ipw(fx$ps_mod, fx$outcome_mod)
@@ -429,7 +428,6 @@ test_that("a single-term dose model still reports one slope with no contrast col
 })
 
 test_that("a marginal structural model reading a covariate is still refused", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_curve()
 
   # The relaxation narrows the requirement to terms that read the exposure and
@@ -457,7 +455,6 @@ test_that("a marginal structural model reading a covariate is still refused", {
 # ---- part 2: the validator relaxation ---------------------------------------
 
 test_that("a polynomial dose model reports one row per dose coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_curve()
   fx <- fit_dose_msm(dat, "e + I(e^2)")
   res <- ipw(fx$ps_mod, fx$outcome_mod)
@@ -534,7 +531,6 @@ test_that("a polynomial dose model reports one row per dose coefficient", {
 })
 
 test_that("the relaxation admits any term that reads the exposure alone", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_curve()
 
   # The boundary is variable membership, not the shape of the function: what
@@ -559,7 +555,6 @@ test_that("the relaxation admits any term that reads the exposure alone", {
 # ---- part 1: the joint route with a dose ------------------------------------
 
 test_that("ipw() over a binary and a continuous treatment reports the vocabulary surface", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   res <- ipw(fx$models, fx$outcome_mod)
@@ -600,7 +595,6 @@ test_that("ipw() over a binary and a continuous treatment reports the vocabulary
 })
 
 test_that("the reported coefficients are the weighted marginal structural model's", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   res <- ipw(fx$models, fx$outcome_mod)
@@ -636,7 +630,6 @@ test_that("the reported coefficients are the weighted marginal structural model'
 })
 
 test_that("a logit marginal structural model reports the same rows on the odds scale", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, outcome_family = "binomial")
   res <- ipw(fx$models, fx$outcome_mod)
@@ -659,7 +652,6 @@ test_that("a logit marginal structural model reports the same rows on the odds s
 })
 
 test_that("an additive marginal structural model reports two ungrouped rows", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, outcome_rhs = "a + e")
   res <- ipw(fx$models, fx$outcome_mod)
@@ -683,7 +675,6 @@ test_that("an additive marginal structural model reports two ungrouped rows", {
 })
 
 test_that("a covariate in a bare-term model contributes no vocabulary row", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # Adjusting the marginal structural model for a covariate is a different thing
@@ -725,7 +716,6 @@ test_that("a covariate in a bare-term model contributes no vocabulary row", {
 # ---- standard errors and the stacked system ---------------------------------
 
 test_that("a joint continuous fit reports a usable standard error for every row", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   res <- ipw(fx$models, fx$outcome_mod)
@@ -753,7 +743,6 @@ test_that("a joint continuous fit reports a usable standard error for every row"
 })
 
 test_that("the stacked system carries the dose model's score and its variance", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   res <- ipw(fx$models, fx$outcome_mod)
@@ -785,7 +774,6 @@ test_that("the stacked system carries the dose model's score and its variance", 
 })
 
 test_that("the estimator rebuilds the product weights the container implies", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
 
@@ -808,7 +796,6 @@ test_that("the estimator rebuilds the product weights the container implies", {
 })
 
 test_that("the conditional reading of a joint continuous fit is the outcome model's", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   conditional <- causalgenerics::as_conditional(ipw(fx$models, fx$outcome_mod))
@@ -888,7 +875,6 @@ expect_joint_dose_estimates <- function(res, outcome_mod) {
 }
 
 test_that("a log-link dose model is stacked at its own score", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous_positive()
   fx <- fit_joint_continuous(dat, dose_type = "glm_log")
 
@@ -911,7 +897,6 @@ test_that("a log-link dose model is stacked at its own score", {
 })
 
 test_that("an integrated numerator on the dose stacks no marginal moments", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, numerator = "integrated")
 
@@ -932,7 +917,6 @@ test_that("an integrated numerator on the dose stacks no marginal moments", {
 })
 
 test_that("a heavier-tailed dose density is the one the system rebuilds", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, .density = dens_t(4))
 
@@ -949,7 +933,6 @@ test_that("a heavier-tailed dose density is the one the system rebuilds", {
 })
 
 test_that("a fixed scalar sigma on the dose is a constant rather than a parameter", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A spread the caller fixed is a known constant, so the dose block is its
@@ -974,7 +957,6 @@ test_that("a fixed scalar sigma on the dose is a constant rather than a paramete
 
 test_that("a robust dose model is stacked at the score it solves", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous_outliers()
   fx <- fit_joint_continuous(dat, dose_type = "rlm")
 
@@ -1006,7 +988,6 @@ test_that("a robust dose model is stacked at the score it solves", {
 
 test_that("ipw() refuses a dose model whose score it cannot write", {
   skip_if_not_installed("mgcv")
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, dose_type = "gam")
 
@@ -1031,7 +1012,6 @@ test_that("ipw() refuses a dose model whose score it cannot write", {
 })
 
 test_that("ipw() refuses dose weights built from a kernel density", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, .density = "kernel")
 
@@ -1053,7 +1033,6 @@ test_that("ipw() refuses dose weights built from a kernel density", {
 })
 
 test_that("the weights mismatch names the ratio the dose records", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A dose component built from a model the container does not hold is a weight
@@ -1092,7 +1071,6 @@ test_that("the weights mismatch names the ratio the dose records", {
 # ---- refusals ----------------------------------------------------------------
 
 test_that("ipw() refuses an outcome model that does not read both treatments", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The class is the one the package already uses for an outcome model that does
@@ -1115,7 +1093,6 @@ test_that("ipw() refuses an outcome model that does not read both treatments", {
 })
 
 test_that("a transformed dose term reports one row per treatment coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A curve written without a bare dose term at all. Every treatment-reading
@@ -1138,7 +1115,6 @@ test_that("a transformed dose term reports one row per treatment coefficient", {
 })
 
 test_that("a covariate in a transformed model contributes no coefficient row", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The rule that a covariate term contributes no row holds on this surface too,
@@ -1167,7 +1143,6 @@ test_that("a covariate in a transformed model contributes no coefficient row", {
 })
 
 test_that("a curve beside the bare terms reports every treatment coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The bare terms are still there and still contribute their coefficients; the
@@ -1185,7 +1160,6 @@ test_that("a curve beside the bare terms reports every treatment coefficient", {
 })
 
 test_that("a transformed term reading both treatments is named by its coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # `I(a * sin(e))` reads both treatments without being their bare interaction.
@@ -1207,7 +1181,6 @@ test_that("a transformed term reading both treatments is named by its coefficien
 })
 
 test_that("a basis in the dose reports its basis and interaction coefficients", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A basis is where naming rows by the coefficient stops being a refinement and
@@ -1235,7 +1208,6 @@ test_that("a basis in the dose reports its basis and interaction coefficients", 
 })
 
 test_that("a basis joint fit needs no .data, unlike the single-treatment route", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The single-treatment route reads the exposure off the outcome model frame
@@ -1261,7 +1233,6 @@ test_that("a basis joint fit needs no .data, unlike the single-treatment route",
 })
 
 test_that("a logit joint dose model reports coefficient rows on the odds scale", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The scale word follows the outcome link exactly as it does everywhere else.
@@ -1285,7 +1256,6 @@ test_that("a logit joint dose model reports coefficient rows on the odds scale",
 })
 
 test_that("the conditional reading of a transformed joint fit is the outcome model's", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, outcome_rhs = "a * sin(e)")
   conditional <- causalgenerics::as_conditional(
@@ -1309,7 +1279,6 @@ test_that("the conditional reading of a transformed joint fit is the outcome mod
 })
 
 test_that("ipw() still refuses a term reading a treatment and a covariate", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The boundary the coefficient surface moves is what a treatment term may look
@@ -1333,7 +1302,6 @@ test_that("ipw() still refuses a term reading a treatment and a covariate", {
 })
 
 test_that("ipw() refuses a treatment column coded some other way", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A bare term says which variables a column is built from and nothing about
@@ -1364,7 +1332,6 @@ test_that("ipw() refuses a treatment column coded some other way", {
 })
 
 test_that("a factor treatment under treatment contrasts reports the numeric fit", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # Treatment contrasts code a two-level factor as the indicator the rows
@@ -1408,7 +1375,6 @@ test_that("a factor treatment under treatment contrasts reports the numeric fit"
 })
 
 test_that("the weights mismatch names a fixed stabilization score", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A product weight records that a component was stabilized and not which
@@ -1444,7 +1410,6 @@ test_that("the weights mismatch names a fixed stabilization score", {
 })
 
 test_that("a bare-term model with no intercept is refused, not errored", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   dat$a <- factor(
     ifelse(dat$a == 1, "yes", "no"),
@@ -1487,7 +1452,6 @@ test_that("a bare-term model with no intercept is refused, not errored", {
 })
 
 test_that("ipw() refuses .by on a joint continuous fit", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))
   # The `.by` refusal fires before the marginal structural model's shape is
@@ -1507,7 +1471,6 @@ test_that("ipw() refuses .by on a joint continuous fit", {
 })
 
 test_that("ipw() refuses linearization on a joint continuous fit", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
 

@@ -51,7 +51,7 @@ test_that("categorical weights match WeightIt for all estimands", {
   w_ate_weightit <- WeightIt::weightit(
     trt ~ x1 + x2 + x3,
     data = test_data,
-    method = "ps",
+    method = "glm",
     estimand = "ATE"
   )$weights
 
@@ -76,7 +76,7 @@ test_that("categorical weights match WeightIt for all estimands", {
     w_att_weightit <- WeightIt::weightit(
       trt ~ x1 + x2 + x3,
       data = test_data,
-      method = "ps",
+      method = "glm",
       estimand = "ATT",
       focal = focal
     )$weights
@@ -95,7 +95,7 @@ test_that("categorical weights match WeightIt for all estimands", {
   w_ato_weightit <- WeightIt::weightit(
     trt ~ x1 + x2 + x3,
     data = test_data,
-    method = "ps",
+    method = "glm",
     estimand = "ATO"
   )$weights
 
@@ -111,7 +111,7 @@ test_that("categorical weights match WeightIt for all estimands", {
   w_atm_weightit <- WeightIt::weightit(
     trt ~ x1 + x2 + x3,
     data = test_data,
-    method = "ps",
+    method = "glm",
     estimand = "ATM"
   )$weights
 
@@ -284,7 +284,7 @@ test_that("categorical weights handle 4+ categories correctly", {
   w_ate_weightit <- WeightIt::weightit(
     trt ~ x1 + x2,
     data = test_data,
-    method = "ps",
+    method = "glm",
     estimand = "ATE"
   )$weights
 
@@ -340,7 +340,7 @@ test_that("stabilized categorical ATE weights match WeightIt", {
   w_obj <- WeightIt::weightit(
     trt ~ x1 + x2,
     data = test_data,
-    method = "ps",
+    method = "glm",
     estimand = "ATE",
     stabilize = TRUE
   )

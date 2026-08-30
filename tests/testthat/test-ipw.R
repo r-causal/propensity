@@ -722,7 +722,6 @@ estimand_fixture <- function() {
 }
 
 test_that("an unknown estimand is rejected when the weights record one", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   err <- expect_error(
@@ -739,7 +738,6 @@ test_that("an unknown estimand is rejected when the weights record one", {
 })
 
 test_that("an unknown estimand is rejected when the weights record none", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   for (se in c("mestimation", "linearization")) {
@@ -760,7 +758,6 @@ test_that("an unknown estimand is rejected when the weights record none", {
 })
 
 test_that("weights recording an unknown estimand are rejected on both paths", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   for (se in c("mestimation", "linearization")) {
@@ -781,7 +778,6 @@ test_that("weights recording an unknown estimand are rejected on both paths", {
 })
 
 test_that("the unknown-estimand report names the weights as the source", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   expect_snapshot(
@@ -800,7 +796,6 @@ test_that("the unknown-estimand report names the weights as the source", {
 # asked for or was reported as a weights mismatch.
 
 test_that("an estimand argument of the wrong type is rejected on both paths", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
   wrong_type <- list(list("ate"), factor("att"), factor("ate"))
 
@@ -824,7 +819,6 @@ test_that("an estimand argument of the wrong type is rejected on both paths", {
 })
 
 test_that("an estimand argument of the wrong type leaks no base conditions", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   # `factor("ate")` spells an estimand that exists, so it passed membership and
@@ -852,7 +846,6 @@ test_that("an estimand argument of the wrong type leaks no base conditions", {
 })
 
 test_that("weights recording an estimand of the wrong type are rejected", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
   # `psw()` rejects this at construction, so the attribute is set past it: the
   # weights-side check is what stands between a psw built some other way and the
@@ -886,7 +879,6 @@ sim_continuous_estimand <- function() {
 }
 
 test_that("an unknown estimand is rejected on the continuous path", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_estimand()
   ps_mod <- lm(A ~ x1, data = dat)
   wts <- withr::with_options(
@@ -907,7 +899,6 @@ test_that("an unknown estimand is rejected on the continuous path", {
 })
 
 test_that("the continuous path reports an unknown estimand as unknown", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_estimand()
   ps_mod <- lm(A ~ x1, data = dat)
   wts <- withr::with_options(
@@ -944,7 +935,6 @@ test_that("the continuous path reports an unknown estimand as unknown", {
 })
 
 test_that("weights recording an unknown estimand are rejected on the continuous path", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_estimand()
   ps_mod <- lm(A ~ x1, data = dat)
   wts <- withr::with_options(
@@ -971,7 +961,6 @@ test_that("weights recording an unknown estimand are rejected on the continuous 
 })
 
 test_that("a known estimand that disagrees with the weights still redirects", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   err <- expect_error(
@@ -984,7 +973,6 @@ test_that("a known estimand that disagrees with the weights still redirects", {
 })
 
 test_that("the undeterminable estimand error carries the estimand class", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   expect_error(

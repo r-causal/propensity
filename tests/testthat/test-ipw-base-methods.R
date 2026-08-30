@@ -310,7 +310,6 @@ expect_ipw_model_contract <- function(model, labels, naive) {
 # ---- the covariance attribute, M-estimation ---------------------------------
 
 test_that("a binary mestimation fit records the covariance of its effects", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -330,7 +329,6 @@ test_that("a binary mestimation fit records the covariance of its effects", {
 })
 
 test_that("a gaussian outcome under mestimation records one variance", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -344,7 +342,6 @@ test_that("a gaussian outcome under mestimation records one variance", {
 })
 
 test_that("a binary att fit records the covariance of its effects", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat, estimand = "att")
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -357,7 +354,6 @@ test_that("a binary att fit records the covariance of its effects", {
 })
 
 test_that("a stabilized binary fit records the covariance of its effects", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat, stabilize = TRUE)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -373,7 +369,6 @@ test_that("a stabilized binary fit records the covariance of its effects", {
 
 test_that("a categorical fit labels its covariance by effect and contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_base_categorical()
   mods <- fit_base_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -410,7 +405,6 @@ test_that("a categorical fit labels its covariance by effect and contrast", {
 
 test_that("a categorical att fit records the covariance of its effects", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_base_categorical()
   mods <- fit_base_categorical_models(dat, estimand = "att")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -421,7 +415,6 @@ test_that("a categorical att fit records the covariance of its effects", {
 })
 
 test_that("a continuous exposure fit records the variance of its slope", {
-  skip_if_not_installed("deli")
   dat <- sim_base_continuous()
   mods <- fit_base_continuous_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -433,7 +426,6 @@ test_that("a continuous exposure fit records the variance of its slope", {
 })
 
 test_that("a continuous logit fit records the variance of its log odds ratio", {
-  skip_if_not_installed("deli")
   dat <- sim_base_continuous()
   mods <- fit_base_continuous_models(dat, outcome_family = "binomial")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -486,7 +478,6 @@ test_that("a gaussian linearization fit records one variance", {
 # ---- accessor integration ----------------------------------------------------
 
 test_that("the accessors read a binary mestimation fit", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -502,7 +493,6 @@ test_that("the accessors read a binary mestimation fit", {
 })
 
 test_that("a stabilized fit spends an observation on its stabilizer", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   stabilized <- fit_base_binary_models(dat, stabilize = TRUE)
   unstabilized <- fit_base_binary_models(dat)
@@ -566,7 +556,6 @@ test_that("the accessors read a binary linearization fit", {
 
 test_that("the accessors label a categorical fit by effect and contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_base_categorical()
   mods <- fit_base_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -584,7 +573,6 @@ test_that("the accessors label a categorical fit by effect and contrast", {
 })
 
 test_that("the accessors read a continuous exposure fit", {
-  skip_if_not_installed("deli")
   dat <- sim_base_continuous()
   mods <- fit_base_continuous_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -595,7 +583,6 @@ test_that("the accessors read a continuous exposure fit", {
 })
 
 test_that("confint() rebuilds the interval at a level the fit does not store", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -615,7 +602,6 @@ test_that("confint() rebuilds the interval at a level the fit does not store", {
 })
 
 test_that("confint() reports the stored bounds of a fit built at any level", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat)
   res <- ipw(
@@ -640,7 +626,6 @@ test_that("confint() reports the stored bounds of a fit built at any level", {
 })
 
 test_that("weights() returns the psw vector the outcome model was fit with", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat, estimand = "att")
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -658,7 +643,6 @@ test_that("weights() returns the psw vector the outcome model was fit with", {
 # ---- component models, M-estimation ------------------------------------------
 
 test_that("a binary mestimation fit corrects its component covariances", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -692,7 +676,6 @@ test_that("a binary mestimation fit corrects its component covariances", {
 
 test_that("a categorical fit names its propensity block by level and term", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_base_categorical()
   mods <- fit_base_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -723,7 +706,6 @@ test_that("a categorical fit names its propensity block by level and term", {
 })
 
 test_that("a continuous fit carries the error variance in its propensity block", {
-  skip_if_not_installed("deli")
   dat <- sim_base_continuous()
   mods <- fit_base_continuous_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -878,7 +860,6 @@ expect_ipw_built_as <- function(result, expected) {
 
 test_that("every route defaults to the marginal reading and round-trips", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   results <- fit_base_all_routes()
 
   # Marginal is what every route reported before the mode was a field, so a call
@@ -916,7 +897,6 @@ test_that("every route defaults to the marginal reading and round-trips", {
 })
 
 test_that("a binary mestimation fit records the reading it was built in", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat)
 
@@ -982,7 +962,6 @@ test_that("a binary linearization fit records the reading it was built in", {
 
 test_that("a categorical fit records the reading it was built in", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_base_categorical()
   mods <- fit_base_categorical_models(dat)
 
@@ -997,7 +976,6 @@ test_that("a categorical fit records the reading it was built in", {
 })
 
 test_that("a continuous fit records the reading it was built in", {
-  skip_if_not_installed("deli")
   dat <- sim_base_continuous()
   mods <- fit_base_continuous_models(dat)
 
@@ -1014,7 +992,6 @@ test_that("a continuous fit records the reading it was built in", {
 })
 
 test_that("a dose basis fit records the conditional reading", {
-  skip_if_not_installed("deli")
   dat <- sim_base_continuous()
   mods <- fit_base_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
 
@@ -1044,7 +1021,6 @@ test_that("a dose basis fit records the conditional reading", {
 })
 
 test_that("a dose basis fit refuses the marginal reading everywhere", {
-  skip_if_not_installed("deli")
   dat <- sim_base_continuous()
   mods <- fit_base_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1109,7 +1085,6 @@ test_that("an invalid effects value errors", {
 })
 
 test_that("the effects argument reports the other reading for one call", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1128,7 +1103,6 @@ test_that("the effects argument reports the other reading for one call", {
 })
 
 test_that("a mestimation fit reports its corrected block conditionally", {
-  skip_if_not_installed("deli")
   dat <- sim_base_binary()
   mods <- fit_base_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1164,7 +1138,6 @@ test_that("a mestimation fit reports its corrected block conditionally", {
 })
 
 test_that("a continuous fit reports its corrected block conditionally", {
-  skip_if_not_installed("deli")
   dat <- sim_base_continuous()
   mods <- fit_base_continuous_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1203,8 +1176,6 @@ test_that("a linearization fit has no covariance for the conditional reading", {
 })
 
 test_that("a conditional mestimation result prints the model's coefficients", {
-  skip_if_not_installed("deli")
-
   # testthat 3e pins the output width but not the number of significant digits,
   # and `printCoefmat()` wraps its table past 80 columns under a larger `digits`,
   # which splits the rows this test reads by position.
