@@ -126,6 +126,7 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   exposure never takes is an error. Automatically detected if not supplied.
 #' @param .treated `r lifecycle::badge("deprecated")` Use `.focal_level` instead.
 #' @param .untreated `r lifecycle::badge("deprecated")` Use `.reference_level` instead.
+#' @param ... Additional arguments passed to methods.
 #' @param ps `r lifecycle::badge("deprecated")` Use `.propensity` instead. A
 #'   call that names `ps` must name the arguments after it as well, since a
 #'   positional argument binds to `.propensity`.
@@ -143,6 +144,17 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #' - Use `"isoreg"` when you suspect a non-smooth or irregular relationship
 #'   between estimated and true probabilities and have a sufficiently large
 #'   sample.
+#'
+#' **Fitted models:**
+#' `.propensity` can be the fitted propensity score model instead of the scores
+#' it reports, and the exposure is then read off the model as well unless
+#' `.exposure` is supplied. The variable read is announced;
+#' `options(propensity.quiet = TRUE)` silences the announcement. A binomial
+#' [stats::glm()] and a two-level `nnet::multinom()` report the one score per
+#' unit calibration reads. A `nnet::multinom()` of three or more levels reports
+#' one column per level and no single score to calibrate, so it is refused with
+#' an error of class `propensity_model_family_error`; calibrate the columns one
+#' at a time against the exposure indicator each of them belongs to.
 #'
 #' **Missing values:**
 #' A unit with a missing exposure tells the calibration model nothing, so it is
@@ -199,6 +211,17 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   cal_smooth <- ps_calibrate(ps, exposure)
 #' }
 #'
+#' # Calibrate the scores a fitted model reports, reading the exposure off it
+#' x <- rnorm(200)
+#' fit <- glm(exposure ~ x, family = binomial())
+#' ps_calibrate(fit, smooth = FALSE)
+#'
+#' if (rlang::is_installed("nnet")) {
+#'   exposure_factor <- factor(exposure)
+#'   multinomial_fit <- nnet::multinom(exposure_factor ~ x, trace = FALSE)
+#'   ps_calibrate(multinomial_fit, smooth = FALSE)
+#' }
+#'
 #' @importFrom stats glm binomial predict
 #' @export
 ps_calibrate <- function(
@@ -208,6 +231,7 @@ ps_calibrate <- function(
   smooth = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
+  ...,
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated()
@@ -217,7 +241,47 @@ ps_calibrate <- function(
     ps,
     "ps_calibrate"
   )
-  method <- rlang::arg_match(method)
+
+  UseMethod("ps_calibrate", .propensity)
+}
+
+#' @export
+ps_calibrate.default <- function(
+  .propensity,
+  .exposure,
+  method = c("logistic", "isoreg"),
+  smooth = TRUE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  # Two frames arrive here because two condition systems read them.
+  # `user_env` is the frame lifecycle reports a deprecation from, which decides
+  # whether the reader is told to change their own call or to report an issue.
+  # `call` is the frame every other condition is attributed to, which rlang
+  # reads to name the function in the report. A route that reaches this method
+  # by a call rather than by dispatch has to supply both.
+  user_env = rlang::caller_env(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_ps_method(.propensity, call = call)
+  method <- rlang::arg_match(method, error_call = call)
+
+  if (rlang::is_missing(.exposure)) {
+    abort(
+      c(
+        "{.arg .exposure} must be supplied.",
+        i = "Calibration reads the propensity scores against the exposure
+             they are the probability of."
+      ),
+      error_class = "propensity_missing_arg_error",
+      call = call
+    )
+  }
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -225,11 +289,12 @@ ps_calibrate <- function(
     .reference_level,
     .treated,
     .untreated,
-    "ps_calibrate"
+    "ps_calibrate",
+    user_env = user_env
   )
   .focal_level <- focal_params$.focal_level
   .reference_level <- focal_params$.reference_level
-  check_focal_levels(.focal_level, .reference_level)
+  check_focal_levels(.focal_level, .reference_level, call = call)
   # Check that the propensity scores are numeric and in valid range
   # A one-dimensional array holds one score per observation, which is the shape
   # calibration reads, so its dimension is dropped the way the weight functions
@@ -247,21 +312,24 @@ ps_calibrate <- function(
         i = "Calibration reads one propensity score per observation. Calibrate
              the columns of a matrix of scores one at a time."
       ),
-      error_class = "propensity_type_error"
+      error_class = "propensity_type_error",
+      call = call
     )
   }
 
   if (!is.numeric(.propensity)) {
     abort(
       "{.arg .propensity} must be a numeric vector.",
-      error_class = "propensity_type_error"
+      error_class = "propensity_type_error",
+      call = call
     )
   }
 
   if (is_ps_calibrated(.propensity)) {
     abort(
       "{.arg .propensity} is already calibrated. Cannot calibrate already calibrated propensity scores.",
-      error_class = "propensity_already_calibrated_error"
+      error_class = "propensity_already_calibrated_error",
+      call = call
     )
   }
 
@@ -283,7 +351,8 @@ ps_calibrate <- function(
   if (any(ps_numeric < 0 | ps_numeric > 1, na.rm = TRUE)) {
     abort(
       "{.arg .propensity} values must be between 0 and 1.",
-      error_class = "propensity_range_error"
+      error_class = "propensity_range_error",
+      call = call
     )
   }
 
@@ -291,14 +360,16 @@ ps_calibrate <- function(
   .exposure <- transform_exposure_binary(
     .exposure,
     .focal_level = .focal_level,
-    .reference_level = .reference_level
+    .reference_level = .reference_level,
+    call = call
   )
 
   if (length(.propensity) != length(.exposure)) {
     abort(
       "Propensity score vector {.arg .propensity} must be the same length as \\
       {.arg .exposure}.",
-      error_class = "propensity_length_error"
+      error_class = "propensity_length_error",
+      call = call
     )
   }
 
@@ -355,7 +426,8 @@ ps_calibrate <- function(
     if (isFALSE(calib_model$converged)) {
       warn(
         "Calibration model did not converge",
-        warning_class = "propensity_convergence_warning"
+        warning_class = "propensity_convergence_warning",
+        call = call
       )
     }
 
@@ -407,6 +479,125 @@ ps_calibrate <- function(
       method = method,
       smooth = smooth
     )
+  )
+}
+
+# The fitted propensity score models calibration reads, registered for the same
+# classes the weight functions read: a `glm`, whose binomial families fit the
+# probability of a binary exposure, and a `multinom`. A `lm` is not among them,
+# its fitted values being conditional means rather than probabilities, and it
+# reaches the default method, which reports that it has no scores to calibrate.
+#' @export
+ps_calibrate.glm <- function(
+  .propensity,
+  .exposure,
+  method = c("logistic", "isoreg"),
+  smooth = TRUE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
+  calibrate_from_model(
+    .propensity,
+    .exposure = rlang::maybe_missing(.exposure, NULL),
+    method = method,
+    smooth = smooth,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    call = call,
+    user_env = rlang::caller_env()
+  )
+}
+
+# A `multinom` is `c("multinom", "nnet")` and inherits from neither `glm` nor
+# `lm`, so it reaches a method of its own. What it was fit to is checked before
+# anything reads it, so that a fit the route cannot read is reported as such
+# rather than as whatever its fitted values are made of.
+#' @export
+ps_calibrate.multinom <- function(
+  .propensity,
+  .exposure,
+  method = c("logistic", "isoreg"),
+  smooth = TRUE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_multinom_response(.propensity, call = call)
+
+  calibrate_from_model(
+    .propensity,
+    .exposure = rlang::maybe_missing(.exposure, NULL),
+    method = method,
+    smooth = smooth,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    call = call,
+    user_env = rlang::caller_env()
+  )
+}
+
+# Calibration reads one propensity score for each unit and the exposure those
+# scores are calibrated against, so a fit is always read for its probability of
+# a binary exposure. A fit of three or more levels reports a column for each of
+# them and no single probability to calibrate, which is what the binary reading
+# reports against the model.
+#
+# The default method is reached by a call rather than by dispatch, so it is
+# handed the frame the route was entered on. Left to its own, a refusal here
+# would name a method the caller never wrote.
+calibrate_from_model <- function(
+  model,
+  .exposure,
+  method,
+  smooth,
+  .focal_level,
+  .reference_level,
+  .treated,
+  .untreated,
+  call,
+  user_env
+) {
+  args <- prepare_model_ps(
+    model,
+    .exposure,
+    needs_exposure = TRUE,
+    levels_supported = FALSE,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "ps_calibrate",
+    call = call,
+    user_env = user_env
+  )
+
+  ps_calibrate.default(
+    .propensity = args$propensity,
+    .exposure = args$exposure,
+    method = method,
+    smooth = smooth,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    user_env = user_env,
+    call = call
   )
 }
 

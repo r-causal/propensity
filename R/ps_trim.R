@@ -116,6 +116,22 @@
 #' 3. Call [ps_refit()] to re-estimate propensity scores on the retained sample
 #' 4. Compute weights with [wt_ate()] or another weight function
 #'
+#' ## Fitted models
+#'
+#' `.propensity` can be the fitted propensity score model instead of the scores
+#' it reports. A binomial [stats::glm()] and a two-level `nnet::multinom()` are
+#' read as one score per unit; a `nnet::multinom()` of three or more levels is
+#' read as one column per level. Those are the shapes `predict(fit, type =
+#' "response")` and `fitted(fit)` give, and trimming a fit trims exactly what
+#' trimming those values would.
+#'
+#' The methods that read an exposure (`"pref"`, `"cr"`, and `"optimal"`) take
+#' it from the model when `.exposure` is not supplied, announcing the variable
+#' they read; `options(propensity.quiet = TRUE)` silences the announcement. An
+#' `.exposure` you supply is used instead, and a categorical model's columns
+#' are matched to its levels by name, so an exposure whose levels are ordered
+#' differently is still trimmed against the right column.
+#'
 #' ## Object behavior
 #'
 #' Arithmetic operations on `ps_trim` objects return plain numeric vectors,
@@ -267,6 +283,15 @@
 #' refitted <- ps_refit(trimmed, fit)
 #' wt_ate(refitted, .exposure = z)
 #'
+#' # Trim the scores a fitted model reports, reading the exposure off the model
+#' ps_trim(fit, method = "cr")
+#'
+#' if (rlang::is_installed("nnet")) {
+#'   trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+#'   multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
+#'   ps_trim(multinomial_fit, method = "optimal")
+#' }
+#'
 #' @export
 ps_trim <- function(
   .propensity,
@@ -314,6 +339,7 @@ ps_trim.default <- function(
 ) {
   check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_ps_method(.propensity, call = call)
   method <- rlang::arg_match(method, error_call = call)
 
   # Optimal trimming is defined over the rows of a propensity score matrix, so
@@ -764,6 +790,156 @@ ps_trim.data.frame <- function(
     .treated = .treated,
     .untreated = .untreated,
     user_env = rlang::caller_env(),
+    call = call
+  )
+}
+
+# The fitted propensity score models trimming reads, registered for the same
+# classes the weight functions read: a `glm`, whose binomial families fit the
+# probability of a binary exposure, and a `multinom`, which fits a probability
+# for every level. A `lm` is not among them, its fitted values being conditional
+# means rather than probabilities, and it reaches the default method, which
+# reports that it has no scores to trim.
+#' @export
+ps_trim.glm <- function(
+  .propensity,
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
+  ps_trim_from_model(
+    .propensity,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
+    .treated = .treated,
+    .untreated = .untreated,
+    call = call,
+    user_env = rlang::caller_env()
+  )
+}
+
+# A `multinom` is `c("multinom", "nnet")` and inherits from neither `glm` nor
+# `lm`, so it reaches a method of its own. What it was fit to is checked before
+# anything reads it, so that a fit the route cannot read is reported as such
+# rather than as whatever its fitted values are made of.
+#' @export
+ps_trim.multinom <- function(
+  .propensity,
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_multinom_response(.propensity, call = call)
+
+  ps_trim_from_model(
+    .propensity,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
+    .treated = .treated,
+    .untreated = .untreated,
+    call = call,
+    user_env = rlang::caller_env()
+  )
+}
+
+# The model methods differ only in the class they are registered for and in what
+# that class needs checked before it is read, so both route through here. The
+# method is resolved first because it decides whether the trimming reads an
+# exposure at all, and a method the vector route does not define is left to the
+# route that does not define it, so that the refusal is the same one a vector of
+# scores gets.
+#
+# The vector and matrix methods are reached by a call rather than by dispatch,
+# so they are handed the frame the route was entered on. Left to their own, a
+# refusal here would name a method the caller never wrote.
+ps_trim_from_model <- function(
+  model,
+  method,
+  lower,
+  upper,
+  .exposure,
+  .focal_level,
+  .reference_level,
+  ...,
+  .treated,
+  .untreated,
+  call,
+  user_env
+) {
+  method <- rlang::arg_match(
+    method,
+    values = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+    error_call = call
+  )
+
+  args <- prepare_model_ps(
+    model,
+    .exposure,
+    needs_exposure = method %in% c("pref", "cr"),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "ps_trim",
+    call = call,
+    user_env = user_env
+  )
+
+  if (identical(args$exposure_type, "categorical")) {
+    return(ps_trim.matrix(
+      .propensity = args$propensity,
+      method = method,
+      lower = lower,
+      upper = upper,
+      .exposure = args$exposure,
+      .focal_level = args$focal_level,
+      .reference_level = args$reference_level,
+      ...,
+      call = call
+    ))
+  }
+
+  ps_trim.default(
+    .propensity = args$propensity,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = args$exposure,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    ...,
+    user_env = user_env,
     call = call
   )
 }

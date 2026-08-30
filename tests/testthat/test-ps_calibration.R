@@ -1755,3 +1755,26 @@ test_that("ps_calibrate() refuses a fit it cannot read propensity scores from", 
     class = "propensity_method_error"
   )
 })
+
+test_that("ps_calibrate() names the class of a fit it has no reading for", {
+  expect_propensity_error(
+    ps_calibrate(
+      lm(z ~ x1 + x2, data = calib_model_data),
+      calib_model_data$z,
+      smooth = FALSE
+    )
+  )
+})
+
+test_that("ps_calibrate() reports a multinomial fit of too many levels", {
+  skip_if_not_installed("nnet")
+
+  expect_propensity_error(ps_calibrate(calib_categorical_fit(), smooth = FALSE))
+})
+
+# A missing exposure used to be reported by R against the argument it could not
+# force, which now names the method dispatch reached rather than the function
+# the caller wrote.
+test_that("ps_calibrate() names the exposure it was not given", {
+  expect_propensity_error(ps_calibrate(c(0.2, 0.4, 0.6, 0.8)))
+})

@@ -167,6 +167,22 @@ data-driven method available for categorical treatments.
 }
 }
 
+\subsection{Fitted models}{
+
+\code{.propensity} can be the fitted propensity score model instead of the scores
+it reports. A binomial \code{\link[stats:glm]{stats::glm()}} and a two-level \code{nnet::multinom()} are
+read as one score per unit; a \code{nnet::multinom()} of three or more levels is
+read as one column per level. Those are the shapes \code{predict(fit, type = "response")} and \code{fitted(fit)} give, and trimming a fit trims exactly what
+trimming those values would.
+
+The methods that read an exposure (\code{"pref"}, \code{"cr"}, and \code{"optimal"}) take
+it from the model when \code{.exposure} is not supplied, announcing the variable
+they read; \code{options(propensity.quiet = TRUE)} silences the announcement. An
+\code{.exposure} you supply is used instead, and a categorical model's columns
+are matched to its levels by name, so an exposure whose levels are ordered
+differently is still trimmed against the right column.
+}
+
 \subsection{Object behavior}{
 
 Arithmetic operations on \code{ps_trim} objects return plain numeric vectors,
@@ -288,6 +304,15 @@ ps_trim(ps, method = "pctl")
 trimmed <- ps_trim(ps, method = "adaptive")
 refitted <- ps_refit(trimmed, fit)
 wt_ate(refitted, .exposure = z)
+
+# Trim the scores a fitted model reports, reading the exposure off the model
+ps_trim(fit, method = "cr")
+
+if (rlang::is_installed("nnet")) {
+  trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+  multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
+  ps_trim(multinomial_fit, method = "optimal")
+}
 
 }
 \references{

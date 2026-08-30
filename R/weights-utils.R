@@ -9,6 +9,20 @@ abort_no_method <- function(.propensity, call = rlang::caller_env()) {
   )
 }
 
+# The propensity score modifiers hold their vector route in a default method, so
+# an object with no method of its own arrives there. The shapes that route reads
+# are a vector of scores and, where the modifier accepts one, a data frame of
+# them; anything else, a fitted model of a class the package has no method for
+# among it, carries no scores to read and is reported as such rather than as a
+# value out of range or a type the modifier cannot use.
+check_ps_method <- function(.propensity, call = rlang::caller_env()) {
+  if (!is.atomic(.propensity) && !is.data.frame(.propensity)) {
+    abort_no_method(.propensity, call = call)
+  }
+
+  invisible(NULL)
+}
+
 # lifecycle decides whether a deprecation belongs to the caller or to the
 # package that raised it from `user_env`, and says so: one it judges indirect
 # carries a bullet naming this package and asking the reader to report an issue
@@ -1626,6 +1640,111 @@ prepare_model_weight_args <- function(
     propensity = ps_vec,
     exposure = .exposure,
     exposure_type = exposure_type,
+    focal_level = focal_params$.focal_level,
+    reference_level = focal_params$.reference_level
+  )
+}
+
+# Shared preparation for the model methods of the propensity score modifiers.
+#
+# A modifier reads a fitted model the way the weight functions read one, and
+# the extraction is the same: the scores come off the fit, and so does the
+# exposure when the modification needs one. What differs is that a modifier has
+# no exposure type to resolve. Which route a fit takes is a property of the fit
+# itself, read by `model_fits_levels()`, so a call that needs no exposure never
+# reads one off the model and is not told about an exposure it makes no use of.
+#
+# `needs_exposure` is what the modification itself requires: trimming to the
+# preference scale or to a common range reads the exposure, and calibration
+# always does, while trimming to a fixed threshold does not. A named focal level
+# requires it too, because the fitted values report the probability of the level
+# the response's default coding treats as focal, so naming the other level means
+# inverting them, exactly as `prepare_model_weight_args()` does.
+#
+# `levels_supported` is whether the modifier reads a probability for every level
+# at all. Calibration reads one score for each unit, so a fit of three or more
+# levels is not one it can read; sending such a fit down the binary path is what
+# reports that against the model rather than against the shape of what it
+# returns.
+prepare_model_ps <- function(
+  model,
+  .exposure = NULL,
+  needs_exposure = FALSE,
+  levels_supported = TRUE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  fn_name,
+  call = rlang::caller_env(),
+  user_env = rlang::caller_env(2)
+) {
+  # The deprecated arguments are resolved here rather than downstream, for the
+  # same reason as in `prepare_model_weight_args()`: the resolved focal level
+  # decides whether the fitted values are inverted, and mapping it twice would
+  # emit the deprecation warning twice, so the route below receives the mapped
+  # levels and no deprecated arguments.
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    fn_name,
+    user_env = user_env
+  )
+  check_focal_levels(
+    focal_params$.focal_level,
+    focal_params$.reference_level,
+    call = call
+  )
+
+  if (levels_supported && model_fits_levels(model)) {
+    # The levels a categorical model has to report a probability for are the
+    # levels of the exposure being modified, read the way the categorical path
+    # reads them.
+    .exposure <- extract_exposure_from_model(model, .exposure)
+
+    return(list(
+      propensity = extract_model_propensity(
+        model,
+        "categorical",
+        exposure_levels = levels(as.factor(.exposure)),
+        call = call
+      ),
+      exposure = .exposure,
+      exposure_type = "categorical",
+      focal_level = focal_params$.focal_level,
+      reference_level = focal_params$.reference_level
+    ))
+  }
+
+  # Read before the exposure, so that a fit whose scores cannot be read at all
+  # is reported as such rather than after an announcement about an exposure
+  # nothing goes on to use.
+  ps_vec <- extract_model_propensity(model, "binary", call = call)
+
+  focal_named <- !is.null(focal_params$.focal_level) ||
+    !is.null(focal_params$.reference_level)
+
+  if (needs_exposure || focal_named) {
+    .exposure <- extract_exposure_from_model(model, .exposure)
+  }
+
+  invert <- !is.null(.exposure) &&
+    !resolved_focal_is_default(
+      .exposure,
+      .focal_level = focal_params$.focal_level,
+      .reference_level = focal_params$.reference_level
+    )
+
+  if (invert) {
+    ps_vec <- 1 - ps_vec
+  }
+
+  list(
+    propensity = ps_vec,
+    exposure = .exposure,
+    exposure_type = "binary",
     focal_level = focal_params$.focal_level,
     reference_level = focal_params$.reference_level
   )

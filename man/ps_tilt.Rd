@@ -119,6 +119,17 @@ probability vector with a missing entry is not one this can tilt on,
 whichever level the tilt reads.
 }
 
+\section{Fitted models}{
+\code{.propensity} can be the fitted propensity score model instead of the scores
+it reports. A binomial \code{\link[stats:glm]{stats::glm()}} and a two-level \code{nnet::multinom()}
+report one score per unit and are tilted as a vector; a \code{nnet::multinom()} of
+three or more levels reports one column per level and is tilted as a matrix,
+with \code{.focal_level} naming the column \code{"att"} and \code{"atu"} read. Those are the
+shapes \code{predict(fit, type = "response")} and \code{fitted(fit)} give, and tilting
+a fit tilts exactly what tilting those values would. A tilt reads no
+exposure, so nothing but the scores is taken off the model.
+}
+
 \section{Modified propensity scores}{
 \code{ps_tilt()} takes plain propensity scores. A score modified by \code{\link[=ps_trim]{ps_trim()}},
 \code{\link[=ps_trunc]{ps_trunc()}}, or \code{\link[=ps_calibrate]{ps_calibrate()}} carries a class of its own and has no
@@ -156,6 +167,15 @@ weighted.mean(m1, h) - weighted.mean(m0, h)
 
 # the same predictions standardized to everyone give the ATE instead
 mean(m1) - mean(m0)
+
+# the tilt of the scores a fitted model reports
+ps_tilt(glm(z ~ x, data = sim, family = binomial()), "ato")
+
+if (rlang::is_installed("nnet")) {
+  sim$trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+  multinomial_fit <- nnet::multinom(trt ~ x, data = sim, trace = FALSE)
+  head(ps_tilt(multinomial_fit, "att", .focal_level = "b"))
+}
 
 }
 \seealso{

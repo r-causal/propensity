@@ -1,5 +1,19 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_trim()`, `ps_trunc()`, `ps_tilt()`, and `ps_calibrate()` now accept a
+  fitted propensity score model in `.propensity`, the way the weight functions
+  and `ipw()` already did. A binomial `glm()` and a two-level
+  `nnet::multinom()` are read as one score per unit, and a `nnet::multinom()`
+  of three or more levels as one column per level, so a fit takes the same
+  route its `predict()` or `fitted()` values would. The modifications that read
+  an exposure take it off the model unless `.exposure` is supplied: trimming to
+  the preference scale or to a common range, optimal trimming, and calibration,
+  which reads one score per unit and so refuses a multinomial fit of three or
+  more levels. A model of a class none of these can read propensity scores
+  from, such as an `lm()`, is refused with an error of class
+  `propensity_method_error` rather than reported as a propensity score out of
+  range.
+
 * The weight functions now refuse a fitted `nnet::multinom()` in `.propensity`
   whose levels are not the levels of the categorical exposure being weighted,
   with an error of class `propensity_model_family_error` naming both sets of

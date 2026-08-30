@@ -1068,3 +1068,9 @@ test_that("ps_tilt() refuses a fit it cannot read propensity scores from", {
     class = "propensity_method_error"
   )
 })
+
+test_that("ps_tilt() names the class of a fit it has no reading for", {
+  expect_propensity_error(
+    ps_tilt(lm(z ~ x1 + x2, data = tilt_model_data), "ato")
+  )
+})

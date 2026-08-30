@@ -11,6 +11,7 @@ ps_calibrate(
   smooth = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
+  ...,
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated()
@@ -66,6 +67,8 @@ group (typically the control group). Naming it makes the exposure's other
 level focal, with the same consequence for \code{.propensity}, and a level the
 exposure never takes is an error. Automatically detected if not supplied.}
 
+\item{...}{Additional arguments passed to methods.}
+
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
@@ -101,6 +104,17 @@ between estimated and true probabilities and have a sufficiently large
 sample.
 }
 
+\strong{Fitted models:}
+\code{.propensity} can be the fitted propensity score model instead of the scores
+it reports, and the exposure is then read off the model as well unless
+\code{.exposure} is supplied. The variable read is announced;
+\code{options(propensity.quiet = TRUE)} silences the announcement. A binomial
+\code{\link[stats:glm]{stats::glm()}} and a two-level \code{nnet::multinom()} report the one score per
+unit calibration reads. A \code{nnet::multinom()} of three or more levels reports
+one column per level and no single score to calibrate, so it is refused with
+an error of class \code{propensity_model_family_error}; calibrate the columns one
+at a time against the exposure indicator each of them belongs to.
+
 \strong{Missing values:}
 A unit with a missing exposure tells the calibration model nothing, so it is
 dropped from the fit. What happens to that unit afterwards depends on the
@@ -134,6 +148,17 @@ cal_iso <- ps_calibrate(ps, exposure, method = "isoreg")
 if (rlang::is_installed("mgcv")) {
   # Logistic calibration with spline smoothing (default)
   cal_smooth <- ps_calibrate(ps, exposure)
+}
+
+# Calibrate the scores a fitted model reports, reading the exposure off it
+x <- rnorm(200)
+fit <- glm(exposure ~ x, family = binomial())
+ps_calibrate(fit, smooth = FALSE)
+
+if (rlang::is_installed("nnet")) {
+  exposure_factor <- factor(exposure)
+  multinomial_fit <- nnet::multinom(exposure_factor ~ x, trace = FALSE)
+  ps_calibrate(multinomial_fit, smooth = FALSE)
 }
 
 }

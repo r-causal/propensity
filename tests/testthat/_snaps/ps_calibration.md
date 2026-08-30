@@ -92,3 +92,30 @@
       x It is <matrix> with 2 dimensions.
       i Calibration reads one propensity score per observation. Calibrate the columns of a matrix of scores one at a time.
 
+# ps_calibrate() names the class of a fit it has no reading for
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_calibrate()`:
+      ! No method for objects of class lm
+
+# ps_calibrate() reports a multinomial fit of too many levels
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_calibrate()`:
+      ! Weights for a binary exposure need the probability of one of its two levels.
+      x `.propensity` was fit to 3 levels ("a", "b", and "c"), so it fits no single probability to read against a binary exposure.
+      i Fit the propensity score model to the exposure being weighted, or weight the exposure the model was fit to with `exposure_type = "categorical"`.
+
+# ps_calibrate() names the exposure it was not given
+
+    Code
+      expr
+    Condition <propensity_missing_arg_error>
+      Error in `ps_calibrate()`:
+      ! `.exposure` must be supplied.
+      i Calibration reads the propensity scores against the exposure they are the probability of.
+

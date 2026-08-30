@@ -90,6 +90,30 @@ check_multinom_levels <- function(
   )
 }
 
+# Whether a fitted model reports a probability for every level of the exposure
+# rather than a single probability for each unit. That is what decides which
+# route a fit takes through the propensity score modifiers, whose vector and
+# matrix methods read the two shapes. The weight functions settle the same
+# question from the exposure they were given, which a modifier such as
+# `ps_tilt()` does not have, so the answer is read from the fit itself.
+model_fits_levels <- function(model) {
+  UseMethod("model_fits_levels")
+}
+
+#' @export
+model_fits_levels.default <- function(model) {
+  FALSE
+}
+
+# A two-level fit reports one column, the shape a binomial `glm` reports, and a
+# two-level exposure is binary however it was fit, so such a fit is read on the
+# vector route. `check_multinom_response()` has already refused a fit with no
+# levels wherever this is reached.
+#' @export
+model_fits_levels.multinom <- function(model) {
+  length(model$lev) > 2L
+}
+
 # A `multinom` fits a probability for every level and so has a single
 # probability to give only when it was fit to two of them. More levels than
 # that leave nothing to read as the probability of the exposure, which is what a

@@ -2814,3 +2814,9 @@ test_that("ps_refit() refits a multinomial fit trimmed through the model route",
     )
   )
 })
+
+test_that("ps_trim() names the class of a fit it has no reading for", {
+  expect_propensity_error(
+    ps_trim(lm(z ~ x1 + x2, data = trim_model_data), method = "ps")
+  )
+})
