@@ -2892,12 +2892,6 @@ wt_entropy.ps_trunc <- function(
 }
 
 #' @export
-wt_atc.ps_trim <- wt_atu.ps_trim
-
-#' @export
-wt_atc.ps_trunc <- wt_atu.ps_trunc
-
-#' @export
 wt_cens.ps_trim <- function(
   .propensity,
   .exposure,
@@ -3246,9 +3240,6 @@ wt_entropy.ps_calib <- function(
     ...
   )
 }
-
-#' @export
-wt_atc.ps_calib <- wt_atu.ps_calib
 
 #' @export
 wt_cens.ps_calib <- function(
