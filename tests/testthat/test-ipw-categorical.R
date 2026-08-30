@@ -2267,3 +2267,47 @@ test_that("ipw() still asks for .data when the multinom call cannot be evaluated
   )
   expect_match(conditionMessage(err), ".data", fixed = TRUE)
 })
+
+# ---- non-default contrasts on the multinomial design -------------------------
+
+test_that("ipw() reads a multinom fit under contr.sum the same way with and without .data", {
+  skip_if_not_installed("nnet")
+
+  # The propensity score design must be built with the contrasts the fit used,
+  # since the stacked system multiplies it by the fit's own coefficients. A
+  # factor covariate under `contr.sum` makes that visible: a design rebuilt
+  # under the default `contr.treatment` has the same dimensions and so raises
+  # nothing, it just holds different numbers. Supplying `.data` rebuilds the
+  # design from the model terms, so the two routes agreeing pins that the route
+  # reading the fit carries the contrasts across.
+  dat <- sim_categorical()
+  dat$g <- factor(c("g1", "g2", "g3")[1 + (seq_len(nrow(dat)) %% 3)])
+
+  ps_mod <- nnet::multinom(
+    a ~ x1 + g,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000,
+    contrasts = list(g = "contr.sum")
+  )
+  expect_identical(ps_mod$contrasts$g, "contr.sum")
+
+  ps_named <- ps_matrix_named(ps_mod)
+  wts <- categorical_weights(ps_named, dat$a, "ate")
+  outcome_mod <- glm(
+    y ~ a + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  from_fit <- ipw(ps_mod, outcome_mod)
+  from_data <- ipw(ps_mod, outcome_mod, .data = dat)
+
+  expect_equal(
+    as.data.frame(from_fit$estimates),
+    as.data.frame(from_data$estimates)
+  )
+})

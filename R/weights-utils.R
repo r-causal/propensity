@@ -1025,8 +1025,16 @@ check_ps_matrix <- function(
     # Handle both plain names (A, B, C) and parsnip-style names (.pred_A, .pred_B, .pred_C)
     col_names <- colnames(ps_matrix)
 
-    # Remove common prefixes like ".pred_"
-    clean_names <- gsub("^\\.pred_", "", col_names)
+    # Names that already cover the levels are matched as they arrive, and the
+    # ".pred_" prefix comes off only when they do not. The prefix is a
+    # convention of the columns a fitted parsnip model predicts into, not a
+    # reserved string, so an exposure is allowed levels that begin with it, and
+    # stripping first would report those levels as missing from columns that
+    # name them exactly.
+    clean_names <- col_names
+    if (!setequal(clean_names, exp_levels)) {
+      clean_names <- gsub("^\\.pred_", "", col_names)
+    }
 
     # Check if clean names match factor levels
     if (setequal(clean_names, exp_levels)) {
@@ -1293,6 +1301,13 @@ binary_exposure_levels <- function(.exposure) {
 # coincidental match cannot redirect the selection. A reference level that
 # leaves more than one candidate resolves to no focal level at all, which is
 # likewise unanswerable.
+#
+# Names that cover the levels as they arrive are read as they arrive, and the
+# `.pred_` prefix comes off only when they do not. The prefix is a convention
+# of the frames a fitted parsnip model predicts into, not a reserved string, so
+# an exposure is allowed levels that begin with it; stripping first would match
+# such levels against the halves of their own names and select the other
+# column.
 match_focal_level_column <- function(
   .propensity,
   .exposure,
@@ -1300,8 +1315,11 @@ match_focal_level_column <- function(
   .reference_level = NULL,
   call = rlang::caller_env()
 ) {
-  column_levels <- level_column_names(names(.propensity))
   exposure_levels <- as.character(binary_exposure_levels(.exposure))
+  column_levels <- names(.propensity)
+  if (!all(exposure_levels %in% column_levels)) {
+    column_levels <- level_column_names(column_levels)
+  }
   if (!all(exposure_levels %in% column_levels)) {
     return(NULL)
   }

@@ -368,3 +368,105 @@ test_that("a frame mixing a score column with a label column is still ambiguous"
     as.numeric(wt_ate(mixed$mu, dat$dose, exposure_type = "continuous"))
   )
 })
+
+# ---- levels that are themselves named like prediction columns ---------------
+
+# The `.pred_` prefix is a convention of the frames parsnip returns, not a
+# reserved string: an exposure is allowed levels that begin with it, and then
+# the columns naming those levels begin with it twice over as far as the prefix
+# rule is concerned. Reading such a frame under the stripped names matches the
+# columns against halves of the level names, which either selects the wrong
+# column or reports level names the caller never used. The exact names answer
+# first, so a frame whose columns carry the levels verbatim is read as such.
+
+sim_pred_like_levels <- function(seed = 2027, n = 200) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  p <- plogis(0.5 * x1)
+  bin <- factor(
+    ifelse(rbinom(n, 1, p) == 1, ".pred_b", ".pred_a"),
+    levels = c(".pred_a", ".pred_b")
+  )
+  cat3 <- factor(
+    sample(c(".pred_a", ".pred_b", ".pred_c"), n, replace = TRUE),
+    levels = c(".pred_a", ".pred_b", ".pred_c")
+  )
+  list(x1 = x1, p = p, bin = bin, cat3 = cat3)
+}
+
+test_that("a binary frame whose columns name pred-like levels is read by name", {
+  dat <- sim_pred_like_levels()
+  probs <- data.frame(.pred_a = 1 - dat$p, .pred_b = dat$p)
+
+  expect_equal(
+    as.numeric(wt_att(probs, dat$bin)),
+    as.numeric(wt_att(dat$p, dat$bin))
+  )
+  expect_equal(
+    as.numeric(wt_att(probs, dat$bin, .focal_level = ".pred_a")),
+    as.numeric(wt_att(1 - dat$p, dat$bin, .focal_level = ".pred_a"))
+  )
+})
+
+test_that("a reordered binary frame of pred-like levels is read by name", {
+  dat <- sim_pred_like_levels()
+  probs <- data.frame(.pred_a = 1 - dat$p, .pred_b = dat$p)
+  reversed <- probs[, c(".pred_b", ".pred_a")]
+
+  expect_equal(
+    as.numeric(wt_att(reversed, dat$bin)),
+    as.numeric(wt_att(dat$p, dat$bin))
+  )
+  expect_equal(
+    as.numeric(wt_att(reversed, dat$bin, .focal_level = ".pred_a")),
+    as.numeric(wt_att(1 - dat$p, dat$bin, .focal_level = ".pred_a"))
+  )
+})
+
+test_that("a categorical matrix of pred-like level names is read by name", {
+  dat <- sim_pred_like_levels()
+  lv <- levels(dat$cat3)
+  ps <- matrix(runif(length(dat$cat3) * 3), ncol = 3)
+  ps <- ps / rowSums(ps)
+  colnames(ps) <- lv
+  plain <- ps
+  colnames(plain) <- sub("^\\.pred_", "", lv)
+  plain_exposure <- factor(
+    sub("^\\.pred_", "", as.character(dat$cat3)),
+    levels = sub("^\\.pred_", "", lv)
+  )
+
+  expect_equal(
+    as.numeric(wt_ate(ps, dat$cat3, exposure_type = "categorical")),
+    as.numeric(wt_ate(plain, plain_exposure, exposure_type = "categorical"))
+  )
+
+  shuffled <- ps[, c(3L, 1L, 2L), drop = FALSE]
+  expect_equal(
+    as.numeric(wt_ate(shuffled, dat$cat3, exposure_type = "categorical")),
+    as.numeric(wt_ate(plain, plain_exposure, exposure_type = "categorical"))
+  )
+})
+
+test_that("a categorical frame of pred-like level names is read by name", {
+  dat <- sim_pred_like_levels()
+  lv <- levels(dat$cat3)
+  ps <- matrix(runif(length(dat$cat3) * 3), ncol = 3)
+  ps <- ps / rowSums(ps)
+  colnames(ps) <- lv
+
+  expect_equal(
+    as.numeric(wt_att(
+      as.data.frame(ps),
+      dat$cat3,
+      exposure_type = "categorical",
+      .focal_level = ".pred_b"
+    )),
+    as.numeric(wt_att(
+      ps,
+      dat$cat3,
+      exposure_type = "categorical",
+      .focal_level = ".pred_b"
+    ))
+  )
+})
