@@ -1650,3 +1650,167 @@ test_that("ps_trunc refuses a call argument on the binary route", {
     "ps_trunc"
   )
 })
+
+# ---- fitted-model methods ---------------------------------------------------
+
+# `ps_trunc()` reads a fitted propensity score model the way the weight
+# functions read one: the scores come off the fit, and the exposure comes off it
+# too for the methods that need one, unless the caller names an exposure of
+# their own. Each test below holds the model route to the route the same scores
+# take when they are extracted by hand.
+
+trunc_model_data <- local({
+  set.seed(20250930)
+
+  n <- 300
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+
+  odds_b <- exp(0.9 * x1 - 0.5 * x2)
+  odds_c <- exp(-0.7 * x1 + 0.8 * x2)
+  total <- 1 + odds_b + odds_c
+  p_b <- odds_b / total
+  p_c <- odds_c / total
+  u <- runif(n)
+
+  data.frame(
+    x1 = x1,
+    x2 = x2,
+    trt = factor(ifelse(u < p_b, "b", ifelse(u < p_b + p_c, "c", "a"))),
+    z = rbinom(n, 1, plogis(1.6 * x1 - 0.9 * x2)),
+    a2 = factor(ifelse(
+      runif(n) < plogis(1.2 * x1 - 0.6 * x2),
+      "control",
+      "treated"
+    ))
+  )
+})
+
+trunc_binary_fit <- function() {
+  glm(z ~ x1 + x2, data = trunc_model_data, family = binomial())
+}
+
+trunc_categorical_fit <- function() {
+  nnet::multinom(trt ~ x1 + x2, data = trunc_model_data, trace = FALSE)
+}
+
+trunc_two_level_fit <- function() {
+  nnet::multinom(a2 ~ x1 + x2, data = trunc_model_data, trace = FALSE)
+}
+
+# Values, shape, class, and record together: a model route that agreed on the
+# bounded scores but described the truncation differently would still be a
+# different truncation.
+expect_same_trunc <- function(from_model, oracle) {
+  testthat::expect_equal(
+    as.numeric(from_model),
+    as.numeric(oracle),
+    tolerance = 1e-12
+  )
+  testthat::expect_identical(dim(from_model), dim(oracle))
+  testthat::expect_identical(dimnames(from_model), dimnames(oracle))
+  testthat::expect_identical(class(from_model), class(oracle))
+  testthat::expect_identical(ps_trunc_meta(from_model), ps_trunc_meta(oracle))
+}
+
+test_that("ps_trunc() bounds the scores a binomial fit reports", {
+  fit <- trunc_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_same_trunc(
+    ps_trunc(fit, method = "ps"),
+    ps_trunc(scores, method = "ps")
+  )
+  expect_same_trunc(
+    ps_trunc(fit, method = "pctl"),
+    ps_trunc(scores, method = "pctl")
+  )
+})
+
+test_that("ps_trunc() reads the exposure off a fit for the method that needs one", {
+  fit <- trunc_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_same_trunc(
+    ps_trunc(fit, method = "cr"),
+    ps_trunc(scores, method = "cr", .exposure = trunc_model_data$z)
+  )
+})
+
+test_that("an explicit .exposure wins over the one a fit carries in ps_trunc()", {
+  fit <- trunc_binary_fit()
+  scores <- predict(fit, type = "response")
+  reordered <- rev(trunc_model_data$z)
+
+  expect_same_trunc(
+    ps_trunc(fit, method = "cr", .exposure = reordered),
+    ps_trunc(scores, method = "cr", .exposure = reordered)
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_trunc(fit, method = "cr", .exposure = reordered)),
+    as.numeric(ps_trunc(fit, method = "cr"))
+  )))
+})
+
+test_that("ps_trunc() bounds the probabilities a multinomial fit reports", {
+  skip_if_not_installed("nnet")
+
+  fit <- trunc_categorical_fit()
+  probs <- fitted(fit)
+  trt <- trunc_model_data$trt
+
+  expect_same_trunc(
+    ps_trunc(fit, method = "ps"),
+    ps_trunc(probs, method = "ps", .exposure = trt)
+  )
+  expect_same_trunc(
+    ps_trunc(fit, method = "pctl"),
+    ps_trunc(probs, method = "pctl", .exposure = trt)
+  )
+})
+
+test_that("ps_trunc() matches a multinomial fit's columns to the exposure given", {
+  skip_if_not_installed("nnet")
+
+  fit <- trunc_categorical_fit()
+  reordered <- relevel(trunc_model_data$trt, "c")
+  expect_false(identical(levels(reordered), fit$lev))
+
+  expect_same_trunc(
+    ps_trunc(fit, method = "ps", .exposure = reordered),
+    ps_trunc(fitted(fit), method = "ps", .exposure = reordered)
+  )
+  expect_identical(
+    colnames(ps_trunc(fit, method = "ps", .exposure = reordered)),
+    levels(reordered)
+  )
+})
+
+test_that("ps_trunc() reads a two-level multinomial fit on the binary path", {
+  skip_if_not_installed("nnet")
+
+  fit <- trunc_two_level_fit()
+  scores <- as.numeric(fitted(fit))
+
+  expect_same_trunc(
+    ps_trunc(fit, method = "ps"),
+    ps_trunc(scores, method = "ps")
+  )
+  expect_same_trunc(
+    ps_trunc(fit, method = "cr"),
+    ps_trunc(scores, method = "cr", .exposure = trunc_model_data$a2)
+  )
+})
+
+test_that("ps_trunc() refuses a fit it cannot read propensity scores from", {
+  linear <- lm(z ~ x1 + x2, data = trunc_model_data)
+
+  expect_error(
+    ps_trunc(linear, method = "ps"),
+    class = "propensity_method_error"
+  )
+  expect_error(
+    ps_trunc(structure(list(), class = "not_a_model"), method = "ps"),
+    class = "propensity_method_error"
+  )
+})

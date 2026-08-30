@@ -970,3 +970,101 @@ test_that("ps_tilt() names the propensity scores it was not given", {
   )
   expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
 })
+
+# ---- fitted-model methods ---------------------------------------------------
+
+# `ps_tilt()` reads a fitted propensity score model the way the weight functions
+# read one. It has no exposure of its own to recover, so the only thing the
+# model route adds is where the scores come from: a binomial fit and a
+# two-level multinomial fit report one probability per unit and take the binary
+# route, and a multinomial fit of three or more levels reports one column per
+# level and takes the matrix route.
+
+tilt_model_data <- local({
+  set.seed(20250930)
+
+  n <- 300
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+
+  odds_b <- exp(0.9 * x1 - 0.5 * x2)
+  odds_c <- exp(-0.7 * x1 + 0.8 * x2)
+  total <- 1 + odds_b + odds_c
+  p_b <- odds_b / total
+  p_c <- odds_c / total
+  u <- runif(n)
+
+  data.frame(
+    x1 = x1,
+    x2 = x2,
+    trt = factor(ifelse(u < p_b, "b", ifelse(u < p_b + p_c, "c", "a"))),
+    z = rbinom(n, 1, plogis(1.6 * x1 - 0.9 * x2)),
+    a2 = factor(ifelse(
+      runif(n) < plogis(1.2 * x1 - 0.6 * x2),
+      "control",
+      "treated"
+    ))
+  )
+})
+
+tilt_binary_fit <- function() {
+  glm(z ~ x1 + x2, data = tilt_model_data, family = binomial())
+}
+
+tilt_categorical_fit <- function() {
+  nnet::multinom(trt ~ x1 + x2, data = tilt_model_data, trace = FALSE)
+}
+
+tilt_two_level_fit <- function() {
+  nnet::multinom(a2 ~ x1 + x2, data = tilt_model_data, trace = FALSE)
+}
+
+expect_same_tilt <- function(from_model, oracle) {
+  testthat::expect_equal(from_model, oracle, tolerance = 1e-12)
+  testthat::expect_identical(class(from_model), class(oracle))
+}
+
+test_that("ps_tilt() tilts the scores a binomial fit reports", {
+  fit <- tilt_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_same_tilt(ps_tilt(fit, "ate"), ps_tilt(scores, "ate"))
+  expect_same_tilt(ps_tilt(fit, "att"), ps_tilt(scores, "att"))
+  expect_same_tilt(ps_tilt(fit, "ato"), ps_tilt(scores, "ato"))
+  expect_same_tilt(ps_tilt(fit, "atm"), ps_tilt(scores, "atm"))
+  expect_same_tilt(ps_tilt(fit, "entropy"), ps_tilt(scores, "entropy"))
+})
+
+test_that("ps_tilt() tilts the probabilities a multinomial fit reports", {
+  skip_if_not_installed("nnet")
+
+  fit <- tilt_categorical_fit()
+  probs <- fitted(fit)
+
+  expect_same_tilt(ps_tilt(fit, "ato"), ps_tilt(probs, "ato"))
+  expect_same_tilt(ps_tilt(fit, "atm"), ps_tilt(probs, "atm"))
+  expect_same_tilt(
+    ps_tilt(fit, "att", .focal_level = "b"),
+    ps_tilt(probs, "att", .focal_level = "b")
+  )
+})
+
+test_that("ps_tilt() reads a two-level multinomial fit on the binary path", {
+  skip_if_not_installed("nnet")
+
+  fit <- tilt_two_level_fit()
+  scores <- as.numeric(fitted(fit))
+
+  expect_same_tilt(ps_tilt(fit, "ate"), ps_tilt(scores, "ate"))
+  expect_same_tilt(ps_tilt(fit, "ato"), ps_tilt(scores, "ato"))
+})
+
+test_that("ps_tilt() refuses a fit it cannot read propensity scores from", {
+  linear <- lm(z ~ x1 + x2, data = tilt_model_data)
+
+  expect_error(ps_tilt(linear, "ato"), class = "propensity_method_error")
+  expect_error(
+    ps_tilt(structure(list(), class = "not_a_model"), "ato"),
+    class = "propensity_method_error"
+  )
+})

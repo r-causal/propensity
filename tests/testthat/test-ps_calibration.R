@@ -1629,3 +1629,129 @@ test_that("ps_calibrate() names the propensity scores it was not given", {
   )
   expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
 })
+
+# ---- fitted-model methods ---------------------------------------------------
+
+# `ps_calibrate()` reads a fitted propensity score model the way the weight
+# functions read one: the scores come off the fit, and so does the exposure,
+# which calibration always needs, unless the caller names an exposure of their
+# own. Calibration reads one score per observation, so a binomial fit and a
+# two-level multinomial fit are what it accepts; a multinomial fit of three or
+# more levels reports one column per level and is refused as a model of
+# something calibration has no reading for.
+
+calib_model_data <- local({
+  set.seed(20250930)
+
+  n <- 300
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+
+  odds_b <- exp(0.9 * x1 - 0.5 * x2)
+  odds_c <- exp(-0.7 * x1 + 0.8 * x2)
+  total <- 1 + odds_b + odds_c
+  p_b <- odds_b / total
+  p_c <- odds_c / total
+  u <- runif(n)
+
+  data.frame(
+    x1 = x1,
+    x2 = x2,
+    trt = factor(ifelse(u < p_b, "b", ifelse(u < p_b + p_c, "c", "a"))),
+    z = rbinom(n, 1, plogis(1.6 * x1 - 0.9 * x2)),
+    a2 = factor(ifelse(
+      runif(n) < plogis(1.2 * x1 - 0.6 * x2),
+      "control",
+      "treated"
+    ))
+  )
+})
+
+calib_binary_fit <- function() {
+  glm(z ~ x1 + x2, data = calib_model_data, family = binomial())
+}
+
+calib_categorical_fit <- function() {
+  nnet::multinom(trt ~ x1 + x2, data = calib_model_data, trace = FALSE)
+}
+
+calib_two_level_fit <- function() {
+  nnet::multinom(a2 ~ x1 + x2, data = calib_model_data, trace = FALSE)
+}
+
+expect_same_calibration <- function(from_model, oracle) {
+  testthat::expect_equal(
+    as.numeric(from_model),
+    as.numeric(oracle),
+    tolerance = 1e-12
+  )
+  testthat::expect_identical(class(from_model), class(oracle))
+  testthat::expect_identical(ps_calib_meta(from_model), ps_calib_meta(oracle))
+}
+
+test_that("ps_calibrate() calibrates the scores a binomial fit reports", {
+  fit <- calib_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_same_calibration(
+    ps_calibrate(fit, smooth = FALSE),
+    ps_calibrate(scores, calib_model_data$z, smooth = FALSE)
+  )
+  expect_same_calibration(
+    ps_calibrate(fit, method = "isoreg"),
+    ps_calibrate(scores, calib_model_data$z, method = "isoreg")
+  )
+})
+
+test_that("an explicit .exposure wins over the one a fit carries in ps_calibrate()", {
+  fit <- calib_binary_fit()
+  scores <- predict(fit, type = "response")
+  reordered <- rev(calib_model_data$z)
+
+  expect_same_calibration(
+    ps_calibrate(fit, reordered, smooth = FALSE),
+    ps_calibrate(scores, reordered, smooth = FALSE)
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_calibrate(fit, reordered, smooth = FALSE)),
+    as.numeric(ps_calibrate(fit, smooth = FALSE))
+  )))
+})
+
+test_that("ps_calibrate() reads a two-level multinomial fit on the binary path", {
+  skip_if_not_installed("nnet")
+
+  fit <- calib_two_level_fit()
+  scores <- as.numeric(fitted(fit))
+
+  expect_same_calibration(
+    ps_calibrate(fit, smooth = FALSE),
+    ps_calibrate(scores, calib_model_data$a2, smooth = FALSE)
+  )
+})
+
+test_that("ps_calibrate() refuses a multinomial fit of three or more levels", {
+  skip_if_not_installed("nnet")
+
+  expect_error(
+    ps_calibrate(calib_categorical_fit(), smooth = FALSE),
+    class = "propensity_model_family_error"
+  )
+})
+
+test_that("ps_calibrate() refuses a fit it cannot read propensity scores from", {
+  linear <- lm(z ~ x1 + x2, data = calib_model_data)
+
+  expect_error(
+    ps_calibrate(linear, calib_model_data$z, smooth = FALSE),
+    class = "propensity_method_error"
+  )
+  expect_error(
+    ps_calibrate(
+      structure(list(), class = "not_a_model"),
+      calib_model_data$z,
+      smooth = FALSE
+    ),
+    class = "propensity_method_error"
+  )
+})
