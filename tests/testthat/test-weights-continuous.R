@@ -1349,6 +1349,54 @@ test_that("an intercept-only model gives integrated weights of exactly one", {
   expect_identical(as.numeric(from_model), rep(1, continuous_density_data$n))
 })
 
+test_that("integrated weights do not depend on the units of the exposure", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+
+  # A density ratio is a ratio of densities in the same units, so it is the
+  # same number whether the dose is read in grams or in nanograms. Nothing
+  # about the exposure changes here except the unit it is measured in.
+  unscaled <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+
+  scaled <- wt_ate(
+    mu * 1e-9,
+    exposure * 1e-9,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+
+  expect_equal(as.numeric(scaled), as.numeric(unscaled), tolerance = 1e-8)
+
+  # The failure this guards against is silent: fitted means that vary by less
+  # than the absolute floor of the constancy test are read as one number, and
+  # every weight comes back as exactly one.
+  expect_false(all(as.numeric(scaled) == 1))
+})
+
+test_that("is_constant() reads a spread against the scale it is on", {
+  mu <- continuous_density_data$mu
+  sigma <- continuous_density_pooled()
+
+  # The fitted means of a model with a covariate vary, and they vary just as
+  # much relative to the spread of the exposure when both are rescaled.
+  expect_false(is_constant(mu, scale = sigma))
+  expect_false(is_constant(mu * 1e-9, scale = sigma * 1e-9))
+
+  # Fitted means that really are one number are still read as one number.
+  expect_true(is_constant(rep(mean(mu), length(mu)), scale = sigma))
+  expect_true(is_constant(
+    rep(mean(mu) * 1e-9, length(mu)),
+    scale = sigma * 1e-9
+  ))
+})
+
 test_that("an exposure that does not vary has no grid to be marginalized over", {
   # Every unit took the same dose, so the grid the conditional density is
   # averaged over collapses to a point and the interpolation has nowhere to run.

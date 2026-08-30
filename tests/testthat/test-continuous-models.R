@@ -583,3 +583,51 @@ test_that("a model of the wrong kind is refused by what it was fit with", {
     )
   )
 })
+
+test_that("a family object without a name is refused rather than raising", {
+  # A family that carries a link and no name answers the binomial test with
+  # nothing at all, which `&&` cannot read as true or false. It is a family the
+  # binary path cannot weight from, and it is refused in those terms.
+  unnamed <- structure(
+    list(family = list(link = "logit")),
+    class = "unnamed_family_fit"
+  )
+
+  expect_error(
+    check_binary_model_family(unnamed),
+    class = "propensity_model_family_error"
+  )
+})
+
+test_that("model_family_label() writes a family the way it is called", {
+  expect_identical(model_family_label(list(family = "gaussian")), "gaussian()")
+  expect_identical(
+    model_family_label(list(family = "quasi", varfun = "constant")),
+    "quasi(variance = \"constant\")"
+  )
+
+  # An extended family names itself with the parameters it was fit at, so the
+  # name is already a call and adding a pair of parentheses to it writes one
+  # that could not be run.
+  expect_identical(
+    model_family_label(list(family = "Scaled t(Inf,1.012)")),
+    "Scaled t(Inf,1.012)"
+  )
+})
+
+test_that("a scaled t additive model is refused by the family it prints", {
+  skip_if_not_installed("mgcv")
+
+  fit <- mgcv::gam(
+    dose ~ s(x),
+    data = continuous_model_data,
+    family = mgcv::scat()
+  )
+
+  expect_error(
+    continuous_model_wt(fit, continuous_model_data$dose),
+    class = "propensity_model_family_error"
+  )
+
+  expect_identical(model_family_label(fit$family), fit$family$family)
+})
