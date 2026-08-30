@@ -346,6 +346,17 @@ ps_trim.default <- function(
   rlang::check_dots_empty(call = call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
   check_ps_method(.propensity, call = call)
+
+  # A calibrated score is a propensity score, so this reads the scores it holds
+  # the way the weight functions do rather than refusing a vector of numbers
+  # for the class attached to it. What comes back is a trimmed score rather
+  # than a calibrated one, so the class is dropped and what it recorded is kept
+  # in the trim metadata, where `is_ps_calibrated()` reads it.
+  calibrated <- inherits(.propensity, "ps_calib")
+  if (calibrated) {
+    .propensity <- as.numeric(.propensity)
+  }
+
   method <- rlang::arg_match(method, error_call = call)
 
   # Optimal trimming is defined over the rows of a propensity score matrix, so
@@ -427,6 +438,10 @@ ps_trim.default <- function(
     list(method = method)
   } else {
     list(method = method, lower = lower, upper = upper)
+  }
+
+  if (calibrated) {
+    meta_list$calibrated <- TRUE
   }
 
   # A score that arrived missing is not one this function can place against a

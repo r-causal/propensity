@@ -12,6 +12,14 @@
 #' `contrast` column names the level each mean row belongs to and the pair of
 #' levels each effect row compares, as it does for a binary exposure.
 #'
+#' Two fits are refused with an error of class
+#' `propensity_model_family_error`. A [nnet::multinom()] fit to two levels
+#' reports the single probability of a binary exposure rather than one
+#' probability per level; fit such an exposure with [stats::glm()] and
+#' `family = binomial()` and pass it to the `glm` method instead. A fit to a
+#' matrix response records no levels at all, since [nnet::multinom()] reads a
+#' matrix as counts; refit it with the exposure factor on the left-hand side.
+#'
 #' @param .focal_level For the categorical (`multinom`) method with the `att`
 #'   or `atu` estimand, the focal exposure level. If `NULL`, it is taken from
 #'   the `focal_category` attribute of the weights in `outcome_mod`. An explicit
@@ -42,6 +50,12 @@ ipw.multinom <- function(
   # path; a multinomial propensity model has no such link, so reject a non-NULL
   # argument rather than silently ignoring it.
   check_ipw_ps_link_absent(ps_link, "multinomial")
+
+  # The same two refusals the weight path makes of a `multinom`, in the terms
+  # this method's arguments are named in. A matrix response is read as counts,
+  # so the fit records no levels and the exposure would be read as the deparsed
+  # response instead; a two-level fit is a binary propensity score model.
+  check_multinom_response(wt_mod, arg = "wt_mod")
   check_ipw_multinom_levels(wt_mod)
 
   if (identical(se_method, "linearization")) {

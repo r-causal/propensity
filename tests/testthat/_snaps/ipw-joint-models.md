@@ -29,7 +29,7 @@
       i The estimand the weights were built for may differ from the one `ipw()` resolved.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
-      i Refit `outcome_mod` with weights from this propensity score model and estimand if the weights are the cause.
+      i Refit `outcome_mod` with weights from the two treatment models `wt_mod` holds, and this estimand, if the weights are the cause.
 
 # ipw() refuses .by on the two-model route
 

@@ -66,7 +66,7 @@
       i A dose component built with a fixed `stabilization_score` is one cause: the product records that the numerator was a score without recording the vector it was, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
-      i Refit `outcome_mod` with weights from this propensity score model and estimand if the weights are the cause.
+      i Refit `outcome_mod` with weights from the two treatment models `wt_mod` holds, and this estimand, if the weights are the cause.
 
 # ipw() still refuses a term reading a treatment and a covariate
 
@@ -127,7 +127,7 @@
       i A dose component built with a fixed `stabilization_score` is one cause: the product records that the numerator was a score without recording the vector it was, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
-      i Refit `outcome_mod` with weights from this propensity score model and estimand if the weights are the cause.
+      i Refit `outcome_mod` with weights from the two treatment models `wt_mod` holds, and this estimand, if the weights are the cause.
 
 # a bare-term model with no intercept is refused, not errored
 

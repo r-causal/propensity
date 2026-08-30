@@ -321,6 +321,14 @@ non-reference level against the reference (first) factor level. The
 \code{contrast} column names the level each mean row belongs to and the pair of
 levels each effect row compares, as it does for a binary exposure.
 
+Two fits are refused with an error of class
+\code{propensity_model_family_error}. A \code{\link[nnet:multinom]{nnet::multinom()}} fit to two levels
+reports the single probability of a binary exposure rather than one
+probability per level; fit such an exposure with \code{\link[stats:glm]{stats::glm()}} and
+\code{family = binomial()} and pass it to the \code{glm} method instead. A fit to a
+matrix response records no levels at all, since \code{\link[nnet:multinom]{nnet::multinom()}} reads a
+matrix as counts; refit it with the exposure factor on the left-hand side.
+
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
 propensity score model of the exposure and a weighted marginal structural

@@ -622,12 +622,27 @@ check_joint_wt_models_supported <- function(
 
   if (any(unsupported)) {
     bad <- names[unsupported]
-    bad_class <- class(models[[which(unsupported)[[1]]]])[[1]]
+    bad_model <- models[[which(unsupported)[[1]]]]
+    bad_class <- class(bad_model)[[1]]
+
+    # What is refused is usually the family rather than the class: a
+    # {.cls glm} and a {.cls gam} are both on the list of classes below, and
+    # each is read as a dose model when it is gaussian and refused when it is
+    # not. Naming the class alone leaves the reader looking at a class the same
+    # message says is supported.
+    family <- bad_model[["family"]]
+    what_it_is <- if (is.list(family)) {
+      "The model named {.arg {bad[[1]]}} is {.cls {bad_class}} fit with \\
+      {.code {model_family_label(family)}}."
+    } else {
+      "The model named {.arg {bad[[1]]}} is {.cls {bad_class}}."
+    }
+
     abort(
       c(
         "{.fun joint_wt_models} must be given models it can read a treatment \\
         density from.",
-        x = "The model named {.arg {bad[[1]]}} is {.cls {bad_class}}.",
+        x = what_it_is,
         i = "Supported models: a binomial {.fun glm} for a binary treatment, \\
         a {.fun nnet::multinom} for a categorical one, and an {.fun lm}, a \\
         gaussian {.fun glm}, a gaussian {.fun mgcv::gam}, or a \\

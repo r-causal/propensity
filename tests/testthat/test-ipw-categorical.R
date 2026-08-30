@@ -1056,6 +1056,8 @@ test_that("ipw() rejects a multinom fit to a matrix response", {
   )
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "matrix response", fixed = TRUE)
+
+  expect_propensity_error(ipw(ps_mod, mods$outcome_mod))
 })
 
 # ---- guard against an invalid focal level -----------------------------------

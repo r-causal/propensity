@@ -975,6 +975,8 @@ test_that("the unsupported-model refusal names the family of an additive fit", {
   )
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "poisson()", fixed = TRUE)
+
+  expect_propensity_error(joint_wt_models(a = fx$mods$a, k = counted))
 })
 
 test_that("joint_wt_models() requires a discrete second model to condition on the first treatment", {

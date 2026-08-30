@@ -1059,6 +1059,12 @@ ate_continuous <- function(
   stabilization_score = NULL,
   call = rlang::caller_env()
 ) {
+  # Every quantity below is computed from the exposure and the fitted means
+  # together, so an infinite value in either reaches all of them. It is refused
+  # here, where the argument that carries it can still be named.
+  check_continuous_finite(.exposure, ".exposure", call = call)
+  check_continuous_finite(.propensity, ".propensity", call = call)
+
   # The conditional density f_{A|X}(A_i | X_i) is the one the propensity model
   # estimates, so its spread is the spread of that model's residuals: the
   # observation-level `.sigma` when the caller supplies one, the pooled residual

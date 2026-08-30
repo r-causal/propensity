@@ -76,6 +76,27 @@ check_multinom_levels <- function(
   n_levels <- length(model$lev)
   n_exposure <- length(exposure_levels)
 
+  # The mismatch an unused factor level makes: `nnet::multinom()` drops a level
+  # no unit took, so a fit made to an exposure with an empty level reports
+  # every level the exposure has units at and no other. The fit is of the
+  # exposure being weighted and only the declaration disagrees, which is fixed
+  # without refitting anything, so it is worth naming. A fit reporting a level
+  # the exposure does not declare is not that, whatever else it reports: it is
+  # a fit of something else, and dropping levels cannot supply the column it is
+  # missing.
+  exposure_levels_chr <- as.character(exposure_levels)
+  unfitted <- setdiff(exposure_levels_chr, model$lev)
+  unused_level_remedy <- if (
+    length(unfitted) > 0 && all(model$lev %in% exposure_levels_chr)
+  ) {
+    c(
+      i = "{.fun nnet::multinom} drops a level no unit took, so an exposure
+           declaring {.val {unfitted}} with no unit there is fit one column
+           short; call {.fun droplevels} on {.arg .exposure} if that is the
+           disagreement."
+    )
+  }
+
   abort(
     c(
       "Weights for a categorical exposure need a probability for every level
@@ -83,6 +104,7 @@ check_multinom_levels <- function(
       x = "{.arg .propensity} was fit to {n_levels} level{?s}
            ({.val {model$lev}}), and the exposure has {n_exposure}
            ({.val {exposure_levels}}).",
+      unused_level_remedy,
       i = "Fit the propensity score model to the exposure being weighted."
     ),
     error_class = "propensity_model_family_error",
@@ -201,16 +223,23 @@ extract_model_exposure.multinom <- function(model) {
 # anything reads the model, including before the exposure is taken off it, so
 # that a fit the route cannot read is reported as such rather than as whatever
 # the exposure detector makes of a matrix of counts.
-check_multinom_response <- function(model, call = rlang::caller_env()) {
+#
+# `arg` names the argument the fit arrived as, since the estimator takes it as
+# `wt_mod` and the weight functions as `.propensity`, and the refusal is the
+# same one in both places.
+check_multinom_response <- function(
+  model,
+  arg = ".propensity",
+  call = rlang::caller_env()
+) {
   if (length(model$lev) > 0) {
     return(invisible(NULL))
   }
 
   abort(
     c(
-      "Weights need a propensity score model fit to the levels of the
-       exposure.",
-      x = "{.arg .propensity} was fit to a matrix response, which
+      "A propensity score model must be fit to the levels of the exposure.",
+      x = "{.arg {arg}} was fit to a matrix response, which
            {.fun nnet::multinom} reads as counts rather than as levels.",
       i = "Refit the model with the exposure factor on the left-hand side, as
            in {.code nnet::multinom(exposure ~ x)}."

@@ -359,6 +359,35 @@ check_numerator <- function(
 # the residuals of a fitted model already average to zero, and because the
 # estimating equation `ipw()` solves for the same quantity is the uncentered
 # moment.
+# An infinite exposure or fitted value, refused where it arrives. A missing
+# value is a unit with nothing to weight and leaves that unit's weight missing,
+# which is a local answer to a local gap. An infinite one is not local: the
+# pooled spread computed from it is infinite, so every weight comes back
+# missing however few units carry the infinity, and under a kernel the
+# residuals it leaves are reported as residuals that do not vary, which they
+# do. Neither report names the value that caused it, so the value is named
+# here, before anything is computed from it.
+check_continuous_finite <- function(x, arg, call = rlang::caller_env()) {
+  unusable <- !is.na(x) & !is.finite(x)
+
+  if (!any(unusable)) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "Weights for a continuous exposure cannot be computed from an infinite
+       value.",
+      x = "{sum(unusable)} value{?s} of {.arg {arg}} {?is/are} infinite.",
+      i = "An infinite value leaves the spread of the conditional density
+           infinite, so every weight is missing rather than that unit's alone.
+           Drop those observations before weighting."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
+}
+
 continuous_sigma <- function(exposure, mu, .sigma = NULL) {
   if (!is.null(.sigma)) {
     return(.sigma)
@@ -440,11 +469,18 @@ continuous_grid_n <- 50L
 # number whatever unit the exposure is measured in, so the test that decides
 # which ratio to return has to be the same number too: a fixed floor of one
 # would read an exposure in nanograms as a single value and return weights of
-# one for a model that conditions on covariates. `abs(mean(x))` is kept in the
-# comparison so that values which are large and constant are still read as
-# constant, as `all.equal()` reads them.
+# one for a model that conditions on covariates.
+#
+# `abs(mean(x))` is a second floor, for values that are large and constant: an
+# offset of a billion leaves the last bits of the arithmetic differing by about
+# 1e-6, which is a spread of nothing at that offset but far more than the
+# residuals' own floor allows. It carries a much smaller coefficient than the
+# scale term, because it is measuring the arithmetic rather than the model: at
+# the coefficient the scale term uses, fitted means that differ by a unit or
+# two at that offset read as one number, and a model that conditions on a
+# covariate silently returns a weight of one for every unit.
 is_constant <- function(x, scale) {
-  diff(range(x)) <= sqrt(.Machine$double.eps) * max(scale, abs(mean(x)))
+  diff(range(x)) <= max(sqrt(.Machine$double.eps) * scale, 1e-12 * abs(mean(x)))
 }
 
 # The density ratio under an integrated numerator, which is the conditional
@@ -726,6 +762,21 @@ check_density_kernel_fit <- function(
     )
   }
 
+  # The two ends are read one at a time below, so there have to be two of them.
+  # A range of some other length was indexed for an end it does not have.
+  if (length(range) != 2L) {
+    abort(
+      c(
+        "{.arg .density} fits a kernel between the two ends of a range.",
+        x = "It was given {length(range)} end{?s} rather than two.",
+        i = "A kernel is fit from the lower end of the range to the upper one.
+             Give both ends, in that order."
+      ),
+      error_class = "propensity_density_error",
+      call = call
+    )
+  }
+
   if (anyNA(range)) {
     abort(
       c(
@@ -734,6 +785,24 @@ check_density_kernel_fit <- function(
              residuals, and at least one of them is missing.",
         i = "A missing exposure or fitted value leaves a missing residual.
              Drop those observations before weighting."
+      ),
+      error_class = "propensity_density_error",
+      call = call
+    )
+  }
+
+  # An infinite end passed the missingness test and reached `stats::density()`
+  # as an error about its own `from` and `to`. A kernel is fit between two
+  # numbers, so it is refused here in terms of the range it was given.
+  if (!all(is.finite(range))) {
+    abort(
+      c(
+        "{.arg .density} cannot fit a kernel over an infinite range.",
+        x = "The range it was given runs from {.val {range[[1]]}} to
+             {.val {range[[2]]}}.",
+        i = "A kernel is fit between two finite ends. An infinite end comes
+             from an infinite exposure or fitted value; drop those
+             observations before weighting."
       ),
       error_class = "propensity_density_error",
       call = call

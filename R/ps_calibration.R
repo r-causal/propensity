@@ -647,8 +647,11 @@ ps_calib_meta <- function(x) {
 
 #' Check if propensity scores are calibrated
 #'
-#' `is_ps_calibrated()` tests whether `x` is a calibrated propensity score
-#' object (class `ps_calib`) or a `psw` object derived from calibrated scores.
+#' `is_ps_calibrated()` tests whether `x` was calibrated, rather than whether it
+#' is still a `ps_calib` object: it is `TRUE` for a calibrated propensity score,
+#' for weights derived from one, and for scores that were calibrated before
+#' [ps_trim()] or [ps_trunc()] bounded them, each of which records the
+#' calibration in its own metadata.
 #'
 #' @param x An object to test.
 #' @return A single `TRUE` or `FALSE`.
@@ -682,6 +685,21 @@ is_ps_calibrated.psw <- function(x) {
 #' @export
 is_ps_calibrated.ps_calib <- function(x) {
   TRUE
+}
+
+# Trimming and truncation read the scores a calibrated object holds and drop
+# the class, because what comes back is a trimmed or bounded score rather than
+# a calibrated one. The calibration is recorded in their own metadata, and this
+# predicate has always answered from a record rather than from a class, as it
+# does for the weights built from calibrated scores.
+#' @export
+is_ps_calibrated.ps_trim <- function(x) {
+  isTRUE(ps_trim_meta(x)$calibrated)
+}
+
+#' @export
+is_ps_calibrated.ps_trunc <- function(x) {
+  isTRUE(ps_trunc_meta(x)$calibrated)
 }
 
 # vctrs machinery for ps_calib

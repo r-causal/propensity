@@ -216,12 +216,22 @@ tidy.ipw <- function(
   # one reading of a result and refused in the other. Both readings are tabled
   # there in the columns a tidier uses, so both are read off this one call and
   # neither is assembled a second time here.
-  frame <- as.data.frame(
+  #
+  # The surface is handed this call to report its refusals against, since a
+  # `conf.level` the caller wrote into `tidy()` is refused as an argument of a
+  # function the caller never called otherwise. It is read off this frame
+  # rather than taken from `sys.call()`, which inside a method names `tidy.ipw`
+  # where the caller wrote `tidy()`; `error_call()` resolves the frame to the
+  # generic. The surface stores what it is given in the condition as it stands,
+  # so a call is what it is given rather than the frame itself.
+  frame <- rlang::exec(
+    as.data.frame,
     x,
     conf.int = conf.int,
     conf.level = conf.level,
     exponentiate = exponentiate,
-    effects = reading
+    effects = reading,
+    !!!ipw_frame_call_arg("ipw", rlang::error_call(rlang::current_env()))
   )
 
   # The covariance the frame attaches is the one thing that does not travel: it
@@ -230,6 +240,22 @@ tidy.ipw <- function(
   attr(out, "ipw_vcov") <- NULL
 
   out
+}
+
+# The `call` argument to hand the coercion surface, when it takes one. A
+# causalgenerics that predates the argument would collect it in its dots
+# instead, where it is either ignored or refused as an argument nothing reads,
+# so the tidiers ask the installed method what it takes and pass nothing when
+# the answer is nothing. `tidier_call` is the call the tidier was made with,
+# spliced into the delegation as `call = tidier_call` or left out entirely.
+ipw_frame_call_arg <- function(class, tidier_call) {
+  method <- getS3method("as.data.frame", class, optional = TRUE)
+
+  if (is.null(method) || !"call" %in% names(formals(method))) {
+    return(list())
+  }
+
+  list(call = tidier_call)
 }
 
 # The reading a result records. A result built before the field existed carries
@@ -515,13 +541,16 @@ tidy.ipw_pooled <- function(
   # exactly as the marginal reading of `tidy()` on a single result does. It also
   # owns `effects`, resolving a `NULL` against the reading the pooled result
   # records and refusing both a value naming neither reading and a reading the
-  # pooling had nothing to compute from.
-  frame <- as.data.frame(
+  # pooling had nothing to compute from. As on a single result, it is handed
+  # this frame so that its refusals name the tidier the caller wrote.
+  frame <- rlang::exec(
+    as.data.frame,
     x,
     conf.int = conf.int,
     conf.level = conf.level,
     exponentiate = exponentiate,
-    effects = effects
+    effects = effects,
+    !!!ipw_frame_call_arg("ipw_pooled", rlang::error_call(rlang::current_env()))
   )
 
   # The covariance of the effects the frame attaches is the one thing that does

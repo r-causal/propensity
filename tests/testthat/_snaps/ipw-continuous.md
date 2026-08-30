@@ -92,6 +92,16 @@
       i A <gam> is recognized and refused on its own terms; every other class reaches this refusal.
       i Refit `wt_mod` with `stats::lm()` or `stats::glm(family = gaussian())`.
 
+# ipw() refuses a propensity model fit without a formula
+
+    Code
+      expr
+    Condition <propensity_ipw_response_error>
+      Error in `ipw()`:
+      ! `ipw()` needs a propensity score model fit through the formula interface.
+      x `wt_mod` records no formula with a response, so the exposure cannot be read off it.
+      i Refit `wt_mod` from a formula whose left-hand side is the exposure, as in `exposure ~ x`, rather than from a design matrix and a response vector.
+
 # the continuous propensity-link error names the link and the remedy
 
     Code

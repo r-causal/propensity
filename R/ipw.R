@@ -1360,7 +1360,7 @@ ipw.glm <- function(
     n = length(outcome),
     linear_regression = is_linear_regression(outcome_mod),
     conf_level = conf_level,
-    exposure_levels = sort(unique(exposure))
+    exposure_levels = marginal_means$levels
   )
 
   # The same collapse the M-estimation path reports, from the seam this path
@@ -1762,6 +1762,27 @@ check_ipw_multinom_levels <- function(wt_mod, call = rlang::caller_env()) {
 # levels are ordered against the propensity model's, the counterfactual design
 # guards, and an exposure value the propensity model never saw.
 check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
+  # A fit made through a matrix interface records no formula and no terms, so
+  # there is no left-hand side to read the exposure off. Reading the formula
+  # defensively keeps that a refusal of this package's rather than a subscript
+  # error raised on a formula that was never written.
+  fmla <- tryCatch(stats::formula(ps_mod), error = function(e) NULL)
+  if (!rlang::is_formula(fmla) || length(fmla) < 3L) {
+    abort(
+      c(
+        "{.fun ipw} needs a propensity score model fit through the formula \\
+        interface.",
+        x = "{.arg wt_mod} records no formula with a response, so the exposure \\
+        cannot be read off it.",
+        i = "Refit {.arg wt_mod} from a formula whose left-hand side is the \\
+        exposure, as in {.code exposure ~ x}, rather than from a design \\
+        matrix and a response vector."
+      ),
+      error_class = "propensity_ipw_response_error",
+      call = call
+    )
+  }
+
   lhs <- formula(ps_mod)[[2]]
   lhs_not_single <- length(fmla_extract_left_chr(ps_mod)) != 1L
   frame_response_is_matrix <- tryCatch(
@@ -2887,7 +2908,12 @@ estimate_marginal_means <- function(
     mu1 = mu1,
     # exposure = 0
     n0 = n0,
-    mu0 = mu0
+    mu0 = mu0,
+    # The levels the means are keyed to: `mu0` is the mean at the first and
+    # `mu1` the mean at the second. Reporting them beside the means is what
+    # lets the estimates be keyed by the pair the means were computed at,
+    # rather than by a second sort of the exposure taken on trust to agree.
+    levels = exposure_values
   )
 }
 

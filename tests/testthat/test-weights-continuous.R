@@ -1151,6 +1151,19 @@ test_that("an infinite exposure or fitted value is refused where it arrives", {
   expect_match(message, "infinite", fixed = TRUE)
   expect_match(message, ".exposure", fixed = TRUE)
 
+  expect_propensity_error(wt_ate(
+    mu,
+    infinite_exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  ))
+  expect_propensity_error(wt_ate(
+    infinite_mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  ))
+
   # A missing value still weights the way it always has: the units that have a
   # residual are weighted and the ones that do not are missing.
   missing_exposure <- exposure

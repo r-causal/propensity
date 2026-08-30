@@ -2159,6 +2159,17 @@ ipw_compare_weights <- function(
     if (!is.null(score_hint)) {
       msg <- c(msg, i = score_hint)
     }
+    # On the joint route `wt_mod` is the container the two treatment models
+    # arrived in rather than one propensity score model, so the remedy names
+    # what it holds. A reader told to refit from "this propensity score model"
+    # is being sent to a model the call never had.
+    refit_hint <- if (identical(exposure_type, "joint_models")) {
+      "Refit {.arg outcome_mod} with weights from the two treatment models \\
+      {.arg wt_mod} holds, and this estimand, if the weights are the cause."
+    } else {
+      "Refit {.arg outcome_mod} with weights from this propensity score \\
+      model and estimand if the weights are the cause."
+    }
     msg <- c(
       msg,
       i = "Weights trimmed, truncated, or normalized after {.arg wt_mod} was \\
@@ -2167,8 +2178,7 @@ ipw_compare_weights <- function(
       i = "{.arg .data} values that differ from the data the models were fit \\
       to move the recomputed weights on their own and leave the supplied \\
       weights exactly right.",
-      i = "Refit {.arg outcome_mod} with weights from this propensity score \\
-      model and estimand if the weights are the cause."
+      i = refit_hint
     )
     abort(
       msg,

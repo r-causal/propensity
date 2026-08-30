@@ -13,8 +13,11 @@ is_ps_calibrated(x)
 A single \code{TRUE} or \code{FALSE}.
 }
 \description{
-\code{is_ps_calibrated()} tests whether \code{x} is a calibrated propensity score
-object (class \code{ps_calib}) or a \code{psw} object derived from calibrated scores.
+\code{is_ps_calibrated()} tests whether \code{x} was calibrated, rather than whether it
+is still a \code{ps_calib} object: it is \code{TRUE} for a calibrated propensity score,
+for weights derived from one, and for scores that were calibrated before
+\code{\link[=ps_trim]{ps_trim()}} or \code{\link[=ps_trunc]{ps_trunc()}} bounded them, each of which records the
+calibration in its own metadata.
 }
 \examples{
 ps <- runif(100)

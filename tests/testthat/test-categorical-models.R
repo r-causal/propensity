@@ -483,6 +483,10 @@ test_that("an exposure carrying an unused level is sent to droplevels()", {
 
   message <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(message, "droplevels", fixed = TRUE)
+
+  expect_propensity_error(
+    wt_ate(fit, with_empty_level, exposure_type = "categorical")
+  )
 })
 
 test_that("a multinomial fit of a response matrix is refused", {

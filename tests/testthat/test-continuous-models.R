@@ -614,6 +614,8 @@ test_that("a family named with an empty string is described as unnamed", {
   expect_no_match(message, "``", fixed = TRUE)
 
   expect_identical(model_family_label(list(family = "")), "an unnamed family")
+
+  expect_propensity_error(check_binary_model_family(empty))
 })
 
 test_that("a family element that is not a family object is refused", {
@@ -638,6 +640,9 @@ test_that("a family element that is not a family object is refused", {
     check_continuous_model_family(atomic_continuous),
     class = "propensity_model_family_error"
   )
+
+  expect_propensity_error(check_binary_model_family(atomic_binary))
+  expect_propensity_error(check_continuous_model_family(atomic_continuous))
 })
 
 test_that("model_family_label() writes a family the way it is called", {

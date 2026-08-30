@@ -1455,6 +1455,8 @@ test_that("ipw() refuses a propensity model fit without a formula", {
   # than reporting a subscript of a formula that was never written.
   expect_match(msg, "formula", fixed = TRUE)
   expect_match(msg, "wt_mod", fixed = TRUE)
+
+  expect_propensity_error(ipw(fit, outcome_mod))
 })
 
 test_that("ipw() refuses a propensity link it cannot write the score for", {

@@ -100,19 +100,34 @@ check_continuous_model_family <- function(model, call = rlang::caller_env()) {
   family <- model[["family"]]
 
   no_family <- is.null(family)
-  gaussian_variance <- identical(family$family, "gaussian") ||
-    (identical(family$family, "quasi") && identical(family$varfun, "constant"))
+
+  # A family object is a list, and every test below reads a component of it.
+  # An element that is not a list is not a family, and `$` on an atomic vector
+  # raises an error of base R's rather than one of this package's, so what such
+  # an element is gets read before anything is asked of it.
+  family_object <- is.list(family)
+  gaussian_variance <- family_object &&
+    (identical(family$family, "gaussian") ||
+      (identical(family$family, "quasi") &&
+        identical(family$varfun, "constant")))
 
   if (no_family || gaussian_variance) {
     return(invisible(NULL))
+  }
+
+  fit_with <- if (!family_object) {
+    "{.arg .propensity} holds {.obj_type_friendly {family}} where a family
+     object goes, so it names no spread at all."
+  } else {
+    "{.arg .propensity} was fit with {.code {model_family_label(family)}},
+     whose spread changes with its fitted values."
   }
 
   abort(
     c(
       "Weights for a continuous exposure need a model of its conditional mean
        with a single spread.",
-      x = "{.arg .propensity} was fit with {.code {model_family_label(family)}},
-           whose spread changes with its fitted values.",
+      x = fit_with,
       i = "Fit the propensity score model with {.fun gaussian}, {.fun lm},
            {.fun mgcv::gam}, or {.fun MASS::rlm}, or pass fitted conditional
            means to {.arg .propensity} directly."
@@ -143,11 +158,16 @@ check_binary_model_family.default <- function(
 ) {
   family <- model[["family"]]
 
+  # A family object is a list. An element that is not one is not a family, and
+  # `$` on an atomic vector raises an error of base R's rather than one of this
+  # package's, so what the element is gets read before anything is asked of it.
+  #
   # `isTRUE()` because a family object that carries no name answers the test
   # with nothing at all, which `&&` can read as neither true nor false. A
   # family like that is not one of the two, and is refused below by what it is
   # missing.
-  binomial_family <- !is.null(family) &&
+  family_object <- is.list(family)
+  binomial_family <- family_object &&
     isTRUE(family$family %in% c("binomial", "quasibinomial"))
 
   if (binomial_family) {
@@ -157,6 +177,9 @@ check_binary_model_family.default <- function(
   fitted_by <- if (is.null(family)) {
     "{.arg .propensity} is {.cls {class(model)[[1]]}}, whose fitted values are
      conditional means rather than probabilities."
+  } else if (!family_object) {
+    "{.arg .propensity} holds {.obj_type_friendly {family}} where a family
+     object goes, so it names nothing that fits a probability."
   } else if (!family_is_named(family)) {
     "{.arg .propensity} was fit with an unnamed family, whose fitted values are
      conditional means rather than probabilities."
@@ -182,8 +205,10 @@ check_binary_model_family.default <- function(
 # its neighbors holds its name in `$family`, and a message about one is written
 # from that string; an object that carries a link and no name has nothing to be
 # written from, and is described by what it is rather than by what it is called.
+# A name of no characters is no name either: written into a message it leaves a
+# pair of backticks with nothing between them.
 family_is_named <- function(family) {
-  rlang::is_string(family$family)
+  rlang::is_string(family$family) && nzchar(family$family)
 }
 
 # How a family reads in a message. A `quasi()` family is named by its variance

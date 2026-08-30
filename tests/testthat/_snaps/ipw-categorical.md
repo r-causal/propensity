@@ -50,6 +50,16 @@
       x `wt_mod` was fit to 2 levels ("control" and "treated"), so it fits the single probability of a binary exposure.
       i For a binary exposure, fit the propensity score model with `stats::glm()` and `family = binomial()`; for a categorical one, fit a `nnet::multinom()` to its three or more levels.
 
+# ipw() rejects a multinom fit to a matrix response
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ipw()`:
+      ! A propensity score model must be fit to the levels of the exposure.
+      x `wt_mod` was fit to a matrix response, which `nnet::multinom()` reads as counts rather than as levels.
+      i Refit the model with the exposure factor on the left-hand side, as in `nnet::multinom(exposure ~ x)`.
+
 # the categorical degenerate-design error names the pinned levels
 
     Code

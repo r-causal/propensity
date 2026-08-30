@@ -1,5 +1,76 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_trim()` and `ps_trunc()` now accept a calibrated propensity score from
+  `ps_calibrate()`, which they used to refuse with an assertion about the type
+  of a vector, raised by their constructor and written about neither argument.
+  A calibrated score is a propensity score, so they read the scores it holds
+  the way the weight functions do. What comes back is a trimmed or bounded
+  score rather than a calibrated one, so the class is dropped and the
+  calibration is recorded in the trim or truncation metadata instead;
+  `is_ps_calibrated()` reads it there and still answers `TRUE`, as it already
+  did for weights built from calibrated scores.
+
+* `ipw()` now refuses a propensity score model fit through a matrix interface,
+  such as `MASS::rlm(cbind(1, x), dose)`, with an error of class
+  `propensity_ipw_response_error` naming the formula interface. Such a fit
+  records no formula, and every route reads the exposure off the left-hand side
+  of one, so the request used to end in a subscript error about a formula that
+  was never written.
+
+* `ipw()` now refuses a `nnet::multinom()` propensity score model fit to a
+  matrix response, with an error of class `propensity_model_family_error`, as
+  the weight functions already did. Such a fit records no levels, so the
+  exposure was read as the deparsed response and the caller was asked to add a
+  column named after the matrix to the outcome model.
+
+* A propensity score model whose family element is not a family object at all,
+  such as a bare string, is now refused with an error of class
+  `propensity_model_family_error` on both the binary and the continuous route.
+  Reading a component of it raised an error of base R's about the `$` operator
+  instead.
+
+* Weights for a continuous exposure now refuse an infinite exposure or fitted
+  value, with an error of class `propensity_density_error` naming the argument
+  that carries it. A missing value leaves that one unit's weight missing, which
+  is a local answer to a local gap, but an infinite one makes the spread of the
+  conditional density infinite and left every weight missing however few units
+  carried it, or, under `dens_kernel()`, was reported as residuals that do not
+  vary. A kernel is also refused a range that is not two finite ends, rather
+  than being indexed for an end it does not have or reaching `stats::density()`
+  as an error about that function's own arguments.
+
+* Weights for a continuous exposure with `numerator = "integrated"` no longer
+  read fitted means measured from a distant origin as a single number. The
+  floor the spread of the fitted means was compared against included a fraction
+  of their mean, at the same coefficient as the term that reads their scale, so
+  fitted means differing by a unit or two around an offset of a billion counted
+  as one number and every weight came back as exactly one, silently, for a
+  model that conditions on covariates. That term now carries a much smaller
+  coefficient, which still reads the fitted values of an intercept-only model
+  at such an offset as the one number they are.
+
+* The refusal of a categorical exposure whose levels the propensity score model
+  was not fit to now offers `droplevels()` when the exposure declares a level
+  the fit does not report. `nnet::multinom()` drops a level no unit took, so
+  that mismatch is an empty factor level and is fixed without refitting
+  anything. The remedy is offered only in that direction: a fit reporting a
+  level the exposure does not declare is a fit of something else.
+
+* `joint_wt_models()` now names the family of a model it cannot read a
+  treatment density from, rather than the class alone. A `glm` and an
+  `mgcv::gam` are both read as dose models when they are gaussian and refused
+  when they are not, so naming the class left the reader looking at a class the
+  same message says is supported. On the joint route, the report of weights
+  that disagree with the models now describes `wt_mod` as the container of two
+  treatment models, which is what it holds there, rather than sending the
+  reader to refit from a single propensity score model the call never had.
+
+* `tidy()` on an `ipw` or pooled result now reports a refusal of `conf.level`,
+  `conf.int`, `exponentiate`, or `effects` against `tidy()` itself. The
+  arguments are validated by the result's own coercion surface, which the
+  tidier delegates to, so the refusal used to name a function the caller never
+  wrote.
+
 * Breaking change: `ps_trim()` and `ps_trunc()` now refuse an argument they do
   not read, with an error of class `rlib_error_dots_nonempty`. Both take `...`
   and neither reads it, so a misspelled bound such as `ps_trim(ps, lowr = 0.2)`
@@ -52,10 +123,10 @@
   exposure is measured in, but that floor was not: an exposure recorded in
   units far larger than the values it takes, such as a dose in kilograms when
   the doses are millionths of one, has fitted means that vary by less than the
-  floor, so every weight came back as
-  exactly one with nothing said, as though the propensity score model had no
-  covariates in it. An intercept-only model still gives weights of exactly one,
-  which is the case the shortcut is there for.
+  floor, so every weight came back as exactly one with nothing said, as though
+  the propensity score model had no covariates in it. An intercept-only model
+  still gives weights of exactly one, which is the case the shortcut is there
+  for.
 
 * A kernel density is now refused an infinite standardized residual, with an
   error of class `propensity_density_error` saying how many of the residuals
@@ -71,13 +142,14 @@
 
 * A propensity score model that carries a family object with no name is now
   refused, on the binary route, with an error of class
-  `propensity_model_family_error` naming the family it is missing, rather than
-  raising an error about a missing value where a true or false one is needed.
-  A family that names itself with the parameters it was fit at, such as the
-  `Scaled t(Inf,1.012)` of a scaled t model fit by mgcv, is also written in a
-  refusal as it names itself, rather
-  than with a pair of parentheses appended to a name that already reads as a
-  call.
+  `propensity_model_family_error` describing it as an unnamed family, rather
+  than raising an error about a missing value where a true or false one is
+  needed. A family named with an empty string is described the same way, since
+  a name of no characters written into a message leaves a pair of backticks
+  with nothing between them. A family that names itself with the parameters it
+  was fit at, such as the `Scaled t(Inf,1.012)` of a scaled t model fit by
+  mgcv, is written in a refusal as it names itself, rather than with a pair of
+  parentheses appended to a name that already reads as a call.
 
 * Weighting a categorical exposure now reads each unit's propensity score
   directly out of the score matrix and validates that matrix in a single pass,

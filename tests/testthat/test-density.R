@@ -597,6 +597,9 @@ test_that("density_eval() refuses a range that is not two finite ends", {
     density_eval(dens_kernel(), z, range = c(NA_real_, 2)),
     class = "propensity_density_error"
   )
+
+  expect_propensity_error(density_eval(dens_kernel(), z, range = c(-Inf, 2)))
+  expect_propensity_error(density_eval(dens_kernel(), z, range = 2))
 })
 
 test_that("density_eval() drops the shape of a matrix result", {

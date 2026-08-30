@@ -68,6 +68,26 @@
       x `.propensity` is <mlm>, a fit of 2 responses, whose fitted values are 60 by 2.
       i Fit the exposure on its own, or pass the conditional means of this exposure to `.propensity` as a numeric vector.
 
+# an infinite exposure or fitted value is refused where it arrives
+
+    Code
+      expr
+    Condition <propensity_density_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure cannot be computed from an infinite value.
+      x 1 value of `.exposure` is infinite.
+      i An infinite value leaves the spread of the conditional density infinite, so every weight is missing rather than that unit's alone. Drop those observations before weighting.
+
+---
+
+    Code
+      expr
+    Condition <propensity_density_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure cannot be computed from an infinite value.
+      x 1 value of `.propensity` is infinite.
+      i An infinite value leaves the spread of the conditional density infinite, so every weight is missing rather than that unit's alone. Drop those observations before weighting.
+
 # the refusals of an integrated numerator read the way they should
 
     Code

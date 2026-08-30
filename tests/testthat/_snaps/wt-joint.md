@@ -74,6 +74,16 @@
       Caused by error in `wt_joint()`:
       ! `exposure_type` must be one of "binary", "categorical", or "continuous", not "ordinal".
 
+# the unsupported-model refusal names the family of an additive fit
+
+    Code
+      expr
+    Condition <propensity_wt_joint_models_error>
+      Error in `joint_wt_models()`:
+      ! `joint_wt_models()` must be given models it can read a treatment density from.
+      x The model named `k` is <gam> fit with `poisson()`.
+      i Supported models: a binomial `glm()` for a binary treatment, a `nnet::multinom()` for a categorical one, and an `lm()`, a gaussian `glm()`, a gaussian `mgcv::gam()`, or a `MASS::rlm()` for a continuous one.
+
 # joint_wt_models() requires a discrete second model to condition on the first treatment
 
     Code
