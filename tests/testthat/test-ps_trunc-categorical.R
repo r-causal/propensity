@@ -1069,3 +1069,167 @@ test_that("ps_trunc() refuses focal levels on the categorical path", {
   expect_focal_refusal(fixture$ps_matrix)
   expect_focal_refusal(as.data.frame(fixture$ps_matrix))
 })
+
+# ---- boundary-valued matrices -----------------------------------------------
+
+# The propensity scores a separated multinomial fit leaves behind: rows that
+# name one level with certainty, and rows that give one of the levels no
+# probability at all. Truncation is the repair for them, so the categorical
+# matrix route reads the closed interval rather than the open one every other
+# entry point holds propensity scores to.
+separated_trunc_fixture <- function() {
+  exposure <- factor(c("a", "b", "c", "a", "b", "c"))
+  ps_matrix <- rbind(
+    c(0.20, 0.80, 0.00),
+    c(0.00, 0.00, 1.00),
+    c(0.30, 0.70, 0.00),
+    c(0.50, 0.30, 0.20),
+    c(0.25, 0.35, 0.40),
+    c(0.34, 0.33, 0.33)
+  )
+  colnames(ps_matrix) <- levels(exposure)
+
+  list(exposure = exposure, ps_matrix = ps_matrix)
+}
+
+# Clamping every score below the threshold up to it and dividing each row by its
+# new sum: the truncation rule written out by hand.
+bound_and_renormalize <- function(ps_matrix, delta) {
+  bounded <- ps_matrix
+  bounded[bounded < delta] <- delta
+  bounded / rowSums(bounded)
+}
+
+test_that("ps_trunc() bounds a categorical matrix that a separated fit left at 0 and 1", {
+  fixture <- separated_trunc_fixture()
+  delta <- 0.01
+
+  truncated <- ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps",
+    lower = delta
+  )
+
+  expect_s3_class(
+    truncated,
+    c("ps_trunc_matrix", "ps_trunc", "matrix"),
+    exact = TRUE
+  )
+
+  expected <- bound_and_renormalize(fixture$ps_matrix, delta)
+  expect_equal(
+    matrix(
+      as.numeric(truncated),
+      nrow = nrow(expected),
+      dimnames = dimnames(expected)
+    ),
+    expected
+  )
+
+  # The repair is only a repair if what comes back is a propensity score matrix
+  # every other part of the package will read: no cell at either endpoint, and
+  # rows that still sum to one.
+  values <- as.numeric(truncated)
+  expect_true(all(values > 0 & values < 1))
+  expect_equal(unname(rowSums(truncated)), rep(1, nrow(fixture$ps_matrix)))
+
+  meta <- ps_trunc_meta(truncated)
+  expect_equal(meta$method, "ps")
+  expect_equal(meta$lower_bound, delta)
+  expect_true(meta$is_matrix)
+  # The three rows holding a zero are the rows the bound was applied to; the
+  # other three are left as they arrived.
+  expect_equal(meta$truncated_idx, c(1L, 2L, 3L))
+  expect_identical(
+    is_unit_truncated(truncated),
+    c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE)
+  )
+})
+
+test_that("the bounded matrix weights the way any other truncated matrix does", {
+  fixture <- separated_trunc_fixture()
+
+  truncated <- ps_trunc(
+    fixture$ps_matrix,
+    .exposure = fixture$exposure,
+    method = "ps",
+    lower = 0.01
+  )
+
+  weights <- wt_ate(truncated, fixture$exposure)
+
+  expect_s3_class(weights, "psw")
+  expect_true(all(is.finite(as.numeric(weights))))
+})
+
+test_that("a categorical data frame at the boundary is bounded the same way", {
+  fixture <- separated_trunc_fixture()
+
+  truncated <- ps_trunc(
+    as.data.frame(fixture$ps_matrix),
+    .exposure = fixture$exposure,
+    method = "ps",
+    lower = 0.01
+  )
+
+  expect_s3_class(
+    truncated,
+    c("ps_trunc_matrix", "ps_trunc", "matrix"),
+    exact = TRUE
+  )
+  values <- as.numeric(truncated)
+  expect_true(all(values > 0 & values < 1))
+})
+
+test_that("ps_trunc() reads the closed interval and nothing wider", {
+  fixture <- separated_trunc_fixture()
+
+  # A row that sums to one can still hold a score outside the interval, and a
+  # score outside it is not a probability the threshold can pull back.
+  outside <- fixture$ps_matrix
+  outside[4, ] <- c(-0.10, 0.60, 0.50)
+
+  expect_error(
+    ps_trunc(
+      outside,
+      .exposure = fixture$exposure,
+      method = "ps",
+      lower = 0.01
+    ),
+    class = "propensity_range_error"
+  )
+})
+
+test_that("the boundary matrix ps_trunc() repairs is refused everywhere else", {
+  fixture <- separated_trunc_fixture()
+
+  # Trimming sets extreme scores to missing, which gains nothing from a score
+  # that is already at an endpoint, so it holds the open interval.
+  expect_error(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "ps"
+    ),
+    class = "propensity_range_error"
+  )
+
+  # The binary vector route is unchanged: a score of exactly 0 or 1 leaves the
+  # weight undefined and is refused before anything is bounded.
+  expect_error(
+    ps_trunc(c(0.2, 0.5, 0, 0.9), method = "ps"),
+    class = "propensity_range_error"
+  )
+
+  # The weight functions read the interval they always have, so the matrix has
+  # to be truncated before it can be weighted.
+  expect_error(
+    wt_ate(
+      fixture$ps_matrix,
+      fixture$exposure,
+      exposure_type = "categorical"
+    ),
+    class = "propensity_range_error"
+  )
+})

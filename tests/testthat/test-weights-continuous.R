@@ -1177,6 +1177,231 @@ test_that("an infinite exposure or fitted value is refused where it arrives", {
   expect_identical(which(is.na(as.numeric(weights))), 3L)
 })
 
+# ---- a density that reaches zero --------------------------------------------
+
+# A density with no support beyond two standardized residuals: what a
+# light-tailed family comes to at an outlier, and what a kernel estimate returns
+# past the range it was fit on. The conditional density is what a continuous
+# exposure's weights divide by, so a unit whose own exposure sits outside the
+# support has a weight of infinity.
+truncated_support_density <- function(limit = 2) {
+  dens_fn(function(z) ifelse(abs(z) > limit, 0, dnorm(z)))
+}
+
+test_that("a conditional density of zero is refused rather than weighted as infinite", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+
+  zero_density_weights <- function(...) {
+    wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      .density = truncated_support_density(),
+      ...
+    )
+  }
+
+  # A propensity score of exactly 0 or 1 is refused on the binary path because
+  # the weight it leaves is undefined. A conditional density of zero is the same
+  # case for a continuous exposure, and is answered the same way whatever stands
+  # over it: the marginal density, nothing at all, or the marginalized one.
+  expect_error(
+    zero_density_weights(stabilize = TRUE),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    zero_density_weights(stabilize = FALSE),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    zero_density_weights(stabilize = TRUE, numerator = "integrated"),
+    class = "propensity_density_error"
+  )
+
+  # One unit of this fixture sits outside the support, and the refusal says
+  # which one and what to do about it.
+  err <- expect_error(
+    zero_density_weights(stabilize = TRUE),
+    class = "propensity_density_error"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "33", fixed = TRUE)
+  expect_match(message, "heavier|dens_t|dens_kernel")
+})
+
+test_that("censoring weights refuse a conditional density of zero as well", {
+  expect_error(
+    wt_cens(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = truncated_support_density()
+    ),
+    class = "propensity_density_error"
+  )
+})
+
+test_that("a weight that is merely large is still a weight", {
+  # A conditional density that is small everywhere rather than zero anywhere.
+  # The weights it leaves are enormous, which is a fact about the fit and not an
+  # arithmetic failure, so they are returned.
+  weights <- expect_silent(wt_ate(
+    continuous_density_data$mu,
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_fn(function(z) dnorm(z, sd = 0.2))
+  ))
+
+  values <- as.numeric(weights)
+  expect_true(all(is.finite(values)))
+  expect_gt(max(values), 1e6)
+})
+
+test_that("a zero in the numerator is a weight of zero, not a refusal", {
+  # An exposure the model follows closely, with one unit far out in the
+  # marginal distribution and no unit far out in the conditional one. The
+  # marginal density is zero at that unit and the conditional density is
+  # positive at every unit, so the ratio is a weight of zero rather than an
+  # infinite one.
+  x <- c(seq(-1, 1, length.out = 20), 8)
+  mu <- 2 * x
+  exposure <- mu + rep(c(-0.4, 0.4), length.out = length(x))
+
+  weights <- expect_silent(wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = truncated_support_density()
+  ))
+
+  values <- as.numeric(weights)
+  expect_true(all(is.finite(values)))
+  expect_identical(which(values == 0), length(x))
+  expect_true(all(values[-length(x)] > 0))
+})
+
+# ---- the finite-variance boundary -------------------------------------------
+
+# Stabilized normal density-ratio weights have a finite second moment only while
+# the marginal variance of the exposure stays below twice the variance of the
+# conditional density. This builds an exposure sitting at a chosen point
+# relative to that boundary: `share` is Var(mu) as a multiple of the conditional
+# variance, so the marginal variance is `share + 1` times it and the boundary is
+# at `share = 1`. The residuals are made orthogonal to the covariate so that the
+# fitted model reproduces the decomposition exactly rather than to within
+# sampling.
+boundary_exposure <- function(share) {
+  withr::local_seed(913)
+
+  n <- 200
+  x <- rnorm(n)
+  x <- x - mean(x)
+  e <- as.numeric(residuals(lm(rnorm(n) ~ x)))
+  b <- sqrt(share * mean(e^2) / mean(x^2))
+  exposure <- b * x + e
+
+  list(n = n, x = x, exposure = exposure, mu = b * x)
+}
+
+# How many warnings of one class a single call raises.
+count_class_warnings <- function(expr, class) {
+  n <- 0L
+  withCallingHandlers(
+    expr,
+    warning = function(cnd) {
+      if (inherits(cnd, class)) {
+        n <<- n + 1L
+        rlang::cnd_muffle(cnd)
+      }
+    }
+  )
+
+  n
+}
+
+test_that("stabilized normal weights report an exposure past the finite-variance boundary", {
+  past <- boundary_exposure(1.4)
+
+  wt_past <- function() {
+    wt_ate(
+      past$mu,
+      past$exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  }
+
+  cnd <- expect_warning(
+    wt_past(),
+    class = "propensity_density_variance_warning"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "variance", fixed = TRUE)
+
+  # One report for one call, whatever the weights are computed over.
+  expect_identical(
+    count_class_warnings(wt_past(), "propensity_density_variance_warning"),
+    1L
+  )
+
+  # The weights are a diagnostic short of nothing: they are still returned, and
+  # they are still finite.
+  weights <- suppressWarnings(wt_past())
+  expect_length(weights, past$n)
+  expect_true(all(is.finite(as.numeric(weights))))
+})
+
+test_that("the finite-variance boundary is read only where it holds", {
+  below <- boundary_exposure(0.4)
+  near <- boundary_exposure(0.9)
+  past <- boundary_exposure(1.4)
+
+  wt_continuous <- function(fixture, ...) {
+    wt_ate(
+      fixture$mu,
+      fixture$exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      ...
+    )
+  }
+
+  # Well inside the boundary, and just inside it. The second moment exists on
+  # both sides of that distinction, and the report is a statement that it does
+  # not, so it is made at the boundary rather than in front of it.
+  expect_no_warning(wt_continuous(below))
+  expect_no_warning(wt_continuous(near))
+
+  # The boundary is a property of the normal family read against the exposure's
+  # own marginal density. Unstabilized weights have no marginal density over
+  # them, a heavier-tailed family has a different boundary, a marginalized
+  # numerator is not the marginal density, and a score the caller supplied is
+  # not a density at all.
+  expect_no_warning(wt_ate(
+    past$mu,
+    past$exposure,
+    exposure_type = "continuous",
+    stabilize = FALSE
+  ))
+  expect_no_warning(wt_continuous(past, .density = dens_t(df = 4)))
+  expect_no_warning(wt_continuous(past, numerator = "integrated"))
+  expect_no_warning(wt_continuous(
+    past,
+    stabilization_score = rep(0.5, past$n)
+  ))
+
+  # One spread for each unit is not one conditional variance, so there is no
+  # boundary to read the marginal variance against.
+  expect_no_warning(wt_continuous(
+    past,
+    .sigma = seq(0.3, 0.7, length.out = past$n)
+  ))
+})
+
 # ---- against WeightIt -------------------------------------------------------
 
 test_that("the denominator is the one WeightIt divides by", {
