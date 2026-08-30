@@ -1,3 +1,13 @@
+# the conflict warning names the record it dropped
+
+    Code
+      out <- c(normal, heavier)
+    Condition <propensity_metadata_conflict_warning>
+      Warning in `vec_ptype2.psw.psw()`:
+      Dropping the joint_wt_meta attribute from the result.
+      i The two sets of weights record it differently, so neither value describes the result.
+      i Every attribute the two agree on is carried through.
+
 # wt_joint() refuses a component that records no exposure type
 
     Code

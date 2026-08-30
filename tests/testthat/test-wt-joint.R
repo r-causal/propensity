@@ -412,6 +412,18 @@ test_that("combining products over different exposures drops the record", {
   expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
 })
 
+test_that("the conflict warning names the record it dropped", {
+  fx <- joint_wt_fixture()
+  normal <- wt_joint(fx$w$a, fx$w$d)
+  heavier <- wt_joint(fx$w$a, fx$w$d_t)
+
+  # The warning is the whole account a caller gets of a record the result no
+  # longer carries, so it names that record by the name the accessor reads it
+  # under.
+  out <- expect_propensity_warning(c(normal, heavier))
+  expect_false(is_joint_wt(out))
+})
+
 test_that("combining a product with a plain psw carries the record", {
   fx <- joint_wt_fixture()
   joint <- wt_joint(fx$w$a, fx$w$e)

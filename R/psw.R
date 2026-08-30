@@ -1063,14 +1063,40 @@ merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
 }
 
 # How two values of one carried attribute are compared. Identity is the question
-# for all but the density record, which holds a function that is written afresh
-# on every call and so is compared by what it says.
+# for all but the two records holding a density, which holds a function that is
+# written afresh on every call and so is compared by what it says.
 psw_attrs_agree <- function(field, x, y) {
   if (identical(field, "density_meta")) {
     return(density_meta_agrees(x, y))
   }
 
+  if (identical(field, psw_joint_attr)) {
+    return(joint_wt_meta_agrees(x, y))
+  }
+
   identical(x, y)
+}
+
+# Two joint records describe the same product when they name the same pair of
+# components. The exposure types and the stabilization flags are the values the
+# record was written with, so identity answers for them, while each density slot
+# holds a density record and is compared the way those are. A component
+# weighting no density records nothing there, and two of those say the same
+# thing.
+joint_wt_meta_agrees <- function(x, y) {
+  agrees <- identical(x$exposure_type, y$exposure_type) &&
+    identical(x$stabilized, y$stabilized) &&
+    length(x$density) == length(y$density)
+
+  if (!agrees) {
+    return(FALSE)
+  }
+
+  all(vapply(
+    seq_along(x$density),
+    function(i) density_meta_agrees(x$density[[i]], y$density[[i]]),
+    logical(1)
+  ))
 }
 
 # Unlike a drop for length, which happens to records that also travel by routes
@@ -1190,13 +1216,14 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
   # from the other input. Nothing rebuilding the combined vector is handed the
   # offsets, so the records are left off the prototype whether or not the inputs
   # agree on them. The categorical attributes name exposure levels rather than
-  # positions, and the exposure records describe the exposure rather than any
-  # unit, so both mean the same thing at the combined length.
+  # positions, the exposure records describe the exposure rather than any unit,
+  # and the joint record names the two components a product was built from, so
+  # all of them mean the same thing at the combined length.
   merged <- merge_psw_attrs(
     x,
     y,
     0,
-    fields = c(psw_categorical_attrs, psw_exposure_attrs)
+    fields = c(psw_categorical_attrs, psw_exposure_attrs, psw_joint_attr)
   )
   if (length(merged$conflicts) > 0) {
     warn_conflicting_psw_attrs(merged$conflicts)

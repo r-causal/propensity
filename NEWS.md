@@ -1,5 +1,18 @@
 # propensity 0.1.0.9000 (development version)
 
+* Combining two sets of product weights with `c()` or `vctrs::vec_c()` now
+  carries the `joint_wt_meta` record that `wt_joint()` left on them, so
+  `is_joint_wt()` and `joint_wt_meta()` read the same thing off the result that
+  they read off either input. The record names the two components rather than
+  the observations, so it describes a set of weights appended to another built
+  the same way, but only the categorical and exposure attributes were merged
+  when the type of the combination was settled and the record was dropped
+  without a word. Two products whose components differ, in the exposures they
+  weight or in the density a dose's ratio was read in, are described by neither
+  record, so the combination warns with the class
+  `propensity_metadata_conflict_warning` naming `joint_wt_meta` and drops it,
+  as a disagreement on any other carried attribute already did.
+
 * `ps_trim()`, `ps_trunc()`, `ps_tilt()`, and `ps_calibrate()` now accept a
   fitted propensity score model in `.propensity`, the way the weight functions
   and `ipw()` already did. A binomial `glm()` and a two-level
