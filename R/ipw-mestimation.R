@@ -404,9 +404,10 @@ ipw_spec_binary <- function(
 # Extract the propensity score design and the exposure and outcome vectors,
 # rebuilding from .data when it is supplied. A propensity model can lose the data
 # behind its fitting call (nnet::multinom stores no model frame; an lm or glm can
-# be fit in an environment that is later gone), so model.matrix(ps_mod) is wrapped
-# and the user is directed to supply .data on failure. When .data is supplied the
-# design is rebuilt from the model terms so no re-evaluation is needed.
+# be fit in an environment that is later gone), so `ipw_recover_ps_data()` is
+# wrapped and the user is directed to supply .data on failure. When .data is
+# supplied the design is rebuilt from the model terms so no re-evaluation is
+# needed.
 #
 # `counterfactual` says whether the caller goes on to rebuild the outcome design
 # at each exposure value. The continuous path does not: it reports a coefficient
@@ -444,10 +445,7 @@ ipw_extract_ps_design <- function(
 
   if (is.null(.data)) {
     ps_extract <- tryCatch(
-      list(
-        exposure = fmla_extract_left_vctr(ps_mod),
-        ps_X = if (ps_design) model.matrix(ps_mod)
-      ),
+      ipw_recover_ps_data(ps_mod, ps_design = ps_design),
       error = function(e) e
     )
     if (inherits(ps_extract, "error")) {
@@ -518,6 +516,17 @@ ipw_extract_ps_design <- function(
     # for it here cannot fail on its own.
     outcome_frame <- stats::model.frame(outcome_mod)
     n_fitted <- nrow(outcome_frame)
+
+    # A model fit to data holding a missing value in a column it reads analyzed
+    # fewer rows than it was given, and the frame the caller has is the one the
+    # models were given: under `na.action = na.exclude` that is the whole point
+    # of the fit, since everything it predicts comes back at the length of that
+    # frame. Restricting `.data` to the rows every model read reconciles the
+    # two, and it happens before any design is built so that the designs, the
+    # exposure, the outcome, and the weights are all sized to the rows the fits
+    # used. A `.data` that is longer for any other reason has no such
+    # restriction to make and keeps the report below.
+    .data <- restrict_ipw_data(.data, required, n_fitted)
 
     if (!identical(nrow(.data), n_fitted)) {
       abort(
@@ -594,6 +603,47 @@ ipw_extract_ps_design <- function(
   list(exposure = exposure, outcome = outcome, ps_X = ps_X, mm_data = mm_data)
 }
 
+# The exposure and the propensity score design, read off the fit rather than
+# from a `.data` the caller supplied. Most classes keep their model frame, so
+# the default reads each through the accessor that knows how to find it.
+#
+# `nnet::multinom()` keeps none: both `model.frame()` and `model.matrix()`
+# rebuild one by re-evaluating the fitting call, so reading the two separately
+# evaluates the fitting data twice. The method below builds the frame once and
+# reads both from it, which matters whenever evaluating that call is expensive
+# or has an effect of its own.
+ipw_recover_ps_data <- function(ps_mod, ps_design = TRUE) {
+  UseMethod("ipw_recover_ps_data")
+}
+
+#' @export
+ipw_recover_ps_data.default <- function(ps_mod, ps_design = TRUE) {
+  list(
+    exposure = fmla_extract_left_vctr(ps_mod),
+    ps_X = if (ps_design) model.matrix(ps_mod)
+  )
+}
+
+#' @export
+ipw_recover_ps_data.multinom <- function(ps_mod, ps_design = TRUE) {
+  ps_frame <- stats::model.frame(ps_mod)
+
+  list(
+    exposure = ps_frame[[1]],
+    # The frame carries the terms it was built from, so the design comes out
+    # of it without going back to the fitting call. The contrasts are the
+    # fit's own, the way `model.matrix()` on a model that keeps its frame
+    # takes them.
+    ps_X = if (ps_design) {
+      stats::model.matrix(
+        stats::terms(ps_frame),
+        ps_frame,
+        contrasts.arg = ps_mod$contrasts
+      )
+    }
+  )
+}
+
 # Terms per estimating equation in a fitted propensity model. A glm or lm has one
 # equation and a coefficient vector as long as its design. nnet::multinom has one
 # per non-reference level and returns a level-by-term matrix, except at two
@@ -626,6 +676,32 @@ ipw_required_columns <- function(ps_mod, outcome_mod, exposure_name) {
     ipw_model_covariates(ps_mod),
     ipw_model_covariates(outcome_mod)
   ))
+}
+
+# The rows of `.data` the models were fit to, when `.data` is the longer frame
+# they were given. The columns the rebuilds read are the columns the model
+# frames were built from, so the rows complete across all of them are the rows
+# every fit kept. The restriction is made only when that count is exactly the
+# number of observations the outcome model was fit to: a frame that is longer
+# for any other reason is left as it arrived, for the row-count report to name.
+#
+# Matching counts also settle which rows those are. A model frame drops the rows
+# incomplete over the columns that model reads, and those columns are among the
+# ones swept here, so the rows dropped by the fit are among the rows dropped
+# here; equal counts make the two sets the same.
+restrict_ipw_data <- function(.data, columns, n_fitted) {
+  if (identical(nrow(.data), n_fitted)) {
+    return(.data)
+  }
+
+  present <- intersect(columns, names(.data))
+  complete <- stats::complete.cases(.data[present])
+
+  if (!identical(sum(complete), n_fitted)) {
+    return(.data)
+  }
+
+  .data[complete, , drop = FALSE]
 }
 
 # Reject a `.data` that is missing values in a column the rebuilds read. Every

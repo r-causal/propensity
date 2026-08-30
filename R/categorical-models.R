@@ -214,7 +214,7 @@ extract_model_exposure.multinom <- function(model) {
     max.col(indicators)
   }
 
-  factor(model$lev[indicated], levels = model$lev)
+  pad_dropped_rows(model, factor(model$lev[indicated], levels = model$lev))
 }
 
 # What a `multinom` was fit to. A matrix response is read as counts rather than

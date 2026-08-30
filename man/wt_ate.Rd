@@ -216,9 +216,16 @@ wt_cens(
 \item A \strong{numeric vector} of predicted probabilities (binary/continuous).
 \item A \strong{data frame} or \strong{matrix} with one column per exposure level. Both
 shapes are read the same way, for categorical exposures and for binary
-ones alike, including the default choice of column described under
+ones alike, including the choice of column described under
 \code{.propensity_col}. That argument is itself a formal of the data frame
 methods only, so selecting a column by name means passing a data frame.
+A frame of probabilities predicted from a fitted tidymodels
+classification model has its columns named \verb{.pred_<level>}, and the
+level a column holds is read from the part of the name after that
+prefix. A frame holding a \code{.pred_class} column, which the same models
+return when no prediction type is named, carries predicted levels rather
+than probabilities and is refused with an error of class
+\code{propensity_df_class_column_error}.
 \item A fitted \strong{propensity score model} -- fitted values are extracted
 automatically. For a binary exposure that is a \code{\link[=glm]{glm()}} fit with
 \code{\link[=binomial]{binomial()}} or \code{quasibinomial()}. For a continuous exposure it is a
@@ -244,10 +251,17 @@ derive it from the fitted values, which give the probability of the
 response's second level, and subtract them from one when the resolved
 focal level is the first level instead. A data frame or matrix reduces to
 a single column, read on the same scale; see \code{.propensity_col} for how
-that column is chosen. A matrix reduces by those same defaults, but
+that column is chosen. A matrix reduces by those same rules, but
 \code{.propensity_col} belongs to the data frame methods alone, so a matrix
 whose column you want to name has to be converted with \code{as.data.frame()}
-first.}
+first.
+
+For a continuous exposure, \code{.propensity} is the conditional mean of the
+exposure. A data frame of a single column is read as that mean; a data
+frame of several columns is refused with an error of class
+\code{propensity_df_ambiguous_column_error} unless \code{.propensity_col} names the
+column to read, since a continuous exposure has no levels the columns
+could be matched against.}
 
 \item{.exposure}{The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
@@ -371,18 +385,28 @@ back with \code{\link[=density_meta]{density_meta()}}.}
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 
 \item{.propensity_col}{Column to use when \code{.propensity} is a data frame
-with a binary exposure. Accepts a column name (quoted or unquoted) or
-numeric index. Whichever column is selected is read as the probability of
-the resolved focal level.
+with a binary or continuous exposure. Accepts a column name (quoted or
+unquoted) or numeric index. For a binary exposure the selected column is
+read as the probability of the resolved focal level; for a continuous one
+it is read as the conditional mean of the exposure.
 
-With no column named, the exposure's levels drive the choice. When the
-data frame has a column named for every level of \code{.exposure}, the column
-named for the resolved focal level is used, wherever it sits in the frame.
-Otherwise the second column is used, or the only column when the frame has
-just one. Falling back to position after \code{.focal_level} or
-\code{.reference_level} was supplied warns and reports the column used, since
-the named level could not be matched to a column; the fallback is silent
-when no level was named and when the frame has a single column.
+With no column named and a binary exposure, the exposure's levels drive
+the choice. When the data frame has a column named for every level of
+\code{.exposure}, the column named for the resolved focal level is used,
+wherever it sits in the frame. Columns named \verb{.pred_<level>}, the shape a
+fitted tidymodels classification model predicts probabilities in, are
+matched by the level after the prefix. Otherwise the second column is
+used, or the only column when the frame has just one. Falling back to
+position after \code{.focal_level} or \code{.reference_level} was supplied warns and
+reports the column used, since the named level could not be matched to a
+column; the fallback is silent when no level was named and when the frame
+has a single column.
+
+With no column named and a continuous exposure, a frame of a single column
+is read as the conditional mean, and a frame of several columns is refused
+with an error of class \code{propensity_df_ambiguous_column_error}. There are no
+levels to read the names against, so nothing distinguishes one column of
+conditional means from another and there is no position worth trusting.
 
 Ignored for categorical exposures, where all columns are used.}
 }

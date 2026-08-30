@@ -19,7 +19,11 @@
 #'   fit cannot be repaired by trimming it: setting an extreme score to missing
 #'   gains nothing from a score already at an endpoint. [ps_trunc()] reads the
 #'   closed interval for a categorical matrix and is the repair; see
-#'   **Propensity scores at 0 and 1** in [wt_ate()].
+#'   **Propensity scores at 0 and 1** in [wt_ate()]. A data frame holding a
+#'   `.pred_class` column, which a fitted tidymodels classification model
+#'   returns when no prediction type is named, carries predicted levels rather
+#'   than probabilities and is refused with an error of class
+#'   `propensity_df_class_column_error`.
 #' @param method Trimming method. One of:
 #'
 #'   * **`"ps"`** (default): Fixed threshold. Observations with propensity
@@ -490,14 +494,14 @@ ps_trim.default <- function(
         call = call
       )
     }
-    check_exposure_complete(.exposure, method, call = call)
+    check_exposure_complete(.exposure, method, observed = observed, call = call)
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
       .reference_level = .reference_level,
       call = call
     )
-    prop_exposure <- mean(.exposure)
+    prop_exposure <- mean(.exposure, na.rm = TRUE)
     pref_score <- plogis(qlogis(.propensity) - qlogis(prop_exposure))
     meta_list$P <- prop_exposure
     keep_idx <- which(pref_score >= lower & pref_score <= upper)
@@ -509,7 +513,7 @@ ps_trim.default <- function(
         call = call
       )
     }
-    check_exposure_complete(.exposure, method, call = call)
+    check_exposure_complete(.exposure, method, observed = observed, call = call)
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
@@ -765,6 +769,7 @@ ps_trim.data.frame <- function(
 ) {
   check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_predicted_class_column(.propensity, call = call)
 
   # For categorical exposures, convert to matrix and call matrix method
   if (!is.null(.exposure)) {

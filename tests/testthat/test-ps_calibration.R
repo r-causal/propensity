@@ -1389,16 +1389,18 @@ test_that("ps_calibrate reports a matrix of propensity scores informatively", {
   )
 })
 
-# Regression guard: a data frame of scores is already refused under the class
-# a matrix is pinned to above.
-test_that("ps_calibrate refuses a data frame of propensity scores", {
-  expect_error(
-    ps_calibrate(
-      data.frame(a = c(0.2, 0.4, 0.6, 0.8), b = c(0.8, 0.6, 0.4, 0.2)),
-      c(0, 1, 0, 1),
-      smooth = FALSE
-    ),
-    class = "propensity_type_error"
+# The contrast to the matrix above: a data frame of predicted probabilities is
+# the shape a fitted model's predictions arrive in, and calibration reduces it
+# to one column the way trimming and truncation do rather than refusing it. A
+# matrix carries no such route, since `.propensity_col` and the announcement
+# both belong to the frame methods.
+test_that("ps_calibrate reads a data frame of propensity scores", {
+  scores <- data.frame(a = c(0.2, 0.4, 0.6, 0.8), b = c(0.8, 0.6, 0.4, 0.2))
+  exposure <- c(0, 1, 0, 1)
+
+  expect_equal(
+    as.numeric(ps_calibrate(scores, exposure, smooth = FALSE)),
+    as.numeric(ps_calibrate(scores$b, exposure, smooth = FALSE))
   )
 })
 

@@ -31,7 +31,11 @@ score of exactly 0 or 1 in any cell is refused and a separated multinomial
 fit cannot be repaired by trimming it: setting an extreme score to missing
 gains nothing from a score already at an endpoint. \code{\link[=ps_trunc]{ps_trunc()}} reads the
 closed interval for a categorical matrix and is the repair; see
-\strong{Propensity scores at 0 and 1} in \code{\link[=wt_ate]{wt_ate()}}.}
+\strong{Propensity scores at 0 and 1} in \code{\link[=wt_ate]{wt_ate()}}. A data frame holding a
+\code{.pred_class} column, which a fitted tidymodels classification model
+returns when no prediction type is named, carries predicted levels rather
+than probabilities and is refused with an error of class
+\code{propensity_df_class_column_error}.}
 
 \item{method}{Trimming method. One of:
 \itemize{

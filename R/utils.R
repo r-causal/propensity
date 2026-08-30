@@ -117,6 +117,50 @@ binary_ps_column <- function(ps, fn) {
   ps[[column]]
 }
 
+# The names a frame of predictions offers for matching against exposure levels.
+# Predicting probabilities from a fitted parsnip model returns one column per
+# level, named `.pred_<level>`, so the level a column holds is the part of the
+# name after that prefix. A frame whose columns are not all named that way is
+# read under the names it has: stripping a prefix from some of them would match
+# levels against a mixture of two conventions.
+level_column_names <- function(nms) {
+  if (length(nms) == 0 || anyNA(nms) || !all(grepl("^\\.pred_", nms))) {
+    return(nms)
+  }
+
+  sub("^\\.pred_", "", nms)
+}
+
+# Predicting from a fitted classification model without naming a type returns a
+# single `.pred_class` column, which holds the level predicted for each unit
+# rather than a probability. It arrives in the same shape as a frame of scores
+# and is no propensity score at all, so every route that reads a frame refuses
+# it here. Left to run on, it is reported downstream as levels that are not
+# numeric or not between zero and one, neither of which tells the caller that
+# the prediction they need is a different one.
+check_predicted_class_column <- function(
+  .propensity,
+  call = rlang::caller_env()
+) {
+  if (!is.data.frame(.propensity) || !".pred_class" %in% names(.propensity)) {
+    return(invisible(FALSE))
+  }
+
+  abort(
+    c(
+      "{.arg .propensity} holds predicted classes rather than propensity
+       scores.",
+      x = "The {.val .pred_class} column holds the level predicted for each
+           unit.",
+      i = "Predict probabilities instead, with
+           {.code predict(fit, new_data, type = \"prob\")}, and pass the
+           columns that returns."
+    ),
+    error_class = "propensity_df_class_column_error",
+    call = call
+  )
+}
+
 # `unique()` takes values to hold out of the comparison. These methods find
 # duplicates with `vctrs::vec_unique_loc()`, which has no equivalent, so an
 # `incomparables` argument would be compared like any other value and the

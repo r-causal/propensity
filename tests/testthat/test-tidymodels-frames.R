@@ -324,3 +324,47 @@ test_that("the modifiers refuse a predicted-class frame", {
     class = "propensity_df_class_column_error"
   )
 })
+
+# ---- the wording of the new refusals ----------------------------------------
+
+test_that("the frame refusals name the column to set and the type to predict", {
+  skip_if_not_installed("parsnip")
+  dat <- sim_tidymodels()
+  preds <- predict(fit_parsnip_regression(dat), new_data = dat)
+  ambiguous <- data.frame(mu1 = preds$.pred, mu2 = preds$.pred + 1)
+  classes <- predict(fit_parsnip_binary(dat), new_data = dat)
+
+  expect_propensity_error(
+    wt_ate(ambiguous, dat$dose, exposure_type = "continuous")
+  )
+  expect_propensity_error(wt_ate(classes, dat$bin))
+  expect_propensity_error(ps_trim(classes, lower = 0.1))
+  expect_propensity_error(ps_calibrate(classes, dat$bin, smooth = FALSE))
+})
+
+test_that("a frame mixing a score column with a label column is still ambiguous", {
+  # The refusal counts columns rather than candidates: a frame with one numeric
+  # column beside a character one holds two things the caller might have meant
+  # to select from, and reading the numeric one would be a choice made on the
+  # types rather than on anything the caller expressed.
+  dat <- sim_tidymodels()
+  mixed <- data.frame(
+    mu = dat$dose - dat$x1,
+    label = as.character(dat$bin),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    wt_ate(mixed, dat$dose, exposure_type = "continuous"),
+    class = "propensity_df_ambiguous_column_error"
+  )
+  expect_equal(
+    as.numeric(wt_ate(
+      mixed,
+      dat$dose,
+      exposure_type = "continuous",
+      .propensity_col = mu
+    )),
+    as.numeric(wt_ate(mixed$mu, dat$dose, exposure_type = "continuous"))
+  )
+})

@@ -764,12 +764,19 @@ check_quantile_probs <- function(lower, upper, call = rlang::caller_env()) {
 # compares as outside a missing bound, or as inside one, so the whole sample is
 # trimmed or the recorded bounds are never applied. The missing exposure is
 # reported instead.
+#
+# `observed` marks the units that hold a propensity score. A unit without one
+# takes no part in working the cutoffs out and is left as it arrived, so its
+# exposure has nothing to leave undefined. That is the shape a model fit under
+# `na.action = na.exclude` reports: the rows it dropped come back missing on
+# both sides at once.
 check_exposure_complete <- function(
   .exposure,
   method,
+  observed = TRUE,
   call = rlang::caller_env()
 ) {
-  n_missing <- sum(is.na(.exposure))
+  n_missing <- sum(is.na(.exposure) & observed)
 
   if (n_missing == 0) {
     return(invisible(TRUE))
@@ -1135,7 +1142,7 @@ check_ps_matrix_range <- function(
 
   if (out_of_bounds) {
     bound_bullet <- if (closed) {
-      "The bounds are inclusive here: a score of exactly 0 or 1 is one
+      "The bounds are inclusive here: a score of exactly 0 or 1 is one that
        truncation bounds, but a score outside the interval is not a
        probability."
     } else {
@@ -1293,8 +1300,9 @@ match_focal_level_column <- function(
   .reference_level = NULL,
   call = rlang::caller_env()
 ) {
+  column_levels <- level_column_names(names(.propensity))
   exposure_levels <- as.character(binary_exposure_levels(.exposure))
-  if (!all(exposure_levels %in% names(.propensity))) {
+  if (!all(exposure_levels %in% column_levels)) {
     return(NULL)
   }
 
@@ -1307,7 +1315,7 @@ match_focal_level_column <- function(
     return(NULL)
   }
 
-  col_pos <- match(as.character(focal_level), names(.propensity))
+  col_pos <- match(as.character(focal_level), column_levels)
   if (is.na(col_pos)) {
     return(NULL)
   }
@@ -1316,6 +1324,7 @@ match_focal_level_column <- function(
     .propensity,
     focal_level = focal_level,
     col_pos = col_pos,
+    column_levels = column_levels,
     call = call
   )
 
@@ -1334,6 +1343,7 @@ warn_ambiguous_focal_column <- function(
   .propensity,
   focal_level,
   col_pos,
+  column_levels = names(.propensity),
   call = rlang::caller_env()
 ) {
   focal_name <- as.character(focal_level)
@@ -1341,15 +1351,15 @@ warn_ambiguous_focal_column <- function(
   # name as `NA` rather than as no match. Left in, that `NA` reaches the
   # comparison below and stops the call on a frame this function has nothing to
   # say about.
-  n_matching <- sum(names(.propensity) == focal_name, na.rm = TRUE)
+  n_matching <- sum(column_levels == focal_name, na.rm = TRUE)
   if (n_matching < 2) {
     return(invisible(FALSE))
   }
 
   warn(
     c(
-      "{.arg .propensity} has {n_matching} columns named {.val {focal_name}}, \\
-      the level resolved as focal.",
+      "{.arg .propensity} has {n_matching} columns holding the probability of \\
+      {.val {focal_name}}, the level resolved as focal.",
       i = "Read column {col_pos}, the first of them.",
       i = "Give the columns distinct names, or set {.arg .propensity_col}, to \\
       select the column you mean."
@@ -1403,6 +1413,27 @@ extract_propensity_from_df <- function(
       "`.propensity` data frame must have at least one column.",
       call = call,
       error_class = "propensity_df_ncol_error"
+    )
+  }
+
+  # A binary exposure names its levels, so a frame of scores can be read
+  # against them and the column holding the focal level's probability found. A
+  # continuous exposure names nothing: several columns of conditional means
+  # offer no way to tell which one the weights are meant to be built from, and
+  # one taken by position is as likely to be the wrong one. Whether the other
+  # columns are numeric makes no difference to that, so the count is of columns
+  # rather than of candidates.
+  if (identical(exposure_type, "continuous") && ncol(.propensity) > 1) {
+    abort(
+      c(
+        "Can't tell which column of {.arg .propensity} holds the conditional
+         mean of the exposure.",
+        x = "{.arg .propensity} has {ncol(.propensity)} columns, and a
+             continuous exposure has no levels to read them against.",
+        i = "Set {.arg .propensity_col} to the column of conditional means."
+      ),
+      call = call,
+      error_class = "propensity_df_ambiguous_column_error"
     )
   }
 
@@ -1527,6 +1558,11 @@ handle_data_frame_weight_calculation <- function(
     )
   }
 
+  # Read before the exposure type is resolved: a frame of predicted classes
+  # holds no scores on any route, so there is nothing for the resolution to
+  # decide and nothing to announce.
+  check_predicted_class_column(.propensity, call = call)
+
   # Check exposure type
   exposure_type_check <- causalgenerics::match_exposure_type(
     exposure_type,
@@ -1649,7 +1685,20 @@ extract_model_exposure <- function(model) {
 
 #' @export
 extract_model_exposure.default <- function(model) {
-  fmla_extract_left_vctr(model)
+  pad_dropped_rows(model, fmla_extract_left_vctr(model))
+}
+
+# A fitted model records only the rows it analyzed, and under
+# `na.action = na.exclude` reports everything it predicts back at the length of
+# the data it was given, missing where a row was dropped. The exposure is read
+# off the recorded side and the scores off the predicted one, so the exposure is
+# padded to the same length before anything is computed from the two together.
+# The weights are then as long as the data the model was given, missing at
+# exactly the rows it dropped, which is what a caller who supplied the exposure
+# themselves already gets. `stats::naresid()` pads for `na.exclude` and returns
+# everything else unchanged, `na.omit` and a fit with nothing dropped included.
+pad_dropped_rows <- function(model, x) {
+  stats::naresid(model$na.action, x)
 }
 
 # Helper function to handle optional exposure in the model methods

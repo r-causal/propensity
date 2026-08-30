@@ -982,13 +982,14 @@ ipw_joint_models_level_values <- function(values) {
 # product the caller built, to the bit.
 ipw_joint_models_weight_fn <- function(
   estimand,
-  components = c("binary", "binary")
+  components = c("binary", "binary"),
+  call = rlang::caller_env()
 ) {
   factors <- lapply(components, function(type) {
     switch(
       type,
       binary = ipw_binary_weight_fn(estimand),
-      continuous = ipw_continuous_weight_fn(estimand)
+      continuous = ipw_continuous_weight_fn(estimand, call = call)
     )
   })
 

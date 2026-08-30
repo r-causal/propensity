@@ -88,6 +88,14 @@ pava_weighted <- function(x, y, w = rep(1, length(x))) {
 #'   maps them back inside the interval; isotonic calibration can return a score
 #'   at an endpoint when its pooled block is pure, and such scores are rejected
 #'   by the weight functions. Must not already be calibrated.
+#'
+#'   A data frame of predicted probabilities, one column per exposure level, is
+#'   reduced to a single column the way [ps_trim()] and [ps_trunc()] reduce one:
+#'   the second column of a pair, or the only column of a frame that has one.
+#'   The column read is announced. A frame holding a `.pred_class` column, which
+#'   a fitted tidymodels classification model returns when no prediction type is
+#'   named, carries predicted levels rather than probabilities and is refused
+#'   with an error of class `propensity_df_class_column_error`.
 #' @param .exposure A binary vector of observed treatment assignments, the same
 #'   length as `.propensity`.
 #' @param method Calibration method. One of:
@@ -479,6 +487,48 @@ ps_calibrate.default <- function(
       method = method,
       smooth = smooth
     )
+  )
+}
+
+# A frame of predicted probabilities holds one column per exposure level, and
+# calibration reads one score per unit. The column is chosen the way trimming
+# and truncation choose it, so the same frame reaches the same score whichever
+# of the three it is handed to.
+#' @export
+ps_calibrate.data.frame <- function(
+  .propensity,
+  .exposure,
+  method = c("logistic", "isoreg"),
+  smooth = TRUE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_predicted_class_column(.propensity, call = call)
+
+  ps_vec <- binary_ps_column(.propensity, "ps_calibrate")
+
+  # The default method is reached here by a call rather than by dispatch, so it
+  # is handed a frame to report against. Left to its own, a refusal on this
+  # route would name the method the caller never wrote.
+  ps_calibrate.default(
+    .propensity = ps_vec,
+    .exposure = rlang::maybe_missing(.exposure),
+    method = method,
+    smooth = smooth,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
+    .treated = .treated,
+    .untreated = .untreated,
+    user_env = rlang::caller_env(),
+    call = call
   )
 }
 

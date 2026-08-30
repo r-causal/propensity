@@ -20,7 +20,11 @@
 #'   multinomial fit is repaired, and what comes back lies strictly inside
 #'   (0, 1). Anything outside \eqn{[0, 1]} is refused either way, and so is a
 #'   truncation whose own computed bounds leave a score at an endpoint; see
-#'   **Propensity scores at 0 and 1** in [wt_ate()].
+#'   **Propensity scores at 0 and 1** in [wt_ate()]. A data frame holding a
+#'   `.pred_class` column, which a fitted tidymodels classification model
+#'   returns when no prediction type is named, carries predicted levels rather
+#'   than probabilities and is refused with an error of class
+#'   `propensity_df_class_column_error`.
 #' @param .exposure An exposure vector. Required for method `"cr"` (binary
 #'   exposure vector) and for categorical exposures (factor or character vector)
 #'   with any method.
@@ -348,7 +352,12 @@ ps_trunc.default <- function(
         call = call
       )
     }
-    check_exposure_complete(.exposure, method, call = call)
+    check_exposure_complete(
+      .exposure,
+      method,
+      observed = !is.na(.propensity),
+      call = call
+    )
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
@@ -651,6 +660,7 @@ ps_trunc.data.frame <- function(
 ) {
   check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_predicted_class_column(.propensity, call = call)
 
   # For categorical exposures, convert to matrix and call matrix method
   if (!is.null(.exposure)) {

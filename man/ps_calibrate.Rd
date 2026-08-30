@@ -24,7 +24,15 @@ exactly 1, since repairing scores a model pushed to the ends of the
 interval is part of what calibration is for. The logistic calibration curve
 maps them back inside the interval; isotonic calibration can return a score
 at an endpoint when its pooled block is pure, and such scores are rejected
-by the weight functions. Must not already be calibrated.}
+by the weight functions. Must not already be calibrated.
+
+A data frame of predicted probabilities, one column per exposure level, is
+reduced to a single column the way \code{\link[=ps_trim]{ps_trim()}} and \code{\link[=ps_trunc]{ps_trunc()}} reduce one:
+the second column of a pair, or the only column of a frame that has one.
+The column read is announced. A frame holding a \code{.pred_class} column, which
+a fitted tidymodels classification model returns when no prediction type is
+named, carries predicted levels rather than probabilities and is refused
+with an error of class \code{propensity_df_class_column_error}.}
 
 \item{.exposure}{A binary vector of observed treatment assignments, the same
 length as \code{.propensity}.}

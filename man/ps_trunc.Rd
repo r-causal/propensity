@@ -32,7 +32,11 @@ of exactly 0 or 1 is bounded rather than refused, which is how a separated
 multinomial fit is repaired, and what comes back lies strictly inside
 (0, 1). Anything outside \eqn{[0, 1]} is refused either way, and so is a
 truncation whose own computed bounds leave a score at an endpoint; see
-\strong{Propensity scores at 0 and 1} in \code{\link[=wt_ate]{wt_ate()}}.}
+\strong{Propensity scores at 0 and 1} in \code{\link[=wt_ate]{wt_ate()}}. A data frame holding a
+\code{.pred_class} column, which a fitted tidymodels classification model
+returns when no prediction type is named, carries predicted levels rather
+than probabilities and is refused with an error of class
+\code{propensity_df_class_column_error}.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{

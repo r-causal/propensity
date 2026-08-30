@@ -113,7 +113,10 @@
 #' @param .propensity Propensity scores. A numeric vector of
 #'   \eqn{P(Z = \text{focal} \mid X)} for a binary exposure, or a matrix or data
 #'   frame with one column per exposure level, named for that level, for a
-#'   categorical exposure.
+#'   categorical exposure. A data frame holding a `.pred_class` column, which a
+#'   fitted tidymodels classification model returns when no prediction type is
+#'   named, carries predicted levels rather than probabilities and is refused
+#'   with an error of class `propensity_df_class_column_error`.
 #' @param estimand One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or
 #'   `"entropy"`.
 #' @param ... These dots are for future extensions and must be empty.
@@ -288,6 +291,7 @@ ps_tilt.data.frame <- function(
   ps = lifecycle::deprecated()
 ) {
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_predicted_class_column(.propensity, call = rlang::current_env())
 
   tilt_from_matrix(
     as.matrix(.propensity),

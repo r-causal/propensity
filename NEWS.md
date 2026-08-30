@@ -1,5 +1,55 @@
 # propensity 0.1.0.9000 (development version)
 
+* The data frame routes of the weight functions and the propensity score
+  modifiers now read the prediction frames a fitted tidymodels model returns.
+  A classification model predicted with `type = "prob"` names its columns
+  `.pred_<level>`, and the level a column holds is now read from the part of the
+  name after that prefix, so a binary frame resolves the focal level's column by
+  name wherever it sits and whichever level is focal. This is a breaking change
+  where the positional default used to decide: a two column frame whose columns
+  are named for the exposure's levels is now read by name rather than by
+  position, so a call naming the first level as focal reads that level's column
+  instead of the second column, and no longer warns that it could not tell which
+  column was meant. A frame holding a `.pred_class` column, which the same
+  models return when no prediction type is named, carries predicted levels
+  rather than probabilities and is now refused with an error of class
+  `propensity_df_class_column_error` naming the prediction type that would have
+  given scores. `ps_calibrate()` gained a data frame method, so a frame of
+  predicted probabilities now reaches it the way it already reached `ps_trim()`
+  and `ps_trunc()`.
+
+* A data frame of several columns is now refused on the continuous route,
+  where it used to be read by position. This is a breaking change. A binary
+  exposure names its levels, so a frame of scores can be read against them; a
+  continuous exposure names nothing, and a frame of several conditional means
+  offers no way to tell which one the weights were meant to be built from. Such
+  a call now raises an error of class `propensity_df_ambiguous_column_error`
+  asking for `.propensity_col`, which the continuous route now honors. A frame
+  of a single column, the shape a tidymodels regression fit predicts, is read as
+  before.
+
+* The model routes now honor `na.action = na.exclude`. A model fit that way
+  records only the rows it analyzed but pads everything it predicts back to the
+  length of the data it was given, so the routes used to read the scores from
+  the padded side and the exposure from the recorded one and fail on a length
+  mismatch, with a different error on each route and no mention of the padding.
+  The exposure recovered from a fit is now padded to match, on the `glm`, `lm`,
+  and `nnet::multinom()` routes of the weight functions and on the model routes
+  of `ps_trim()`, `ps_trunc()`, and `ps_calibrate()`. The weights come back as
+  long as the data the model was given, missing at exactly the rows it dropped
+  and equal to the complete case fit everywhere else, which is what the weight
+  functions already returned when the caller supplied the exposure themselves.
+  `ipw()` now accepts the full length `.data` such a fit was given, restricting
+  it to the rows the models were fit to before it builds any design; a `.data`
+  that is longer for any other reason still gets its report.
+
+* `ipw()` now rebuilds the data behind an `nnet::multinom()` fit once rather
+  than twice. A multinomial fit stores no model frame, so the exposure and the
+  propensity score design were each recovered by re-evaluating the fitting call,
+  which evaluated the fitting data twice for one call. Both are now read from a
+  single rebuild. `.data` is still requested, with the same message, when the
+  fitting call can no longer be evaluated at all.
+
 * `ps_trunc()` now accepts a categorical propensity score matrix holding cells
   of exactly 0 or 1, which it used to refuse before it could bound anything.
   Truncation exists to pull an extreme score back toward the interior, and a

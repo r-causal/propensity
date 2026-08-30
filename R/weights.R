@@ -333,9 +333,16 @@
 #'   * A **numeric vector** of predicted probabilities (binary/continuous).
 #'   * A **data frame** or **matrix** with one column per exposure level. Both
 #'     shapes are read the same way, for categorical exposures and for binary
-#'     ones alike, including the default choice of column described under
+#'     ones alike, including the choice of column described under
 #'     `.propensity_col`. That argument is itself a formal of the data frame
 #'     methods only, so selecting a column by name means passing a data frame.
+#'     A frame of probabilities predicted from a fitted tidymodels
+#'     classification model has its columns named `.pred_<level>`, and the
+#'     level a column holds is read from the part of the name after that
+#'     prefix. A frame holding a `.pred_class` column, which the same models
+#'     return when no prediction type is named, carries predicted levels rather
+#'     than probabilities and is refused with an error of class
+#'     `propensity_df_class_column_error`.
 #'   * A fitted **propensity score model** -- fitted values are extracted
 #'     automatically. For a binary exposure that is a [glm()] fit with
 #'     [binomial()] or `quasibinomial()`. For a continuous exposure it is a
@@ -360,10 +367,17 @@
 #'   response's second level, and subtract them from one when the resolved
 #'   focal level is the first level instead. A data frame or matrix reduces to
 #'   a single column, read on the same scale; see `.propensity_col` for how
-#'   that column is chosen. A matrix reduces by those same defaults, but
+#'   that column is chosen. A matrix reduces by those same rules, but
 #'   `.propensity_col` belongs to the data frame methods alone, so a matrix
 #'   whose column you want to name has to be converted with `as.data.frame()`
 #'   first.
+#'
+#'   For a continuous exposure, `.propensity` is the conditional mean of the
+#'   exposure. A data frame of a single column is read as that mean; a data
+#'   frame of several columns is refused with an error of class
+#'   `propensity_df_ambiguous_column_error` unless `.propensity_col` names the
+#'   column to read, since a continuous exposure has no levels the columns
+#'   could be matched against.
 #' @param .exposure The exposure (treatment) variable. For binary exposures, a
 #'   numeric 0/1 vector, logical, or two-level factor. For categorical
 #'   exposures, a factor or character vector. For continuous exposures, a
@@ -474,18 +488,28 @@
 #'   length. Ignored when stabilization is off, whether because `stabilize` is
 #'   `FALSE` or because the exposure type resolves the default that way.
 #' @param .propensity_col Column to use when `.propensity` is a data frame
-#'   with a binary exposure. Accepts a column name (quoted or unquoted) or
-#'   numeric index. Whichever column is selected is read as the probability of
-#'   the resolved focal level.
+#'   with a binary or continuous exposure. Accepts a column name (quoted or
+#'   unquoted) or numeric index. For a binary exposure the selected column is
+#'   read as the probability of the resolved focal level; for a continuous one
+#'   it is read as the conditional mean of the exposure.
 #'
-#'   With no column named, the exposure's levels drive the choice. When the
-#'   data frame has a column named for every level of `.exposure`, the column
-#'   named for the resolved focal level is used, wherever it sits in the frame.
-#'   Otherwise the second column is used, or the only column when the frame has
-#'   just one. Falling back to position after `.focal_level` or
-#'   `.reference_level` was supplied warns and reports the column used, since
-#'   the named level could not be matched to a column; the fallback is silent
-#'   when no level was named and when the frame has a single column.
+#'   With no column named and a binary exposure, the exposure's levels drive
+#'   the choice. When the data frame has a column named for every level of
+#'   `.exposure`, the column named for the resolved focal level is used,
+#'   wherever it sits in the frame. Columns named `.pred_<level>`, the shape a
+#'   fitted tidymodels classification model predicts probabilities in, are
+#'   matched by the level after the prefix. Otherwise the second column is
+#'   used, or the only column when the frame has just one. Falling back to
+#'   position after `.focal_level` or `.reference_level` was supplied warns and
+#'   reports the column used, since the named level could not be matched to a
+#'   column; the fallback is silent when no level was named and when the frame
+#'   has a single column.
+#'
+#'   With no column named and a continuous exposure, a frame of a single column
+#'   is read as the conditional mean, and a frame of several columns is refused
+#'   with an error of class `propensity_df_ambiguous_column_error`. There are no
+#'   levels to read the names against, so nothing distinguishes one column of
+#'   conditional means from another and there is no position worth trusting.
 #'
 #'   Ignored for categorical exposures, where all columns are used.
 #'

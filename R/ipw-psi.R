@@ -91,8 +91,8 @@ ipw_weight_fn <- function(
     exposure_type,
     binary = ipw_binary_weight_fn(estimand),
     categorical = ipw_categorical_weight_fn(estimand),
-    continuous = ipw_continuous_weight_fn(estimand),
-    joint_models = ipw_joint_models_weight_fn(estimand, components)
+    continuous = ipw_continuous_weight_fn(estimand, call = call),
+    joint_models = ipw_joint_models_weight_fn(estimand, components, call = call)
   )
 }
 
@@ -193,7 +193,7 @@ ipw_categorical_weight_fn <- function(estimand) {
 # Weights that record no density took the normal family, and their numerator is
 # read off the stabilization the way `ate_continuous()` reads it: a score the
 # caller fixed, the marginal density, or nothing at all.
-ipw_continuous_weight_fn <- function(estimand) {
+ipw_continuous_weight_fn <- function(estimand, call = rlang::caller_env()) {
   function(ps, exposure, extras) {
     density <- extras$density
     if (is.null(density)) {
@@ -214,7 +214,12 @@ ipw_continuous_weight_fn <- function(estimand) {
       mu_a = extras$mu_a,
       sigma_a = if (!is.null(extras$sigma2_a)) sqrt(extras$sigma2_a),
       score = extras$score,
-      grid = extras$grid
+      grid = extras$grid,
+      # The frame the user entered `ipw()` on. A conditional density that comes
+      # out at zero part way through the solve is refused by the ratio, and
+      # without this the refusal would name the frame the registry rebuilds the
+      # weights in, which the caller never wrote.
+      call = call
     )
   }
 }

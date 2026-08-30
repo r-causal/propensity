@@ -16,7 +16,10 @@ ps_tilt(
 \item{.propensity}{Propensity scores. A numeric vector of
 \eqn{P(Z = \text{focal} \mid X)} for a binary exposure, or a matrix or data
 frame with one column per exposure level, named for that level, for a
-categorical exposure.}
+categorical exposure. A data frame holding a \code{.pred_class} column, which a
+fitted tidymodels classification model returns when no prediction type is
+named, carries predicted levels rather than probabilities and is refused
+with an error of class \code{propensity_df_class_column_error}.}
 
 \item{estimand}{One of \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or
 \code{"entropy"}.}

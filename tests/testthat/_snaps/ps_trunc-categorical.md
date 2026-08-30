@@ -61,6 +61,6 @@
     Condition <propensity_range_error>
       Error in `ps_trunc()`:
       ! All propensity scores must be between 0 and 1.
-      i The bounds are inclusive here: a score of exactly 0 or 1 is one truncation bounds, but a score outside the interval is not a probability.
+      i The bounds are inclusive here: a score of exactly 0 or 1 is one that truncation bounds, but a score outside the interval is not a probability.
       i The range of values in `.propensity` is -0.1 and 1.0
 
