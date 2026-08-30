@@ -28,6 +28,7 @@ Imports:
     tidyselect,
     vctrs (>= 0.6.5)
 Suggests:
+    bench,
     broom,
     dplyr,
     ggplot2,
