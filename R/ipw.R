@@ -1783,7 +1783,7 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
     )
   }
 
-  lhs <- formula(ps_mod)[[2]]
+  lhs <- fmla[[2]]
   lhs_not_single <- length(fmla_extract_left_chr(ps_mod)) != 1L
   frame_response_is_matrix <- tryCatch(
     is.matrix(stats::model.response(stats::model.frame(ps_mod))),

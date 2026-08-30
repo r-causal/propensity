@@ -249,7 +249,7 @@ tidy.ipw <- function(
 # the answer is nothing. `tidier_call` is the call the tidier was made with,
 # spliced into the delegation as `call = tidier_call` or left out entirely.
 ipw_frame_call_arg <- function(class, tidier_call) {
-  method <- getS3method("as.data.frame", class, optional = TRUE)
+  method <- utils::getS3method("as.data.frame", class, optional = TRUE)
 
   if (is.null(method) || !"call" %in% names(formals(method))) {
     return(list())

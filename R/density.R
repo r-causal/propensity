@@ -354,11 +354,6 @@ check_numerator <- function(
   invisible(NULL)
 }
 
-# The spread of the conditional density: the one the caller supplied, or the
-# pooled uncentered root mean square of the residuals. It is uncentered because
-# the residuals of a fitted model already average to zero, and because the
-# estimating equation `ipw()` solves for the same quantity is the uncentered
-# moment.
 # An infinite exposure or fitted value, refused where it arrives. A missing
 # value is a unit with nothing to weight and leaves that unit's weight missing,
 # which is a local answer to a local gap. An infinite one is not local: the
@@ -388,6 +383,11 @@ check_continuous_finite <- function(x, arg, call = rlang::caller_env()) {
   )
 }
 
+# The spread of the conditional density: the one the caller supplied, or the
+# pooled uncentered root mean square of the residuals. It is uncentered because
+# the residuals of a fitted model already average to zero, and because the
+# estimating equation `ipw()` solves for the same quantity is the uncentered
+# moment.
 continuous_sigma <- function(exposure, mu, .sigma = NULL) {
   if (!is.null(.sigma)) {
     return(.sigma)
