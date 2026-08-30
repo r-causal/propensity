@@ -979,6 +979,33 @@ test_that("the unsupported-model refusal names the family of an additive fit", {
   expect_propensity_error(joint_wt_models(a = fx$mods$a, k = counted))
 })
 
+test_that("the unsupported-model refusal survives an argument that is no model", {
+  fx <- joint_wt_fixture()
+
+  # An argument that is not a fitted model at all has no family to read, and
+  # reading one anyway raises a base error about subscripts in place of the
+  # refusal that would have named what arrived.
+  err <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = "not a model"),
+    class = "propensity_wt_joint_models_error"
+  )
+  expect_match(conditionMessage(err), "character", fixed = TRUE)
+
+  err_fn <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = function(x) x),
+    class = "propensity_wt_joint_models_error"
+  )
+  expect_match(conditionMessage(err_fn), "function", fixed = TRUE)
+
+  # A data frame is a list, so the guard cannot be a test of that alone: `[[`
+  # asks it for a column of that name and has none to return.
+  err_df <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = fx$dat),
+    class = "propensity_wt_joint_models_error"
+  )
+  expect_match(conditionMessage(err_df), "data.frame", fixed = TRUE)
+})
+
 test_that("joint_wt_models() requires a discrete second model to condition on the first treatment", {
   fx <- joint_wt_fixture()
 

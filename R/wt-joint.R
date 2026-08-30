@@ -630,7 +630,14 @@ check_joint_wt_models_supported <- function(
     # each is read as a dose model when it is gaussian and refused when it is
     # not. Naming the class alone leaves the reader looking at a class the same
     # message says is supported.
-    family <- bad_model[["family"]]
+    # A `family` element belongs to a fitted model, and what reaches here need
+    # not be one: an argument that is not a model at all is refused here too,
+    # and asking a string, a function, or a data frame for an element of that
+    # name raises a base error about subscripts in place of this refusal.
+    family <- if (is.list(bad_model) && !is.data.frame(bad_model)) {
+      bad_model[["family"]]
+    }
+
     what_it_is <- if (is.list(family)) {
       "The model named {.arg {bad[[1]]}} is {.cls {bad_class}} fit with \\
       {.code {model_family_label(family)}}."

@@ -1761,7 +1761,15 @@ check_ipw_multinom_levels <- function(wt_mod, call = rlang::caller_env()) {
 # that omits the exposure, one that codes it numerically, one whose factor
 # levels are ordered against the propensity model's, the counterfactual design
 # guards, and an exposure value the propensity model never saw.
-check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
+#
+# `arg` names the argument the fit arrived as, the way it does in
+# `check_multinom_response()`. Every route into this guard takes the propensity
+# score model as `wt_mod`, which is the default.
+check_ipw_ps_response <- function(
+  ps_mod,
+  arg = "wt_mod",
+  call = rlang::caller_env()
+) {
   # A fit made through a matrix interface records no formula and no terms, so
   # there is no left-hand side to read the exposure off. Reading the formula
   # defensively keeps that a refusal of this package's rather than a subscript
@@ -1772,9 +1780,9 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
       c(
         "{.fun ipw} needs a propensity score model fit through the formula \\
         interface.",
-        x = "{.arg wt_mod} records no formula with a response, so the exposure \\
+        x = "{.arg {arg}} records no formula with a response, so the exposure \\
         cannot be read off it.",
-        i = "Refit {.arg wt_mod} from a formula whose left-hand side is the \\
+        i = "Refit {.arg {arg}} from a formula whose left-hand side is the \\
         exposure, as in {.code exposure ~ x}, rather than from a design \\
         matrix and a response vector."
       ),
@@ -1803,7 +1811,7 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
     c(
       "{.fun ipw} does not support a matrix response in the propensity score \\
       model.",
-      x = "{.arg wt_mod} has a matrix response, such as \\
+      x = "{.arg {arg}} has a matrix response, such as \\
       {.code cbind(successes, failures)}; the exposure must be a \\
       single-column response."
     )
@@ -1812,7 +1820,7 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
     c(
       "{.fun ipw} does not support a transformed response in the propensity \\
       score model.",
-      x = "{.arg wt_mod} reads the exposure through {.code {lhs_text}}, an \\
+      x = "{.arg {arg}} reads the exposure through {.code {lhs_text}}, an \\
       expression rather than a single column."
     )
   }
@@ -1820,7 +1828,7 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
   abort(
     c(
       problem,
-      i = "Fit {.arg wt_mod} with the exposure itself as the response, adding \\
+      i = "Fit {.arg {arg}} with the exposure itself as the response, adding \\
       it to the data as its own column first if it has to be computed."
     ),
     error_class = "propensity_ipw_response_error",

@@ -2973,6 +2973,34 @@ test_that("ps_trim() trims a calibrated propensity score", {
   ))
 })
 
+test_that("ps_refit() drops the calibration the trimming recorded", {
+  set.seed(2026)
+  n <- 200
+  x <- rnorm(n)
+  exposure <- rbinom(n, 1, plogis(0.8 * x))
+  fit <- glm(exposure ~ x, family = binomial)
+  calibrated <- ps_calibrate(
+    predict(fit, type = "response"),
+    exposure,
+    smooth = FALSE
+  )
+
+  trimmed <- ps_trim(calibrated, method = "ps", lower = 0.1, upper = 0.9)
+  expect_true(is_ps_calibrated(trimmed))
+
+  # Refitting replaces every retained score with a prediction from the model
+  # fit on the retained rows, and nothing calibrates those predictions, so a
+  # record carried through would describe scores it was never about.
+  refit <- ps_refit(trimmed, fit)
+  expect_false(isTRUE(ps_trim_meta(refit)$calibrated))
+  expect_false(is_ps_calibrated(refit))
+
+  # The weights built from the refit scores say the same.
+  wts <- wt_ate(refit, exposure)
+  expect_false(is_ps_calibrated(wts))
+  expect_identical(estimand(wts), "ate; trimmed")
+})
+
 test_that("ps_trim() refuses scores that are not numbers", {
   # A character vector is coerced on its way to the range check, which reports
   # values it read as missing rather than an argument of the wrong type, and

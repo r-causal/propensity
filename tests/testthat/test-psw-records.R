@@ -610,3 +610,50 @@ test_that("weights from a calibrated propensity score carry the records", {
   expect_identical(exposure_type(w), "binary")
   expect_null(density_meta(w))
 })
+
+test_that("weights from a calibrated score that was trimmed carry the calibration", {
+  # Trimming and truncation read the scores a calibrated object holds and
+  # record the calibration in their own metadata, so the weights built from one
+  # were built from calibrated scores and say so, exactly as the weights built
+  # from the calibrated score itself do.
+  exposure <- c(0, 1, 0, 0, 1, 0, 1, 1, 0, 1)
+  calibrated <- ps_calibrate(
+    c(0.14, 0.22, 0.31, 0.4, 0.48, 0.55, 0.62, 0.7, 0.78, 0.86),
+    exposure
+  )
+
+  trimmed <- muffle_refit_warning(wt_ate(
+    ps_trim(calibrated, method = "ps", lower = 0.05, upper = 0.95),
+    exposure,
+    exposure_type = "binary",
+    .focal_level = 1
+  ))
+
+  expect_identical(estimand(trimmed), "ate; trimmed; calibrated")
+  expect_true(is_ps_calibrated(trimmed))
+  expect_true(is_ps_trimmed(trimmed))
+
+  # The record is the score's rather than the estimand's, so it reaches the
+  # weights whichever formula built them.
+  truncated <- wt_att(
+    ps_trunc(calibrated, method = "ps", lower = 0.05, upper = 0.95),
+    exposure,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+
+  expect_identical(estimand(truncated), "att; truncated; calibrated")
+  expect_true(is_ps_calibrated(truncated))
+  expect_true(is_ps_truncated(truncated))
+
+  # A score that was never calibrated records nothing that says it was.
+  plain <- wt_att(
+    ps_trunc(records_binary_ps, method = "ps", lower = 0.05, upper = 0.95),
+    records_binary_exposure,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+
+  expect_identical(estimand(plain), "att; truncated")
+  expect_false(is_ps_calibrated(plain))
+})

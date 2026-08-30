@@ -1847,7 +1847,10 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #'
 #' @return A `ps_trim` object with re-estimated propensity scores for retained
 #'   observations and `NA` for trimmed observations. Use [is_refit()] to
-#'   confirm refitting was applied.
+#'   confirm refitting was applied. Refitting replaces the values a calibrated
+#'   score held with predictions from the refit model, so a score trimmed after
+#'   [ps_calibrate()] is no longer calibrated and [is_ps_calibrated()] answers
+#'   `FALSE` for the result.
 #'
 #' @seealso [ps_trim()] for the trimming step, [is_refit()] to check refit
 #'   status, [wt_ate()] and other weight functions for the next step in the
@@ -1967,6 +1970,12 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   }
 
   meta$refit <- TRUE
+
+  # Every retained score is now a prediction from the model fit on the retained
+  # rows, and nothing calibrates those predictions. A calibration the trimming
+  # recorded describes scores that are no longer here, so it is dropped rather
+  # than carried onto scores it was never about.
+  meta$calibrated <- NULL
 
   new_trimmed_ps(
     x = new_ps,

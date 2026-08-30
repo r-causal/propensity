@@ -1198,6 +1198,18 @@ calculate_weight_from_modified_ps <- function(
     attr(base_wt, "ps_calib_meta") <- ps_calib_meta(.propensity)
   }
 
+  # Trimming and truncation read the scores a calibrated object holds and record
+  # the calibration in their own metadata, so weights built from one were built
+  # from calibrated scores. The record travels to the weights the way it does on
+  # the calibrated route, since `is_ps_calibrated()` reads it off the `psw`
+  # rather than off the score the weights were built from. There is no
+  # `ps_calib_meta` to carry: the calibration's own record is dropped with the
+  # class when the score is trimmed or bounded.
+  if (modification_type != "calib" && is_ps_calibrated(.propensity)) {
+    estimand(base_wt) <- paste0(estimand(base_wt), "; calibrated")
+    attr(base_wt, "calibrated") <- TRUE
+  }
+
   base_wt
 }
 

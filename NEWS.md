@@ -8,7 +8,12 @@
   score rather than a calibrated one, so the class is dropped and the
   calibration is recorded in the trim or truncation metadata instead;
   `is_ps_calibrated()` reads it there and still answers `TRUE`, as it already
-  did for weights built from calibrated scores.
+  did for weights built from calibrated scores. The record travels on to the
+  weights: `wt_ate()` and the other weight functions now mark weights built
+  from such a score as calibrated and add `"; calibrated"` to the estimand,
+  which they already did for a calibrated score they were handed directly.
+  `ps_refit()` drops the record, since refitting replaces the calibrated values
+  with predictions from the refit model and nothing calibrates those.
 
 * `ipw()` now refuses a propensity score model fit through a matrix interface,
   such as `MASS::rlm(cbind(1, x), dose)`, with an error of class
@@ -63,7 +68,10 @@
   same message says is supported. On the joint route, the report of weights
   that disagree with the models now describes `wt_mod` as the container of two
   treatment models, which is what it holds there, rather than sending the
-  reader to refit from a single propensity score model the call never had.
+  reader to refit from a single propensity score model the call never had. An
+  argument that is not a fitted model at all, such as a string, a function, or
+  a data frame, now reaches that refusal too: reading a family off one used to
+  raise a subscript error before the message naming the class could be built.
 
 * `tidy()` on an `ipw` or pooled result now reports a refusal of `conf.level`,
   `conf.int`, `exponentiate`, or `effects` against `tidy()` itself. The
