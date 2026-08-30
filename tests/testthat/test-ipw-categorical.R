@@ -1019,6 +1019,39 @@ test_that("ipw() rejects a multinom fit with case weights", {
   )
 })
 
+# ---- guard against a two-level multinom -------------------------------------
+
+test_that("ipw() rejects a two-level multinom propensity score model", {
+  skip_if_not_installed("nnet")
+  skip_if_not_installed("deli")
+
+  dat <- sim_categorical()
+  dat$a2 <- factor(ifelse(dat$a == "a", "control", "treated"))
+
+  # A two-level `multinom` fits a single probability, which is a binary
+  # propensity score rather than a categorical one: the weight functions read
+  # such a fit on the binary path, and the categorical stacked system has no
+  # multinomial coefficient block to build from it.
+  ps_mod <- nnet::multinom(a2 ~ x1 + x2, data = dat, trace = FALSE)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod, dat$a2)
+  )
+  outcome_mod <- glm(
+    y ~ a2,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+
+  # Without the guard the refusal comes from deli, about a `y` of two columns
+  # and an `ee_glm()` the user never wrote.
+  expect_error(
+    ipw(ps_mod, outcome_mod),
+    class = "propensity_model_family_error"
+  )
+})
+
 # ---- guard against an invalid focal level -----------------------------------
 
 test_that("ipw() rejects a focal level that is not an exposure level", {
