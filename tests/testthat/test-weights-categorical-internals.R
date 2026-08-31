@@ -431,9 +431,14 @@ test_that("check_ps_matrix() refuses a matrix that is not made of numbers", {
 })
 
 # ---- allocation guards ------------------------------------------------------
-# These two expectations are the red assertions: they state the allocation the
-# categorical route should need, and the current implementations do not meet
-# them.
+# These expectations pin the allocations the categorical route makes, so a
+# later edit cannot reintroduce a copy without a test noticing; the value-level
+# tests cannot see one. The byte counts come from utils::Rprofmem by way of
+# bench::mark(), so they are deterministic for a given R version rather than
+# timing-dependent, but a new R or vctrs release can change what base
+# operations allocate. If a ceiling breaks after an upgrade with no change to
+# this package's code, re-measure the ratio, and raise the ceiling with a note
+# if the baseline moved rather than a copy coming back.
 
 allocation_ratio <- function(fn, ps_matrix) {
   bench_result <- bench::mark(
@@ -471,8 +476,8 @@ test_that("calculate_categorical_weights() allocates a few copies of the matrix"
 
   skip_if(is.na(ratio), "memory profiling is unavailable")
 
-  # RED: about 12 copies today, from the n by K indicator matrix and the
-  # validation it runs first.
+  # Was about 12 copies before the n by K indicator matrix was dropped from
+  # the weight assembly; the ceiling leaves room for allocator drift.
   expect_lt(ratio, 5)
 })
 
@@ -485,13 +490,16 @@ test_that("check_ps_matrix_range() reads the matrix without copying it", {
 
   skip_if(is.na(ratio), "memory profiling is unavailable")
 
-  # RED: about 7 copies today, one per temporary in the chained comparison.
+  # Was about 7 copies when this check was a chained vectorized comparison,
+  # one per temporary; reading the extremes copies nothing.
   expect_lt(ratio, 1)
 })
 
 # ---- the reads each step makes ----------------------------------------------
-# The two expectations below are the red assertions of this round: they state
-# what the categorical route should read and allocate, and neither is met today.
+# The expectations below pin what the categorical route reads and allocates.
+# The note on the allocation guards above applies here too: deterministic for
+# a given R version, and worth re-measuring before blaming this package's code
+# when an upgrade moves a ratio.
 
 # How many times a call scans the whole score matrix for missing values.
 # `stats::complete.cases()` is that scan, and it is the only one the route
@@ -517,9 +525,9 @@ count_missing_scans <- function(expr) {
 test_that("a matrix with no missing score is not scanned for one", {
   case <- allocation_case(n = 1e3)
 
-  # RED: the scan runs once per call today, whether or not the matrix has a
-  # missing value to find. Reading whether the matrix holds one at all answers
-  # the same question and stops at the first one it finds.
+  # anyNA() answers whether the matrix holds a missing value at all and stops
+  # at the first one it finds, so the complete.cases() scan runs only over a
+  # matrix with a missing value to locate.
   scans <- count_missing_scans(
     calculate_categorical_weights(case$ps, case$exposure, "ate")
   )
@@ -547,9 +555,9 @@ test_that("check_ps_matrix_rowsums() reads the row sums without copying them", {
 
   skip_if(is.na(ratio), "memory profiling is unavailable")
 
-  # RED: 0.9 copies of the matrix today. The row sums themselves are a fifth of
-  # it, and the comparison over every row is the rest; the extremes of the row
-  # sums answer the same question and allocate nothing.
+  # The row sums themselves are a fifth of the matrix, and comparing their two
+  # extremes against 1 allocates nothing beyond them. The per-row comparison
+  # this replaced allocated most of a full copy.
   expect_lt(ratio, 0.4)
 })
 
@@ -565,7 +573,8 @@ test_that("the categorical weight call allocates a couple of copies", {
 
   skip_if(is.na(ratio), "memory profiling is unavailable")
 
-  # RED: 2.4 copies today. The row sum comparison is 0.7 of that and the
-  # missing-value scan 0.3, and neither is a read the call has to make.
+  # Was 2.4 copies before the row-sum comparison (0.7 of it) and the
+  # unconditional missing-value scan (0.3) were trimmed; the ceiling leaves
+  # room for allocator drift.
   expect_lt(ratio, 2)
 })
