@@ -1142,10 +1142,20 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
   # largest of them do, so the extremes settle the whole matrix. An infinite
   # sum is a number outside the tolerance on the side it is infinite on, so the
   # extremes catch it as well.
+  #
+  # Each extreme is asked the question every row was asked, the distance from 1
+  # against the tolerance, rather than the equivalent-looking one of whether it
+  # falls between `1 - ROW_SUM_TOLERANCE` and `1 + ROW_SUM_TOLERANCE`. Neither
+  # of those bounds is a double exactly one tolerance from 1, so a sum landing
+  # on one of them is admitted or refused by which way the bound rounded rather
+  # than by how far the sum is from 1.
   lowest <- min(row_sums, na.rm = TRUE)
   highest <- max(row_sums, na.rm = TRUE)
 
-  if (lowest >= 1 - ROW_SUM_TOLERANCE && highest <= 1 + ROW_SUM_TOLERANCE) {
+  if (
+    abs(lowest - 1) <= ROW_SUM_TOLERANCE &&
+      abs(highest - 1) <= ROW_SUM_TOLERANCE
+  ) {
     return(invisible(TRUE))
   }
 

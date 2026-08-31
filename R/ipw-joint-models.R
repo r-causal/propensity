@@ -245,7 +245,19 @@ ipw_spec_joint_models <- function(
     check_ipw_outcome_exposure(outcome_mod, name, call = call)
   }
 
-  ps_X <- lapply(fits, ipw_joint_models_design, call = call)
+  # An additive dose fit's entry has already evaluated the smooth basis its
+  # score was checked at, and that basis is the design this route multiplies the
+  # dose block by, so it travels from the entry rather than being built a second
+  # time. Every fit of another kind carries no design on its entry, and a fit
+  # whose design could not be read at all carries none either, so both are built
+  # and refused here as before.
+  ps_X <- lapply(seq_along(fits), function(i) {
+    if (identical(i, dose_idx) && !is.null(dose_model$design)) {
+      dose_model$design
+    } else {
+      ipw_joint_models_design(fits[[i]], call = call)
+    }
+  })
   treatments <- lapply(fits, ipw_joint_models_treatment, call = call)
   coefs <- lapply(fits, stats::coef)
 

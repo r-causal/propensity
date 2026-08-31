@@ -243,6 +243,22 @@ test_that("rows that do not sum to 1 are refused", {
   expect_true(check_ps_matrix_rowsums(matrix(c(0.5, 0.5, 0.5, 0.5), nrow = 2)))
 })
 
+# A one-row matrix whose sum is the double handed in. Halving and doubling a
+# double is exact, so the row sums to the value asked for rather than to a
+# neighbor of it, which is what a case sitting on the tolerance needs.
+rowsum_boundary_matrix <- function(row_sum) {
+  matrix(c(row_sum / 2, row_sum / 2), nrow = 1)
+}
+
+# The comparison every row sum was held to before the extremes were read, kept
+# here as the thing the boundary cases are pinned against.
+rowsum_row_predicate <- function(ps_matrix) {
+  row_sums <- rowSums(ps_matrix, na.rm = FALSE)
+  non_na_rows <- !is.na(row_sums)
+
+  any(non_na_rows) && any(abs(row_sums[non_na_rows] - 1) > 1e-6)
+}
+
 # The whole of what `check_ps_matrix_rowsums()` promises, case by case, so that
 # how it reads the row sums can change while what it accepts and refuses cannot.
 # A row is refused when its sum is a number more than the tolerance away from 1,
@@ -258,6 +274,9 @@ rowsum_cases_accepted <- function() {
     # normalized, which is what the tolerance is there to admit.
     inside_tolerance = matrix(c(0.5, 0.5, 0.5 + 9e-7, 0.5), nrow = 2),
     single_row = matrix(c(0.25, 0.75), nrow = 1),
+    # `1 + 1e-6` rounds to a double that is nearer to 1 than the tolerance is,
+    # so a row summing to it is inside the tolerance rather than on it.
+    upper_boundary = rowsum_boundary_matrix(1 + 1e-6),
     # A logical matrix sums as the ones and zeros it is.
     logical = matrix(c(TRUE, FALSE, FALSE, TRUE), nrow = 2)
   )
@@ -271,7 +290,10 @@ rowsum_cases_refused <- function() {
     # An infinite row sum is a number, and it is not 1.
     positive_infinite = matrix(c(Inf, 0.5, 0.3, 0.5), nrow = 2),
     negative_infinite = matrix(c(-Inf, 0.5, 0.3, 0.5), nrow = 2),
-    outside_tolerance = matrix(c(0.5, 0.5, 0.5 + 2e-6, 0.5), nrow = 2)
+    outside_tolerance = matrix(c(0.5, 0.5, 0.5 + 2e-6, 0.5), nrow = 2),
+    # `1 - 1e-6` rounds to a double that is further from 1 than the tolerance
+    # is, so a row summing to it is outside the tolerance rather than on it.
+    lower_boundary = rowsum_boundary_matrix(1 - 1e-6)
   )
 }
 
@@ -296,6 +318,27 @@ test_that("check_ps_matrix_rowsums() refuses every matrix it refuses today", {
       info = case_name
     )
   }
+})
+
+test_that("the tolerance boundaries are read as the row comparison read them", {
+  # Neither `1 - 1e-6` nor `1 + 1e-6` is a double exactly one tolerance from 1:
+  # each rounds to a neighbor, one further from 1 than the tolerance and one
+  # nearer. Which side a boundary row falls on is therefore decided by the
+  # arithmetic rather than by the tolerance being written twice, and a reading
+  # that compares a sum against `1 - 1e-6` directly, without subtracting, gets
+  # the lower one wrong. Both are pinned against the comparison every row was
+  # held to before the extremes were read.
+  below <- rowsum_boundary_matrix(1 - 1e-6)
+  above <- rowsum_boundary_matrix(1 + 1e-6)
+
+  expect_true(rowsum_row_predicate(below))
+  expect_false(rowsum_row_predicate(above))
+
+  expect_error(
+    check_ps_matrix_rowsums(below),
+    class = "propensity_matrix_sum_error"
+  )
+  expect_true(check_ps_matrix_rowsums(above))
 })
 
 test_that("the row sum refusal names the rows it refused", {

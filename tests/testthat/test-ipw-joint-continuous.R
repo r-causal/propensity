@@ -1047,6 +1047,44 @@ test_that("an additive dose model is stacked at its penalized score", {
   )
 })
 
+test_that("ipw() reads a joint additive dose model's design once", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, dose_type = "gam")
+
+  # The dose component is read through the registry, whose entry evaluates the
+  # smooth basis the fit's penalized score is checked at. That basis is the
+  # design this route multiplies the dose block by as well, so one call needs
+  # one of it. The binary component's design is a lookup and is not counted
+  # here: `predict.gam()` is not what builds it.
+  counted <- count_gam_designs(ipw(fx$models, fx$outcome_mod))
+
+  expect_identical(counted$builds, 1L)
+
+  # Counting the builds does not change what the call reports.
+  expect_joint_dose_estimates(counted$value, fx$outcome_mod)
+})
+
+test_that("the joint additive route reports the estimates it reports today", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, dose_type = "gam")
+
+  # How often the design is built is arithmetic the answer must not see, so a
+  # route that builds it once has to reproduce these to the digit.
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_equal(
+    res$estimates$estimate,
+    c(0.6282057290, 0.4153889358, 0.6694390103),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    res$estimates$std.err,
+    c(0.0747616013, 0.0445820487, 0.0546759779),
+    tolerance = 1e-6
+  )
+})
+
 test_that("ipw() refuses dose weights built from a kernel density", {
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, .density = "kernel")

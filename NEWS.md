@@ -6,7 +6,9 @@
   a call that built it three times spent most of its time rebuilding the same
   matrix; the entry the registry reads the fit through now carries the design
   it built to check the fit against its own penalized score, and a numerator
-  model carries the design of the fit it belongs to. Nothing about the
+  model carries the design of the fit it belongs to. The two-model route reads
+  its dose component through the same entry, so a joint fit with an additive
+  dose model evaluates that model's design once as well. Nothing about the
   estimates or the standard errors changes. At two thousand observations the
   call is roughly twice as fast.
 
