@@ -121,16 +121,6 @@
       x `wt_mod` is a gaussian model fit with the "inverse" link.
       i Refit `wt_mod` with one of "identity" and "log", or as an `lm()`.
 
-# the unavailable-method error explains what the sandwich cannot do
-
-    Code
-      expr
-    Condition <propensity_ipw_se_method_unavailable_error>
-      Error in `ipw()`:
-      ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> propensity score model of a continuous exposure.
-      x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
-      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
-
 # the kernel-density refusal names the bandwidth as the reason
 
     Code
@@ -145,10 +135,11 @@
 
     Code
       expr
-    Condition <propensity_ipw_se_method_unavailable_error>
+    Condition <propensity_ipw_robust_psi_error>
       Error in `ipw()`:
-      ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> numerator model of a continuous exposure.
-      x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
+      ! `ipw()` stacks only the Huber score of a <rlm/lm> numerator model of a continuous exposure.
+      x `stabilize` was fit with `MASS::psi.bisquare()`.
+      i Refit `stabilize` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # ipw() refuses a numerator model of another response

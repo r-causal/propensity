@@ -1048,12 +1048,12 @@ test_that("the observation-level spread refusal names both spreads it takes", {
 # user never fit, and no downstream guard catches it: an lm subclass reaches the
 # lm method by inheritance, and the weights built from its fitted values agree
 # with the weights recomputed at the seeded init, so the weight-consistency
-# preflight passes. The same holds through the gaussian-family branch of the glm
-# method, which routes a gaussian mgcv::gam to the identical path. Every class
-# the registry was not written for is refused at entry, naming the class it was
-# given; which refusal each one gets is pinned with the rest of the registry
-# below. MASS::rlm is the one lm subclass with a score of its own, so it is
-# stacked rather than refused, on the terms pinned in the robust section below.
+# preflight passes. Every class the registry was not written for is refused at
+# entry, naming the class it was given; which refusal each one gets is pinned
+# with the rest of the registry below. MASS::rlm is the one lm subclass with a
+# score of its own, so it is stacked rather than refused, on the terms pinned in
+# the robust section below; a gaussian mgcv::gam is stacked as the penalized fit
+# it is, on the terms pinned in tests/testthat/test-ipw-gam.R.
 
 # A fixture whose robust and least-squares propensity fits genuinely disagree:
 # adding a block of large outliers to the exposure pulls the least-squares fit
@@ -1080,24 +1080,6 @@ test_that("a least-squares propensity model still runs on the outlier fixture", 
   lm_wts <- continuous_weights(as.double(fitted(lm_mod)), dat$A)
   lm_msm <- lm(yc ~ A, data = dat, weights = lm_wts)
   expect_s3_class(ipw(lm_mod, lm_msm), "ipw")
-})
-
-test_that("ipw() rejects a gaussian gam propensity model on the continuous path", {
-  skip_if_not_installed("mgcv")
-  dat <- sim_continuous_outliers()
-
-  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
-  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
-  msm <- lm(yc ~ A, data = dat, weights = wts)
-
-  # A gaussian gam reaches the continuous path through the glm method, so the
-  # restriction has to hold at that entry point too and not only in the lm
-  # method.
-  expect_error(
-    ipw(ps_mod, msm),
-    class = "propensity_error",
-    regexp = "gam"
-  )
 })
 
 # ---- arguments that fall into the dots --------------------------------------
@@ -1648,46 +1630,15 @@ test_that("the continuous propensity-link error names the link and the remedy", 
   expect_propensity_error(ipw(ps_mod, msm))
 })
 
-test_that("ipw() refuses a gam propensity model as a method it cannot produce", {
-  skip_if_not_installed("mgcv")
-  dat <- sim_continuous()
-
-  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
-  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
-  msm <- lm(yc ~ A, data = dat, weights = wts)
-
-  # An additive fit chooses its smoothing by REML, which no estimating equation
-  # here reproduces, so the sandwich is unavailable rather than the model being
-  # wrong. The package offers no second method, so the refusal points at a
-  # bootstrap of the whole pipeline written by hand.
-  err <- expect_error(
-    ipw(ps_mod, msm),
-    class = "propensity_ipw_se_method_unavailable_error"
-  )
-  expect_s3_class(err, "propensity_method_error")
-  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
-  expect_match(msg, "no resampling method", fixed = TRUE)
-  expect_match(msg, "bootstrap the whole fit yourself", fixed = TRUE)
-})
-
-test_that("the unavailable-method error explains what the sandwich cannot do", {
-  skip_if_not_installed("mgcv")
-  dat <- sim_continuous()
-  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
-  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
-  msm <- lm(yc ~ A, data = dat, weights = wts)
-
-  expect_propensity_error(ipw(ps_mod, msm))
-})
-
 test_that("ipw() refuses kernel-density weights as a method it cannot produce", {
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat, .density = "kernel")
 
   # A kernel bandwidth is chosen from the residuals rather than written as a
   # function of the parameters, so the weights are not differentiable in theta
-  # and the sandwich has nothing to differentiate. The class is the same one the
-  # gam refusal carries: what is unavailable is the method, not the model.
+  # and the sandwich has nothing to differentiate. What is unavailable is the
+  # method, not the model: the weights are exactly what they claim to be, and
+  # the refusal points at a bootstrap of the whole pipeline written by hand.
   err <- expect_error(
     ipw(mods$ps_mod, mods$outcome_mod),
     class = "propensity_ipw_se_method_unavailable_error"
@@ -2164,14 +2115,20 @@ test_that("ipw_spec_continuous reads a maximum likelihood spread off the weights
 })
 
 test_that("ipw() refuses a numerator model whose score it cannot write", {
-  skip_if_not_installed("mgcv")
+  skip_if_not_installed("MASS")
 
   # The numerator model joins the stack the way the propensity score model
   # does, so it is read through the same registry and refused on the same
-  # terms, in the argument it arrived in. An additive model chooses how much to
-  # smooth by REML, which no equation stacked here reproduces.
+  # terms, in the argument it arrived in. A robust fit descending a redescending
+  # psi is the case the registry refuses on both sides: its coefficients are the
+  # root of a loss no equation stacked here writes.
   dat <- sim_continuous()
-  num_mod <- mgcv::gam(A ~ s(x1), data = dat)
+  num_mod <- MASS::rlm(
+    A ~ x1,
+    data = dat,
+    psi = MASS::psi.bisquare,
+    acc = 1e-10
+  )
   fits <- fit_continuous_models(dat, stabilize = num_mod)
 
   expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))

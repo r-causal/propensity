@@ -22,16 +22,6 @@
       i A term reading the exposure alone is admitted however it is written, so a curve such as `e + I(e^2)` reports one row per coefficient.
       i Read the full coefficient vector from the returned fit object for a model this surface cannot report.
 
-# ipw() refuses a dose model whose score it cannot write
-
-    Code
-      expr
-    Condition <propensity_ipw_se_method_unavailable_error>
-      Error in `ipw()`:
-      ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> propensity score model of a continuous exposure.
-      x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
-      i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
-
 # ipw() refuses dose weights built from a kernel density
 
     Code

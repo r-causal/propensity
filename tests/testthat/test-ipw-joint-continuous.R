@@ -1011,29 +1011,40 @@ test_that("a robust dose model is stacked at the score it solves", {
   expect_gt(max(abs(unname(coef(fx$ps_e)) - unname(ls_coefs))), 0.1)
 })
 
-test_that("ipw() refuses a dose model whose score it cannot write", {
+test_that("an additive dose model is stacked at its penalized score", {
   skip_if_not_installed("mgcv")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, dose_type = "gam")
 
-  # An additive model chooses how much to smooth by REML, and no equation
-  # stacked here reproduces that choice, so what is unavailable is the standard
-  # error method rather than the weights, which are exactly what they claim to
-  # be. The single-dose route says the same thing about the same fit.
-  expect_error(
-    ipw(fx$models, fx$outcome_mod),
-    class = "propensity_ipw_se_method_unavailable_error"
+  # A dose model is read through the registry the single-dose route reads, so an
+  # additive fit reaches this route on the same terms: its design is the smooth
+  # basis the fit reports, and the equation its coefficients solve is the
+  # least-squares score less the penalty its smoothing parameters define. A
+  # block written without that penalty would sit away from its root here.
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  layout <- expect_joint_root_seeded(spec)
+
+  # The rebuilt weights are held to a looser tolerance here than the other dose
+  # models are held to. An additive fit's conditional mean comes back as its
+  # basis times its coefficients rather than out of `fitted()`, and the two
+  # agree to about 1e-11 rather than to the last bit; the preflight's own guard
+  # is 1e-6.
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fx$wts),
+    tolerance = 1e-8
   )
 
-  # Both routes point at a bootstrap the user writes, and this one says it in
-  # its own terms: the weights a replicate rebuilds are the product weights of
-  # two treatment models rather than the dose ratio of one.
-  msg <- joint_error_message(ipw(fx$models, fx$outcome_mod))
-  expect_match(msg, "joint", fixed = TRUE)
-  expect_match(msg, "wt_joint", fixed = TRUE)
-  expect_no_match(msg, "wt_ate", fixed = TRUE)
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_joint_dose_estimates(res, fx$outcome_mod)
 
-  expect_propensity_error(ipw(fx$models, fx$outcome_mod))
+  theta <- coef(res$fit)
+  dose_block <- theta[length(coef(fx$ps_a)) + seq_along(coef(fx$ps_e))]
+  expect_equal(
+    unname(dose_block),
+    unname(coef(fx$ps_e)),
+    tolerance = 1e-8
+  )
 })
 
 test_that("ipw() refuses dose weights built from a kernel density", {
