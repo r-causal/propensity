@@ -270,8 +270,9 @@ test_that("wt_joint() records each component's numerator model", {
   expect_identical(coef(models[[1]]), coef(num_a))
   expect_null(models[[2]])
 
-  # The dose's own model travels the same way, alongside the density record
-  # that also names it.
+  # A dose keeps its model in its own density record, where the single
+  # continuous route has always kept it, so the slot holds none for it. One
+  # model in one place is what makes two copies unable to disagree.
   num_d <- lm(d ~ x1, data = fx$dat)
   w_d <- withr::with_options(
     list(propensity.quiet = TRUE),
@@ -283,12 +284,51 @@ test_that("wt_joint() records each component's numerator model", {
     )
   )
 
-  dose_models <- joint_wt_meta(
-    wt_joint(fx$w$a, w_d, exposure_type = c("binary", "continuous"))
-  )$numerator_model
+  dose_joint <- wt_joint(fx$w$a, w_d, exposure_type = c("binary", "continuous"))
+  dose_meta <- joint_wt_meta(dose_joint)
 
-  expect_null(dose_models[[1]])
-  expect_identical(coef(dose_models[[2]]), coef(num_d))
+  expect_null(dose_meta$numerator_model[[1]])
+  expect_null(dose_meta$numerator_model[[2]])
+  expect_identical(
+    coef(dose_meta$density[[2]]$numerator_model),
+    coef(num_d)
+  )
+
+  # The reader is what an estimator asks, and it answers for every component
+  # alike, falling through to the density record for the ones that have one.
+  read <- joint_wt_numerator_models(dose_meta)
+  expect_null(read[[1]])
+  expect_identical(coef(read[[2]]), coef(num_d))
+})
+
+test_that("a record holding a dose's model in the slot still reads", {
+  fx <- joint_wt_fixture()
+
+  # A product built before the density record was the canonical home holds the
+  # dose's model in the slot and in the record both. The reader takes the slot
+  # where it holds one, so such a record answers as it always did.
+  num_d <- lm(d ~ x1, data = fx$dat)
+  w_d <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(fx$mods$d)),
+      fx$dat$d,
+      exposure_type = "continuous",
+      stabilize = num_d
+    )
+  )
+
+  joint <- wt_joint(fx$w$a, w_d, exposure_type = c("binary", "continuous"))
+  meta <- joint_wt_meta(joint)
+  meta$numerator_model[[2]] <- num_d
+
+  expect_identical(coef(joint_wt_numerator_models(meta)[[2]]), coef(num_d))
+
+  # And one written before the slot existed at all reads the dose's model out
+  # of the density record, which is where it has always been.
+  meta$numerator_model <- NULL
+  expect_identical(coef(joint_wt_numerator_models(meta)[[2]]), coef(num_d))
+  expect_null(joint_wt_numerator_models(meta)[[1]])
 })
 
 test_that("wt_joint() records each component's stabilization score", {

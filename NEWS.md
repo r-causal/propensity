@@ -1,5 +1,16 @@
 # propensity 0.1.0.9000 (development version)
 
+* A joint weight's record now keeps one copy of what stabilized each
+  component. A component weighting a dose kept its numerator model in the
+  `density` record `joint_wt_meta()` reports and in that record's
+  `numerator_model` element both, written from the same object and checked
+  against each other nowhere, so a record modified afterwards could carry two
+  models and whichever surface a reader consulted would win in silence. The
+  density record is now the only home for a component that has one, and the
+  element holds a model for the components that have nowhere else to keep one.
+  What every accessor answers is unchanged for a record this package wrote,
+  and a record written under the old arrangement still reads.
+
 * `wt_joint()` now records each component's `stabilization_score`, and `ipw()`
   rebuilds a component stabilized on one exactly. A score is a numerator the
   caller computed rather than one an estimator can fit again, so it existed

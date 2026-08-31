@@ -45,10 +45,13 @@ weights that are not a product:
 returns it, in order. A component weighting a discrete exposure is
 \code{NULL}, since its weights are no ratio of densities.}
 \item{\code{numerator_model}}{Each component's numerator model, as
-\code{\link[=numerator_model]{numerator_model()}} returns it, in order. A component stabilized on
-anything other than a fitted model is \code{NULL}. A record written before
-this element existed holds none at all, which says the same thing as a
-record whose components each record no model.}
+\code{\link[=numerator_model]{numerator_model()}} returns it, in order, for the components that have
+nowhere else to keep one. A component weighting a continuous exposure
+keeps its model inside its own \code{density} record, so this element is
+\code{NULL} for it, and so it is for a component stabilized on anything other
+than a fitted model. A record written before this element existed holds
+none at all, which says the same thing as a record whose components each
+record no model.}
 \item{\code{stabilization_score}}{Each component's stabilization score, as
 \code{\link[=stabilization_score]{stabilization_score()}} returns it, in order. A component stabilized on
 anything other than a score the caller supplied is \code{NULL}. A record

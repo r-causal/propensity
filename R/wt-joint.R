@@ -163,10 +163,13 @@ joint_wt_response <- function(model) {
 #'     returns it, in order. A component weighting a discrete exposure is
 #'     `NULL`, since its weights are no ratio of densities.}
 #'   \item{`numerator_model`}{Each component's numerator model, as
-#'     [numerator_model()] returns it, in order. A component stabilized on
-#'     anything other than a fitted model is `NULL`. A record written before
-#'     this element existed holds none at all, which says the same thing as a
-#'     record whose components each record no model.}
+#'     [numerator_model()] returns it, in order, for the components that have
+#'     nowhere else to keep one. A component weighting a continuous exposure
+#'     keeps its model inside its own `density` record, so this element is
+#'     `NULL` for it, and so it is for a component stabilized on anything other
+#'     than a fitted model. A record written before this element existed holds
+#'     none at all, which says the same thing as a record whose components each
+#'     record no model.}
 #'   \item{`stabilization_score`}{Each component's stabilization score, as
 #'     [stabilization_score()] returns it, in order. A component stabilized on
 #'     anything other than a score the caller supplied is `NULL`. A record
@@ -247,10 +250,17 @@ wt_joint <- function(w_a, w_e, exposure_type = NULL) {
     # The model a component's numerator was estimated with, so an estimator can
     # estimate it again rather than reading the numerator it evaluated to. The
     # slot is one per component and empty for a component whose numerator was no
-    # model, so it is read positionally the way the density slot is. A dose's
-    # model is recorded here and in its density record both, since the two
-    # accessors reach it by different routes.
-    numerator_model = list(numerator_model(w_a), numerator_model(w_e)),
+    # model, so it is read positionally the way the density slot is.
+    #
+    # It is empty for a component that has a density record as well, since that
+    # record is where the single continuous route has always kept the model. Two
+    # copies written from the same object agree the day they are written and
+    # nothing afterwards checks that they still do, so there is one copy and the
+    # reader falls through to it.
+    numerator_model = list(
+      joint_wt_component_model(w_a),
+      joint_wt_component_model(w_e)
+    ),
     # The numerator a caller computed rather than fit, kept as the vector it
     # was. An estimator can rebuild a model and can rebuild the marginal
     # numerator the default stabilizer estimates, and a score is neither: it is
@@ -325,17 +335,37 @@ joint_wt_meta <- function(x) {
   attr(x, "joint_wt_meta")
 }
 
-# The numerator models the record holds, one per component and in the
-# components' own order. A record written before the slot existed holds none,
-# which says what a record whose components each record no model says.
-joint_wt_numerator_models <- function(meta) {
-  models <- meta$numerator_model
-
-  if (is.null(models)) {
-    return(vector("list", length(meta$exposure_type)))
+# The numerator model the record stores for one component: none for a component
+# whose density record holds it already, which is every component weighting a
+# dose. `joint_wt_numerator_models()` reads the two homes as one.
+joint_wt_component_model <- function(w) {
+  if (!is.null(density_meta(w))) {
+    return(NULL)
   }
 
-  models
+  numerator_model(w)
+}
+
+# The numerator models the record names, one per component and in the
+# components' own order, read from whichever home holds each one: the slot for a
+# component with no density record, and the density record for the rest. A
+# record written before the slot existed holds none, which says what a record
+# whose components each record no model says, and one written while the slot was
+# the dose's home too still answers out of the slot.
+joint_wt_numerator_models <- function(meta) {
+  n <- length(meta$exposure_type)
+  models <- meta$numerator_model
+  density <- meta$density
+
+  lapply(seq_len(n), function(i) {
+    stored <- if (i <= length(models)) models[[i]]
+
+    if (!is.null(stored)) {
+      return(stored)
+    }
+
+    if (i <= length(density)) density[[i]]$numerator_model
+  })
 }
 
 # The stabilization scores the record holds, one per component and in the
