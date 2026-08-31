@@ -1316,6 +1316,12 @@ psw_attrs_agree <- function(field, x, y) {
 # holds a density record and is compared the way those are. A component
 # weighting no density records nothing there, and two of those say the same
 # thing.
+#
+# The numerator models are compared the way a single record's is, by what they
+# say rather than by identity, since a fit carries the frame it was made in. A
+# record written before the slot existed reads as one model per component and
+# none of them fitted, so it agrees with a product of components that record no
+# model rather than disagreeing with every record at all.
 joint_wt_meta_agrees <- function(x, y) {
   agrees <- identical(x$exposure_type, y$exposure_type) &&
     identical(x$stabilized, y$stabilized) &&
@@ -1325,11 +1331,25 @@ joint_wt_meta_agrees <- function(x, y) {
     return(FALSE)
   }
 
-  all(vapply(
+  models_x <- joint_wt_numerator_models(x)
+  models_y <- joint_wt_numerator_models(y)
+
+  if (length(models_x) != length(models_y)) {
+    return(FALSE)
+  }
+
+  densities <- all(vapply(
     seq_along(x$density),
     function(i) density_meta_agrees(x$density[[i]], y$density[[i]]),
     logical(1)
   ))
+
+  densities &&
+    all(vapply(
+      seq_along(models_x),
+      function(i) numerator_models_agree(models_x[[i]], models_y[[i]]),
+      logical(1)
+    ))
 }
 
 # Unlike a drop for length, which happens to records that also travel by routes

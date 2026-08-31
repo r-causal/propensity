@@ -153,7 +153,7 @@ joint_wt_response <- function(model) {
 #'
 #' `is_joint_wt()` returns a single logical.
 #'
-#' `joint_wt_meta()` returns the record as a list of three elements, each one
+#' `joint_wt_meta()` returns the record as a list of four elements, each one
 #' per component and in the order the components were given, or `NULL` for
 #' weights that are not a product:
 #' \describe{
@@ -162,6 +162,11 @@ joint_wt_response <- function(model) {
 #'   \item{`density`}{Each component's density record, as [density_meta()]
 #'     returns it, in order. A component weighting a discrete exposure is
 #'     `NULL`, since its weights are no ratio of densities.}
+#'   \item{`numerator_model`}{Each component's numerator model, as
+#'     [numerator_model()] returns it, in order. A component stabilized on
+#'     anything other than a fitted model is `NULL`. A record written before
+#'     this element existed holds none at all, which says the same thing as a
+#'     record whose components each record no model.}
 #' }
 #'
 #' The record names the components rather than the observations, so it survives
@@ -229,7 +234,14 @@ wt_joint <- function(w_a, w_e, exposure_type = NULL) {
     # what an estimator has to rebuild them from. The slot is one per component,
     # empty for a component weighting no density, so the record is read
     # positionally either way.
-    density = list(density_meta(w_a), density_meta(w_e))
+    density = list(density_meta(w_a), density_meta(w_e)),
+    # The model a component's numerator was estimated with, so an estimator can
+    # estimate it again rather than reading the numerator it evaluated to. The
+    # slot is one per component and empty for a component whose numerator was no
+    # model, so it is read positionally the way the density slot is. A dose's
+    # model is recorded here and in its density record both, since the two
+    # accessors reach it by different routes.
+    numerator_model = list(numerator_model(w_a), numerator_model(w_e))
   )
 
   out
@@ -291,6 +303,19 @@ is_joint_wt <- function(x) {
 #' @export
 joint_wt_meta <- function(x) {
   attr(x, "joint_wt_meta")
+}
+
+# The numerator models the record holds, one per component and in the
+# components' own order. A record written before the slot existed holds none,
+# which says what a record whose components each record no model says.
+joint_wt_numerator_models <- function(meta) {
+  models <- meta$numerator_model
+
+  if (is.null(models)) {
+    return(vector("list", length(meta$exposure_type)))
+  }
+
+  models
 }
 
 # A joint weight is a product over two treatments, and each of them is weighted

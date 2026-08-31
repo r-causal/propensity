@@ -1,5 +1,28 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now estimates each component's stabilizing numerator in a block of
+  its own on the two-model route to a joint intervention, where the route
+  carried one stabilization block and it belonged to the dose. Two things
+  follow. A joint fit whose binary component was stabilized, which the route
+  used to rebuild unstabilized and then refuse as a weights mismatch the caller
+  did not cause, now returns: the component's marginal proportion is a
+  parameter of the stacked system, seeded and solved where the
+  single-treatment route seeds and solves it. And either component may now be
+  stabilized on a fitted model passed to `wt_ate()`'s `stabilize`, which used
+  to be refused for a dose with class `propensity_ipw_numerator_error` and
+  reported as a mismatch for a binary treatment. The model's own score joins
+  the stack, so the standard errors account for the numerator having been
+  fitted rather than reading it as a constant. Stabilization parameters are
+  named `stab_<component>_<parameter>` for the component they belong to, since
+  a joint system carries two of them. `wt_joint()` records each component's
+  numerator model on the product for `ipw()` to read; a product built before
+  that record existed is read as one whose components record no model, which is
+  what such a product meant. A component built with a `stabilization_score` is
+  still the one numerator the route cannot reproduce, since the product records
+  that a numerator was a score without recording the vector it was, and the
+  weights mismatch now names the components whose numerator was stood in for
+  rather than describing the dose's.
+
 * `wt_ate()` and `wt_cens()` now take a fitted model of a binary exposure in
   `stabilize`, where a fitted model of a dose was already taken. The numerator
   is then the model's fitted probability of the level each unit took, so the

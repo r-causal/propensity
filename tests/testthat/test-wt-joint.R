@@ -213,7 +213,8 @@ test_that("wt_joint() multiplies two binary ate weights", {
     list(
       exposure_type = c("binary", "binary"),
       stabilized = c(FALSE, FALSE),
-      density = list(NULL, NULL)
+      density = list(NULL, NULL),
+      numerator_model = list(NULL, NULL)
     )
   )
 
@@ -241,9 +242,51 @@ test_that("wt_joint() multiplies a binary weight by a stabilized continuous weig
     list(
       exposure_type = c("binary", "continuous"),
       stabilized = c(FALSE, TRUE),
-      density = list(NULL, density_meta(fx$w$d))
+      density = list(NULL, density_meta(fx$w$d)),
+      numerator_model = list(NULL, NULL)
     )
   )
+})
+
+test_that("wt_joint() records each component's numerator model", {
+  fx <- joint_wt_fixture()
+
+  # A component stabilized on a fitted model records that model, and a component
+  # stabilized on anything else records none. The slot is what an estimator
+  # reads to estimate the numerator again rather than to take the value it
+  # evaluated to as a constant.
+  num_a <- glm(a ~ x1, data = fx$dat, family = binomial())
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = num_a)
+  )
+
+  joint <- wt_joint(w_a, fx$w$d, exposure_type = c("binary", "continuous"))
+  models <- joint_wt_meta(joint)$numerator_model
+
+  expect_length(models, 2L)
+  expect_identical(coef(models[[1]]), coef(num_a))
+  expect_null(models[[2]])
+
+  # The dose's own model travels the same way, alongside the density record
+  # that also names it.
+  num_d <- lm(d ~ x1, data = fx$dat)
+  w_d <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(fx$mods$d)),
+      fx$dat$d,
+      exposure_type = "continuous",
+      stabilize = num_d
+    )
+  )
+
+  dose_models <- joint_wt_meta(
+    wt_joint(fx$w$a, w_d, exposure_type = c("binary", "continuous"))
+  )$numerator_model
+
+  expect_null(dose_models[[1]])
+  expect_identical(coef(dose_models[[2]]), coef(num_d))
 })
 
 test_that("wt_joint() marks the product stabilized when any component is", {

@@ -445,12 +445,16 @@ ipw_default_stab_seed <- function(exposure) {
 # every evaluation both read it here, so the two cannot compute a different
 # numerator from the same parameters. Weights with no numerator to estimate
 # leave the block empty and take no probability at all.
-ipw_binary_stab_prob <- function(spec, th_stab, call = rlang::caller_env()) {
+#
+# `model` is the numerator block itself and `th_stab` the slice of theta that
+# belongs to it, rather than the whole spec and the whole stabilization block:
+# the joint route carries one such pair per component and would have no spec to
+# hand over that named a single one of them.
+ipw_binary_stab_prob <- function(model, th_stab, call = rlang::caller_env()) {
   if (!length(th_stab)) {
     return(NULL)
   }
 
-  model <- spec$stab$model
   if (is.null(model)) {
     return(th_stab[[1]])
   }
@@ -812,7 +816,7 @@ ipw_psi_binary <- function(
     )
     e <- inv_ps(as.vector(x_ps %*% th_ps))
 
-    stab_prob <- ipw_binary_stab_prob(spec, th_stab, call = call)
+    stab_prob <- ipw_binary_stab_prob(spec$stab$model, th_stab, call = call)
     # The tilt enters an evaluation twice, as the numerator of the weights and
     # as the standardization of the marginal-mean rows below. It is evaluated
     # here and handed to both.

@@ -35,7 +35,7 @@ types are named.}
 
 \code{is_joint_wt()} returns a single logical.
 
-\code{joint_wt_meta()} returns the record as a list of three elements, each one
+\code{joint_wt_meta()} returns the record as a list of four elements, each one
 per component and in the order the components were given, or \code{NULL} for
 weights that are not a product:
 \describe{
@@ -44,6 +44,11 @@ weights that are not a product:
 \item{\code{density}}{Each component's density record, as \code{\link[=density_meta]{density_meta()}}
 returns it, in order. A component weighting a discrete exposure is
 \code{NULL}, since its weights are no ratio of densities.}
+\item{\code{numerator_model}}{Each component's numerator model, as
+\code{\link[=numerator_model]{numerator_model()}} returns it, in order. A component stabilized on
+anything other than a fitted model is \code{NULL}. A record written before
+this element existed holds none at all, which says the same thing as a
+record whose components each record no model.}
 }
 
 The record names the components rather than the observations, so it survives

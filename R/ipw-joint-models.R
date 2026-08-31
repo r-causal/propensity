@@ -21,9 +21,13 @@
 # model's own causal coefficients under labels written in the same vocabulary.
 # Its treatment block is the score its own model solves, read through the same
 # registry the single-dose route reads, carrying the conditional variance of the
-# density its weight divides by; the stabilizing numerator that density ratio
-# needs is estimated alongside it when the numerator is one the system estimates
-# anything for.
+# density its weight divides by.
+#
+# Either component may carry a stabilizing numerator, and each one is estimated
+# in a block of its own: the marginal proportion or the two marginal moments the
+# default stabilizer is, or the score of a numerator model the caller fit. The
+# stabilization block is therefore per component and is sliced by the widths the
+# spec records, the way the treatment blocks are.
 #
 # The stacked system carries both treatment models' score blocks, so the weights
 # entering the outcome score are recomputed from both blocks of theta on every
@@ -52,6 +56,12 @@
 #' builds. A dose model or a density the stacked system cannot differentiate is
 #' refused rather than resampled, since this route has no resampling method; see
 #' **Joint exposures**.
+#'
+#' Either component may be stabilized, including on a numerator model the caller
+#' fit and passed to [wt_ate()]'s `stabilize`. Each component's numerator is
+#' estimated in a block of its own, so the standard errors account for it having
+#' been fitted; see **Joint exposures** for what each block holds and for what a
+#' numerator may condition on.
 #'
 #' Every score this route stacks is unweighted, so a treatment model fit with
 #' prior case weights is refused by the name it was recorded under in
@@ -302,28 +312,22 @@ ipw_spec_joint_models <- function(
     numerator <- "marginal"
   }
 
-  # A dose stabilized on a fitted numerator model is refused outright rather
-  # than stood in for. The single-dose route estimates such a model in the
-  # stacked system, and this route has no block to estimate it in: standing the
-  # exposure's own marginal moments in for it would rebuild a different set of
-  # weights, which the preflight would report as a mismatch the caller did not
-  # cause.
-  if (identical(numerator, "model")) {
-    abort(
-      c(
-        "{.fun ipw} does not support a joint exposure whose dose was
-         stabilized on a fitted model.",
-        x = "The dose component's weights record a numerator estimated by a
-             model, which this route has no stabilization block to estimate it
-             in.",
-        i = "Rebuild the dose's weights with {.code stabilize = TRUE}, or
-             report the dose on its own, where the numerator model is
-             estimated alongside the rest of the system."
-      ),
-      error_class = "propensity_ipw_numerator_error",
-      call = call
-    )
-  }
+  # Each component's stabilizing numerator is estimated in a block of its own,
+  # the way the single-treatment routes estimate the one numerator they carry,
+  # so a component stabilized on a fitted model is stacked rather than refused.
+  # The blocks are built here, where the numerator models each go through the
+  # guards their own route puts them through.
+  stab_components <- ipw_joint_models_stab_components(
+    wts,
+    types = types,
+    names = names,
+    n = n,
+    numerator = numerator,
+    recorded = ratio$numerator,
+    numerator_model = ratio$numerator_model,
+    dose_idx = dose_idx,
+    call = call
+  )
 
   if (is_linear_regression(outcome_mod)) {
     family <- "gaussian"
@@ -440,11 +444,19 @@ ipw_spec_joint_models <- function(
       k = 2L
     ),
     # `wt_joint()` requires a continuous component to be stabilized, so a dose
-    # brings a stabilizing numerator with it. Which numerator that is decides
-    # whether the system estimates anything for it: a marginal one is two
-    # moments of the exposure, and an integrated one is built from the dose
-    # block and the data alone.
-    stab = list(stabilized = dose, score = NULL),
+    # brings a stabilizing numerator with it, and a binary component may bring
+    # one of its own. Which numerator a component carries decides what the
+    # system estimates for it: a marginal dose numerator is two moments of the
+    # exposure, a marginal binary one is a single proportion, a fitted model is
+    # its own coefficients, and an integrated one is built from the dose block
+    # and the data alone. `widths` says how wide each component's slice of the
+    # stabilization block is, so the block is sliced the way `ps$widths` slices
+    # the treatment blocks rather than by position.
+    stab = list(
+      components = stab_components,
+      widths = vapply(stab_components, function(x) x$width, integer(1)),
+      score = NULL
+    ),
     density = if (dose) ratio$density,
     numerator = if (dose) numerator,
     sigma = if (dose) ratio$sigma,
@@ -1103,6 +1115,165 @@ ipw_joint_models_weight_fn <- function(
   }
 }
 
+# What the system estimates for each component's stabilizing numerator, one
+# entry per component and in the container's order. Each entry names the kind of
+# numerator the component's weights record, the block of a fitted one, and how
+# wide the component's slice of the stabilization block is; a component whose
+# numerator the system estimates nothing for takes a slice of width zero.
+#
+# The parameters those slices hold are named `stab_<component>_<parameter>`,
+# since a joint system carries two components and a name saying only which role
+# a parameter plays would not say whose. A marginal binary numerator is one
+# proportion, `pi`; a marginal dose numerator is the exposure's two moments,
+# `mu` and `sigma2`; and a fitted numerator is one parameter per column of its
+# own design, followed for a dose by `sigma2`, the spread its density is read
+# at. `ipw_init_joint_models_stab()` writes those names and is the one place
+# they are written.
+#
+# A binary component's numerator model is recorded on the product itself and a
+# dose's on its density record, so the two are read from the places their own
+# routes read them from and put through the guards their own routes apply.
+ipw_joint_models_stab_components <- function(
+  wts,
+  types,
+  names,
+  n,
+  numerator,
+  recorded,
+  numerator_model,
+  dose_idx,
+  call = rlang::caller_env()
+) {
+  meta <- joint_wt_meta(wts)
+  stabilized <- meta$stabilized
+  binary_models <- joint_wt_numerator_models(meta)
+
+  lapply(seq_along(types), function(i) {
+    if (identical(i, dose_idx)) {
+      return(ipw_joint_models_dose_stab(
+        numerator,
+        recorded,
+        numerator_model,
+        names[[i]],
+        n,
+        call = call
+      ))
+    }
+
+    # A discrete component the product records as unstabilized carries no
+    # numerator, and one it records as stabilized carries either a model of the
+    # caller's or the marginal proportion the default stabilizer estimates. A
+    # score the caller computed leaves the same record the default does, since
+    # the product keeps no vector, so it is stood in for by the marginal
+    # proportion and the preflight is what reports the difference.
+    if (!isTRUE(stabilized[[i]])) {
+      return(list(
+        type = types[[i]],
+        numerator = "none",
+        model = NULL,
+        width = 0L,
+        stand_in = FALSE
+      ))
+    }
+
+    model <- ipw_binary_numerator_block(binary_models[[i]], call = call)
+
+    if (is.null(model)) {
+      return(list(
+        type = types[[i]],
+        numerator = "marginal",
+        model = NULL,
+        width = 1L,
+        # The product records that a discrete component was stabilized without
+        # recording what by, so a score of the caller's leaves the record the
+        # default stabilizer leaves and the marginal proportion stands in for
+        # either.
+        stand_in = TRUE
+      ))
+    }
+
+    check_ipw_numerator_model(
+      binary_models[[i]],
+      model,
+      names[[i]],
+      n,
+      call = call
+    )
+
+    list(
+      type = types[[i]],
+      numerator = "model",
+      model = model,
+      width = ncol(model$X),
+      stand_in = FALSE
+    )
+  })
+}
+
+# The dose component's entry. A marginal numerator is the exposure's own two
+# moments, a fitted one is its coefficients and the spread its density is read
+# at, and an integrated one is built from the dose block and the data alone, so
+# it estimates nothing and takes no slice.
+ipw_joint_models_dose_stab <- function(
+  numerator,
+  recorded,
+  numerator_model,
+  name,
+  n,
+  call = rlang::caller_env()
+) {
+  if (identical(numerator, "marginal")) {
+    return(list(
+      type = "continuous",
+      numerator = "marginal",
+      model = NULL,
+      width = 2L,
+      # A dose whose weights record a score of the caller's is rebuilt from the
+      # marginal moments instead, since the product keeps no vector, and that
+      # substitution is a cause the weights preflight reports by name.
+      stand_in = identical(recorded, "score")
+    ))
+  }
+
+  if (!identical(numerator, "model")) {
+    return(list(
+      type = "continuous",
+      numerator = "none",
+      model = NULL,
+      width = 0L,
+      stand_in = FALSE
+    ))
+  }
+
+  model <- ipw_numerator_model_block(numerator_model, call = call)
+  check_ipw_numerator_model(numerator_model, model, name, n, call = call)
+
+  list(
+    type = "continuous",
+    numerator = "model",
+    model = model,
+    width = ncol(model$X) + 1L,
+    stand_in = FALSE
+  )
+}
+
+# One component's slice of the stabilization block, cut by the widths the spec
+# records rather than by position, so a component that estimates nothing takes
+# nothing and the component after it still reads its own parameters.
+ipw_joint_models_stab_slices <- function(spec, th_stab) {
+  widths <- spec$stab$widths
+  ends <- cumsum(widths)
+  starts <- c(1L, utils::head(ends, -1L) + 1L)
+
+  lapply(seq_along(widths), function(i) {
+    if (identical(widths[[i]], 0L)) {
+      numeric(0)
+    } else {
+      th_stab[starts[[i]]:ends[[i]]]
+    }
+  })
+}
+
 # Each treatment model's block of theta, resolved into the pieces the rest of
 # the system reads: the parameters its own score sits at, the fitted quantity
 # its weight factor divides by, and whatever else that factor needs.
@@ -1118,17 +1289,24 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
   starts <- c(1L, utils::head(ends, -1L) + 1L)
   dose <- ipw_joint_models_dose(spec)
   ps_fns <- if (!is.null(dose)) ipw_joint_models_dose_fns(spec)
+  stab_th <- ipw_joint_models_stab_slices(spec, th_stab)
 
   lapply(seq_along(spec$ps$X), function(i) {
     th <- th_ps[starts[[i]]:ends[[i]]]
     x <- spec$ps$X[[i]]
+    stab <- spec$stab$components[[i]]
 
     if (!identical(spec$ps$types[[i]], "continuous")) {
       return(list(
         type = spec$ps$types[[i]],
         coefs = th,
         ps = ipw_inv_link(spec$ps$link[[i]])(as.vector(x %*% th)),
-        extras = list()
+        # A discrete component's numerator is the probability of the level each
+        # unit took, which the registry multiplies its unstabilized weight by.
+        # A component with no numerator to estimate takes none.
+        extras = list(
+          stab_prob = ipw_binary_stab_prob(stab$model, stab_th[[i]])
+        )
       ))
     }
 
@@ -1143,6 +1321,13 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
       th[[ncol(x) + 1L]]
     }
 
+    # A dose stabilized on a fitted model reads its own conditional mean and its
+    # own spread out of its slice, where a marginal numerator reads the
+    # exposure's two moments.
+    th_n <- stab_th[[i]]
+    marginal <- identical(stab$numerator, "marginal")
+    model <- if (identical(stab$numerator, "model")) stab$model
+
     list(
       type = "continuous",
       coefs = alpha,
@@ -1150,10 +1335,17 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
       ps = ps_fns$mean(x, alpha),
       extras = list(
         sigma2_d = sigma2_d,
-        mu_a = if (length(th_stab)) th_stab[[1]],
-        sigma2_a = if (length(th_stab)) th_stab[[2]],
+        mu_a = if (marginal) th_n[[1]],
+        sigma2_a = if (marginal) th_n[[2]],
+        mu_n = if (!is.null(model)) {
+          ipw_numerator_model_fns(model)$mean(
+            model$X,
+            th_n[seq_len(ncol(model$X))]
+          )
+        },
+        sigma_n = if (!is.null(model)) sqrt(th_n[[ncol(model$X) + 1L]]),
         score = spec$stab$score,
-        stabilized = spec$stab$stabilized,
+        stabilized = !identical(stab$numerator, "none"),
         # Which ratio the dose's weights are, so the factor rebuilt here is the
         # factor `wt_joint()` multiplied rather than the one this route used to
         # assume every dose was.
@@ -1219,16 +1411,57 @@ ipw_joint_models_score_rows <- function(
   )
 }
 
-# The stabilizing numerator's rows: the two moments of the dose's own marginal
-# density, each the exact root of the row that estimates it. They are stacked
-# only under a marginal numerator, which is the one numerator built from
-# anything the system has to estimate.
-ipw_joint_models_stab_rows <- function(th_stab, dose) {
-  if (!length(th_stab)) {
-    return(NULL)
-  }
+# The stabilizing numerators' rows, one block per component and in the
+# components' own order, each seeded at the exact root of the equation written
+# for it. A marginal dose numerator is the two moments of the exposure's own
+# density; a marginal binary one is the proportion that took the non-reference
+# level; a fitted one is the score its own class solves, followed for a dose by
+# the moment its spread is the root of. A component the system estimates no
+# numerator for contributes no rows at all.
+ipw_joint_models_stab_rows <- function(spec, th_stab, exposures) {
+  slices <- ipw_joint_models_stab_slices(spec, th_stab)
 
-  deli::ee_mean_variance(th_stab, y = dose)
+  rows <- lapply(seq_along(slices), function(i) {
+    th <- slices[[i]]
+
+    if (!length(th)) {
+      return(NULL)
+    }
+
+    stab <- spec$stab$components[[i]]
+    a <- exposures[[i]]
+
+    if (identical(stab$numerator, "marginal")) {
+      if (identical(stab$type, "continuous")) {
+        return(deli::ee_mean_variance(th, y = a))
+      }
+
+      return(matrix(a - th[[1]], nrow = 1))
+    }
+
+    model <- stab$model
+    p_n <- ncol(model$X)
+
+    if (!identical(stab$type, "continuous")) {
+      return(deli::ee_glm(
+        th,
+        X = model$X,
+        y = a,
+        distribution = "binomial",
+        link = model$link
+      ))
+    }
+
+    fns <- ipw_numerator_model_fns(model)
+    mu_n <- fns$mean(model$X, th[seq_len(p_n)])
+
+    rbind(
+      fns$score(th[seq_len(p_n)], model$X, a),
+      matrix((a - mu_n)^2 - th[[p_n + 1L]], nrow = 1)
+    )
+  })
+
+  do.call(rbind, rows)
 }
 
 # The index of the dose among the components, or NULL where both are discrete.
@@ -1278,24 +1511,56 @@ ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
   unlist(unname(blocks))
 }
 
-# The stabilizing numerator's seed: the dose's own marginal moments. Blocks are
-# named for the treatment they belong to, since a joint system carries two
-# treatment models and a name saying only which role a parameter plays would
-# not say whose.
+# The stabilizing numerators' seed, one block per component and in the
+# components' own order, each at the exact root of the row that estimates it.
+# Parameters are named `stab_<component>_<parameter>`, since a joint system
+# carries two components and a name saying only which role a parameter plays
+# would not say whose. This is where that convention is written; every other
+# reader of the stabilization block slices it by the widths the spec records.
 ipw_init_joint_models_stab <- function(spec) {
-  dose <- ipw_joint_models_dose(spec)
+  blocks <- lapply(seq_along(spec$stab$components), function(i) {
+    stab <- spec$stab$components[[i]]
 
-  if (is.null(dose) || !identical(spec$numerator, "marginal")) {
-    return(numeric(0))
-  }
+    if (identical(stab$width, 0L)) {
+      return(numeric(0))
+    }
 
-  a <- spec$exposure[[dose]]
-  mu_a <- mean(a)
+    a <- spec$exposure[[i]]
+    prefix <- paste0("stab_", spec$names[[i]], "_")
 
-  stats::setNames(
-    c(mu_a, mean((a - mu_a)^2)),
-    paste0(c("stab_mu_", "stab_sigma2_"), spec$names[[dose]])
-  )
+    if (identical(stab$numerator, "marginal")) {
+      if (identical(stab$type, "continuous")) {
+        mu_a <- mean(a)
+        return(stats::setNames(
+          c(mu_a, mean((a - mu_a)^2)),
+          paste0(prefix, c("mu", "sigma2"))
+        ))
+      }
+
+      return(stats::setNames(
+        ipw_default_stab_seed(a),
+        paste0(prefix, "pi")
+      ))
+    }
+
+    model <- stab$model
+    coefs <- stats::setNames(model$coefs, paste0(prefix, colnames(model$X)))
+
+    if (!identical(stab$type, "continuous")) {
+      return(coefs)
+    }
+
+    fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, model$coefs)
+
+    c(
+      coefs,
+      stats::setNames(mean((a - fitted_n)^2), paste0(prefix, "sigma2"))
+    )
+  })
+
+  out <- unlist(unname(blocks))
+
+  if (is.null(out)) numeric(0) else out
 }
 
 ipw_init_joint_models <- function(spec, call = rlang::caller_env()) {
@@ -1392,11 +1657,7 @@ ipw_psi_joint_models <- function(
       })
     )
 
-    stab_rows <- if (is.null(dose)) {
-      NULL
-    } else {
-      ipw_joint_models_stab_rows(th_stab, exposure[[dose]])
-    }
+    stab_rows <- ipw_joint_models_stab_rows(spec, th_stab, exposure)
 
     # The weights are rebuilt from both propensity score blocks on every
     # evaluation, which is what propagates the uncertainty of having estimated

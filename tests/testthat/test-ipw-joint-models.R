@@ -888,3 +888,86 @@ test_that("ipw() refuses a joint binary treatment model fit with case weights", 
     expect_no_match(msg, "wt_mod", fixed = TRUE)
   }
 })
+
+# ---- stabilized discrete components -----------------------------------------
+#
+# Both components of a discrete pair may be stabilized, and each numerator is
+# estimated in a block of its own, whether it is the marginal proportion the
+# default stabilizer is or a model the caller fit. What the route used to do
+# instead was rebuild every discrete component unstabilized, which reached a
+# different product and was reported as a weights mismatch the caller had not
+# caused.
+
+test_that("ipw() stacks a stabilized discrete component's own numerator", {
+  dat <- sim_joint_models()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+  # One component takes the default numerator, the marginal proportion, and the
+  # other a fitted model of its treatment on a covariate the outcome model
+  # reads, which is what a numerator may condition on.
+  num_e <- glm(e ~ x1, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a, stabilize = TRUE),
+      wt_ate(ps_e, stabilize = num_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  models <- joint_wt_models(a = ps_a, e = ps_e)
+
+  # The product written out, so the rebuild is held to the arithmetic rather
+  # than to the preflight's tolerance.
+  p1 <- mean(dat$a)
+  p_e <- as.numeric(fitted(num_e))
+  expected <- (((dat$a * p1) / fitted(ps_a)) +
+    (((1 - dat$a) * (1 - p1)) / (1 - fitted(ps_a)))) *
+    (((dat$e / fitted(ps_e)) + ((1 - dat$e) / (1 - fitted(ps_e)))) *
+      (dat$e * p_e + (1 - dat$e) * (1 - p_e)))
+  expect_equal(as.numeric(wts), unname(expected), tolerance = 1e-12)
+
+  spec <- ipw_spec_joint_models(models, outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(wts),
+    tolerance = 1e-12
+  )
+
+  # Every equation in the stacked system sits at its root at the seed, which is
+  # what makes the solve report the models the caller fit.
+  mat <- build_ipw_psi(spec, layout)(layout$init)
+  expect_false(anyNA(mat))
+  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-8))
+
+  res <- ipw(models, outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    joint_models_expected_estimates(joint_models_cell_means(outcome_mod, dat)),
+    tolerance = 1e-6
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+
+  # One proportion for the component that took the default numerator, and one
+  # parameter per coefficient for the component that took a model, each named
+  # for the component it belongs to.
+  theta <- coef(res$fit)
+  stab <- theta[grepl("^stab_", names(theta))]
+  expect_length(stab, 1L + length(coef(num_e)))
+  expect_equal(unname(theta[["stab_a_pi"]]), p1, tolerance = 1e-8)
+  expect_equal(
+    unname(stab[grepl("^stab_e_", names(stab))]),
+    unname(coef(num_e)),
+    tolerance = 1e-6
+  )
+})

@@ -53,7 +53,6 @@
       i The estimand the weights were built for may differ from the one `ipw()` resolved.
       i `ipw()` rebuilt these weights as a "t(df = 4)" density with a "marginal" numerator.
       i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual root mean square, which is what `wt_ate()` uses when no `.sigma` is given.
-      i A dose component built with a fixed `stabilization_score` is one cause: the product records that the numerator was a score without recording the vector it was, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
       i Refit `outcome_mod` with weights from the two treatment models `wt_mod` holds, and this estimand, if the weights are the cause.
@@ -116,7 +115,7 @@
       i The estimand the weights were built for may differ from the one `ipw()` resolved.
       i `ipw()` rebuilt these weights as a "normal" density with a "marginal" numerator.
       i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual root mean square, which is what `wt_ate()` uses when no `.sigma` is given.
-      i A dose component built with a fixed `stabilization_score` is one cause: the product records that the numerator was a score without recording the vector it was, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
+      i A component built with a fixed `stabilization_score` is one cause: the product records that a numerator was a score without recording the vector it was, so `ipw()` rebuilt the numerator of `e` from the exposure's own marginal distribution instead.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
       i Refit `outcome_mod` with weights from the two treatment models `wt_mod` holds, and this estimand, if the weights are the cause.

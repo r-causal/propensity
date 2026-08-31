@@ -303,6 +303,12 @@ builds. A dose model or a density the stacked system cannot differentiate is
 refused rather than resampled, since this route has no resampling method; see
 \strong{Joint exposures}.
 
+Either component may be stabilized, including on a numerator model the caller
+fit and passed to \code{\link[=wt_ate]{wt_ate()}}'s \code{stabilize}. Each component's numerator is
+estimated in a block of its own, so the standard errors account for it having
+been fitted; see \strong{Joint exposures} for what each block holds and for what a
+numerator may condition on.
+
 Every score this route stacks is unweighted, so a treatment model fit with
 prior case weights is refused by the name it was recorded under in
 \code{\link[=joint_wt_models]{joint_wt_models()}}.
@@ -842,9 +848,53 @@ model, so the outcome model frame is never asked for a column it does not
 hold.
 
 The dose model contributes its coefficients and the conditional variance its
-density ratio divides by, and a marginal stabilizing numerator contributes
-the dose's two marginal moments, all as parameters of the same stacked
-system.
+density ratio divides by, all as parameters of the same stacked system. Each
+component's stabilizing numerator is estimated in a block of its own; see
+\strong{Stabilizing numerators, one per component}.
+}
+
+\subsection{Stabilizing numerators, one per component}{
+
+Either component may be stabilized, and each component's numerator is
+estimated in its own block of the stacked system, so the standard errors
+account for that numerator having been fitted rather than reading it as a
+constant. What the block holds follows what the component's weights record.
+A discrete component stabilized by the default numerator contributes the one
+marginal proportion that numerator is, and a dose stabilized by the default
+numerator contributes the exposure's two marginal moments. A component
+stabilized on a fitted model passed to \code{\link[=wt_ate]{wt_ate()}}'s \code{stabilize} contributes
+that model instead: one parameter per coefficient for a discrete component,
+and for a dose one per coefficient plus one for the spread its density is
+read at. A dose stabilized with \code{numerator = "integrated"} is built from the
+dose block and the data alone and contributes nothing, and an unstabilized
+discrete component contributes nothing either.
+
+Those parameters are named \verb{stab_<component>_<parameter>}, where
+\verb{<component>} is the name the component was recorded under in
+\code{\link[=joint_wt_models]{joint_wt_models()}}: a joint system carries two components, and a name
+saying only which role a parameter plays would not say whose.
+
+A numerator model is read through the guards its own single-treatment route
+reads it through. A discrete component's is read as an unpenalized binomial
+fit at a logit, probit, or cloglog link, and a dose's goes through the
+registry under \strong{Continuous propensity score models}. A model of a response
+other than the treatment it stabilizes, or one fit to a different set of
+observations, errors with class \code{propensity_ipw_numerator_error}; one fit
+with case weights errors with class \code{propensity_ipw_ps_weights_error}.
+
+What a numerator may condition on is a statement about the reported model
+rather than a free choice, and it is the same statement here as for a single
+treatment. A numerator may condition on any variable the marginal structural
+model already reads, such as a modifier \code{V}: \eqn{P(Z | V)} for a discrete
+treatment and \eqn{f(A | V)} for a dose leave the estimator consistent for
+the same effects and only tighten the weights. A numerator conditioning on a
+variable the reported model does not read changes what is estimated rather
+than the precision, because the pseudo-population it builds is one in which
+that variable still predicts the treatment, and the estimates are then read
+with \code{V} or not at all. The accounting a stacked numerator adds has something
+to say only where the reported model is not saturated in the variables the
+numerator reads: a numerator that divides out of every cell of the reported
+model moves neither the estimates nor their standard errors.
 }
 
 \subsection{The dose model and the ratio its weights are}{
@@ -878,14 +928,14 @@ dose block is its coefficients alone and none of that number's uncertainty is
 carried. A spread supplied for each observation has no counterpart in the
 system and errors with class \code{propensity_ipw_sigma_error}.
 
-A dose component built with a \code{stabilization_score} is the one numerator this
-route cannot reproduce. The product records that the numerator was a score
-without recording the vector it was, so the system rebuilds the dose weights
-from the exposure's own marginal moments and the weight-consistency check
-reports the difference. Weight the dose on its own to use a numerator
-computed by hand. A dose stabilized on a fitted model is refused outright,
-with class \code{propensity_ipw_numerator_error}: this route has no stabilization
-block to estimate such a model in, where the single-dose route has one.
+A component built with a \code{stabilization_score} is the one numerator this
+route cannot reproduce. The product records that a numerator was a score
+without recording the vector it was, so the system stands that component's
+own marginal numerator in and the weight-consistency check reports the
+difference, naming the components whose numerator was stood in for. Weight
+that treatment on its own to use a numerator computed by hand, or pass the
+fitted numerator to \code{stabilize} instead, which this route estimates in a
+block of its own.
 
 Dose weights built with a \code{"kernel"} density are refused with class
 \code{propensity_ipw_se_method_unavailable_error}. The bandwidth is not a function

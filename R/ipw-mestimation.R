@@ -2171,7 +2171,7 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       inv_ps <- ipw_inv_link(spec$ps$link)
       e <- inv_ps(as.vector(spec$ps$X %*% th_ps))
       check_ipw_ps_separation(sum(e == 0 | e == 1), call = call)
-      stab_prob <- ipw_binary_stab_prob(spec, th_stab)
+      stab_prob <- ipw_binary_stab_prob(spec$stab$model, th_stab)
       weight_fn(e, spec$exposure, list(stab_prob = stab_prob, score = score))
     },
     categorical = {
@@ -2258,6 +2258,17 @@ ipw_check_weight_consistency <- function(
     ratio = if (!is.null(spec$density)) {
       spec[c("density", "numerator")]
     },
+    # The components whose stabilizing numerator the system stood a marginal
+    # one in for, which is the closest the preflight gets to naming the factor
+    # that differs: the comparison sees the product alone, so which component
+    # moved it cannot be read off the two vectors.
+    stand_in = if (identical(spec$exposure_type, "joint_models")) {
+      unlist(spec$names)[vapply(
+        spec$stab$components,
+        function(component) isTRUE(component$stand_in),
+        logical(1)
+      )]
+    },
     call = call
   )
 }
@@ -2274,6 +2285,7 @@ ipw_compare_weights <- function(
   estimand,
   components = NULL,
   ratio = NULL,
+  stand_in = NULL,
   call = rlang::caller_env()
 ) {
   recomputed <- as.double(recomputed)
@@ -2330,16 +2342,18 @@ ipw_compare_weights <- function(
     }
     # A joint weight is a product, and a product records that a component's
     # numerator was a score without recording the score itself. The stacked
-    # system therefore estimates the dose's own marginal moments, and a
+    # system therefore stands the component's own marginal numerator in, and a
     # component carrying a numerator of its own is a different function of the
-    # data that no parameter value reproduces. A single dose keeps its score,
-    # which is read off the weights and held fixed, so this cause belongs to
-    # the joint route alone.
-    score_hint <- if (identical(exposure_type, "joint_models") && dose) {
-      "A dose component built with a fixed {.arg stabilization_score} is one \\
-      cause: the product records that the numerator was a score without \\
-      recording the vector it was, so {.fun ipw} rebuilds the dose weights \\
-      from the exposure's own marginal moments instead."
+    # data that no parameter value reproduces. The components a numerator was
+    # stood in for are named, which is as close to the fault as the comparison
+    # gets: it sees the product alone and cannot say which factor of it moved.
+    # A single exposure keeps its score, which is read off the weights and held
+    # fixed, so this cause belongs to the joint route alone.
+    score_hint <- if (length(stand_in)) {
+      "A component built with a fixed {.arg stabilization_score} is one \\
+      cause: the product records that a numerator was a score without \\
+      recording the vector it was, so {.fun ipw} rebuilt the numerator of \\
+      {.arg {stand_in}} from the exposure's own marginal distribution instead."
     } else {
       NULL
     }

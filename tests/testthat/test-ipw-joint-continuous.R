@@ -1665,6 +1665,73 @@ test_that("ipw() refuses linearization on a joint continuous fit", {
   )
 })
 
+# ---- a binary component's own stabilizing numerator -------------------------
+#
+# A binary component may be stabilized as readily as a dose must be, and the
+# numerator it carries is a factor of the product like any other. The system
+# estimates it where the single-treatment route estimates it, in a block of its
+# own, rather than rebuilding the component unstabilized and reporting the
+# difference as a mismatch the caller did not cause.
+
+test_that("the joint route stacks a marginal-stabilized binary component", {
+  dat <- sim_joint_continuous()
+  fits <- fit_joint_continuous(dat, a_stabilize = TRUE)
+
+  # The product the container holds, written out: the binary factor is the
+  # unstabilized one scaled by the marginal probability of the level each unit
+  # took, and the dose factor is the density ratio it always was.
+  ps_a <- as.numeric(fitted(fits$ps_a))
+  p1 <- mean(dat$a)
+  binary_wt <- ((dat$a * p1) / ps_a) + (((1 - dat$a) * (1 - p1)) / (1 - ps_a))
+  dose_wt <- as.numeric(quiet_wt(wt_ate(
+    as.double(fitted(fits$ps_e)),
+    dat$e,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )))
+
+  expect_equal(as.numeric(fits$wts), binary_wt * dose_wt, tolerance = 1e-12)
+
+  # The system rebuilds that product at its seed, which is what the preflight
+  # compares, and every equation in it is at its root there.
+  spec <- ipw_spec_joint_models(fits$models, fits$outcome_mod)
+  expect_joint_weights_at_init(spec, fits$wts)
+  expect_joint_root_seeded(spec)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_joint_dose_estimates(res, fits$outcome_mod)
+})
+
+test_that("a stabilized binary component's proportion is a parameter", {
+  dat <- sim_joint_continuous()
+  fits <- fit_joint_continuous(dat, a_stabilize = TRUE)
+  unstabilized <- fit_joint_continuous(dat)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  res_unstabilized <- ipw(unstabilized$models, unstabilized$outcome_mod)
+
+  # The binary numerator is one marginal proportion, so the system is exactly
+  # one parameter wider than the same fit whose binary component carries no
+  # numerator at all.
+  expect_identical(
+    as.integer(res$fit@n_params),
+    as.integer(res_unstabilized$fit@n_params) + 1L
+  )
+
+  # Blocks are named for the component they belong to, since a joint system
+  # carries two of them and a name saying only which role a parameter plays
+  # would not say whose.
+  theta <- coef(res$fit)
+  stab <- theta[grepl("^stab_", names(theta))]
+  expect_length(stab, 3L)
+  expect_equal(
+    unname(theta[["stab_a_pi"]]),
+    mean(dat$a),
+    tolerance = 1e-8
+  )
+})
+
 test_that("the joint route stacks a dose stabilized on a numerator model", {
   # The single-dose route estimates a numerator model in its own stabilization
   # block. This route estimates each component's numerator in a block of its
