@@ -284,3 +284,10 @@ subscript_row_positions <- function(i, x) {
 
   i[is.na(i) | i != 0]
 }
+
+# One run of spaces where a string carries several. Text assembled from
+# `deparse()` output carries the indentation of the continuation lines, which
+# reads as a gap rather than as a space once the lines are joined.
+squash_whitespace <- function(x) {
+  gsub("[[:space:]]+", " ", x)
+}

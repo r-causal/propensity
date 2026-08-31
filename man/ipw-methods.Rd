@@ -17,7 +17,7 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 )
 
@@ -30,7 +30,7 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   .focal_level = NULL,
   effects = c("marginal", "conditional")
 )
@@ -44,7 +44,7 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 )
 
@@ -57,7 +57,7 @@
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 )
 }
@@ -160,10 +160,9 @@ The argument applies only to a binomial \code{\link[stats:glm]{stats::glm()}} pr
 model on the binary path. A multinomial or continuous propensity score
 model has no link for \code{ps_link} to override, so a non-\code{NULL} value errors
 on both of those paths; leave it \code{NULL} there. \code{ps_link} cannot name a link
-other than the one \code{wt_mod} was fit with:
-\code{se_method = "linearization"} errors, and \code{se_method = "mestimation"}
-reports the resulting weights as inconsistent with the propensity score
-model.}
+other than the one \code{wt_mod} was fit with: \code{se_method = "linearization"}
+and \code{se_method = "robust"} error, and \code{se_method = "mestimation"} reports
+the resulting weights as inconsistent with the propensity score model.}
 
 \item{conf_level}{Confidence level for intervals. Default is \code{0.95}.}
 
@@ -173,26 +172,38 @@ equations and returns the empirical sandwich variance. \code{"linearization"}
 uses the influence-function linearization of Kostouraki et al. (2024).
 Both account for the uncertainty of estimating the propensity scores.
 
+\code{"robust"} does not, and is a diagnostic rather than an inference. It is
+the linearization route with the correction for having estimated the
+propensity score dropped, so it reports the sandwich the weighted outcome
+model computes for itself: the delta-method reading of
+\code{sandwich::vcovHC(outcome_mod, type = "HC0")}, exactly. Ignoring that the
+weights were estimated generally understates the variance, and understates
+it most where the weights are least stable, so this is offered for reading
+beside one of the other two rather than in place of it. A result fit this
+way says so when printed and marks the tables it coerces to; see
+\strong{Standard errors as a diagnostic} below.
+
 Which exposure types support which: \code{"mestimation"} supports every one of
-them; \code{"linearization"} supports a binary exposure alone. A binary or a
-categorical exposure has a sandwich for every fit it accepts. A few
+them; \code{"linearization"} and \code{"robust"} support a binary exposure alone. A
+binary or a categorical exposure has a sandwich for every fit it accepts.
+A few
 continuous fits have no sandwich, and the package computes no standard
 error for them: an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score model and weights built
 with a \code{"kernel"} density are refused, and so is a \code{\link[MASS:rlm]{MASS::rlm()}} fit the
 stacked system cannot write. See \strong{Continuous propensity score models}
 below.
 
-\code{"linearization"} supports only an outcome model of the exposure alone, fit
-with an intercept; a covariate-adjusted outcome model requires
-\code{"mestimation"}. For a binary or categorical exposure, both methods require
-an outcome model that can represent a baseline, so a numeric no-intercept
-coding such as \code{y ~ z - 1} errors on either. The standard errors of the
-conditional reading described under \code{effects} require \code{"mestimation"}
-as well: the
-linearization route stores its outcome model unwrapped, so \code{\link[stats:vcov]{stats::vcov()}},
-\code{\link[stats:confint]{stats::confint()}}, and \code{\link[=tidy.ipw]{tidy()}} refuse
-\code{effects = "conditional"} there with a classed error rather than reporting
-the covariance the outcome model computed for itself.}
+\code{"linearization"} and \code{"robust"} support only an outcome model of the
+exposure alone, fit with an intercept; a covariate-adjusted outcome model
+requires \code{"mestimation"}. For a binary or categorical exposure, every
+method requires an outcome model that can represent a baseline, so a
+numeric no-intercept coding such as \code{y ~ z - 1} errors on any of them. The
+standard errors of the conditional reading described under \code{effects}
+require \code{"mestimation"} as well: the linearization and robust routes store
+the outcome model unwrapped, so \code{\link[stats:vcov]{stats::vcov()}}, \code{\link[stats:confint]{stats::confint()}}, and
+\code{\link[=tidy.ipw]{tidy()}} refuse \code{effects = "conditional"} there with a
+classed error rather than reporting the covariance the outcome model
+computed for itself.}
 
 \item{effects}{The presentation mode the result records, either \code{"marginal"}
 (the default) or \code{"conditional"}. The marginal reading reports the
@@ -221,12 +232,11 @@ jointly estimated sandwich, which every route that stacks estimating
 equations attaches to the outcome model it stores:
 \code{se_method = "mestimation"} for a binary exposure, the categorical and
 joint routes, which run on M-estimation alone, and the continuous route
-under that method. A
-linearization fit stacks no system and records no covariance of either
-kind, so \code{\link[stats:vcov]{stats::vcov()}} and \code{\link[stats:confint]{stats::confint()}} error on its conditional
-reading, and printing it writes the coefficients under a note saying the
-standard errors are not reported rather than beside the ones the outcome
-model computed for itself.}
+under that method. A linearization or robust fit stacks no system and
+records no covariance of either kind, so \code{\link[stats:vcov]{stats::vcov()}} and
+\code{\link[stats:confint]{stats::confint()}} error on its conditional reading, and printing it writes
+the coefficients under a note saying the standard errors are not reported
+rather than beside the ones the outcome model computed for itself.}
 
 \item{.focal_level}{For the categorical (\code{multinom}) method with the \code{att}
 or \code{atu} estimand, the focal exposure level. If \code{NULL}, it is taken from
@@ -242,13 +252,14 @@ three of them take propensity-specific values:
 \describe{
 \item{\code{estimand}}{One of \code{"ate"}, \code{"att"}, \code{"atu"}, \code{"atm"}, \code{"ato"}, or
 \code{"entropy"}.}
-\item{\code{se_method}}{One of \code{"mestimation"} or \code{"linearization"}.}
+\item{\code{se_method}}{One of \code{"mestimation"}, \code{"linearization"}, or
+\code{"robust"}.}
 \item{\code{fit}}{The fitted M-estimator object when \code{se_method} is
 \code{"mestimation"}. Calling \code{\link[stats:vcov]{stats::vcov()}} or
 \code{\link[generics:tidy]{generics::tidy()}} on this object exposes the full stacked system of
 estimating equations, including the propensity score, outcome, and
-estimand parameters. It is \code{NULL} under \code{"linearization"}, which solves
-no system.}
+estimand parameters. It is \code{NULL} under \code{"linearization"} and
+\code{"robust"}, neither of which solves a system.}
 }
 
 The result answers the standard model accessors, which causalgenerics
@@ -275,9 +286,10 @@ stored unchanged.
 The \code{joint_wt_models} method estimates the effects of a joint intervention on
 two treatments from the pair of fitted treatment models \code{\link[=joint_wt_models]{joint_wt_models()}}
 records and a weighted outcome model that reads both treatments. Standard
-errors are computed by M-estimation. \code{se_method = "linearization"} is not
-available here: the linearization path solves no stacked system, and the cell
-means and every contrast built from them are parameters of one.
+errors are computed by M-estimation. Neither \code{se_method = "linearization"}
+nor \code{se_method = "robust"} is available here: neither path solves a stacked
+system, and the cell means and every contrast built from them are parameters
+of one.
 
 The only supported estimand is \code{"ate"}, which is what the product weights
 \code{\link[=wt_joint]{wt_joint()}} builds target.
@@ -310,10 +322,12 @@ container reaches \code{ipw()} those questions are settled.
 
 The \code{multinom} method estimates causal effects for a categorical exposure
 from a fitted \code{\link[nnet:multinom]{nnet::multinom()}} propensity score model and a weighted
-outcome model. Standard errors are computed by M-estimation.
-\code{se_method = "linearization"} is not available for a categorical exposure and
-is refused with an error of class \code{propensity_method_error}: the stacked
-system has a sandwich for every fit this exposure type accepts.
+outcome model. Standard errors are computed by M-estimation. Neither
+\code{se_method = "linearization"} nor \code{se_method = "robust"} is available for a
+categorical exposure, and both are refused with an error of class
+\code{propensity_method_error}: the stacked system has a sandwich for every fit
+this exposure type accepts, and the diagnostic sandwich describes two fitted
+cells that a categorical result does not report.
 
 For a K-level exposure, the counterfactual mean at each level is reported
 first, under the effect label \code{"mean"}, and then the effects for each
@@ -341,8 +355,9 @@ model and weights built with a \code{"kernel"} density. See \strong{Continuous
 propensity score models} in \code{\link[=ipw]{ipw()}} for what each refusal says and what to
 do about it. The only supported estimand is \code{"ate"}.
 
-Standard errors are computed by M-estimation; the linearization method is not
-available for continuous exposures. The package offers no resampling method,
+Standard errors are computed by M-estimation; neither the linearization
+method nor the robust diagnostic is available for continuous exposures. The
+package offers no resampling method,
 so a fit the stacked system cannot write has no standard error here, and the
 refusal points at a bootstrap of the whole pipeline written by hand. See
 \strong{Continuous propensity score models} in \code{\link[=ipw]{ipw()}}.
@@ -1007,6 +1022,41 @@ it, but the linearization influence functions are derived for the intercept
 parameterization, so every no-intercept outcome model errors here. See
 \strong{Model requirements} for the baseline contract both methods impose.
 }
+
+\subsection{Standard errors as a diagnostic}{
+
+Setting \code{se_method = "robust"} reports the sandwich the weighted outcome
+model computes for itself, with the weights entering as known constants. It
+is the linearization route with the correction for having estimated the
+propensity score dropped, so the point estimates are the linearization ones
+and only the standard errors move. What it reports for the two counterfactual
+means and the contrasts built from them is the delta-method reading of
+\code{sandwich::vcovHC(outcome_mod, type = "HC0")}, exactly: the meat is divided
+by \code{n} rather than by \code{n - 1}, so what comes back is the HC0 sandwich itself
+rather than a finite-sample rescaling of it.
+
+This is offered as a diagnostic and not as an inference. It ignores that the
+weights were estimated, and the correction it drops is generally what a
+propensity score model contributes to the variance, so the standard errors it
+reports generally understate it, and understate it most where the weights are
+least stable. Use \code{"mestimation"} or \code{"linearization"} to report a standard
+error. Reach for the diagnostic to see what the propensity correction is
+worth on a given fit, by reading it beside one of them.
+
+A result fit this way carries the class \code{"ipw_diagnostic_se"} ahead of
+\code{"ipw"}, and printing it writes one line naming the method, so the numbers
+are not read as accounting for the propensity score model. \code{as.data.frame()}
+and \code{\link[=tidy.ipw]{tidy()}} carry the same mark as an \code{ipw_se_diagnostic}
+attribute on the table. Every requirement of the linearization route applies
+here: a binary exposure, the \code{ate}, \code{att}, \code{ato}, and \code{atm} estimands, an
+outcome model of the exposure alone fit with an intercept, no \code{.by}, and no
+conditional reading. The categorical, continuous, and joint treatment routes
+refuse it as they refuse linearization.
+
+The printed mark does not survive \code{\link[=pool_ipw]{pool_ipw()}}: a pooled object is a summary
+of results rather than a result, and what says its standard errors are the
+diagnostic ones is the method it records, \code{se_method = "robust"}.
+}
 }
 
 \section{Multiple imputation}{
@@ -1030,10 +1080,11 @@ than a tidied table of them, so the effect labels survive, a categorical
 result keeps the contrast each row reports, and the complete-data degrees of
 freedom fall back to the outcome models whenever a result records none of its
 own. That fallback is written for the condition rather than for one route: a
-fit under \code{se_method = "linearization"} records none, and so does a result
-another package built on the same class from estimating equations that report
-no residual degrees of freedom. It also takes the smallest degrees of freedom
-across the pooled results, which is the conservative choice when they differ.
+fit under \code{se_method = "linearization"} or \code{se_method = "robust"} records
+none, and so does a result another package built on the same class from
+estimating equations that report no residual degrees of freedom. It also
+takes the smallest degrees of freedom across the pooled results, which is the
+conservative choice when they differ.
 \code{\link[=tidy.ipw_pooled]{tidy()}} and \code{\link[=glance.ipw_pooled]{glance()}} report
 what it returns.
 
@@ -1046,13 +1097,15 @@ things are worth knowing about that route. It reaches the result through
 categorical pooled table shows each effect measure repeated with no contrast
 label beside it, and the labels have to be read off \code{pooled$pooled} instead.
 A result that records no complete-data degrees of freedom of its own, a fit
-under \code{se_method = "linearization"} among them, leaves the pooled degrees of
-freedom missing unless \code{dfcom} is passed explicitly, as in
+under \code{se_method = "linearization"} or \code{se_method = "robust"} among them,
+leaves the pooled degrees of freedom missing unless \code{dfcom} is passed
+explicitly, as in
 \code{mice::pool(fits, dfcom = df.residual(fits$analyses[[1]]$outcome_mod))}. Every
 result of that kind has to be told, where \code{\link[=pool_ipw]{pool_ipw()}} reads the outcome
 models for all of them unasked. That remedy is what the package's requirement
 of mice 3.18.0 or later is for: mice 3.17.0 introduced a regression in the
-\code{dfcom} argument of \code{pool()}, and 3.18.0 is the version that repairs it. And the \code{exponentiate} argument of
+\code{dfcom} argument of \code{pool()}, and 3.18.0 is the version that repairs it. And
+the \code{exponentiate} argument of
 \code{summary()} on a pooled \code{mipo} is not the one these methods take: a \code{mipo}
 records no scale for the rows it holds, so it exponentiates every one of them,
 returning a risk difference as its exponential and still labeling the row
@@ -1078,8 +1131,9 @@ for, so on that route the reading still has to be recorded before the pooling.
 A reading the pooling could not compute is refused rather than reported under
 the other one's name. The conditional reading needs the covariance the joint
 estimation of the weights and the outcome implies, and a fit under
-\code{se_method = "linearization"} stacks no such system and records no such block,
-so a set of those fits pools the marginal reading alone. The pooled result
+\code{se_method = "linearization"} or \code{se_method = "robust"} stacks no such
+system and records no such block, so a set of those fits pools the marginal
+reading alone. The pooled result
 records why the other reading is missing, and asking for it, whether by
 flipping the result or by naming it for one call, errors with that recorded
 explanation under the classes
@@ -1123,14 +1177,15 @@ saturated factor coding of the exposure. A numeric no-intercept coding such as
 the M-estimation path the counterfactual design at the zero-coded level is
 identically zero, so the marginal mean there is fixed by the outcome link
 (\code{0.5} under a logit or probit link, \code{0} for a linear model) rather than
-estimated from the data. On the linearization path the intercept is required
-outright, because without it the g-computation means stop matching the Hajek
-means the influence functions describe. A saturated factor coding such as
-\code{y ~ 0 + zf} is a reparameterization whose designs are the level indicators,
-so the M-estimation path accepts it and reproduces the with-intercept fit; the
-linearization path still requires the intercept. A no-intercept model that
-keeps a covariate, such as \code{y ~ z + x1 - 1}, still estimates the marginal mean
-from that covariate and runs on the M-estimation path. A continuous exposure
+estimated from the data. On the linearization and robust paths the intercept
+is required outright, because without it the g-computation means stop
+matching the Hajek means the influence functions describe. A saturated factor
+coding such as \code{y ~ 0 + zf} is a reparameterization whose designs are the
+level indicators, so the M-estimation path accepts it and reproduces the
+with-intercept fit; the linearization and robust paths still require the
+intercept. A no-intercept model that keeps a covariate, such as
+\code{y ~ z + x1 - 1}, still estimates the marginal mean from that covariate and
+runs on the M-estimation path. A continuous exposure
 has no counterfactual designs, since \code{ipw()} reports the marginal structural
 model's own exposure coefficient, and is unaffected.
 
@@ -1183,10 +1238,11 @@ and 1} in \code{\link[=wt_ate]{wt_ate()}} for the remedy.
 The propensity score model must also be fit without case weights, since the
 stacked propensity score equations are unweighted and a weighted fit would not
 sit at the score root; that requirement applies to \code{se_method = "mestimation"}
-alone, because the linearization path does not restack the propensity score
-model. It still corrects for the uncertainty of estimating the propensity
-scores; it does so through the influence functions rather than through a
-stacked score.
+alone, because neither the linearization path nor the robust one restacks the
+propensity score model. Linearization still corrects for the uncertainty of
+estimating the propensity scores; it does so through the influence functions
+rather than through a stacked score. The robust diagnostic drops that
+correction, which is what makes it a diagnostic.
 }
 
 \examples{

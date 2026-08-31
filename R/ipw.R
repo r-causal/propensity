@@ -105,10 +105,9 @@
 #'   model on the binary path. A multinomial or continuous propensity score
 #'   model has no link for `ps_link` to override, so a non-`NULL` value errors
 #'   on both of those paths; leave it `NULL` there. `ps_link` cannot name a link
-#'   other than the one `wt_mod` was fit with:
-#'   `se_method = "linearization"` errors, and `se_method = "mestimation"`
-#'   reports the resulting weights as inconsistent with the propensity score
-#'   model.
+#'   other than the one `wt_mod` was fit with: `se_method = "linearization"`
+#'   and `se_method = "robust"` error, and `se_method = "mestimation"` reports
+#'   the resulting weights as inconsistent with the propensity score model.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
 #' @param se_method Method for standard error estimation. `"mestimation"` (the
 #'   default) stacks the propensity score, outcome, and estimand estimating
@@ -116,26 +115,38 @@
 #'   uses the influence-function linearization of Kostouraki et al. (2024).
 #'   Both account for the uncertainty of estimating the propensity scores.
 #'
+#'   `"robust"` does not, and is a diagnostic rather than an inference. It is
+#'   the linearization route with the correction for having estimated the
+#'   propensity score dropped, so it reports the sandwich the weighted outcome
+#'   model computes for itself: the delta-method reading of
+#'   `sandwich::vcovHC(outcome_mod, type = "HC0")`, exactly. Ignoring that the
+#'   weights were estimated generally understates the variance, and understates
+#'   it most where the weights are least stable, so this is offered for reading
+#'   beside one of the other two rather than in place of it. A result fit this
+#'   way says so when printed and marks the tables it coerces to; see
+#'   **Standard errors as a diagnostic** below.
+#'
 #'   Which exposure types support which: `"mestimation"` supports every one of
-#'   them; `"linearization"` supports a binary exposure alone. A binary or a
-#'   categorical exposure has a sandwich for every fit it accepts. A few
+#'   them; `"linearization"` and `"robust"` support a binary exposure alone. A
+#'   binary or a categorical exposure has a sandwich for every fit it accepts.
+#'   A few
 #'   continuous fits have no sandwich, and the package computes no standard
 #'   error for them: an [mgcv::gam()] propensity score model and weights built
 #'   with a `"kernel"` density are refused, and so is a [MASS::rlm()] fit the
 #'   stacked system cannot write. See **Continuous propensity score models**
 #'   below.
 #'
-#'   `"linearization"` supports only an outcome model of the exposure alone, fit
-#'   with an intercept; a covariate-adjusted outcome model requires
-#'   `"mestimation"`. For a binary or categorical exposure, both methods require
-#'   an outcome model that can represent a baseline, so a numeric no-intercept
-#'   coding such as `y ~ z - 1` errors on either. The standard errors of the
-#'   conditional reading described under `effects` require `"mestimation"`
-#'   as well: the
-#'   linearization route stores its outcome model unwrapped, so [stats::vcov()],
-#'   [stats::confint()], and [`tidy()`][tidy.ipw()] refuse
-#'   `effects = "conditional"` there with a classed error rather than reporting
-#'   the covariance the outcome model computed for itself.
+#'   `"linearization"` and `"robust"` support only an outcome model of the
+#'   exposure alone, fit with an intercept; a covariate-adjusted outcome model
+#'   requires `"mestimation"`. For a binary or categorical exposure, every
+#'   method requires an outcome model that can represent a baseline, so a
+#'   numeric no-intercept coding such as `y ~ z - 1` errors on any of them. The
+#'   standard errors of the conditional reading described under `effects`
+#'   require `"mestimation"` as well: the linearization and robust routes store
+#'   the outcome model unwrapped, so [stats::vcov()], [stats::confint()], and
+#'   [`tidy()`][tidy.ipw()] refuse `effects = "conditional"` there with a
+#'   classed error rather than reporting the covariance the outcome model
+#'   computed for itself.
 #' @param effects The presentation mode the result records, either `"marginal"`
 #'   (the default) or `"conditional"`. The marginal reading reports the
 #'   population-averaged causal contrasts; the conditional reading reports the
@@ -163,12 +174,11 @@
 #'   equations attaches to the outcome model it stores:
 #'   `se_method = "mestimation"` for a binary exposure, the categorical and
 #'   joint routes, which run on M-estimation alone, and the continuous route
-#'   under that method. A
-#'   linearization fit stacks no system and records no covariance of either
-#'   kind, so [stats::vcov()] and [stats::confint()] error on its conditional
-#'   reading, and printing it writes the coefficients under a note saying the
-#'   standard errors are not reported rather than beside the ones the outcome
-#'   model computed for itself.
+#'   under that method. A linearization or robust fit stacks no system and
+#'   records no covariance of either kind, so [stats::vcov()] and
+#'   [stats::confint()] error on its conditional reading, and printing it writes
+#'   the coefficients under a note saying the standard errors are not reported
+#'   rather than beside the ones the outcome model computed for itself.
 #' @param ... These dots are for future extensions and must be empty. They
 #'   separate the two models from the remaining arguments, which must therefore
 #'   be supplied by name. Anything left in them, such as a `.data` argument
@@ -772,6 +782,40 @@
 #' parameterization, so every no-intercept outcome model errors here. See
 #' **Model requirements** for the baseline contract both methods impose.
 #'
+#' ## Standard errors as a diagnostic
+#'
+#' Setting `se_method = "robust"` reports the sandwich the weighted outcome
+#' model computes for itself, with the weights entering as known constants. It
+#' is the linearization route with the correction for having estimated the
+#' propensity score dropped, so the point estimates are the linearization ones
+#' and only the standard errors move. What it reports for the two counterfactual
+#' means and the contrasts built from them is the delta-method reading of
+#' `sandwich::vcovHC(outcome_mod, type = "HC0")`, exactly: the meat is divided
+#' by `n` rather than by `n - 1`, so what comes back is the HC0 sandwich itself
+#' rather than a finite-sample rescaling of it.
+#'
+#' This is offered as a diagnostic and not as an inference. It ignores that the
+#' weights were estimated, and the correction it drops is generally what a
+#' propensity score model contributes to the variance, so the standard errors it
+#' reports generally understate it, and understate it most where the weights are
+#' least stable. Use `"mestimation"` or `"linearization"` to report a standard
+#' error. Reach for the diagnostic to see what the propensity correction is
+#' worth on a given fit, by reading it beside one of them.
+#'
+#' A result fit this way carries the class `"ipw_diagnostic_se"` ahead of
+#' `"ipw"`, and printing it writes one line naming the method, so the numbers
+#' are not read as accounting for the propensity score model. `as.data.frame()`
+#' and [`tidy()`][tidy.ipw()] carry the same mark as an `ipw_se_diagnostic`
+#' attribute on the table. Every requirement of the linearization route applies
+#' here: a binary exposure, the `ate`, `att`, `ato`, and `atm` estimands, an
+#' outcome model of the exposure alone fit with an intercept, no `.by`, and no
+#' conditional reading. The categorical, continuous, and joint treatment routes
+#' refuse it as they refuse linearization.
+#'
+#' The printed mark does not survive [pool_ipw()]: a pooled object is a summary
+#' of results rather than a result, and what says its standard errors are the
+#' diagnostic ones is the method it records, `se_method = "robust"`.
+#'
 #' # Multiple imputation
 #'
 #' With missing data, fit the whole analysis once per imputed dataset and pool
@@ -795,10 +839,11 @@
 #' result keeps the contrast each row reports, and the complete-data degrees of
 #' freedom fall back to the outcome models whenever a result records none of its
 #' own. That fallback is written for the condition rather than for one route: a
-#' fit under `se_method = "linearization"` records none, and so does a result
-#' another package built on the same class from estimating equations that report
-#' no residual degrees of freedom. It also takes the smallest degrees of freedom
-#' across the pooled results, which is the conservative choice when they differ.
+#' fit under `se_method = "linearization"` or `se_method = "robust"` records
+#' none, and so does a result another package built on the same class from
+#' estimating equations that report no residual degrees of freedom. It also
+#' takes the smallest degrees of freedom across the pooled results, which is the
+#' conservative choice when they differ.
 #' [`tidy()`][tidy.ipw_pooled()] and [`glance()`][glance.ipw_pooled()] report
 #' what it returns.
 #'
@@ -811,13 +856,15 @@
 #' categorical pooled table shows each effect measure repeated with no contrast
 #' label beside it, and the labels have to be read off `pooled$pooled` instead.
 #' A result that records no complete-data degrees of freedom of its own, a fit
-#' under `se_method = "linearization"` among them, leaves the pooled degrees of
-#' freedom missing unless `dfcom` is passed explicitly, as in
+#' under `se_method = "linearization"` or `se_method = "robust"` among them,
+#' leaves the pooled degrees of freedom missing unless `dfcom` is passed
+#' explicitly, as in
 #' `mice::pool(fits, dfcom = df.residual(fits$analyses[[1]]$outcome_mod))`. Every
 #' result of that kind has to be told, where [pool_ipw()] reads the outcome
 #' models for all of them unasked. That remedy is what the package's requirement
 #' of mice 3.18.0 or later is for: mice 3.17.0 introduced a regression in the
-#' `dfcom` argument of `pool()`, and 3.18.0 is the version that repairs it. And the `exponentiate` argument of
+#' `dfcom` argument of `pool()`, and 3.18.0 is the version that repairs it. And
+#' the `exponentiate` argument of
 #' `summary()` on a pooled `mipo` is not the one these methods take: a `mipo`
 #' records no scale for the rows it holds, so it exponentiates every one of them,
 #' returning a risk difference as its exponential and still labeling the row
@@ -843,8 +890,9 @@
 #' A reading the pooling could not compute is refused rather than reported under
 #' the other one's name. The conditional reading needs the covariance the joint
 #' estimation of the weights and the outcome implies, and a fit under
-#' `se_method = "linearization"` stacks no such system and records no such block,
-#' so a set of those fits pools the marginal reading alone. The pooled result
+#' `se_method = "linearization"` or `se_method = "robust"` stacks no such
+#' system and records no such block, so a set of those fits pools the marginal
+#' reading alone. The pooled result
 #' records why the other reading is missing, and asking for it, whether by
 #' flipping the result or by naming it for one call, errors with that recorded
 #' explanation under the classes
@@ -888,14 +936,15 @@
 #' the M-estimation path the counterfactual design at the zero-coded level is
 #' identically zero, so the marginal mean there is fixed by the outcome link
 #' (`0.5` under a logit or probit link, `0` for a linear model) rather than
-#' estimated from the data. On the linearization path the intercept is required
-#' outright, because without it the g-computation means stop matching the Hajek
-#' means the influence functions describe. A saturated factor coding such as
-#' `y ~ 0 + zf` is a reparameterization whose designs are the level indicators,
-#' so the M-estimation path accepts it and reproduces the with-intercept fit; the
-#' linearization path still requires the intercept. A no-intercept model that
-#' keeps a covariate, such as `y ~ z + x1 - 1`, still estimates the marginal mean
-#' from that covariate and runs on the M-estimation path. A continuous exposure
+#' estimated from the data. On the linearization and robust paths the intercept
+#' is required outright, because without it the g-computation means stop
+#' matching the Hajek means the influence functions describe. A saturated factor
+#' coding such as `y ~ 0 + zf` is a reparameterization whose designs are the
+#' level indicators, so the M-estimation path accepts it and reproduces the
+#' with-intercept fit; the linearization and robust paths still require the
+#' intercept. A no-intercept model that keeps a covariate, such as
+#' `y ~ z + x1 - 1`, still estimates the marginal mean from that covariate and
+#' runs on the M-estimation path. A continuous exposure
 #' has no counterfactual designs, since `ipw()` reports the marginal structural
 #' model's own exposure coefficient, and is unaffected.
 #'
@@ -948,10 +997,11 @@
 #' The propensity score model must also be fit without case weights, since the
 #' stacked propensity score equations are unweighted and a weighted fit would not
 #' sit at the score root; that requirement applies to `se_method = "mestimation"`
-#' alone, because the linearization path does not restack the propensity score
-#' model. It still corrects for the uncertainty of estimating the propensity
-#' scores; it does so through the influence functions rather than through a
-#' stacked score.
+#' alone, because neither the linearization path nor the robust one restacks the
+#' propensity score model. Linearization still corrects for the uncertainty of
+#' estimating the propensity scores; it does so through the influence functions
+#' rather than through a stacked score. The robust diagnostic drops that
+#' correction, which is what makes it a diagnostic.
 #'
 #' @references
 #' Stefanski LA, Boos DD. The calculus of M-estimation. *The American
@@ -975,13 +1025,14 @@
 #' \describe{
 #'   \item{`estimand`}{One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or
 #'     `"entropy"`.}
-#'   \item{`se_method`}{One of `"mestimation"` or `"linearization"`.}
+#'   \item{`se_method`}{One of `"mestimation"`, `"linearization"`, or
+#'     `"robust"`.}
 #'   \item{`fit`}{The fitted M-estimator object when `se_method` is
 #'     `"mestimation"`. Calling [stats::vcov()] or
 #'     [generics::tidy()] on this object exposes the full stacked system of
 #'     estimating equations, including the propensity score, outcome, and
-#'     estimand parameters. It is `NULL` under `"linearization"`, which solves
-#'     no system.}
+#'     estimand parameters. It is `NULL` under `"linearization"` and
+#'     `"robust"`, neither of which solves a system.}
 #' }
 #'
 #'   The result answers the standard model accessors, which causalgenerics
@@ -1122,7 +1173,7 @@ ipw.glm <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
@@ -1221,7 +1272,7 @@ ipw.glm <- function(
   # through whatever the reconstruction happens to fail on first.
   check_ipw_offset(outcome_mod)
   check_ipw_outcome_response(outcome_mod)
-  check_ipw_linearization_outcome(outcome_mod, exposure_name)
+  check_ipw_linearization_outcome(outcome_mod, exposure_name, se_method)
   check_ipw_outcome_family(outcome_mod)
 
   # Shared with the mestimation specs, so a propensity model that has lost the
@@ -1278,7 +1329,7 @@ ipw.glm <- function(
     abort(
       c(
         "{.arg ps_link} must match the link {.arg wt_mod} was fit with for \\
-        {.val linearization} standard errors.",
+        {.val {se_method}} standard errors.",
         x = "{.arg ps_link} is {.val {ps_link}}; {.arg wt_mod} was fit with a \\
         {.val {fitted_link}} link.",
         i = "Omit {.arg ps_link} to use the model's own link, or refit \\
@@ -1313,10 +1364,15 @@ ipw.glm <- function(
   # atm; atu and entropy require the mestimation path. Reject them here with the
   # documented classed error rather than letting the request reach derive_weights,
   # whose internal arg_match raises a bare, misleading error.
+  #
+  # The robust diagnostic uses none of those derivatives, but it is the same
+  # route with the propensity correction dropped and it reports the same means,
+  # so it accepts the estimands this route accepts and no others. That leaves
+  # one set of requirements to learn rather than two.
   if (!estimand %in% c("ate", "att", "ato", "atm")) {
     abort(
       c(
-        "{.fun ipw} does not support {.val linearization} standard errors for \\
+        "{.fun ipw} does not support {.val {se_method}} standard errors for \\
         the {.val {estimand}} estimand.",
         i = "Use {.code se_method = \"mestimation\"} for the {.val {estimand}} \\
         estimand."
@@ -1373,17 +1429,26 @@ ipw.glm <- function(
     marginal_means
   )
 
-  lin_vars <- linearize_variables_for_ps(
-    exposure = exposure_binary,
-    outcome = outcome,
-    wts = wts,
-    ps = ps,
-    estimand = estimand,
-    weight_matrix = weight_matrix,
-    marginal_means = marginal_means,
-    uncorrected_lin_vars = uncorrected_lin_vars,
-    ps_link = ps_link
-  )
+  # The robust diagnostic stops here. Its influence functions are those of the
+  # Hajek means with the weights entering as known constants, which is what
+  # `linearize_variables_for_wts()` returns; the correction below is the whole
+  # of what accounts for having estimated the propensity score, and dropping it
+  # is what makes the reported variance the outcome model's own sandwich.
+  lin_vars <- if (identical(se_method, "robust")) {
+    uncorrected_lin_vars
+  } else {
+    linearize_variables_for_ps(
+      exposure = exposure_binary,
+      outcome = outcome,
+      wts = wts,
+      ps = ps,
+      estimand = estimand,
+      weight_matrix = weight_matrix,
+      marginal_means = marginal_means,
+      uncorrected_lin_vars = uncorrected_lin_vars,
+      ps_link = ps_link
+    )
+  }
 
   estimates <- calculate_estimates(
     lin_vars = lin_vars,
@@ -1391,7 +1456,8 @@ ipw.glm <- function(
     n = length(outcome),
     linear_regression = is_linear_regression(outcome_mod),
     conf_level = conf_level,
-    exposure_levels = marginal_means$levels
+    exposure_levels = marginal_means$levels,
+    se_method = se_method
   )
 
   # The same collapse the M-estimation path reports, from the seam this path
@@ -1401,15 +1467,17 @@ ipw.glm <- function(
   # returns its contrast with an interval of no width.
   warn_ipw_degenerate_se(estimates)
 
-  new_ipw(
+  result <- new_ipw(
     estimand = estimand,
     wt_mod = wt_mod,
     outcome_mod = outcome_mod,
     estimates = estimates,
-    se_method = "linearization",
+    se_method = se_method,
     fit = NULL,
     effects = effects
   )
+
+  ipw_mark_diagnostic_se(result)
 }
 
 # Shared continuous-exposure route for ipw.lm and the gaussian-family branch of
@@ -1456,10 +1524,10 @@ ipw_continuous_estimate <- function(
 
   check_ipw_ps_link_absent(ps_link, "continuous", call = call)
 
-  if (identical(se_method, "linearization")) {
+  if (!identical(se_method, "mestimation")) {
     abort(
       c(
-        "{.fun ipw} does not support {.val linearization} standard errors for \\
+        "{.fun ipw} does not support {.val {se_method}} standard errors for \\
         continuous exposures.",
         i = "Use {.code se_method = \"mestimation\"} for a continuous exposure."
       ),
@@ -2477,9 +2545,15 @@ check_ipw_continuous_outcome_link <- function(
 # therefore worded as the fact of the missing intercept rather than as the
 # numeric coding's consequence. The check is on the terms object, so it applies
 # to lm and glm outcome models alike.
+# `se_method` names the method the caller asked for, since the robust diagnostic
+# reaches this guard through the same route and has the same requirement: it is
+# the linearization route with the correction for having estimated the weights
+# dropped, so it reports the same Hajek means and needs the same outcome model
+# to report them from.
 check_ipw_linearization_outcome <- function(
   outcome_mod,
   exposure_name,
+  se_method = "linearization",
   call = rlang::caller_env()
 ) {
   outcome_terms <- stats::terms(outcome_mod)
@@ -2507,7 +2581,7 @@ check_ipw_linearization_outcome <- function(
 
     abort(
       c(
-        "{.fun ipw} supports {.val linearization} standard errors only for an \\
+        "{.fun ipw} supports {.val {se_method}} standard errors only for an \\
         outcome model of the exposure alone.",
         x = problem,
         i = "Use {.code se_method = \"mestimation\"} for a covariate-adjusted \\
@@ -2521,7 +2595,7 @@ check_ipw_linearization_outcome <- function(
   if (!identical(attr(outcome_terms, "intercept"), 1L)) {
     abort(
       c(
-        "{.fun ipw} supports {.val linearization} standard errors only for an \\
+        "{.fun ipw} supports {.val {se_method}} standard errors only for an \\
         outcome model with an intercept.",
         x = "{.arg outcome_mod} was fit without an intercept.",
         i = "This covers every no-intercept coding, including a saturated \\
@@ -2546,7 +2620,7 @@ ipw.default <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
@@ -2573,19 +2647,26 @@ ipw.default <- function(
 # `l1` and `l0` are the influence functions of `mu1` and `mu0` themselves, so
 # each mean's variance is the variance of its own influence function over n,
 # which is the calculation the contrasts already apply to differences of the two.
+#
+# `se_method` decides only how an influence function is read into a variance,
+# which the two helpers below settle. Everything else about the calculation is
+# shared, the diagnostic being the same influence functions with the propensity
+# correction dropped.
 calculate_estimates <- function(
   lin_vars,
   marginal_means,
   n,
   linear_regression,
   conf_level,
-  exposure_levels
+  exposure_levels,
+  se_method = "linearization"
 ) {
   z_val <- qnorm(1 - ((1 - conf_level) / 2))
+  exact <- identical(se_method, "robust")
 
   mu_est <- c(marginal_means$mu0, marginal_means$mu1)
   mu_inf <- cbind(lin_vars$l0, lin_vars$l1)
-  mu_se <- sqrt(apply(mu_inf, 2, var) / n)
+  mu_se <- sqrt(apply(mu_inf, 2, influence_variance, n = n, exact = exact))
   mu_z <- mu_est / mu_se
   mu_contrast <- as.character(exposure_levels)
   contrast_label <- paste(mu_contrast[[2]], "vs", mu_contrast[[1]])
@@ -2594,7 +2675,7 @@ calculate_estimates <- function(
   # --------------------------------
   # Influence = (l1 - l0)
   rd_inf <- lin_vars$l1 - lin_vars$l0
-  rd_var <- var(rd_inf) / n
+  rd_var <- influence_variance(rd_inf, n, exact)
 
   rd_est <- marginal_means$mu1 - marginal_means$mu0
   rd_se <- sqrt(rd_var)
@@ -2620,7 +2701,8 @@ calculate_estimates <- function(
     return(ipw_attach_influence_vcov(
       estimates,
       cbind(mu_inf, rd_inf),
-      n
+      n,
+      exact
     ))
   }
 
@@ -2638,7 +2720,7 @@ calculate_estimates <- function(
     marginal_means$mu1 -
     lin_vars$l0 / marginal_means$mu0
 
-  log_rr_var <- var(log_rr_inf) / n
+  log_rr_var <- influence_variance(log_rr_inf, n, exact)
   log_rr_se <- sqrt(log_rr_var)
 
   log_rr_ci_lower <- log_rr_est - z_val * log_rr_se
@@ -2661,7 +2743,7 @@ calculate_estimates <- function(
     (marginal_means$mu1 * (1 - marginal_means$mu1))) -
     (lin_vars$l0 / (marginal_means$mu0 * (1 - marginal_means$mu0)))
 
-  log_or_var <- var(log_or_inf) / n
+  log_or_var <- influence_variance(log_or_inf, n, exact)
   log_or_se <- sqrt(log_or_var)
 
   log_or_ci_lower <- log_or_est - z_val * log_or_se
@@ -2696,7 +2778,8 @@ calculate_estimates <- function(
   ipw_attach_influence_vcov(
     estimates,
     cbind(mu_inf, rd_inf, log_rr_inf, log_or_inf),
-    n
+    n,
+    exact
   )
 }
 
@@ -2740,12 +2823,144 @@ ipw_linearization_estimates <- function(
 # The block is labeled the way every surface of the result labels its rows,
 # read off the frame it belongs to rather than off the influence matrix, whose
 # columns are the influence functions and not the rows they describe.
-ipw_attach_influence_vcov <- function(estimates, influence, n) {
-  covariance <- cov(influence) / n
+ipw_attach_influence_vcov <- function(estimates, influence, n, exact = FALSE) {
+  covariance <- influence_covariance(influence, n, exact)
   labels <- ipw_effect_labels(estimates)
   dimnames(covariance) <- list(labels, labels)
   attr(estimates, "ipw_vcov") <- covariance
   estimates
+}
+
+# How an influence function is read into the variance of the estimate it
+# belongs to. The linearization route takes the sample variance of the influence
+# values over n, the estimator's asymptotic variance read off the sample. The
+# robust diagnostic reports the HC0 sandwich of the weighted outcome model
+# exactly, whose meat is the plain sum of squares over n. The influence values
+# already sum to zero over the sample, so the two readings differ by the factor
+# n / (n - 1) and nothing else, and dividing by n is what makes the diagnostic
+# the sandwich itself rather than a finite-sample rescaling of it.
+influence_variance <- function(x, n, exact) {
+  if (exact) {
+    return(sum(x^2) / n^2)
+  }
+
+  var(x) / n
+}
+
+# The same two readings for a set of influence functions at once, giving the
+# covariance the reported rows are read at.
+influence_covariance <- function(influence, n, exact) {
+  if (exact) {
+    return(crossprod(influence) / n^2)
+  }
+
+  cov(influence) / n
+}
+
+# Mark a result whose standard errors are the diagnostic ones. The class leads
+# the vector, so the result is an `ipw` to everything that does not care and the
+# few surfaces that do can say so; a result fit by a method that accounts for
+# the estimated weights is left exactly as it was built.
+ipw_mark_diagnostic_se <- function(result) {
+  if (!identical(result$se_method, "robust")) {
+    return(result)
+  }
+
+  class(result) <- c("ipw_diagnostic_se", class(result))
+  result
+}
+
+#' Print a result whose standard errors are a diagnostic
+#'
+#' `se_method = "robust"` reports the sandwich the weighted outcome model
+#' computes for itself, which treats the estimated weights as known. Printing
+#' such a result writes what [print()][base::print] writes for any [ipw()]
+#' result and then one line naming the method, so that the number beside each
+#' estimate is not read as one accounting for the propensity score model. See
+#' **Standard errors as a diagnostic** in [ipw()] for what the diagnostic does
+#' and does not cover.
+#'
+#' @param x An `ipw` result fit with `se_method = "robust"`.
+#' @param ... Passed to the next method.
+#'
+#' @return `x`, invisibly.
+#'
+#' @examples
+#' set.seed(2)
+#' n <- 300
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.4 * x))
+#' y <- rbinom(n, 1, plogis(-0.3 + 0.7 * z + 0.5 * x))
+#' dat <- data.frame(x, z, y)
+#'
+#' ps_mod <- glm(z ~ x, data = dat, family = binomial())
+#' wts <- wt_ate(ps_mod)
+#' outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+#'
+#' print(ipw(ps_mod, outcome_mod, se_method = "robust"))
+#'
+#' @seealso [ipw()] for the estimator and the standard error methods.
+#'
+#' @export
+print.ipw_diagnostic_se <- function(x, ...) {
+  NextMethod()
+  cat("\n")
+  cat(paste0(
+    "Standard errors: ",
+    x$se_method,
+    ", a diagnostic that treats the weights as known\n"
+  ))
+
+  invisible(x)
+}
+
+#' @rdname print.ipw_diagnostic_se
+#'
+#' @param row.names,optional Passed to the next method.
+#'
+#' @return `as.data.frame()` returns what it returns for any [ipw()] result,
+#'   carrying an `ipw_se_diagnostic` attribute naming the method.
+#'
+#' @export
+as.data.frame.ipw_diagnostic_se <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  ...
+) {
+  # Forced here rather than passed on as an unevaluated argument: a promise
+  # holding `NextMethod()` runs in whatever frame first forces it, and a
+  # refusal raised inside it would then name that frame rather than the call
+  # the user made.
+  frame <- NextMethod()
+
+  mark_ipw_se_diagnostic(frame, x)
+}
+
+#' @rdname print.ipw_diagnostic_se
+#'
+#' @return `tidy()` returns what it returns for any [ipw()] result, carrying an
+#'   `ipw_se_diagnostic` attribute naming the method.
+#'
+#' @exportS3Method generics::tidy ipw_diagnostic_se
+tidy.ipw_diagnostic_se <- function(x, ...) {
+  # Forced for the reason the coercion above forces it.
+  tidied <- NextMethod()
+
+  # The tidier reaches the table through the coercion above, which marks it, but
+  # a tidied table is a tibble built from that frame and an attribute is not one
+  # of its columns. The mark is therefore reattached here rather than relied on
+  # to survive the coercion.
+  mark_ipw_se_diagnostic(tidied, x)
+}
+
+# The mark a table of a diagnostic result carries: the name of the method,
+# rather than a flag, so that a caller reading it learns which diagnostic it
+# was. It is an attribute rather than a column, the table being the one every
+# other route reports.
+mark_ipw_se_diagnostic <- function(table, result) {
+  attr(table, "ipw_se_diagnostic") <- result$se_method
+  table
 }
 
 # accounts for dependence introduced by weights

@@ -35,9 +35,10 @@
 #' The `joint_wt_models` method estimates the effects of a joint intervention on
 #' two treatments from the pair of fitted treatment models [joint_wt_models()]
 #' records and a weighted outcome model that reads both treatments. Standard
-#' errors are computed by M-estimation. `se_method = "linearization"` is not
-#' available here: the linearization path solves no stacked system, and the cell
-#' means and every contrast built from them are parameters of one.
+#' errors are computed by M-estimation. Neither `se_method = "linearization"`
+#' nor `se_method = "robust"` is available here: neither path solves a stacked
+#' system, and the cell means and every contrast built from them are parameters
+#' of one.
 #'
 #' The only supported estimand is `"ate"`, which is what the product weights
 #' [wt_joint()] builds target.
@@ -79,7 +80,7 @@ ipw.joint_wt_models <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
@@ -139,16 +140,16 @@ check_ipw_joint_models_method <- function(
   se_method,
   call = rlang::caller_env()
 ) {
-  if (!identical(se_method, "linearization")) {
+  if (identical(se_method, "mestimation")) {
     return(invisible(TRUE))
   }
 
   abort(
     c(
-      "{.fun ipw} does not support {.val linearization} standard errors for a \\
+      "{.fun ipw} does not support {.val {se_method}} standard errors for a \\
       joint treatment model.",
       x = "The cell means and every contrast built from them are parameters \\
-      of the stacked estimating equations, and the linearization path solves \\
+      of the stacked estimating equations, and the {se_method} path solves \\
       no such system.",
       i = "Use {.code se_method = \"mestimation\"} for a joint treatment \\
       model."

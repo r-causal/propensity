@@ -1,10 +1,12 @@
 #' @description
 #' The `multinom` method estimates causal effects for a categorical exposure
 #' from a fitted [nnet::multinom()] propensity score model and a weighted
-#' outcome model. Standard errors are computed by M-estimation.
-#' `se_method = "linearization"` is not available for a categorical exposure and
-#' is refused with an error of class `propensity_method_error`: the stacked
-#' system has a sandwich for every fit this exposure type accepts.
+#' outcome model. Standard errors are computed by M-estimation. Neither
+#' `se_method = "linearization"` nor `se_method = "robust"` is available for a
+#' categorical exposure, and both are refused with an error of class
+#' `propensity_method_error`: the stacked system has a sandwich for every fit
+#' this exposure type accepts, and the diagnostic sandwich describes two fitted
+#' cells that a categorical result does not report.
 #'
 #' For a K-level exposure, the counterfactual mean at each level is reported
 #' first, under the effect label `"mean"`, and then the effects for each
@@ -36,7 +38,7 @@ ipw.multinom <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   .focal_level = NULL,
   effects = c("marginal", "conditional")
 ) {
@@ -58,10 +60,10 @@ ipw.multinom <- function(
   check_multinom_response(wt_mod, arg = "wt_mod")
   check_ipw_multinom_levels(wt_mod)
 
-  if (identical(se_method, "linearization")) {
+  if (!identical(se_method, "mestimation")) {
     abort(
       c(
-        "{.fun ipw} does not support {.val linearization} standard errors for \\
+        "{.fun ipw} does not support {.val {se_method}} standard errors for \\
         categorical exposures.",
         i = "Use {.code se_method = \"mestimation\"} for a categorical \\
         exposure."
@@ -111,8 +113,9 @@ ipw.multinom <- function(
 #' propensity score models** in [ipw()] for what each refusal says and what to
 #' do about it. The only supported estimand is `"ate"`.
 #'
-#' Standard errors are computed by M-estimation; the linearization method is not
-#' available for continuous exposures. The package offers no resampling method,
+#' Standard errors are computed by M-estimation; neither the linearization
+#' method nor the robust diagnostic is available for continuous exposures. The
+#' package offers no resampling method,
 #' so a fit the stacked system cannot write has no standard error here, and the
 #' refusal points at a bootstrap of the whole pipeline written by hand. See
 #' **Continuous propensity score models** in [ipw()].
@@ -165,7 +168,7 @@ ipw.lm <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()

@@ -459,7 +459,10 @@ density_meta_model_formula <- function(numerator_model) {
     return(NULL)
   }
 
-  paste(deparse(formula), collapse = " ")
+  # `deparse()` breaks a long formula across lines and indents the
+  # continuations, so collapsing them leaves runs of spaces inside the formula.
+  # The record reads it back spaced the way a formula is written.
+  squash_whitespace(paste(deparse(formula), collapse = " "))
 }
 
 #' @rdname exposure_type

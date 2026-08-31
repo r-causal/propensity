@@ -472,6 +472,11 @@ test_that("ipw() print output is stable per SE method", {
   expect_snapshot(
     print(ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"))
   )
+
+  # Pins the diagnostic mark the robust path adds under the same table.
+  expect_snapshot(
+    print(ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust"))
+  )
 })
 
 test_that("a marginal linear outcome model works on the linearization path", {
@@ -3478,6 +3483,7 @@ test_that("a robust result has no conditional reading", {
     class = "propensity_no_conditional_vcov_error",
     regexp = "robust"
   )
+  expect_propensity_error(tidy(res, effects = "conditional"))
 })
 
 test_that("ipw() refuses .by with robust standard errors", {
@@ -3491,6 +3497,9 @@ test_that("ipw() refuses .by with robust standard errors", {
     ipw(ps_mod, outcome_mod, .data = dat, .by = x2, se_method = "robust"),
     class = "propensity_ipw_by_method_error",
     regexp = "robust"
+  )
+  expect_propensity_error(
+    ipw(ps_mod, outcome_mod, .data = dat, .by = x2, se_method = "robust")
   )
 })
 
@@ -3509,6 +3518,9 @@ test_that("robust rejects the atu estimand as linearization does", {
     class = "propensity_method_error",
     regexp = "robust"
   )
+  expect_propensity_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+  )
 })
 
 test_that("robust rejects a covariate-adjusted outcome model as linearization does", {
@@ -3523,5 +3535,8 @@ test_that("robust rejects a covariate-adjusted outcome model as linearization do
     ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust"),
     class = "propensity_method_error",
     regexp = "robust"
+  )
+  expect_propensity_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
   )
 })

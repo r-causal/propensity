@@ -19,6 +19,15 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
+# ipw() rejects robust standard errors for a continuous exposure
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support "robust" standard errors for continuous exposures.
+      i Use `se_method = "mestimation"` for a continuous exposure.
+
 # the continuous ps_link error explains why the argument does not apply
 
     Code

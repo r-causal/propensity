@@ -51,3 +51,13 @@
       x The cell means and every contrast built from them are parameters of the stacked estimating equations, and the linearization path solves no such system.
       i Use `se_method = "mestimation"` for a joint treatment model.
 
+# ipw() refuses robust standard errors on the two-model route
+
+    Code
+      expr
+    Condition <propensity_ipw_joint_models_method_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support "robust" standard errors for a joint treatment model.
+      x The cell means and every contrast built from them are parameters of the stacked estimating equations, and the robust path solves no such system.
+      i Use `se_method = "mestimation"` for a joint treatment model.
+

@@ -1,5 +1,26 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now accepts `se_method = "robust"`, a diagnostic that reports the
+  sandwich the weighted outcome model computes for itself with the estimated
+  weights entering as known constants. It is the linearization route with the
+  correction for having estimated the propensity score dropped, so the point
+  estimates are unchanged and only the standard errors move, and what it reports
+  is the delta-method reading of `sandwich::vcovHC(outcome_mod, type = "HC0")`,
+  exactly. Dropping that correction generally understates the variance, and
+  understates it most where the weights are least stable, so this is offered for
+  reading beside `"mestimation"` or `"linearization"` rather than in place of
+  either: it says what the propensity correction is worth on a given fit. A
+  result fit this way carries the class `ipw_diagnostic_se`, prints one line
+  naming the method, and marks the tables `as.data.frame()` and `tidy()` build
+  with an `ipw_se_diagnostic` attribute. Every requirement of the linearization
+  route applies, and the categorical, continuous, and joint treatment routes
+  refuse the diagnostic as they refuse linearization.
+
+* The density record of weights stabilized on a numerator model now reads a
+  long formula back the way a formula is written. `deparse()` breaks a formula
+  too long for one line and indents the continuations, which left runs of spaces
+  inside the printed `stabilize:` line.
+
 * `wt_ate()` and `wt_cens()` now accept a fitted model of the exposure in
   `stabilize`, which stabilizes a continuous exposure's weights on the
   conditional density that model estimates rather than on the marginal density

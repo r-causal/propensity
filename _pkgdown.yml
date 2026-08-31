@@ -64,6 +64,7 @@ reference:
     read through.
   contents:
   - ipw-methods
+  - print.ipw_diagnostic_se
   - tidy.ipw
   - glance.ipw
   - augment.ipw

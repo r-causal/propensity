@@ -608,6 +608,11 @@ test_that("ipw() rejects robust standard errors for a categorical exposure", {
     class = "propensity_method_error",
     regexp = "robust"
   )
+  expect_propensity_error(ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    se_method = "robust"
+  ))
 })
 
 # ---- print and as.data.frame ------------------------------------------------

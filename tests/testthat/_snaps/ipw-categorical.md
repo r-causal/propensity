@@ -1,3 +1,12 @@
+# ipw() rejects robust standard errors for a categorical exposure
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support "robust" standard errors for categorical exposures.
+      i Use `se_method = "mestimation"` for a categorical exposure.
+
 # ipw() categorical print output is stable
 
     Code

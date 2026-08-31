@@ -666,6 +666,11 @@ test_that("ipw() rejects robust standard errors for a continuous exposure", {
     class = "propensity_method_error",
     regexp = "robust"
   )
+
+  # One wording for both routes, pinned once.
+  expect_propensity_error(
+    ipw(mods_lm$ps_mod, mods_lm$outcome_mod, se_method = "robust")
+  )
 })
 
 # ---- outcome-family validation ----------------------------------------------

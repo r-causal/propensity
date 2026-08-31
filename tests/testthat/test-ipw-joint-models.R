@@ -811,4 +811,7 @@ test_that("ipw() refuses robust standard errors on the two-model route", {
     class = "propensity_ipw_joint_models_method_error",
     regexp = "robust"
   )
+  expect_propensity_error(
+    ipw(two$models, two$outcome_mod, se_method = "robust")
+  )
 })

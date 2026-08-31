@@ -21,22 +21,23 @@ ipw_by_absent <- function(.by) {
 
 # ---- refusals that do not need the modifier ---------------------------------
 
-# Refuse `.by` on the linearization path. The stratum means and the contrasts
-# built from them are parameters of the stacked system, which is how their
-# standard errors come out of the same sandwich as everything else; the
+# Refuse `.by` on every path but M-estimation. The stratum means and the
+# contrasts built from them are parameters of the stacked system, which is how
+# their standard errors come out of the same sandwich as everything else; the
 # linearization path solves no such system and its influence functions are
-# derived for the whole-sample Hajek means alone.
+# derived for the whole-sample Hajek means alone, and the robust diagnostic is
+# that path with the correction for having estimated the weights dropped.
 check_ipw_by_method <- function(.by, se_method, call = rlang::caller_env()) {
-  if (ipw_by_absent(.by) || !identical(se_method, "linearization")) {
+  if (ipw_by_absent(.by) || identical(se_method, "mestimation")) {
     return(invisible(TRUE))
   }
 
   abort(
     c(
-      "{.fun ipw} does not support {.arg .by} with {.val linearization} \\
+      "{.fun ipw} does not support {.arg .by} with {.val {se_method}} \\
       standard errors.",
       x = "The stratum effects and their contrasts are parameters of the \\
-      stacked estimating equations, and the linearization path solves no such \\
+      stacked estimating equations, and the {se_method} path solves no such \\
       system.",
       i = "Use {.code se_method = \"mestimation\"} to report effects by \\
       {.arg .by}."
