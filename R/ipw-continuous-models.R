@@ -186,11 +186,19 @@ ipw_continuous_gam_entry <- function(
 # matrix its smooth terms carry, or `NULL` for a fit whose record of them does
 # not line up with those terms.
 #
-# A fit that chose its smoothing parameters records them in `sp`; a fit handed
-# every one of them leaves that field empty and records them in `full.sp`
-# instead, so both are read. A smooth fit with `fx = TRUE` carries no penalty
-# matrix and no smoothing parameter, and one selected out carries several of
-# each, so the count comes from the terms rather than from the number of them.
+# A fit records every penalty it holds in `full.sp` and only the ones it chose
+# in `sp`, so the two agree until a smoothing parameter is handed to the fit and
+# `full.sp` is the field that describes the whole penalty. It is therefore the
+# one read wherever the fit keeps it, and a count of it that the smooth terms do
+# not account for is what a penalty on a parametric term, such as one from
+# `paraPen`, leaves behind: `sp` can still be as long as those terms are, and
+# reading it there would place the wrong parameters on the smooths and drop the
+# parametric penalty from the score. `sp` is read only for a fit with no full
+# record at all, which is one carrying no penalty.
+#
+# A smooth fit with `fx = TRUE` carries no penalty matrix and no smoothing
+# parameter, and one selected out carries several of each, so the count comes
+# from the terms rather than from the number of them.
 ipw_gam_smoothing_parameters <- function(fit) {
   n_penalties <- sum(vapply(
     fit$smooth,
@@ -198,10 +206,10 @@ ipw_gam_smoothing_parameters <- function(fit) {
     integer(1)
   ))
 
-  for (sp in list(fit$sp, fit$full.sp)) {
-    if (identical(length(sp), n_penalties)) {
-      return(as.numeric(sp))
-    }
+  smoothing <- if (length(fit$full.sp) > 0) fit$full.sp else fit$sp
+
+  if (identical(length(smoothing), n_penalties)) {
+    return(as.numeric(smoothing))
   }
 
   NULL

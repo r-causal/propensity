@@ -409,6 +409,48 @@ test_that("the registry refuses an additive fit of another family", {
     ipw_continuous_model(ps_mod),
     class = "propensity_model_family_error"
   )
+
+  # The same fit handed to `ipw()` never reaches the additive stack either. A
+  # model of another family is read as a model of a binary exposure there, one
+  # step before the continuous registry, so what refuses it is that path's own
+  # envelope rather than this one's.
+  mods <- fit_gam_models(dat, ps_mod, exposure = "counts")
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_link_error"
+  )
+})
+
+test_that("the registry refuses an additive fit through a link it cannot write", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+
+  # The links a gaussian fit can be stacked through are the registry's rather
+  # than the additive machinery's: an identity link is least squares, a log link
+  # is the score deli writes for a normal model of `exp(X alpha)`, and the
+  # remaining gaussian links are refused by name because the coefficients an
+  # IRLS iteration stops at under them are not a tight enough root to seed the
+  # solve from. An additive fit is held to that envelope and not a wider one.
+  ps_mod <- mgcv::gam(
+    Apos ~ s(x1) + s(x2),
+    data = dat,
+    family = gaussian(link = "inverse"),
+    method = "REML"
+  )
+
+  expect_error(
+    ipw_continuous_model(ps_mod),
+    class = "propensity_ipw_link_error"
+  )
+
+  mods <- fit_gam_models(dat, ps_mod, exposure = "Apos")
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_link_error"
+  )
+  expect_match(conditionMessage(err), "inverse", fixed = TRUE)
 })
 
 test_that("the registry refuses an additive fit whose penalty it cannot place", {
@@ -435,6 +477,65 @@ test_that("the registry refuses an additive fit whose penalty it cannot place", 
   expect_s3_class(err, "propensity_method_error")
 
   expect_propensity_error(ipw(mods$ps_mod, mods$outcome_mod))
+})
+
+test_that("the registry refuses a parametric penalty held at a fixed value", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+
+  # A fit handed some of its smoothing parameters records every penalty it holds
+  # in `full.sp` and only the ones it chose in `sp`, so a parametric penalty
+  # held fixed leaves `sp` exactly as long as the smooth terms are. Counting
+  # against `sp` there would read the fit as one this path can place, and the
+  # score it stacked would be missing the parametric penalty; the count is taken
+  # against the full record whenever the fit keeps one.
+  ps_mod <- mgcv::gam(
+    A ~ s(x1) + x2,
+    data = dat,
+    paraPen = list(x2 = list(diag(1))),
+    sp = c(2, -1),
+    method = "REML"
+  )
+  expect_length(ps_mod$sp, 1L)
+  expect_length(ps_mod$full.sp, 2L)
+
+  mods <- fit_gam_models(dat, ps_mod)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_se_method_unavailable_error"
+  )
+  expect_s3_class(err, "propensity_method_error")
+})
+
+test_that("a gam handed some of its smoothing parameters is stacked", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+
+  # Every penalty in this fit belongs to a smooth term, so it is stacked even
+  # though one smoothing parameter was handed to it and the other was chosen.
+  # `full.sp` holds both, in the order the penalties are placed, and the penalty
+  # built from it puts the fit's own coefficients at the root of the score.
+  ps_mod <- mgcv::gam(
+    A ~ s(x1) + s(x2),
+    data = dat,
+    sp = c(0.5, -1),
+    method = "REML"
+  )
+  expect_length(ps_mod$sp, 1L)
+  expect_length(ps_mod$full.sp, 2L)
+  expect_equal(unname(ps_mod$full.sp[[1]]), 0.5)
+
+  mods <- fit_gam_models(dat, ps_mod)
+
+  expect_gam_root_seeded(mods$ps_mod, mods$outcome_mod, mods$wts)
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  expect_equal(
+    unname(coef(res$fit)[seq_along(coef(ps_mod))]),
+    unname(coef(ps_mod)),
+    tolerance = 1e-8
+  )
 })
 
 test_that("ipw() refuses a gam dose model fit with case weights", {

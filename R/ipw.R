@@ -733,7 +733,8 @@
 #' 1. The variance conditions on the smoothing parameters rather than estimating
 #'    them, so none of the uncertainty of having chosen them is carried. A
 #'    simulation put that at roughly three percent of the standard error at
-#'    `n = 500`, more below `n = 200` and less above it. A fit handed its
+#'    `n = 500`, roughly seven percent at `n = 200`, and less at larger
+#'    samples. A fit handed its
 #'    smoothing parameters and a fit that chose them report the same standard
 #'    error here, which is the same limitation stated as an equality.
 #' 2. What the propensity score block reports is the frequentist variance of a
