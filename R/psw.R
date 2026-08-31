@@ -423,7 +423,11 @@ density_meta <- function(wt) {
 #' changes the number of weights. Two sets of weights record the same numerator
 #' when their models write the same formula and were fit to the same
 #' coefficients; combining two that record different ones drops the record, with
-#' a warning of class `propensity_metadata_conflict_warning`.
+#' a warning of class `propensity_metadata_conflict_warning`. Weights stabilized
+#' without a model were divided by a numerator no model estimated, which is a
+#' different numerator again: combining those with weights stabilized on a model
+#' drops the model the same way, and the result is stabilized on nothing it can
+#' name.
 #'
 #' A `stabilization_score` is a numerator the caller computed rather than one a
 #' model estimated, so weights stabilized on a score record no model, and
@@ -1192,6 +1196,28 @@ merge_psw_estimands <- function(x, y) {
   paste0(x, ", ", y)
 }
 
+# Which numerator a set of weights was divided by, as the merge compares it. A
+# fitted model the caller supplied is one answer and the marginal probability of
+# the level each unit took is another, and weights recording the second record
+# no model at all. Compared as attribute values, that reads as one operand
+# recording nothing rather than as two operands recording different numerators,
+# and the merge carries the model onto a result half of which was never
+# stabilized on it. Compared as records, model against no model is the
+# disagreement it already is inside a density record.
+#
+# Weights that are a ratio of densities record their numerator in that record,
+# which answers for it and names the model there, and unstabilized weights were
+# divided by no numerator at all. Neither records a numerator here, so neither
+# has anything to disagree with and both leave the other operand's model
+# standing, which is the single-operand route every carried attribute takes.
+psw_numerator_record <- function(x, attrs) {
+  if (!is_stabilized(x) || !is.null(attrs$density_meta)) {
+    return(NULL)
+  }
+
+  list(model = attrs$numerator_model)
+}
+
 # An operation on two psw objects has two sets of carried attributes to answer
 # for, each already reduced to what it can still speak for at the result's
 # length. One only a single operand records has nothing to disagree with, which
@@ -1204,6 +1230,8 @@ merge_psw_estimands <- function(x, y) {
 merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
   x_attrs <- aligned_psw_attrs(x, n)
   y_attrs <- aligned_psw_attrs(y, n)
+  x_attrs["numerator_model"] <- list(psw_numerator_record(x, x_attrs))
+  y_attrs["numerator_model"] <- list(psw_numerator_record(y, y_attrs))
   dropped <- union(conflicted_psw_attrs(x), conflicted_psw_attrs(y))
 
   attrs <- list()
@@ -1243,6 +1271,13 @@ merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
     }
   }
 
+  # The numerator was compared as the record of which numerator the weights
+  # were divided by; what the result carries is the model that record names, or
+  # nothing when it names none.
+  if ("numerator_model" %in% names(attrs)) {
+    attrs["numerator_model"] <- list(attrs$numerator_model$model)
+  }
+
   list(
     attrs = attrs,
     conflicts = conflicts,
@@ -1258,11 +1293,14 @@ psw_attrs_agree <- function(field, x, y) {
     return(density_meta_agrees(x, y))
   }
 
-  # A fitted model carries the frame it was fit in and the call that made it,
-  # so two models of the same numerator fit in two calls are not identical and
-  # are compared by what they say, the way the model inside a density record is.
+  # The numerator arrives as the record of which numerator the weights were
+  # divided by, so two records agree when they name the same model, or when
+  # neither names one and both therefore name the marginal numerator. A fitted
+  # model carries the frame it was fit in and the call that made it, so two
+  # models of the same numerator fit in two calls are not identical and are
+  # compared by what they say, the way the model inside a density record is.
   if (identical(field, "numerator_model")) {
-    return(numerator_models_agree(x, y))
+    return(numerator_models_agree(x$model, y$model))
   }
 
   if (identical(field, psw_joint_attr)) {

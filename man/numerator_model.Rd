@@ -37,7 +37,11 @@ length of its own and survives subsetting, arithmetic, and anything else that
 changes the number of weights. Two sets of weights record the same numerator
 when their models write the same formula and were fit to the same
 coefficients; combining two that record different ones drops the record, with
-a warning of class \code{propensity_metadata_conflict_warning}.
+a warning of class \code{propensity_metadata_conflict_warning}. Weights stabilized
+without a model were divided by a numerator no model estimated, which is a
+different numerator again: combining those with weights stabilized on a model
+drops the model the same way, and the result is stabilized on nothing it can
+name.
 
 A \code{stabilization_score} is a numerator the caller computed rather than one a
 model estimated, so weights stabilized on a score record no model, and

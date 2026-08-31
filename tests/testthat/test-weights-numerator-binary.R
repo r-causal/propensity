@@ -332,3 +332,102 @@ test_that("a categorical exposure still refuses a numerator model", {
     class = "propensity_numerator_error"
   )
 })
+
+# ---- combining weights that record a numerator model ------------------------
+
+# The weights the combine tests are written about: stabilized on the numerator
+# model, on a second model of other terms, and on the marginal probability of
+# the level each unit took.
+binary_modeled_wt <- function(model = binary_numerator_model) {
+  wt_ate(
+    binary_numerator_ps,
+    binary_numerator_dat$z,
+    exposure_type = "binary",
+    stabilize = model
+  )
+}
+
+binary_marginal_wt <- function() {
+  wt_ate(
+    binary_numerator_ps,
+    binary_numerator_dat$z,
+    exposure_type = "binary",
+    stabilize = TRUE
+  )
+}
+
+binary_other_numerator_model <- stats::glm(
+  z ~ x,
+  data = binary_numerator_dat,
+  family = stats::binomial()
+)
+
+test_that("combining a modeled numerator with the marginal one drops the model", {
+  # Half of the combined weights were divided by the model's fitted probability
+  # and half by the marginal one, so neither numerator describes the result.
+  # This is the disagreement the continuous route reports of the same pair,
+  # where the numerator lives inside the density record: the record is dropped
+  # and the drop is named, rather than the model being carried onto weights
+  # that were not all stabilized on it.
+  modeled <- binary_modeled_wt()
+  marginal <- binary_marginal_wt()
+
+  out <- NULL
+  expect_warning(
+    out <- vec_c(modeled, marginal),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(numerator_model(out))
+
+  # The result is still stabilized, and on nothing it can name. That is what
+  # the continuous conflict leaves too: the density record goes and the
+  # stabilization status stays.
+  expect_true(is_stabilized(out))
+  expect_false(any(grepl(
+    "stabilize:",
+    capture.output(print(out)),
+    fixed = TRUE
+  )))
+
+  # Which operand was written first says nothing about which numerator the
+  # result was divided by.
+  reversed <- NULL
+  expect_warning(
+    reversed <- vec_c(marginal, modeled),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(numerator_model(reversed))
+  expect_true(is_stabilized(reversed))
+})
+
+test_that("combining weights stabilized on the same model keeps it", {
+  # A numerator model is compared by what it says rather than by identity, the
+  # way the model inside a density record is: a fit carries the frame it was
+  # made in and the call that made it, so the same numerator fit in two calls
+  # would otherwise read as a disagreement.
+  again <- stats::glm(
+    z ~ v,
+    data = binary_numerator_dat,
+    family = stats::binomial()
+  )
+
+  same <- expect_silent(vec_c(binary_modeled_wt(), binary_modeled_wt(again)))
+  expect_identical(
+    stats::coef(numerator_model(same)),
+    stats::coef(binary_numerator_model)
+  )
+})
+
+test_that("combining weights stabilized on different models drops both", {
+  # Two models that read different terms estimate two different numerators, so
+  # the combination was divided by neither.
+  out <- NULL
+  expect_warning(
+    out <- vec_c(
+      binary_modeled_wt(),
+      binary_modeled_wt(binary_other_numerator_model)
+    ),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(numerator_model(out))
+})
