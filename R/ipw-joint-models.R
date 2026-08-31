@@ -409,6 +409,7 @@ ipw_spec_joint_models <- function(
       # for the model itself.
       kind = dose_model$kind,
       huber_k = dose_model$huber_k,
+      penalty = dose_model$penalty,
       k = 2L
     ),
     # `wt_joint()` requires a continuous component to be stabilized, so a dose
@@ -1111,14 +1112,15 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
 # The mean and the score the dose model contributes, read off the spec's record
 # of its registry entry rather than off the model itself, so the psi that
 # rebuilds the block at every evaluation and the preflight that rebuilds it once
-# write the same equation from the same three values.
+# write the same equation from the same four values.
 ipw_joint_models_dose_fns <- function(spec) {
   dose <- ipw_joint_models_dose(spec)
 
   ipw_continuous_score_fns(
     spec$ps$kind,
     spec$ps$link[[dose]],
-    spec$ps$huber_k
+    spec$ps$huber_k,
+    spec$ps$penalty
   )
 }
 

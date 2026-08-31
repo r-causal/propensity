@@ -96,9 +96,9 @@
       expr
     Condition <propensity_class_error>
       Error in `ipw()`:
-      ! `ipw()` supports only `stats::lm()`, gaussian `stats::glm()`, or `MASS::rlm()` as the propensity score model of a continuous exposure.
+      ! `ipw()` supports only `stats::lm()`, gaussian `stats::glm()`, `MASS::rlm()`, or `mgcv::gam()` as the propensity score model of a continuous exposure.
       x `wt_mod` has class <mymodel/lm>.
-      i A <gam> is recognized and refused on its own terms; every other class reaches this refusal.
+      i Each of those is read as the class it is rather than by what it inherits from, so a subclass of one of them reaches this refusal too.
       i Refit `wt_mod` with `stats::lm()` or `stats::glm(family = gaussian())`.
 
 # ipw() refuses a propensity model fit without a formula

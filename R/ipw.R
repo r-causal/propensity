@@ -14,8 +14,9 @@
 #' [stats::lm()] or gaussian [stats::glm()] propensity score model with a
 #' weighted marginal structural outcome model whose link is identity, logit, or
 #' log, and `ipw()` reports the single exposure coefficient of that model. A
-#' subclass of either propensity score model, such as a robust or an additive
-#' fit, errors.
+#' [MASS::rlm()] fit with the Huber psi and an [mgcv::gam()] fit of a gaussian
+#' family are read as the equations their own coefficients solve; every other
+#' subclass errors.
 #'
 #' @param wt_mod The weighting object: a fitted propensity score model that
 #'   produced the weights, typically a logistic regression of class
@@ -131,10 +132,9 @@
 #'   binary or a categorical exposure has a sandwich for every fit it accepts.
 #'   A few
 #'   continuous fits have no sandwich, and the package computes no standard
-#'   error for them: an [mgcv::gam()] propensity score model and weights built
-#'   with a `"kernel"` density are refused, and so is a [MASS::rlm()] fit the
-#'   stacked system cannot write. See **Continuous propensity score models**
-#'   below.
+#'   error for them: weights built with a `"kernel"` density are refused, and so
+#'   are a [MASS::rlm()] and an [mgcv::gam()] fit whose score the stacked system
+#'   cannot write. See **Continuous propensity score models** below.
 #'
 #'   `"linearization"` and `"robust"` support only an outcome model of the
 #'   exposure alone, fit with an intercept; a covariate-adjusted outcome model
@@ -604,10 +604,13 @@
 #' The dose model goes through the registry described under **Continuous
 #' propensity score models**, so the classes and links this route stacks are the
 #' ones the single-treatment route stacks: an [stats::lm()], a gaussian
-#' [stats::glm()] fit with an identity or a log link, and a [MASS::rlm()] fit
-#' with the Huber psi. A gaussian dose model fit with another link errors with
-#' class `propensity_ipw_link_error`, and a robust fit whose score the system
-#' cannot write raises the same conditions it raises for a single dose.
+#' [stats::glm()] fit with an identity or a log link, a [MASS::rlm()] fit with
+#' the Huber psi, and an [mgcv::gam()] of a gaussian family read at its own
+#' penalized score. A gaussian dose model fit with another link errors with
+#' class `propensity_ipw_link_error`, and a robust or an additive fit whose
+#' score the system cannot write raises the same conditions it raises for a
+#' single dose. The limitations of the additive route are the ones listed under
+#' **Continuous propensity score models**, and they apply here unchanged.
 #'
 #' The dose component's weights may be any ratio [wt_ate()] builds: a
 #' heavier-tailed `.density`, `numerator = "integrated"`, or a single `.sigma`
@@ -629,13 +632,12 @@
 #' with class `propensity_ipw_numerator_error`: this route has no stabilization
 #' block to estimate such a model in, where the single-dose route has one.
 #'
-#' An [mgcv::gam()] dose model, and dose weights built with a `"kernel"`
-#' density, are refused with class
-#' `propensity_ipw_se_method_unavailable_error`. Neither is a function of the
-#' parameters that the sandwich could differentiate, and the package has no
-#' second method to fall back on, so the refusal points at building the dose
-#' weights from a model and a density the stacked system can write, or at
-#' bootstrapping the whole fit by hand.
+#' Dose weights built with a `"kernel"` density are refused with class
+#' `propensity_ipw_se_method_unavailable_error`. The bandwidth is not a function
+#' of the parameters that the sandwich could differentiate, and the package has
+#' no second method to fall back on, so the refusal points at building the dose
+#' weights from a density the stacked system can write, or at bootstrapping the
+#' whole fit by hand.
 #'
 #' # Variance estimation
 #'
@@ -654,8 +656,8 @@
 #' M-estimation standard errors are available for all exposure types: binary
 #' (from a [stats::glm()] propensity score model), categorical (from a
 #' [nnet::multinom()] model), and continuous (from an [stats::lm()], a gaussian
-#' [stats::glm()], or a [MASS::rlm()] model; see **Continuous propensity score
-#' models** below). The `atm` weight
+#' [stats::glm()], a [MASS::rlm()], or an [mgcv::gam()] model; see **Continuous
+#' propensity score models** below). The `atm` weight
 #' `pmin(e, 1 - e)` is not differentiable at a propensity score of `0.5`; deli's
 #' central finite difference straddles the kink there and averages the one-sided
 #' slopes. Its effect on the variance is negligible unless many observations sit
@@ -673,13 +675,16 @@
 #'
 #' A continuous exposure's weights are a ratio of densities centered on the
 #' conditional mean the propensity score model fits, so the stacked system
-#' carries that model's own score. Three classes supply one: an [stats::lm()],
-#' a gaussian [stats::glm()] fit with an identity or a log link, and a
-#' [MASS::rlm()] fit with the Huber psi. A gaussian model fit with any other
+#' carries that model's own score. Four classes supply one: an [stats::lm()],
+#' a gaussian [stats::glm()] fit with an identity or a log link, a
+#' [MASS::rlm()] fit with the Huber psi, and a gaussian [mgcv::gam()] fit with
+#' one of the same two links. A gaussian model fit with any other
 #' link is refused by name, because the coefficients its iteration stops at are
 #' not a tight enough root to seed the stacked solve from; refit it with one of
 #' the two links or as an [stats::lm()]. Any other class errors, since solving
-#' it here would report a propensity score model that was never fit.
+#' it here would report a propensity score model that was never fit. Each class
+#' is read as the class it is rather than by what it inherits from, so a
+#' subclass of a supported fit errors as well.
 #'
 #' A [MASS::rlm()] is stacked as the Huber score its coefficients are the root
 #' of, clipped where the fit itself clipped: at the psi's own constant, which is
@@ -709,6 +714,42 @@
 #' points to a larger `maxit` or a looser `acc`, which is what a fit needs to
 #' reach its own tolerance.
 #'
+#' An [mgcv::gam()] is stacked as the penalized least squares it is, with its
+#' smoothing parameters held at the values the fit reports. Its design is the
+#' smooth basis it was built on rather than the columns its formula names, and
+#' its coefficients are the root of the least-squares score of that basis less
+#' the penalty those smoothing parameters define. An [mgcv::bam()] is the same
+#' fit computed for larger data and is read the same way. The additive part of
+#' an [mgcv::gamm()] fit is not: it carries the `gam` class alone, without the
+#' `glm` and `lm` classes `ipw()` reads a model through, and errors with class
+#' `propensity_method_error`. Refit it with [mgcv::gam()] or [mgcv::bam()]. A
+#' penalty attached to a parametric term, such as one from `paraPen`, belongs to
+#' no smooth term and is not one this route can place, so such a fit errors with
+#' class `propensity_ipw_se_method_unavailable_error`.
+#'
+#' Four limitations come with the additive route, and each is a property of the
+#' method rather than of a particular fit.
+#'
+#' 1. The variance conditions on the smoothing parameters rather than estimating
+#'    them, so none of the uncertainty of having chosen them is carried. A
+#'    simulation put that at roughly three percent of the standard error at
+#'    `n = 500`, more below `n = 200` and less above it. A fit handed its
+#'    smoothing parameters and a fit that chose them report the same standard
+#'    error here, which is the same limitation stated as an equality.
+#' 2. What the propensity score block reports is the frequentist variance of a
+#'    penalized fit rather than the Bayesian covariance mgcv reports by default,
+#'    so `vcov()` on the stacked fit reads like `vcov(fit, freq = TRUE)` and
+#'    will not match `vcov(fit)`.
+#' 3. The envelope is the one every other continuous fit has: a gaussian family,
+#'    an identity or a log link, and no prior weights. A fit outside it is
+#'    refused where every other model of the wrong family, link, or weighting
+#'    is.
+#' 4. Coverage degrades as the weights grow heavier tails, and the interval is
+#'    optimistic once the effective sample size falls much below 60 percent of
+#'    the observations. That holds whatever the dose model is: the same
+#'    simulation found it for a correctly specified [stats::glm()] on the same
+#'    data.
+#'
 #' Every density [wt_ate()] builds a ratio in is stacked as it was built: the
 #' normal, Laplace, and Student t families, and a density you wrote yourself,
 #' under either the marginal or the integrated numerator. `ipw()` reads the
@@ -736,20 +777,21 @@
 #' than the exposure, or one fit to a different set of observations, errors with
 #' class `propensity_ipw_numerator_error`.
 #'
-#' Two fits are refused for the standard error rather than for the model. An
-#' [mgcv::gam()] chooses how much to smooth by REML, and a `"kernel"` density
-#' chooses its bandwidth from the residuals of the propensity score model;
-#' neither is a function of the parameters that the sandwich could
-#' differentiate, so weights built from either have no closed-form standard
-#' error. Both raise an error of class
+#' One choice is refused for the standard error rather than for the model. A
+#' `"kernel"` density chooses its bandwidth from the residuals of the propensity
+#' score model, which is not a function of the parameters that the sandwich
+#' could differentiate, so weights built from it have no closed-form standard
+#' error and raise an error of class
 #' `propensity_ipw_se_method_unavailable_error`. The package offers no
 #' resampling method of its own, so the remedy the refusal names is a bootstrap
 #' of the whole pipeline written by hand: resample the rows, refit the
 #' propensity score model, rebuild the weights with [wt_ate()], and refit the
 #' outcome model on each resample, then read the spread of the coefficient
 #' across the resamples. Doing it that way rather than inside `ipw()` keeps what
-#' each replicate re-estimates, such as a kernel bandwidth or a smoothing
-#' parameter, under the writer's control.
+#' each replicate re-estimates, such as a kernel bandwidth, under the writer's
+#' control. It is also how to carry a smoothing choice that the additive route
+#' conditions on: a bootstrap that refits the [mgcv::gam()] each time re-chooses
+#' the smoothing parameters along with everything else.
 #'
 #' ## Standard errors by linearization
 #'
@@ -790,9 +832,10 @@
 #' propensity score dropped, so the point estimates are the linearization ones
 #' and only the standard errors move. What it reports for the two counterfactual
 #' means and the contrasts built from them is the delta-method reading of
-#' `sandwich::vcovHC(outcome_mod, type = "HC0")`, exactly: the meat is divided
-#' by `n` rather than by `n - 1`, so what comes back is the HC0 sandwich itself
-#' rather than a finite-sample rescaling of it.
+#' `sandwich::vcovHC(outcome_mod, type = "HC0")`, exactly: the influence
+#' variance is read as a plain mean of squares rather than as a sample variance,
+#' so what comes back is the HC0 sandwich itself rather than a finite-sample
+#' rescaling of it.
 #'
 #' This is offered as a diagnostic and not as an inference. It ignores that the
 #' weights were estimated, and the correction it drops is generally what a
@@ -1506,15 +1549,13 @@ ipw_continuous_estimate <- function(
   # `lm()` they already used. The response guard names the response instead.
   check_ipw_ps_response(wt_mod, call = call)
 
-  # The stacked system carries the propensity score model's own score and
-  # rebuilds its design from the model formula, so the registry decides what can
-  # be here: a class whose coefficients are not the root of any equation it
-  # writes, such as a robust fit descending a redescending loss, would drift
-  # silently to the root of the one it does write, and a class whose design is
-  # not the formula's, such as an additive fit's smooth basis, would be
-  # reconstructed as something else.
-  # Either way the estimates would describe a propensity score model the user
-  # never fit. The refusal runs before every other guard here so that a
+  # The stacked system carries the propensity score model's own score, so the
+  # registry decides what can be here: a class whose coefficients are not the
+  # root of any equation it writes, such as a robust fit descending a
+  # redescending loss or an additive fit holding a penalty this path cannot
+  # place, would drift silently to the root of the one it does write, and the
+  # estimates would describe a propensity score model the user never fit. The
+  # refusal runs before every other guard here so that a
   # recognized model with no sandwich is reported as the method it lacks rather
   # than as the class it is.
   check_ipw_continuous_model(
@@ -2963,9 +3004,20 @@ mark_ipw_se_diagnostic <- function(table, result) {
   table
 }
 
-# accounts for dependence introduced by weights
-# treats them as fixed, not estimated
-# equivalent to usual robust sandwich estimator
+# The influence functions of the two counterfactual means, read with the weights
+# as known constants. Each observation contributes its weighted deviation from
+# the marginal mean at its own exposure level, scaled by the sample size over
+# the weighted count of that level. Both routes that reach here restrict the
+# outcome model to the exposure alone, which is what makes these the influence
+# functions of the Hajek weighted means the reported estimates coincide with.
+#
+# What they account for is the dependence the weights induce among the
+# observations, not the fact that the weights were estimated, so the variance
+# they give is the usual robust sandwich of the weighted outcome model. That is
+# the whole of the diagnostic route, which reports these values as they are, and
+# the first half of the linearization route, which adds the propensity score
+# correction in correct_for_ps() to reach the variance of the two-step
+# estimator.
 linearize_variables_for_wts <- function(Z, Y, wts, marginal_means) {
   n <- length(Z)
   wts <- as.double(wts)

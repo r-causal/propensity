@@ -40,25 +40,13 @@ ipw_continuous_model <- function(
   ps_class <- class(ps_mod)
 
   if (inherits(ps_mod, "gam")) {
-    return(ipw_continuous_entry(
-      kind = "gam",
-      classes = ps_class,
+    return(ipw_continuous_gam_entry(
+      ps_mod,
+      ps_class,
+      hint = hint,
       label = label,
       role = role,
-      link = ps_mod$family$link,
-      stackable = FALSE,
-      error_class = c(
-        "propensity_ipw_se_method_unavailable_error",
-        "propensity_method_error"
-      ),
-      reason = c(
-        "{.fun ipw} cannot build a sandwich variance for a \\
-        {.cls {entry$classes}} {entry$role} of a continuous exposure.",
-        x = "An additive model chooses how much to smooth by REML, and no \\
-        estimating equation stacked here reproduces that choice, so the \\
-        stacked system would describe a different fit.",
-        i = hint
-      )
+      call = call
     ))
   }
 
@@ -106,17 +94,139 @@ ipw_continuous_model <- function(
   abort(
     c(
       "{.fun ipw} supports only {.fun stats::lm}, gaussian \\
-      {.fun stats::glm}, or {.fun MASS::rlm} as the {role} of a continuous \\
-      exposure.",
+      {.fun stats::glm}, {.fun MASS::rlm}, or {.fun mgcv::gam} as the {role} \\
+      of a continuous exposure.",
       x = "{.arg {label}} has class {.cls {ps_class}}.",
-      i = "A {.cls gam} is recognized and refused on its own terms; every \\
-      other class reaches this refusal.",
+      i = "Each of those is read as the class it is rather than by what it \\
+      inherits from, so a subclass of one of them reaches this refusal too.",
       i = "Refit {.arg {label}} with {.fun stats::lm} or \\
       {.code stats::glm(family = gaussian())}."
     ),
     error_class = "propensity_class_error",
     call = call
   )
+}
+
+# The entry an additive fit gets. `mgcv::gam()` is read as the penalized least
+# squares it is, with its smoothing parameters held at the values the fit
+# reports: its design is the smooth basis it was built on rather than the
+# columns its formula names, and the equation its coefficients solve is the
+# least-squares score of that basis less the penalty those smoothing parameters
+# define.
+#
+# Holding the smoothing parameters fixed is what makes the score writable at
+# all, and it is also the approximation. The system conditions on the smoothing
+# choice rather than estimating it, so the variance it reports carries none of
+# that choice's uncertainty, and what it reports for the coefficients is the
+# frequentist covariance of a penalized fit rather than the Bayesian one mgcv
+# reports by default. The family and link envelope is the one every other
+# gaussian fit here has, and it is checked in the same place.
+ipw_continuous_gam_entry <- function(
+  ps_mod,
+  classes = class(ps_mod),
+  hint = ipw_continuous_resample_hint(),
+  label = "wt_mod",
+  role = "propensity score model",
+  call = rlang::caller_env()
+) {
+  check_ipw_continuous_ps_family(
+    ps_mod,
+    label = label,
+    role = role,
+    call = call
+  )
+
+  link <- ps_mod$family$link
+  check_ipw_continuous_ps_link(
+    link,
+    label = label,
+    role = role,
+    call = call
+  )
+
+  smoothing <- ipw_gam_smoothing_parameters(ps_mod)
+
+  # A fit holding a penalty this path cannot place is refused rather than
+  # stacked without it: a penalty left out of the score moves its root, and the
+  # solve would walk the coefficients off the fit the user has.
+  if (is.null(smoothing)) {
+    return(ipw_continuous_entry(
+      kind = "gam",
+      classes = classes,
+      link = link,
+      stackable = FALSE,
+      label = label,
+      role = role,
+      error_class = c(
+        "propensity_ipw_se_method_unavailable_error",
+        "propensity_method_error"
+      ),
+      reason = c(
+        "{.fun ipw} reads the penalty of a {.cls {entry$classes}} \\
+        {entry$role} off the smooth terms it was fit with.",
+        x = "{.arg {entry$label}} records more smoothing parameters than its \\
+        smooth terms account for, which is what a penalty on a parametric \\
+        term, such as one from {.arg paraPen}, adds.",
+        i = "Refit {.arg {entry$label}} so that every penalty in it belongs \\
+        to a smooth term.",
+        i = hint
+      )
+    ))
+  }
+
+  ipw_continuous_entry(
+    kind = "gam",
+    link = link,
+    stackable = TRUE,
+    penalty = ipw_gam_penalty(ps_mod, smoothing)
+  )
+}
+
+# The smoothing parameters of a fitted additive model, one for each penalty
+# matrix its smooth terms carry, or `NULL` for a fit whose record of them does
+# not line up with those terms.
+#
+# A fit that chose its smoothing parameters records them in `sp`; a fit handed
+# every one of them leaves that field empty and records them in `full.sp`
+# instead, so both are read. A smooth fit with `fx = TRUE` carries no penalty
+# matrix and no smoothing parameter, and one selected out carries several of
+# each, so the count comes from the terms rather than from the number of them.
+ipw_gam_smoothing_parameters <- function(fit) {
+  n_penalties <- sum(vapply(
+    fit$smooth,
+    function(smooth) length(smooth$S),
+    integer(1)
+  ))
+
+  for (sp in list(fit$sp, fit$full.sp)) {
+    if (identical(length(sp), n_penalties)) {
+      return(as.numeric(sp))
+    }
+  }
+
+  NULL
+}
+
+# The total penalty of a fitted additive model, in the parameterization its
+# coefficients are reported in: each smooth term's penalty matrices scaled by
+# their own smoothing parameters and placed at the coefficients that term owns.
+# The smoothing parameters are passed in rather than read here, because a fit
+# whose record of them does not line up with its smooth terms has no penalty
+# this can place and has already been refused by the time this is reached.
+ipw_gam_penalty <- function(fit, smoothing) {
+  p <- length(stats::coef(fit))
+  penalty <- matrix(0, nrow = p, ncol = p)
+  k <- 0L
+
+  for (smooth in fit$smooth) {
+    idx <- smooth$first.para:smooth$last.para
+    for (S in smooth$S) {
+      k <- k + 1L
+      penalty[idx, idx] <- penalty[idx, idx] + smoothing[[k]] * S
+    }
+  }
+
+  penalty
 }
 
 # The entry a robust fit gets, which is the one place a class carries a constant
@@ -277,7 +387,9 @@ ipw_rlm_psi_name <- function(ps_mod) {
 # `psi` and `huber_k` are the two things a robust fit carries that no other
 # entry has: the name of the psi it was fit with, which its refusal reads, and
 # the threshold its score clips the raw residual at, which the spec carries so
-# that the psi builder writes the same equation the registry did.
+# that the psi builder writes the same equation the registry did. `penalty` is
+# the one an additive fit carries, and is read the same way: the fixed matrix
+# its score subtracts, held in the spec rather than recomputed from the model.
 ipw_continuous_entry <- function(
   kind,
   link,
@@ -287,6 +399,7 @@ ipw_continuous_entry <- function(
   reason = NULL,
   psi = NULL,
   huber_k = NULL,
+  penalty = NULL,
   label = "wt_mod",
   role = "propensity score model"
 ) {
@@ -301,6 +414,7 @@ ipw_continuous_entry <- function(
     reason = reason,
     psi = psi,
     huber_k = huber_k,
+    penalty = penalty,
     mean = NULL,
     score = NULL
   )
@@ -309,40 +423,76 @@ ipw_continuous_entry <- function(
     return(entry)
   }
 
-  utils::modifyList(entry, ipw_continuous_score_fns(kind, link, huber_k))
+  utils::modifyList(
+    entry,
+    ipw_continuous_score_fns(kind, link, huber_k, penalty)
+  )
 }
 
 # The mean and the score a stacked propensity score model contributes, keyed on
 # the registry entry's kind as well as its link. Every least squares fit is read
 # through its link alone, and a robust fit is the one kind whose score is a
 # different equation at the same identity link, so the kind is what separates
-# them.
-ipw_continuous_score_fns <- function(kind, link, huber_k = NULL) {
-  if (!identical(kind, "rlm")) {
-    return(ipw_continuous_link_fns(link))
+# them. A penalty is the one thing that changes a least squares score without
+# changing its link, so it is carried beside them rather than keyed on.
+ipw_continuous_score_fns <- function(
+  kind,
+  link,
+  huber_k = NULL,
+  penalty = NULL
+) {
+  if (identical(kind, "rlm")) {
+    return(list(
+      mean = function(X, alpha) as.vector(X %*% alpha),
+      score = function(alpha, X, y) {
+        deli::ee_robust_regression(
+          alpha,
+          X = X,
+          y = y,
+          model = "linear",
+          k = huber_k,
+          loss = "huber"
+        )
+      }
+    ))
   }
 
-  list(
-    mean = function(X, alpha) as.vector(X %*% alpha),
-    score = function(alpha, X, y) {
-      deli::ee_robust_regression(
-        alpha,
-        X = X,
-        y = y,
-        model = "linear",
-        k = huber_k,
-        loss = "huber"
-      )
-    }
-  )
+  fns <- ipw_continuous_link_fns(link)
+
+  if (is.null(penalty)) {
+    return(fns)
+  }
+
+  ipw_penalized_score_fns(fns, penalty)
+}
+
+# The same pair with a fixed penalty subtracted from the score, which is the
+# equation an additive fit's coefficients are the root of. The penalty is one
+# term of the whole equation rather than a sum over observations, so it is
+# spread evenly across the columns of the psi matrix: the column sums are then
+# the equation the fit solves, and the bread picks up the penalized
+# cross-product divided by the sample size, as every other block is.
+ipw_penalized_score_fns <- function(fns, penalty) {
+  unpenalized <- fns$score
+
+  fns$score <- function(alpha, X, y) {
+    unpenalized(alpha, X, y) - as.vector(penalty %*% alpha) / length(y)
+  }
+
+  fns
 }
 
 # The same pair read off a spec, which is what the psi builder and the preflight
-# that has to agree with it both hold. The spec records the kind, the link, and
-# the robust threshold rather than the model they came from, so the two rebuild
-# the propensity score block from the same three values.
+# that has to agree with it both hold. The spec records the kind, the link, the
+# robust threshold, and the penalty rather than the model they came from, so the
+# two rebuild the propensity score block from the same four values.
 ipw_continuous_spec_fns <- function(spec) {
-  ipw_continuous_score_fns(spec$ps$kind, spec$ps$link, spec$ps$huber_k)
+  ipw_continuous_score_fns(
+    spec$ps$kind,
+    spec$ps$link,
+    spec$ps$huber_k,
+    spec$ps$penalty
+  )
 }
 
 # The two things a link decides: how the conditional mean is read back from the
@@ -538,10 +688,13 @@ ipw_numerator_model_block <- function(
   check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
 
   list(
+    # An additive fit's design is the smooth basis it reports rather than the
+    # columns its formula names, which `model.matrix()` returns for it as well.
     X = stats::model.matrix(numerator_model),
     kind = entry$kind,
     link = entry$link,
     huber_k = entry$huber_k,
+    penalty = entry$penalty,
     coefs = stats::coef(numerator_model)
   )
 }
@@ -549,7 +702,12 @@ ipw_numerator_model_block <- function(
 # The mean and the score the numerator model's block contributes, read off the
 # block the way the propensity score block's are read off the spec.
 ipw_numerator_model_fns <- function(model) {
-  ipw_continuous_score_fns(model$kind, model$link, model$huber_k)
+  ipw_continuous_score_fns(
+    model$kind,
+    model$link,
+    model$huber_k,
+    model$penalty
+  )
 }
 
 # What the stacked system needs of a numerator model beyond a score it can
@@ -648,9 +806,9 @@ ipw_continuous_spread <- function(meta, call = rlang::caller_env()) {
 
 # A kernel estimate is fit to the residuals of the propensity score model, and
 # its bandwidth is chosen from them, so the density is not a function of the
-# parameters that the sandwich could differentiate. The refusal is the one a
-# `gam` gets: what is unavailable is the standard error method rather than the
-# weights, which are exactly what they claim to be.
+# parameters that the sandwich could differentiate. What is unavailable is the
+# standard error method rather than the weights, which are exactly what they
+# claim to be, so the refusal says so and points at a bootstrap.
 check_ipw_continuous_density <- function(
   density,
   hint = ipw_continuous_resample_hint(),

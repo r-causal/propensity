@@ -424,10 +424,9 @@ ipw_spec_binary <- function(
 # `ps_design` says whether the propensity score design is wanted at all. Every
 # route that stacks estimating equations multiplies that design by a block of
 # theta and needs it; the resampling route refits the propensity score model
-# instead and never forms it. Asking for it there is not merely wasted work: an
-# additive model's design is a smooth basis rather than the columns its formula
-# names, so rebuilding one from the formula would report a width that disagrees
-# with the fit for a model resampling handles perfectly well.
+# instead and never forms it. What that saves is more than a matrix lookup for
+# some fits: an additive model's design is a smooth basis the fit has to
+# evaluate rather than the columns its formula names.
 ipw_extract_ps_design <- function(
   ps_mod,
   outcome_mod,
@@ -1140,6 +1139,15 @@ ipw_rebuild_design <- function(
   data,
   call = rlang::caller_env()
 ) {
+  # An additive fit's design is a smooth basis rather than the columns its
+  # formula names, and the basis is a property of the fit rather than of the
+  # rows in front of it, so the fit is asked to evaluate its own at the supplied
+  # rows. `model.matrix()` on such a fit asks the same question of the rows it
+  # was fit to, which is what makes the two routes the same design.
+  if (inherits(mod, "gam")) {
+    return(stats::predict(mod, newdata = data, type = "lpmatrix"))
+  }
+
   frame <- stats::model.frame(
     mod_terms,
     data = drop_contrasts_attrs(data, names(mod$contrasts))
@@ -1853,6 +1861,7 @@ ipw_spec_continuous <- function(
       kind = ps_model$kind,
       link = ps_model$link,
       huber_k = ps_model$huber_k,
+      penalty = ps_model$penalty,
       coefs = stats::coef(ps_mod),
       k = NULL
     ),

@@ -188,10 +188,9 @@ them; \code{"linearization"} and \code{"robust"} support a binary exposure alone
 binary or a categorical exposure has a sandwich for every fit it accepts.
 A few
 continuous fits have no sandwich, and the package computes no standard
-error for them: an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score model and weights built
-with a \code{"kernel"} density are refused, and so is a \code{\link[MASS:rlm]{MASS::rlm()}} fit the
-stacked system cannot write. See \strong{Continuous propensity score models}
-below.
+error for them: weights built with a \code{"kernel"} density are refused, and so
+are a \code{\link[MASS:rlm]{MASS::rlm()}} and an \code{\link[mgcv:gam]{mgcv::gam()}} fit whose score the stacked system
+cannot write. See \strong{Continuous propensity score models} below.
 
 \code{"linearization"} and \code{"robust"} support only an outcome model of the
 exposure alone, fit with an intercept; a covariate-adjusted outcome model
@@ -346,14 +345,16 @@ matrix as counts; refit it with the exposure factor on the left-hand side.
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
 propensity score model of the exposure and a weighted marginal structural
-outcome model. A \code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi reaches this method by
-inheritance and is stacked at its own score. A gaussian model is read through
-its link, which may be identity or log; the other gaussian links, and every
-class the stacked system has no score for, are refused, as are the two fits
-that have no closed-form standard error, an \code{\link[mgcv:gam]{mgcv::gam()}} propensity score
-model and weights built with a \code{"kernel"} density. See \strong{Continuous
-propensity score models} in \code{\link[=ipw]{ipw()}} for what each refusal says and what to
-do about it. The only supported estimand is \code{"ate"}.
+outcome model. A \code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi and an \code{\link[mgcv:gam]{mgcv::gam()}}
+of a gaussian family reach this method by inheritance and are stacked at
+their own scores, the additive fit with its smoothing parameters held at the
+values it reports. A gaussian model is read through its link, which may be
+identity or log; the other gaussian links, and every class the stacked system
+has no score for, are refused, as are weights built with a \code{"kernel"}
+density, which have no closed-form standard error. See \strong{Continuous
+propensity score models} in \code{\link[=ipw]{ipw()}} for what each refusal says, what to do
+about it, and what the additive route conditions on. The only supported
+estimand is \code{"ate"}.
 
 Standard errors are computed by M-estimation; neither the linearization
 method nor the robust diagnostic is available for continuous exposures. The
@@ -412,8 +413,9 @@ difference in means. A continuous exposure is supplied through an
 \code{\link[stats:lm]{stats::lm()}} or gaussian \code{\link[stats:glm]{stats::glm()}} propensity score model with a
 weighted marginal structural outcome model whose link is identity, logit, or
 log, and \code{ipw()} reports the single exposure coefficient of that model. A
-subclass of either propensity score model, such as a robust or an additive
-fit, errors.
+\code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi and an \code{\link[mgcv:gam]{mgcv::gam()}} fit of a gaussian
+family are read as the equations their own coefficients solve; every other
+subclass errors.
 }
 \section{Workflow}{
 \code{ipw()} is designed around a three-step workflow:
@@ -841,10 +843,13 @@ system.
 The dose model goes through the registry described under \strong{Continuous
 propensity score models}, so the classes and links this route stacks are the
 ones the single-treatment route stacks: an \code{\link[stats:lm]{stats::lm()}}, a gaussian
-\code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, and a \code{\link[MASS:rlm]{MASS::rlm()}} fit
-with the Huber psi. A gaussian dose model fit with another link errors with
-class \code{propensity_ipw_link_error}, and a robust fit whose score the system
-cannot write raises the same conditions it raises for a single dose.
+\code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, a \code{\link[MASS:rlm]{MASS::rlm()}} fit with
+the Huber psi, and an \code{\link[mgcv:gam]{mgcv::gam()}} of a gaussian family read at its own
+penalized score. A gaussian dose model fit with another link errors with
+class \code{propensity_ipw_link_error}, and a robust or an additive fit whose
+score the system cannot write raises the same conditions it raises for a
+single dose. The limitations of the additive route are the ones listed under
+\strong{Continuous propensity score models}, and they apply here unchanged.
 
 The dose component's weights may be any ratio \code{\link[=wt_ate]{wt_ate()}} builds: a
 heavier-tailed \code{.density}, \code{numerator = "integrated"}, or a single \code{.sigma}
@@ -866,13 +871,12 @@ computed by hand. A dose stabilized on a fitted model is refused outright,
 with class \code{propensity_ipw_numerator_error}: this route has no stabilization
 block to estimate such a model in, where the single-dose route has one.
 
-An \code{\link[mgcv:gam]{mgcv::gam()}} dose model, and dose weights built with a \code{"kernel"}
-density, are refused with class
-\code{propensity_ipw_se_method_unavailable_error}. Neither is a function of the
-parameters that the sandwich could differentiate, and the package has no
-second method to fall back on, so the refusal points at building the dose
-weights from a model and a density the stacked system can write, or at
-bootstrapping the whole fit by hand.
+Dose weights built with a \code{"kernel"} density are refused with class
+\code{propensity_ipw_se_method_unavailable_error}. The bandwidth is not a function
+of the parameters that the sandwich could differentiate, and the package has
+no second method to fall back on, so the refusal points at building the dose
+weights from a density the stacked system can write, or at bootstrapping the
+whole fit by hand.
 }
 
 }
@@ -894,8 +898,8 @@ Stefanski and Boos (2002) for the M-estimation framework.
 M-estimation standard errors are available for all exposure types: binary
 (from a \code{\link[stats:glm]{stats::glm()}} propensity score model), categorical (from a
 \code{\link[nnet:multinom]{nnet::multinom()}} model), and continuous (from an \code{\link[stats:lm]{stats::lm()}}, a gaussian
-\code{\link[stats:glm]{stats::glm()}}, or a \code{\link[MASS:rlm]{MASS::rlm()}} model; see \strong{Continuous propensity score
-models} below). The \code{atm} weight
+\code{\link[stats:glm]{stats::glm()}}, a \code{\link[MASS:rlm]{MASS::rlm()}}, or an \code{\link[mgcv:gam]{mgcv::gam()}} model; see \strong{Continuous
+propensity score models} below). The \code{atm} weight
 \code{pmin(e, 1 - e)} is not differentiable at a propensity score of \code{0.5}; deli's
 central finite difference straddles the kink there and averages the one-sided
 slopes. Its effect on the variance is negligible unless many observations sit
@@ -912,13 +916,16 @@ fits. This is expected behavior.
 
 A continuous exposure's weights are a ratio of densities centered on the
 conditional mean the propensity score model fits, so the stacked system
-carries that model's own score. Three classes supply one: an \code{\link[stats:lm]{stats::lm()}},
-a gaussian \code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, and a
-\code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi. A gaussian model fit with any other
+carries that model's own score. Four classes supply one: an \code{\link[stats:lm]{stats::lm()}},
+a gaussian \code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, a
+\code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi, and a gaussian \code{\link[mgcv:gam]{mgcv::gam()}} fit with
+one of the same two links. A gaussian model fit with any other
 link is refused by name, because the coefficients its iteration stops at are
 not a tight enough root to seed the stacked solve from; refit it with one of
 the two links or as an \code{\link[stats:lm]{stats::lm()}}. Any other class errors, since solving
-it here would report a propensity score model that was never fit.
+it here would report a propensity score model that was never fit. Each class
+is read as the class it is rather than by what it inherits from, so a
+subclass of a supported fit errors as well.
 
 A \code{\link[MASS:rlm]{MASS::rlm()}} is stacked as the Huber score its coefficients are the root
 of, clipped where the fit itself clipped: at the psi's own constant, which is
@@ -948,6 +955,43 @@ a Huber refit or to a bootstrap of the whole fit written by hand; the last
 points to a larger \code{maxit} or a looser \code{acc}, which is what a fit needs to
 reach its own tolerance.
 
+An \code{\link[mgcv:gam]{mgcv::gam()}} is stacked as the penalized least squares it is, with its
+smoothing parameters held at the values the fit reports. Its design is the
+smooth basis it was built on rather than the columns its formula names, and
+its coefficients are the root of the least-squares score of that basis less
+the penalty those smoothing parameters define. An \code{\link[mgcv:bam]{mgcv::bam()}} is the same
+fit computed for larger data and is read the same way. The additive part of
+an \code{\link[mgcv:gamm]{mgcv::gamm()}} fit is not: it carries the \code{gam} class alone, without the
+\code{glm} and \code{lm} classes \code{ipw()} reads a model through, and errors with class
+\code{propensity_method_error}. Refit it with \code{\link[mgcv:gam]{mgcv::gam()}} or \code{\link[mgcv:bam]{mgcv::bam()}}. A
+penalty attached to a parametric term, such as one from \code{paraPen}, belongs to
+no smooth term and is not one this route can place, so such a fit errors with
+class \code{propensity_ipw_se_method_unavailable_error}.
+
+Four limitations come with the additive route, and each is a property of the
+method rather than of a particular fit.
+\enumerate{
+\item The variance conditions on the smoothing parameters rather than estimating
+them, so none of the uncertainty of having chosen them is carried. A
+simulation put that at roughly three percent of the standard error at
+\code{n = 500}, more below \code{n = 200} and less above it. A fit handed its
+smoothing parameters and a fit that chose them report the same standard
+error here, which is the same limitation stated as an equality.
+\item What the propensity score block reports is the frequentist variance of a
+penalized fit rather than the Bayesian covariance mgcv reports by default,
+so \code{vcov()} on the stacked fit reads like \code{vcov(fit, freq = TRUE)} and
+will not match \code{vcov(fit)}.
+\item The envelope is the one every other continuous fit has: a gaussian family,
+an identity or a log link, and no prior weights. A fit outside it is
+refused where every other model of the wrong family, link, or weighting
+is.
+\item Coverage degrades as the weights grow heavier tails, and the interval is
+optimistic once the effective sample size falls much below 60 percent of
+the observations. That holds whatever the dose model is: the same
+simulation found it for a correctly specified \code{\link[stats:glm]{stats::glm()}} on the same
+data.
+}
+
 Every density \code{\link[=wt_ate]{wt_ate()}} builds a ratio in is stacked as it was built: the
 normal, Laplace, and Student t families, and a density you wrote yourself,
 under either the marginal or the integrated numerator. \code{ipw()} reads the
@@ -975,20 +1019,21 @@ propensity score model in, naming \code{stabilize}. A model of a response other
 than the exposure, or one fit to a different set of observations, errors with
 class \code{propensity_ipw_numerator_error}.
 
-Two fits are refused for the standard error rather than for the model. An
-\code{\link[mgcv:gam]{mgcv::gam()}} chooses how much to smooth by REML, and a \code{"kernel"} density
-chooses its bandwidth from the residuals of the propensity score model;
-neither is a function of the parameters that the sandwich could
-differentiate, so weights built from either have no closed-form standard
-error. Both raise an error of class
+One choice is refused for the standard error rather than for the model. A
+\code{"kernel"} density chooses its bandwidth from the residuals of the propensity
+score model, which is not a function of the parameters that the sandwich
+could differentiate, so weights built from it have no closed-form standard
+error and raise an error of class
 \code{propensity_ipw_se_method_unavailable_error}. The package offers no
 resampling method of its own, so the remedy the refusal names is a bootstrap
 of the whole pipeline written by hand: resample the rows, refit the
 propensity score model, rebuild the weights with \code{\link[=wt_ate]{wt_ate()}}, and refit the
 outcome model on each resample, then read the spread of the coefficient
 across the resamples. Doing it that way rather than inside \code{ipw()} keeps what
-each replicate re-estimates, such as a kernel bandwidth or a smoothing
-parameter, under the writer's control.
+each replicate re-estimates, such as a kernel bandwidth, under the writer's
+control. It is also how to carry a smoothing choice that the additive route
+conditions on: a bootstrap that refits the \code{\link[mgcv:gam]{mgcv::gam()}} each time re-chooses
+the smoothing parameters along with everything else.
 }
 
 \subsection{Standard errors by linearization}{
@@ -1031,9 +1076,10 @@ is the linearization route with the correction for having estimated the
 propensity score dropped, so the point estimates are the linearization ones
 and only the standard errors move. What it reports for the two counterfactual
 means and the contrasts built from them is the delta-method reading of
-\code{sandwich::vcovHC(outcome_mod, type = "HC0")}, exactly: the meat is divided
-by \code{n} rather than by \code{n - 1}, so what comes back is the HC0 sandwich itself
-rather than a finite-sample rescaling of it.
+\code{sandwich::vcovHC(outcome_mod, type = "HC0")}, exactly: the influence
+variance is read as a plain mean of squares rather than as a sample variance,
+so what comes back is the HC0 sandwich itself rather than a finite-sample
+rescaling of it.
 
 This is offered as a diagnostic and not as an inference. It ignores that the
 weights were estimated, and the correction it drops is generally what a

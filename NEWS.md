@@ -1,5 +1,29 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now builds a sandwich variance for an `mgcv::gam()` propensity score
+  model of a continuous exposure, where such a fit used to be refused. It is
+  read on the single-treatment route, on the joint treatment route, and in a
+  numerator model passed to `wt_ate()`'s `stabilize`, and an `mgcv::bam()` is
+  read the same way. The fit is stacked as the penalized least squares it is:
+  its design is the smooth basis it was built on rather than the columns its
+  formula names, and its coefficients are the root of the least-squares score of
+  that basis less the penalty its smoothing parameters define, held at the
+  values the fit reports. A simulation against a bootstrap and against the
+  `glm()` route the package already supported settled the terms, and four
+  limitations come with the route. The variance conditions on the smoothing
+  parameters rather than estimating them, which costs roughly three percent of
+  the standard error at n = 500 and more at smaller samples. It is the
+  frequentist variance of a penalized fit rather than the Bayesian covariance
+  mgcv reports by default, so `vcov()` on the stacked fit will not match
+  `vcov(fit)`. The envelope is the one every other continuous fit has: a
+  gaussian family, an identity or a log link, and no prior weights. And coverage
+  degrades as the weights grow heavier tails, whatever the dose model is. Two
+  additive fits are still refused: the additive part of an `mgcv::gamm()` fit,
+  which carries the `gam` class alone without the `glm` and `lm` classes `ipw()`
+  reads a model through, and a fit holding a penalty on a parametric term, such
+  as one from `paraPen`, which belongs to no smooth term and cannot be placed in
+  the score.
+
 * `ipw()` now accepts `se_method = "robust"`, a diagnostic that reports the
   sandwich the weighted outcome model computes for itself with the estimated
   weights entering as known constants. It is the linearization route with the
@@ -577,19 +601,18 @@
   Weights that carry no record, including any written with `psw()` by hand, are
   read as the normal ratio the package built before the record existed.
 
-  Two fits are now refused for the standard error rather than for the model, with
-  an error of class `propensity_ipw_se_method_unavailable_error`: an
-  `mgcv::gam()` propensity score model, whose smoothing is chosen by REML, and
-  weights built with a `"kernel"` density, whose bandwidth is chosen from the
-  residuals. Neither is a function of the parameters that the sandwich could
-  differentiate. The package computes no standard error for either fit, so the
-  refusal points at a bootstrap of the whole pipeline written by hand: resample
-  the rows, refit the propensity score model, rebuild the weights with
-  `wt_ate()`, and refit the outcome model on each resample. A gaussian model fit
-  with an inverse or square-root link is refused by name, because the
-  coefficients its iteration stops at are not a tight enough root to seed the
-  stacked solve from, and any other class is refused as before, now naming the
-  classes that are supported.
+  Weights built with a `"kernel"` density are now refused for the standard error
+  rather than for the model, with an error of class
+  `propensity_ipw_se_method_unavailable_error`: the bandwidth is chosen from the
+  residuals of the propensity score model, so the weights are not a function of
+  the parameters that the sandwich could differentiate. The package computes no
+  standard error for them, so the refusal points at a bootstrap of the whole
+  pipeline written by hand: resample the rows, refit the propensity score model,
+  rebuild the weights with `wt_ate()`, and refit the outcome model on each
+  resample. A gaussian model fit with an inverse or square-root link is refused
+  by name, because the coefficients its iteration stops at are not a tight
+  enough root to seed the stacked solve from, and any other class is refused as
+  before, now naming the classes that are supported.
 
   A single `.sigma` is now accepted, as a known constant: the weights are
   rebuilt at the number that was supplied, and the stacked system carries none of
@@ -646,15 +669,17 @@
 
   An `mgcv::gam()` dose model previously passed both the container and the
   stacked system, where it was silently stacked as though it were an
-  identity-link `glm()` of its own basis columns; it is now refused, along with
-  dose weights built with a `"kernel"` density, with an error of class
+  identity-link `glm()` of its own basis columns with the penalty dropped; it is
+  now read at the penalized score its coefficients solve, on the terms the
+  single-dose route reads it on. Dose weights built with a `"kernel"` density
+  are refused with an error of class
   `propensity_ipw_se_method_unavailable_error`. The package computes no standard
-  error for either fit, so the refusal points at building the dose weights from
-  a model and a density the stacked system can write, or at bootstrapping the
-  whole joint fit by hand. A gaussian dose model at an
-  inverse or square-root link is refused by name, as it is for a single dose,
-  and a dose component built with a `stabilization_score` still reaches the
-  weight-consistency check, which now names the score as the cause.
+  error for them, so the refusal points at building the dose weights from a
+  density the stacked system can write, or at bootstrapping the whole joint fit
+  by hand. A gaussian dose model at an inverse or square-root link is refused by
+  name, as it is for a single dose, and a dose component built with a
+  `stabilization_score` still reaches the weight-consistency check, which now
+  names the score as the cause.
 
   `joint_wt_models()` reads its supported classes by name rather than by
   inheritance, so an `mgcv::gam()` and a `MASS::rlm()` are recognized as the

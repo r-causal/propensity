@@ -411,6 +411,32 @@ test_that("the registry refuses an additive fit of another family", {
   )
 })
 
+test_that("the registry refuses an additive fit whose penalty it cannot place", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+
+  # The penalty subtracted from the score is read off the fit's smooth terms,
+  # one matrix at a time, at the coefficients each term owns. A penalty attached
+  # to a parametric term belongs to no smooth and records a smoothing parameter
+  # those terms do not account for, so the fit is refused rather than stacked at
+  # a score missing a term of the equation its coefficients solve.
+  ps_mod <- mgcv::gam(
+    A ~ s(x1) + x2,
+    data = dat,
+    paraPen = list(x2 = list(diag(1))),
+    method = "REML"
+  )
+  mods <- fit_gam_models(dat, ps_mod)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_se_method_unavailable_error"
+  )
+  expect_s3_class(err, "propensity_method_error")
+
+  expect_propensity_error(ipw(mods$ps_mod, mods$outcome_mod))
+})
+
 test_that("ipw() refuses a gam dose model fit with case weights", {
   skip_if_not_installed("mgcv")
   dat <- sim_gam_dose()
