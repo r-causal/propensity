@@ -176,6 +176,13 @@ ipw_continuous_gam_entry <- function(
 
   penalty <- ipw_gam_penalty(ps_mod, smoothing)
 
+  # The design is the smooth basis the fit has to evaluate, which is the larger
+  # part of what reading an additive fit costs, and it is the same matrix
+  # wherever it is read: the score checked below and the psi function's own
+  # multiply are both written against it. It is therefore built once here and
+  # travels on the entry to every reader.
+  design <- ipw_gam_design(ps_mod)
+
   # A fit whose own coefficients are not at the root of the score built from its
   # record is refused for the same reason, one step later and on the arithmetic
   # rather than on a count. `min.sp` is the shape that reaches here: it puts a
@@ -192,7 +199,7 @@ ipw_continuous_gam_entry <- function(
   # here that is not a property of the check: what passes is a floor whose
   # effect on the stacked fit is proportionally below the tolerance, and at a
   # larger sample size a floor of the same relative size can fall under it.
-  gap <- ipw_gam_score_gap(ps_mod, link, penalty)
+  gap <- ipw_gam_score_gap(ps_mod, link, penalty, X = design)
 
   if (!isTRUE(gap < ipw_gam_score_tolerance)) {
     return(ipw_continuous_entry(
@@ -225,8 +232,21 @@ ipw_continuous_gam_entry <- function(
     kind = "gam",
     link = link,
     stackable = TRUE,
-    penalty = penalty
+    penalty = penalty,
+    design = design
   )
+}
+
+# The design a fitted additive model is read at: the smooth basis it was built
+# on, evaluated over the rows it was fit to. `mgcv` returns it for
+# `model.matrix()` as for `predict(type = "lpmatrix")`, since they are the same
+# call.
+#
+# A fit that cannot be read at all, which is one keeping neither its design nor
+# the frame to rebuild it from, has no design here and is refused further along
+# by the score it leaves unreadable.
+ipw_gam_design <- function(fit) {
+  tryCatch(stats::model.matrix(fit), error = function(e) NULL)
 }
 
 # How far a fitted additive model's coefficients sit from the root of the
@@ -245,18 +265,24 @@ ipw_continuous_gam_entry <- function(
 # route can stack in every other respect: a fit made under case weights is
 # refused by name further along, where the remedy is its own.
 #
+# The design is the one the entry built, since the score is read at the same
+# basis the psi function multiplies later.
+#
 # A fit that cannot be read at all, which is one keeping neither its design nor
 # its response, returns a gap of `NA` and is refused with the rest: a score that
 # cannot be checked is not one to stack on. That branch is defensive rather than
 # reachable from any fitting call known here: mgcv keeps the model frame even
 # under `model = FALSE`, so `model.matrix()` and the response are there for
 # every fit this route sees.
-ipw_gam_score_gap <- function(fit, link, penalty) {
+ipw_gam_score_gap <- function(fit, link, penalty, X = ipw_gam_design(fit)) {
+  if (is.null(X)) {
+    return(NA_real_)
+  }
+
   alpha <- stats::coef(fit)
 
   gap <- tryCatch(
     {
-      X <- stats::model.matrix(fit)
       y <- as.numeric(fit$y)
       weights <- fit$prior.weights
       if (is.null(weights)) {
@@ -557,6 +583,14 @@ ipw_rlm_psi_name <- function(ps_mod) {
 # builder writes the same equation the registry did. `penalty` is the one an
 # additive fit carries, and is read the same way: the fixed matrix its score
 # subtracts, held in the spec rather than recomputed from the model.
+#
+# `design` is the second thing an additive fit carries, for the reason it
+# carries the penalty and one more: evaluating a smooth basis is expensive
+# enough that every reader building its own is most of what the route costs.
+# The entry is what those readers have in common, so the design it built to
+# check the fit's score travels on it, and a reader holding an entry holds the
+# design as well. A fit of any other kind has a design that is a lookup, so
+# only the additive one carries one here.
 ipw_continuous_entry <- function(
   kind,
   link,
@@ -568,6 +602,7 @@ ipw_continuous_entry <- function(
   psi_loss = NULL,
   psi_k = NULL,
   penalty = NULL,
+  design = NULL,
   label = "wt_mod",
   role = "propensity score model"
 ) {
@@ -584,6 +619,7 @@ ipw_continuous_entry <- function(
     psi_loss = psi_loss,
     psi_k = psi_k,
     penalty = penalty,
+    design = design,
     mean = NULL,
     score = NULL
   )
@@ -861,10 +897,18 @@ ipw_numerator_model_block <- function(
   # weights the system rebuilds failing to match the ones the caller built.
   check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
 
+  numerator_design <- entry$design
+  if (is.null(numerator_design)) {
+    numerator_design <- stats::model.matrix(numerator_model)
+  }
+
   list(
     # An additive fit's design is the smooth basis it reports rather than the
     # columns its formula names, which `model.matrix()` returns for it as well.
-    X = stats::model.matrix(numerator_model),
+    # Such a fit's entry has already evaluated that basis, and it is the
+    # numerator model's own: a block multiplied by another model's design would
+    # rebuild a numerator nobody fit.
+    X = numerator_design,
     kind = entry$kind,
     link = entry$link,
     psi_loss = entry$psi_loss,

@@ -437,6 +437,7 @@ ipw_extract_ps_design <- function(
   counterfactual = TRUE,
   check_exposure_levels = FALSE,
   ps_design = TRUE,
+  ps_X = NULL,
   call = rlang::caller_env()
 ) {
   # First, and independent of `.data`: the propensity model has to have a
@@ -445,9 +446,20 @@ ipw_extract_ps_design <- function(
   # positionally.
   check_ipw_model_rank(stats::coef(ps_mod), "wt_mod", call = call)
 
+  # A design the caller already holds is the design over the rows the model was
+  # fit to, which is what the recovery below builds, so the recovery is asked
+  # for the exposure alone. It is the rows that make this a reuse rather than a
+  # substitution: a design supplied with `.data` would be read over the wrong
+  # ones, so the branch that rebuilds from `.data` builds its own. A caller
+  # wanting no design at all gets none, whatever it supplied.
+  if (!ps_design) {
+    ps_X <- NULL
+  }
+  recover_design <- ps_design && is.null(ps_X)
+
   if (is.null(.data)) {
     ps_extract <- tryCatch(
-      ipw_recover_ps_data(ps_mod, ps_design = ps_design),
+      ipw_recover_ps_data(ps_mod, ps_design = recover_design),
       error = function(e) e
     )
     if (inherits(ps_extract, "error")) {
@@ -463,7 +475,9 @@ ipw_extract_ps_design <- function(
       )
     }
     exposure <- ps_extract$exposure
-    ps_X <- ps_extract$ps_X
+    if (recover_design) {
+      ps_X <- ps_extract$ps_X
+    }
 
     # The outcome model's frame gets the same treatment. Every public `ipw()`
     # method reads the weights out of that frame before any design work, so a
@@ -1699,6 +1713,7 @@ ipw_spec_continuous <- function(
   .data = NULL,
   estimand = NULL,
   stacked = TRUE,
+  ps_model = NULL,
   call = rlang::caller_env()
 ) {
   assert_class(ps_mod, c("glm", "lm"))
@@ -1713,7 +1728,13 @@ ipw_spec_continuous <- function(
   # and how the conditional mean is read back from it. A model this path has no
   # score for is refused here, whether because no equation describes it or
   # because the class is not one this path knows at all.
-  ps_model <- ipw_continuous_model(ps_mod, call = call)
+  #
+  # A caller that has already read the model through the registry, which every
+  # route reaching this one has, hands its entry over rather than having the
+  # model read twice.
+  if (is.null(ps_model)) {
+    ps_model <- ipw_continuous_model(ps_mod, call = call)
+  }
   if (stacked) {
     check_ipw_continuous_model(ps_model, call = call)
   }
@@ -1746,6 +1767,7 @@ ipw_spec_continuous <- function(
     exposure_name = exposure_name,
     counterfactual = FALSE,
     ps_design = stacked,
+    ps_X = ps_model$design,
     call = call
   )
   exposure <- as.double(extracted$exposure)

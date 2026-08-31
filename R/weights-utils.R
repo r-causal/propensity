@@ -1125,27 +1125,44 @@ check_ps_matrix <- function(
 # Shared with ps_tilt(), which reads a matrix with no exposure beside it and so
 # cannot run the rest of check_ps_matrix().
 check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
-  # Only check non-NA rows
+  # A row holding a missing score has a missing sum, which is not a number to
+  # compare against 1, so such a row is passed over rather than refused. The
+  # sums are read once and every question below is asked of them.
   row_sums <- rowSums(ps_matrix, na.rm = FALSE)
   ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
-  non_na_rows <- !is.na(row_sums)
 
-  if (any(non_na_rows)) {
-    # Check only the rows that don't have NA values
-    if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
-      bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE & non_na_rows)
-      abort(
-        c(
-          "Propensity score matrix rows must sum to 1.",
-          i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
-        ),
-        call = call,
-        error_class = "propensity_matrix_sum_error"
-      )
-    }
+  # `min()` and `max()` skip the missing sums without copying them, but they
+  # have no extreme to report when every sum is missing and no rows to read at
+  # all when the matrix is empty, so both cases are answered before they run.
+  if (length(row_sums) == 0 || (anyNA(row_sums) && all(is.na(row_sums)))) {
+    return(invisible(TRUE))
   }
 
-  invisible(TRUE)
+  # Every row sum sits within the tolerance exactly when the smallest and the
+  # largest of them do, so the extremes settle the whole matrix. An infinite
+  # sum is a number outside the tolerance on the side it is infinite on, so the
+  # extremes catch it as well.
+  lowest <- min(row_sums, na.rm = TRUE)
+  highest <- max(row_sums, na.rm = TRUE)
+
+  if (lowest >= 1 - ROW_SUM_TOLERANCE && highest <= 1 + ROW_SUM_TOLERANCE) {
+    return(invisible(TRUE))
+  }
+
+  # The refusal names the rows the caller has to go and look at, which the
+  # extremes do not say, so the comparison over every row is built here rather
+  # than on the way in. `which()` passes over the missing sums, and the
+  # positions it returns are positions in the matrix the caller handed over.
+  bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE)
+
+  abort(
+    c(
+      "Propensity score matrix rows must sum to 1.",
+      i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
+    ),
+    call = call,
+    error_class = "propensity_matrix_sum_error"
+  )
 }
 
 # The bounds are the same open interval that check_ps_range() enforces on the

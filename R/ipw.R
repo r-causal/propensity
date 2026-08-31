@@ -1625,10 +1625,13 @@ ipw_continuous_estimate <- function(
   # refusal runs before every other guard here so that a
   # recognized model with no sandwich is reported as the method it lacks rather
   # than as the class it is.
-  check_ipw_continuous_model(
-    ipw_continuous_model(wt_mod, call = call),
-    call = call
-  )
+  #
+  # The entry the refusal is read from is the one the spec is built with, so
+  # the model is read through the registry once for the call. What that saves
+  # is more than a lookup for an additive fit, whose entry evaluates the smooth
+  # basis its score is checked at and carries it.
+  ps_model <- ipw_continuous_model(wt_mod, call = call)
+  check_ipw_continuous_model(ps_model, call = call)
 
   check_ipw_ps_link_absent(ps_link, "continuous", call = call)
 
@@ -1654,6 +1657,7 @@ ipw_continuous_estimate <- function(
     outcome_mod,
     .data = .data,
     estimand = estimand,
+    ps_model = ps_model,
     call = call
   )
 

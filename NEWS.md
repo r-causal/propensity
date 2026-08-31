@@ -1,5 +1,21 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now evaluates an additive propensity score model's design once per
+  call, where each reader of it used to build its own. Evaluating the smooth
+  basis of an `mgcv::gam()` fit is the larger part of what that route costs, so
+  a call that built it three times spent most of its time rebuilding the same
+  matrix; the entry the registry reads the fit through now carries the design
+  it built to check the fit against its own penalized score, and a numerator
+  model carries the design of the fit it belongs to. Nothing about the
+  estimates or the standard errors changes. At two thousand observations the
+  call is roughly twice as fast.
+
+* Categorical weights are faster on the two reads that dominated them. The scan
+  that carries a missing score into its row's weight now runs only over a
+  matrix that holds one, and the check that every row is a probability vector
+  reads the extremes of the row sums rather than comparing every row against 1,
+  building the full comparison only for the refusal that names the rows.
+
 * `ipw()` now stacks a `MASS::rlm()` propensity score model fit with
   `MASS::psi.bisquare()` or `MASS::psi.hampel()`, where only the default
   `MASS::psi.huber()` used to be written. Each psi has a loss of its own in the

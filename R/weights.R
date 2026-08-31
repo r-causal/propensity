@@ -3175,8 +3175,15 @@ calculate_categorical_weights <- function(
   # not a probability vector, so it has no score to read either. There is no
   # weight to give either unit, so both are missing here just as they are on
   # the binary and continuous paths.
+  #
+  # Which rows those are is worth reading only once the matrix is known to hold
+  # a missing score at all: `complete.cases()` visits every cell and builds a
+  # flag for every row, where `anyNA()` builds nothing and stops at the first
+  # missing value it finds.
   missing_exposure <- is.na(.exposure)
-  e_actual[!stats::complete.cases(ps_matrix)] <- NA_real_
+  if (anyNA(ps_matrix)) {
+    e_actual[!stats::complete.cases(ps_matrix)] <- NA_real_
+  }
 
   if (!estimand %in% ipw_estimands) {
     abort(
