@@ -83,7 +83,11 @@
 #' Two density records agree when they name the same family with the same
 #' parameters and the same numerator and residual spread, so weights built the
 #' same way in two calls agree even though each call builds its own copy of the
-#' function that evaluates the density.
+#' function that evaluates the density. A numerator estimated by a fitted model
+#' is read the same way: two records agree when their models write the same
+#' formula and were fit to the same coefficients, and a model is not compared
+#' against the marginal density or against no numerator at all, both of which
+#' are disagreements.
 #'
 #' A `density_meta` record describes a continuous exposure, so a result that
 #' drops `exposure_type` for a disagreement drops the density record with it,
@@ -317,8 +321,17 @@ stabilization_score <- function(wt) {
 #'   by [dens_normal()] and its relatives.
 #' * `numerator`, what stabilized the weights: `"marginal"` for the marginal
 #'   density of the exposure, `"integrated"` for the conditional density
-#'   marginalized over the units, `"score"` for a `stabilization_score` the
-#'   caller supplied, and `"none"` for weights that were not stabilized.
+#'   marginalized over the units, `"model"` for the conditional density a
+#'   fitted model supplied to `stabilize` estimates, `"score"` for a
+#'   `stabilization_score` the caller supplied, and `"none"` for weights that
+#'   were not stabilized.
+#' * `numerator_model`, that fitted model itself, and `NULL` under every other
+#'   numerator. The model is kept whole rather than the numerator it evaluates
+#'   to, since [ipw()] rebuilds that numerator at every value of its parameter
+#'   vector, which takes the model's design and its coefficients. Two sets of
+#'   weights stabilized on models that read different terms, or that were fit
+#'   to different values of the same terms, record different numerators and are
+#'   combined the way any other disagreeing records are.
 #' * `sigma`, where the residual spread of the conditional density came from:
 #'   `"pooled"` for the pooled residual root mean square, `"mle"` for the scale
 #'   a [dens_t()] built with `sigma_method = "mle"` estimates under the t
@@ -342,7 +355,8 @@ stabilization_score <- function(wt) {
 #' @return
 #' * `exposure_type()`: a single string, or `NULL`.
 #' * `density_meta()`: a list of class `propensity_density_meta` with the
-#'   elements `density`, `numerator`, `sigma`, and `sigma_value`, or `NULL`.
+#'   elements `density`, `numerator`, `sigma`, `sigma_value`, and
+#'   `numerator_model`, or `NULL`.
 #' * `print()` and `format()`: the record, invisibly, and a character vector of
 #'   one line per element.
 #'
@@ -384,13 +398,23 @@ density_meta <- function(wt) {
 # the caller supplied, the number itself. A spread of one number is a constant
 # the ratio can be rebuilt from; one number per observation is not, and is
 # recorded only as having been supplied.
-new_density_meta <- function(density, numerator, sigma, sigma_value = NULL) {
+new_density_meta <- function(
+  density,
+  numerator,
+  sigma,
+  sigma_value = NULL,
+  numerator_model = NULL
+) {
   structure(
     list(
       density = density,
       numerator = numerator,
       sigma = sigma,
-      sigma_value = sigma_value
+      sigma_value = sigma_value,
+      # The model a caller stabilized on, kept whole rather than as the
+      # numerator it evaluates to: `ipw()` rebuilds that numerator at every
+      # value of theta, which takes the model's design and its coefficients.
+      numerator_model = numerator_model
     ),
     class = "propensity_density_meta"
   )
@@ -423,7 +447,31 @@ density_meta_agrees <- function(x, y) {
   identical(x$numerator, y$numerator) &&
     identical(x$sigma, y$sigma) &&
     identical(x$sigma_value, y$sigma_value) &&
+    numerator_models_agree(x$numerator_model, y$numerator_model) &&
     density_specs_agree(x$density, y$density)
+}
+
+# Two numerator models describe the same numerator when they read the same
+# terms and were fit to the same values of them, which is what the formula and
+# the coefficients say. They are not compared by identity for the reason the
+# density is not: a fit carries the frame it was fit in and the call that made
+# it, so two models of the same numerator fit in two calls would otherwise be
+# read as a disagreement. Anything else is a disagreement, including one record
+# holding a model where the other holds none.
+numerator_models_agree <- function(x, y) {
+  if (is.null(x) || is.null(y)) {
+    return(is.null(x) && is.null(y))
+  }
+
+  formulas <- tryCatch(
+    identical(
+      deparse(stats::formula(x)),
+      deparse(stats::formula(y))
+    ),
+    error = function(e) FALSE
+  )
+
+  formulas && identical(stats::coef(x), stats::coef(y))
 }
 
 #' @rdname psw

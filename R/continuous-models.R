@@ -96,7 +96,18 @@ extract_continuous_ps.gam <- function(model, call = rlang::caller_env()) {
 # gaussian variance under another name; any other variance function describes a
 # spread that changes with the fitted value, which the conditional density has
 # no way to take.
-check_continuous_model_family <- function(model, call = rlang::caller_env()) {
+#
+# `arg` is the argument the model arrived in, and `remedy` the advice that goes
+# with it: a propensity score model's fitted means can be passed directly
+# instead, and a numerator model a caller stabilizes on is a model or nothing.
+check_continuous_model_family <- function(
+  model,
+  arg = ".propensity",
+  remedy = "Fit the propensity score model with {.fun gaussian}, {.fun lm},
+            {.fun mgcv::gam}, or {.fun MASS::rlm}, or pass fitted conditional
+            means to {.arg .propensity} directly.",
+  call = rlang::caller_env()
+) {
   family <- model[["family"]]
 
   no_family <- is.null(family)
@@ -116,10 +127,10 @@ check_continuous_model_family <- function(model, call = rlang::caller_env()) {
   }
 
   fit_with <- if (!family_object) {
-    "{.arg .propensity} holds {.obj_type_friendly {family}} where a family
+    "{.arg {arg}} holds {.obj_type_friendly {family}} where a family
      object goes, so it names no spread at all."
   } else {
-    "{.arg .propensity} was fit with {.code {model_family_label(family)}},
+    "{.arg {arg}} was fit with {.code {model_family_label(family)}},
      whose spread changes with its fitted values."
   }
 
@@ -128,9 +139,7 @@ check_continuous_model_family <- function(model, call = rlang::caller_env()) {
       "Weights for a continuous exposure need a model of its conditional mean
        with a single spread.",
       x = fit_with,
-      i = "Fit the propensity score model with {.fun gaussian}, {.fun lm},
-           {.fun mgcv::gam}, or {.fun MASS::rlm}, or pass fitted conditional
-           means to {.arg .propensity} directly."
+      i = remedy
     ),
     error_class = "propensity_model_family_error",
     call = call

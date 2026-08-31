@@ -87,7 +87,7 @@
       expr
     Condition <propensity_class_error>
       Error in `ipw()`:
-      ! `ipw()` supports only `stats::lm()`, gaussian `stats::glm()`, or `MASS::rlm()` propensity score models for a continuous exposure.
+      ! `ipw()` supports only `stats::lm()`, gaussian `stats::glm()`, or `MASS::rlm()` as the propensity score model of a continuous exposure.
       x `wt_mod` has class <mymodel/lm>.
       i A <gam> is recognized and refused on its own terms; every other class reaches this refusal.
       i Refit `wt_mod` with `stats::lm()` or `stats::glm(family = gaussian())`.
@@ -131,4 +131,34 @@
       ! `ipw()` cannot build a sandwich variance for weights built with a "kernel" density.
       x The bandwidth of a kernel estimate is chosen from the residuals of the propensity score model, so the weights are not a differentiable function of that model's parameters.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# ipw() refuses a numerator model whose score it cannot write
+
+    Code
+      expr
+    Condition <propensity_ipw_se_method_unavailable_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> numerator model of a continuous exposure.
+      x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# ipw() refuses a numerator model of another response
+
+    Code
+      expr
+    Condition <propensity_ipw_numerator_error>
+      Error in `ipw()`:
+      ! The model supplied to `stabilize` must model the exposure.
+      x It models "yc" and `wt_mod` models "A".
+      i The numerator of the weights is the density of the exposure given what the numerator model reads, so both models describe the same response.
+
+# ipw() refuses a numerator model fit to other observations
+
+    Code
+      expr
+    Condition <propensity_ipw_numerator_error>
+      Error in `ipw()`:
+      ! The model supplied to `stabilize` must be fit to the observations the other models were fit to.
+      x It was fit to 200 observations and `outcome_mod` to 197.
+      i Refit the numerator model on the data the other models were fit to, and rebuild the weights from it.
 

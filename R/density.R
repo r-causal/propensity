@@ -342,6 +342,7 @@ check_numerator <- function(
   stabilize,
   stabilization_score,
   .sigma,
+  numerator_model = NULL,
   call = rlang::caller_env()
 ) {
   if (!identical(numerator, "integrated")) {
@@ -358,6 +359,21 @@ check_numerator <- function(
              continuous exposure over the units. A {exposure_type} exposure has
              a probability rather than a density, so leave {.arg numerator}
              unset for one."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  if (!is.null(numerator_model)) {
+    abort(
+      c(
+        "{.arg numerator} = {.val integrated} cannot be used with a model
+         supplied to {.arg stabilize}.",
+        x = "A model you supply estimates the numerator of the weights itself.",
+        i = "Set {.code stabilize = TRUE} to stabilize on the marginalized
+             conditional density, or leave {.arg numerator} unset to keep the
+             numerator the model estimates."
       ),
       error_class = "propensity_numerator_error",
       call = call
@@ -411,6 +427,97 @@ check_numerator <- function(
   }
 
   invisible(NULL)
+}
+
+# What a fitted numerator model has to be able to be. The model estimates the
+# conditional density of the exposure given whatever it reads, and the weights
+# it stabilizes are the ratio of that density to the one the propensity score
+# model estimates, so every requirement here is a requirement of that ratio.
+check_numerator_model <- function(
+  numerator_model,
+  exposure_type,
+  n,
+  stabilization_score,
+  call = rlang::caller_env()
+) {
+  if (is.null(numerator_model)) {
+    return(invisible(NULL))
+  }
+
+  if (!identical(exposure_type, "continuous")) {
+    abort(
+      c(
+        "A model supplied to {.arg stabilize} applies only to continuous
+         exposures.",
+        x = "{.arg .exposure} is being treated as {exposure_type}.",
+        i = "A fitted model stabilizes the weights on the conditional density
+             it estimates. A {exposure_type} exposure has a probability rather
+             than a density, so stabilize one with {.code stabilize = TRUE},
+             which reads the marginal probability of the exposure, or with a
+             {.arg stabilization_score} of your own."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  if (!is.null(stabilization_score)) {
+    abort(
+      c(
+        "A model supplied to {.arg stabilize} cannot be used with
+         {.arg stabilization_score}.",
+        x = "A score you supply is itself the numerator of the weights, and the
+             model estimates a second one.",
+        i = "Drop {.arg stabilization_score} to stabilize on the density the
+             model estimates, or set {.code stabilize = TRUE} to keep the
+             numerator you wrote."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  # The numerator model is held to the family the propensity score model is
+  # held to, and by the same check: both estimate a conditional mean of the
+  # exposure that one spread describes, read from opposite sides of the ratio.
+  check_continuous_model_family(
+    numerator_model,
+    arg = "stabilize",
+    remedy = "The numerator is a density read at the model's fitted mean and
+              the spread of its residuals, so refit it with {.fun stats::lm} or
+              {.code stats::glm(family = gaussian())}.",
+    call = call
+  )
+
+  fitted <- as.numeric(stats::fitted(numerator_model))
+  if (!identical(length(fitted), as.integer(n))) {
+    abort(
+      c(
+        "The model supplied to {.arg stabilize} must have one fitted value for
+         each observation.",
+        x = "It has {length(fitted)} fitted value{?s} and {.arg .exposure} has
+             {n} observation{?s}.",
+        i = "Fit the numerator model on the data the weights are being built
+             for."
+      ),
+      error_class = "propensity_length_error",
+      call = call
+    )
+  }
+
+  invisible(NULL)
+}
+
+# What the numerator model contributes to the ratio: the conditional mean it
+# fits for each unit and the spread of its residuals around them. The spread is
+# the uncentered root mean square, the estimator the conditional density is read
+# at, so the two densities of the ratio are spread by the same estimator applied
+# to each model's own residuals.
+numerator_model_moments <- function(numerator_model) {
+  mu <- as.numeric(stats::fitted(numerator_model))
+  residuals <- as.numeric(stats::residuals(numerator_model, type = "response"))
+
+  list(mu = mu, sigma = sqrt(mean(residuals^2, na.rm = TRUE)))
 }
 
 # An infinite exposure or fitted value, refused where it arrives. A missing
@@ -600,18 +707,22 @@ check_sigma_method <- function(.sigma, density, call = rlang::caller_env()) {
 # exposure's units returns.
 #
 # The numerator is the marginal density of the exposure, the conditional density
-# marginalized over the units, a stabilization score the caller supplied, or
-# nothing at all. `grid` is the evaluation grid an integrated numerator averages
-# the conditional density over, and is built from the exposure when it is not
-# supplied.
+# marginalized over the units, the conditional density a second model estimates,
+# a stabilization score the caller supplied, or nothing at all. `grid` is the
+# evaluation grid an integrated numerator averages the conditional density over,
+# and is built from the exposure when it is not supplied. `mu_n` and `sigma_n`
+# are the conditional mean and the residual spread of the numerator model, which
+# stand where `mu_a` and `sigma_a` stand for the marginal density.
 continuous_density_ratio <- function(
   exposure,
   mu,
   sigma,
   density,
-  numerator = c("marginal", "integrated", "none", "score"),
+  numerator = c("marginal", "integrated", "none", "score", "model"),
   mu_a = NULL,
   sigma_a = NULL,
+  mu_n = NULL,
+  sigma_n = NULL,
   score = NULL,
   grid = NULL,
   call = rlang::caller_env()
@@ -639,6 +750,16 @@ continuous_density_ratio <- function(
 
   if (identical(numerator, "score")) {
     return(score / f_den)
+  }
+
+  # A numerator model estimates a conditional density of its own, read at its
+  # own fitted mean and its own residual spread, so it is standardized by those
+  # the way the marginal density is standardized by the exposure's moments.
+  if (identical(numerator, "model")) {
+    z_n <- (exposure - mu_n) / sigma_n
+    f_num <- density_eval_present(density, z_n, call = call) / sigma_n
+
+    return(f_num / f_den)
   }
 
   # The marginal density is the same family read at the exposure's own center

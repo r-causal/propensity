@@ -170,6 +170,7 @@ fit_joint_continuous <- function(
   outcome_rhs = "a * e",
   outcome_family = "gaussian",
   dose_score = NULL,
+  dose_stabilize = TRUE,
   dose_type = c("lm", "glm_log", "rlm", "gam"),
   .density = "normal",
   numerator = "marginal",
@@ -189,7 +190,9 @@ fit_joint_continuous <- function(
       as.double(fitted(ps_e)),
       dat$e,
       exposure_type = "continuous",
-      stabilize = TRUE,
+      # `TRUE` for the default numerator, and a fitted model for the one the
+      # single-dose route estimates in its stacked system.
+      stabilize = dose_stabilize,
       # A numerator the caller computed rather than one the estimator can
       # rebuild, which `dose_score` is here to supply.
       stabilization_score = dose_score,
@@ -1605,4 +1608,16 @@ test_that("ipw() refuses linearization on a joint continuous fit", {
   expect_propensity_error(
     ipw(fx$models, fx$outcome_mod, se_method = "linearization")
   )
+})
+
+test_that("the joint route refuses a dose stabilized on a numerator model", {
+  # The single-dose route estimates a numerator model in its own stabilization
+  # block. This route has no such block, and standing the dose's marginal
+  # moments in for one would rebuild a different set of weights, so the fit is
+  # refused rather than answered with weights the caller did not build.
+  dat <- sim_joint_continuous()
+  num_mod <- lm(e ~ x2, data = dat)
+  fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
+
+  expect_propensity_error(ipw(fits$models, fits$outcome_mod))
 })

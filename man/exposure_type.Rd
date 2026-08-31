@@ -26,7 +26,8 @@ density_meta(wt)
 \itemize{
 \item \code{exposure_type()}: a single string, or \code{NULL}.
 \item \code{density_meta()}: a list of class \code{propensity_density_meta} with the
-elements \code{density}, \code{numerator}, \code{sigma}, and \code{sigma_value}, or \code{NULL}.
+elements \code{density}, \code{numerator}, \code{sigma}, \code{sigma_value}, and
+\code{numerator_model}, or \code{NULL}.
 \item \code{print()} and \code{format()}: the record, invisibly, and a character vector of
 one line per element.
 }
@@ -58,8 +59,17 @@ weights for a binary or categorical exposure:
 by \code{\link[=dens_normal]{dens_normal()}} and its relatives.
 \item \code{numerator}, what stabilized the weights: \code{"marginal"} for the marginal
 density of the exposure, \code{"integrated"} for the conditional density
-marginalized over the units, \code{"score"} for a \code{stabilization_score} the
-caller supplied, and \code{"none"} for weights that were not stabilized.
+marginalized over the units, \code{"model"} for the conditional density a
+fitted model supplied to \code{stabilize} estimates, \code{"score"} for a
+\code{stabilization_score} the caller supplied, and \code{"none"} for weights that
+were not stabilized.
+\item \code{numerator_model}, that fitted model itself, and \code{NULL} under every other
+numerator. The model is kept whole rather than the numerator it evaluates
+to, since \code{\link[=ipw]{ipw()}} rebuilds that numerator at every value of its parameter
+vector, which takes the model's design and its coefficients. Two sets of
+weights stabilized on models that read different terms, or that were fit
+to different values of the same terms, record different numerators and are
+combined the way any other disagreeing records are.
 \item \code{sigma}, where the residual spread of the conditional density came from:
 \code{"pooled"} for the pooled residual root mean square, \code{"mle"} for the scale
 a \code{\link[=dens_t]{dens_t()}} built with \code{sigma_method = "mle"} estimates under the t

@@ -1,5 +1,49 @@
 # propensity 0.1.0.9000 (development version)
 
+* `wt_ate()` and `wt_cens()` now accept a fitted model of the exposure in
+  `stabilize`, which stabilizes a continuous exposure's weights on the
+  conditional density that model estimates rather than on the marginal density
+  of the exposure. The weights are then f(A | V) / f(A | X): the family
+  `.density` names, read at the numerator model's fitted mean and the root mean
+  square of its residuals, over the same family read at the propensity score
+  model's. A numerator conditioning on V is worth having when the model the
+  estimates are read from also reads V, such as an effect modifier, since the
+  part of the exposure's variation V explains then cancels between the numerator
+  and the denominator; conditioning on a variable that model does not read
+  targets the effect conditional on V being balanced rather than the marginal
+  one. The model itself is recorded on the weights, as `numerator = "model"` and
+  the new `numerator_model` field of `density_meta()`, because `ipw()` rebuilds
+  the numerator at every value of its parameter vector.
+
+* `ipw()` now estimates a supplied numerator model in its stacked system, so
+  the standard errors account for the numerator having been fitted. The model
+  contributes one parameter per coefficient and one for the spread its density
+  is read at, and its own score is stacked alongside the propensity score
+  model's. A `stabilization_score` is still carried as a known constant, which
+  is what the model route now offers an alternative to. The numerator model is
+  read through the registry the propensity score model is read through, so a
+  class, family, or link whose score the system cannot write is refused in the
+  same terms, naming `stabilize`.
+
+* `ipw()` now reports a `.by` request whose weights were stabilized on the
+  default numerator, with a warning of class
+  `propensity_ipw_by_stabilizer_warning`. The default stabilizer conditions on
+  nothing, which is exactly the case where a numerator conditioning on the
+  modifier would tighten the weights without changing what is estimated. The fit
+  still returns, as it does for an outcome model with no exposure-by-modifier
+  term, since a constant numerator leaves the estimator consistent for the same
+  stratum effects.
+
+* `stabilize` now refuses a value that is neither `TRUE`, `FALSE`, `NULL`, nor a
+  fitted model, with an error of class `propensity_stabilize_error`. Such a
+  value used to read as `FALSE` and return unstabilized weights without a word.
+
+* `ipw()`'s joint models route now accepts a full-length `.data` whose complete
+  rows number what the models were fit to, restricting it to those rows the way
+  the single-model routes already did. A set of `na.exclude` fits analyzed the
+  rows complete over the columns they read, and the frame the caller has is the
+  frame those fits were given.
+
 * `dens_t()` gained `sigma_method`, which chooses how the spread of the
   conditional density is estimated from the residuals of the propensity score
   model. Every family, the t included, has always been spread by the root mean

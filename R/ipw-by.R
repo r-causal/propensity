@@ -95,6 +95,7 @@ ipw_resolve_by <- function(
   exposure_name,
   outcome_mod,
   contrasts,
+  wts = NULL,
   call = rlang::caller_env()
 ) {
   if (ipw_by_absent(.by)) {
@@ -134,6 +135,7 @@ ipw_resolve_by <- function(
     call = call
   )
   check_ipw_by_interaction(outcome_mod, exposure_name, name, call = call)
+  check_ipw_by_stabilizer(wts, name, call = call)
 
   list(
     name = name,
@@ -347,6 +349,51 @@ check_ipw_by_interaction <- function(
       effect differ across the levels of {.val {name}}."
     ),
     warning_class = "propensity_ipw_by_interaction_warning",
+    call = call
+  )
+
+  invisible(FALSE)
+}
+
+# The stabilizer a `.by` request was given. The default one is the marginal
+# probability of the exposure, which conditions on nothing: it is a constant
+# within each exposure arm, so it tightens the weights by the little the whole
+# sample explains and by nothing the modifier explains. A fit reporting effects
+# within the strata of a modifier is the case where a numerator conditioning on
+# that modifier is worth having, so the fit reports what it was given rather
+# than leaving the reader to notice.
+#
+# It is a warning rather than an error, for the reason the missing interaction
+# term is one: a numerator that conditions on nothing leaves the estimator
+# consistent for the same stratum effects, and the fit still returns.
+#
+# Unstabilized weights carry no numerator to report on, and a numerator the
+# caller wrote is one this check has nothing to say about: which variables it
+# conditions on is a statement about the reported model that the weights do not
+# carry.
+check_ipw_by_stabilizer <- function(wts, name, call = rlang::caller_env()) {
+  reportable <- !is.null(wts) &&
+    is_stabilized(wts) &&
+    is.null(stabilization_score(wts))
+
+  if (!reportable) {
+    return(invisible(TRUE))
+  }
+
+  warn(
+    c(
+      "The weights {.arg outcome_mod} was fit with are stabilized on a \\
+      numerator that conditions on nothing.",
+      i = "The default stabilizer is the marginal probability of the exposure, \\
+      which is constant within each exposure arm, so it tightens the weights \\
+      by nothing {.val {name}} explains.",
+      i = "A numerator conditioning on {.val {name}} leaves the estimator \\
+      consistent for the same stratum effects and tightens the weights \\
+      further. Build one with {.fun wt_ate}'s {.arg stabilization_score}, \\
+      evaluated at the exposure each unit took; see {.strong Stabilization} in \\
+      {.fun wt_ate}."
+    ),
+    warning_class = "propensity_ipw_by_stabilizer_warning",
     call = call
   )
 

@@ -35,6 +35,17 @@ continuous_records_psw <- function(
   ))
 }
 
+# A numerator model for the same exposure: the exposure on a baseline covariate
+# the conditional means above do not read. `shift` moves the covariate, which
+# moves the coefficients the model is fit at without changing the terms it
+# reads.
+records_numerator_model <- function(shift = 0) {
+  exposure <- records_exposure
+  covariate <- c(0.1, 0.5, 0.2, 0.9, 0.4, 0.7) + shift
+
+  stats::lm(exposure ~ covariate)
+}
+
 records_binary_ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
 records_binary_exposure <- c(0, 1, 0, 1, 0, 1)
 
@@ -130,7 +141,7 @@ test_that("the record accessors read what the weights carry", {
   expect_type(density_meta(w), "list")
   expect_named(
     density_meta(w),
-    c("density", "numerator", "sigma", "sigma_value")
+    c("density", "numerator", "sigma", "sigma_value", "numerator_model")
   )
 })
 
@@ -281,6 +292,43 @@ test_that("combining weights spread by different numbers drops the density", {
   # The same number twice is the same ratio twice, and the record survives.
   same <- expect_silent(c(first, continuous_records_psw(.sigma = 0.12)))
   expect_identical(density_meta(same)$sigma_value, 0.12)
+})
+
+test_that("combining weights stabilized on different models drops the density", {
+  # A numerator model is compared by what it says rather than by identity, the
+  # way the density specification is: a fit carries the frame it was made in
+  # and the call that made it, so the same numerator fit in two calls would
+  # otherwise read as a disagreement.
+  first <- continuous_records_psw(stabilize = records_numerator_model())
+  again <- continuous_records_psw(stabilize = records_numerator_model())
+
+  same <- expect_silent(c(first, again))
+  expect_identical(
+    stats::coef(density_meta(same)$numerator_model),
+    stats::coef(records_numerator_model())
+  )
+
+  # Two models that read the same terms and were fit to different values of
+  # them estimate two different numerators, so the combination is stabilized on
+  # neither.
+  other <- continuous_records_psw(
+    stabilize = records_numerator_model(shift = 0.4)
+  )
+
+  out <- NULL
+  expect_warning(
+    out <- c(first, other),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(density_meta(out))
+
+  # So do a model and the marginal density it was supplied instead of.
+  marginal <- NULL
+  expect_warning(
+    marginal <- c(first, continuous_records_psw()),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(density_meta(marginal))
 })
 
 test_that("continuous censoring weights record both", {

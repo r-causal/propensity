@@ -82,3 +82,13 @@
       i The stratum effects are g-computation on `outcome_mod` as it was specified, so a model with no such term forces one and the same effect on every subgroup.
       i Add `z:v` to `outcome_mod` and refit it to let the effect differ across the levels of "v".
 
+# the stabilizer report names the modifier it was not built on
+
+    Code
+      out <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
+    Condition <propensity_ipw_by_stabilizer_warning>
+      Warning in `ipw()`:
+      The weights `outcome_mod` was fit with are stabilized on a numerator that conditions on nothing.
+      i The default stabilizer is the marginal probability of the exposure, which is constant within each exposure arm, so it tightens the weights by nothing "v" explains.
+      i A numerator conditioning on "v" leaves the estimator consistent for the same stratum effects and tightens the weights further. Build one with `wt_ate()`'s `stabilization_score`, evaluated at the exposure each unit took; see Stabilization in `wt_ate()`.
+

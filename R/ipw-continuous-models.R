@@ -34,6 +34,7 @@ ipw_continuous_model <- function(
   ps_mod,
   hint = ipw_continuous_resample_hint(),
   label = "wt_mod",
+  role = "propensity score model",
   call = rlang::caller_env()
 ) {
   ps_class <- class(ps_mod)
@@ -43,6 +44,7 @@ ipw_continuous_model <- function(
       kind = "gam",
       classes = ps_class,
       label = label,
+      role = role,
       link = ps_mod$family$link,
       stackable = FALSE,
       error_class = c(
@@ -51,8 +53,7 @@ ipw_continuous_model <- function(
       ),
       reason = c(
         "{.fun ipw} cannot build a sandwich variance for a \\
-        {.cls {entry$classes}} propensity score model of a continuous \\
-        exposure.",
+        {.cls {entry$classes}} {entry$role} of a continuous exposure.",
         x = "An additive model chooses how much to smooth by REML, and no \\
         estimating equation stacked here reproduces that choice, so the \\
         stacked system would describe a different fit.",
@@ -66,7 +67,8 @@ ipw_continuous_model <- function(
       ps_mod,
       ps_class,
       hint = hint,
-      label = label
+      label = label,
+      role = role
     ))
   }
 
@@ -75,10 +77,20 @@ ipw_continuous_model <- function(
     # whose spread changes with its fitted values is refused before its link is
     # read: there is no single conditional density for the weights to divide by
     # and no equation here that its coefficients solve.
-    check_ipw_continuous_ps_family(ps_mod, label = label, call = call)
+    check_ipw_continuous_ps_family(
+      ps_mod,
+      label = label,
+      role = role,
+      call = call
+    )
 
     link <- ps_mod$family$link
-    check_ipw_continuous_ps_link(link, label = label, call = call)
+    check_ipw_continuous_ps_link(
+      link,
+      label = label,
+      role = role,
+      call = call
+    )
 
     return(ipw_continuous_entry(kind = "glm", link = link, stackable = TRUE))
   }
@@ -94,8 +106,8 @@ ipw_continuous_model <- function(
   abort(
     c(
       "{.fun ipw} supports only {.fun stats::lm}, gaussian \\
-      {.fun stats::glm}, or {.fun MASS::rlm} propensity score models for a \\
-      continuous exposure.",
+      {.fun stats::glm}, or {.fun MASS::rlm} as the {role} of a continuous \\
+      exposure.",
       x = "{.arg {label}} has class {.cls {ps_class}}.",
       i = "A {.cls gam} is recognized and refused on its own terms; every \\
       other class reaches this refusal.",
@@ -128,7 +140,8 @@ ipw_continuous_rlm_entry <- function(
   ps_mod,
   classes = class(ps_mod),
   hint = ipw_continuous_resample_hint(),
-  label = "wt_mod"
+  label = "wt_mod",
+  role = "propensity score model"
 ) {
   psi_name <- ipw_rlm_psi_name(ps_mod)
   huber <- identical(psi_name, "MASS::psi.huber")
@@ -154,10 +167,11 @@ ipw_continuous_rlm_entry <- function(
       stackable = FALSE,
       psi = psi_name,
       label = label,
+      role = role,
       error_class = "propensity_ipw_robust_psi_error",
       reason = c(
         "{.fun ipw} stacks only the Huber score of a {.cls {entry$classes}} \\
-        propensity score model of a continuous exposure.",
+        {entry$role} of a continuous exposure.",
         x = found,
         i = "Refit {.arg {entry$label}} with {.fun MASS::psi.huber}, the default, \\
         whose threshold {.fun ipw} reads off the fit.",
@@ -177,10 +191,11 @@ ipw_continuous_rlm_entry <- function(
       stackable = FALSE,
       psi = psi_name,
       label = label,
+      role = role,
       error_class = "propensity_ipw_convergence_error",
       reason = c(
-        "{.fun ipw} cannot stack a {.cls {entry$classes}} propensity score \\
-        model that did not converge.",
+        "{.fun ipw} cannot stack a {.cls {entry$classes}} {entry$role} that \\
+        did not converge.",
         x = "{.arg {entry$label}} reports {.code converged = FALSE}, so its \\
         coefficients are not the root of the score stacked here.",
         i = "Refit {.arg {entry$label}} with a larger {.arg maxit}, or a looser \\
@@ -272,12 +287,14 @@ ipw_continuous_entry <- function(
   reason = NULL,
   psi = NULL,
   huber_k = NULL,
-  label = "wt_mod"
+  label = "wt_mod",
+  role = "propensity score model"
 ) {
   entry <- list(
     kind = kind,
     classes = classes,
     label = label,
+    role = role,
     link = link,
     stackable = stackable,
     error_class = error_class,
@@ -361,6 +378,7 @@ ipw_continuous_link_fns <- function(link) {
 check_ipw_continuous_ps_family <- function(
   ps_mod,
   label = "wt_mod",
+  role = "propensity score model",
   call = rlang::caller_env()
 ) {
   family <- ps_mod$family
@@ -370,8 +388,7 @@ check_ipw_continuous_ps_family <- function(
 
   abort(
     c(
-      "{.fun ipw} supports only a gaussian propensity score model for a \\
-      continuous exposure.",
+      "{.fun ipw} supports only a gaussian {role} for a continuous exposure.",
       x = "{.arg {label}} was fit with \\
       {.code {model_family_label(family)}}.",
       i = "Refit {.arg {label}} with {.fun stats::lm} or \\
@@ -393,6 +410,7 @@ ipw_continuous_ps_links <- c("identity", "log")
 check_ipw_continuous_ps_link <- function(
   link,
   label = "wt_mod",
+  role = "propensity score model",
   call = rlang::caller_env()
 ) {
   if (link %in% ipw_continuous_ps_links) {
@@ -401,8 +419,8 @@ check_ipw_continuous_ps_link <- function(
 
   abort(
     c(
-      "{.fun ipw} does not support the {.val {link}} link for the propensity \\
-      score model of a continuous exposure.",
+      "{.fun ipw} does not support the {.val {link}} link for the {role} of a \\
+      continuous exposure.",
       x = "{.arg {label}} is a gaussian model fit with the {.val {link}} \\
       link.",
       i = "Refit {.arg {label}} with one of {.val {ipw_continuous_ps_links}}, \\
@@ -483,8 +501,99 @@ ipw_continuous_ratio_meta <- function(
   list(
     density = meta$density,
     numerator = meta$numerator,
+    # The model a numerator was estimated with, which the stacked system
+    # estimates alongside everything else rather than reading the numerator it
+    # evaluated to.
+    numerator_model = meta$numerator_model,
     sigma = ipw_continuous_spread(meta, call = call)
   )
+}
+
+# The stabilization block a numerator model contributes: the design its
+# coefficients multiply, the score they solve, and the link its mean is read
+# back through. The model goes through the registry the propensity score model
+# goes through, so a class whose score this stack cannot write is refused with
+# that registry's own reason, naming the argument the model arrived in.
+ipw_numerator_model_block <- function(
+  numerator_model,
+  call = rlang::caller_env()
+) {
+  if (is.null(numerator_model)) {
+    return(NULL)
+  }
+
+  entry <- ipw_continuous_model(
+    numerator_model,
+    label = "stabilize",
+    role = "numerator model",
+    call = call
+  )
+  check_ipw_continuous_model(entry, call = call)
+
+  list(
+    X = stats::model.matrix(numerator_model),
+    kind = entry$kind,
+    link = entry$link,
+    huber_k = entry$huber_k,
+    coefs = stats::coef(numerator_model)
+  )
+}
+
+# The mean and the score the numerator model's block contributes, read off the
+# block the way the propensity score block's are read off the spec.
+ipw_numerator_model_fns <- function(model) {
+  ipw_continuous_score_fns(model$kind, model$link, model$huber_k)
+}
+
+# What the stacked system needs of a numerator model beyond a score it can
+# write: that the score is the score of the exposure being weighted, and that it
+# is written over the same observations as everything else the system stacks.
+# The block's own equations read the exposure the propensity score model reads,
+# so a model of another response would sit away from the root of the row seeded
+# for it and the solve would move it, reporting a numerator the user never fit.
+check_ipw_numerator_model <- function(
+  numerator_model,
+  block,
+  exposure_name,
+  n,
+  call = rlang::caller_env()
+) {
+  response <- tryCatch(
+    fmla_extract_left_chr(numerator_model),
+    error = function(e) NA_character_
+  )
+
+  if (!identical(response, exposure_name)) {
+    abort(
+      c(
+        "The model supplied to {.arg stabilize} must model the exposure.",
+        x = "It models {.val {response}} and {.arg wt_mod} models
+             {.val {exposure_name}}.",
+        i = "The numerator of the weights is the density of the exposure given
+             what the numerator model reads, so both models describe the same
+             response."
+      ),
+      error_class = "propensity_ipw_numerator_error",
+      call = call
+    )
+  }
+
+  if (!identical(nrow(block$X), as.integer(n))) {
+    abort(
+      c(
+        "The model supplied to {.arg stabilize} must be fit to the observations
+         the other models were fit to.",
+        x = "It was fit to {nrow(block$X)} observation{?s} and
+             {.arg outcome_mod} to {n}.",
+        i = "Refit the numerator model on the data the other models were fit
+             to, and rebuild the weights from it."
+      ),
+      error_class = "propensity_ipw_numerator_error",
+      call = call
+    )
+  }
+
+  invisible(TRUE)
 }
 
 # The spread the stacked system reads the conditional density at. A pooled

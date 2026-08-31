@@ -201,3 +201,73 @@
       x 9 of the 10 residuals of the propensity score model are exactly zero, and with 4 degrees of freedom that leaves the likelihood no maximum at a positive scale.
       i Use `sigma_method = "rms"`, or supply a spread with `.sigma`.
 
+# the numerator model refusals read as the refusals they are
+
+    Code
+      expr
+    Condition <propensity_numerator_error>
+      Error in `wt_ate()`:
+      ! A model supplied to `stabilize` applies only to continuous exposures.
+      x `.exposure` is being treated as binary.
+      i A fitted model stabilizes the weights on the conditional density it estimates. A binary exposure has a probability rather than a density, so stabilize one with `stabilize = TRUE`, which reads the marginal probability of the exposure, or with a `stabilization_score` of your own.
+
+---
+
+    Code
+      expr
+    Condition <propensity_numerator_error>
+      Error in `wt_ate()`:
+      ! A model supplied to `stabilize` cannot be used with `stabilization_score`.
+      x A score you supply is itself the numerator of the weights, and the model estimates a second one.
+      i Drop `stabilization_score` to stabilize on the density the model estimates, or set `stabilize = TRUE` to keep the numerator you wrote.
+
+---
+
+    Code
+      expr
+    Condition <propensity_numerator_error>
+      Error in `wt_ate()`:
+      ! `numerator` = "integrated" cannot be used with a model supplied to `stabilize`.
+      x A model you supply estimates the numerator of the weights itself.
+      i Set `stabilize = TRUE` to stabilize on the marginalized conditional density, or leave `numerator` unset to keep the numerator the model estimates.
+
+---
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `wt_ate()`:
+      ! Weights for a continuous exposure need a model of its conditional mean with a single spread.
+      x `stabilize` was fit with `binomial()`, whose spread changes with its fitted values.
+      i The numerator is a density read at the model's fitted mean and the spread of its residuals, so refit it with `stats::lm()` or `stats::glm(family = gaussian())`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_length_error>
+      Error in `wt_ate()`:
+      ! The model supplied to `stabilize` must have one fitted value for each observation.
+      x It has 20 fitted values and `.exposure` has 60 observations.
+      i Fit the numerator model on the data the weights are being built for.
+
+# stabilize takes one of the answers or a model and nothing else
+
+    Code
+      expr
+    Condition <propensity_stabilize_error>
+      Error in `wt_ate()`:
+      ! `stabilize` must be `TRUE`, `FALSE`, `NULL`, or a fitted model of the exposure.
+      x It is a string.
+      i A fitted model stabilizes a continuous exposure's weights on the conditional density it estimates. To stabilize on a numerator you computed yourself, set `stabilize = TRUE` and pass it as `stabilization_score`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_stabilize_error>
+      Error in `wt_ate()`:
+      ! `stabilize` must be `TRUE`, `FALSE`, `NULL`, or a fitted model of the exposure.
+      x It is `NA`.
+      i A fitted model stabilizes a continuous exposure's weights on the conditional density it estimates. To stabilize on a numerator you computed yourself, set `stabilize = TRUE` and pass it as `stabilization_score`.
+

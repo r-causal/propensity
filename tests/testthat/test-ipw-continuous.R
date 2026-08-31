@@ -2135,3 +2135,56 @@ test_that("ipw_spec_continuous reads a maximum likelihood spread off the weights
     tolerance = 1e-12
   )
 })
+
+test_that("ipw() refuses a numerator model whose score it cannot write", {
+  skip_if_not_installed("mgcv")
+
+  # The numerator model joins the stack the way the propensity score model
+  # does, so it is read through the same registry and refused on the same
+  # terms, in the argument it arrived in. An additive model chooses how much to
+  # smooth by REML, which no equation stacked here reproduces.
+  dat <- sim_continuous()
+  num_mod <- mgcv::gam(A ~ s(x1), data = dat)
+  fits <- fit_continuous_models(dat, stabilize = num_mod)
+
+  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+})
+
+test_that("ipw() refuses a numerator model of another response", {
+  # The block the numerator model contributes reads the exposure the propensity
+  # score model reads, so a model of anything else would sit away from the root
+  # of the row seeded for it and the solve would move it, reporting a numerator
+  # nobody fit.
+  dat <- sim_continuous()
+  num_mod <- lm(yc ~ x1, data = dat)
+  fits <- fit_continuous_models(dat, stabilize = num_mod)
+
+  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+})
+
+test_that("ipw() refuses a numerator model fit to other observations", {
+  # The models here were fit under `na.exclude` to a frame with a hole in `x1`,
+  # so they analyzed the rows complete over it while the numerator model, which
+  # reads a complete column, analyzed every row. The weights are built at the
+  # padded length the fits predict at and are the weights the caller meant; what
+  # the stacked system cannot do is multiply a design of one length by a block
+  # of another.
+  dat <- sim_continuous(n = 200)
+  dat$x1[c(3, 17, 42)] <- NA
+
+  ps_mod <- lm(A ~ x1 + x2, data = dat, na.action = stats::na.exclude)
+  num_mod <- lm(A ~ x2, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = num_mod
+  )
+  outcome_mod <- lm(
+    yc ~ A,
+    data = dat,
+    weights = wts,
+    na.action = stats::na.exclude
+  )
+
+  expect_propensity_error(ipw(ps_mod, outcome_mod))
+})

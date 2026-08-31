@@ -123,6 +123,29 @@
 #' `V` at all is a question about the reported model rather than about the
 #' weights; see **Effect modification** in [ipw()].
 #'
+#' A continuous exposure has a third way of writing the same thing: pass the
+#' fitted numerator model to `stabilize` itself, and the density it estimates
+#' becomes the numerator.
+#'
+#' ```
+#' num <- lm(A ~ V, data = dat)
+#' wt_ate(ps_mod, stabilize = num)
+#' ```
+#'
+#' The weights are then \eqn{f(A \mid V) / f(A \mid X)}: the family `.density`
+#' names, read at the numerator model's fitted mean and the root mean square of
+#' its residuals, over the same family read at the propensity score model's. The
+#' same caveat governs it. A numerator conditioning on `V` targets the effect in
+#' a pseudo-population where `V` still predicts the exposure, so the estimand is
+#' the effect conditional on `V` being balanced rather than the marginal one,
+#' and it answers the question you meant only when the model the estimates are
+#' read from also reads `V`.
+#'
+#' Handing the model over rather than the numbers it evaluates to is what lets
+#' [ipw()] estimate it: the model's own estimating equations join the stacked
+#' system, so the standard errors account for the numerator having been fitted,
+#' where a `stabilization_score` is carried as a known constant.
+#'
 #' ## Handling extreme weights
 #'
 #' Extreme weights signal positivity violations, poor model fit, or limited
@@ -474,13 +497,37 @@
 #'   supplied.
 #' @param ... These dots are for future extensions and must be empty.
 #' @param stabilize Whether to multiply the weights by an estimate of the
-#'   marginal treatment probability (binary) or density (continuous). `NULL`,
-#'   the default, reads the answer from the exposure type: a continuous
-#'   exposure is stabilized, and a binary or categorical exposure is not.
-#'   `TRUE` and `FALSE` ask for one or the other outright, and an unstabilized
-#'   continuous exposure reports that its weights are not the recommended ones.
-#'   Only supported by `wt_ate()` and `wt_cens()`. See **Stabilization** in
-#'   Details.
+#'   marginal treatment probability (binary) or density (continuous), and what
+#'   that estimate is. It takes one of three forms:
+#'
+#'   * A logical. `TRUE` and `FALSE` ask for stabilization or its absence
+#'     outright, and an unstabilized continuous exposure reports that its
+#'     weights are not the recommended ones. `NULL`, the default, reads the
+#'     answer from the exposure type: a continuous exposure is stabilized, and a
+#'     binary or categorical exposure is not.
+#'   * A fitted model of the exposure, for a continuous exposure alone, which
+#'     stabilizes the weights on the conditional density that model estimates
+#'     rather than on the marginal density of the exposure. The numerator is the
+#'     family `.density` names, read at the model's fitted mean and the root
+#'     mean square of its residuals, so the weights are
+#'     \eqn{f(A \mid V) / f(A \mid X)} for the variables \eqn{V} the numerator
+#'     model reads. The model is recorded on the result, and [ipw()] estimates
+#'     it alongside everything else so that the standard errors account for it
+#'     having been fitted. Conditioning the numerator on \eqn{V} changes what is
+#'     estimated unless the model the estimates are read from also reads
+#'     \eqn{V}; see **Stabilization** in Details.
+#'
+#'     Any [lm()], or anything built on one, is read this way. A model of a
+#'     binary or categorical exposure, a family whose spread changes with its
+#'     fitted values, a model with a fitted value for some other set of
+#'     observations, and a model supplied together with `stabilization_score`
+#'     or `numerator = "integrated"` are each refused; the classes are
+#'     `propensity_numerator_error`, `propensity_model_family_error`, and
+#'     `propensity_length_error`.
+#'
+#'   Anything else is refused with an error of class
+#'   `propensity_stabilize_error`. Stabilization is only supported by
+#'   `wt_ate()` and `wt_cens()`. See **Stabilization** in Details.
 #' @param stabilization_score Optional stabilization multiplier to use instead
 #'   of the default described under **Stabilization**: the marginal mean of
 #'   `.exposure`, or its marginal normal density for a continuous exposure.
@@ -593,6 +640,12 @@
 #'   .density = dens_t(df = 4),
 #'   numerator = "integrated"
 #' )
+#'
+#' # It can also be the conditional density a second model estimates, which is
+#' # worth having when the model the estimates are read from also reads the
+#' # variables that model conditions on
+#' num_model <- lm(dose ~ x1)
+#' w_cond <- wt_ate(dose_model, stabilize = num_model)
 #'
 #' # What each set of weights records about the ratio it is
 #' density_meta(w_dose)
@@ -762,8 +815,10 @@ wt_ate.numeric <- function(
   # The default for `stabilize` is read from the exposure type, so it can only
   # be resolved once the type is known. Every other route funnels through this
   # method and forwards `stabilize` unchanged, so this is the single place the
-  # per-type default is decided.
-  stabilize <- resolve_stabilize(stabilize, exposure_type)
+  # per-type default is decided, and the single place a fitted numerator model
+  # is read out of the argument that carries it.
+  numerator_model <- as_numerator_model(stabilize)
+  stabilize <- resolve_stabilize(stabilize, exposure_type, call = call)
 
   check_sigma(.sigma, exposure_type, length(.exposure), call = call)
 
@@ -782,6 +837,14 @@ wt_ate.numeric <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .sigma = .sigma,
+    numerator_model = numerator_model,
+    call = call
+  )
+  check_numerator_model(
+    numerator_model,
+    exposure_type,
+    n = length(.exposure),
+    stabilization_score = stabilization_score,
     call = call
   )
 
@@ -843,6 +906,7 @@ wt_ate.numeric <- function(
       .sigma = .sigma,
       .density = .density,
       numerator = numerator,
+      numerator_model = numerator_model,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
       call = call
@@ -1118,6 +1182,7 @@ ate_continuous <- function(
   .sigma,
   .density = dens_normal(),
   numerator = "marginal",
+  numerator_model = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
   call = rlang::caller_env()
@@ -1142,15 +1207,29 @@ ate_continuous <- function(
   )
 
   # What divides the conditional density: nothing at all when the weights are
-  # not stabilized, a score the caller supplied when there is one, and otherwise
+  # not stabilized, a score the caller supplied when there is one, the density a
+  # numerator model estimates when the caller stabilized on one, and otherwise
   # the numerator asked for. The combinations `check_numerator()` refuses cannot
-  # reach here, so the two that answer for themselves are read first.
+  # reach here, so the three that answer for themselves are read first.
   numerator <- if (!isTRUE(stabilize)) {
     "none"
   } else if (!is.null(stabilization_score)) {
     "score"
+  } else if (!is.null(numerator_model)) {
+    "model"
   } else {
     numerator
+  }
+
+  # The conditional density the numerator model estimates is read at its own
+  # fitted mean and its own residual spread, which are to that model what the
+  # fitted means in `.propensity` and their pooled spread are to this one.
+  mu_n <- NULL
+  sigma_n <- NULL
+  if (identical(numerator, "model")) {
+    moments <- numerator_model_moments(numerator_model)
+    mu_n <- moments$mu
+    sigma_n <- moments$sigma
   }
 
   # The marginal density f_A(A_i) is read at the exposure's population moments,
@@ -1182,6 +1261,8 @@ ate_continuous <- function(
     numerator = numerator,
     mu_a = mu_a,
     sigma_a = sigma_a,
+    mu_n = mu_n,
+    sigma_n = sigma_n,
     score = stabilization_score,
     call = call
   )
@@ -1206,7 +1287,8 @@ ate_continuous <- function(
     # is no constant to keep. A spread estimated from the residuals, by either
     # estimator, is a function of the data rather than a constant, so there is
     # nothing to keep for it either.
-    sigma_value = if (length(.sigma) == 1L) as.double(.sigma)
+    sigma_value = if (length(.sigma) == 1L) as.double(.sigma),
+    numerator_model = numerator_model
   )
 
   wt

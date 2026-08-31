@@ -319,13 +319,38 @@ level the exposure never takes is an error. Automatically detected if not
 supplied.}
 
 \item{stabilize}{Whether to multiply the weights by an estimate of the
-marginal treatment probability (binary) or density (continuous). \code{NULL},
-the default, reads the answer from the exposure type: a continuous
-exposure is stabilized, and a binary or categorical exposure is not.
-\code{TRUE} and \code{FALSE} ask for one or the other outright, and an unstabilized
-continuous exposure reports that its weights are not the recommended ones.
-Only supported by \code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in
-Details.}
+marginal treatment probability (binary) or density (continuous), and what
+that estimate is. It takes one of three forms:
+\itemize{
+\item A logical. \code{TRUE} and \code{FALSE} ask for stabilization or its absence
+outright, and an unstabilized continuous exposure reports that its
+weights are not the recommended ones. \code{NULL}, the default, reads the
+answer from the exposure type: a continuous exposure is stabilized, and a
+binary or categorical exposure is not.
+\item A fitted model of the exposure, for a continuous exposure alone, which
+stabilizes the weights on the conditional density that model estimates
+rather than on the marginal density of the exposure. The numerator is the
+family \code{.density} names, read at the model's fitted mean and the root
+mean square of its residuals, so the weights are
+\eqn{f(A \mid V) / f(A \mid X)} for the variables \eqn{V} the numerator
+model reads. The model is recorded on the result, and \code{\link[=ipw]{ipw()}} estimates
+it alongside everything else so that the standard errors account for it
+having been fitted. Conditioning the numerator on \eqn{V} changes what is
+estimated unless the model the estimates are read from also reads
+\eqn{V}; see \strong{Stabilization} in Details.
+
+Any \code{\link[=lm]{lm()}}, or anything built on one, is read this way. A model of a
+binary or categorical exposure, a family whose spread changes with its
+fitted values, a model with a fitted value for some other set of
+observations, and a model supplied together with \code{stabilization_score}
+or \code{numerator = "integrated"} are each refused; the classes are
+\code{propensity_numerator_error}, \code{propensity_model_family_error}, and
+\code{propensity_length_error}.
+}
+
+Anything else is refused with an error of class
+\code{propensity_stabilize_error}. Stabilization is only supported by
+\code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in Details.}
 
 \item{stabilization_score}{Optional stabilization multiplier to use instead
 of the default described under \strong{Stabilization}: the marginal mean of
@@ -557,6 +582,28 @@ the probability of the exposure an untreated unit took, so the untreated
 weights would carry the wrong numerator. Whether a numerator may condition on
 \code{V} at all is a question about the reported model rather than about the
 weights; see \strong{Effect modification} in \code{\link[=ipw]{ipw()}}.
+
+A continuous exposure has a third way of writing the same thing: pass the
+fitted numerator model to \code{stabilize} itself, and the density it estimates
+becomes the numerator.
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{num <- lm(A ~ V, data = dat)
+wt_ate(ps_mod, stabilize = num)
+}\if{html}{\out{</div>}}
+
+The weights are then \eqn{f(A \mid V) / f(A \mid X)}: the family \code{.density}
+names, read at the numerator model's fitted mean and the root mean square of
+its residuals, over the same family read at the propensity score model's. The
+same caveat governs it. A numerator conditioning on \code{V} targets the effect in
+a pseudo-population where \code{V} still predicts the exposure, so the estimand is
+the effect conditional on \code{V} being balanced rather than the marginal one,
+and it answers the question you meant only when the model the estimates are
+read from also reads \code{V}.
+
+Handing the model over rather than the numbers it evaluates to is what lets
+\code{\link[=ipw]{ipw()}} estimate it: the model's own estimating equations join the stacked
+system, so the standard errors account for the numerator having been fitted,
+where a \code{stabilization_score} is carried as a known constant.
 }
 
 \subsection{Handling extreme weights}{
@@ -833,6 +880,12 @@ w_int <- wt_ate(
   .density = dens_t(df = 4),
   numerator = "integrated"
 )
+
+# It can also be the conditional density a second model estimates, which is
+# worth having when the model the estimates are read from also reads the
+# variables that model conditions on
+num_model <- lm(dose ~ x1)
+w_cond <- wt_ate(dose_model, stabilize = num_model)
 
 # What each set of weights records about the ratio it is
 density_meta(w_dose)

@@ -539,13 +539,60 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
 # is recommended, and it is what an unnamed `stabilize` asks for. A binary or
 # categorical exposure is weighted by a probability ratio that needs no such
 # numerator, so it stays unstabilized, as it always has been. An explicit `TRUE`
-# or `FALSE` is passed through untouched.
-resolve_stabilize <- function(stabilize, exposure_type) {
-  if (!is.null(stabilize)) {
+# or `FALSE` is passed through untouched, and a fitted numerator model is a
+# request to stabilize on the density that model estimates, so it resolves to
+# `TRUE` and the model itself travels beside it.
+#
+# Anything else is refused rather than read as one of the two answers. Every
+# consumer of the resolved value asks `isTRUE()` of it, so a value naming no
+# answer at all would otherwise be carried as `FALSE` and the weights would come
+# back unstabilized without a word.
+resolve_stabilize <- function(
+  stabilize,
+  exposure_type,
+  call = rlang::caller_env()
+) {
+  if (is.null(stabilize)) {
+    return(identical(exposure_type, "continuous"))
+  }
+
+  if (is_numerator_model(stabilize)) {
+    return(TRUE)
+  }
+
+  if (rlang::is_bool(stabilize)) {
     return(stabilize)
   }
 
-  identical(exposure_type, "continuous")
+  abort(
+    c(
+      "{.arg stabilize} must be {.code TRUE}, {.code FALSE}, {.code NULL}, or
+       a fitted model of the exposure.",
+      x = "It is {.obj_type_friendly {stabilize}}.",
+      i = "A fitted model stabilizes a continuous exposure's weights on the
+           conditional density it estimates. To stabilize on a numerator you
+           computed yourself, set {.code stabilize = TRUE} and pass it as
+           {.arg stabilization_score}."
+    ),
+    error_class = "propensity_stabilize_error",
+    call = call
+  )
+}
+
+# The models a numerator can be fit with: those that report a conditional mean
+# of the exposure and the residuals around it, which is everything [lm()] covers
+# and everything built on it. What the weights ask of such a model is its fitted
+# values and their spread, so a subclass is read as an `lm` here, the way the
+# conditional mean of `.propensity` is.
+is_numerator_model <- function(x) {
+  inherits(x, "lm")
+}
+
+# The fitted model a `stabilize` argument names, or NULL for one that names an
+# answer instead. Read once in the weight function and carried alongside the
+# resolved logical, so that every route reads the same argument the same way.
+as_numerator_model <- function(stabilize) {
+  if (is_numerator_model(stabilize)) stabilize else NULL
 }
 
 # The conditional spread of a continuous exposure, checked where the exposure

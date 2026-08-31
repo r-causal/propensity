@@ -238,7 +238,13 @@ ipw_spec_joint_models <- function(
     check_ipw_model_rank(coefs[[i]], names[[i]], call = call)
   }
 
-  mm_data <- ipw_joint_models_frame(outcome_mod, .data, call = call)
+  mm_data <- ipw_joint_models_frame(
+    outcome_mod,
+    .data,
+    fits = fits,
+    treatment_names = names,
+    call = call
+  )
   n <- nrow(mm_data)
   ipw_joint_models_check_lengths(treatments, ps_X, names, n, call = call)
 
@@ -267,6 +273,29 @@ ipw_spec_joint_models <- function(
   numerator <- ratio$numerator
   if (identical(numerator, "score")) {
     numerator <- "marginal"
+  }
+
+  # A dose stabilized on a fitted numerator model is refused outright rather
+  # than stood in for. The single-dose route estimates such a model in the
+  # stacked system, and this route has no block to estimate it in: standing the
+  # exposure's own marginal moments in for it would rebuild a different set of
+  # weights, which the preflight would report as a mismatch the caller did not
+  # cause.
+  if (identical(numerator, "model")) {
+    abort(
+      c(
+        "{.fun ipw} does not support a joint exposure whose dose was
+         stabilized on a fitted model.",
+        x = "The dose component's weights record a numerator estimated by a
+             model, which this route has no stabilization block to estimate it
+             in.",
+        i = "Rebuild the dose's weights with {.code stabilize = TRUE}, or
+             report the dose on its own, where the numerator model is
+             estimated alongside the rest of the system."
+      ),
+      error_class = "propensity_ipw_numerator_error",
+      call = call
+    )
   }
 
   if (is_linear_regression(outcome_mod)) {
@@ -856,6 +885,8 @@ ipw_joint_models_treatment <- function(fit, call = rlang::caller_env()) {
 ipw_joint_models_frame <- function(
   outcome_mod,
   .data,
+  fits,
+  treatment_names,
   call = rlang::caller_env()
 ) {
   if (is.null(.data)) {
@@ -867,6 +898,20 @@ ipw_joint_models_frame <- function(
   }
 
   n_fitted <- nrow(stats::model.frame(outcome_mod))
+
+  # A set of fits made under `na.exclude` analyzed the rows complete over the
+  # columns they read, and the frame the caller has is the frame those fits
+  # were given. Restricting `.data` to those rows reconciles the two, which is
+  # what the single-model routes do with the same helper; a frame that is
+  # longer for any other reason has no such restriction to make and keeps the
+  # report below.
+  required <- unique(c(
+    treatment_names,
+    fmla_extract_left_vars(outcome_mod),
+    unlist(lapply(fits, ipw_model_covariates)),
+    ipw_model_covariates(outcome_mod)
+  ))
+  .data <- restrict_ipw_data(.data, required, n_fitted)
 
   if (!identical(nrow(.data), n_fitted)) {
     abort(

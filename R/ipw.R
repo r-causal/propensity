@@ -404,7 +404,17 @@
 #' recipe. The sandwich treats a supplied score as a known constant, so the
 #' standard errors do not account for the numerator model having been fitted.
 #' The default stabilizer is estimated in the stacked system instead, which is
-#' one parameter wider as a result.
+#' one parameter wider as a result. A continuous exposure has a third way: pass
+#' the fitted numerator model to `stabilize` itself, and its own equations join
+#' the stack, which is what a supplied score has none of.
+#'
+#' A stabilized fit reporting effects within the strata of a modifier, and
+#' carrying the default numerator, warns with class
+#' `propensity_ipw_by_stabilizer_warning` and returns: the default numerator
+#' conditions on nothing, which is consistent for the same stratum effects and
+#' leaves precision on the table. A numerator the caller supplied, whether as a
+#' score or as a model, says nothing here, since which variables it conditions
+#' on is a statement about the reported model that the weights do not carry.
 #'
 #' Every reported row is a parameter of one stacked system solved on one sample,
 #' so the covariance couples them: [stats::vcov()] reports nonzero entries
@@ -605,7 +615,9 @@
 #' without recording the vector it was, so the system rebuilds the dose weights
 #' from the exposure's own marginal moments and the weight-consistency check
 #' reports the difference. Weight the dose on its own to use a numerator
-#' computed by hand.
+#' computed by hand. A dose stabilized on a fitted model is refused outright,
+#' with class `propensity_ipw_numerator_error`: this route has no stabilization
+#' block to estimate such a model in, where the single-dose route has one.
 #'
 #' An [mgcv::gam()] dose model, and dose weights built with a `"kernel"`
 #' density, are refused with class
@@ -698,6 +710,21 @@
 #' data alone and contributes none. Weights carrying no such record, including
 #' any written with [psw()] by hand, are read as the normal ratio the package
 #' built before the record existed.
+#'
+#' A numerator estimated by a model the caller passed to [wt_ate()]'s
+#' `stabilize` contributes that model: one parameter per coefficient, named with
+#' a `stab_` prefix so the terms it shares with the propensity score model stay
+#' apart from it, and one for the spread its density is read at, `sigma2_n`. Its
+#' score and the moment its spread is the root of are stacked alongside the
+#' propensity score model's, so the standard errors account for the numerator
+#' having been fitted, which is what separates this from a
+#' `stabilization_score`: a score the caller computed is carried as a known
+#' constant and contributes no parameter at all. The numerator model is read
+#' through the registry above, so a class, family, or link whose score this
+#' system cannot write is refused there in the terms that registry refuses a
+#' propensity score model in, naming `stabilize`. A model of a response other
+#' than the exposure, or one fit to a different set of observations, errors with
+#' class `propensity_ipw_numerator_error`.
 #'
 #' Two fits are refused for the standard error rather than for the model. An
 #' [mgcv::gam()] chooses how much to smooth by REML, and a `"kernel"` density

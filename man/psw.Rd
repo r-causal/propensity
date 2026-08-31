@@ -162,7 +162,11 @@ disagreement can be carried again by a later operation whose operands agree.
 Two density records agree when they name the same family with the same
 parameters and the same numerator and residual spread, so weights built the
 same way in two calls agree even though each call builds its own copy of the
-function that evaluates the density.
+function that evaluates the density. A numerator estimated by a fitted model
+is read the same way: two records agree when their models write the same
+formula and were fit to the same coefficients, and a model is not compared
+against the marginal density or against no numerator at all, both of which
+are disagreements.
 
 A \code{density_meta} record describes a continuous exposure, so a result that
 drops \code{exposure_type} for a disagreement drops the density record with it,

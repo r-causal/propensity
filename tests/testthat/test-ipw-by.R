@@ -941,3 +941,14 @@ test_that(".by says nothing about a numerator that reads the modifier", {
     class = "propensity_ipw_by_stabilizer_warning"
   )
 })
+
+test_that("the stabilizer report names the modifier it was not built on", {
+  dat <- sim_by()
+  mods <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = TRUE
+  )
+
+  expect_propensity_warning(ipw(mods$ps_mod, mods$outcome_mod, .by = v))
+})

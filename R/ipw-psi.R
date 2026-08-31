@@ -179,9 +179,9 @@ ipw_categorical_weight_fn <- function(estimand) {
 # Continuous weight registry (ate only). `ps` is the fitted conditional mean,
 # `exposure` the continuous A, and `extras` carries the conditional variance
 # sigma2_d, the density the ratio is taken in, the numerator that stabilized it,
-# the marginal moments mu_a and sigma2_a, the evaluation grid an integrated
-# numerator marginalizes over, the fixed stabilization score, and the stabilized
-# flag.
+# the marginal moments mu_a and sigma2_a, the numerator model's own mean mu_n
+# and spread sigma_n, the evaluation grid an integrated numerator marginalizes
+# over, the fixed stabilization score, and the stabilized flag.
 #
 # The ratio itself is `continuous_density_ratio()`, the same function
 # `ate_continuous()` builds the weights with, so the weights rebuilt at a value
@@ -213,6 +213,8 @@ ipw_continuous_weight_fn <- function(estimand, call = rlang::caller_env()) {
       numerator = numerator,
       mu_a = extras$mu_a,
       sigma_a = if (!is.null(extras$sigma2_a)) sqrt(extras$sigma2_a),
+      mu_n = extras$mu_n,
+      sigma_n = extras$sigma_n,
       score = extras$score,
       grid = extras$grid,
       # The frame the user entered `ipw()` on. A conditional density that comes
@@ -624,11 +626,27 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
     )
   }
 
-  # Only the marginal density of the exposure is read at parameters of its own.
-  # A marginalized conditional density is built from the propensity score block
-  # and the data, and a fixed score and unstabilized weights carry no numerator
-  # to estimate, so none of the three leaves a stabilization block behind.
-  if (identical(spec$numerator, "marginal")) {
+  # Only the marginal density of the exposure and a numerator model of the
+  # caller's are read at parameters of their own. A marginalized conditional
+  # density is built from the propensity score block and the data, and a fixed
+  # score and unstabilized weights carry no numerator to estimate, so none of
+  # the three leaves a stabilization block behind.
+  #
+  # A numerator model's block is the shape the propensity score block is: one
+  # parameter per coefficient, seeded at the coefficients the model was fit at,
+  # and one for the spread its density is read at, seeded at the second moment
+  # of its residuals. Both seeds are the exact root of the row that estimates
+  # them, which is what makes the stacked system carry the uncertainty of having
+  # fit the model rather than move away from it.
+  if (identical(spec$numerator, "model")) {
+    model <- spec$stab$model
+    coefs <- model$coefs
+    fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, coefs)
+    stab_block <- c(
+      stats::setNames(coefs, paste0("stab_", colnames(model$X))),
+      sigma2_n = mean((spec$exposure - fitted_n)^2)
+    )
+  } else if (identical(spec$numerator, "marginal")) {
     mu_a <- mean(spec$exposure)
     sigma2_a <- mean((spec$exposure - mu_a)^2)
     stab_block <- c(mu_a = mu_a, sigma2_a = sigma2_a)
@@ -1065,7 +1083,25 @@ ipw_psi_continuous <- function(
       )
     }
 
-    stab_rows <- if (length(th_stab)) {
+    # The numerator's own equations: the score its coefficients solve, and the
+    # second moment of its residuals, which is the spread its density is read
+    # at. The marginal numerator estimates the exposure's own two moments
+    # instead, and every other numerator estimates nothing.
+    stab_rows <- if (!length(th_stab)) {
+      NULL
+    } else if (identical(spec$numerator, "model")) {
+      model <- spec$stab$model
+      p_n <- ncol(model$X)
+
+      rbind(
+        ipw_numerator_model_fns(model)$score(
+          th_stab[seq_len(p_n)],
+          model$X,
+          a
+        ),
+        matrix((a - inputs$extras$mu_n)^2 - th_stab[[p_n + 1L]], nrow = 1)
+      )
+    } else {
       deli::ee_mean_variance(th_stab, y = a)
     }
 
@@ -1096,13 +1132,28 @@ ipw_continuous_inputs <- function(
     th_ps[[n_alpha + 1L]]
   }
 
+  # A numerator model reads its own conditional mean and its own spread out of
+  # the stabilization block, where the marginal numerator reads the exposure's
+  # two moments.
+  model <- spec$stab$model
+  numerator_model <- identical(spec$numerator, "model") && !is.null(model)
+  mu_n <- NULL
+  sigma_n <- NULL
+  if (numerator_model) {
+    p_n <- ncol(model$X)
+    mu_n <- ipw_numerator_model_fns(model)$mean(model$X, th_stab[seq_len(p_n)])
+    sigma_n <- sqrt(th_stab[[p_n + 1L]])
+  }
+
   list(
     alpha = alpha,
     mu = ipw_continuous_spec_fns(spec)$mean(spec$ps$X, alpha),
     extras = list(
       sigma2_d = sigma2_d,
-      mu_a = if (length(th_stab)) th_stab[[1]],
-      sigma2_a = if (length(th_stab)) th_stab[[2]],
+      mu_a = if (length(th_stab) && !numerator_model) th_stab[[1]],
+      sigma2_a = if (length(th_stab) && !numerator_model) th_stab[[2]],
+      mu_n = mu_n,
+      sigma_n = sigma_n,
       score = spec$stab$score,
       stabilized = spec$stab$stabilized,
       density = spec$density,

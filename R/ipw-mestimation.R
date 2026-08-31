@@ -363,6 +363,7 @@ ipw_spec_binary <- function(
     exposure_name = exposure_name,
     outcome_mod = outcome_mod,
     contrasts = contrasts,
+    wts = wts,
     call = call
   )
 
@@ -1628,6 +1629,7 @@ ipw_spec_categorical <- function(
     exposure_name = exposure_name,
     outcome_mod = outcome_mod,
     contrasts = contrasts,
+    wts = wts,
     call = call
   )
 
@@ -1756,6 +1758,24 @@ ipw_spec_continuous <- function(
   # are read as the ratio every earlier version of the package built.
   ratio <- ipw_continuous_ratio(wts, stacked = stacked, call = call)
 
+  # A numerator model joins the stack the way the propensity score model does,
+  # so it goes through the same registry and is refused on the same terms. A
+  # route that only refits the models asks nothing of its score and takes it as
+  # it is.
+  numerator_block <- if (stacked) {
+    ipw_numerator_model_block(ratio$numerator_model, call = call)
+  }
+
+  if (!is.null(numerator_block)) {
+    check_ipw_numerator_model(
+      ratio$numerator_model,
+      numerator_block,
+      exposure_name,
+      length(exposure),
+      call = call
+    )
+  }
+
   # Membership first, so that a value naming no estimand at all is reported as
   # that on this path too. The restriction below says the estimand asked for is
   # not available here, which of a value that is not an estimand anywhere read
@@ -1834,7 +1854,12 @@ ipw_spec_continuous <- function(
     ),
     stab = list(
       stabilized = is_stabilized(wts),
-      score = stabilization_score(wts)
+      score = stabilization_score(wts),
+      # A numerator estimated by a model of the caller's is estimated again in
+      # the stacked system, so the block carries the model's design, its score,
+      # and the coefficients it was fit at rather than the numerator they
+      # evaluate to.
+      model = numerator_block
     ),
     density = ratio$density,
     numerator = ratio$numerator,

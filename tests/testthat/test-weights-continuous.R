@@ -2976,3 +2976,113 @@ test_that("a numerator model and a stabilization score are two numerators", {
     class = "propensity_numerator_error"
   )
 })
+
+test_that("the numerator model refusals read as the refusals they are", {
+  exposure <- continuous_density_data$exposure
+  fit <- continuous_numerator_model
+
+  expect_propensity_error(
+    wt_ate(
+      runif(20, 0.2, 0.8),
+      rbinom(20, 1, 0.5),
+      exposure_type = "binary",
+      stabilize = fit
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = fit,
+      stabilization_score = rep(0.5, continuous_density_data$n)
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = fit,
+      numerator = "integrated"
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = stats::glm(
+        as.numeric(exposure > 0) ~ continuous_density_data$x,
+        family = binomial()
+      )
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = stats::lm(
+        exposure[1:20] ~ continuous_density_data$x[1:20]
+      )
+    )
+  )
+})
+
+test_that("stabilize takes one of the answers or a model and nothing else", {
+  # Every consumer of the resolved argument asks `isTRUE()` of it, so a value
+  # naming neither answer would otherwise be read as `FALSE` and the weights
+  # would come back unstabilized without a word.
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = "yes"
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = NA
+    )
+  )
+})
+
+test_that("censoring weights reach the numerator model route too", {
+  # `wt_cens()` builds its weights with the ATE formula, so a numerator model
+  # arrives there through the same argument and is recorded the same way.
+  exposure <- continuous_density_data$exposure
+  fit <- continuous_numerator_model
+
+  weights <- wt_cens(
+    continuous_density_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit
+  )
+
+  f_num <- stats::dnorm(
+    exposure,
+    as.numeric(stats::fitted(fit)),
+    continuous_model_rms(fit)
+  )
+  f_den <- stats::dnorm(
+    exposure,
+    continuous_density_data$mu,
+    continuous_density_pooled()
+  )
+
+  expect_identical(estimand(weights), "uncensored")
+  expect_equal(as.numeric(weights), f_num / f_den, tolerance = 1e-12)
+  expect_identical(density_meta(weights)$numerator, "model")
+  expect_identical(density_meta(weights)$numerator_model, fit)
+})
