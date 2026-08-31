@@ -14,9 +14,9 @@
 #' [stats::lm()] or gaussian [stats::glm()] propensity score model with a
 #' weighted marginal structural outcome model whose link is identity, logit, or
 #' log, and `ipw()` reports the single exposure coefficient of that model. A
-#' [MASS::rlm()] fit with the Huber psi and an [mgcv::gam()] fit of a gaussian
-#' family are read as the equations their own coefficients solve; every other
-#' subclass errors.
+#' [MASS::rlm()] fit with one of the psi functions MASS supplies and an
+#' [mgcv::gam()] fit of a gaussian family are read as the equations their own
+#' coefficients solve; every other subclass errors.
 #'
 #' @param wt_mod The weighting object: a fitted propensity score model that
 #'   produced the weights, typically a logistic regression of class
@@ -605,12 +605,19 @@
 #' propensity score models**, so the classes and links this route stacks are the
 #' ones the single-treatment route stacks: an [stats::lm()], a gaussian
 #' [stats::glm()] fit with an identity or a log link, a [MASS::rlm()] fit with
-#' the Huber psi, and an [mgcv::gam()] of a gaussian family read at its own
-#' penalized score. A gaussian dose model fit with another link errors with
-#' class `propensity_ipw_link_error`, and a robust or an additive fit whose
-#' score the system cannot write raises the same conditions it raises for a
-#' single dose. The limitations of the additive route are the ones listed under
-#' **Continuous propensity score models**, and they apply here unchanged.
+#' one of the psi functions MASS supplies, and an [mgcv::gam()] of a gaussian
+#' family read at its own penalized score. A gaussian dose model fit with
+#' another link errors with class `propensity_ipw_link_error`, and a robust or
+#' an additive fit whose score the system cannot write raises the same
+#' conditions it raises for a single dose. The limitations of the additive route
+#' are the ones listed under **Continuous propensity score models**, and they
+#' apply here unchanged.
+#'
+#' Every score this route stacks is the unweighted one, so a component model fit
+#' with prior case weights is not at the root of the block written for it and
+#' errors with class `propensity_ipw_ps_weights_error`, naming the component
+#' rather than the container the two models arrived in. Refit that component
+#' without `weights`.
 #'
 #' The dose component's weights may be any ratio [wt_ate()] builds: a
 #' heavier-tailed `.density`, `numerator = "integrated"`, or a single `.sigma`
@@ -663,6 +670,19 @@
 #' slopes. Its effect on the variance is negligible unless many observations sit
 #' at exactly `0.5`.
 #'
+#' A binary exposure's propensity score model is read as an unpenalized logistic
+#' fit, whatever the standard error method: the stacked system solves that
+#' score, and both the linearization and the robust diagnostic differentiate it.
+#' An [mgcv::gam()] fit of a binomial family is not at the root of that score
+#' but of a penalized one, so it is refused with class
+#' `propensity_ipw_se_method_unavailable_error` rather than described by a
+#' standard error for a model that was not fit. What is refused is the standard
+#' error and not the weights: [wt_ate()] reads the same fit and builds them from
+#' its fitted probabilities. Write the shape each smooth term carries out as
+#' columns of a [stats::glm()] formula, or bootstrap the whole fit by hand. An
+#' additive dose model is stacked at its penalized score instead, as described
+#' under **Continuous propensity score models**.
+#'
 #' M-estimation standard errors for a categorical exposure allocate memory
 #' roughly linearly in the number of observations, on the order of 70 to 90
 #' kilobytes per observation for a single fit, so a sample of 10,000
@@ -677,24 +697,43 @@
 #' conditional mean the propensity score model fits, so the stacked system
 #' carries that model's own score. Four classes supply one: an [stats::lm()],
 #' a gaussian [stats::glm()] fit with an identity or a log link, a
-#' [MASS::rlm()] fit with the Huber psi, and a gaussian [mgcv::gam()] fit with
-#' one of the same two links. A gaussian model fit with any other
-#' link is refused by name, because the coefficients its iteration stops at are
-#' not a tight enough root to seed the stacked solve from; refit it with one of
-#' the two links or as an [stats::lm()]. Any other class errors, since solving
+#' [MASS::rlm()] fit with one of the psi functions MASS supplies, and a
+#' gaussian [mgcv::gam()] fit with one of the same two links. A model fit with a
+#' family that is neither gaussian nor binomial is neither a dose model nor a
+#' binary propensity score model, and errors with class
+#' `propensity_model_family_error` naming the family it has. A gaussian model
+#' fit with any other link is refused by name, because the coefficients its
+#' iteration stops at are not a tight enough root to seed the stacked solve
+#' from; refit it with one of the two links or as an [stats::lm()]. Any other
+#' class errors, since solving
 #' it here would report a propensity score model that was never fit. Each class
 #' is read as the class it is rather than by what it inherits from, so a
 #' subclass of a supported fit errors as well.
 #'
-#' A [MASS::rlm()] is stacked as the Huber score its coefficients are the root
-#' of, clipped where the fit itself clipped: at the psi's own constant, which is
-#' the constant a caller passed as `k` when they passed one, times the scale the
-#' fit settled on. That scale enters the location score as a known constant. It
-#' solves an equation of its own that the stacked system does not write, so none
-#' of its sampling variability is propagated, and the standard errors are those
-#' of a Huber score read at a scale treated as fixed. The spread of the
-#' conditional density is a separate quantity, and is the pooled residual
-#' spread there as it is for every other class.
+#' A [MASS::rlm()] is stacked as the psi score its coefficients are the root of,
+#' clipped where the fit itself clipped. Each of the three psi functions MASS
+#' supplies has a loss of its own in the stacked system: [MASS::psi.huber()],
+#' [MASS::psi.bisquare()], and [MASS::psi.hampel()]. `rlm()` clips the residual
+#' divided by its scale estimate at the psi's own constants, and the stacked
+#' score clips the raw residual, so each constant is multiplied by the scale the
+#' fit settled on. Those constants are read off the psi the fit carries, which
+#' is where `rlm()` records a caller's choice of them, so a retuned psi is
+#' stacked at the values it was retuned to. That scale enters the location score
+#' as a known constant. It solves an equation of its own that the stacked system
+#' does not write, so none of its sampling variability is propagated, and the
+#' standard errors are those of a psi score read at a scale treated as fixed.
+#' The spread of the conditional density is a separate quantity, and is the
+#' pooled residual spread there as it is for every other class.
+#'
+#' [MASS::psi.bisquare()] and [MASS::psi.hampel()] redescend, and that is worth
+#' knowing about the standard errors they get. A redescending psi's estimating
+#' equation has more than one root, so there is no single set of coefficients it
+#' identifies and the solve reports whichever root it is seeded at. The seed
+#' here is the fit's own coefficients, so what comes back is the root the user
+#' has, and the sandwich is the covariance of that root read locally. It carries
+#' no claim about the other roots, and it does not describe the sampling
+#' behavior of a procedure that might have converged to one of them instead. Use
+#' a bootstrap of the whole fit if that behavior is what you need.
 #'
 #' Weights built with `.sigma = fit$s`, the robust scale, are read as the fixed
 #' spread they are, but that combination is usually a poor choice: the robust
@@ -704,15 +743,16 @@
 #' Leave `.sigma` unset unless you have a reason to hold the spread at a
 #' particular value.
 #'
-#' Three robust fits are refused. One fit with a psi that is not Huber, and one
-#' fit with `method = "MM"`, which starts from a high-breakdown fit and finishes
-#' on a redescending psi, are the roots of equations the stacked system does not
-#' write; both error with class `propensity_ipw_robust_psi_error`. One whose
-#' iteration stopped short of its own tolerance is the root of nothing, and
-#' errors with class `propensity_ipw_convergence_error`. The first two point to
-#' a Huber refit or to a bootstrap of the whole fit written by hand; the last
-#' points to a larger `maxit` or a looser `acc`, which is what a fit needs to
-#' reach its own tolerance.
+#' Three robust fits are refused. One fit with a psi function of the caller's
+#' own has no loss here to write its score as, and one fit with
+#' `method = "MM"` is at the root a high-breakdown start led to rather than at
+#' the one a solve seeded at its coefficients would report; both error with
+#' class `propensity_ipw_robust_psi_error`. One whose iteration stopped short of
+#' its own tolerance is the root of nothing, and errors with class
+#' `propensity_ipw_convergence_error`. The first points to a refit with one of
+#' the three psi functions or to a bootstrap of the whole fit written by hand,
+#' the second to the default `method = "M"`, and the last to a larger `maxit` or
+#' a looser `acc`, which is what a fit needs to reach its own tolerance.
 #'
 #' An [mgcv::gam()] is stacked as the penalized least squares it is, with its
 #' smoothing parameters held at the values the fit reports. Its design is the
@@ -1268,6 +1308,22 @@ ipw.glm <- function(
     ))
   }
 
+  # Everything below reads `wt_mod` as a binary propensity score model, which
+  # is what a binomial family makes it. A third family is neither that nor the
+  # dose model the branch above takes, and reading it as the second of the two
+  # would refuse it for the links a binary propensity score is written for: a
+  # set the fit could not be refit into, and a remedy for a model the caller
+  # did not fit. So the family is read here, ahead of the link.
+  check_ipw_model_family(wt_mod)
+
+  # A binary propensity score model is stacked, differentiated, and linearized
+  # at the unpenalized score of a logistic fit. An additive fit's coefficients
+  # are the root of the penalized score instead, so every method here would
+  # describe a model that was not fit, which makes the refusal the model's
+  # rather than any one method's. The continuous route writes the penalized
+  # score; this one does not.
+  check_ipw_binary_gam(wt_mod)
+
   # Both standard error methods accept only the link `wt_mod` was fit with, so
   # the one value `ps_link` can carry without changing the result is the value
   # the default already resolves to. That leaves the argument as pure
@@ -1627,6 +1683,87 @@ ipw_continuous_estimate <- function(
     effects = effects,
     readings = readings
   )
+}
+
+# The exposure a fitted propensity score model implies is read off its family:
+# a gaussian one models a dose, and a binomial one models the probability of a
+# binary exposure. A model of a third family is neither, so what it needs said
+# is the family it has and the family each exposure type is written for, rather
+# than the links whichever of the two routes it happened to reach is written
+# for.
+check_ipw_model_family <- function(wt_mod, call = rlang::caller_env()) {
+  family <- wt_mod[["family"]]
+  binomial_family <- is.list(family) &&
+    isTRUE(family$family %in% c("binomial", "quasibinomial"))
+
+  if (binomial_family) {
+    return(invisible(TRUE))
+  }
+
+  described <- if (is.list(family) && family_is_named(family)) {
+    "{.arg wt_mod} was fit with {.code {model_family_label(family)}}."
+  } else {
+    "{.arg wt_mod} names no family {.fun ipw} can read an exposure from."
+  }
+
+  abort(
+    c(
+      "{.fun ipw} reads the exposure {.arg wt_mod} models off its family, and \\
+      supports a binomial family for a binary exposure and a gaussian family \\
+      for a continuous exposure.",
+      x = described,
+      i = "Refit {.arg wt_mod} with {.fun stats::binomial} for a binary \\
+      exposure, or with {.fun stats::lm} or \\
+      {.code stats::glm(family = gaussian())} for a continuous exposure."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}
+
+# The binary route reads a propensity score model as an unpenalized logistic
+# fit: the stacked system solves that score, and the linearization and the
+# robust diagnostic both differentiate it. An additive fit's coefficients are
+# the root of the penalized score instead, so none of the three describes the
+# fit and the refusal belongs to the model rather than to a method. What is
+# refused is the standard error and not the weights: `wt_ate()` reads the same
+# fit and builds them from its fitted probabilities.
+check_ipw_binary_gam <- function(wt_mod, call = rlang::caller_env()) {
+  if (!inherits(wt_mod, "gam")) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} stacks a binary propensity score model at the unpenalized \\
+      score of a {.fun stats::glm}.",
+      x = "{.arg wt_mod} has class {.cls {class(wt_mod)}}, whose coefficients \\
+      are the root of a penalized score instead, so every standard error \\
+      here would describe a model that was not fit.",
+      i = "Refit {.arg wt_mod} as a {.fun stats::glm}, writing the shape each \\
+      smooth term carries out as columns of the formula.",
+      i = ipw_continuous_resample_hint()
+    ),
+    error_class = c(
+      "propensity_ipw_se_method_unavailable_error",
+      "propensity_method_error"
+    ),
+    call = call
+  )
+}
+
+# The prior case weights a fitted treatment model was made under, or `NULL` for
+# a fit that records none. Where a class keeps them differs: an `lm` and an
+# `rlm` hold them in `weights`, and a `glm` and a `gam` in `prior.weights`,
+# where the `weights` element is the iteration's own working weights instead. A
+# guard reading one field would pass half the classes this package stacks
+# through unchecked.
+ipw_model_prior_weights <- function(fit) {
+  if (inherits(fit, "glm")) {
+    return(fit$prior.weights)
+  }
+
+  fit$weights
 }
 
 # Guard the weights that fit the outcome model. ipw() cannot yet account for

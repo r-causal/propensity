@@ -47,11 +47,15 @@
 #' structural model's own coefficients rather than the cells of a crossing. The
 #' dose model is read through the same registry the single-treatment route
 #' reads, so an [stats::lm()], a gaussian [stats::glm()] at an identity or a log
-#' link, and a [MASS::rlm()] fit with the Huber psi are stacked, and the dose
-#' component's weights may be any density ratio [wt_ate()] builds. A dose model
-#' or a density the stacked system cannot differentiate is refused rather than
-#' resampled, since this route has no resampling method; see **Joint
-#' exposures**.
+#' link, and a [MASS::rlm()] fit with one of the psi functions MASS supplies are
+#' stacked, and the dose component's weights may be any density ratio [wt_ate()]
+#' builds. A dose model or a density the stacked system cannot differentiate is
+#' refused rather than resampled, since this route has no resampling method; see
+#' **Joint exposures**.
+#'
+#' Every score this route stacks is unweighted, so a treatment model fit with
+#' prior case weights is refused by the name it was recorded under in
+#' [joint_wt_models()].
 #'
 #' This is the second of the two routes to a joint intervention. The other
 #' declares the crossing with [causalgenerics::joint_exposure()] and weights it
@@ -222,6 +226,16 @@ ipw_spec_joint_models <- function(
       call = call
     )
     check_ipw_continuous_model(dose_model, call = call)
+  }
+
+  # Every score this route stacks is the unweighted one, so a component fit
+  # under prior case weights is not at the root of the equation written for it
+  # and the solve, seeded at its coefficients, would report a treatment model
+  # nobody fit. The single-treatment routes refuse such a fit by name, and this
+  # one refuses each component in turn, naming the component rather than the
+  # container the models arrived in.
+  for (i in seq_along(fits)) {
+    check_ipw_joint_model_weights(fits[[i]], names[[i]], call = call)
   }
 
   # Every cell of the crossing is set at once, so an outcome model reading one
@@ -408,7 +422,8 @@ ipw_spec_joint_models <- function(
       # the preflight both rebuild that block out of rather than reaching back
       # for the model itself.
       kind = dose_model$kind,
-      huber_k = dose_model$huber_k,
+      psi_loss = dose_model$psi_loss,
+      psi_k = dose_model$psi_k,
       penalty = dose_model$penalty,
       k = 2L
     ),
@@ -485,6 +500,35 @@ check_ipw_joint_models_types <- function(
       or report the two treatments separately."
     ),
     error_class = "propensity_ipw_exposure_error",
+    call = call
+  )
+}
+
+# One component's prior case weights, refused for the same reason the
+# single-treatment routes refuse them: the block written for the component is
+# its unweighted score, so a fit made under weights is not at that block's root.
+# The refusal names the component, since `wt_mod` here is the container the two
+# models arrived in and a reader told to refit it would be told to refit the
+# wrong thing.
+check_ipw_joint_model_weights <- function(
+  fit,
+  label,
+  call = rlang::caller_env()
+) {
+  weights <- ipw_model_prior_weights(fit)
+
+  if (is.null(weights) || all(weights == 1)) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} does not support a treatment model fit with case weights.",
+      x = "{.arg {label}} was fit with non-unit {.arg weights}, so its \\
+      coefficients are not the root of the unweighted score stacked for it.",
+      i = "Refit {.arg {label}} without {.arg weights}."
+    ),
+    error_class = "propensity_ipw_ps_weights_error",
     call = call
   )
 }
@@ -1112,14 +1156,15 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
 # The mean and the score the dose model contributes, read off the spec's record
 # of its registry entry rather than off the model itself, so the psi that
 # rebuilds the block at every evaluation and the preflight that rebuilds it once
-# write the same equation from the same four values.
+# write the same equation from the same five values.
 ipw_joint_models_dose_fns <- function(spec) {
   dose <- ipw_joint_models_dose(spec)
 
   ipw_continuous_score_fns(
     spec$ps$kind,
     spec$ps$link[[dose]],
-    spec$ps$huber_k,
+    spec$ps$psi_loss,
+    spec$ps$psi_k,
     spec$ps$penalty
   )
 }

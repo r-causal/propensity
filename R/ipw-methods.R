@@ -104,13 +104,14 @@ ipw.multinom <- function(
 #' The `lm` method estimates the causal dose-response effect for a continuous
 #' exposure from a fitted [stats::lm()] (or gaussian-family [stats::glm()])
 #' propensity score model of the exposure and a weighted marginal structural
-#' outcome model. A [MASS::rlm()] fit with the Huber psi and an [mgcv::gam()]
-#' of a gaussian family reach this method by inheritance and are stacked at
-#' their own scores, the additive fit with its smoothing parameters held at the
-#' values it reports. A gaussian model is read through its link, which may be
-#' identity or log; the other gaussian links, and every class the stacked system
-#' has no score for, are refused, as are weights built with a `"kernel"`
-#' density, which have no closed-form standard error. See **Continuous
+#' outcome model. A [MASS::rlm()] fit with one of the psi functions MASS
+#' supplies and an [mgcv::gam()] of a gaussian family reach this method by
+#' inheritance and are stacked at their own scores, the additive fit with its
+#' smoothing parameters held at the values it reports. A gaussian model is read
+#' through its link, which may be identity or log; the other gaussian links, and
+#' every class the stacked system has no score for, are refused, as are weights
+#' built with a `"kernel"` density, which have no closed-form standard error.
+#' See **Continuous
 #' propensity score models** in [ipw()] for what each refusal says, what to do
 #' about it, and what the additive route conditions on. The only supported
 #' estimand is `"ate"`.

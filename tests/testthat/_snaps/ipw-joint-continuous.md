@@ -38,9 +38,9 @@
       expr
     Condition <propensity_ipw_robust_psi_error>
       Error in `ipw()`:
-      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
-      x `e` was fit with `MASS::psi.bisquare()`.
-      i Refit `e` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
+      x `e` was fit with a psi function this path cannot recognize.
+      i Refit `e` with `MASS::psi.huber()`, `MASS::psi.bisquare()`, or `MASS::psi.hampel()`, whose constants `ipw()` reads off the fit.
       i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
 
 # the weights mismatch names the ratio the dose records
@@ -163,4 +163,14 @@
       ! `ipw()` does not support a joint exposure whose dose was stabilized on a fitted model.
       x The dose component's weights record a numerator estimated by a model, which this route has no stabilization block to estimate it in.
       i Rebuild the dose's weights with `stabilize = TRUE`, or report the dose on its own, where the numerator model is estimated alongside the rest of the system.
+
+# the joint dose weights refusal comes before the estimates do
+
+    Code
+      expr
+    Condition <propensity_ipw_ps_weights_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support a treatment model fit with case weights.
+      x `e` was fit with non-unit `weights`, so its coefficients are not the root of the unweighted score stacked for it.
+      i Refit `e` without `weights`.
 

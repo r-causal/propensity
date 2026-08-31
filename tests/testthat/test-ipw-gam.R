@@ -410,15 +410,16 @@ test_that("the registry refuses an additive fit of another family", {
     class = "propensity_model_family_error"
   )
 
-  # The same fit handed to `ipw()` never reaches the additive stack either. A
-  # model of another family is read as a model of a binary exposure there, one
-  # step before the continuous registry, so what refuses it is that path's own
-  # envelope rather than this one's.
+  # The same fit handed to `ipw()` never reaches the additive stack either. The
+  # exposure a model implies is read off its family one step before either
+  # registry, and a family that is neither of the two is refused there on the
+  # family it has rather than on the links of the route it would otherwise have
+  # reached.
   mods <- fit_gam_models(dat, ps_mod, exposure = "counts")
 
   expect_error(
     ipw(mods$ps_mod, mods$outcome_mod),
-    class = "propensity_ipw_link_error"
+    class = "propensity_model_family_error"
   )
 })
 

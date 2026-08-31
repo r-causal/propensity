@@ -247,7 +247,10 @@ ipw_continuous_gam_entry <- function(
 #
 # A fit that cannot be read at all, which is one keeping neither its design nor
 # its response, returns a gap of `NA` and is refused with the rest: a score that
-# cannot be checked is not one to stack on.
+# cannot be checked is not one to stack on. That branch is defensive rather than
+# reachable from any fitting call known here: mgcv keeps the model frame even
+# under `model = FALSE`, so `model.matrix()` and the response are there for
+# every fit this route sees.
 ipw_gam_score_gap <- function(fit, link, penalty) {
   alpha <- stats::coef(fit)
 
@@ -340,18 +343,32 @@ ipw_gam_penalty <- function(fit, smoothing) {
   penalty
 }
 
-# The entry a robust fit gets, which is the one place a class carries a constant
+# The entry a robust fit gets, which is the one place a class carries constants
 # of its own into the stacked system. `MASS::rlm()` minimizes a loss rather than
 # the sum of squares, so its coefficients are the root of the psi score read at
-# the scale the fit settled on, and that score is stacked here as deli's Huber
-# robust regression.
+# the scale the fit settled on, and that score is stacked here as the deli
+# robust regression loss the psi corresponds to.
 #
-# The two clip the same residual on different scales: `rlm` clips the residual
-# divided by its scale estimate at the psi's own constant, and deli clips the
-# raw residual at `k`, so the equations agree when `k` is the product of the
-# two. The constant is read out of the psi's formals rather than out of `k2`,
-# because that is where `rlm` writes a caller's `k`; `k2` tunes the scale
-# estimator instead and is unchanged when the psi's threshold moves.
+# Each of the three psi functions MASS supplies has such a loss: `psi.huber` is
+# deli's `"huber"`, `psi.bisquare` is its `"tukey"`, and `psi.hampel` is its
+# `"hampel"`. The two clip the same residual on different scales: `rlm` clips
+# the residual divided by its scale estimate at the psi's own constants, and
+# deli clips the raw residual at `k`, so the equations agree when each constant
+# is multiplied by the scale the fit settled on. How many constants there are
+# differs by psi, one for Huber and for the bisquare and three for Hampel, so
+# what the entry carries is a vector rather than a number.
+#
+# The constants are read out of the psi's formals rather than out of `k2`,
+# because that is where `rlm` writes a caller's choice; `k2` tunes the scale
+# estimator instead and is unchanged when the psi's thresholds move. Which
+# formals hold them differs by psi as well: `k` for Huber, `c` for the bisquare,
+# and `a`, `b`, and `c` for Hampel.
+#
+# The bisquare and Hampel psi functions redescend, so the equation stacked for
+# them has more than one root and the solve reports whichever one it is seeded
+# at. The seed is the fit's own coefficients, so what the sandwich describes is
+# the covariance of that root, read locally, and it carries no claim about the
+# others.
 #
 # The scale itself enters as a known constant, and the system carries none of
 # its uncertainty. That is a choice rather than an oversight: the MAD scale
@@ -365,20 +382,28 @@ ipw_continuous_rlm_entry <- function(
   role = "propensity score model"
 ) {
   psi_name <- ipw_rlm_psi_name(ps_mod)
-  huber <- identical(psi_name, "MASS::psi.huber")
   mm <- identical(ipw_rlm_method(ps_mod), "MM")
 
-  if (mm || !huber) {
+  if (mm || is.null(psi_name)) {
     found <- if (mm && !is.null(psi_name)) {
       "{.arg {entry$label}} was fit with {.code method = \"MM\"}, which starts from a
-       high-breakdown fit and finishes on {.fun {entry$psi}}."
+       high-breakdown fit and finishes on {.fun {entry$psi}}, so its coefficients
+       are the root that start led to rather than the one a solve seeded at them
+       would report."
     } else if (mm) {
       "{.arg {entry$label}} was fit with {.code method = \"MM\"}, which starts from a
-       high-breakdown fit and finishes on a redescending psi."
-    } else if (is.null(psi_name)) {
-      "{.arg {entry$label}} was fit with a psi function this path cannot recognize."
+       high-breakdown fit rather than from the psi score alone."
     } else {
-      "{.arg {entry$label}} was fit with {.fun {entry$psi}}."
+      "{.arg {entry$label}} was fit with a psi function this path cannot recognize."
+    }
+
+    remedy <- if (mm) {
+      "Refit {.arg {entry$label}} with the default {.code method = \"M\"}, whose
+       psi score {.fun ipw} writes."
+    } else {
+      "Refit {.arg {entry$label}} with {.fun MASS::psi.huber},
+       {.fun MASS::psi.bisquare}, or {.fun MASS::psi.hampel}, whose constants
+       {.fun ipw} reads off the fit."
     }
 
     return(ipw_continuous_entry(
@@ -391,11 +416,10 @@ ipw_continuous_rlm_entry <- function(
       role = role,
       error_class = "propensity_ipw_robust_psi_error",
       reason = c(
-        "{.fun ipw} stacks only the Huber score of a {.cls {entry$classes}} \\
-        {entry$role} of a continuous exposure.",
+        "{.fun ipw} cannot write the equation this {.cls {entry$classes}} \\
+        {entry$role} of a continuous exposure is the root of.",
         x = found,
-        i = "Refit {.arg {entry$label}} with {.fun MASS::psi.huber}, the default, \\
-        whose threshold {.fun ipw} reads off the fit.",
+        i = remedy,
         i = hint
       )
     ))
@@ -431,8 +455,36 @@ ipw_continuous_rlm_entry <- function(
     link = "identity",
     stackable = TRUE,
     psi = psi_name,
-    huber_k = as.numeric(formals(ps_mod$psi)$k) * ps_mod$s
+    psi_loss = ipw_rlm_psi_losses[[psi_name]],
+    psi_k = ipw_rlm_psi_constants(ps_mod, psi_name)
   )
+}
+
+# Which deli robust regression loss each of MASS's psi functions is, keyed on
+# the name `ipw_rlm_psi_name()` reports. A psi with no entry here is one whose
+# score this path does not write.
+ipw_rlm_psi_losses <- c(
+  "MASS::psi.huber" = "huber",
+  "MASS::psi.bisquare" = "tukey",
+  "MASS::psi.hampel" = "hampel"
+)
+
+# The constants a robust fit clips the raw residual at, which is what deli's
+# loss takes: the constants the psi clips the standardized residual at, each
+# multiplied by the scale the fit settled on. Which formals hold them is the
+# psi's own naming, and `rlm` records a caller's choice by rewriting exactly
+# those formals, so the fit's psi is where they are read from.
+ipw_rlm_psi_constants <- function(ps_mod, psi_name) {
+  psi_formals <- formals(ps_mod$psi)
+
+  constants <- switch(
+    psi_name,
+    "MASS::psi.huber" = psi_formals$k,
+    "MASS::psi.bisquare" = psi_formals$c,
+    "MASS::psi.hampel" = c(psi_formals$a, psi_formals$b, psi_formals$c)
+  )
+
+  as.numeric(constants) * ps_mod$s
 }
 
 # The method a robust fit was made by, which `rlm` records only in its call. A
@@ -495,12 +547,13 @@ ipw_rlm_psi_name <- function(ps_mod) {
 # carries another link or another kind. A model that cannot be stacked carries
 # neither, so a caller reaching for one has already had to pass the refusal.
 #
-# `psi` and `huber_k` are the two things a robust fit carries that no other
-# entry has: the name of the psi it was fit with, which its refusal reads, and
-# the threshold its score clips the raw residual at, which the spec carries so
-# that the psi builder writes the same equation the registry did. `penalty` is
-# the one an additive fit carries, and is read the same way: the fixed matrix
-# its score subtracts, held in the spec rather than recomputed from the model.
+# `psi`, `psi_loss`, and `psi_k` are the three things a robust fit carries that
+# no other entry has: the name of the psi it was fit with, which its refusal
+# reads, the deli loss that psi's score is written as, and the constants that
+# loss clips the raw residual at. The spec carries the last two so that the psi
+# builder writes the same equation the registry did. `penalty` is the one an
+# additive fit carries, and is read the same way: the fixed matrix its score
+# subtracts, held in the spec rather than recomputed from the model.
 ipw_continuous_entry <- function(
   kind,
   link,
@@ -509,7 +562,8 @@ ipw_continuous_entry <- function(
   error_class = NULL,
   reason = NULL,
   psi = NULL,
-  huber_k = NULL,
+  psi_loss = NULL,
+  psi_k = NULL,
   penalty = NULL,
   label = "wt_mod",
   role = "propensity score model"
@@ -524,7 +578,8 @@ ipw_continuous_entry <- function(
     error_class = error_class,
     reason = reason,
     psi = psi,
-    huber_k = huber_k,
+    psi_loss = psi_loss,
+    psi_k = psi_k,
     penalty = penalty,
     mean = NULL,
     score = NULL
@@ -536,7 +591,7 @@ ipw_continuous_entry <- function(
 
   utils::modifyList(
     entry,
-    ipw_continuous_score_fns(kind, link, huber_k, penalty)
+    ipw_continuous_score_fns(kind, link, psi_loss, psi_k, penalty)
   )
 }
 
@@ -544,12 +599,15 @@ ipw_continuous_entry <- function(
 # the registry entry's kind as well as its link. Every least squares fit is read
 # through its link alone, and a robust fit is the one kind whose score is a
 # different equation at the same identity link, so the kind is what separates
-# them. A penalty is the one thing that changes a least squares score without
-# changing its link, so it is carried beside them rather than keyed on.
+# them. Which equation that is depends on the psi the fit descended, so the
+# loss and its constants travel with the kind. A penalty is the one thing that
+# changes a least squares score without changing its link, so it is carried
+# beside them rather than keyed on.
 ipw_continuous_score_fns <- function(
   kind,
   link,
-  huber_k = NULL,
+  psi_loss = NULL,
+  psi_k = NULL,
   penalty = NULL
 ) {
   if (identical(kind, "rlm")) {
@@ -561,8 +619,8 @@ ipw_continuous_score_fns <- function(
           X = X,
           y = y,
           model = "linear",
-          k = huber_k,
-          loss = "huber"
+          k = psi_k,
+          loss = psi_loss
         )
       }
     ))
@@ -595,13 +653,14 @@ ipw_penalized_score_fns <- function(fns, penalty) {
 
 # The same pair read off a spec, which is what the psi builder and the preflight
 # that has to agree with it both hold. The spec records the kind, the link, the
-# robust threshold, and the penalty rather than the model they came from, so the
-# two rebuild the propensity score block from the same four values.
+# robust loss and its constants, and the penalty rather than the model they came
+# from, so the two rebuild the propensity score block from the same five values.
 ipw_continuous_spec_fns <- function(spec) {
   ipw_continuous_score_fns(
     spec$ps$kind,
     spec$ps$link,
-    spec$ps$huber_k,
+    spec$ps$psi_loss,
+    spec$ps$psi_k,
     spec$ps$penalty
   )
 }
@@ -804,7 +863,8 @@ ipw_numerator_model_block <- function(
     X = stats::model.matrix(numerator_model),
     kind = entry$kind,
     link = entry$link,
-    huber_k = entry$huber_k,
+    psi_loss = entry$psi_loss,
+    psi_k = entry$psi_k,
     penalty = entry$penalty,
     coefs = stats::coef(numerator_model)
   )
@@ -816,7 +876,8 @@ ipw_numerator_model_fns <- function(model) {
   ipw_continuous_score_fns(
     model$kind,
     model$link,
-    model$huber_k,
+    model$psi_loss,
+    model$psi_k,
     model$penalty
   )
 }

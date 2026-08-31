@@ -1716,13 +1716,9 @@ ipw_spec_continuous <- function(
   # A propensity model fit with prior case weights would need a weighted score in
   # the stacked system; the ee_regression ps block is unweighted, so the fitted
   # coefficients would not sit at the score root and the estimates would drift.
-  # A glm records prior weights in prior.weights (all one when unweighted); an lm
-  # records them in weights (NULL when unweighted).
-  ps_weights <- if (inherits(ps_mod, "glm")) {
-    ps_mod$prior.weights
-  } else {
-    ps_mod$weights
-  }
+  # Which field holds them is the class's own business, which the shared reader
+  # settles.
+  ps_weights <- ipw_model_prior_weights(ps_mod)
   if (!is.null(ps_weights) && !all(ps_weights == 1)) {
     abort(
       c(
@@ -1860,7 +1856,8 @@ ipw_spec_continuous <- function(
       X = ps_X,
       kind = ps_model$kind,
       link = ps_model$link,
-      huber_k = ps_model$huber_k,
+      psi_loss = ps_model$psi_loss,
+      psi_k = ps_model$psi_k,
       penalty = ps_model$penalty,
       coefs = stats::coef(ps_mod),
       k = NULL

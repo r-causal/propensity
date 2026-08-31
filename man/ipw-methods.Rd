@@ -297,11 +297,15 @@ The second treatment may be a dose, in which case the surface is the marginal
 structural model's own coefficients rather than the cells of a crossing. The
 dose model is read through the same registry the single-treatment route
 reads, so an \code{\link[stats:lm]{stats::lm()}}, a gaussian \code{\link[stats:glm]{stats::glm()}} at an identity or a log
-link, and a \code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi are stacked, and the dose
-component's weights may be any density ratio \code{\link[=wt_ate]{wt_ate()}} builds. A dose model
-or a density the stacked system cannot differentiate is refused rather than
-resampled, since this route has no resampling method; see \strong{Joint
-exposures}.
+link, and a \code{\link[MASS:rlm]{MASS::rlm()}} fit with one of the psi functions MASS supplies are
+stacked, and the dose component's weights may be any density ratio \code{\link[=wt_ate]{wt_ate()}}
+builds. A dose model or a density the stacked system cannot differentiate is
+refused rather than resampled, since this route has no resampling method; see
+\strong{Joint exposures}.
+
+Every score this route stacks is unweighted, so a treatment model fit with
+prior case weights is refused by the name it was recorded under in
+\code{\link[=joint_wt_models]{joint_wt_models()}}.
 
 This is the second of the two routes to a joint intervention. The other
 declares the crossing with \code{\link[causalgenerics:joint_exposure]{causalgenerics::joint_exposure()}} and weights it
@@ -345,13 +349,14 @@ matrix as counts; refit it with the exposure factor on the left-hand side.
 The \code{lm} method estimates the causal dose-response effect for a continuous
 exposure from a fitted \code{\link[stats:lm]{stats::lm()}} (or gaussian-family \code{\link[stats:glm]{stats::glm()}})
 propensity score model of the exposure and a weighted marginal structural
-outcome model. A \code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi and an \code{\link[mgcv:gam]{mgcv::gam()}}
-of a gaussian family reach this method by inheritance and are stacked at
-their own scores, the additive fit with its smoothing parameters held at the
-values it reports. A gaussian model is read through its link, which may be
-identity or log; the other gaussian links, and every class the stacked system
-has no score for, are refused, as are weights built with a \code{"kernel"}
-density, which have no closed-form standard error. See \strong{Continuous
+outcome model. A \code{\link[MASS:rlm]{MASS::rlm()}} fit with one of the psi functions MASS
+supplies and an \code{\link[mgcv:gam]{mgcv::gam()}} of a gaussian family reach this method by
+inheritance and are stacked at their own scores, the additive fit with its
+smoothing parameters held at the values it reports. A gaussian model is read
+through its link, which may be identity or log; the other gaussian links, and
+every class the stacked system has no score for, are refused, as are weights
+built with a \code{"kernel"} density, which have no closed-form standard error.
+See \strong{Continuous
 propensity score models} in \code{\link[=ipw]{ipw()}} for what each refusal says, what to do
 about it, and what the additive route conditions on. The only supported
 estimand is \code{"ate"}.
@@ -413,9 +418,9 @@ difference in means. A continuous exposure is supplied through an
 \code{\link[stats:lm]{stats::lm()}} or gaussian \code{\link[stats:glm]{stats::glm()}} propensity score model with a
 weighted marginal structural outcome model whose link is identity, logit, or
 log, and \code{ipw()} reports the single exposure coefficient of that model. A
-\code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi and an \code{\link[mgcv:gam]{mgcv::gam()}} fit of a gaussian
-family are read as the equations their own coefficients solve; every other
-subclass errors.
+\code{\link[MASS:rlm]{MASS::rlm()}} fit with one of the psi functions MASS supplies and an
+\code{\link[mgcv:gam]{mgcv::gam()}} fit of a gaussian family are read as the equations their own
+coefficients solve; every other subclass errors.
 }
 \section{Workflow}{
 \code{ipw()} is designed around a three-step workflow:
@@ -844,12 +849,19 @@ The dose model goes through the registry described under \strong{Continuous
 propensity score models}, so the classes and links this route stacks are the
 ones the single-treatment route stacks: an \code{\link[stats:lm]{stats::lm()}}, a gaussian
 \code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, a \code{\link[MASS:rlm]{MASS::rlm()}} fit with
-the Huber psi, and an \code{\link[mgcv:gam]{mgcv::gam()}} of a gaussian family read at its own
-penalized score. A gaussian dose model fit with another link errors with
-class \code{propensity_ipw_link_error}, and a robust or an additive fit whose
-score the system cannot write raises the same conditions it raises for a
-single dose. The limitations of the additive route are the ones listed under
-\strong{Continuous propensity score models}, and they apply here unchanged.
+one of the psi functions MASS supplies, and an \code{\link[mgcv:gam]{mgcv::gam()}} of a gaussian
+family read at its own penalized score. A gaussian dose model fit with
+another link errors with class \code{propensity_ipw_link_error}, and a robust or
+an additive fit whose score the system cannot write raises the same
+conditions it raises for a single dose. The limitations of the additive route
+are the ones listed under \strong{Continuous propensity score models}, and they
+apply here unchanged.
+
+Every score this route stacks is the unweighted one, so a component model fit
+with prior case weights is not at the root of the block written for it and
+errors with class \code{propensity_ipw_ps_weights_error}, naming the component
+rather than the container the two models arrived in. Refit that component
+without \code{weights}.
 
 The dose component's weights may be any ratio \code{\link[=wt_ate]{wt_ate()}} builds: a
 heavier-tailed \code{.density}, \code{numerator = "integrated"}, or a single \code{.sigma}
@@ -905,6 +917,19 @@ central finite difference straddles the kink there and averages the one-sided
 slopes. Its effect on the variance is negligible unless many observations sit
 at exactly \code{0.5}.
 
+A binary exposure's propensity score model is read as an unpenalized logistic
+fit, whatever the standard error method: the stacked system solves that
+score, and both the linearization and the robust diagnostic differentiate it.
+An \code{\link[mgcv:gam]{mgcv::gam()}} fit of a binomial family is not at the root of that score
+but of a penalized one, so it is refused with class
+\code{propensity_ipw_se_method_unavailable_error} rather than described by a
+standard error for a model that was not fit. What is refused is the standard
+error and not the weights: \code{\link[=wt_ate]{wt_ate()}} reads the same fit and builds them from
+its fitted probabilities. Write the shape each smooth term carries out as
+columns of a \code{\link[stats:glm]{stats::glm()}} formula, or bootstrap the whole fit by hand. An
+additive dose model is stacked at its penalized score instead, as described
+under \strong{Continuous propensity score models}.
+
 M-estimation standard errors for a categorical exposure allocate memory
 roughly linearly in the number of observations, on the order of 70 to 90
 kilobytes per observation for a single fit, so a sample of 10,000
@@ -918,24 +943,43 @@ A continuous exposure's weights are a ratio of densities centered on the
 conditional mean the propensity score model fits, so the stacked system
 carries that model's own score. Four classes supply one: an \code{\link[stats:lm]{stats::lm()}},
 a gaussian \code{\link[stats:glm]{stats::glm()}} fit with an identity or a log link, a
-\code{\link[MASS:rlm]{MASS::rlm()}} fit with the Huber psi, and a gaussian \code{\link[mgcv:gam]{mgcv::gam()}} fit with
-one of the same two links. A gaussian model fit with any other
-link is refused by name, because the coefficients its iteration stops at are
-not a tight enough root to seed the stacked solve from; refit it with one of
-the two links or as an \code{\link[stats:lm]{stats::lm()}}. Any other class errors, since solving
+\code{\link[MASS:rlm]{MASS::rlm()}} fit with one of the psi functions MASS supplies, and a
+gaussian \code{\link[mgcv:gam]{mgcv::gam()}} fit with one of the same two links. A model fit with a
+family that is neither gaussian nor binomial is neither a dose model nor a
+binary propensity score model, and errors with class
+\code{propensity_model_family_error} naming the family it has. A gaussian model
+fit with any other link is refused by name, because the coefficients its
+iteration stops at are not a tight enough root to seed the stacked solve
+from; refit it with one of the two links or as an \code{\link[stats:lm]{stats::lm()}}. Any other
+class errors, since solving
 it here would report a propensity score model that was never fit. Each class
 is read as the class it is rather than by what it inherits from, so a
 subclass of a supported fit errors as well.
 
-A \code{\link[MASS:rlm]{MASS::rlm()}} is stacked as the Huber score its coefficients are the root
-of, clipped where the fit itself clipped: at the psi's own constant, which is
-the constant a caller passed as \code{k} when they passed one, times the scale the
-fit settled on. That scale enters the location score as a known constant. It
-solves an equation of its own that the stacked system does not write, so none
-of its sampling variability is propagated, and the standard errors are those
-of a Huber score read at a scale treated as fixed. The spread of the
-conditional density is a separate quantity, and is the pooled residual
-spread there as it is for every other class.
+A \code{\link[MASS:rlm]{MASS::rlm()}} is stacked as the psi score its coefficients are the root of,
+clipped where the fit itself clipped. Each of the three psi functions MASS
+supplies has a loss of its own in the stacked system: \code{\link[MASS:psi.huber]{MASS::psi.huber()}},
+\code{\link[MASS:psi.bisquare]{MASS::psi.bisquare()}}, and \code{\link[MASS:psi.hampel]{MASS::psi.hampel()}}. \code{rlm()} clips the residual
+divided by its scale estimate at the psi's own constants, and the stacked
+score clips the raw residual, so each constant is multiplied by the scale the
+fit settled on. Those constants are read off the psi the fit carries, which
+is where \code{rlm()} records a caller's choice of them, so a retuned psi is
+stacked at the values it was retuned to. That scale enters the location score
+as a known constant. It solves an equation of its own that the stacked system
+does not write, so none of its sampling variability is propagated, and the
+standard errors are those of a psi score read at a scale treated as fixed.
+The spread of the conditional density is a separate quantity, and is the
+pooled residual spread there as it is for every other class.
+
+\code{\link[MASS:psi.bisquare]{MASS::psi.bisquare()}} and \code{\link[MASS:psi.hampel]{MASS::psi.hampel()}} redescend, and that is worth
+knowing about the standard errors they get. A redescending psi's estimating
+equation has more than one root, so there is no single set of coefficients it
+identifies and the solve reports whichever root it is seeded at. The seed
+here is the fit's own coefficients, so what comes back is the root the user
+has, and the sandwich is the covariance of that root read locally. It carries
+no claim about the other roots, and it does not describe the sampling
+behavior of a procedure that might have converged to one of them instead. Use
+a bootstrap of the whole fit if that behavior is what you need.
 
 Weights built with \code{.sigma = fit$s}, the robust scale, are read as the fixed
 spread they are, but that combination is usually a poor choice: the robust
@@ -945,15 +989,16 @@ are, and the ratio can collapse onto an effective sample size of about one.
 Leave \code{.sigma} unset unless you have a reason to hold the spread at a
 particular value.
 
-Three robust fits are refused. One fit with a psi that is not Huber, and one
-fit with \code{method = "MM"}, which starts from a high-breakdown fit and finishes
-on a redescending psi, are the roots of equations the stacked system does not
-write; both error with class \code{propensity_ipw_robust_psi_error}. One whose
-iteration stopped short of its own tolerance is the root of nothing, and
-errors with class \code{propensity_ipw_convergence_error}. The first two point to
-a Huber refit or to a bootstrap of the whole fit written by hand; the last
-points to a larger \code{maxit} or a looser \code{acc}, which is what a fit needs to
-reach its own tolerance.
+Three robust fits are refused. One fit with a psi function of the caller's
+own has no loss here to write its score as, and one fit with
+\code{method = "MM"} is at the root a high-breakdown start led to rather than at
+the one a solve seeded at its coefficients would report; both error with
+class \code{propensity_ipw_robust_psi_error}. One whose iteration stopped short of
+its own tolerance is the root of nothing, and errors with class
+\code{propensity_ipw_convergence_error}. The first points to a refit with one of
+the three psi functions or to a bootstrap of the whole fit written by hand,
+the second to the default \code{method = "M"}, and the last to a larger \code{maxit} or
+a looser \code{acc}, which is what a fit needs to reach its own tolerance.
 
 An \code{\link[mgcv:gam]{mgcv::gam()}} is stacked as the penalized least squares it is, with its
 smoothing parameters held at the values the fit reports. Its design is the

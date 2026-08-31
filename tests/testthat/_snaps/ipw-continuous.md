@@ -64,9 +64,9 @@
       expr
     Condition <propensity_ipw_robust_psi_error>
       Error in `ipw()`:
-      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
-      x `wt_mod` was fit with `MASS::psi.bisquare()`.
-      i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
+      x `wt_mod` was fit with a psi function this path cannot recognize.
+      i Refit `wt_mod` with `MASS::psi.huber()`, `MASS::psi.bisquare()`, or `MASS::psi.hampel()`, whose constants `ipw()` reads off the fit.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # the MM refusal names the method and the psi it finishes on
@@ -75,9 +75,9 @@
       expr
     Condition <propensity_ipw_robust_psi_error>
       Error in `ipw()`:
-      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
-      x `wt_mod` was fit with `method = "MM"`, which starts from a high-breakdown fit and finishes on `MASS::psi.bisquare()`.
-      i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
+      x `wt_mod` was fit with `method = "MM"`, which starts from a high-breakdown fit and finishes on `MASS::psi.bisquare()`, so its coefficients are the root that start led to rather than the one a solve seeded at them would report.
+      i Refit `wt_mod` with the default `method = "M"`, whose psi score `ipw()` writes.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # the robust convergence refusal names the arguments that fix it
@@ -137,9 +137,9 @@
       expr
     Condition <propensity_ipw_robust_psi_error>
       Error in `ipw()`:
-      ! `ipw()` stacks only the Huber score of a <rlm/lm> numerator model of a continuous exposure.
-      x `stabilize` was fit with `MASS::psi.bisquare()`.
-      i Refit `stabilize` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      ! `ipw()` cannot write the equation this <rlm/lm> numerator model of a continuous exposure is the root of.
+      x `stabilize` was fit with a psi function this path cannot recognize.
+      i Refit `stabilize` with `MASS::psi.huber()`, `MASS::psi.bisquare()`, or `MASS::psi.hampel()`, whose constants `ipw()` reads off the fit.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # ipw() refuses a numerator model of another response

@@ -1,5 +1,48 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ipw()` now stacks a `MASS::rlm()` propensity score model fit with
+  `MASS::psi.bisquare()` or `MASS::psi.hampel()`, where only the default
+  `MASS::psi.huber()` used to be written. Each psi has a loss of its own in the
+  stacked system, and the constants it clips at are read off the psi the fit
+  carries, which is where `rlm()` records a caller's choice of them, so a
+  retuned psi is stacked at the values it was retuned to. Both of the new psi
+  functions redescend, which is worth knowing about the standard errors they
+  get: a redescending psi's estimating equation has more than one root, so the
+  solve reports whichever root it is seeded at, the seed is the fit's own
+  coefficients, and the sandwich is the covariance of that root read locally
+  rather than a statement about the others. A fit made with `method = "MM"` is
+  still refused, since its coefficients are the root a high-breakdown start led
+  to rather than the one a solve seeded at them would report, and a fit made
+  with a psi function of the caller's own is still refused for having no loss
+  here to write its score as.
+
+* `ipw()` now refuses an `mgcv::gam()` propensity score model of a binary
+  exposure, where such a fit used to return a full table of estimates. The
+  binary route reads a propensity score model as an unpenalized logistic fit
+  under every standard error method, and an additive fit's coefficients are the
+  root of the penalized score instead, so what it reported was a standard error
+  for a model nobody fit. The refusal carries the class
+  `propensity_ipw_se_method_unavailable_error` and names the limitation. What is
+  refused is the standard error and not the weights: `wt_ate()` reads the same
+  fit and builds them from its fitted probabilities. An additive dose model is
+  unaffected, being stacked at its own penalized score.
+
+* `ipw()` now refuses a propensity score model whose family is neither gaussian
+  nor binomial on the family it has, with the class
+  `propensity_model_family_error`. Such a fit used to be read as a model of a
+  binary exposure and refused for its link, which named a set of links the fit
+  could not be refit into and offered a remedy for a model the caller did not
+  fit. A count dose model fit with `poisson()` is the case that reaches this
+  most naturally. A binomial model keeps the link refusal it had, since it is a
+  binary propensity score model whatever its link.
+
+* `ipw()` now refuses a `joint_wt_models()` component fit with prior case
+  weights, with the class `propensity_ipw_ps_weights_error`, naming the
+  component rather than the container the two models arrived in. Every score
+  that route stacks is unweighted, so such a component sat away from the root of
+  the block written for it and the solve walked off the fit silently. The
+  single-treatment routes already refused the same fit.
+
 * `ipw()` now builds a sandwich variance for an `mgcv::gam()` propensity score
   model of a continuous exposure, where such a fit used to be refused. It is
   read on the single-treatment route, on the joint treatment route, and in a
