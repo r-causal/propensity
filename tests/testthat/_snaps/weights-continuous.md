@@ -206,16 +206,6 @@
       expr
     Condition <propensity_numerator_error>
       Error in `wt_ate()`:
-      ! A model supplied to `stabilize` applies only to continuous exposures.
-      x `.exposure` is being treated as binary.
-      i A fitted model stabilizes the weights on the conditional density it estimates. A binary exposure has a probability rather than a density, so stabilize one with `stabilize = TRUE`, which reads the marginal probability of the exposure, or with a `stabilization_score` of your own.
-
----
-
-    Code
-      expr
-    Condition <propensity_numerator_error>
-      Error in `wt_ate()`:
       ! A model supplied to `stabilize` cannot be used with `stabilization_score`.
       x A score you supply is itself the numerator of the weights, and the model estimates a second one.
       i Drop `stabilization_score` to stabilize on the density the model estimates, or set `stabilize = TRUE` to keep the numerator you wrote.

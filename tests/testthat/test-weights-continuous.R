@@ -2868,26 +2868,31 @@ test_that("the numerator model leaves the other stabilizations alone", {
   expect_false(is_stabilized(unstabilized))
 })
 
-test_that("a numerator model refuses a binary or a categorical exposure", {
+test_that("a numerator model of a dose refuses a binary or a categorical exposure", {
   set.seed(4218)
   ps <- runif(20, 0.2, 0.8)
   trt <- rbinom(20, 1, ps)
   dose <- rnorm(20)
   fit <- lm(dose ~ ps)
 
-  # Stabilizing on a fitted numerator is a statement about a ratio of
-  # densities, which is what a continuous exposure's weights are and what a
-  # binary or categorical exposure's weights are not. The refusal is the one an
-  # integrated numerator gets for the same reason.
+  # Stabilizing on a fitted numerator is a statement about the exposure the
+  # model reads. A binary exposure takes one too, but its numerator is a
+  # probability rather than a density, so a least-squares fit of a dose names
+  # nothing a binary exposure's weights could divide by and is refused as the
+  # wrong family; see tests/testthat/test-weights-numerator-binary.R for the
+  # binomial fit that is the right one.
   expect_error(
     wt_ate(ps, trt, exposure_type = "binary", stabilize = fit),
-    class = "propensity_numerator_error"
+    class = "propensity_model_family_error"
   )
   expect_error(
     wt_ate(ps, trt, stabilize = fit),
-    class = "propensity_numerator_error"
+    class = "propensity_model_family_error"
   )
 
+  # A categorical exposure's weights are a ratio over more than two levels and
+  # take no fitted numerator at all, which is the refusal an integrated
+  # numerator gets for the same reason.
   exposure <- factor(rep(c("a", "b", "c"), each = 4))
   categorical_ps <- matrix(
     rep(c(0.5, 0.3, 0.2), times = 12),
@@ -2981,14 +2986,9 @@ test_that("the numerator model refusals read as the refusals they are", {
   exposure <- continuous_density_data$exposure
   fit <- continuous_numerator_model
 
-  expect_propensity_error(
-    wt_ate(
-      runif(20, 0.2, 0.8),
-      rbinom(20, 1, 0.5),
-      exposure_type = "binary",
-      stabilize = fit
-    )
-  )
+  # A model of a dose handed to a binary exposure is refused as the wrong
+  # family rather than as a model where none is taken, so its wording belongs
+  # with the binary route's own refusals.
 
   expect_propensity_error(
     wt_ate(

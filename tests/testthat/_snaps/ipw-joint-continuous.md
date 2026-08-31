@@ -154,16 +154,6 @@
       x The cell means and every contrast built from them are parameters of the stacked estimating equations, and the linearization path solves no such system.
       i Use `se_method = "mestimation"` for a joint treatment model.
 
-# the joint route refuses a dose stabilized on a numerator model
-
-    Code
-      expr
-    Condition <propensity_ipw_numerator_error>
-      Error in `ipw()`:
-      ! `ipw()` does not support a joint exposure whose dose was stabilized on a fitted model.
-      x The dose component's weights record a numerator estimated by a model, which this route has no stabilization block to estimate it in.
-      i Rebuild the dose's weights with `stabilize = TRUE`, or report the dose on its own, where the numerator model is estimated alongside the rest of the system.
-
 # the joint dose weights refusal comes before the estimates do
 
     Code

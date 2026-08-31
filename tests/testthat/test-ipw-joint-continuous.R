@@ -171,6 +171,7 @@ fit_joint_continuous <- function(
   outcome_family = "gaussian",
   dose_score = NULL,
   dose_stabilize = TRUE,
+  a_stabilize = NULL,
   dose_type = c("lm", "glm_log", "rlm", "gam"),
   .density = "normal",
   numerator = "marginal",
@@ -185,7 +186,10 @@ fit_joint_continuous <- function(
   ps_e <- fit_joint_dose(dose_type, e_rhs, dat)
 
   wts <- quiet_wt(wt_joint(
-    wt_ate(ps_a),
+    # `NULL` leaves a binary component unstabilized, which is the default a
+    # binary exposure resolves to, and a fitted model stabilizes it on the
+    # probability of the level each unit took.
+    wt_ate(ps_a, stabilize = a_stabilize),
     wt_ate(
       as.double(fitted(ps_e)),
       dat$e,
@@ -1661,16 +1665,101 @@ test_that("ipw() refuses linearization on a joint continuous fit", {
   )
 })
 
-test_that("the joint route refuses a dose stabilized on a numerator model", {
+test_that("the joint route stacks a dose stabilized on a numerator model", {
   # The single-dose route estimates a numerator model in its own stabilization
-  # block. This route has no such block, and standing the dose's marginal
-  # moments in for one would rebuild a different set of weights, so the fit is
-  # refused rather than answered with weights the caller did not build.
+  # block. This route estimates each component's numerator in a block of its
+  # own, so a dose whose weights record a fitted numerator is answered with the
+  # weights the caller built rather than refused for want of somewhere to put
+  # the model.
   dat <- sim_joint_continuous()
   num_mod <- lm(e ~ x2, data = dat)
   fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
 
-  expect_propensity_error(ipw(fits$models, fits$outcome_mod))
+  res <- ipw(fits$models, fits$outcome_mod)
+  expect_s3_class(res, "ipw")
+
+  # The point estimates are the weighted marginal structural model's own
+  # coefficients, which is the oracle every other fit on this route is held to.
+  # A system that rebuilt the dose's numerator as anything but the model's would
+  # not reach them at all: the preflight compares the weights it rebuilds
+  # against the ones the outcome model was fit with.
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fits$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+test_that("the dose's numerator model is a block of the joint system", {
+  dat <- sim_joint_continuous()
+  num_mod <- lm(e ~ x2, data = dat)
+  fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
+  marginal <- fit_joint_continuous(dat)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  res_marginal <- ipw(marginal$models, marginal$outcome_mod)
+
+  # The default numerator is the dose's own two marginal moments. A fitted one
+  # is its coefficients and the spread its density is read at, which is what the
+  # single-dose route stacks for the same model, so the system is wider by the
+  # difference between the two.
+  expect_identical(
+    as.integer(res$fit@n_params),
+    as.integer(res_marginal$fit@n_params) + length(coef(num_mod)) + 1L - 2L
+  )
+
+  # The block is solved at the model it was given rather than carried at
+  # whatever the seed was, with the spread after the coefficients as the
+  # single-dose route orders them.
+  theta <- coef(res$fit)
+  stab <- theta[grepl("^stab_", names(theta))]
+  expect_identical(length(stab), length(coef(num_mod)) + 1L)
+  expect_equal(
+    unname(stab[seq_along(coef(num_mod))]),
+    unname(coef(num_mod)),
+    tolerance = 1e-6
+  )
+})
+
+test_that("the joint route stacks a binary component's numerator model", {
+  # Both components may carry a fitted numerator, and each one is estimated in
+  # its own block. A binary component's numerator is the probability of the
+  # level each unit took, so the product the container holds is the dose's
+  # density ratio times that probability over the binary denominator.
+  dat <- sim_joint_continuous()
+  num_a <- glm(a ~ x2, data = dat, family = binomial())
+  fits <- fit_joint_continuous(dat, a_stabilize = num_a)
+
+  ps_a <- as.numeric(fitted(fits$ps_a))
+  p_a <- as.numeric(fitted(num_a))
+  binary_wt <- ((dat$a / ps_a) + ((1 - dat$a) / (1 - ps_a))) *
+    (dat$a * p_a + (1 - dat$a) * (1 - p_a))
+  dose_wt <- as.numeric(quiet_wt(wt_ate(
+    as.double(fitted(fits$ps_e)),
+    dat$e,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )))
+
+  expect_equal(as.numeric(fits$wts), binary_wt * dose_wt, tolerance = 1e-12)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fits$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+
+  # The binary numerator's coefficients are parameters of the system, alongside
+  # the dose's own two marginal moments.
+  theta <- coef(res$fit)
+  expect_identical(
+    as.integer(sum(grepl("^stab_", names(theta)))),
+    length(coef(num_a)) + 2L
+  )
 })
 
 # ---- a dose model fit under case weights ------------------------------------
