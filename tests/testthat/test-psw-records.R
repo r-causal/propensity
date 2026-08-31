@@ -46,6 +46,47 @@ records_numerator_model <- function(shift = 0) {
   stats::lm(exposure ~ covariate)
 }
 
+# A numerator model whose formula is too long for `deparse()` to write on one
+# line. The covariate names are what make it wrap, so the record has several
+# deparsed lines to read back as one.
+records_long_numerator_model <- function() {
+  frame <- data.frame(
+    exposure = records_exposure,
+    baseline_covariate_measured_at_enrollment = c(
+      0.1,
+      0.5,
+      0.2,
+      0.9,
+      0.4,
+      0.7
+    ),
+    baseline_covariate_measured_at_randomization = c(
+      0.3,
+      0.2,
+      0.8,
+      0.1,
+      0.6,
+      0.5
+    ),
+    baseline_covariate_measured_at_the_first_visit = c(
+      0.4,
+      0.7,
+      0.1,
+      0.3,
+      0.9,
+      0.2
+    )
+  )
+
+  stats::lm(
+    exposure ~
+      baseline_covariate_measured_at_enrollment +
+        baseline_covariate_measured_at_randomization +
+        baseline_covariate_measured_at_the_first_visit,
+    data = frame
+  )
+}
+
 records_binary_ps <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
 records_binary_exposure <- c(0, 1, 0, 1, 0, 1)
 
@@ -380,6 +421,28 @@ test_that("a density record prints the density, numerator, and spread", {
       "numerator: model",
       "sigma:     pooled",
       "stabilize: exposure ~ covariate"
+    )
+  )
+})
+
+test_that("a wrapped numerator formula reads back as one line of formula spacing", {
+  # `deparse()` breaks a long formula across lines and indents the
+  # continuation, so collapsing those lines leaves runs of spaces inside the
+  # formula. The record reads it back spaced the way a formula is written.
+  modeled <- continuous_records_psw(stabilize = records_long_numerator_model())
+  printed <- capture.output(print(density_meta(modeled)))
+
+  line <- printed[startsWith(printed, "stabilize:")]
+  expect_length(line, 1L)
+
+  read_back <- sub("^stabilize: +", "", line)
+  expect_false(grepl("  ", read_back, fixed = TRUE))
+  expect_identical(
+    read_back,
+    paste(
+      "exposure ~ baseline_covariate_measured_at_enrollment +",
+      "baseline_covariate_measured_at_randomization +",
+      "baseline_covariate_measured_at_the_first_visit"
     )
   )
 })

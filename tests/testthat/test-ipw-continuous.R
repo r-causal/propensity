@@ -646,6 +646,28 @@ test_that("ipw() rejects linearization for a continuous exposure", {
   )
 })
 
+test_that("ipw() rejects robust standard errors for a continuous exposure", {
+  dat <- sim_continuous()
+
+  # A continuous exposure reports the marginal structural model's own
+  # coefficients rather than counterfactual means of two cells, so there are no
+  # Hajek means for a weights-fixed sandwich to describe. The refusal names the
+  # method that was asked for.
+  mods_lm <- fit_continuous_models(dat, ps_type = "lm")
+  expect_error(
+    ipw(mods_lm$ps_mod, mods_lm$outcome_mod, se_method = "robust"),
+    class = "propensity_method_error",
+    regexp = "robust"
+  )
+
+  mods_glm <- fit_continuous_models(dat, ps_type = "glm")
+  expect_error(
+    ipw(mods_glm$ps_mod, mods_glm$outcome_mod, se_method = "robust"),
+    class = "propensity_method_error",
+    regexp = "robust"
+  )
+})
+
 # ---- outcome-family validation ----------------------------------------------
 
 test_that("ipw_spec_continuous rejects an unsupported outcome family", {

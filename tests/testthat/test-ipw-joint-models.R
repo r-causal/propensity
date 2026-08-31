@@ -798,3 +798,17 @@ test_that("ipw() refuses linearization standard errors on the two-model route", 
     ipw(two$models, two$outcome_mod, se_method = "linearization")
   )
 })
+
+test_that("ipw() refuses robust standard errors on the two-model route", {
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+
+  # The cell means of a joint treatment are parameters of the stacked system,
+  # so the weights-fixed sandwich of a two-cell outcome model describes none of
+  # them. The refusal names the method that was asked for.
+  expect_error(
+    ipw(two$models, two$outcome_mod, se_method = "robust"),
+    class = "propensity_ipw_joint_models_method_error",
+    regexp = "robust"
+  )
+})

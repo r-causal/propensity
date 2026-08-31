@@ -593,6 +593,23 @@ test_that("ipw() rejects linearization for a categorical exposure", {
   )
 })
 
+test_that("ipw() rejects robust standard errors for a categorical exposure", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # The diagnostic sandwich is the one a weighted outcome model of a binary
+  # exposure computes for itself, read off its two fitted cells. A categorical
+  # result reports parameters of the stacked system instead, so there is no
+  # such sandwich to report in their place. The refusal names the method that
+  # was asked for.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "robust"),
+    class = "propensity_method_error",
+    regexp = "robust"
+  )
+})
+
 # ---- print and as.data.frame ------------------------------------------------
 
 test_that("ipw() categorical print output is stable", {

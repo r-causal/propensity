@@ -275,6 +275,38 @@ test_that("mice::pool() combines linearization estimates but reports no df", {
   expect_equal(repaired$estimate, summarized$estimate)
 })
 
+# ---- robust: the diagnostic route pools as the linearization route does -----
+
+test_that("robust results pool like linearization ones and keep the method name", {
+  skip_if_not_installed("mice", "3.18.0")
+  imp <- mice_impute(mice_binary_data(), seed = 1)
+  fits <- fit_mice_binary(imp, se_method = "robust")
+
+  # The diagnostic route solves no system, so it records no residual degrees of
+  # freedom, exactly as the linearization route records none.
+  expect_identical(df.residual(fits$analyses[[1]]), NA_integer_)
+
+  summarized <- summary(mice::pool(fits))
+  expect_identical(nrow(summarized), 5L)
+  expect_true(all(is.finite(summarized$estimate)))
+  expect_true(all(is.finite(summarized$std.error)))
+  expect_true(all(is.na(summarized$df)))
+
+  # `pool_ipw()` reads the results themselves, so it falls back to the outcome
+  # models for the degrees of freedom the fits lack, and it carries the method
+  # the pooled results were fit with. The pooled object is a summary of results
+  # rather than a result, so the mark the fits print is not on it: the method it
+  # records is what says the pooled standard errors are the diagnostic ones.
+  pooled <- pool_ipw(fits)
+  expect_identical(pooled$se_method, "robust")
+
+  tidied <- tidy(pooled)
+  expect_identical(nrow(tidied), 5L)
+  expect_true(all(is.finite(tidied$estimate)))
+  expect_true(all(is.finite(tidied$std.error)))
+  expect_true(all(is.finite(tidied$df)))
+})
+
 # ---- the conditional reading ------------------------------------------------
 
 test_that("mice::pool() combines a conditional reading by coefficient", {
