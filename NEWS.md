@@ -19,7 +19,8 @@
   on variables that do not include the modifier conditions on nothing the
   modifier explains, which is the default stabilizer's hazard, so it warns with
   class `propensity_ipw_by_stabilizer_warning` and names the terms the model
-  was built on. A model that reads the modifier, on its own or through a
+  was built on, reporting an intercept-only model as the marginal numerator
+  fit as a model. A model that reads the modifier, on its own or through a
   transformation of it, stays silent, as does a `stabilization_score`, which
   carries no terms to read. And `wt_ate()` and `wt_cens()` now refuse a
   numerator model fit with case weights, for a binary exposure and for a dose,

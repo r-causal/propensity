@@ -433,13 +433,24 @@ check_ipw_by_numerator_model <- function(
     return(invisible(TRUE))
   }
 
+  # An intercept-only model reports terms and reads none: it is the marginal
+  # numerator fit as a model, and the report says so rather than interpolating
+  # an empty vector into a sentence built for names.
+  model_bullet <- if (length(variables) == 0) {
+    "{.arg stabilize} was given a model of the exposure on an intercept \\
+    alone, the marginal numerator fit as a model, so the numerator does not \\
+    vary with {.val {name}} and tightens the weights by nothing it explains."
+  } else {
+    "{.arg stabilize} was given a model of the exposure on \\
+    {.val {variables}}, so the numerator does not vary with {.val {name}} \\
+    and tightens the weights by nothing it explains."
+  }
+
   warn(
     c(
       "The weights {.arg outcome_mod} was fit with are stabilized on a \\
       numerator that does not read {.val {name}}.",
-      i = "{.arg stabilize} was given a model of the exposure on \\
-      {.val {variables}}, so the numerator does not vary with {.val {name}} \\
-      and tightens the weights by nothing it explains.",
+      i = model_bullet,
       i = "A numerator conditioning on {.val {name}} as well leaves the \\
       estimator consistent for the same stratum effects and tightens the \\
       weights further. Refit the model supplied to {.arg stabilize} with \\

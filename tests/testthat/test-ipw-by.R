@@ -1011,3 +1011,22 @@ test_that("the stabilizer report names the terms the numerator model read", {
 
   expect_propensity_warning(ipw(blind$ps_mod, blind$outcome_mod, .by = v))
 })
+
+test_that("the stabilizer report reads an intercept-only numerator as marginal", {
+  dat <- sim_by()
+
+  # An intercept-only model reports terms and reads none: it is the marginal
+  # numerator fit as a model, and the report must say so in a whole sentence
+  # rather than interpolating an empty vector where the terms would go.
+  marginal_as_model <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ 1, data = dat, family = binomial())
+  )
+
+  expect_propensity_warning(ipw(
+    marginal_as_model$ps_mod,
+    marginal_as_model$outcome_mod,
+    .by = v
+  ))
+})
