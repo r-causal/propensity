@@ -437,11 +437,41 @@ ipw_default_stab_seed <- function(exposure) {
   mean(exposure, na.rm = TRUE)
 }
 
+# The probability the stabilization block reports at one value of theta: the
+# single marginal proportion the default stabilizer estimates, or, where the
+# caller stabilized on a fitted model, the probability that model gives each
+# unit, rebuilt from the numerator design and the block's own parameters. The
+# preflight that rebuilds the weights once and the psi that rebuilds them at
+# every evaluation both read it here, so the two cannot compute a different
+# numerator from the same parameters. Weights with no numerator to estimate
+# leave the block empty and take no probability at all.
+ipw_binary_stab_prob <- function(spec, th_stab, call = rlang::caller_env()) {
+  if (!length(th_stab)) {
+    return(NULL)
+  }
+
+  model <- spec$stab$model
+  if (is.null(model)) {
+    return(th_stab[[1]])
+  }
+
+  ipw_inv_link(model$link, call = call)(as.vector(model$X %*% th_stab))
+}
+
 ipw_init_binary <- function(spec, call = rlang::caller_env()) {
   ps_block <- spec$ps$coefs
 
   if (spec$stab$stabilized && is.null(spec$stab$score)) {
-    stab_block <- c(stab_pi = ipw_default_stab_seed(spec$exposure))
+    # A numerator model's block is the shape the propensity score block is: one
+    # parameter per coefficient, seeded at the coefficients the model was fit
+    # at, which is the exact root of the score written for it. The default
+    # stabilizer estimates the one marginal proportion instead.
+    model <- spec$stab$model
+    stab_block <- if (is.null(model)) {
+      c(stab_pi = ipw_default_stab_seed(spec$exposure))
+    } else {
+      stats::setNames(model$coefs, paste0("stab_", colnames(model$X)))
+    }
   } else {
     stab_block <- numeric(0)
   }
@@ -782,7 +812,7 @@ ipw_psi_binary <- function(
     )
     e <- inv_ps(as.vector(x_ps %*% th_ps))
 
-    stab_prob <- if (length(th_stab)) th_stab[[1]] else NULL
+    stab_prob <- ipw_binary_stab_prob(spec, th_stab, call = call)
     # The tilt enters an evaluation twice, as the numerator of the weights and
     # as the standardization of the marginal-mean rows below. It is evaluated
     # here and handed to both.
@@ -791,10 +821,22 @@ ipw_psi_binary <- function(
 
     out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
 
-    stab_rows <- if (length(th_stab)) {
-      matrix(z - th_stab[[1]], nrow = 1)
-    } else {
+    # The numerator's own equations: the binomial score its coefficients solve,
+    # written over the exposure the weights divide. The default stabilizer
+    # estimates the marginal proportion instead, and a fixed score and
+    # unstabilized weights estimate nothing.
+    stab_rows <- if (!length(th_stab)) {
       NULL
+    } else if (!is.null(spec$stab$model)) {
+      deli::ee_glm(
+        th_stab,
+        X = spec$stab$model$X,
+        y = z,
+        distribution = "binomial",
+        link = spec$stab$model$link
+      )
+    } else {
+      matrix(z - th_stab[[1]], nrow = 1)
     }
 
     mu1 <- th_mu[[1]]

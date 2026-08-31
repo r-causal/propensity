@@ -654,9 +654,13 @@ exposure each unit actually took; see \strong{Stabilization} in \code{\link[=wt_
 recipe. The sandwich treats a supplied score as a known constant, so the
 standard errors do not account for the numerator model having been fitted.
 The default stabilizer is estimated in the stacked system instead, which is
-one parameter wider as a result. A continuous exposure has a third way: pass
-the fitted numerator model to \code{stabilize} itself, and its own equations join
-the stack, which is what a supplied score has none of.
+one parameter wider as a result. There is a third way: pass the fitted
+numerator model to \code{stabilize} itself, and its own equations join the stack,
+which is what a supplied score has none of. That accounting has something to
+say only where the reported model is not saturated in the variables the
+numerator reads; a binary exposure's numerator on a modifier the reported
+model interacts with fully divides out of every cell, so the estimates and
+the standard errors are the ones the unstabilized weights give.
 
 A stabilized fit reporting effects within the strata of a modifier, and
 carrying the default numerator, warns with class
@@ -1111,6 +1115,16 @@ system, so the outcome model it stores carries no block of one, and the
 standard errors that reading reports are refused with a classed error rather
 than replaced by the covariance the outcome model computed for itself, which
 treats the estimated weights as fixed.
+
+Weights stabilized on a fitted numerator model are refused here as well, with
+an error of class \code{propensity_ipw_se_method_unavailable_error}. The influence
+functions read the stabilizer as a known constant, which is exact for the
+default stabilizer and for a \code{stabilization_score} the caller fixed and is
+not exact for a model fit to the same data, so the method is refused rather
+than a standard error reported for a numerator nobody fit.
+\code{se_method = "mestimation"} estimates the numerator model alongside
+everything else. \code{se_method = "robust"} reads every weight as a known
+constant by design, that being what the diagnostic is, so it is not refused.
 
 The linearization outcome model must also carry an intercept, which is a
 stricter requirement than the M-estimation path imposes. Under a numeric

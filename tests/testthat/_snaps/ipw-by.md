@@ -90,5 +90,5 @@
       Warning in `ipw()`:
       The weights `outcome_mod` was fit with are stabilized on a numerator that conditions on nothing.
       i The default stabilizer is the marginal probability of the exposure, which is constant within each exposure arm, so it tightens the weights by nothing "v" explains.
-      i A numerator conditioning on "v" leaves the estimator consistent for the same stratum effects and tightens the weights further. Build one with `wt_ate()`'s `stabilization_score`, evaluated at the exposure each unit took; see Stabilization in `wt_ate()`.
+      i A numerator conditioning on "v" leaves the estimator consistent for the same stratum effects and tightens the weights further. Build one with `wt_ate()`'s `stabilize`, given a model of the exposure on "v", or with its `stabilization_score`, evaluated at the exposure each unit took; see Stabilization in `wt_ate()`.
 

@@ -25,6 +25,7 @@ reference:
   contents:
   - psw
   - exposure_type
+  - numerator_model
 - title: Joint treatments
   desc: Weights for a sequence of two treatments, from a factorized pair of
     treatment models.

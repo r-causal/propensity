@@ -157,9 +157,17 @@ model_levels.multinom <- function(model) {
 # probability to give only when it was fit to two of them. More levels than
 # that leave nothing to read as the probability of the exposure, which is what a
 # binary exposure needs.
+#
+# `remedy` goes unread here. What is wrong with a `multinom` of more than two
+# levels is the number of levels rather than the family, so the remedy is the
+# one written below whichever argument the model arrived in; and a `multinom`
+# reaches this generic only as a propensity score model, `stabilize` taking an
+# `lm` or a model built on one.
 #' @export
 check_binary_model_family.multinom <- function(
   model,
+  arg = ".propensity",
+  remedy = NULL,
   call = rlang::caller_env()
 ) {
   n_levels <- length(model$lev)
@@ -172,7 +180,7 @@ check_binary_model_family.multinom <- function(
     c(
       "A binary propensity score needs the probability of one of the
        exposure's two levels.",
-      x = "{.arg .propensity} was fit to {n_levels} levels
+      x = "{.arg {arg}} was fit to {n_levels} levels
            ({.val {model$lev}}), so it fits no single probability to read
            against a binary exposure.",
       i = "Fit the propensity score model to the exposure being weighted, or

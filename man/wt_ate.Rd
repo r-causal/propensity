@@ -327,25 +327,35 @@ outright, and an unstabilized continuous exposure reports that its
 weights are not the recommended ones. \code{NULL}, the default, reads the
 answer from the exposure type: a continuous exposure is stabilized, and a
 binary or categorical exposure is not.
-\item A fitted model of the exposure, for a continuous exposure alone, which
-stabilizes the weights on the conditional density that model estimates
-rather than on the marginal density of the exposure. The numerator is the
-family \code{.density} names, read at the model's fitted mean and the root
-mean square of its residuals, so the weights are
-\eqn{f(A \mid V) / f(A \mid X)} for the variables \eqn{V} the numerator
-model reads. The model is recorded on the result, and \code{\link[=ipw]{ipw()}} estimates
-it alongside everything else so that the standard errors account for it
-having been fitted. Conditioning the numerator on \eqn{V} changes what is
-estimated unless the model the estimates are read from also reads
-\eqn{V}; see \strong{Stabilization} in Details.
+\item A fitted model of the exposure, for a binary or continuous exposure,
+which stabilizes the weights on what that model estimates rather than on
+the marginal probability or density of the exposure.
 
-Any \code{\link[=lm]{lm()}}, or anything built on one, is read this way. A model of a
-binary or categorical exposure, a family whose spread changes with its
-fitted values, a model with a fitted value for some other set of
-observations, and a model supplied together with \code{stabilization_score}
-or \code{numerator = "integrated"} are each refused; the classes are
-\code{propensity_numerator_error}, \code{propensity_model_family_error}, and
-\code{propensity_length_error}.
+For a binary exposure the model is a \code{\link[=binomial]{binomial()}} fit and the numerator
+is its fitted probability of the level each unit took, so the weights
+are \eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)} for the variables
+\eqn{V} the numerator model reads. For a continuous exposure the
+numerator is the family \code{.density} names, read at the model's fitted mean
+and the root mean square of its residuals, so the weights are
+\eqn{f(A \mid V) / f(A \mid X)}.
+
+The model is recorded on the result, where \code{\link[=numerator_model]{numerator_model()}} reads it
+back, and \code{\link[=ipw]{ipw()}} estimates it alongside everything else so that the
+standard errors account for it having been fitted. Conditioning the
+numerator on \eqn{V} changes what is estimated unless the model the
+estimates are read from also reads \eqn{V}; see \strong{Stabilization} in
+Details.
+
+Any \code{\link[=lm]{lm()}}, or anything built on one, is read this way. The family is
+held to the exposure: a fit whose spread changes with its fitted values,
+or a model of a conditional mean where a probability is needed, is
+refused with \code{propensity_model_family_error}, which is also what a model
+of a dose handed to a binary exposure and a \code{\link[=binomial]{binomial()}} model handed to
+a dose are refused with. A categorical exposure takes no fitted
+numerator, and neither does a model supplied together with
+\code{stabilization_score} or \code{numerator = "integrated"}; those are
+\code{propensity_numerator_error}. A model with a fitted value for some other
+set of observations is \code{propensity_length_error}.
 }
 
 Anything else is refused with an error of class
@@ -518,7 +528,8 @@ unless \code{stabilize = FALSE} asks otherwise.
 \subsection{Stabilization}{
 
 Stabilization multiplies the base weight by an estimate of P(A) (binary) or
-f_A(A) (continuous), reducing variance. When no \code{stabilization_score} is
+f_A(A) (continuous), or by an estimate of either conditional on variables a
+model of the exposure reads, reducing variance. When no \code{stabilization_score} is
 supplied, that estimate is the marginal mean of \code{.exposure} for a binary or
 categorical exposure, and for a continuous exposure the marginal density of
 the family \code{.density} names, evaluated at the population mean and standard
@@ -583,27 +594,47 @@ weights would carry the wrong numerator. Whether a numerator may condition on
 \code{V} at all is a question about the reported model rather than about the
 weights; see \strong{Effect modification} in \code{\link[=ipw]{ipw()}}.
 
-A continuous exposure has a third way of writing the same thing: pass the
-fitted numerator model to \code{stabilize} itself, and the density it estimates
-becomes the numerator.
+There is a third way of writing the same thing: pass the fitted numerator
+model to \code{stabilize} itself, and what it estimates becomes the numerator.
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{num <- lm(A ~ V, data = dat)
+\if{html}{\out{<div class="sourceCode">}}\preformatted{num <- glm(A ~ V, data = dat, family = binomial())
 wt_ate(ps_mod, stabilize = num)
+
+num <- lm(A ~ V, data = dat)
+wt_ate(dose_mod, stabilize = num)
 }\if{html}{\out{</div>}}
 
-The weights are then \eqn{f(A \mid V) / f(A \mid X)}: the family \code{.density}
-names, read at the numerator model's fitted mean and the root mean square of
-its residuals, over the same family read at the propensity score model's. The
-same caveat governs it. A numerator conditioning on \code{V} targets the effect in
-a pseudo-population where \code{V} still predicts the exposure, so the estimand is
-the effect conditional on \code{V} being balanced rather than the marginal one,
-and it answers the question you meant only when the model the estimates are
-read from also reads \code{V}.
+For a binary exposure the weights are then
+\eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)}: the model's fitted probability
+read at the level each unit actually took, which is \eqn{p_i} for a unit
+with \eqn{A_i = 1} and \eqn{1 - p_i} for a unit with \eqn{A_i = 0}, over
+the same denominator the unstabilized weights divide by. Writing it as the
+model rather than as the numbers is what keeps the untreated units from
+carrying \eqn{P(A = 1 \mid V)}, which is the mistake the
+\code{stabilization_score} form has to be written around by hand.
+
+For a continuous exposure they are \eqn{f(A \mid V) / f(A \mid X)}: the
+family \code{.density} names, read at the numerator model's fitted mean and the
+root mean square of its residuals, over the same family read at the
+propensity score model's.
+
+The same caveat governs both. A numerator conditioning on \code{V} targets the
+effect in a pseudo-population where \code{V} still predicts the exposure, so the
+estimand is the effect conditional on \code{V} being balanced rather than the
+marginal one, and it answers the question you meant only when the model the
+estimates are read from also reads \code{V}.
 
 Handing the model over rather than the numbers it evaluates to is what lets
 \code{\link[=ipw]{ipw()}} estimate it: the model's own estimating equations join the stacked
 system, so the standard errors account for the numerator having been fitted,
-where a \code{stabilization_score} is carried as a known constant.
+where a \code{stabilization_score} is carried as a known constant. That accounting
+has something to say only where the reported model is not saturated in the
+variables the numerator reads. A numerator of a binary exposure on an effect
+modifier is constant within each cell of the modifier and the exposure, so a
+model saturated in those cells fits the same coefficients with the numerator
+and without it, and the standard errors do not move either.
+
+\code{\link[=numerator_model]{numerator_model()}} reads the model back off the weights.
 }
 
 \subsection{Handling extreme weights}{

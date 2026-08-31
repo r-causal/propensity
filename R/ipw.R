@@ -414,9 +414,13 @@
 #' recipe. The sandwich treats a supplied score as a known constant, so the
 #' standard errors do not account for the numerator model having been fitted.
 #' The default stabilizer is estimated in the stacked system instead, which is
-#' one parameter wider as a result. A continuous exposure has a third way: pass
-#' the fitted numerator model to `stabilize` itself, and its own equations join
-#' the stack, which is what a supplied score has none of.
+#' one parameter wider as a result. There is a third way: pass the fitted
+#' numerator model to `stabilize` itself, and its own equations join the stack,
+#' which is what a supplied score has none of. That accounting has something to
+#' say only where the reported model is not saturated in the variables the
+#' numerator reads; a binary exposure's numerator on a modifier the reported
+#' model interacts with fully divides out of every cell, so the estimates and
+#' the standard errors are the ones the unstabilized weights give.
 #'
 #' A stabilized fit reporting effects within the strata of a modifier, and
 #' carrying the default numerator, warns with class
@@ -863,6 +867,16 @@
 #' standard errors that reading reports are refused with a classed error rather
 #' than replaced by the covariance the outcome model computed for itself, which
 #' treats the estimated weights as fixed.
+#'
+#' Weights stabilized on a fitted numerator model are refused here as well, with
+#' an error of class `propensity_ipw_se_method_unavailable_error`. The influence
+#' functions read the stabilizer as a known constant, which is exact for the
+#' default stabilizer and for a `stabilization_score` the caller fixed and is
+#' not exact for a model fit to the same data, so the method is refused rather
+#' than a standard error reported for a numerator nobody fit.
+#' `se_method = "mestimation"` estimates the numerator model alongside
+#' everything else. `se_method = "robust"` reads every weight as a known
+#' constant by design, that being what the diagnostic is, so it is not refused.
 #'
 #' The linearization outcome model must also carry an intercept, which is a
 #' stricter requirement than the M-estimation path imposes. Under a numeric
@@ -1352,6 +1366,7 @@ ipw.glm <- function(
   wts <- extract_weights(outcome_mod)
   check_ipw_weights(wts)
   check_ipw_binary_focal(wts, wt_mod, .data = .data, estimand = estimand)
+  check_ipw_linearization_numerator(wts, se_method)
 
   if (identical(se_method, "mestimation")) {
     spec <- ipw_spec_binary(
@@ -1512,11 +1527,19 @@ ipw.glm <- function(
   # was dropped in a length-changing operation be caught here rather than
   # silently rebuilt from the wrong stabilizer.
   stab_score <- stabilization_score(wts)
+  num_mod <- numerator_model(wts)
   recomputed_wts <- ipw_weight_fn("binary", estimand)(
     ps,
     exposure_binary,
     list(
-      stab_prob = if (is_stabilized(wts) && is.null(stab_score)) {
+      # A numerator model reports one probability per unit rather than one per
+      # arm, so the rebuild reads it at the model's own fitted values. The
+      # linearization refuses such weights above; the robust diagnostic reaches
+      # here with them, and rebuilding them from the marginal seed would report
+      # a disagreement about weights that agree.
+      stab_prob = if (!is.null(num_mod)) {
+        as.numeric(stats::fitted(num_mod))
+      } else if (is_stabilized(wts) && is.null(stab_score)) {
         ipw_default_stab_seed(exposure_binary)
       },
       score = stab_score
@@ -1738,21 +1761,76 @@ check_ipw_model_family <- function(wt_mod, call = rlang::caller_env()) {
 # fit and the refusal belongs to the model rather than to a method. What is
 # refused is the standard error and not the weights: `wt_ate()` reads the same
 # fit and builds them from its fitted probabilities.
-check_ipw_binary_gam <- function(wt_mod, call = rlang::caller_env()) {
+check_ipw_binary_gam <- function(
+  wt_mod,
+  arg = "wt_mod",
+  what = "a binary propensity score model",
+  call = rlang::caller_env()
+) {
   if (!inherits(wt_mod, "gam")) {
     return(invisible(TRUE))
   }
 
   abort(
     c(
-      "{.fun ipw} stacks a binary propensity score model at the unpenalized \\
+      "{.fun ipw} stacks {what} at the unpenalized \\
       score of a {.fun stats::glm}.",
-      x = "{.arg wt_mod} has class {.cls {class(wt_mod)}}, whose coefficients \\
+      x = "{.arg {arg}} has class {.cls {class(wt_mod)}}, whose coefficients \\
       are the root of a penalized score instead, so every standard error \\
       here would describe a model that was not fit.",
-      i = "Refit {.arg wt_mod} as a {.fun stats::glm}, writing the shape each \\
+      i = "Refit {.arg {arg}} as a {.fun stats::glm}, writing the shape each \\
       smooth term carries out as columns of the formula.",
       i = ipw_continuous_resample_hint()
+    ),
+    error_class = c(
+      "propensity_ipw_se_method_unavailable_error",
+      "propensity_method_error"
+    ),
+    call = call
+  )
+}
+
+# Weights stabilized on a fitted numerator model, refused for the linearization.
+#
+# The influence functions this path composes treat the stabilizer as a factor
+# that does not depend on any estimated parameter: `effective_stabilizer()`
+# multiplies the unstabilized weight derivatives by it and nothing
+# differentiates it. That is exact for the default stabilizer, which is one
+# constant per exposure arm and cancels from each arm's Hajek ratio, and exact
+# for a `stabilization_score` the caller fixed, which is a constant by
+# construction. A numerator model is neither: its coefficients were fit to the
+# same data, they move with it, and the terms carrying that estimation into the
+# variance are not written here. Reading it as fixed would report a standard
+# error for a numerator nobody knew, so the method is refused rather than the
+# weights, which are exactly what they claim to be.
+#
+# `se_method = "robust"` treats the weights as fixed throughout, that being what
+# the diagnostic is, so it is not refused: it reports the outcome model's own
+# sandwich, which is what it reports for every other stabilizer too.
+check_ipw_linearization_numerator <- function(
+  wts,
+  se_method,
+  call = rlang::caller_env()
+) {
+  if (!identical(se_method, "linearization")) {
+    return(invisible(TRUE))
+  }
+
+  if (is.null(numerator_model(wts))) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} does not support {.val linearization} standard errors for \\
+      weights stabilized on a fitted numerator model.",
+      x = "The influence functions here read the stabilizer as a known \\
+      constant, and a numerator model's coefficients were estimated from the \\
+      same data, so the reported standard error would describe a numerator \\
+      nobody fit.",
+      i = "Use {.code se_method = \"mestimation\"}, which estimates the \\
+      numerator model alongside everything else and carries its uncertainty \\
+      into the sandwich."
     ),
     error_class = c(
       "propensity_ipw_se_method_unavailable_error",

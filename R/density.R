@@ -430,8 +430,9 @@ check_numerator <- function(
 }
 
 # What a fitted numerator model has to be able to be. The model estimates the
-# conditional density of the exposure given whatever it reads, and the weights
-# it stabilizes are the ratio of that density to the one the propensity score
+# numerator of the weights given whatever it reads: the conditional density of
+# a dose, or the conditional probability of a binary exposure. The weights it
+# stabilizes are the ratio of that quantity to the one the propensity score
 # model estimates, so every requirement here is a requirement of that ratio.
 check_numerator_model <- function(
   numerator_model,
@@ -444,17 +445,20 @@ check_numerator_model <- function(
     return(invisible(NULL))
   }
 
-  if (!identical(exposure_type, "continuous")) {
+  # A categorical exposure is weighted by a ratio over more than two levels,
+  # and one fitted model reports neither side of it. The other two types each
+  # take a model, of the family their own side of the ratio is read in.
+  if (identical(exposure_type, "categorical")) {
     abort(
       c(
-        "A model supplied to {.arg stabilize} applies only to continuous
-         exposures.",
-        x = "{.arg .exposure} is being treated as {exposure_type}.",
-        i = "A fitted model stabilizes the weights on the conditional density
-             it estimates. A {exposure_type} exposure has a probability rather
-             than a density, so stabilize one with {.code stabilize = TRUE},
-             which reads the marginal probability of the exposure, or with a
-             {.arg stabilization_score} of your own."
+        "A model supplied to {.arg stabilize} applies only to binary and
+         continuous exposures.",
+        x = "{.arg .exposure} is being treated as categorical.",
+        i = "A categorical exposure's weights are a ratio of probabilities over
+             every level, which one fitted model does not report. Stabilize
+             them with {.code stabilize = TRUE}, which reads the marginal
+             probability of each level, or with a {.arg stabilization_score} of
+             your own."
       ),
       error_class = "propensity_numerator_error",
       call = call
@@ -477,17 +481,32 @@ check_numerator_model <- function(
     )
   }
 
-  # The numerator model is held to the family the propensity score model is
-  # held to, and by the same check: both estimate a conditional mean of the
-  # exposure that one spread describes, read from opposite sides of the ratio.
-  check_continuous_model_family(
-    numerator_model,
-    arg = "stabilize",
-    remedy = "The numerator is a density read at the model's fitted mean and
-              the spread of its residuals, so refit it with {.fun stats::lm} or
-              {.code stats::glm(family = gaussian())}.",
-    call = call
-  )
+  # The numerator model is held to the family the propensity score model of the
+  # same exposure is held to, and by the same check, read from the other side
+  # of the ratio: a dose's numerator is a density around a conditional mean
+  # with one spread, and a binary exposure's numerator is the probability of
+  # the level each unit took. A model of the wrong exposure's numerator is
+  # therefore reported as the wrong family rather than as a model where none is
+  # taken, which is what it is.
+  if (identical(exposure_type, "binary")) {
+    check_binary_model_family(
+      numerator_model,
+      arg = "stabilize",
+      remedy = "The numerator is the fitted probability of the level each unit
+                took, so refit it with
+                {.code stats::glm(family = stats::binomial())}.",
+      call = call
+    )
+  } else {
+    check_continuous_model_family(
+      numerator_model,
+      arg = "stabilize",
+      remedy = "The numerator is a density read at the model's fitted mean and
+                the spread of its residuals, so refit it with {.fun stats::lm}
+                or {.code stats::glm(family = gaussian())}.",
+      call = call
+    )
+  }
 
   fitted <- as.numeric(stats::fitted(numerator_model))
   if (!identical(length(fitted), as.integer(n))) {
@@ -518,6 +537,35 @@ numerator_model_moments <- function(numerator_model) {
   residuals <- as.numeric(stats::residuals(numerator_model, type = "response"))
 
   list(mu = mu, sigma = sqrt(mean(residuals^2, na.rm = TRUE)))
+}
+
+# What a binary exposure's numerator model contributes to the ratio: the fitted
+# probability of the level each unit actually took, which is P(Z = z_i | V_i)
+# for the modifiers V the model reads.
+#
+# It is read against the model's own response rather than against the exposure
+# the weights are being built for, because the two can be coded against
+# different levels: `.focal_level` recodes the exposure so the focal level is
+# 1, while the model's fitted values are the probability of whichever level its
+# own response codes as a success. Reading both sides in the model's coding
+# leaves the numerator the same quantity under either labelling, since
+# `y p + (1 - y)(1 - p)` is unchanged when `y` and `p` are both complemented.
+numerator_model_probability <- function(numerator_model) {
+  p <- as.numeric(stats::fitted(numerator_model))
+  y <- numerator_model[["y"]]
+
+  # A `glm()` fit with `y = FALSE` keeps no response, so it is read back out of
+  # the model frame and coded the way a binomial fit codes it: the first level
+  # of a factor is the failure and every other level the success.
+  if (is.null(y)) {
+    y <- ipw_outcome_numeric(
+      stats::model.response(stats::model.frame(numerator_model))
+    )
+  }
+
+  y <- as.numeric(y)
+
+  y * p + (1 - y) * (1 - p)
 }
 
 # An infinite exposure or fitted value, refused where it arrives. A missing

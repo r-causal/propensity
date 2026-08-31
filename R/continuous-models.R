@@ -151,7 +151,18 @@ check_continuous_model_family <- function(
 # reads; a class that carries no family and still fits a probability, such as
 # `nnet::multinom()`, answers it from what it was fit to and has a method of its
 # own.
-check_binary_model_family <- function(model, call = rlang::caller_env()) {
+#
+# `arg` names the argument the model arrived in and `remedy` says what to do
+# about it, because the same question is asked of two models: the propensity
+# score model of a binary exposure, and the numerator model that estimates the
+# probability the weights are stabilized on.
+check_binary_model_family <- function(
+  model,
+  arg = ".propensity",
+  remedy = "Fit the propensity score model with {.fun binomial}, or pass
+            fitted probabilities to {.arg .propensity} directly.",
+  call = rlang::caller_env()
+) {
   UseMethod("check_binary_model_family")
 }
 
@@ -163,6 +174,9 @@ check_binary_model_family <- function(model, call = rlang::caller_env()) {
 #' @export
 check_binary_model_family.default <- function(
   model,
+  arg = ".propensity",
+  remedy = "Fit the propensity score model with {.fun binomial}, or pass
+            fitted probabilities to {.arg .propensity} directly.",
   call = rlang::caller_env()
 ) {
   family <- model[["family"]]
@@ -184,26 +198,25 @@ check_binary_model_family.default <- function(
   }
 
   fitted_by <- if (is.null(family)) {
-    "{.arg .propensity} is {.cls {class(model)[[1]]}}, whose fitted values are
+    "{.arg {arg}} is {.cls {class(model)[[1]]}}, whose fitted values are
      conditional means rather than probabilities."
   } else if (!family_object) {
-    "{.arg .propensity} holds {.obj_type_friendly {family}} where a family
+    "{.arg {arg}} holds {.obj_type_friendly {family}} where a family
      object goes, so it names nothing that fits a probability."
   } else if (!family_is_named(family)) {
-    "{.arg .propensity} was fit with an unnamed family, whose fitted values are
+    "{.arg {arg}} was fit with an unnamed family, whose fitted values are
      conditional means rather than probabilities."
   } else {
-    "{.arg .propensity} was fit with {.code {model_family_label(family)}}, whose
+    "{.arg {arg}} was fit with {.code {model_family_label(family)}}, whose
      fitted values are conditional means rather than probabilities."
   }
 
   abort(
     c(
-      "A binary propensity score needs a model of the probability of the
+      "Weights for a binary exposure need a model of the probability of the
        exposure.",
       x = fitted_by,
-      i = "Fit the propensity score model with {.fun binomial}, or pass fitted
-           probabilities to {.arg .propensity} directly."
+      i = remedy
     ),
     error_class = "propensity_model_family_error",
     call = call

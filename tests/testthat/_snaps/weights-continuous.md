@@ -248,7 +248,7 @@
       Error in `wt_ate()`:
       ! `stabilize` must be `TRUE`, `FALSE`, `NULL`, or a fitted model of the exposure.
       x It is a string.
-      i A fitted model stabilizes a continuous exposure's weights on the conditional density it estimates. To stabilize on a numerator you computed yourself, set `stabilize = TRUE` and pass it as `stabilization_score`.
+      i A fitted model stabilizes the weights on the numerator it estimates: a conditional density for a dose, and the conditional probability of the level each unit took for a binary exposure. To stabilize on a numerator you computed yourself, set `stabilize = TRUE` and pass it as `stabilization_score`.
 
 ---
 
@@ -258,5 +258,5 @@
       Error in `wt_ate()`:
       ! `stabilize` must be `TRUE`, `FALSE`, `NULL`, or a fitted model of the exposure.
       x It is `NA`.
-      i A fitted model stabilizes a continuous exposure's weights on the conditional density it estimates. To stabilize on a numerator you computed yourself, set `stabilize = TRUE` and pass it as `stabilization_score`.
+      i A fitted model stabilizes the weights on the numerator it estimates: a conditional density for a dose, and the conditional probability of the level each unit took for a binary exposure. To stabilize on a numerator you computed yourself, set `stabilize = TRUE` and pass it as `stabilization_score`.
 

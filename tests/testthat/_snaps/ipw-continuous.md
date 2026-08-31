@@ -171,7 +171,7 @@
       Error in `ipw()`:
       ! The model supplied to `stabilize` must model the exposure.
       x It models "yc" and `wt_mod` models "A".
-      i The numerator of the weights is the density of the exposure given what the numerator model reads, so both models describe the same response.
+      i The numerator of the weights is what the numerator model reports about the exposure given what it reads, so both models describe the same response.
 
 # ipw() refuses a numerator model fit to other observations
 

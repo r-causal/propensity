@@ -989,9 +989,9 @@ check_ipw_numerator_model <- function(
         "The model supplied to {.arg stabilize} must model the exposure.",
         x = "It models {.val {response}} and {.arg wt_mod} models
              {.val {exposure_name}}.",
-        i = "The numerator of the weights is the density of the exposure given
-             what the numerator model reads, so both models describe the same
-             response."
+        i = "The numerator of the weights is what the numerator model reports
+             about the exposure given what it reads, so both models describe
+             the same response."
       ),
       error_class = "propensity_ipw_numerator_error",
       call = call

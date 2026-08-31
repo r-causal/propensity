@@ -18,12 +18,18 @@
 
 # A binary exposure, a modifier that changes its effect, and a covariate the
 # propensity score model reads and the numerator does not.
+#
+# The covariate is what the numerator has to be estimated against: it is the
+# only thing the reported model reads that the numerator does not, so it is the
+# only direction in which the numerator's own estimation can reach the reported
+# standard errors at all. See the note above the fits below. It confounds the
+# exposure strongly enough that the weights vary over it by more than rounding.
 sim_binary_numerator <- function(seed = 6621, n = 600) {
   withr::local_seed(seed)
   x1 <- rnorm(n)
   v <- factor(rbinom(n, 1, 0.5))
   high <- as.numeric(v == "1")
-  z <- rbinom(n, 1, plogis(0.5 * x1 - 0.6 * high))
+  z <- rbinom(n, 1, plogis(1.5 * x1 - 0.6 * high))
   y <- rbinom(
     n,
     1,
@@ -41,7 +47,18 @@ sim_binary_numerator <- function(seed = 6621, n = 600) {
 # takes the default stabilizer. The first two build one and the same set of
 # weights, so anything that differs between them is the sandwich rather than the
 # weights.
-binary_numerator_fits <- function(dat, outcome_rhs = "z * v") {
+#
+# The reported model reads the covariate as well as the modifier, and that is
+# what makes the numerator's estimation visible at all. A numerator of the
+# exposure on the modifier is constant within each cell of the modifier and the
+# exposure, so a model saturated in those two cells fits the very same
+# coefficients weighted or unweighted by it: the numerator divides out of every
+# cell mean, the estimator does not move when the numerator does, and no
+# variance can describe an estimation the estimate does not depend on. The
+# covariate is the direction the cells do not span, so it is where estimating
+# the numerator has anything to say. The saturated case is pinned as its own
+# test at the end of this file.
+binary_numerator_fits <- function(dat, outcome_rhs = "z * v + x1") {
   ps_mod <- glm(z ~ x1 + v, data = dat, family = binomial())
   num_mod <- glm(z ~ v, data = dat, family = binomial())
   p <- as.numeric(fitted(num_mod))
@@ -206,4 +223,45 @@ test_that("the stratum effects a binary numerator model reports are the score's"
     res_score$estimates$std.err,
     tolerance = 1e-6
   )))
+})
+
+# ---- what a saturated model reads a numerator as ----------------------------
+
+test_that("a marginal structural model saturated in the numerator reads it as none", {
+  dat <- sim_binary_numerator()
+  fits <- binary_numerator_fits(dat, outcome_rhs = "z * v")
+
+  # A numerator of the exposure on the modifier takes one value in each cell of
+  # the modifier and the exposure, so a model saturated in those cells fits the
+  # same coefficients with it and without it: a constant within a cell divides
+  # out of that cell's weighted mean. The estimator does not move when the
+  # numerator does, so nothing about having estimated the numerator can reach
+  # the standard error, and the model route reports exactly what the score
+  # route reports.
+  unstabilized <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fits$model$ps_mod)
+  )
+  saturated <- glm(
+    y ~ z * v,
+    data = dat,
+    family = quasibinomial(),
+    weights = unstabilized,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_equal(
+    unname(coef(fits$model$outcome_mod)),
+    unname(coef(saturated)),
+    tolerance = 1e-8
+  )
+
+  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
+
+  expect_equal(
+    res_model$estimates$std.err,
+    res_score$estimates$std.err,
+    tolerance = 1e-6
+  )
 })

@@ -101,6 +101,8 @@ assumes \code{x} is already a double vector and performs minimal validation.
 \item \code{stabilization_score()} returns the user-supplied stabilization score, or
 \code{NULL} when none was recorded or when a per-observation score was dropped
 because an operation changed the length of the weights.
+\item \code{\link[=numerator_model]{numerator_model()}} returns the fitted model supplied to \code{stabilize} that
+estimated the numerator of the weights, or \code{NULL} when no model did.
 }
 }
 

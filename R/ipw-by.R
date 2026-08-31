@@ -369,13 +369,15 @@ check_ipw_by_interaction <- function(
 # consistent for the same stratum effects, and the fit still returns.
 #
 # Unstabilized weights carry no numerator to report on, and a numerator the
-# caller wrote is one this check has nothing to say about: which variables it
-# conditions on is a statement about the reported model that the weights do not
-# carry.
+# caller supplied is one this check has nothing to say about, whether it arrived
+# as a score or as a fitted model: which variables it conditions on is a
+# statement about the reported model that a score does not carry, and a model
+# that conditions on the modifier is the very thing this would ask for.
 check_ipw_by_stabilizer <- function(wts, name, call = rlang::caller_env()) {
   reportable <- !is.null(wts) &&
     is_stabilized(wts) &&
-    is.null(stabilization_score(wts))
+    is.null(stabilization_score(wts)) &&
+    is.null(numerator_model(wts))
 
   if (!reportable) {
     return(invisible(TRUE))
@@ -390,9 +392,10 @@ check_ipw_by_stabilizer <- function(wts, name, call = rlang::caller_env()) {
       by nothing {.val {name}} explains.",
       i = "A numerator conditioning on {.val {name}} leaves the estimator \\
       consistent for the same stratum effects and tightens the weights \\
-      further. Build one with {.fun wt_ate}'s {.arg stabilization_score}, \\
-      evaluated at the exposure each unit took; see {.strong Stabilization} in \\
-      {.fun wt_ate}."
+      further. Build one with {.fun wt_ate}'s {.arg stabilize}, given a model \\
+      of the exposure on {.val {name}}, or with its \\
+      {.arg stabilization_score}, evaluated at the exposure each unit took; \\
+      see {.strong Stabilization} in {.fun wt_ate}."
     ),
     warning_class = "propensity_ipw_by_stabilizer_warning",
     call = call

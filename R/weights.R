@@ -57,7 +57,8 @@
 #' ## Stabilization
 #'
 #' Stabilization multiplies the base weight by an estimate of P(A) (binary) or
-#' f_A(A) (continuous), reducing variance. When no `stabilization_score` is
+#' f_A(A) (continuous), or by an estimate of either conditional on variables a
+#' model of the exposure reads, reducing variance. When no `stabilization_score` is
 #' supplied, that estimate is the marginal mean of `.exposure` for a binary or
 #' categorical exposure, and for a continuous exposure the marginal density of
 #' the family `.density` names, evaluated at the population mean and standard
@@ -123,28 +124,48 @@
 #' `V` at all is a question about the reported model rather than about the
 #' weights; see **Effect modification** in [ipw()].
 #'
-#' A continuous exposure has a third way of writing the same thing: pass the
-#' fitted numerator model to `stabilize` itself, and the density it estimates
-#' becomes the numerator.
+#' There is a third way of writing the same thing: pass the fitted numerator
+#' model to `stabilize` itself, and what it estimates becomes the numerator.
 #'
 #' ```
-#' num <- lm(A ~ V, data = dat)
+#' num <- glm(A ~ V, data = dat, family = binomial())
 #' wt_ate(ps_mod, stabilize = num)
+#'
+#' num <- lm(A ~ V, data = dat)
+#' wt_ate(dose_mod, stabilize = num)
 #' ```
 #'
-#' The weights are then \eqn{f(A \mid V) / f(A \mid X)}: the family `.density`
-#' names, read at the numerator model's fitted mean and the root mean square of
-#' its residuals, over the same family read at the propensity score model's. The
-#' same caveat governs it. A numerator conditioning on `V` targets the effect in
-#' a pseudo-population where `V` still predicts the exposure, so the estimand is
-#' the effect conditional on `V` being balanced rather than the marginal one,
-#' and it answers the question you meant only when the model the estimates are
-#' read from also reads `V`.
+#' For a binary exposure the weights are then
+#' \eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)}: the model's fitted probability
+#' read at the level each unit actually took, which is \eqn{p_i} for a unit
+#' with \eqn{A_i = 1} and \eqn{1 - p_i} for a unit with \eqn{A_i = 0}, over
+#' the same denominator the unstabilized weights divide by. Writing it as the
+#' model rather than as the numbers is what keeps the untreated units from
+#' carrying \eqn{P(A = 1 \mid V)}, which is the mistake the
+#' `stabilization_score` form has to be written around by hand.
+#'
+#' For a continuous exposure they are \eqn{f(A \mid V) / f(A \mid X)}: the
+#' family `.density` names, read at the numerator model's fitted mean and the
+#' root mean square of its residuals, over the same family read at the
+#' propensity score model's.
+#'
+#' The same caveat governs both. A numerator conditioning on `V` targets the
+#' effect in a pseudo-population where `V` still predicts the exposure, so the
+#' estimand is the effect conditional on `V` being balanced rather than the
+#' marginal one, and it answers the question you meant only when the model the
+#' estimates are read from also reads `V`.
 #'
 #' Handing the model over rather than the numbers it evaluates to is what lets
 #' [ipw()] estimate it: the model's own estimating equations join the stacked
 #' system, so the standard errors account for the numerator having been fitted,
-#' where a `stabilization_score` is carried as a known constant.
+#' where a `stabilization_score` is carried as a known constant. That accounting
+#' has something to say only where the reported model is not saturated in the
+#' variables the numerator reads. A numerator of a binary exposure on an effect
+#' modifier is constant within each cell of the modifier and the exposure, so a
+#' model saturated in those cells fits the same coefficients with the numerator
+#' and without it, and the standard errors do not move either.
+#'
+#' [numerator_model()] reads the model back off the weights.
 #'
 #' ## Handling extreme weights
 #'
@@ -508,25 +529,35 @@
 #'     weights are not the recommended ones. `NULL`, the default, reads the
 #'     answer from the exposure type: a continuous exposure is stabilized, and a
 #'     binary or categorical exposure is not.
-#'   * A fitted model of the exposure, for a continuous exposure alone, which
-#'     stabilizes the weights on the conditional density that model estimates
-#'     rather than on the marginal density of the exposure. The numerator is the
-#'     family `.density` names, read at the model's fitted mean and the root
-#'     mean square of its residuals, so the weights are
-#'     \eqn{f(A \mid V) / f(A \mid X)} for the variables \eqn{V} the numerator
-#'     model reads. The model is recorded on the result, and [ipw()] estimates
-#'     it alongside everything else so that the standard errors account for it
-#'     having been fitted. Conditioning the numerator on \eqn{V} changes what is
-#'     estimated unless the model the estimates are read from also reads
-#'     \eqn{V}; see **Stabilization** in Details.
+#'   * A fitted model of the exposure, for a binary or continuous exposure,
+#'     which stabilizes the weights on what that model estimates rather than on
+#'     the marginal probability or density of the exposure.
 #'
-#'     Any [lm()], or anything built on one, is read this way. A model of a
-#'     binary or categorical exposure, a family whose spread changes with its
-#'     fitted values, a model with a fitted value for some other set of
-#'     observations, and a model supplied together with `stabilization_score`
-#'     or `numerator = "integrated"` are each refused; the classes are
-#'     `propensity_numerator_error`, `propensity_model_family_error`, and
-#'     `propensity_length_error`.
+#'     For a binary exposure the model is a [binomial()] fit and the numerator
+#'     is its fitted probability of the level each unit took, so the weights
+#'     are \eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)} for the variables
+#'     \eqn{V} the numerator model reads. For a continuous exposure the
+#'     numerator is the family `.density` names, read at the model's fitted mean
+#'     and the root mean square of its residuals, so the weights are
+#'     \eqn{f(A \mid V) / f(A \mid X)}.
+#'
+#'     The model is recorded on the result, where [numerator_model()] reads it
+#'     back, and [ipw()] estimates it alongside everything else so that the
+#'     standard errors account for it having been fitted. Conditioning the
+#'     numerator on \eqn{V} changes what is estimated unless the model the
+#'     estimates are read from also reads \eqn{V}; see **Stabilization** in
+#'     Details.
+#'
+#'     Any [lm()], or anything built on one, is read this way. The family is
+#'     held to the exposure: a fit whose spread changes with its fitted values,
+#'     or a model of a conditional mean where a probability is needed, is
+#'     refused with `propensity_model_family_error`, which is also what a model
+#'     of a dose handed to a binary exposure and a [binomial()] model handed to
+#'     a dose are refused with. A categorical exposure takes no fitted
+#'     numerator, and neither does a model supplied together with
+#'     `stabilization_score` or `numerator = "integrated"`; those are
+#'     `propensity_numerator_error`. A model with a fitted value for some other
+#'     set of observations is `propensity_length_error`.
 #'
 #'   Anything else is refused with an error of class
 #'   `propensity_stabilize_error`. Stabilization is only supported by
@@ -900,6 +931,7 @@ wt_ate.numeric <- function(
       .reference_level = .reference_level,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
+      numerator_model = numerator_model,
       call = call
     )
   } else if (exposure_type == "continuous") {
@@ -1154,6 +1186,7 @@ ate_binary <- function(
   .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
+  numerator_model = NULL,
   call = rlang::caller_env()
 ) {
   .exposure <- transform_exposure_binary(
@@ -1163,17 +1196,29 @@ ate_binary <- function(
     call = call
   )
 
-  if (isTRUE(stabilize) && is.null(stabilization_score)) {
+  unstabilized <- (.exposure / .propensity) +
+    ((1 - .exposure) / (1 - .propensity))
+
+  if (isTRUE(stabilize) && !is.null(numerator_model)) {
+    # A fitted numerator is the conditional probability of the level each unit
+    # took, so the weights are P(Z = z_i | V_i) / f(Z_i | X_i): the unstabilized
+    # weights scaled unit by unit rather than by one number for each arm.
+    wt <- unstabilized * numerator_model_probability(numerator_model)
+
+    # The model itself travels back with the weights, the way a density record
+    # does, so that it reaches the `psw` by the route every other exposure
+    # record takes.
+    attr(wt, "numerator_model") <- numerator_model
+  } else if (isTRUE(stabilize) && is.null(stabilization_score)) {
     p1 <- ipw_default_stab_seed(.exposure)
     p0 <- 1 - p1
 
     wt <- (.exposure * p1 / .propensity) +
       ((1 - .exposure) * p0 / (1 - .propensity))
   } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
-    wt <- (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
-    wt <- wt * stabilization_score
+    wt <- unstabilized * stabilization_score
   } else {
-    wt <- (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
+    wt <- unstabilized
   }
 
   wt

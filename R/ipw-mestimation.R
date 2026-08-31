@@ -292,6 +292,20 @@ ipw_spec_binary <- function(
   wts <- extract_weights(outcome_mod)
   estimand <- check_estimand(wts, estimand, call = call)
 
+  # A numerator model joins the stack the way the propensity score model does,
+  # so it goes through the same guards and is refused on the same terms.
+  numerator_mod <- numerator_model(wts)
+  numerator_block <- ipw_binary_numerator_block(numerator_mod, call = call)
+  if (!is.null(numerator_block)) {
+    check_ipw_numerator_model(
+      numerator_mod,
+      numerator_block,
+      exposure_name,
+      length(exposure),
+      call = call
+    )
+  }
+
   exposure_values <- sort(unique(exposure))
 
   if (!isTRUE(length(exposure_values) == 2)) {
@@ -386,7 +400,12 @@ ipw_spec_binary <- function(
     ),
     stab = list(
       stabilized = is_stabilized(wts),
-      score = stabilization_score(wts)
+      score = stabilization_score(wts),
+      # A numerator estimated by a model of the caller's is estimated again in
+      # the stacked system, so the block carries the model's design, its score,
+      # and the coefficients it was fit at rather than the probabilities they
+      # evaluate to.
+      model = numerator_block
     ),
     outcome = list(
       X = model.matrix(outcome_mod),
@@ -401,6 +420,61 @@ ipw_spec_binary <- function(
     by = by,
     focal_level = NULL,
     reference_level = NULL
+  )
+}
+
+# The stabilization block a binary exposure's numerator model contributes: the
+# design its coefficients multiply, and the link its fitted probability is read
+# back through. The score the block solves is the binomial score, which is what
+# a numerator of a binary exposure is fit by, so the block needs nothing else.
+#
+# Every guard here is the guard the binary propensity score model meets, read
+# for the argument the numerator model arrived in: the same family, the same
+# three links, the same refusal of a penalized fit, the same refusal of case
+# weights, and the same rank requirement.
+ipw_binary_numerator_block <- function(
+  numerator_model,
+  call = rlang::caller_env()
+) {
+  if (is.null(numerator_model)) {
+    return(NULL)
+  }
+
+  check_ipw_binary_gam(
+    numerator_model,
+    arg = "stabilize",
+    what = "a binary numerator model",
+    call = call
+  )
+  check_ipw_numerator_model_weights(numerator_model, call = call)
+
+  # The block below multiplies the fitted coefficients against the design
+  # positionally, as the propensity score block does, so the model needs a
+  # coefficient for every column of its design. Without this the numerator comes
+  # back missing at every value of theta, and the first report of it is the
+  # weights the system rebuilds failing to match the ones the caller built.
+  check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
+
+  link <- numerator_model[["family"]]$link
+  supported <- c("logit", "probit", "cloglog")
+  if (!isTRUE(link %in% supported)) {
+    abort(
+      c(
+        "{.fun ipw} does not support the {.val {link}} link for a binary \\
+        numerator model.",
+        i = "Supported links: {.val {supported}}.",
+        i = "Refit {.arg stabilize} with a supported link and rebuild the \\
+        weights from it."
+      ),
+      error_class = "propensity_ipw_link_error",
+      call = call
+    )
+  }
+
+  list(
+    X = stats::model.matrix(numerator_model),
+    link = link,
+    coefs = stats::coef(numerator_model)
   )
 }
 
@@ -2097,7 +2171,7 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       inv_ps <- ipw_inv_link(spec$ps$link)
       e <- inv_ps(as.vector(spec$ps$X %*% th_ps))
       check_ipw_ps_separation(sum(e == 0 | e == 1), call = call)
-      stab_prob <- if (length(th_stab)) th_stab[[1]] else NULL
+      stab_prob <- ipw_binary_stab_prob(spec, th_stab)
       weight_fn(e, spec$exposure, list(stab_prob = stab_prob, score = score))
     },
     categorical = {

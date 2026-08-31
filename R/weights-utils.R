@@ -540,7 +540,8 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
 # categorical exposure is weighted by a probability ratio that needs no such
 # numerator, so it stays unstabilized, as it always has been. An explicit `TRUE`
 # or `FALSE` is passed through untouched, and a fitted numerator model is a
-# request to stabilize on the density that model estimates, so it resolves to
+# request to stabilize on what that model estimates, the conditional density of
+# a dose or the conditional probability of a binary exposure, so it resolves to
 # `TRUE` and the model itself travels beside it.
 #
 # Anything else is refused rather than read as one of the two answers. Every
@@ -569,21 +570,25 @@ resolve_stabilize <- function(
       "{.arg stabilize} must be {.code TRUE}, {.code FALSE}, {.code NULL}, or
        a fitted model of the exposure.",
       x = "It is {.obj_type_friendly {stabilize}}.",
-      i = "A fitted model stabilizes a continuous exposure's weights on the
-           conditional density it estimates. To stabilize on a numerator you
-           computed yourself, set {.code stabilize = TRUE} and pass it as
-           {.arg stabilization_score}."
+      i = "A fitted model stabilizes the weights on the numerator it estimates:
+           a conditional density for a dose, and the conditional probability of
+           the level each unit took for a binary exposure. To stabilize on a
+           numerator you computed yourself, set {.code stabilize = TRUE} and
+           pass it as {.arg stabilization_score}."
     ),
     error_class = "propensity_stabilize_error",
     call = call
   )
 }
 
-# The models a numerator can be fit with: those that report a conditional mean
-# of the exposure and the residuals around it, which is everything [lm()] covers
-# and everything built on it. What the weights ask of such a model is its fitted
-# values and their spread, so a subclass is read as an `lm` here, the way the
-# conditional mean of `.propensity` is.
+# The models a numerator can be fit with: everything [lm()] covers and
+# everything built on it, a [glm()] of any family included. What the weights ask
+# of such a model is its fitted values, and the residuals around them where a
+# density is spread by those, so a subclass is read as an `lm` here, the way
+# `.propensity` is. Which families answer for which exposure is
+# `check_numerator_model()`'s question rather than this one's: a model that is
+# not the right one for the exposure is refused there, by the same check the
+# propensity score model of that exposure meets.
 is_numerator_model <- function(x) {
   inherits(x, "lm")
 }
@@ -1337,6 +1342,10 @@ calculate_weight_from_modified_ps <- function(
 record_exposure_attrs <- function(psw_obj, wts, exposure_type) {
   attr(psw_obj, "exposure_type") <- exposure_type
   attr(psw_obj, "density_meta") <- attr(wts, "density_meta")
+  # A binary exposure's numerator model is recorded on its own, there being no
+  # density record for it to sit inside. A continuous exposure's sits in the
+  # density record, and `numerator_model()` reads the two back as one.
+  attr(psw_obj, "numerator_model") <- attr(wts, "numerator_model")
 
   psw_obj
 }

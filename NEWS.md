@@ -1,5 +1,23 @@
 # propensity 0.1.0.9000 (development version)
 
+* `wt_ate()` and `wt_cens()` now take a fitted model of a binary exposure in
+  `stabilize`, where a fitted model of a dose was already taken. The numerator
+  is then the model's fitted probability of the level each unit took, so the
+  weights are P(A = a | V) / f(a | X) for the variables V the numerator model
+  reads. Written as a `stabilization_score` this is the numerator most worth
+  having and the one easiest to write wrongly: passing the fitted probabilities
+  on their own gives every untreated unit the probability of a treatment it did
+  not take. Handing over the model says what was meant once, and it is what
+  `ipw()` needs to estimate the numerator rather than read it as a constant: the
+  model's own score equations join the stacked system in place of the marginal
+  proportion the default stabilizer estimates there. `numerator_model()` reads
+  the model back off the weights, for a dose as well, and `ipw()` no longer
+  warns about the numerator a `.by` request was given when a model supplied it.
+  Weights stabilized this way have no `se_method = "linearization"` standard
+  error, that method reading every stabilizer as a known constant, and are
+  refused there rather than described by a variance that ignores the numerator
+  having been fitted.
+
 * `ipw()` now evaluates an additive propensity score model's design once per
   call, where each reader of it used to build its own. Evaluating the smooth
   basis of an `mgcv::gam()` fit is the larger part of what that route costs, so
