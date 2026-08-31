@@ -431,3 +431,48 @@ test_that("combining weights stabilized on different models drops both", {
   )
   expect_null(numerator_model(out))
 })
+
+# ---- arithmetic on weights that record a numerator model --------------------
+
+test_that("arithmetic that leaves the result unstabilized drops the model", {
+  # A numerator model names what the weights were divided by, so a result only
+  # half of which was divided by it was not. The merge already drops the
+  # stabilization status and the stabilization score there, and the model is
+  # the same record of the same thing: left standing, the result answers
+  # `numerator_model()` with a model and prints a `stabilize:` line naming a
+  # numerator that never multiplied it.
+  modeled <- binary_modeled_wt()
+  unstabilized <- wt_ate(
+    binary_numerator_ps,
+    binary_numerator_dat$z,
+    exposure_type = "binary"
+  )
+
+  results <- list(
+    `modeled * unstabilized` = expect_silent(modeled * unstabilized),
+    `unstabilized * modeled` = expect_silent(unstabilized * modeled),
+    `modeled + unstabilized` = expect_silent(modeled + unstabilized)
+  )
+
+  for (label in names(results)) {
+    out <- results[[label]]
+    expect_false(is_stabilized(out), label = label)
+    expect_null(numerator_model(out), label = label)
+    expect_false(
+      any(grepl("stabilize:", capture.output(print(out)), fixed = TRUE)),
+      label = label
+    )
+  }
+})
+
+test_that("arithmetic that stays stabilized keeps the numerator model", {
+  # The drop above belongs to the unstabilized result rather than to every
+  # product: two sets of weights divided by the same numerator give a product
+  # that was divided by it too.
+  same <- expect_silent(binary_modeled_wt() * binary_modeled_wt())
+  expect_true(is_stabilized(same))
+  expect_identical(
+    stats::coef(numerator_model(same)),
+    stats::coef(binary_numerator_model)
+  )
+})

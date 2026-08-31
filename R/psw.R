@@ -495,6 +495,26 @@ new_density_meta <- function(
   )
 }
 
+# The density record left of one whose weights are no longer stabilized. The
+# denominator is the conditional density the weights divide by, which the
+# family, the spread, and a spread the caller supplied all describe, and which
+# an operation on the weights leaves standing. The numerator fields describe
+# what the weights were divided into, which an unstabilized result was not
+# divided into at all, so they are reduced to the record of no numerator that
+# unstabilized weights are built with in the first place.
+unstabilized_density_meta <- function(meta) {
+  if (is.null(meta) || identical(meta$numerator, "none")) {
+    return(meta)
+  }
+
+  new_density_meta(
+    density = meta$density,
+    numerator = "none",
+    sigma = meta$sigma,
+    sigma_value = meta$sigma_value
+  )
+}
+
 #' @rdname exposure_type
 #' @export
 format.propensity_density_meta <- function(x, ...) {
@@ -838,9 +858,19 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
   # status. That is the same kind of reduction as a drop for length rather than
   # a disagreement between the operands, so it goes without comment and takes
   # any disagreement about the score with it.
+  #
+  # A numerator model is the same record in another form: it names the quantity
+  # the weights were divided by rather than holding its value. An unstabilized
+  # result was divided by no numerator, so the model has nothing left to
+  # describe either, and is dropped in the same place and for the same reason.
+  # A continuous exposure keeps that record inside the density record, whose
+  # numerator fields are reduced there while the fields describing the
+  # denominator stay: what the weights divide by survives the arithmetic.
   if (!stabilized) {
     attrs["stabilization_score"] <- list(NULL)
-    conflicts <- setdiff(conflicts, "stabilization_score")
+    attrs["numerator_model"] <- list(NULL)
+    attrs["density_meta"] <- list(unstabilized_density_meta(attrs$density_meta))
+    conflicts <- setdiff(conflicts, c("stabilization_score", "numerator_model"))
   }
 
   if (length(conflicts) > 0) {

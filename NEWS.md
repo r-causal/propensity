@@ -1,5 +1,18 @@
 # propensity 0.1.0.9000 (development version)
 
+* Arithmetic on two sets of weights now drops the numerator that a result the
+  merge leaves unstabilized was never divided by. Multiplying stabilized
+  weights by unstabilized ones already dropped the stabilization status and the
+  stabilization score, on the reasoning that a result carrying no numerator
+  leaves neither of them anything to describe, but a numerator model the
+  weights recorded stayed: the product answered `numerator_model()` with a
+  model and printed a `stabilize:` line naming a numerator that had never
+  multiplied it. The record a continuous exposure keeps inside `density_meta()`
+  misdescribed such a product the same way, and its numerator fields now read
+  as the record of no numerator, while the family and the spread stay, those
+  describing the density the weights divide by rather than the one they were
+  divided into.
+
 * `ipw()` now estimates each component's stabilizing numerator in a block of
   its own on the two-model route to a joint intervention, where the route
   carried one stabilization block and it belonged to the dose. Two things

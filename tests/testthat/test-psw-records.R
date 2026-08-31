@@ -643,6 +643,65 @@ test_that("the records survive arithmetic", {
   expect_identical(density_meta(expect_silent(w * 2)), meta)
 })
 
+test_that("arithmetic that leaves the result unstabilized drops the numerator", {
+  # A numerator is what the weights were divided into, and a product only half
+  # of which was divided by it was not. The merge already drops the
+  # stabilization status and the score there, and the numerator fields of the
+  # density record say the same thing a third time: left standing, the record
+  # reads back as a ratio the product is not, and prints a `stabilize:` line
+  # naming a model that never multiplied it.
+  #
+  # The other operand carries no record of its own, so the modeled record
+  # reaches the result by the single-operand route rather than by agreeing with
+  # anything. Two records that disagree about the numerator are a conflict, and
+  # are dropped whole with a report of their own.
+  modeled <- continuous_records_psw(stabilize = records_numerator_model())
+  plain <- psw(rep(1.5, length(records_exposure)), estimand = "ate")
+
+  results <- list(
+    `modeled * plain` = expect_silent(modeled * plain),
+    `plain * modeled` = expect_silent(plain * modeled),
+    `modeled + plain` = expect_silent(modeled + plain)
+  )
+
+  for (label in names(results)) {
+    out <- results[[label]]
+    expect_false(is_stabilized(out), label = label)
+    expect_null(numerator_model(out), label = label)
+    expect_null(density_meta(out)$numerator_model, label = label)
+    expect_identical(density_meta(out)$numerator, "none", label = label)
+
+    # The denominator is the conditional density the weights divide by, which
+    # the arithmetic leaves alone, so the family and the spread stay.
+    expect_identical(
+      format(density_meta(out)$density),
+      format(density_meta(modeled)$density),
+      label = label
+    )
+    expect_identical(density_meta(out)$sigma, "pooled", label = label)
+    expect_false(
+      any(grepl("stabilize:", format(density_meta(out)), fixed = TRUE)),
+      label = label
+    )
+  }
+})
+
+test_that("arithmetic that stays stabilized keeps the numerator model", {
+  # The drop above is the unstabilized result's, not every product's: two sets
+  # of weights stabilized on the same model were both divided by it, and so was
+  # their product.
+  modeled <- continuous_records_psw(stabilize = records_numerator_model())
+  twin <- continuous_records_psw(stabilize = records_numerator_model())
+
+  out <- expect_silent(modeled * twin)
+  expect_true(is_stabilized(out))
+  expect_identical(density_meta(out)$numerator, "model")
+  expect_identical(
+    stats::coef(numerator_model(out)),
+    stats::coef(records_numerator_model())
+  )
+})
+
 # ---- combining --------------------------------------------------------------
 
 test_that("combining weights that record the same thing keeps both records", {
