@@ -2342,20 +2342,20 @@ ipw_compare_weights <- function(
     }
     # A joint weight is a product, and a product records each component's
     # stabilization score so the stacked system can hold it fixed the way the
-    # single routes do. A record written before it kept scores, or one assembled
-    # by hand, says a component was stabilized without saying what by, so the
-    # component's own marginal numerator stands in and a score of the caller's
-    # is a different function of the data that no parameter value reproduces.
-    # The components a numerator was stood in for are named, which is as close
-    # to the fault as the comparison gets: it sees the product alone and cannot
-    # say which factor of it moved.
+    # single routes do. A record that keeps none says a component was
+    # stabilized without saying what by, so the component's own marginal
+    # numerator stands in and a score of the caller's is a different function of
+    # the data that no parameter value reproduces. The components a numerator
+    # was stood in for are named, which is as close to the fault as the
+    # comparison gets: it sees the product alone and cannot say which factor of
+    # it moved.
     score_hint <- if (length(stand_in)) {
       "A component built with a fixed {.arg stabilization_score} is one \\
       cause: the record on {.arg {stand_in}} keeps no score, so {.fun ipw} \\
       rebuilt {cli::qty(stand_in)}{?its/their} numerator from the exposure's \\
-      own marginal distribution instead. A product built by a version of this \\
-      package that recorded no score, or one assembled by hand, carries such \\
-      a record."
+      own marginal distribution instead. A product assembled by hand, built by \\
+      a version of this package that recorded no score, or subset after it was \\
+      built, which drops a score held per observation, carries such a record."
     } else {
       NULL
     }
