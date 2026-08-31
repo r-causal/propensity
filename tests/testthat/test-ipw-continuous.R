@@ -1735,6 +1735,38 @@ test_that("the MM refusal names the method and the psi it finishes on", {
   expect_propensity_error(ipw(ps_mod, msm))
 })
 
+test_that("ipw() refuses the MM method whose psi it cannot name", {
+  skip_if_not_installed("MASS")
+  dat <- sim_continuous_outliers()
+
+  # The refusal reads the method off the call and the psi off the fitted object,
+  # and it has a third thing to say when the first is MM and the second is a psi
+  # it has no name for: the method alone is enough to refuse on, so the psi it
+  # cannot name goes unmentioned. `rlm()` writes no such fit itself, because
+  # `method = "MM"` replaces whatever psi it was handed with the bisquare, so
+  # the pair is assembled here rather than fit.
+  own_psi <- function(u, k = 1.5) pmin(1, k / abs(u))
+  ps_mod <- suppressWarnings(MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = own_psi,
+    acc = 1e-10,
+    maxit = 200
+  ))
+  ps_mod$call$method <- "MM"
+  expect_identical(ipw_rlm_method(ps_mod), "MM")
+  expect_null(ipw_rlm_psi_name(ps_mod))
+
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_robust_psi_error"
+  )
+  expect_propensity_error(ipw(ps_mod, msm))
+})
+
 test_that("ipw() refuses a robust fit that did not converge", {
   skip_if_not_installed("MASS")
   dat <- sim_continuous_outliers()

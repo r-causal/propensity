@@ -80,6 +80,17 @@
       i Refit `wt_mod` with the default `method = "M"`, whose psi score `ipw()` writes.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
+# ipw() refuses the MM method whose psi it cannot name
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
+      x `wt_mod` was fit with `method = "MM"`, whose high-breakdown start decides which root the fit finishes at and supplies the scale it clips at, and neither of those is an equation this system writes.
+      i Refit `wt_mod` with the default `method = "M"`, whose psi score `ipw()` writes.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
 # the robust convergence refusal names the arguments that fix it
 
     Code

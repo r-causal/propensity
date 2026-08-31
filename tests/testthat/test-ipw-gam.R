@@ -212,6 +212,134 @@ test_that("a gam numerator model is estimated at its own penalized score", {
   )
 })
 
+# ---- the design an additive fit is read at ----------------------------------
+
+# `predict(type = "lpmatrix")` rebuilds every smooth basis over the whole data,
+# and it is what an additive fit's design costs: at n = 2000 it is the larger
+# part of the whole `ipw()` call. `mgcv::model.matrix.gam()` is the same call
+# under another name, so counting `predict.gam()` at `type = "lpmatrix"` counts
+# the design however the package asks for it.
+count_gam_designs <- function(expr) {
+  builds <- 0L
+  bump <- function() builds <<- builds + 1L
+
+  suppressMessages(trace(
+    "predict.gam",
+    tracer = bquote(if (identical(type, "lpmatrix")) .(bump)()),
+    print = FALSE,
+    where = asNamespace("mgcv")
+  ))
+  withr::defer(
+    suppressMessages(untrace("predict.gam", where = asNamespace("mgcv")))
+  )
+
+  value <- expr
+  list(builds = builds, value = value)
+}
+
+test_that("ipw() reads an additive dose model's design once", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+  ps_mod <- mgcv::gam(A ~ s(x1) + s(x2), data = dat, method = "REML")
+  mods <- fit_gam_models(dat, ps_mod)
+
+  # The design is a property of the fit, so one call needs one of them: the
+  # penalized score the registry checks the fit against, and the design the psi
+  # function multiplies its coefficients by, are the same matrix. Building it
+  # again for each reader is the whole of the difference between this route and
+  # the least squares one it otherwise matches.
+  counted <- count_gam_designs(ipw(mods$ps_mod, mods$outcome_mod))
+
+  expect_identical(counted$builds, 1L)
+
+  # Counting the builds does not change what the call reports.
+  expect_equal(
+    counted$value$estimates$estimate,
+    unname(coef(mods$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+})
+
+test_that("ipw() reads each additive model's design once when two are stacked", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+  ps_mod <- mgcv::gam(A ~ s(x1) + s(x2), data = dat, method = "REML")
+  num_mod <- mgcv::gam(A ~ s(x1), data = dat, method = "REML")
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(ps_mod)),
+      dat$A,
+      exposure_type = "continuous",
+      stabilize = num_mod
+    )
+  )
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  # A numerator model is a second additive fit with a design of its own, so the
+  # count is one per fit rather than one per call. Reading it off the model it
+  # belongs to is also what keeps the two apart: a numerator block multiplied
+  # by the propensity score model's design would rebuild a numerator nobody fit.
+  counted <- count_gam_designs(ipw(ps_mod, outcome_mod))
+
+  expect_identical(counted$builds, 2L)
+
+  theta <- coef(counted$value$fit)
+  layout <- ipw_theta_layout(ipw_spec_continuous(ps_mod, outcome_mod))
+  expect_equal(
+    unname(theta[layout$idx$stab][seq_along(coef(num_mod))]),
+    unname(coef(num_mod)),
+    tolerance = 1e-8
+  )
+})
+
+test_that("the gam route reports the estimates and errors it reports today", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+
+  # The values below are what each of the three additive shapes reports now.
+  # How often the design is built is arithmetic the answer must not see, so a
+  # route that builds it once has to reproduce these to the digit; the shapes
+  # are pinned together because they read the design in different places.
+  identity_mods <- fit_gam_models(
+    dat,
+    mgcv::gam(A ~ s(x1) + s(x2), data = dat, method = "REML")
+  )
+  identity_res <- ipw(identity_mods$ps_mod, identity_mods$outcome_mod)
+  expect_equal(identity_res$estimates$estimate, 1.0735436968, tolerance = 1e-6)
+  expect_equal(identity_res$estimates$std.err, 0.0534830856, tolerance = 1e-6)
+
+  log_mods <- fit_gam_models(
+    dat,
+    mgcv::gam(
+      Apos ~ s(x1) + s(x2),
+      data = dat,
+      family = gaussian(link = "log"),
+      method = "REML"
+    ),
+    exposure = "Apos"
+  )
+  log_res <- ipw(log_mods$ps_mod, log_mods$outcome_mod)
+  expect_equal(log_res$estimates$estimate, 1.0722820530, tolerance = 1e-6)
+  expect_equal(log_res$estimates$std.err, 0.0528567734, tolerance = 1e-6)
+
+  ps_mod <- mgcv::gam(A ~ s(x1) + s(x2), data = dat, method = "REML")
+  num_mod <- mgcv::gam(A ~ s(x1), data = dat, method = "REML")
+  num_wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(ps_mod)),
+      dat$A,
+      exposure_type = "continuous",
+      stabilize = num_mod
+    )
+  )
+  num_res <- ipw(ps_mod, lm(yc ~ A, data = dat, weights = num_wts))
+  expect_equal(num_res$estimates$estimate, 1.1204143741, tolerance = 1e-6)
+  expect_equal(num_res$estimates$std.err, 0.0570892981, tolerance = 1e-6)
+})
+
 # ---- the least squares route, read as a gam ---------------------------------
 
 test_that("a gam with no penalty reports what the lm route reports", {
