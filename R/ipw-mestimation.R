@@ -805,6 +805,10 @@ check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
     "{.fun ipw} rebuilds the propensity scores by multiplying the fitted \\
     coefficients against that design, so a column with no coefficient leaves \\
     every score undefined."
+  } else if (identical(arg, "stabilize")) {
+    "{.fun ipw} rebuilds the numerator of the weights by multiplying the \\
+    fitted coefficients against that design, so a column with no coefficient \\
+    leaves every numerator undefined."
   } else {
     "{.fun ipw} estimates the marginal means by multiplying the fitted \\
     coefficients against that design, so a column with no coefficient leaves \\

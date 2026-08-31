@@ -368,6 +368,20 @@ test_that("a density record prints the density, numerator, and spread", {
       "sigma:     supplied"
     )
   )
+
+  # A numerator of "model" says that a model the caller fit estimated the
+  # numerator, but not which one, so the record reads the model's formula back
+  # under the three choices, in the terms of the argument it arrived in.
+  modeled <- continuous_records_psw(stabilize = records_numerator_model())
+  expect_identical(
+    capture.output(print(density_meta(modeled))),
+    c(
+      "density:   normal",
+      "numerator: model",
+      "sigma:     pooled",
+      "stabilize: exposure ~ covariate"
+    )
+  )
 })
 
 # ---- the density record under the printed weights ---------------------------
@@ -396,6 +410,23 @@ test_that("printing continuous weights writes the density record under them", {
   # is written under them and nothing else moves.
   expect_length(printed, 5L)
   expect_identical(printed[[1]], "<psw{estimand = ate; stabilized}[6]>")
+
+  # Weights stabilized on a model carry a fourth line naming it, and it reaches
+  # the printed weights the same way: through the record's own `format()`.
+  modeled <- continuous_records_psw(stabilize = records_numerator_model())
+  modeled_printed <- psw_printed(modeled)
+
+  expect_identical(
+    utils::tail(modeled_printed, 4L),
+    format(density_meta(modeled))
+  )
+  expect_match(modeled_printed, "^numerator:\\s+model$", all = FALSE)
+  expect_match(
+    modeled_printed,
+    "^stabilize:\\s+exposure ~ covariate$",
+    all = FALSE
+  )
+  expect_length(modeled_printed, 6L)
 })
 
 test_that("the footer tells apart weights whose values print alike", {
@@ -465,6 +496,8 @@ test_that("the printed weights read as they are pinned", {
     print(continuous_records_psw())
 
     print(continuous_records_psw(.density = dens_t(4)))
+
+    print(continuous_records_psw(stabilize = records_numerator_model()))
 
     print(wt_ate(records_binary_ps, records_binary_exposure))
   })

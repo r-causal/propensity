@@ -530,6 +530,13 @@ ipw_numerator_model_block <- function(
   )
   check_ipw_continuous_model(entry, call = call)
 
+  # The block below multiplies the fitted coefficients against the design
+  # positionally, as the propensity score block does, so the model needs a
+  # coefficient for every column of its design. Without this the numerator comes
+  # back missing at every value of theta, and the first report of it is the
+  # weights the system rebuilds failing to match the ones the caller built.
+  check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
+
   list(
     X = stats::model.matrix(numerator_model),
     kind = entry$kind,
@@ -551,6 +558,12 @@ ipw_numerator_model_fns <- function(model) {
 # The block's own equations read the exposure the propensity score model reads,
 # so a model of another response would sit away from the root of the row seeded
 # for it and the solve would move it, reporting a numerator the user never fit.
+#
+# What is checked is the name of the response and how many observations it was
+# read over, not that those observations are the same rows in the same order.
+# Row identity is what the preflight at initialization covers: weights rebuilt
+# over misaligned rows do not match the ones the caller supplied, and that
+# comparison reports the misalignment.
 check_ipw_numerator_model <- function(
   numerator_model,
   block,

@@ -2188,3 +2188,22 @@ test_that("ipw() refuses a numerator model fit to other observations", {
 
   expect_propensity_error(ipw(ps_mod, outcome_mod))
 })
+
+test_that("ipw() refuses a numerator model with a dropped coefficient", {
+  # The stabilization block multiplies the numerator model's coefficients
+  # against its design, exactly as the propensity score block multiplies its
+  # own, so a column the fit could not separate from the others leaves every
+  # numerator undefined. Without the guard the failure arrives much later, as
+  # weights that no longer match the ones the caller built, and the report
+  # blames the record rather than the model.
+  dat <- sim_continuous()
+  dat$x1_again <- dat$x1
+  num_mod <- lm(A ~ x1 + x1_again, data = dat)
+  fits <- fit_continuous_models(dat, stabilize = num_mod)
+
+  expect_error(
+    ipw(fits$ps_mod, fits$outcome_mod),
+    class = "propensity_ipw_rank_error"
+  )
+  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+})

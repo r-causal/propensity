@@ -17,6 +17,15 @@
       numerator: marginal
       sigma:     pooled
     Code
+      print(continuous_records_psw(stabilize = records_numerator_model()))
+    Output
+      <psw{estimand = ate; stabilized}[6]>
+      [1] 0.3754406 0.0993653 0.1745891 0.1223126 0.1632425 0.1326700
+      density:   normal
+      numerator: model
+      sigma:     pooled
+      stabilize: exposure ~ covariate
+    Code
       print(wt_ate(records_binary_ps, records_binary_exposure))
     Output
       <psw{estimand = ate}[6]>

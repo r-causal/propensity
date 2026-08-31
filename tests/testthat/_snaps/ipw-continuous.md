@@ -162,3 +162,15 @@
       x It was fit to 200 observations and `outcome_mod` to 197.
       i Refit the numerator model on the data the other models were fit to, and rebuild the weights from it.
 
+# ipw() refuses a numerator model with a dropped coefficient
+
+    Code
+      expr
+    Condition <propensity_ipw_rank_error>
+      Error in `ipw()`:
+      ! `stabilize` must have a coefficient for every column of its design.
+      x `stabilize` has no fitted coefficient for "x1_again".
+      i A model reports that for a column its design cannot separate from the others: the column is a linear combination of them, exactly or to within the tolerance the fit pivots at, so the fit has no unique solution for it and drops it.
+      i `ipw()` rebuilds the numerator of the weights by multiplying the fitted coefficients against that design, so a column with no coefficient leaves every numerator undefined.
+      i Refit `stabilize` without the redundant column, or combine it with the column it duplicates.
+

@@ -344,9 +344,11 @@ stabilization_score <- function(wt) {
 #'   so the record holds where it came from and nothing more.
 #'
 #' Weights that carry a density record print it under their values, as the
-#' three lines `format()` renders. Weights that carry none, which is every set
-#' of weights for a binary or categorical exposure, print exactly as they
-#' always have.
+#' lines `format()` renders: the density family, the numerator, and the spread,
+#' followed by the formula of the model supplied to `stabilize` when a model
+#' estimated the numerator. Weights that carry none, which is every set of
+#' weights for a binary or categorical exposure, print exactly as they always
+#' have.
 #'
 #' @param wt A `psw` or `causal_wts` object.
 #' @param x A density record, as returned by `density_meta()`.
@@ -358,7 +360,7 @@ stabilization_score <- function(wt) {
 #'   elements `density`, `numerator`, `sigma`, `sigma_value`, and
 #'   `numerator_model`, or `NULL`.
 #' * `print()` and `format()`: the record, invisibly, and a character vector of
-#'   one line per element.
+#'   one line per choice the record describes.
 #'
 #' @seealso [psw()] for the weight vector class and the rest of what it
 #'   records, and [wt_ate()] for the functions that write these records.
@@ -423,11 +425,41 @@ new_density_meta <- function(
 #' @rdname exposure_type
 #' @export
 format.propensity_density_meta <- function(x, ...) {
-  # `format()` pads the labels to the longest of them, so the three values read
-  # down the same column.
-  labels <- format(c("density:", "numerator:", "sigma:"))
+  labels <- c("density:", "numerator:", "sigma:")
+  values <- c(format(x$density), x$numerator, x$sigma)
 
-  paste(labels, c(format(x$density), x$numerator, x$sigma))
+  # A numerator of "model" says that a model the caller fit estimated the
+  # numerator, but not which one. The formula is what the model reads, so the
+  # record names it under the three choices, labelled by the argument the model
+  # arrived in.
+  formula <- density_meta_model_formula(x$numerator_model)
+  if (!is.null(formula)) {
+    labels <- c(labels, "stabilize:")
+    values <- c(values, formula)
+  }
+
+  # `format()` pads the labels to the longest of them, so the values read down
+  # the same column.
+  paste(format(labels), values)
+}
+
+# The formula a numerator model reads, as one line. A fitted model that cannot
+# report a formula still stabilized the weights it was given, so the record
+# leaves the line out rather than refusing to print at all.
+density_meta_model_formula <- function(numerator_model) {
+  if (is.null(numerator_model)) {
+    return(NULL)
+  }
+
+  formula <- tryCatch(
+    stats::formula(numerator_model),
+    error = function(e) NULL
+  )
+  if (is.null(formula)) {
+    return(NULL)
+  }
+
+  paste(deparse(formula), collapse = " ")
 }
 
 #' @rdname exposure_type

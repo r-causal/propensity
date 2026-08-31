@@ -29,7 +29,7 @@ density_meta(wt)
 elements \code{density}, \code{numerator}, \code{sigma}, \code{sigma_value}, and
 \code{numerator_model}, or \code{NULL}.
 \item \code{print()} and \code{format()}: the record, invisibly, and a character vector of
-one line per element.
+one line per choice the record describes.
 }
 }
 \description{
@@ -83,9 +83,11 @@ so the record holds where it came from and nothing more.
 }
 
 Weights that carry a density record print it under their values, as the
-three lines \code{format()} renders. Weights that carry none, which is every set
-of weights for a binary or categorical exposure, print exactly as they
-always have.
+lines \code{format()} renders: the density family, the numerator, and the spread,
+followed by the formula of the model supplied to \code{stabilize} when a model
+estimated the numerator. Weights that carry none, which is every set of
+weights for a binary or categorical exposure, print exactly as they always
+have.
 }
 \examples{
 set.seed(1)
