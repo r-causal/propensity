@@ -64,7 +64,9 @@ subsetting and every other operation that keeps the vector a \code{\link[=psw]{p
 stabilization score is the exception: it holds one value per observation, so
 a score that no longer describes the observations the result holds is dropped
 the way the score on the weights themselves is, and a score of one value is
-carried at any length.
+carried at any length. Arithmetic that leaves the result unstabilized reduces
+the record's numerator side, as described under \strong{What the product
+records}.
 }
 \description{
 \code{wt_joint()} builds the weight for a joint intervention on two treatments by
@@ -120,6 +122,14 @@ per-component truth, so the coarse flag hides nothing.
 The product records nothing about trimming, truncation, or calibration of the
 propensity scores the components were built from. Those records name the
 observations of one component, and the product is not that component.
+
+Arithmetic that leaves a result unstabilized, such as multiplying the product
+by unstabilized weights, reduces the numerator side of the record it carries:
+the components read as unstabilized, their numerator models and stabilization
+scores are dropped, and each density record's numerator fields read as the
+record of no numerator. Such a result was divided by no numerator, so a
+record naming one would describe a different vector. What each component's
+weights divide by stays, and so does the component structure.
 }
 
 \examples{

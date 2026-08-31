@@ -680,14 +680,16 @@
 #' carried. A spread supplied for each observation has no counterpart in the
 #' system and errors with class `propensity_ipw_sigma_error`.
 #'
-#' A component built with a `stabilization_score` is the one numerator this
-#' route cannot reproduce. The product records that a numerator was a score
-#' without recording the vector it was, so the system stands that component's
-#' own marginal numerator in and the weight-consistency check reports the
-#' difference, naming the components whose numerator was stood in for. Weight
-#' that treatment on its own to use a numerator computed by hand, or pass the
-#' fitted numerator to `stabilize` instead, which this route estimates in a
-#' block of its own.
+#' A component built with a `stabilization_score` is rebuilt from the score
+#' itself. [wt_joint()] records each component's score on the product, and the
+#' sandwich treats it as a known constant here exactly as it does for a single
+#' treatment, so it adds no stabilization parameters and none of its
+#' uncertainty is carried. A product built by a version of this package that
+#' recorded no score, or one assembled by hand, says a component was stabilized
+#' without saying what by: the system stands that component's own marginal
+#' numerator in, and the weight-consistency check reports the difference,
+#' naming the components whose numerator was stood in for. Rebuild such weights
+#' with [wt_joint()] to have the score read back.
 #'
 #' Dose weights built with a `"kernel"` density are refused with class
 #' `propensity_ipw_se_method_unavailable_error`. The bandwidth is not a function

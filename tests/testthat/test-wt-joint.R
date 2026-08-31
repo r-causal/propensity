@@ -486,6 +486,89 @@ test_that("the product keeps its joint record through subsetting", {
   expect_equal(as.double(subset), as.double(joint)[1:10], tolerance = 1e-12)
 })
 
+# ---- wt_joint(): arithmetic on product weights ------------------------------
+
+test_that("arithmetic that leaves the result unstabilized reduces the record", {
+  fx <- joint_wt_fixture()
+
+  # The joint record answers the same question the single record answers: which
+  # numerator were these weights divided by. A product half of which was never
+  # divided by one was not, so the numerator side of the record has nothing left
+  # to describe. The denominator side does: the density each component's weights
+  # divide by is what it always was, and so are the two components' types.
+  num_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      fx$mods$a,
+      stabilize = glm(a ~ x1, data = fx$dat, family = binomial())
+    )
+  )
+  joint <- wt_joint(num_a, fx$w$d, exposure_type = c("binary", "continuous"))
+  plain <- psw(rep(1.5, nrow(fx$dat)), estimand = "ate")
+
+  results <- list(
+    `joint * plain` = expect_silent(joint * plain),
+    `plain * joint` = expect_silent(plain * joint),
+    `joint + plain` = expect_silent(joint + plain)
+  )
+
+  for (label in names(results)) {
+    out <- results[[label]]
+    meta <- joint_wt_meta(out)
+
+    expect_false(is_stabilized(out), label = label)
+    expect_true(is_joint_wt(out), label = label)
+
+    # The component structure stays: the record still names two components and
+    # says which exposure each of them weights.
+    expect_identical(
+      meta$exposure_type,
+      c("binary", "continuous"),
+      label = label
+    )
+    expect_identical(meta$stabilized, c(FALSE, FALSE), label = label)
+    expect_identical(
+      joint_wt_numerator_models(meta),
+      list(NULL, NULL),
+      label = label
+    )
+    expect_identical(meta$stabilization_score, list(NULL, NULL), label = label)
+    expect_identical(meta$density[[2]]$numerator, "none", label = label)
+    expect_null(meta$density[[2]]$numerator_model, label = label)
+
+    # The denominator the dose's weights divide by is untouched.
+    expect_identical(
+      format(meta$density[[2]]$density),
+      format(density_meta(fx$w$d)$density),
+      label = label
+    )
+    expect_identical(meta$density[[2]]$sigma, "pooled", label = label)
+
+    # Nothing printed names a numerator the result was never divided by.
+    expect_false(
+      any(grepl("stabilize:", capture.output(print(out)), fixed = TRUE)),
+      label = label
+    )
+  }
+})
+
+test_that("arithmetic between identically stabilized products keeps the record", {
+  fx <- joint_wt_fixture()
+
+  # The reduction belongs to the unstabilized result rather than to every
+  # product: two joint weights divided by the same numerators give a product
+  # that was divided by them too.
+  joint <- wt_joint(
+    fx$w$a_stabilized,
+    fx$w$d,
+    exposure_type = c("binary", "continuous")
+  )
+
+  out <- expect_silent(joint * joint)
+  expect_true(is_stabilized(out))
+  expect_identical(joint_wt_meta(out), joint_wt_meta(joint))
+})
+
 # ---- wt_joint(): combining product weights ----------------------------------
 
 test_that("the product keeps its joint record through combination", {

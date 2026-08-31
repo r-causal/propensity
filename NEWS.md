@@ -11,11 +11,22 @@
   What every accessor answers is unchanged for a record this package wrote,
   and a record written under the old arrangement still reads.
 
+  Arithmetic that leaves a result unstabilized now reduces the numerator side
+  of a joint record the same way it reduces a single one. Multiplying joint
+  weights by unstabilized weights gave a result marked unstabilized whose
+  record still named each component's numerator, so a reader asking the product
+  what stabilized it was told about a different vector. The components now read
+  as unstabilized there, their numerator models and stabilization scores are
+  dropped, and each density record's numerator fields read as the record of no
+  numerator, while the component structure and what each component's weights
+  divide by stay.
+
 * `wt_joint()` now records each component's `stabilization_score`, and `ipw()`
   rebuilds a component stabilized on one exactly. A score is a numerator the
   caller computed rather than one an estimator can fit again, so it existed
   nowhere but on the component weights and the product kept no copy. A dose
-  stabilized that way reached a preflight mismatch it could not get past, and a
+  stabilized that way reached a weight-consistency mismatch it could not get
+  past, and a
   discrete component was worse in kind: `stabilize = TRUE` with a score left
   the same record as `stabilize = TRUE` alone, so a caller's own numerator was
   indistinguishable from the marginal proportion the default stabilizer

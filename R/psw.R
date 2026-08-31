@@ -515,6 +515,29 @@ unstabilized_density_meta <- function(meta) {
   )
 }
 
+# The joint record left of one whose product is no longer stabilized. A joint
+# record answers the question the single record answers, once per component:
+# which numerator were these weights divided by. A product half of which was
+# never divided by one was not, so the numerator side of the record has nothing
+# left to describe and is reduced the way the single record's is. What each
+# component's weights divide by stays, and so does the component structure: the
+# record still names two components and says which exposure each one weights.
+unstabilized_joint_wt_meta <- function(meta) {
+  if (is.null(meta)) {
+    return(meta)
+  }
+
+  meta$stabilized <- rep(FALSE, length(meta$exposure_type))
+  meta$numerator_model <- vector("list", length(meta$exposure_type))
+  meta$density <- lapply(meta$density, unstabilized_density_meta)
+
+  if (!is.null(meta$stabilization_score)) {
+    meta$stabilization_score <- vector("list", length(meta$exposure_type))
+  }
+
+  meta
+}
+
 #' @rdname exposure_type
 #' @export
 format.propensity_density_meta <- function(x, ...) {
@@ -866,10 +889,18 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
   # A continuous exposure keeps that record inside the density record, whose
   # numerator fields are reduced there while the fields describing the
   # denominator stay: what the weights divide by survives the arithmetic.
+  #
+  # A joint record says all of that once per component, so its numerator side is
+  # reduced the same way and for the same reason. The component structure and
+  # each component's denominator stay, those describing where the product came
+  # from rather than what it was divided into.
   if (!stabilized) {
     attrs["stabilization_score"] <- list(NULL)
     attrs["numerator_model"] <- list(NULL)
     attrs["density_meta"] <- list(unstabilized_density_meta(attrs$density_meta))
+    attrs[psw_joint_attr] <- list(
+      unstabilized_joint_wt_meta(attrs[[psw_joint_attr]])
+    )
     conflicts <- setdiff(conflicts, c("stabilization_score", "numerator_model"))
   }
 

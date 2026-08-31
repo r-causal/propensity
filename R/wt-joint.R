@@ -133,6 +133,14 @@ joint_wt_response <- function(model) {
 #' propensity scores the components were built from. Those records name the
 #' observations of one component, and the product is not that component.
 #'
+#' Arithmetic that leaves a result unstabilized, such as multiplying the product
+#' by unstabilized weights, reduces the numerator side of the record it carries:
+#' the components read as unstabilized, their numerator models and stabilization
+#' scores are dropped, and each density record's numerator fields read as the
+#' record of no numerator. Such a result was divided by no numerator, so a
+#' record naming one would describe a different vector. What each component's
+#' weights divide by stays, and so does the component structure.
+#'
 #' @param w_a,w_e The two component weight vectors, as [psw()] objects. Both
 #'   must target the `ate`, both must be the same length, and a component
 #'   weighting a continuous exposure must be stabilized. The order is the
@@ -182,7 +190,9 @@ joint_wt_response <- function(model) {
 #' stabilization score is the exception: it holds one value per observation, so
 #' a score that no longer describes the observations the result holds is dropped
 #' the way the score on the weights themselves is, and a score of one value is
-#' carried at any length.
+#' carried at any length. Arithmetic that leaves the result unstabilized reduces
+#' the record's numerator side, as described under **What the product
+#' records**.
 #'
 #' @seealso [joint_wt_models()] for the container recording the two treatment
 #'   models, and [wt_ate()] for building the components. These are used by

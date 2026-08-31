@@ -307,7 +307,9 @@ Either component may be stabilized, including on a numerator model the caller
 fit and passed to \code{\link[=wt_ate]{wt_ate()}}'s \code{stabilize}. Each component's numerator is
 estimated in a block of its own, so the standard errors account for it having
 been fitted; see \strong{Joint exposures} for what each block holds and for what a
-numerator may condition on.
+numerator may condition on. A numerator the caller computed and passed as
+\code{\link[=wt_ate]{wt_ate()}}'s \code{stabilization_score} is read back off the product and held
+fixed, contributing no block, as it is for a single treatment.
 
 Every score this route stacks is unweighted, so a treatment model fit with
 prior case weights is refused by the name it was recorded under in
@@ -931,14 +933,16 @@ dose block is its coefficients alone and none of that number's uncertainty is
 carried. A spread supplied for each observation has no counterpart in the
 system and errors with class \code{propensity_ipw_sigma_error}.
 
-A component built with a \code{stabilization_score} is the one numerator this
-route cannot reproduce. The product records that a numerator was a score
-without recording the vector it was, so the system stands that component's
-own marginal numerator in and the weight-consistency check reports the
-difference, naming the components whose numerator was stood in for. Weight
-that treatment on its own to use a numerator computed by hand, or pass the
-fitted numerator to \code{stabilize} instead, which this route estimates in a
-block of its own.
+A component built with a \code{stabilization_score} is rebuilt from the score
+itself. \code{\link[=wt_joint]{wt_joint()}} records each component's score on the product, and the
+sandwich treats it as a known constant here exactly as it does for a single
+treatment, so it adds no stabilization parameters and none of its
+uncertainty is carried. A product built by a version of this package that
+recorded no score, or one assembled by hand, says a component was stabilized
+without saying what by: the system stands that component's own marginal
+numerator in, and the weight-consistency check reports the difference,
+naming the components whose numerator was stood in for. Rebuild such weights
+with \code{\link[=wt_joint]{wt_joint()}} to have the score read back.
 
 Dose weights built with a \code{"kernel"} density are refused with class
 \code{propensity_ipw_se_method_unavailable_error}. The bandwidth is not a function

@@ -61,7 +61,9 @@
 #' fit and passed to [wt_ate()]'s `stabilize`. Each component's numerator is
 #' estimated in a block of its own, so the standard errors account for it having
 #' been fitted; see **Joint exposures** for what each block holds and for what a
-#' numerator may condition on.
+#' numerator may condition on. A numerator the caller computed and passed as
+#' [wt_ate()]'s `stabilization_score` is read back off the product and held
+#' fixed, contributing no block, as it is for a single treatment.
 #'
 #' Every score this route stacks is unweighted, so a treatment model fit with
 #' prior case weights is refused by the name it was recorded under in
