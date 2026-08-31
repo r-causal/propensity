@@ -971,3 +971,70 @@ test_that("ipw() stacks a stabilized discrete component's own numerator", {
     tolerance = 1e-6
   )
 })
+
+# ---- a component stabilized on a fixed score --------------------------------
+
+test_that("ipw() rebuilds a discrete component stabilized on a fixed score", {
+  dat <- sim_joint_models()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  # A numerator the caller computed rather than one the estimator can fit. It
+  # is away from the marginal proportion, which is the record a stabilized
+  # discrete component used to leave whatever it was built with, so a system
+  # that stood the proportion in would reach a different product and be
+  # reported as a mismatch the caller did not cause.
+  score <- 0.3 + 0.4 * plogis(dat$x2)
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a, stabilize = TRUE, stabilization_score = score),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  models <- joint_wt_models(a = ps_a, e = ps_e)
+
+  # The product written out, so the rebuild is held to the arithmetic rather
+  # than to the preflight's tolerance.
+  expected <- (((dat$a / fitted(ps_a)) +
+    ((1 - dat$a) / (1 - fitted(ps_a)))) *
+    score) *
+    ((dat$e / fitted(ps_e)) + ((1 - dat$e) / (1 - fitted(ps_e))))
+  expect_equal(as.numeric(wts), unname(expected), tolerance = 1e-12)
+
+  spec <- ipw_spec_joint_models(models, outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(wts),
+    tolerance = 1e-12
+  )
+
+  mat <- build_ipw_psi(spec, layout)(layout$init)
+  expect_false(anyNA(mat))
+  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-8))
+
+  res <- ipw(models, outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    joint_models_expected_estimates(joint_models_cell_means(outcome_mod, dat)),
+    tolerance = 1e-6
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+
+  # A score is a known multiplier, so it widens the system by nothing at all
+  # where the marginal proportion the default stabilizer estimates would have
+  # taken one parameter.
+  expect_false(any(grepl("^stab_", names(coef(res$fit)))))
+})

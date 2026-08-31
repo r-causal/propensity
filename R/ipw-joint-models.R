@@ -302,13 +302,21 @@ ipw_spec_joint_models <- function(
     )
   }
 
-  # A dose stabilized by a score the caller computed is the one numerator this
-  # route cannot rebuild: the product records that the numerator was a score
-  # without recording the vector it was. The system estimates the exposure's own
-  # marginal moments instead, and the weight-consistency preflight is what
-  # reports the difference, naming the score as the cause.
+  # Each component's stabilization score, which is the one numerator that exists
+  # nowhere but the record: a model can be estimated again and the marginal
+  # numerator can be estimated from the exposure, and a score is a vector the
+  # caller computed. The system holds it fixed, exactly as the single-treatment
+  # routes hold theirs.
+  scores <- joint_wt_stabilization_scores(joint_wt_meta(wts))
+
+  # A dose whose weights record a score the record does not keep is the one
+  # numerator this route cannot rebuild. A product written before the record
+  # kept scores says the numerator was a score and holds no vector, so the
+  # system estimates the exposure's own marginal moments instead and the
+  # weight-consistency preflight is what reports the difference, naming the
+  # score as the cause.
   numerator <- ratio$numerator
-  if (identical(numerator, "score")) {
+  if (identical(numerator, "score") && is.null(scores[[dose_idx]])) {
     numerator <- "marginal"
   }
 
@@ -325,6 +333,7 @@ ipw_spec_joint_models <- function(
     numerator = numerator,
     recorded = ratio$numerator,
     numerator_model = ratio$numerator_model,
+    scores = scores,
     dose_idx = dose_idx,
     call = call
   )
@@ -454,8 +463,7 @@ ipw_spec_joint_models <- function(
     # the treatment blocks rather than by position.
     stab = list(
       components = stab_components,
-      widths = vapply(stab_components, function(x) x$width, integer(1)),
-      score = NULL
+      widths = vapply(stab_components, function(x) x$width, integer(1))
     ),
     density = if (dose) ratio$density,
     numerator = if (dose) numerator,
@@ -1132,7 +1140,9 @@ ipw_joint_models_weight_fn <- function(
 #
 # A binary component's numerator model is recorded on the product itself and a
 # dose's on its density record, so the two are read from the places their own
-# routes read them from and put through the guards their own routes apply.
+# routes read them from and put through the guards their own routes apply. A
+# score is read from the product either way, since a vector the caller computed
+# belongs to no model and to no density.
 ipw_joint_models_stab_components <- function(
   wts,
   types,
@@ -1141,12 +1151,18 @@ ipw_joint_models_stab_components <- function(
   numerator,
   recorded,
   numerator_model,
+  scores,
   dose_idx,
   call = rlang::caller_env()
 ) {
   meta <- joint_wt_meta(wts)
   stabilized <- meta$stabilized
   binary_models <- joint_wt_numerator_models(meta)
+  # Whether the record could have kept a score at all. A product written before
+  # the slot existed says a discrete component was stabilized without saying
+  # what by, so the marginal proportion stands in for a score of the caller's
+  # there and nowhere else.
+  keeps_scores <- joint_wt_records_scores(meta)
 
   lapply(seq_along(types), function(i) {
     if (identical(i, dose_idx)) {
@@ -1154,6 +1170,7 @@ ipw_joint_models_stab_components <- function(
         numerator,
         recorded,
         numerator_model,
+        scores[[i]],
         names[[i]],
         n,
         call = call
@@ -1161,16 +1178,29 @@ ipw_joint_models_stab_components <- function(
     }
 
     # A discrete component the product records as unstabilized carries no
-    # numerator, and one it records as stabilized carries either a model of the
-    # caller's or the marginal proportion the default stabilizer estimates. A
-    # score the caller computed leaves the same record the default does, since
-    # the product keeps no vector, so it is stood in for by the marginal
-    # proportion and the preflight is what reports the difference.
+    # numerator, and one it records as stabilized carries a score of the
+    # caller's, a model of the caller's, or the marginal proportion the default
+    # stabilizer estimates.
     if (!isTRUE(stabilized[[i]])) {
       return(list(
         type = types[[i]],
         numerator = "none",
         model = NULL,
+        score = NULL,
+        width = 0L,
+        stand_in = FALSE
+      ))
+    }
+
+    # A score is the numerator itself rather than a description of one, so the
+    # system multiplies by it and estimates nothing: no block, no parameters,
+    # exactly as the single-treatment routes treat a score.
+    if (!is.null(scores[[i]])) {
+      return(list(
+        type = types[[i]],
+        numerator = "score",
+        model = NULL,
+        score = scores[[i]],
         width = 0L,
         stand_in = FALSE
       ))
@@ -1183,12 +1213,12 @@ ipw_joint_models_stab_components <- function(
         type = types[[i]],
         numerator = "marginal",
         model = NULL,
+        score = NULL,
         width = 1L,
-        # The product records that a discrete component was stabilized without
-        # recording what by, so a score of the caller's leaves the record the
-        # default stabilizer leaves and the marginal proportion stands in for
-        # either.
-        stand_in = TRUE
+        # A record that keeps scores says the marginal proportion is what
+        # stabilized this component, and one written before it kept them says
+        # only that something did.
+        stand_in = !keeps_scores
       ))
     }
 
@@ -1204,6 +1234,7 @@ ipw_joint_models_stab_components <- function(
       type = types[[i]],
       numerator = "model",
       model = model,
+      score = NULL,
       width = ncol(model$X),
       stand_in = FALSE
     )
@@ -1218,6 +1249,7 @@ ipw_joint_models_dose_stab <- function(
   numerator,
   recorded,
   numerator_model,
+  score,
   name,
   n,
   call = rlang::caller_env()
@@ -1227,11 +1259,25 @@ ipw_joint_models_dose_stab <- function(
       type = "continuous",
       numerator = "marginal",
       model = NULL,
+      score = NULL,
       width = 2L,
-      # A dose whose weights record a score of the caller's is rebuilt from the
-      # marginal moments instead, since the product keeps no vector, and that
-      # substitution is a cause the weights preflight reports by name.
+      # A dose whose weights record a score the product does not keep is
+      # rebuilt from the marginal moments instead, and that substitution is a
+      # cause the weights preflight reports by name.
       stand_in = identical(recorded, "score")
+    ))
+  }
+
+  # A score is a known multiplier, so the ratio is rebuilt with the vector the
+  # product recorded and the system estimates nothing for it.
+  if (identical(numerator, "score")) {
+    return(list(
+      type = "continuous",
+      numerator = "score",
+      model = NULL,
+      score = score,
+      width = 0L,
+      stand_in = FALSE
     ))
   }
 
@@ -1240,6 +1286,7 @@ ipw_joint_models_dose_stab <- function(
       type = "continuous",
       numerator = "none",
       model = NULL,
+      score = NULL,
       width = 0L,
       stand_in = FALSE
     ))
@@ -1252,6 +1299,7 @@ ipw_joint_models_dose_stab <- function(
     type = "continuous",
     numerator = "model",
     model = model,
+    score = NULL,
     width = ncol(model$X) + 1L,
     stand_in = FALSE
   )
@@ -1304,8 +1352,11 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
         # A discrete component's numerator is the probability of the level each
         # unit took, which the registry multiplies its unstabilized weight by.
         # A component with no numerator to estimate takes none.
+        # A score is the numerator itself, which the registry multiplies the
+        # unstabilized weight by in place of a probability it estimated.
         extras = list(
-          stab_prob = ipw_binary_stab_prob(stab$model, stab_th[[i]])
+          stab_prob = ipw_binary_stab_prob(stab$model, stab_th[[i]]),
+          score = stab$score
         )
       ))
     }
@@ -1344,7 +1395,7 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
           )
         },
         sigma_n = if (!is.null(model)) sqrt(th_n[[ncol(model$X) + 1L]]),
-        score = spec$stab$score,
+        score = stab$score,
         stabilized = !identical(stab$numerator, "none"),
         # Which ratio the dose's weights are, so the factor rebuilt here is the
         # factor `wt_joint()` multiplied rather than the one this route used to

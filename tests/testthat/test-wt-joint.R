@@ -214,7 +214,8 @@ test_that("wt_joint() multiplies two binary ate weights", {
       exposure_type = c("binary", "binary"),
       stabilized = c(FALSE, FALSE),
       density = list(NULL, NULL),
-      numerator_model = list(NULL, NULL)
+      numerator_model = list(NULL, NULL),
+      stabilization_score = list(NULL, NULL)
     )
   )
 
@@ -243,7 +244,8 @@ test_that("wt_joint() multiplies a binary weight by a stabilized continuous weig
       exposure_type = c("binary", "continuous"),
       stabilized = c(FALSE, TRUE),
       density = list(NULL, density_meta(fx$w$d)),
-      numerator_model = list(NULL, NULL)
+      numerator_model = list(NULL, NULL),
+      stabilization_score = list(NULL, NULL)
     )
   )
 })
@@ -287,6 +289,87 @@ test_that("wt_joint() records each component's numerator model", {
 
   expect_null(dose_models[[1]])
   expect_identical(coef(dose_models[[2]]), coef(num_d))
+})
+
+test_that("wt_joint() records each component's stabilization score", {
+  fx <- joint_wt_fixture()
+
+  # A numerator the caller computed is a vector rather than a model, and the
+  # product records it per component the way it records the model. Without it a
+  # discrete component stabilized on a score leaves the record the default
+  # stabilizer leaves, and a dose's score is named by the density record and
+  # then nowhere to be found.
+  score_a <- rep(0.4, nrow(fx$dat))
+  score_d <- stats::dnorm(fx$dat$d, mean(fx$dat$d), stats::sd(fx$dat$d))
+
+  quiet <- function(expr) {
+    withr::with_options(list(propensity.quiet = TRUE), expr)
+  }
+
+  w_a <- quiet(wt_ate(
+    fx$mods$a,
+    stabilize = TRUE,
+    stabilization_score = score_a
+  ))
+  w_d <- quiet(wt_ate(
+    as.double(fitted(fx$mods$d)),
+    fx$dat$d,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    stabilization_score = score_d
+  ))
+
+  scores <- joint_wt_meta(
+    wt_joint(w_a, w_d, exposure_type = c("binary", "continuous"))
+  )$stabilization_score
+
+  expect_length(scores, 2L)
+  expect_identical(scores[[1]], score_a)
+  expect_identical(scores[[2]], score_d)
+
+  # A component stabilized on anything else records no score, which is what
+  # says the numerator is one the estimator can rebuild for itself.
+  expect_identical(
+    joint_wt_meta(wt_joint(
+      fx$w$a,
+      fx$w$d,
+      c("binary", "continuous")
+    ))$stabilization_score,
+    list(NULL, NULL)
+  )
+})
+
+test_that("a length-changing operation drops a per-observation joint score", {
+  fx <- joint_wt_fixture()
+
+  # The joint record names the components rather than the units, with the one
+  # exception a score is: it holds a value per observation, and a subset it no
+  # longer describes would be rebuilt from a numerator belonging to units the
+  # result does not hold. The score on the weights themselves is dropped for
+  # that reason, and the one inside the record is the same vector.
+  score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
+  )
+  joint <- wt_joint(w_a, fx$w$e)
+
+  expect_identical(joint_wt_meta(joint)$stabilization_score[[1]], score_a)
+
+  subset <- expect_warning(
+    joint[1:10],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_null(joint_wt_meta(subset)$stabilization_score[[1]])
+
+  # A single value scales every weight at any length, so it is carried the way
+  # the score on the weights themselves is.
+  one <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = 0.4)
+  )
+  short <- expect_silent(wt_joint(one, fx$w$e)[1:10])
+  expect_identical(joint_wt_meta(short)$stabilization_score[[1]], 0.4)
 })
 
 test_that("wt_joint() marks the product stabilized when any component is", {

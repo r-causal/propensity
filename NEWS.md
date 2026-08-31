@@ -1,5 +1,20 @@
 # propensity 0.1.0.9000 (development version)
 
+* `wt_joint()` now records each component's `stabilization_score`, and `ipw()`
+  rebuilds a component stabilized on one exactly. A score is a numerator the
+  caller computed rather than one an estimator can fit again, so it existed
+  nowhere but on the component weights and the product kept no copy. A dose
+  stabilized that way reached a preflight mismatch it could not get past, and a
+  discrete component was worse in kind: `stabilize = TRUE` with a score left
+  the same record as `stabilize = TRUE` alone, so a caller's own numerator was
+  indistinguishable from the marginal proportion the default stabilizer
+  estimates. The score is now read back and held fixed, exactly as the
+  single-treatment routes hold theirs, which adds no parameter to the stacked
+  system. The mismatch message that named a component as standing in for a
+  score now fires only where a record genuinely keeps none, which is a product
+  built by an earlier version of this package or assembled by hand, and says
+  so.
+
 * Arithmetic on two sets of weights now drops the numerator that a result the
   merge leaves unstabilized was never divided by. Multiplying stabilized
   weights by unstabilized ones already dropped the stabilization status and the

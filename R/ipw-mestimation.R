@@ -2340,20 +2340,22 @@ ipw_compare_weights <- function(
     } else {
       NULL
     }
-    # A joint weight is a product, and a product records that a component's
-    # numerator was a score without recording the score itself. The stacked
-    # system therefore stands the component's own marginal numerator in, and a
-    # component carrying a numerator of its own is a different function of the
-    # data that no parameter value reproduces. The components a numerator was
-    # stood in for are named, which is as close to the fault as the comparison
-    # gets: it sees the product alone and cannot say which factor of it moved.
-    # A single exposure keeps its score, which is read off the weights and held
-    # fixed, so this cause belongs to the joint route alone.
+    # A joint weight is a product, and a product records each component's
+    # stabilization score so the stacked system can hold it fixed the way the
+    # single routes do. A record written before it kept scores, or one assembled
+    # by hand, says a component was stabilized without saying what by, so the
+    # component's own marginal numerator stands in and a score of the caller's
+    # is a different function of the data that no parameter value reproduces.
+    # The components a numerator was stood in for are named, which is as close
+    # to the fault as the comparison gets: it sees the product alone and cannot
+    # say which factor of it moved.
     score_hint <- if (length(stand_in)) {
       "A component built with a fixed {.arg stabilization_score} is one \\
-      cause: the product records that a numerator was a score without \\
-      recording the vector it was, so {.fun ipw} rebuilt the numerator of \\
-      {.arg {stand_in}} from the exposure's own marginal distribution instead."
+      cause: the record on {.arg {stand_in}} keeps no score, so {.fun ipw} \\
+      rebuilt {cli::qty(stand_in)}{?its/their} numerator from the exposure's \\
+      own marginal distribution instead. A product built by a version of this \\
+      package that recorded no score, or one assembled by hand, carries such \\
+      a record."
     } else {
       NULL
     }

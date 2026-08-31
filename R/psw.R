@@ -1091,9 +1091,39 @@ modification_meta_aligns <- function(n, to) {
   n == 0 || n == length(to)
 }
 
+# The joint record `to` can still speak for at `n` observations. The record names
+# the two components rather than the units, with the one exception a
+# stabilization score is: it holds a value per observation, and a score that no
+# longer describes the observations the result holds is reported as absent, for
+# the reason the score on the weights themselves is.
+aligned_joint_wt_meta <- function(meta, n) {
+  if (is.null(meta) || is.null(meta$stabilization_score)) {
+    return(meta)
+  }
+
+  aligned <- vapply(
+    meta$stabilization_score,
+    stabilization_score_aligns,
+    logical(1),
+    n = n
+  )
+  meta$stabilization_score[!aligned] <- list(NULL)
+
+  meta
+}
+
+# Every per-observation stabilization score a set of weights carries: the one on
+# the weights themselves, and one per component of a product's record. All of
+# them describe the same observations and are dropped on the same terms, so the
+# drop is decided over the whole set rather than once per home.
+psw_stabilization_scores <- function(x) {
+  c(list(stabilization_score(x)), joint_wt_meta(x)$stabilization_score)
+}
+
 # The record `wt_joint()` leaves on a product weight. Like the categorical
 # attributes, it names the two components rather than the units, so it carries
-# no length of its own and holds at any length.
+# no length of its own and holds at any length, save for the stabilization
+# scores inside it, which `aligned_joint_wt_meta()` measures against the data.
 psw_joint_attr <- "joint_wt_meta"
 
 # Everything a psw carries beyond the six fields describing the weights as a
@@ -1154,6 +1184,10 @@ aligned_psw_attrs <- function(to, n) {
   if (!modification_meta_aligns(n, to)) {
     attrs[psw_modification_meta] <- list(NULL)
   }
+
+  attrs[psw_joint_attr] <- list(
+    aligned_joint_wt_meta(attrs[[psw_joint_attr]], n)
+  )
 
   # The record of what a fold has already dropped belongs to the prototype being
   # folded and goes no further. Data arriving at observations is the result the
@@ -1368,6 +1402,20 @@ joint_wt_meta_agrees <- function(x, y) {
     return(FALSE)
   }
 
+  # A score is the numerator itself rather than a description of one, so two
+  # records naming different scores describe different products and identity
+  # answers for them. A record written before the slot existed reads as one
+  # score per component and none of them supplied, so it agrees with a product
+  # of components that record no score.
+  if (
+    !identical(
+      joint_wt_stabilization_scores(x),
+      joint_wt_stabilization_scores(y)
+    )
+  ) {
+    return(FALSE)
+  }
+
   densities <- all(vapply(
     seq_along(x$density),
     function(i) density_meta_agrees(x$density[[i]], y$density[[i]]),
@@ -1412,12 +1460,19 @@ vec_restore.psw <- function(x, to, ...) {
   # than the incoming data. Outside vctrs' subassignment intermediates, where
   # the restore that follows reattaches the target's score anyway, a cast's `to`
   # is a prototype, which cannot carry a score misaligned with itself.
-  score <- stabilization_score(to)
-  if (!stabilization_score_aligns(score, length(x))) {
+  scores <- psw_stabilization_scores(to)
+  dropped <- !vapply(
+    scores,
+    stabilization_score_aligns,
+    logical(1),
+    n = length(x)
+  )
+  if (any(dropped)) {
+    lengths <- unique(lengths(scores[dropped]))
     warn(
       c(
         "Dropping the per-observation {.arg stabilization_score}.",
-        i = "A score of length {length(score)} cannot be carried through an
+        i = "A score of length {lengths} cannot be carried through an
              operation that changes the length of the weights to
              {length(x)}.",
         i = "The result is still marked as stabilized. Recompute the weights

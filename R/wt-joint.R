@@ -153,7 +153,7 @@ joint_wt_response <- function(model) {
 #'
 #' `is_joint_wt()` returns a single logical.
 #'
-#' `joint_wt_meta()` returns the record as a list of four elements, each one
+#' `joint_wt_meta()` returns the record as a list of five elements, each one
 #' per component and in the order the components were given, or `NULL` for
 #' weights that are not a product:
 #' \describe{
@@ -167,10 +167,19 @@ joint_wt_response <- function(model) {
 #'     anything other than a fitted model is `NULL`. A record written before
 #'     this element existed holds none at all, which says the same thing as a
 #'     record whose components each record no model.}
+#'   \item{`stabilization_score`}{Each component's stabilization score, as
+#'     [stabilization_score()] returns it, in order. A component stabilized on
+#'     anything other than a score the caller supplied is `NULL`. A record
+#'     written before this element existed holds none at all, which says the
+#'     same thing as a record whose components each record no score.}
 #' }
 #'
 #' The record names the components rather than the observations, so it survives
-#' subsetting and every other operation that keeps the vector a [psw()].
+#' subsetting and every other operation that keeps the vector a [psw()]. A
+#' stabilization score is the exception: it holds one value per observation, so
+#' a score that no longer describes the observations the result holds is dropped
+#' the way the score on the weights themselves is, and a score of one value is
+#' carried at any length.
 #'
 #' @seealso [joint_wt_models()] for the container recording the two treatment
 #'   models, and [wt_ate()] for building the components. These are used by
@@ -241,7 +250,18 @@ wt_joint <- function(w_a, w_e, exposure_type = NULL) {
     # model, so it is read positionally the way the density slot is. A dose's
     # model is recorded here and in its density record both, since the two
     # accessors reach it by different routes.
-    numerator_model = list(numerator_model(w_a), numerator_model(w_e))
+    numerator_model = list(numerator_model(w_a), numerator_model(w_e)),
+    # The numerator a caller computed rather than fit, kept as the vector it
+    # was. An estimator can rebuild a model and can rebuild the marginal
+    # numerator the default stabilizer estimates, and a score is neither: it is
+    # a fixed multiplier that exists nowhere but here. Without the slot a
+    # discrete component stabilized on a score leaves the record the default
+    # stabilizer leaves, so the two are indistinguishable, and a dose's score is
+    # named by its density record and then nowhere to be found.
+    stabilization_score = list(
+      stabilization_score(w_a),
+      stabilization_score(w_e)
+    )
   )
 
   out
@@ -316,6 +336,28 @@ joint_wt_numerator_models <- function(meta) {
   }
 
   models
+}
+
+# The stabilization scores the record holds, one per component and in the
+# components' own order. A record written before the slot existed holds none,
+# which says what a record whose components each record no score says.
+joint_wt_stabilization_scores <- function(meta) {
+  scores <- meta$stabilization_score
+
+  if (is.null(scores)) {
+    return(vector("list", length(meta$exposure_type)))
+  }
+
+  scores
+}
+
+# Whether the record has the score slot at all, which is not the same question
+# as whether any component recorded a score. A record written before the slot
+# existed is the one place a score of the caller's is still indistinguishable
+# from the numerator the default stabilizer estimates, so it is the one place an
+# estimator that could not rebuild a numerator has anything to say about why.
+joint_wt_records_scores <- function(meta) {
+  !is.null(meta$stabilization_score)
 }
 
 # A joint weight is a product over two treatments, and each of them is weighted

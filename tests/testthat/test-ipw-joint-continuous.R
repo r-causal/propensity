@@ -172,6 +172,7 @@ fit_joint_continuous <- function(
   dose_score = NULL,
   dose_stabilize = TRUE,
   a_stabilize = NULL,
+  a_score = NULL,
   dose_type = c("lm", "glm_log", "rlm", "gam"),
   .density = "normal",
   numerator = "marginal",
@@ -189,7 +190,7 @@ fit_joint_continuous <- function(
     # `NULL` leaves a binary component unstabilized, which is the default a
     # binary exposure resolves to, and a fitted model stabilizes it on the
     # probability of the level each unit took.
-    wt_ate(ps_a, stabilize = a_stabilize),
+    wt_ate(ps_a, stabilize = a_stabilize, stabilization_score = a_score),
     wt_ate(
       as.double(fitted(ps_e)),
       dat$e,
@@ -1544,16 +1545,14 @@ test_that("a factor treatment under treatment contrasts reports the numeric fit"
   )
 })
 
-test_that("the weights mismatch names a fixed stabilization score", {
+test_that("the weights mismatch names a score the record does not keep", {
   dat <- sim_joint_continuous()
 
-  # A product weight records that a component was stabilized and not which
-  # numerator it was built with, so a dose component carrying one of its own is
-  # a weight the stacked system cannot rebuild: it estimates the dose's marginal
-  # moments and reaches a different vector. The numerator here is the one a
-  # caller would write by hand, whose `sd()` divides by n - 1 where the
-  # estimator's own moment divides by n, so the two differ by more than the
-  # preflight's tolerance and by little else.
+  # A product records the score each component was stabilized on, so a score is
+  # a numerator the stacked system rebuilds exactly. What is left is a record
+  # written before the slot existed, or one assembled by hand: it says the dose
+  # was stabilized on a score and keeps no vector, so the system estimates the
+  # dose's marginal moments and reaches a different product.
   #
   # The refusal has to name that cause. Reaching this message and reading
   # through a list of estimands, focal levels, and trimming, none of which
@@ -1563,17 +1562,20 @@ test_that("the weights mismatch names a fixed stabilization score", {
     dose_score = dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
   )
 
+  wts <- strip_joint_scores(fx$wts)
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+
   expect_error(
-    ipw(fx$models, fx$outcome_mod),
+    ipw(fx$models, outcome_mod),
     class = "propensity_ipw_weights_mismatch_error",
     regexp = "stabilization_score"
   )
-  expect_propensity_error(ipw(fx$models, fx$outcome_mod))
+  expect_propensity_error(ipw(fx$models, outcome_mod))
 
   # The observation-level spread is the other cause a dose brings, and it was
   # reported for a single dose before it was reported for this one.
   expect_error(
-    ipw(fx$models, fx$outcome_mod),
+    ipw(fx$models, outcome_mod),
     class = "propensity_ipw_weights_mismatch_error",
     regexp = "\\.sigma"
   )
@@ -1826,6 +1828,126 @@ test_that("the joint route stacks a binary component's numerator model", {
   expect_identical(
     as.integer(sum(grepl("^stab_", names(theta)))),
     length(coef(num_a)) + 2L
+  )
+})
+
+# ---- a component stabilized on a fixed score --------------------------------
+#
+# A numerator the caller computed is a vector rather than a model, and the
+# product records it per component. The stacked system reads it back and holds
+# it fixed, which is what the single-treatment routes do with a score: it
+# multiplies the weights and estimates nothing.
+
+test_that("the joint route rebuilds a dose stabilized on a fixed score", {
+  dat <- sim_joint_continuous()
+
+  # The numerator a caller would write by hand, whose `sd()` divides by n - 1
+  # where the estimator's own moment divides by n. The two differ by more than
+  # the preflight's tolerance, so a system that stood the marginal moments in
+  # would be reported as a mismatch rather than reaching these estimates.
+  score <- dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
+  fx <- fit_joint_continuous(dat, dose_score = score)
+
+  # The product written out: the binary factor is the unstabilized one, and the
+  # dose factor is the score over the conditional density.
+  ps_a <- as.numeric(fitted(fx$ps_a))
+  binary_wt <- (dat$a / ps_a) + ((1 - dat$a) / (1 - ps_a))
+  mu <- as.numeric(fitted(fx$ps_e))
+  sigma <- sqrt(mean(residuals(fx$ps_e)^2))
+  dose_wt <- score / dnorm(dat$e, mu, sigma)
+
+  expect_equal(as.numeric(fx$wts), binary_wt * dose_wt, tolerance = 1e-12)
+
+  # The system rebuilds that product at its seed, which is what the preflight
+  # compares, and every equation in it is at its root there.
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  expect_joint_weights_at_init(spec, fx$wts)
+  expect_joint_root_seeded(spec)
+
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fx$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+test_that("a fixed score on the dose is no parameter of the system", {
+  dat <- sim_joint_continuous()
+  score <- dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
+
+  fixed <- fit_joint_continuous(dat, dose_score = score)
+  marginal <- fit_joint_continuous(dat)
+
+  res <- ipw(fixed$models, fixed$outcome_mod)
+  res_marginal <- ipw(marginal$models, marginal$outcome_mod)
+
+  # A score is a known multiplier rather than a quantity the system estimates,
+  # so the dose's slice of the stabilization block is empty where the default
+  # numerator's holds the exposure's two marginal moments.
+  expect_identical(
+    as.integer(res$fit@n_params),
+    as.integer(res_marginal$fit@n_params) - 2L
+  )
+  expect_false(any(grepl("^stab_", names(coef(res$fit)))))
+})
+
+test_that("the joint route rebuilds a binary component stabilized on a score", {
+  dat <- sim_joint_continuous()
+
+  # A discrete component's score is the one the product used to record nothing
+  # at all about: `stabilize = TRUE` and a score of the caller's left the same
+  # record, so a score that differed from the marginal proportion was reported
+  # as a mismatch naming a component the caller never stabilized by hand.
+  score <- 0.3 + 0.4 * plogis(dat$x2)
+  fx <- fit_joint_continuous(dat, a_stabilize = TRUE, a_score = score)
+
+  ps_a <- as.numeric(fitted(fx$ps_a))
+  binary_wt <- ((dat$a / ps_a) + ((1 - dat$a) / (1 - ps_a))) * score
+  dose_wt <- as.numeric(quiet_wt(wt_ate(
+    as.double(fitted(fx$ps_e)),
+    dat$e,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )))
+
+  expect_equal(as.numeric(fx$wts), binary_wt * dose_wt, tolerance = 1e-12)
+
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  expect_joint_weights_at_init(spec, fx$wts)
+  expect_joint_root_seeded(spec)
+
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fx$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+
+  # The binary component estimates nothing for its numerator, so the only
+  # stabilization parameters are the dose's own two marginal moments.
+  theta <- coef(res$fit)
+  expect_identical(sum(grepl("^stab_", names(theta))), 2L)
+  expect_false(any(grepl("^stab_a_", names(theta))))
+})
+
+test_that("a record that keeps no score is read as one that records none", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, a_stabilize = TRUE)
+
+  # A product built before the slot existed holds a record one element short,
+  # which says what a record whose components each record no score says. The
+  # fit it supports is the fit it supported then.
+  wts <- strip_joint_scores(fx$wts)
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+
+  res <- expect_silent(ipw(fx$models, outcome_mod))
+  expect_equal(
+    res$estimates$estimate,
+    ipw(fx$models, fx$outcome_mod)$estimates$estimate,
+    tolerance = 1e-10
   )
 })
 

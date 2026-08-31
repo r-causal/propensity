@@ -35,7 +35,7 @@ types are named.}
 
 \code{is_joint_wt()} returns a single logical.
 
-\code{joint_wt_meta()} returns the record as a list of four elements, each one
+\code{joint_wt_meta()} returns the record as a list of five elements, each one
 per component and in the order the components were given, or \code{NULL} for
 weights that are not a product:
 \describe{
@@ -49,10 +49,19 @@ returns it, in order. A component weighting a discrete exposure is
 anything other than a fitted model is \code{NULL}. A record written before
 this element existed holds none at all, which says the same thing as a
 record whose components each record no model.}
+\item{\code{stabilization_score}}{Each component's stabilization score, as
+\code{\link[=stabilization_score]{stabilization_score()}} returns it, in order. A component stabilized on
+anything other than a score the caller supplied is \code{NULL}. A record
+written before this element existed holds none at all, which says the
+same thing as a record whose components each record no score.}
 }
 
 The record names the components rather than the observations, so it survives
-subsetting and every other operation that keeps the vector a \code{\link[=psw]{psw()}}.
+subsetting and every other operation that keeps the vector a \code{\link[=psw]{psw()}}. A
+stabilization score is the exception: it holds one value per observation, so
+a score that no longer describes the observations the result holds is dropped
+the way the score on the weights themselves is, and a score of one value is
+carried at any length.
 }
 \description{
 \code{wt_joint()} builds the weight for a joint intervention on two treatments by

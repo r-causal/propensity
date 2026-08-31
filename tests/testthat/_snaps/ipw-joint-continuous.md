@@ -105,7 +105,7 @@
       i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
       i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
 
-# the weights mismatch names a fixed stabilization score
+# the weights mismatch names a score the record does not keep
 
     Code
       expr
@@ -115,7 +115,7 @@
       i The estimand the weights were built for may differ from the one `ipw()` resolved.
       i `ipw()` rebuilt these weights as a "normal" density with a "marginal" numerator.
       i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual root mean square, which is what `wt_ate()` uses when no `.sigma` is given.
-      i A component built with a fixed `stabilization_score` is one cause: the product records that a numerator was a score without recording the vector it was, so `ipw()` rebuilt the numerator of `e` from the exposure's own marginal distribution instead.
+      i A component built with a fixed `stabilization_score` is one cause: the record on `e` keeps no score, so `ipw()` rebuilt its numerator from the exposure's own marginal distribution instead. A product built by a version of this package that recorded no score, or one assembled by hand, carries such a record.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
       i Refit `outcome_mod` with weights from the two treatment models `wt_mod` holds, and this estimand, if the weights are the cause.
