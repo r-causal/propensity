@@ -11,10 +11,12 @@
   solve reports whichever root it is seeded at, the seed is the fit's own
   coefficients, and the sandwich is the covariance of that root read locally
   rather than a statement about the others. A fit made with `method = "MM"` is
-  still refused, since its coefficients are the root a high-breakdown start led
-  to rather than the one a solve seeded at them would report, and a fit made
-  with a psi function of the caller's own is still refused for having no loss
-  here to write its score as.
+  still refused, since it reaches its coefficients through a high-breakdown
+  start that decides which root the fit finishes at and supplies the scale it
+  clips at, neither of which the stacked system writes, so a sandwich read
+  locally at them would not describe how such a fit behaves across samples. A
+  fit made with a psi function of the caller's own is still refused for having
+  no loss here to write its score as.
 
 * `ipw()` now refuses an `mgcv::gam()` propensity score model of a binary
   exposure, where such a fit used to return a full table of estimates. The
@@ -35,6 +37,13 @@
   fit. A count dose model fit with `poisson()` is the case that reaches this
   most naturally. A binomial model keeps the link refusal it had, since it is a
   binary propensity score model whatever its link.
+
+* `ipw()` now refuses a numerator model fit with prior case weights, with the
+  class `propensity_ipw_ps_weights_error`, naming the `stabilize` argument the
+  model arrived in. The block written for a numerator model is its unweighted
+  score, so such a fit sat away from the root of that block and the solve walked
+  off the fit silently. The propensity score models the same routes stack
+  already refused the same fit.
 
 * `ipw()` now refuses a `joint_wt_models()` component fit with prior case
   weights, with the class `propensity_ipw_ps_weights_error`, naming the

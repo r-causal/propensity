@@ -76,7 +76,7 @@
     Condition <propensity_ipw_robust_psi_error>
       Error in `ipw()`:
       ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
-      x `wt_mod` was fit with `method = "MM"`, which starts from a high-breakdown fit and finishes on `MASS::psi.bisquare()`, so its coefficients are the root that start led to rather than the one a solve seeded at them would report.
+      x `wt_mod` was fit with `method = "MM"`, whose high-breakdown start decides which root of `MASS::psi.bisquare()` the fit finishes at and supplies the scale it clips at, and neither of those is an equation this system writes, so a sandwich read at those coefficients would not describe how the fit behaves across samples.
       i Refit `wt_mod` with the default `method = "M"`, whose psi score `ipw()` writes.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
@@ -141,6 +141,16 @@
       x `stabilize` was fit with a psi function this path cannot recognize.
       i Refit `stabilize` with `MASS::psi.huber()`, `MASS::psi.bisquare()`, or `MASS::psi.hampel()`, whose constants `ipw()` reads off the fit.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# ipw() refuses a numerator model fit with case weights
+
+    Code
+      expr
+    Condition <propensity_ipw_ps_weights_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support a numerator model fit with case weights.
+      x `stabilize` was fit with non-unit `weights`, so its coefficients are not the root of the unweighted score stacked for it.
+      i Refit `stabilize` without `weights`.
 
 # ipw() refuses a numerator model of another response
 

@@ -745,9 +745,12 @@
 #'
 #' Three robust fits are refused. One fit with a psi function of the caller's
 #' own has no loss here to write its score as, and one fit with
-#' `method = "MM"` is at the root a high-breakdown start led to rather than at
-#' the one a solve seeded at its coefficients would report; both error with
-#' class `propensity_ipw_robust_psi_error`. One whose iteration stopped short of
+#' `method = "MM"` reaches its coefficients through a high-breakdown start that
+#' decides which root of a redescending psi the fit finishes at and supplies the
+#' scale it clips at, neither of which is an equation this system writes. A
+#' sandwich read locally at those coefficients would therefore not describe how
+#' an MM fit behaves across samples. Both error with class
+#' `propensity_ipw_robust_psi_error`. One whose iteration stopped short of
 #' its own tolerance is the root of nothing, and errors with class
 #' `propensity_ipw_convergence_error`. The first points to a refit with one of
 #' the three psi functions or to a bootstrap of the whole fit written by hand,
@@ -820,7 +823,10 @@
 #' system cannot write is refused there in the terms that registry refuses a
 #' propensity score model in, naming `stabilize`. A model of a response other
 #' than the exposure, or one fit to a different set of observations, errors with
-#' class `propensity_ipw_numerator_error`.
+#' class `propensity_ipw_numerator_error`. One fit with case weights errors with
+#' class `propensity_ipw_ps_weights_error`, for the reason a weighted propensity
+#' score model does: the block written for it is its unweighted score, and its
+#' coefficients are not at the root of that.
 #'
 #' One choice is refused for the standard error rather than for the model. A
 #' `"kernel"` density chooses its bandwidth from the residuals of the propensity

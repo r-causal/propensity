@@ -1416,11 +1416,12 @@ test_that("ipw() stacks a robust fit whose psi threshold was retuned", {
 # claim about the others. The tests below pin the seeding, which is what makes
 # the local reading the right one.
 #
-# `method = "MM"` stays refused. It starts from a high-breakdown fit and
-# finishes on the bisquare, so its coefficients are the root the high-breakdown
-# start led to rather than the one a solve seeded at them would report as the
-# whole of the fit, and the equation the fit solves is not the one this route
-# would write for it.
+# `method = "MM"` stays refused. Its final step converges the bisquare at a
+# fixed scale, so its coefficients do sit at a root of the score this route
+# would write; what the route cannot write is how it got there. The
+# high-breakdown start decides which root the fit finishes at and supplies the
+# scale it clips at, and a sandwich read locally at those coefficients
+# describes neither, so it is not the sampling behavior of an MM fit.
 
 test_that("ipw() stacks a bisquare propensity model at its own coefficients", {
   skip_if_not_installed("MASS")
@@ -1553,9 +1554,10 @@ test_that("the MM method stays refused now that the bisquare is written", {
   dat <- sim_continuous_outliers()
 
   # `rlm(method = "MM")` finishes on the bisquare, which this route can now
-  # write, and it is still refused: the equation is written at a high-breakdown
-  # start rather than at the psi score alone, so its coefficients are not the
-  # root a solve seeded at them would report as the whole of the fit.
+  # write, and it is still refused: the high-breakdown start decides which root
+  # the fit finishes at and supplies the scale it clips at, neither of which the
+  # stacked system writes, so a sandwich read locally at those coefficients
+  # would not describe how the fit behaves across samples.
   ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, method = "MM")
   expect_equal(ipw_rlm_psi_name(ps_mod), "MASS::psi.bisquare")
 
@@ -1690,8 +1692,9 @@ test_that("ipw() refuses the MM method as an equation it cannot write", {
   skip_if_not_installed("MASS")
   dat <- sim_continuous_outliers()
 
-  # MM starts from a high-breakdown fit and finishes on a redescending psi, so
-  # the refusal is the same one a psi the system cannot write gets.
+  # MM reaches its coefficients through a high-breakdown start whose root
+  # selection and scale this system does not write, so the refusal is the same
+  # one a psi the system cannot write gets.
   ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, method = "MM")
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
   msm <- lm(yc ~ A, data = dat, weights = wts)
@@ -2480,6 +2483,25 @@ test_that("ipw() refuses a numerator model whose score it cannot write", {
   ))
   fits <- fit_continuous_models(dat, stabilize = num_mod)
 
+  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+})
+
+test_that("ipw() refuses a numerator model fit with case weights", {
+  # The stabilization block writes the numerator model's unweighted score, the
+  # same score every other model in the stack is written at, so a fit made under
+  # case weights is not at the root of the row seeded for it and the solve would
+  # walk it off the fit the user has. The refusal names the argument the model
+  # arrived in, since a reader told to refit the propensity score model would be
+  # told to refit the wrong thing.
+  dat <- sim_continuous()
+  dat$case_wt <- rep(c(1, 2), length.out = nrow(dat))
+  num_mod <- lm(A ~ x1, data = dat, weights = case_wt)
+  fits <- fit_continuous_models(dat, stabilize = num_mod)
+
+  expect_error(
+    ipw(fits$ps_mod, fits$outcome_mod),
+    class = "propensity_ipw_ps_weights_error"
+  )
   expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
 })
 

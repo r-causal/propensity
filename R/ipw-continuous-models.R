@@ -386,13 +386,16 @@ ipw_continuous_rlm_entry <- function(
 
   if (mm || is.null(psi_name)) {
     found <- if (mm && !is.null(psi_name)) {
-      "{.arg {entry$label}} was fit with {.code method = \"MM\"}, which starts from a
-       high-breakdown fit and finishes on {.fun {entry$psi}}, so its coefficients
-       are the root that start led to rather than the one a solve seeded at them
-       would report."
+      "{.arg {entry$label}} was fit with {.code method = \"MM\"}, whose
+       high-breakdown start decides which root of {.fun {entry$psi}} the fit
+       finishes at and supplies the scale it clips at, and neither of those is
+       an equation this system writes, so a sandwich read at those coefficients
+       would not describe how the fit behaves across samples."
     } else if (mm) {
-      "{.arg {entry$label}} was fit with {.code method = \"MM\"}, which starts from a
-       high-breakdown fit rather than from the psi score alone."
+      "{.arg {entry$label}} was fit with {.code method = \"MM\"}, whose
+       high-breakdown start decides which root the fit finishes at and supplies
+       the scale it clips at, and neither of those is an equation this system
+       writes."
     } else {
       "{.arg {entry$label}} was fit with a psi function this path cannot recognize."
     }
@@ -849,6 +852,7 @@ ipw_numerator_model_block <- function(
     call = call
   )
   check_ipw_continuous_model(entry, call = call)
+  check_ipw_numerator_model_weights(numerator_model, call = call)
 
   # The block below multiplies the fitted coefficients against the design
   # positionally, as the propensity score block does, so the model needs a
@@ -867,6 +871,35 @@ ipw_numerator_model_block <- function(
     psi_k = entry$psi_k,
     penalty = entry$penalty,
     coefs = stats::coef(numerator_model)
+  )
+}
+
+# The numerator model's prior case weights, refused for the reason the
+# propensity score routes refuse their own: the block written here is the
+# model's unweighted score, so a fit made under weights is not at that block's
+# root and the solve would move it, reporting a numerator nobody fit. The
+# refusal names `stabilize`, since that is the argument the model arrived in
+# and a reader told to refit the propensity score model would be told to refit
+# the wrong thing.
+check_ipw_numerator_model_weights <- function(
+  numerator_model,
+  call = rlang::caller_env()
+) {
+  weights <- ipw_model_prior_weights(numerator_model)
+
+  if (is.null(weights) || all(weights == 1)) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} does not support a numerator model fit with case weights.",
+      x = "{.arg stabilize} was fit with non-unit {.arg weights}, so its \\
+      coefficients are not the root of the unweighted score stacked for it.",
+      i = "Refit {.arg stabilize} without {.arg weights}."
+    ),
+    error_class = "propensity_ipw_ps_weights_error",
+    call = call
   )
 }
 

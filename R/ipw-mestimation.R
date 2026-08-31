@@ -218,8 +218,10 @@ ipw_spec_binary <- function(
   # A binary propensity model fit with case weights would need a weighted score
   # in the stacked system; the ee_glm ps block is unweighted, so the fitted
   # coefficients would not sit at the score root and the estimates would drift.
-  # A glm records prior weights in prior.weights (all one when unweighted).
-  if (!is.null(ps_mod$prior.weights) && !all(ps_mod$prior.weights == 1)) {
+  # Which field holds the prior weights is the class's own business, which the
+  # shared reader settles.
+  ps_weights <- ipw_model_prior_weights(ps_mod)
+  if (!is.null(ps_weights) && !all(ps_weights == 1)) {
     abort(
       c(
         "{.fun ipw} does not support a propensity score model fit with case \\
@@ -1452,9 +1454,12 @@ ipw_spec_categorical <- function(
 
   # A multinom fit with case weights would need a weighted score in the stacked
   # system; the ee_mlogit block is unweighted, so the fitted coefficients would
-  # not sit at the score root and the estimates would drift. multinom always
-  # carries a length-n weights vector, unit for an unweighted fit.
-  if (!is.null(ps_mod$weights) && !all(ps_mod$weights == 1)) {
+  # not sit at the score root and the estimates would drift. Which field holds
+  # the prior weights is the class's own business, which the shared reader
+  # settles; a multinom always carries a length-n vector of them, unit for an
+  # unweighted fit.
+  ps_weights <- ipw_model_prior_weights(ps_mod)
+  if (!is.null(ps_weights) && !all(ps_weights == 1)) {
     abort(
       c(
         "{.fun ipw} does not support a propensity score model fit with case \\
