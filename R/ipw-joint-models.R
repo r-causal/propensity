@@ -1351,11 +1351,11 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
         type = spec$ps$types[[i]],
         coefs = th,
         ps = ipw_inv_link(spec$ps$link[[i]])(as.vector(x %*% th)),
-        # A discrete component's numerator is the probability of the level each
-        # unit took, which the registry multiplies its unstabilized weight by.
-        # A component with no numerator to estimate takes none.
-        # A score is the numerator itself, which the registry multiplies the
-        # unstabilized weight by in place of a probability it estimated.
+        # A discrete component's numerator is the probability of the level
+        # each unit took, which the registry multiplies its unstabilized weight
+        # by, or a score the caller computed, which is that numerator itself
+        # and takes the probability's place. A component with no numerator
+        # takes neither.
         extras = list(
           stab_prob = ipw_binary_stab_prob(stab$model, stab_th[[i]]),
           score = stab$score

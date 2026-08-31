@@ -1122,11 +1122,11 @@ modification_meta_aligns <- function(n, to) {
   n == 0 || n == length(to)
 }
 
-# The joint record `to` can still speak for at `n` observations. The record names
-# the two components rather than the units, with the one exception a
-# stabilization score is: it holds a value per observation, and a score that no
-# longer describes the observations the result holds is reported as absent, for
-# the reason the score on the weights themselves is.
+# What the joint record can still say once data has arrived at `n` observations.
+# The record names the two components rather than the units, with the one
+# exception a stabilization score is: it holds a value per observation, and a
+# score that no longer describes the observations the result holds is reported
+# as absent, for the reason the score on the weights themselves is.
 aligned_joint_wt_meta <- function(meta, n) {
   if (is.null(meta) || is.null(meta$stabilization_score)) {
     return(meta)
