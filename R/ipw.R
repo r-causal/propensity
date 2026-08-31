@@ -725,7 +725,11 @@
 #' `propensity_method_error`. Refit it with [mgcv::gam()] or [mgcv::bam()]. A
 #' penalty attached to a parametric term, such as one from `paraPen`, belongs to
 #' no smooth term and is not one this route can place, so such a fit errors with
-#' class `propensity_ipw_se_method_unavailable_error`.
+#' class `propensity_ipw_se_method_unavailable_error`. A fit made under a
+#' smoothing floor from `min.sp` errors with the same class, because mgcv adds
+#' that floor to the penalty and leaves it out of the smoothing parameters the
+#' fitted object reports, so nothing in the fit records the penalty it was made
+#' under; refit without `min.sp`, which [mgcv::bam()] ignores in any case.
 #'
 #' Four limitations come with the additive route, and each is a property of the
 #' method rather than of a particular fit.

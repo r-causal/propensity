@@ -966,7 +966,11 @@ an \code{\link[mgcv:gamm]{mgcv::gamm()}} fit is not: it carries the \code{gam} c
 \code{propensity_method_error}. Refit it with \code{\link[mgcv:gam]{mgcv::gam()}} or \code{\link[mgcv:bam]{mgcv::bam()}}. A
 penalty attached to a parametric term, such as one from \code{paraPen}, belongs to
 no smooth term and is not one this route can place, so such a fit errors with
-class \code{propensity_ipw_se_method_unavailable_error}.
+class \code{propensity_ipw_se_method_unavailable_error}. A fit made under a
+smoothing floor from \code{min.sp} errors with the same class, because mgcv adds
+that floor to the penalty and leaves it out of the smoothing parameters the
+fitted object reports, so nothing in the fit records the penalty it was made
+under; refit without \code{min.sp}, which \code{\link[mgcv:bam]{mgcv::bam()}} ignores in any case.
 
 Four limitations come with the additive route, and each is a property of the
 method rather than of a particular fit.

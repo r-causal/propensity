@@ -538,6 +538,94 @@ test_that("a gam handed some of its smoothing parameters is stacked", {
   )
 })
 
+test_that("the registry refuses a gam holding a smoothing floor", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+
+  # `min.sp` is a floor under the smoothing parameters, and the fit adds its
+  # contribution to the penalty without recording it anywhere: `full.sp` is
+  # documented as excluding that contribution, and the fitted object carries no
+  # field holding it. The smoothing parameters read off such a fit therefore
+  # rebuild a penalty the fit was never made under, its own coefficients are not
+  # at the root of the score built from it, and a solve seeded there would walk
+  # the propensity score block off the fit while reporting estimates that look
+  # like any other. The count of the smoothing parameters says nothing about it,
+  # so what catches it is the score itself.
+  ps_mod <- mgcv::gam(
+    A ~ s(x1) + s(x2),
+    data = dat,
+    min.sp = c(5, 5),
+    method = "REML"
+  )
+  expect_equal(unname(ps_mod$full.sp), unname(ps_mod$sp))
+
+  expect_false(ipw_continuous_model(ps_mod)$stackable)
+
+  mods <- fit_gam_models(dat, ps_mod)
+
+  err <- expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_se_method_unavailable_error"
+  )
+  expect_s3_class(err, "propensity_method_error")
+  expect_match(conditionMessage(err), "min.sp", fixed = TRUE)
+
+  expect_propensity_error(ipw(mods$ps_mod, mods$outcome_mod))
+})
+
+test_that("the registry refuses a smoothing floor too small to see", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+
+  # The unrecorded contribution is the floor itself, so a floor small enough to
+  # leave the fit close to the one it would have been moves the score by little.
+  # The refusal is on whether the record reproduces the score rather than on how
+  # far off it is, so a floor four orders of magnitude below the smoothing
+  # parameters the fit chose is refused the same way.
+  ps_mod <- mgcv::gam(
+    A ~ s(x1) + s(x2),
+    data = dat,
+    min.sp = c(1e-4, 1e-4),
+    method = "REML"
+  )
+  mods <- fit_gam_models(dat, ps_mod)
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_se_method_unavailable_error"
+  )
+})
+
+test_that("a bam handed a smoothing floor is stacked as the fit it made", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_dose()
+
+  # `bam()` does not implement a smoothing floor under its own criterion: it
+  # says so and drops the argument, so what it returns is the fit its recorded
+  # smoothing parameters describe. The check reads the score rather than the
+  # arguments the call was written with, so this fit stacks.
+  expect_warning(
+    ps_mod <- mgcv::bam(
+      A ~ s(x1) + s(x2),
+      data = dat,
+      min.sp = c(5, 5),
+      method = "fREML"
+    ),
+    "min.sp"
+  )
+
+  mods <- fit_gam_models(dat, ps_mod)
+
+  expect_gam_root_seeded(mods$ps_mod, mods$outcome_mod, mods$wts)
+
+  res <- ipw(mods$ps_mod, mods$outcome_mod)
+  expect_equal(
+    unname(coef(res$fit)[seq_along(coef(ps_mod))]),
+    unname(coef(ps_mod)),
+    tolerance = 1e-8
+  )
+})
+
 test_that("ipw() refuses a gam dose model fit with case weights", {
   skip_if_not_installed("mgcv")
   dat <- sim_gam_dose()

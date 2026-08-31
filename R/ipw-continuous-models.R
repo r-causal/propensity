@@ -174,13 +174,109 @@ ipw_continuous_gam_entry <- function(
     ))
   }
 
+  penalty <- ipw_gam_penalty(ps_mod, smoothing)
+
+  # A fit whose own coefficients are not at the root of the score built from its
+  # record is refused for the same reason, one step later and on the arithmetic
+  # rather than on a count. `min.sp` is the shape that reaches here: it puts a
+  # floor under the smoothing parameters, adds that floor to the penalty, and
+  # records the smoothing parameters as excluding it, so the penalty rebuilt
+  # from the record is not the one the fit was made under and nothing in the
+  # fitted object says so. The score is the check that no field is.
+  #
+  # The tolerance is on the score divided by the number of observations, so it
+  # reads the same at any sample size. The fits this route stacks sit five or
+  # more orders of magnitude below it, and a floor small enough to move the
+  # smoothing parameters in their fourth significant digit already sits above
+  # it.
+  gap <- ipw_gam_score_gap(ps_mod, link, penalty)
+
+  if (!isTRUE(gap < ipw_gam_score_tolerance)) {
+    return(ipw_continuous_entry(
+      kind = "gam",
+      classes = classes,
+      link = link,
+      stackable = FALSE,
+      label = label,
+      role = role,
+      error_class = c(
+        "propensity_ipw_se_method_unavailable_error",
+        "propensity_method_error"
+      ),
+      reason = c(
+        "{.fun ipw} stacks a {.cls {entry$classes}} {entry$role} at the \\
+        penalized score its coefficients solve, which it rebuilds from the \\
+        penalty the fit records.",
+        x = "The penalty {.arg {entry$label}} records does not reproduce the \\
+        score {.arg {entry$label}} is at, so a system seeded at its \\
+        coefficients would settle away from them.",
+        i = "A smoothing floor from {.arg min.sp} is one cause: it is added to \\
+        the penalty and left out of the smoothing parameters the fit reports. \\
+        Refit {.arg {entry$label}} without {.arg min.sp}.",
+        i = hint
+      )
+    ))
+  }
+
   ipw_continuous_entry(
     kind = "gam",
     link = link,
     stackable = TRUE,
-    penalty = ipw_gam_penalty(ps_mod, smoothing)
+    penalty = penalty
   )
 }
+
+# How far a fitted additive model's coefficients sit from the root of the
+# penalized score rebuilt from its record, per observation:
+#
+#   max |X'W(a - mu(X alpha)) - S_lambda alpha| / n.
+#
+# The data half is the score this route stacks, read at the fit's own design and
+# response, and the penalty half is the one built from the fit's smoothing
+# parameters. A fit whose record describes the penalty it was made under leaves
+# the two at the same place, and the difference is the arithmetic of the solve
+# rather than a quantity.
+#
+# The prior weights are the fit's own, so what is asked here is whether the
+# record reproduces the fit's score rather than whether the fit is one this
+# route can stack in every other respect: a fit made under case weights is
+# refused by name further along, where the remedy is its own.
+#
+# A fit that cannot be read at all, which is one keeping neither its design nor
+# its response, returns a gap of `NA` and is refused with the rest: a score that
+# cannot be checked is not one to stack on.
+ipw_gam_score_gap <- function(fit, link, penalty) {
+  alpha <- stats::coef(fit)
+
+  gap <- tryCatch(
+    {
+      X <- stats::model.matrix(fit)
+      y <- as.numeric(fit$y)
+      weights <- fit$prior.weights
+      if (is.null(weights)) {
+        weights <- rep(1, length(y))
+      }
+
+      score <- ipw_continuous_link_fns(link)$score
+      total <- as.vector(score(alpha, X = X, y = y) %*% weights)
+      max(abs(total - as.vector(penalty %*% alpha))) / length(y)
+    },
+    error = function(e) NA_real_
+  )
+
+  if (!is.numeric(gap) || !is.finite(gap)) {
+    return(NA_real_)
+  }
+
+  gap
+}
+
+# How close to the root of its own penalized score a fitted additive model's
+# coefficients have to sit, per observation, to be stacked. The fits this route
+# reads solve their score to rounding and the shapes it refuses miss it by
+# orders of magnitude, so the tolerance is placed between the two with room on
+# both sides rather than at either edge.
+ipw_gam_score_tolerance <- 1e-6
 
 # The smoothing parameters of a fitted additive model, one for each penalty
 # matrix its smooth terms carry, or `NULL` for a fit whose record of them does

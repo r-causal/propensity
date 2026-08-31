@@ -17,12 +17,15 @@
   mgcv reports by default, so `vcov()` on the stacked fit will not match
   `vcov(fit)`. The envelope is the one every other continuous fit has: a
   gaussian family, an identity or a log link, and no prior weights. And coverage
-  degrades as the weights grow heavier tails, whatever the dose model is. Two
+  degrades as the weights grow heavier tails, whatever the dose model is. Three
   additive fits are still refused: the additive part of an `mgcv::gamm()` fit,
   which carries the `gam` class alone without the `glm` and `lm` classes `ipw()`
-  reads a model through, and a fit holding a penalty on a parametric term, such
-  as one from `paraPen`, which belongs to no smooth term and cannot be placed in
-  the score.
+  reads a model through, a fit holding a penalty on a parametric term, such as
+  one from `paraPen`, which belongs to no smooth term and cannot be placed in
+  the score, and a fit made under a smoothing floor from `min.sp`, which mgcv
+  adds to the penalty and leaves out of the smoothing parameters it reports, so
+  the fitted object records no penalty that reproduces the score the fit is at.
+  `mgcv::bam()` ignores `min.sp`, so a `bam()` fit is unaffected.
 
 * `ipw()` now accepts `se_method = "robust"`, a diagnostic that reports the
   sandwich the weighted outcome model computes for itself with the estimated
