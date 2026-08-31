@@ -860,11 +860,6 @@ test_that("tidy() reports the refusals of its arguments against tidy()", {
   # tidier delegates to. Reported against that delegation the refusal names a
   # function the caller never wrote, so the tidier hands the surface its own
   # call to report against.
-  skip_if_not(
-    "call" %in% names(formals(getS3method("as.data.frame", "ipw"))),
-    "the installed causalgenerics takes no call argument"
-  )
-
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -3000,11 +2995,6 @@ test_that("the tidiers report a pooled conditional result", {
 })
 
 test_that("the pooled tidier reports its refusals against tidy() too", {
-  skip_if_not(
-    "call" %in% names(formals(getS3method("as.data.frame", "ipw_pooled"))),
-    "the installed causalgenerics takes no call argument"
-  )
-
   pooled <- fit_pooled_binary()
 
   expect_identical(

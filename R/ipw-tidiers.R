@@ -230,7 +230,7 @@ tidy.ipw <- function(
     conf.level = conf.level,
     exponentiate = exponentiate,
     effects = reading,
-    !!!ipw_frame_call_arg("ipw", rlang::error_call(rlang::current_env()))
+    call = rlang::error_call(rlang::current_env())
   )
 
   # The covariance the frame attaches is the one thing that does not travel: it
@@ -239,22 +239,6 @@ tidy.ipw <- function(
   attr(out, "ipw_vcov") <- NULL
 
   out
-}
-
-# The `call` argument to hand the coercion surface, when it takes one. A
-# causalgenerics that predates the argument would collect it in its dots
-# instead, where it is either ignored or refused as an argument nothing reads,
-# so the tidiers ask the installed method what it takes and pass nothing when
-# the answer is nothing. `tidier_call` is the call the tidier was made with,
-# spliced into the delegation as `call = tidier_call` or left out entirely.
-ipw_frame_call_arg <- function(class, tidier_call) {
-  method <- utils::getS3method("as.data.frame", class, optional = TRUE)
-
-  if (is.null(method) || !"call" %in% names(formals(method))) {
-    return(list())
-  }
-
-  list(call = tidier_call)
 }
 
 # The reading a result records. A result built before the field existed carries
@@ -564,7 +548,7 @@ tidy.ipw_pooled <- function(
     conf.level = conf.level,
     exponentiate = exponentiate,
     effects = effects,
-    !!!ipw_frame_call_arg("ipw_pooled", rlang::error_call(rlang::current_env()))
+    call = rlang::error_call(rlang::current_env())
   )
 
   # The covariance of the effects the frame attaches is the one thing that does
