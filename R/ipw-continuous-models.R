@@ -188,7 +188,10 @@ ipw_continuous_gam_entry <- function(
   # reads the same at any sample size. The fits this route stacks sit five or
   # more orders of magnitude below it, and a floor small enough to move the
   # smoothing parameters in their fourth significant digit already sits above
-  # it.
+  # it at the sample size the fixtures use. That last margin is the one thing
+  # here that is not a property of the check: what passes is a floor whose
+  # effect on the stacked fit is proportionally below the tolerance, and at a
+  # larger sample size a floor of the same relative size can fall under it.
   gap <- ipw_gam_score_gap(ps_mod, link, penalty)
 
   if (!isTRUE(gap < ipw_gam_score_tolerance)) {
@@ -276,6 +279,10 @@ ipw_gam_score_gap <- function(fit, link, penalty) {
 # reads solve their score to rounding and the shapes it refuses miss it by
 # orders of magnitude, so the tolerance is placed between the two with room on
 # both sides rather than at either edge.
+#
+# Room on both sides is not the same as a bright line: what passes is a floor
+# whose effect on the stacked fit is proportionally below the tolerance, which
+# depends on the sample size the gap is read over as well as on the floor.
 ipw_gam_score_tolerance <- 1e-6
 
 # The smoothing parameters of a fitted additive model, one for each penalty

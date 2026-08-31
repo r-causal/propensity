@@ -1072,18 +1072,20 @@ test_that("ipw() refuses a dose psi it cannot write, under the component's name"
   skip_if_not_installed("MASS")
   dat <- sim_joint_continuous_outliers()
 
-  # A redescending psi is the root of an equation this path does not write, and
-  # the single-treatment route refuses it by name. Reached as the second
-  # component of a joint intervention the refusal is the same one, and it names
-  # the component rather than the container the two treatment models arrived
-  # in, since `wt_mod` is not a model the reader can refit.
+  # A psi of the caller's own is the root of an equation this path does not
+  # write, and the single-treatment route refuses it by name. Reached as the
+  # second component of a joint intervention the refusal is the same one, and it
+  # names the component rather than the container the two treatment models
+  # arrived in, since `wt_mod` is not a model the reader can refit.
   ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
-  ps_e <- MASS::rlm(
+  own_psi <- function(u, k = 1.5) pmin(1, k / abs(u))
+  ps_e <- suppressWarnings(MASS::rlm(
     e ~ a + x1 + x2,
     data = dat,
-    psi = MASS::psi.bisquare,
-    acc = 1e-10
-  )
+    psi = own_psi,
+    acc = 1e-10,
+    maxit = 200
+  ))
   wts <- quiet_wt(wt_joint(
     wt_ate(ps_a),
     wt_ate(
@@ -1103,7 +1105,7 @@ test_that("ipw() refuses a dose psi it cannot write, under the component's name"
   )
 
   msg <- joint_error_message(ipw(models, outcome_mod))
-  expect_match(msg, "psi.bisquare", fixed = TRUE)
+  expect_match(msg, "recognize", fixed = TRUE)
   expect_match(msg, "`e`", fixed = TRUE)
   expect_no_match(msg, "wt_mod", fixed = TRUE)
 
@@ -1631,4 +1633,102 @@ test_that("the joint route refuses a dose stabilized on a numerator model", {
   fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
 
   expect_propensity_error(ipw(fits$models, fits$outcome_mod))
+})
+
+# ---- a dose model fit under case weights ------------------------------------
+#
+# The dose block this route stacks is the unweighted score of whichever class
+# the registry read, so a dose model fit with prior case weights sits away from
+# the root of the equation written for it and the solve, seeded at its
+# coefficients, would walk off the fit the user has. The single-dose route
+# refuses such a fit by name for every class it stacks, and this route reads the
+# same field of the same fitted objects, so the refusal is the same one and is
+# made of each class in turn.
+#
+# Where each class records prior weights differs: an `lm` and an `rlm` keep them
+# in `weights`, and a `glm` and a `gam` in `prior.weights`. A guard reading one
+# field would pass half of these fits through.
+
+test_that("ipw() refuses a joint dose model fit with case weights", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_continuous()
+  dat$cw <- rep(c(1, 2), length.out = nrow(dat))
+
+  weighted_dose <- function(dose_type) {
+    switch(
+      dose_type,
+      lm = lm(e ~ a + x1 + x2, data = dat, weights = cw),
+      glm = glm(
+        e ~ a + x1 + x2,
+        data = dat,
+        family = gaussian(),
+        weights = cw
+      ),
+      rlm = MASS::rlm(
+        e ~ a + x1 + x2,
+        data = dat,
+        weights = dat$cw,
+        acc = 1e-10,
+        maxit = 200
+      ),
+      gam = mgcv::gam(e ~ a + s(x1) + x2, data = dat, weights = cw)
+    )
+  }
+
+  for (dose_type in c("lm", "glm", "rlm", "gam")) {
+    ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+    ps_e <- weighted_dose(dose_type)
+    wts <- quiet_wt(wt_joint(
+      wt_ate(ps_a),
+      wt_ate(
+        as.double(fitted(ps_e)),
+        dat$e,
+        exposure_type = "continuous",
+        stabilize = TRUE
+      ),
+      exposure_type = c("binary", "continuous")
+    ))
+    outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+    models <- joint_wt_models(a = ps_a, e = ps_e)
+
+    expect_error(
+      ipw(models, outcome_mod),
+      class = "propensity_ipw_ps_weights_error",
+      label = dose_type
+    )
+
+    msg <- joint_error_message(ipw(models, outcome_mod))
+    expect_match(msg, "`e`", fixed = TRUE)
+    expect_no_match(msg, "wt_mod", fixed = TRUE)
+  }
+})
+
+test_that("the joint dose weights refusal comes before the estimates do", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_continuous()
+  dat$cw <- rep(c(1, 2), length.out = nrow(dat))
+
+  # The failure this guard prevents is silent: without it the route returns a
+  # full table of estimates whose dose block sits at the unweighted score. The
+  # unweighted fit of the same columns is a different model, which is what makes
+  # the drift real rather than notional.
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- lm(e ~ a + x1 + x2, data = dat, weights = cw)
+  unweighted <- lm(e ~ a + x1 + x2, data = dat)
+  expect_gt(max(abs(unname(coef(ps_e)) - unname(coef(unweighted)))), 1e-3)
+
+  wts <- quiet_wt(wt_joint(
+    wt_ate(ps_a),
+    wt_ate(
+      as.double(fitted(ps_e)),
+      dat$e,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    exposure_type = c("binary", "continuous")
+  ))
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+
+  expect_propensity_error(ipw(joint_wt_models(a = ps_a, e = ps_e), outcome_mod))
 })

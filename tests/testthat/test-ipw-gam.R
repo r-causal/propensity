@@ -669,3 +669,110 @@ test_that("wt_ate() reads a gam fit and records the ratio it built", {
   expect_identical(density_meta(wts)$numerator, "marginal")
   expect_identical(format(density_meta(wts)$density), "normal")
 })
+
+# ---- an additive model of a binary exposure ---------------------------------
+#
+# The route a binomial `mgcv::gam()` reaches is the binary one, which reads a
+# propensity score model as an unpenalized logistic fit. An additive fit's
+# coefficients are not the root of that score: they are the root of the
+# penalized one, and the penalty is what separates the two. Stacked against the
+# unpenalized score, the system reports a covariance for a model nobody fit, and
+# nothing in the result says so.
+#
+# The continuous route writes the penalized score, and the binary route does
+# not. Until it does, an additive fit is refused there rather than stacked at
+# the wrong equation, and the refusal says which limitation it is: the model is
+# a propensity score model this package builds weights from, and what is
+# missing is the sandwich for it.
+
+sim_gam_binary <- function(seed = 12, n = 500) {
+  withr::local_seed(seed)
+  x1 <- runif(n, -2, 2)
+  x2 <- runif(n, -2, 2)
+  z <- rbinom(n, 1, plogis(0.4 * x1^2 - 0.9 * x1 + 0.5 * x2))
+  y <- rbinom(n, 1, plogis(-0.4 + 0.9 * z + 0.5 * x1 - 0.3 * x2))
+  data.frame(x1, x2, z, y)
+}
+
+fit_gam_binary <- function(dat) {
+  ps_mod <- mgcv::gam(z ~ s(x1) + s(x2), data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(as.double(fitted(ps_mod)), dat$z, exposure_type = "binary")
+  )
+  outcome_mod <- glm(
+    y ~ z,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+test_that("ipw() refuses a gam propensity model of a binary exposure", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_binary()
+  mods <- fit_gam_binary(dat)
+
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod),
+    class = "propensity_ipw_se_method_unavailable_error"
+  )
+
+  cnd <- tryCatch(ipw(mods$ps_mod, mods$outcome_mod), error = function(e) e)
+  expect_s3_class(cnd, "propensity_method_error")
+
+  msg <- if (inherits(cnd, "condition")) {
+    gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  } else {
+    ""
+  }
+
+  # The refusal names the class it refused, the reason it refused it, and the
+  # two ways out: a fit whose score this route does write, and a resampling of
+  # the whole pipeline.
+  expect_match(msg, "gam", fixed = TRUE)
+  expect_match(msg, "penal")
+  expect_match(msg, "glm", fixed = TRUE)
+  expect_match(msg, "bootstrap the whole fit yourself", fixed = TRUE)
+})
+
+test_that("the binary gam refusal holds for every standard error method", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_binary()
+  mods <- fit_gam_binary(dat)
+
+  # The unpenalized score is what all three methods read: the stacked system
+  # solves it, and the linearization and the robust diagnostic both differentiate
+  # it. None of them describes the fit, so the refusal is the model's rather
+  # than any one method's.
+  for (method in c("mestimation", "linearization", "robust")) {
+    cnd <- tryCatch(
+      ipw(mods$ps_mod, mods$outcome_mod, se_method = method),
+      error = function(e) e
+    )
+    expect_s3_class(cnd, "propensity_ipw_se_method_unavailable_error")
+  }
+})
+
+test_that("wt_ate() still reads a binary gam that ipw() refuses", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_gam_binary()
+  ps_mod <- mgcv::gam(z ~ s(x1) + s(x2), data = dat, family = binomial())
+
+  # What is refused is the sandwich, not the model. The weights an additive fit
+  # of a binary exposure gives are the fit's own fitted probabilities, and they
+  # keep working.
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod, dat$z, exposure_type = "binary")
+  )
+  fitted_ps <- as.double(fitted(ps_mod))
+  expect_equal(
+    as.double(wts),
+    dat$z / fitted_ps + (1 - dat$z) / (1 - fitted_ps),
+    tolerance = 1e-12
+  )
+})

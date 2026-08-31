@@ -815,3 +815,76 @@ test_that("ipw() refuses robust standard errors on the two-model route", {
     ipw(two$models, two$outcome_mod, se_method = "robust")
   )
 })
+
+# ---- treatment models fit under case weights --------------------------------
+#
+# Every score this route stacks is unweighted, so a treatment model fit with
+# prior case weights is not at the root of the equation written for it: the
+# solve, seeded at its coefficients, would move away from them and report a
+# treatment model nobody fit. The single-treatment routes refuse such a fit by
+# name, and this route reads the same field of the same fitted objects, so the
+# refusal is the same one and is made of each component in turn.
+
+test_that("ipw() refuses a joint binary treatment model fit with case weights", {
+  dat <- sim_joint_models()
+  dat$cw <- rep(c(1, 2), length.out = nrow(dat))
+
+  # Integer weights, so the binomial fit raises nothing of its own and the only
+  # condition in the test is the refusal being asserted.
+  weighted_route <- function(which) {
+    a_weights <- if (identical(which, "a")) dat$cw else rep(1, nrow(dat))
+    e_weights <- if (identical(which, "e")) dat$cw else rep(1, nrow(dat))
+    ps_a <- glm(
+      a ~ x1 + x2,
+      data = dat,
+      family = binomial(),
+      weights = a_weights
+    )
+    ps_e <- glm(
+      e ~ a * x1 + x2,
+      data = dat,
+      family = binomial(),
+      weights = e_weights
+    )
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_joint(
+        wt_ate(ps_a),
+        wt_ate(ps_e),
+        exposure_type = c("binary", "binary")
+      )
+    )
+    outcome_mod <- lm(yc ~ a * e + x1, data = dat, weights = wts)
+
+    list(
+      models = joint_wt_models(a = ps_a, e = ps_e),
+      outcome_mod = outcome_mod
+    )
+  }
+
+  # The message of whatever the call raised, or the empty string when it raised
+  # nothing, so that one component failing to refuse does not stop the other
+  # from being asserted.
+  refusal_message <- function(expr) {
+    cnd <- tryCatch(expr, error = function(e) e)
+    if (!inherits(cnd, "condition")) {
+      return("")
+    }
+    gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  }
+
+  for (which in c("a", "e")) {
+    fx <- weighted_route(which)
+    expect_error(
+      ipw(fx$models, fx$outcome_mod),
+      class = "propensity_ipw_ps_weights_error",
+      label = which
+    )
+
+    # The refusal names the component that carries the weights rather than the
+    # container the two models arrived in, which is not a model to refit.
+    msg <- refusal_message(ipw(fx$models, fx$outcome_mod))
+    expect_match(msg, paste0("`", which, "`"), fixed = TRUE)
+    expect_no_match(msg, "wt_mod", fixed = TRUE)
+  }
+})
