@@ -271,14 +271,17 @@
   marginal density gives the unit a weight of zero, which is a legitimate
   weight, and weights that are merely enormous are still returned.
 
-* Stabilized weights from the normal family now warn when the marginal variance
-  of the exposure reaches twice the variance of the conditional density. The
-  second moment of the density ratio exists only below that boundary, so past
-  it the weights have no finite variance and estimates built from them are
-  erratic however large the sample is. The weights are still returned, with a
-  warning of class `propensity_density_variance_warning` that names both
-  variances and suggests a propensity score model explaining more of the
-  exposure. The boundary belongs to the normal family read against the
+* Stabilized weights from the normal family now report when the marginal
+  variance of the exposure reaches twice the variance of the conditional
+  density. The second moment of the density ratio exists only below that
+  boundary, so past it the weights have no finite variance and estimates built
+  from them are erratic however large the sample is. The weights are still
+  returned, with a message of class `propensity_density_variance_message` that
+  names both variances. It is a message rather than a warning because the
+  boundary is reached exactly when the model explains at least half of the
+  exposure's variance, which is a good fit behaving as asked; the remedies are
+  a heavier-tailed family or an unstabilized weight, since a better fit
+  tightens the boundary. The boundary belongs to the normal family read against the
   exposure's own marginal density, so nothing is reported for an unstabilized
   weight, a supplied stabilization score, an integrated numerator, another
   family, or an observation-level `.sigma`.

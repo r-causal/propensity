@@ -57,8 +57,8 @@ count_record_drops <- function(expr) {
 muffle_variance_warning <- function(expr) {
   withCallingHandlers(
     expr,
-    propensity_density_variance_warning = function(cnd) {
-      invokeRestart("muffleWarning")
+    propensity_density_variance_message = function(cnd) {
+      invokeRestart("muffleMessage")
     }
   )
 }

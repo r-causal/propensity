@@ -334,10 +334,13 @@
 #' the conditional density, \eqn{\mathrm{Var}(A) < 2\sigma^2}. Past that
 #' boundary the weights have no finite variance, and estimates built from them
 #' are erratic however large the sample is. Reaching it is reported with a
-#' warning of class `propensity_density_variance_warning`; the weights are still
-#' returned. A propensity score model that explains more of the exposure lowers
-#' \eqn{\sigma^2} and moves the boundary out, and a heavier-tailed family sits
-#' at a different one. The boundary is a property of the normal family read
+#' message of class `propensity_density_variance_message`; the weights are
+#' still returned, and the report is informational because a well-fitting
+#' model reaches the boundary in ordinary use. Explaining more of the exposure
+#' lowers \eqn{\sigma^2} while the marginal variance is fixed by the data, so
+#' a better fit tightens the boundary rather than escaping it; a
+#' heavier-tailed family sits at a different one, and an unstabilized weight
+#' has no boundary at all. The boundary is a property of the normal family read
 #' against the exposure's own marginal density, so nothing is reported for an
 #' unstabilized weight, a supplied `stabilization_score`, `numerator =
 #' "integrated"`, another family, or an observation-level `.sigma`.

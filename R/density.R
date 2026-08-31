@@ -1283,9 +1283,12 @@ check_density_values <- function(
 # for each observation is not a single conditional variance the marginal
 # variance can be read against.
 #
-# The report is a warning rather than a refusal because the weights are still
+# The report is a message rather than a refusal because the weights are still
 # the weights the estimand asks for; what fails is the precision of anything
-# built from them.
+# built from them. And it is a message rather than a warning because the
+# boundary is reached exactly when the model explains at least half of the
+# exposure's variance, which is a well-fitting model doing what it was asked
+# to do: the reader should know where the weights sit, but nothing went wrong.
 check_density_variance <- function(
   density,
   sigma,
@@ -1307,7 +1310,7 @@ check_density_variance <- function(
   var_a <- signif(sigma_a^2, 3)
   var_d <- signif(sigma^2, 3)
 
-  warn(
+  inform(
     c(
       "Stabilized normal weights have no finite variance for this exposure.",
       x = "The marginal variance of the exposure is {var_a}, which is at least
@@ -1316,11 +1319,13 @@ check_density_variance <- function(
            while the marginal variance stays below twice the conditional one.
            The weights are returned, but estimates built from them are erratic
            however large the sample is.",
-      i = "A model that explains more of the exposure lowers the conditional
-           variance, and a family with heavier tails, such as {.fun dens_t},
-           has a different boundary."
+      i = "The boundary tightens as the model explains more of the exposure,
+           since a better fit lowers the conditional variance while the
+           marginal variance is fixed by the data. A family with heavier
+           tails, such as {.fun dens_t}, has a different boundary, and an
+           unstabilized weight has none."
     ),
-    warning_class = "propensity_density_variance_warning",
+    message_class = "propensity_density_variance_message",
     call = call
   )
 

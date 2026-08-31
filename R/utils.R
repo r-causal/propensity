@@ -30,6 +30,20 @@ warn <- function(
   )
 }
 
+inform <- function(
+  ...,
+  message_class = NULL,
+  call = rlang::caller_env(),
+  .envir = parent.frame()
+) {
+  cli::cli_inform(
+    ...,
+    class = c(message_class, "propensity_message"),
+    call = call,
+    .envir = .envir
+  )
+}
+
 alert_info <- function(.message, .envir = parent.frame()) {
   if (!be_quiet()) {
     cli::cli_alert_info(text = .message, .envir = .envir)

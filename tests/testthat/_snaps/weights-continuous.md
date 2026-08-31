@@ -103,12 +103,11 @@
 
     Code
       out <- wt_ate(past$mu, past$exposure, exposure_type = "continuous", stabilize = TRUE)
-    Condition <propensity_density_variance_warning>
-      Warning in `wt_ate()`:
+    Message <propensity_density_variance_message>
       Stabilized normal weights have no finite variance for this exposure.
       x The marginal variance of the exposure is 2.6, which is at least twice the conditional variance 1.09.
       i The second moment of a stabilized normal density ratio exists only while the marginal variance stays below twice the conditional one. The weights are returned, but estimates built from them are erratic however large the sample is.
-      i A model that explains more of the exposure lowers the conditional variance, and a family with heavier tails, such as `dens_t()`, has a different boundary.
+      i The boundary tightens as the model explains more of the exposure, since a better fit lowers the conditional variance while the marginal variance is fixed by the data. A family with heavier tails, such as `dens_t()`, has a different boundary, and an unstabilized weight has none.
 
 # the refusals of an integrated numerator read the way they should
 

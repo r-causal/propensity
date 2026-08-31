@@ -1320,12 +1320,12 @@ boundary_exposure <- function(share) {
   list(n = n, x = x, exposure = exposure, mu = b * x)
 }
 
-# How many warnings of one class a single call raises.
-count_class_warnings <- function(expr, class) {
+# How many messages of one class a single call raises.
+count_class_messages <- function(expr, class) {
   n <- 0L
   withCallingHandlers(
     expr,
-    warning = function(cnd) {
+    message = function(cnd) {
       if (inherits(cnd, class)) {
         n <<- n + 1L
         rlang::cnd_muffle(cnd)
@@ -1348,22 +1348,22 @@ test_that("stabilized normal weights report an exposure past the finite-variance
     )
   }
 
-  cnd <- expect_warning(
+  cnd <- expect_message(
     wt_past(),
-    class = "propensity_density_variance_warning"
+    class = "propensity_density_variance_message"
   )
   message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
   expect_match(message, "variance", fixed = TRUE)
 
   # One report for one call, whatever the weights are computed over.
   expect_identical(
-    count_class_warnings(wt_past(), "propensity_density_variance_warning"),
+    count_class_messages(wt_past(), "propensity_density_variance_message"),
     1L
   )
 
   # The weights are a diagnostic short of nothing: they are still returned, and
   # they are still finite.
-  weights <- suppressWarnings(wt_past())
+  weights <- suppressMessages(wt_past())
   expect_length(weights, past$n)
   expect_true(all(is.finite(as.numeric(weights))))
 })
@@ -1397,30 +1397,30 @@ test_that("the finite-variance boundary is read only where it holds", {
   # Well inside the boundary, and just inside it. The second moment exists on
   # both sides of that distinction, and the report is a statement that it does
   # not, so it is made at the boundary rather than in front of it.
-  expect_no_warning(wt_continuous(below))
-  expect_no_warning(wt_continuous(near))
+  expect_no_message(wt_continuous(below))
+  expect_no_message(wt_continuous(near))
 
   # The boundary is a property of the normal family read against the exposure's
   # own marginal density. Unstabilized weights have no marginal density over
   # them, a heavier-tailed family has a different boundary, a marginalized
   # numerator is not the marginal density, and a score the caller supplied is
   # not a density at all.
-  expect_no_warning(wt_ate(
+  expect_no_message(wt_ate(
     past$mu,
     past$exposure,
     exposure_type = "continuous",
     stabilize = FALSE
   ))
-  expect_no_warning(wt_continuous(past, .density = dens_t(df = 4)))
-  expect_no_warning(wt_continuous(past, numerator = "integrated"))
-  expect_no_warning(wt_continuous(
+  expect_no_message(wt_continuous(past, .density = dens_t(df = 4)))
+  expect_no_message(wt_continuous(past, numerator = "integrated"))
+  expect_no_message(wt_continuous(
     past,
     stabilization_score = rep(0.5, past$n)
   ))
 
   # One spread for each unit is not one conditional variance, so there is no
   # boundary to read the marginal variance against.
-  expect_no_warning(wt_continuous(
+  expect_no_message(wt_continuous(
     past,
     .sigma = seq(0.3, 0.7, length.out = past$n)
   ))
