@@ -8,10 +8,26 @@
   weights recorded stayed: the product answered `numerator_model()` with a
   model and printed a `stabilize:` line naming a numerator that had never
   multiplied it. The record a continuous exposure keeps inside `density_meta()`
-  misdescribed such a product the same way, and its numerator fields now read
-  as the record of no numerator, while the family and the spread stay, those
-  describing the density the weights divide by rather than the one they were
-  divided into.
+  described such a product wrongly in the same way, and its numerator fields
+  now read as the record of no numerator, while the family and the spread stay,
+  those describing the density the weights divide by rather than the one they
+  were divided into.
+
+* Two guardrails now read a numerator model for what it says rather than
+  passing it because a model was supplied. `ipw()` reads the terms of the model
+  when a `.by` request asks what the numerator conditions on: a model of the exposure
+  on variables that do not include the modifier conditions on nothing the
+  modifier explains, which is the default stabilizer's hazard, so it warns with
+  class `propensity_ipw_by_stabilizer_warning` and names the terms the model
+  was built on. A model that reads the modifier, on its own or through a
+  transformation of it, stays silent, as does a `stabilization_score`, which
+  carries no terms to read. And `wt_ate()` and `wt_cens()` now refuse a
+  numerator model fit with case weights, for a binary exposure and for a dose,
+  with class `propensity_numerator_error`: such a fit estimates the numerator
+  in a reweighted sample rather than in the one the weights are being built
+  for. `ipw()` refused it a step later and still does, for weights built by
+  hand or by an earlier version, but a caller who builds the weights is now
+  told in the call that supplied the model.
 
 * `ipw()` now estimates each component's stabilizing numerator in a block of
   its own on the two-model route to a joint intervention, where the route
@@ -47,8 +63,8 @@
   `ipw()` needs to estimate the numerator rather than read it as a constant: the
   model's own score equations join the stacked system in place of the marginal
   proportion the default stabilizer estimates there. `numerator_model()` reads
-  the model back off the weights, for a dose as well, and `ipw()` no longer
-  warns about the numerator a `.by` request was given when a model supplied it.
+  the model back off the weights, for a dose as well, and `ipw()` reads the
+  model's terms when a `.by` request asks what the numerator conditions on.
   Weights stabilized this way have no `se_method = "linearization"` standard
   error, that method reading every stabilizer as a known constant, and are
   refused there rather than described by a variance that ignores the numerator

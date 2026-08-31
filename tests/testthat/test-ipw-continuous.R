@@ -2525,16 +2525,27 @@ test_that("ipw() refuses a numerator model fit with case weights", {
   # walk it off the fit the user has. The refusal names the argument the model
   # arrived in, since a reader told to refit the propensity score model would be
   # told to refit the wrong thing.
+  #
+  # `wt_ate()` refuses such a model where it arrives, so weights recording one
+  # were built by hand or by a version that took it. The record is written here
+  # rather than built, which is what those weights are, and the check reads it
+  # the same way either way.
   dat <- sim_continuous()
   dat$case_wt <- rep(c(1, 2), length.out = nrow(dat))
-  num_mod <- lm(A ~ x1, data = dat, weights = case_wt)
-  fits <- fit_continuous_models(dat, stabilize = num_mod)
+  weighted <- lm(A ~ x1, data = dat, weights = case_wt)
+
+  fits <- fit_continuous_models(dat, stabilize = lm(A ~ x1, data = dat))
+  wts <- fits$wts
+  meta <- density_meta(wts)
+  meta$numerator_model <- weighted
+  attr(wts, "density_meta") <- meta
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
 
   expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod),
+    ipw(fits$ps_mod, outcome_mod),
     class = "propensity_ipw_ps_weights_error"
   )
-  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+  expect_propensity_error(ipw(fits$ps_mod, outcome_mod))
 })
 
 test_that("ipw() refuses a numerator model of another response", {

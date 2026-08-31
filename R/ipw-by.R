@@ -368,18 +368,29 @@ check_ipw_by_interaction <- function(
 # term is one: a numerator that conditions on nothing leaves the estimator
 # consistent for the same stratum effects, and the fit still returns.
 #
-# Unstabilized weights carry no numerator to report on, and a numerator the
-# caller supplied is one this check has nothing to say about, whether it arrived
-# as a score or as a fitted model: which variables it conditions on is a
-# statement about the reported model that a score does not carry, and a model
-# that conditions on the modifier is the very thing this would ask for.
+# Unstabilized weights carry no numerator to report on, and a score the caller
+# supplied is one this check has nothing to say about: which variables it
+# conditions on is a statement about the reported model that a vector of numbers
+# does not carry.
+#
+# A fitted model does carry it. Its terms say which variables the numerator
+# varies with, so a numerator model that never reads the modifier conditions on
+# nothing the modifier explains, which is exactly what the default stabilizer
+# does and exactly what this reports. A model that reads the modifier, whether
+# on its own or through a transformation of it, is the numerator this would ask
+# for and is silent.
 check_ipw_by_stabilizer <- function(wts, name, call = rlang::caller_env()) {
-  reportable <- !is.null(wts) &&
-    is_stabilized(wts) &&
-    is.null(stabilization_score(wts)) &&
-    is.null(numerator_model(wts))
+  if (is.null(wts) || !is_stabilized(wts)) {
+    return(invisible(TRUE))
+  }
 
-  if (!reportable) {
+  model <- numerator_model(wts)
+
+  if (!is.null(model)) {
+    return(check_ipw_by_numerator_model(model, name, call = call))
+  }
+
+  if (!is.null(stabilization_score(wts))) {
     return(invisible(TRUE))
   }
 
@@ -402,6 +413,60 @@ check_ipw_by_stabilizer <- function(wts, name, call = rlang::caller_env()) {
   )
 
   invisible(FALSE)
+}
+
+# The same report, made of a numerator the caller fit rather than of the default
+# one. What separates them is that a model names the variables it read, so the
+# report can say which numerator was built instead of the one asked for, and can
+# stay silent where the modifier is among them.
+check_ipw_by_numerator_model <- function(
+  model,
+  name,
+  call = rlang::caller_env()
+) {
+  variables <- numerator_model_variables(model)
+
+  # A model that will not report its terms says nothing either way, and a report
+  # asserting that the modifier is absent from terms nothing could read would be
+  # a statement about the model rather than about what it conditions on.
+  if (is.null(variables) || name %in% variables) {
+    return(invisible(TRUE))
+  }
+
+  warn(
+    c(
+      "The weights {.arg outcome_mod} was fit with are stabilized on a \\
+      numerator that does not read {.val {name}}.",
+      i = "{.arg stabilize} was given a model of the exposure on \\
+      {.val {variables}}, so the numerator does not vary with {.val {name}} \\
+      and tightens the weights by nothing it explains.",
+      i = "A numerator conditioning on {.val {name}} as well leaves the \\
+      estimator consistent for the same stratum effects and tightens the \\
+      weights further. Refit the model supplied to {.arg stabilize} with \\
+      {.val {name}} among its terms; see {.strong Stabilization} in \\
+      {.fun wt_ate}."
+    ),
+    warning_class = "propensity_ipw_by_stabilizer_warning",
+    call = call
+  )
+
+  invisible(FALSE)
+}
+
+# The variables a fitted numerator model reads, or NULL for a fit that reports
+# no terms. They are read off the terms object rather than off the formula, so
+# that a model written with a dot is asked about the variables the dot stood for
+# rather than about the dot. A variable entering through a transformation is
+# among them, `all.vars()` reaching past the call to the names inside it, which
+# is the question being asked: a numerator built on a spline of the modifier
+# varies with the modifier.
+numerator_model_variables <- function(model) {
+  model_terms <- tryCatch(stats::terms(model), error = function(e) NULL)
+  if (is.null(model_terms)) {
+    return(NULL)
+  }
+
+  all.vars(stats::delete.response(model_terms))
 }
 
 # ---- the rows a resolved `.by` contributes ----------------------------------

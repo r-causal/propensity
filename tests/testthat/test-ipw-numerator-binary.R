@@ -184,8 +184,8 @@ test_that("a binary numerator model is the numerator `.by` asks for", {
   # A fit reporting effects within the strata of a modifier reports a default
   # stabilizer that conditions on nothing, because a numerator conditioning on
   # the modifier would be consistent for the same stratum effects and tighter.
-  # A numerator the caller supplied says nothing here, whether it arrived as a
-  # score or as a fitted model.
+  # This numerator model is a model of the exposure on that modifier, which is
+  # the numerator the report asks for, so the model route is silent.
   expect_warning(
     ipw(fits$marginal$ps_mod, fits$marginal$outcome_mod, .by = v),
     class = "propensity_ipw_by_stabilizer_warning"

@@ -556,8 +556,10 @@
 #'     a dose are refused with. A categorical exposure takes no fitted
 #'     numerator, and neither does a model supplied together with
 #'     `stabilization_score` or `numerator = "integrated"`; those are
-#'     `propensity_numerator_error`. A model with a fitted value for some other
-#'     set of observations is `propensity_length_error`.
+#'     `propensity_numerator_error`. So is a model fit with case `weights`,
+#'     which estimates the numerator in a reweighted sample rather than in the
+#'     one the weights are being built for. A model with a fitted value for some
+#'     other set of observations is `propensity_length_error`.
 #'
 #'   Anything else is refused with an error of class
 #'   `propensity_stabilize_error`. Stabilization is only supported by

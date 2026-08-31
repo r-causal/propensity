@@ -672,9 +672,12 @@ A stabilized fit reporting effects within the strata of a modifier, and
 carrying the default numerator, warns with class
 \code{propensity_ipw_by_stabilizer_warning} and returns: the default numerator
 conditions on nothing, which is consistent for the same stratum effects and
-leaves precision on the table. A numerator the caller supplied, whether as a
-score or as a model, says nothing here, since which variables it conditions
-on is a statement about the reported model that the weights do not carry.
+leaves precision on the table. A numerator model the caller supplied is read
+the same way, since a fitted model carries the terms it read: one that never
+reads the modifier warns with the same class, naming the terms it was built
+on, and one that reads the modifier, on its own or through a transformation
+of it, is silent. A \code{stabilization_score} says nothing either way, being a
+vector of numbers that does not carry what it conditions on.
 
 Every reported row is a parameter of one stacked system solved on one sample,
 so the covariance couples them: \code{\link[stats:vcov]{stats::vcov()}} reports nonzero entries

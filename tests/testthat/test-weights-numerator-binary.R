@@ -255,6 +255,44 @@ test_that("a binary numerator model fit to other observations is refused", {
   )
 })
 
+test_that("a binary numerator model fit with case weights is refused", {
+  # The refusal a dose's numerator model takes, taken here for the same
+  # reasons: the numerator is a probability in the sample the weights are being
+  # built for, and a fit made under case weights reports it for a reweighted
+  # one; and the weights record the model for `ipw()` to rebuild the numerator
+  # from, whose stacked equations are the model's unweighted score.
+  dat <- binary_numerator_dat
+  dat$case_wt <- rep(c(1, 2), length.out = nrow(dat))
+  weighted <- stats::glm(
+    z ~ v,
+    data = dat,
+    family = stats::binomial(),
+    weights = case_wt
+  )
+
+  expect_error(
+    wt_ate(
+      binary_numerator_ps,
+      dat$z,
+      exposure_type = "binary",
+      stabilize = weighted
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  # Censoring weights read the numerator model through the same validation, so
+  # they refuse it too.
+  expect_error(
+    wt_cens(
+      binary_numerator_ps,
+      dat$z,
+      exposure_type = "binary",
+      stabilize = weighted
+    ),
+    class = "propensity_numerator_error"
+  )
+})
+
 test_that("a binary numerator model and a stabilization score are two numerators", {
   # A score the caller computed is itself the numerator of the weights, and a
   # model is a second one; the two together are two instructions about the same
@@ -415,6 +453,28 @@ test_that("combining weights stabilized on the same model keeps it", {
   expect_identical(
     stats::coef(numerator_model(same)),
     stats::coef(binary_numerator_model)
+  )
+})
+
+test_that("combining weights stabilized on the same terms fit apart drops both", {
+  # Two models can read the same terms and still estimate two numerators, when
+  # they were fit to different values of those terms. The comparison is what
+  # each model says rather than what it reads, so the combination is stabilized
+  # on neither of them here as much as it is where the terms differ.
+  elsewhere <- stats::glm(
+    z ~ v,
+    data = binary_numerator_data(seed = 4470),
+    family = stats::binomial()
+  )
+
+  out <- NULL
+  cnd <- expect_warning(
+    out <- vec_c(binary_modeled_wt(), binary_modeled_wt(elsewhere)),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(numerator_model(out))
+  expect_true(
+    grepl("numerator_model", conditionMessage(cnd), fixed = TRUE)
   )
 })
 

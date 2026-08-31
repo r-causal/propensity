@@ -354,8 +354,10 @@ of a dose handed to a binary exposure and a \code{\link[=binomial]{binomial()}} 
 a dose are refused with. A categorical exposure takes no fitted
 numerator, and neither does a model supplied together with
 \code{stabilization_score} or \code{numerator = "integrated"}; those are
-\code{propensity_numerator_error}. A model with a fitted value for some other
-set of observations is \code{propensity_length_error}.
+\code{propensity_numerator_error}. So is a model fit with case \code{weights},
+which estimates the numerator in a reweighted sample rather than in the
+one the weights are being built for. A model with a fitted value for some
+other set of observations is \code{propensity_length_error}.
 }
 
 Anything else is refused with an error of class

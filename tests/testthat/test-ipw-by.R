@@ -952,3 +952,62 @@ test_that("the stabilizer report names the modifier it was not built on", {
 
   expect_propensity_warning(ipw(mods$ps_mod, mods$outcome_mod, .by = v))
 })
+
+test_that(".by reports a numerator model that does not read the modifier", {
+  dat <- sim_by()
+
+  # A model carries the terms it reads, which a score does not, so the report a
+  # marginal numerator gets can be made of a model as well: a numerator of the
+  # exposure on the covariate alone conditions on nothing the modifier
+  # explains, which is the hazard the report exists for, and it is the default
+  # stabilizer's hazard whatever shape the numerator arrived in.
+  blind <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ x1, data = dat, family = binomial())
+  )
+
+  expect_warning(
+    res <- ipw(blind$ps_mod, blind$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+})
+
+test_that(".by says nothing about a numerator model that reads the modifier", {
+  dat <- sim_by()
+
+  reading <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ v, data = dat, family = binomial())
+  )
+  expect_no_warning(
+    ipw(reading$ps_mod, reading$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+
+  # The modifier is read whether it enters the numerator on its own or through
+  # a transformation of it, since either way the numerator varies with it.
+  transformed <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ x1 + factor(v), data = dat, family = binomial())
+  )
+  expect_no_warning(
+    ipw(transformed$ps_mod, transformed$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+})
+
+test_that("the stabilizer report names the terms the numerator model read", {
+  dat <- sim_by()
+  blind <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ x1, data = dat, family = binomial())
+  )
+
+  expect_propensity_warning(ipw(blind$ps_mod, blind$outcome_mod, .by = v))
+})

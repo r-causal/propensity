@@ -2953,6 +2953,49 @@ test_that("a numerator model is read the way a propensity score model is", {
   )
 })
 
+test_that("a numerator model fit with case weights is refused", {
+  # The numerator is a quantity in the sample the weights are being built for,
+  # and a fit made under case weights estimates it in a reweighted one. The
+  # weights also record the model so that `ipw()` can rebuild the numerator at
+  # every value of theta, and the equations it stacks for that are the model's
+  # unweighted score, which a weighted fit is not at the root of. Refusing the
+  # model where it arrives names the argument the caller wrote rather than
+  # leaving the fit to be refused a step later.
+  exposure <- continuous_density_data$exposure
+  case_wt <- rep(c(1, 2), length.out = continuous_density_data$n)
+  weighted <- stats::lm(
+    exposure ~ continuous_density_data$x,
+    weights = case_wt
+  )
+
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = weighted
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  # Unit weights are the weights an unweighted fit records, so a model fit
+  # under them is the unweighted fit and is taken.
+  unit <- stats::lm(
+    exposure ~ continuous_density_data$x,
+    weights = rep(1, continuous_density_data$n)
+  )
+
+  expect_s3_class(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = unit
+    ),
+    "psw"
+  )
+})
+
 test_that("a numerator model and a stabilization score are two numerators", {
   # A score the caller computed is itself the numerator of the weights, and a
   # model is a second one; the two together are two instructions about the same

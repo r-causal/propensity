@@ -481,6 +481,29 @@ check_numerator_model <- function(
     )
   }
 
+  # Prior case weights, refused for both exposure types the model route serves.
+  # The numerator is a quantity in the sample the weights are being built for,
+  # and a fit made under case weights reports it for a reweighted one. The
+  # weights also record the model rather than the numbers it evaluated to, so
+  # that `ipw()` can rebuild the numerator at every value of theta, and the
+  # equations stacked for that are the model's unweighted score, which a
+  # weighted fit is not at the root of. `ipw()` refuses such a fit again where
+  # it stacks it, for weights built by hand or by an older version, but a caller
+  # who builds the weights here is told in the call that supplied the model.
+  numerator_weights <- ipw_model_prior_weights(numerator_model)
+  if (!is.null(numerator_weights) && !all(numerator_weights == 1)) {
+    abort(
+      c(
+        "A model supplied to {.arg stabilize} cannot be fit with case weights.",
+        x = "It was fit with non-unit {.arg weights}, so what it estimates is
+             the numerator in a reweighted sample rather than in this one.",
+        i = "Refit the model without {.arg weights} and stabilize on that fit."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
   # The numerator model is held to the family the propensity score model of the
   # same exposure is held to, and by the same check, read from the other side
   # of the ratio: a dose's numerator is a density around a conditional mean
