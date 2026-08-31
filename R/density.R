@@ -497,12 +497,14 @@ density_sigma_source <- function(.sigma, density) {
 # unit out of the root mean square.
 #
 # The score for the scale, multiplied through by the scale so that it is a mean
-# of bounded terms, is the function below. It falls from `df` at a scale of
-# nothing to -1 as the scale grows without bound, so the root is bracketed
-# either side of the root mean square and found rather than searched for. The
-# upper end is the root mean square scaled by enough to put the score below zero
-# for any degrees of freedom: the mean is at most `(df + 1) / df` times the
-# squared root mean square over the squared scale.
+# of bounded terms, is the function below. It falls the whole way as the scale
+# grows, from `(df + 1)` times the share of residuals that are not zero, less
+# one, at a scale of nothing, to -1 as the scale grows without bound, so the
+# root is bracketed rather than searched for and the equation is solved on the
+# log of the scale, where a bracket of any width is read to the same relative
+# precision. The upper end is the root mean square scaled by enough to put the
+# score below zero for any degrees of freedom: the mean is at most
+# `(df + 1) / df` times the squared root mean square over the squared scale.
 t_sigma_mle <- function(residuals, df, call = rlang::caller_env()) {
   residuals <- residuals[!is.na(residuals)]
   rms <- sqrt(mean(residuals^2))
@@ -515,26 +517,31 @@ t_sigma_mle <- function(residuals, df, call = rlang::caller_env()) {
     return(rms)
   }
 
+  # A residual of exactly zero contributes nothing to the score at any positive
+  # scale, so the sum runs over the rest and stays a number however small the
+  # scale gets.
+  nonzero <- residuals[residuals != 0]
+  n <- length(residuals)
+
   score <- function(sigma) {
-    mean((df + 1) * residuals^2 / (df * sigma^2 + residuals^2)) - 1
+    sum((df + 1) * nonzero^2 / (df * sigma^2 + nonzero^2)) / n - 1
   }
 
-  lower <- rms / 1e4
-  upper <- rms * max(50, 2 * sqrt((df + 1) / df))
+  # Where the score starts. The likelihood has no maximum at a positive scale
+  # when it starts at or below zero, because the score only falls from there:
+  # the fit is degenerate rather than merely tight, and how many exact zeros it
+  # takes to get there is a question the degrees of freedom answer.
+  score_at_zero <- (df + 1) * length(nonzero) / n - 1
 
-  # The likelihood has no maximum at a positive scale when so many residuals are
-  # exactly zero that the score is negative however small the scale is: the fit
-  # is degenerate rather than merely tight, and the root finder would report it
-  # as a bracket that does not straddle a root.
-  if (score(lower) <= 0) {
-    n_zero <- sum(residuals == 0)
+  if (score_at_zero <= 0) {
+    n_zero <- n - length(nonzero)
     abort(
       c(
         "The scale of a {.val t} density cannot be estimated by maximum
          likelihood from these residuals.",
-        x = "{n_zero} of the {length(residuals)} residuals of the propensity
-             score model {?is/are} exactly zero, so the likelihood grows
-             without bound as the scale falls to zero.",
+        x = "{n_zero} of the {n} residuals of the propensity score model
+             {?is/are} exactly zero, and with {df} degrees of freedom that
+             leaves the likelihood no maximum at a positive scale.",
         i = "Use {.code sigma_method = \"rms\"}, or supply a spread with
              {.arg .sigma}."
       ),
@@ -543,11 +550,23 @@ t_sigma_mle <- function(residuals, df, call = rlang::caller_env()) {
     )
   }
 
-  stats::uniroot(
-    score,
-    interval = c(lower, upper),
-    tol = .Machine$double.eps^0.75
-  )$root
+  upper <- rms * max(50, 2 * sqrt((df + 1) / df))
+
+  # A model that all but interpolates its exposure has a scale far below the
+  # spread its residuals average to, so the lower end is taken below the root
+  # mean square and below a scale the score is positive at whatever the fit: at
+  # `min(|r|) * sqrt(score_at_zero / (2 * df))` every term is at least
+  # `(df + 1) / (1 + score_at_zero / 2)`, which leaves the mean above one.
+  reach <- min(abs(nonzero)) * sqrt(score_at_zero / (2 * df))
+  lower <- min(rms / 1e4, reach)
+
+  exp(
+    stats::uniroot(
+      function(log_sigma) score(exp(log_sigma)),
+      interval = log(c(lower, upper)),
+      tol = .Machine$double.eps^0.75
+    )$root
+  )
 }
 
 # A spread the caller supplied and a spread estimated under the density are two

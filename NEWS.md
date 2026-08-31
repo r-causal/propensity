@@ -16,10 +16,13 @@
   Weights built that way record `sigma = "mle"` in `density_meta()`, and `ipw()`
   stacks the score of the t for the scale in place of the moment equation the
   pooled spread is the root of, so the sandwich accounts for having estimated
-  it. The
-  default is unchanged, and a `.sigma` supplied alongside `sigma_method = "mle"`
-  is refused with an error of class `propensity_density_error`, being a second
-  instruction about the same quantity.
+  it. The default is unchanged, and a `.sigma` supplied alongside
+  `sigma_method = "mle"` is refused with an error of class
+  `propensity_density_error`, being a second instruction about the same
+  quantity. Residuals a model reproduced exactly say nothing about the spread
+  of the density around it, so a fit with enough of them that the likelihood
+  has no maximum at a positive scale is refused with that same class, naming
+  how many they are.
 
 * Weights for a continuous exposure now print the record of the density ratio
   they are under their values, as the three lines `density_meta()` renders. Two

@@ -1416,3 +1416,21 @@ test_that("the robust ps block reads the psi's threshold, not the scale constant
     rlm_args = list(k2 = 2)
   ))
 })
+
+test_that("a degenerate maximum likelihood scale is refused in the caller's name", {
+  # The seed of the variance parameter is the scale the weights were built at,
+  # so the estimator that refuses residuals it has no maximum for refuses here
+  # too, and the user reads the refusal against the function they called rather
+  # than against the seed.
+  cnd <- rlang::catch_cnd(
+    ipw_continuous_sigma2_seed(
+      list(kind = "mle"),
+      c(rep(0, 9), 1),
+      dens_t(4, sigma_method = "mle"),
+      call = rlang::call2("ipw")
+    ),
+    classes = "propensity_density_error"
+  )
+
+  expect_identical(conditionCall(cnd), quote(ipw()))
+})

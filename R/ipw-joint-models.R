@@ -1140,7 +1140,7 @@ ipw_joint_models_dose <- function(spec) {
 # against that model's own conditional mean and the exact root of the row that
 # estimates it. A dose whose spread the caller fixed seeds its coefficients
 # alone, since a constant is in no block.
-ipw_init_joint_models_ps <- function(spec) {
+ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
   dose <- ipw_joint_models_dose(spec)
   ps_fns <- if (!is.null(dose)) ipw_joint_models_dose_fns(spec)
 
@@ -1159,7 +1159,12 @@ ipw_init_joint_models_ps <- function(spec) {
     c(
       alpha,
       stats::setNames(
-        ipw_continuous_sigma2_seed(spec$sigma, resid, spec$density),
+        ipw_continuous_sigma2_seed(
+          spec$sigma,
+          resid,
+          spec$density,
+          call = call
+        ),
         paste0("sigma2_", spec$names[[i]])
       )
     )
@@ -1190,7 +1195,7 @@ ipw_init_joint_models_stab <- function(spec) {
 
 ipw_init_joint_models <- function(spec, call = rlang::caller_env()) {
   beta <- spec$outcome$coefs
-  ps_block <- ipw_init_joint_models_ps(spec)
+  ps_block <- ipw_init_joint_models_ps(spec, call = call)
   stab_block <- ipw_init_joint_models_stab(spec)
 
   # A dose has no cells, so the surface reports the outcome block directly and

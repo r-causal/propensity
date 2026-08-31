@@ -2680,3 +2680,79 @@ test_that("a spread supplied and a spread estimated under the density are refuse
   # what is refused is the pairing rather than the family.
   expect_no_error(continuous_t_wt(.density = dens_t(4), .sigma = 0.9))
 })
+
+# A propensity score model that all but interpolates its exposure: every unit
+# but one is reproduced to within a billionth, and the one that is not is far
+# away. Residuals like these have a maximum likelihood scale of their own, and
+# it sits orders of magnitude below their root mean square, which the single
+# large residual is almost all of.
+continuous_interpolating_data <- local({
+  set.seed(20260831)
+
+  mu <- rnorm(60)
+
+  list(mu = mu, exposure = mu + c(rep(1e-9, 59), 4))
+})
+
+test_that("a maximum likelihood scale far below the root mean square is found", {
+  mu <- continuous_interpolating_data$mu
+  exposure <- continuous_interpolating_data$exposure
+  scale <- t_scale_mle(exposure - mu, df = 4)
+
+  # The scale the likelihood is maximized at is nowhere near the spread the
+  # residuals average to, so an estimator that only looks near the root mean
+  # square never reaches it.
+  expect_lt(scale, sqrt(mean((exposure - mu)^2)) / 1e4)
+
+  mle <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = FALSE,
+    .density = dens_t(4, sigma_method = "mle")
+  )
+  oracle <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = FALSE,
+    .density = dens_t(4),
+    .sigma = scale
+  )
+
+  expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
+})
+
+test_that("a likelihood with no maximum at a positive scale is refused", {
+  # Residuals a model reproduced exactly say nothing about the spread of the
+  # density around it, and once enough of them are exactly zero the likelihood
+  # rises the whole way down: there is no scale to return, and how many is
+  # enough is a question the degrees of freedom answer.
+  mu <- seq(0, 1, length.out = 10)
+  exposure <- mu
+  exposure[[3]] <- exposure[[3]] + 1
+
+  expect_propensity_error(
+    wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = FALSE,
+      .density = dens_t(4, sigma_method = "mle")
+    )
+  )
+
+  # The same residuals under a t with lighter tails still leave a maximum: how
+  # many exact zeros are too many is a question of how readily the family
+  # dismisses the residual that is there as an outlier, and a nearly normal t
+  # does not dismiss it at all.
+  expect_no_error(
+    wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = FALSE,
+      .density = dens_t(20, sigma_method = "mle")
+    )
+  )
+})

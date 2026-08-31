@@ -618,7 +618,8 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
       sigma2_d = ipw_continuous_sigma2_seed(
         spec$sigma,
         spec$exposure - fitted_ps,
-        spec$density
+        spec$density,
+        call = call
       )
     )
   }
@@ -1154,9 +1155,14 @@ ipw_continuous_sigma_row <- function(sigma, residuals, sigma2_d, density) {
 # The seed for that parameter: the exact root of whichever row estimates it, so
 # that the weights the system rebuilds at its starting value are the weights the
 # user was given.
-ipw_continuous_sigma2_seed <- function(sigma, residuals, density) {
+ipw_continuous_sigma2_seed <- function(
+  sigma,
+  residuals,
+  density,
+  call = rlang::caller_env()
+) {
   if (identical(sigma$kind, "mle")) {
-    return(t_sigma_mle(residuals, density$params$df)^2)
+    return(t_sigma_mle(residuals, density$params$df, call = call)^2)
   }
 
   mean(residuals^2)
