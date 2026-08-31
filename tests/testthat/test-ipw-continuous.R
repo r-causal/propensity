@@ -283,6 +283,138 @@ test_that("ipw() continuous runs stabilized, unstabilized, and fixed-score weigh
   )
 })
 
+# ---- a numerator model in the stack -----------------------------------------
+
+# The three fits this section compares. All three weight the same propensity
+# score model; what separates them is the numerator. `model` stabilizes on a
+# fitted model of the dose on a baseline covariate, `score` stabilizes on the
+# very same numerator handed over as a vector of numbers, and `marginal` takes
+# the default. The first two build one and the same set of weights, so anything
+# that differs between them is the sandwich reading the numerator differently
+# rather than the weights being different.
+continuous_numerator_fits <- function(dat) {
+  num_mod <- lm(A ~ x1, data = dat)
+  score <- stats::dnorm(
+    dat$A,
+    as.numeric(fitted(num_mod)),
+    sqrt(mean(residuals(num_mod)^2))
+  )
+
+  list(
+    num_mod = num_mod,
+    score = score,
+    model = fit_continuous_models(dat, stabilize = num_mod),
+    score_fit = fit_continuous_models(
+      dat,
+      stabilize = TRUE,
+      stab_score = score
+    ),
+    marginal = fit_continuous_models(dat)
+  )
+}
+
+test_that("ipw() reports the same estimate from a numerator model and its score", {
+  dat <- sim_continuous()
+  fits <- continuous_numerator_fits(dat)
+
+  # The two routes weight the units identically, which is what makes the
+  # standard errors below comparable at all.
+  expect_equal(
+    as.numeric(fits$model$wts),
+    as.numeric(fits$score_fit$wts),
+    tolerance = 1e-12
+  )
+
+  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
+
+  expect_equal(
+    res_model$estimates$estimate,
+    unname(coef(fits$model$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_model$estimates$estimate,
+    res_score$estimates$estimate,
+    tolerance = 1e-8
+  )
+})
+
+test_that("ipw() stacks the numerator model it was given", {
+  dat <- sim_continuous()
+  fits <- continuous_numerator_fits(dat)
+
+  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
+
+  # A supplied score is a constant of the stacked system and a supplied model is
+  # not: the model's coefficients and the spread its density is read at are
+  # parameters solved alongside everything else.
+  theta_model <- coef(res_model$fit)
+  theta_score <- coef(res_score$fit)
+
+  expect_equal(
+    length(theta_model),
+    length(theta_score) + length(coef(fits$num_mod)) + 1L
+  )
+  expect_equal(
+    names(theta_model),
+    c(
+      names(coef(fits$model$ps_mod)),
+      "sigma2_d",
+      paste0("stab_", names(coef(fits$num_mod))),
+      "sigma2_n",
+      names(coef(fits$model$outcome_mod))
+    )
+  )
+
+  # The block is solved at the model it was given rather than carried at
+  # whatever the seed was.
+  stab_block <- theta_model[grepl("^stab_", names(theta_model))]
+  expect_equal(
+    unname(stab_block),
+    unname(coef(fits$num_mod)),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    unname(theta_model[["sigma2_n"]]),
+    mean(residuals(fits$num_mod)^2),
+    tolerance = 1e-6
+  )
+})
+
+test_that("a stacked numerator model reports a different standard error", {
+  dat <- sim_continuous()
+  fits <- continuous_numerator_fits(dat)
+
+  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
+  res_marginal <- ipw(fits$marginal$ps_mod, fits$marginal$outcome_mod)
+
+  se_model <- res_model$estimates$std.err
+  se_score <- res_score$estimates$std.err
+  se_marginal <- res_marginal$estimates$std.err
+
+  expect_true(is.finite(se_model) && se_model > 0)
+
+  # The comparison against the score fit is only about the numerator while the
+  # weights are the same weights, which is what this restates.
+  expect_equal(
+    as.numeric(fits$model$wts),
+    as.numeric(fits$score_fit$wts),
+    tolerance = 1e-12
+  )
+
+  # The score fit is the same weights with the numerator held fixed, so the
+  # difference between the two standard errors is exactly the uncertainty of
+  # having fit the numerator model.
+  expect_false(isTRUE(all.equal(se_model, se_score, tolerance = 1e-6)))
+
+  # The marginal stabilizer is a different numerator over the same denominator,
+  # so it is a different set of weights and a different standard error again.
+  expect_false(isTRUE(all.equal(se_model, se_marginal, tolerance = 1e-6)))
+})
+
 # ---- estimand support -------------------------------------------------------
 
 test_that("ipw() continuous rejects estimands other than ate", {

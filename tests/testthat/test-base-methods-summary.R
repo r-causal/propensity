@@ -26,6 +26,10 @@ test_that("Summary: Base R methods status for psw class", {
 })
 
 test_that("Summary: Base R methods status for ps_trim class", {
+  # The draw decides whether anything falls outside the trimming bounds, so it
+  # is seeded: an unseeded sample that lands entirely inside them leaves nothing
+  # trimmed and no missing value for `anyNA()` to find.
+  withr::local_seed(1)
   ps <- runif(10, 0.05, 0.95)
   x <- ps_trim(ps, method = "ps", lower = 0.3, upper = 0.7)
 
@@ -53,6 +57,9 @@ test_that("Summary: Base R methods status for ps_trim class", {
 })
 
 test_that("Summary: Base R methods status for ps_trunc class", {
+  # Seeded for the reason the trimming test above is: the draw decides how many
+  # values the bounds have anything to do with.
+  withr::local_seed(1)
   ps <- runif(10, 0.05, 0.95)
   x <- ps_trunc(ps, method = "ps", lower = 0.3, upper = 0.7)
 

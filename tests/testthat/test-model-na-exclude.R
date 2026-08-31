@@ -31,7 +31,12 @@ sim_na_exclude <- function(seed = 2026, n = 300) {
   )
   cat3 <- factor(lab, levels = c("a", "b", "c"))
   y <- rbinom(n, 1, plogis(-0.3 + 0.8 * bin + 0.5 * x1))
-  dat <- data.frame(x1, x2, bin, dose, cat3, y)
+  # A second binary treatment for the joint route, drawn last so that every
+  # column above keeps the values it had before this one existed. It depends on
+  # the first treatment and on the covariate that goes missing, so both
+  # treatment models drop the rows the outcome model drops.
+  bin2 <- rbinom(n, 1, plogis(-0.2 + 0.6 * x1 - 0.5 * bin))
+  dat <- data.frame(x1, x2, bin, bin2, dose, cat3, y)
   # Only a covariate goes missing: the exposure and the outcome are complete, so
   # every route drops the same rows and for the same reason.
   dat$x1[na_exclude_rows] <- NA
@@ -217,6 +222,94 @@ test_that("ipw() still refuses a .data whose complete rows disagree with the fit
 
   expect_error(
     ipw(ps_mod, out_mod, .data = too_long),
+    class = "propensity_ipw_data_error"
+  )
+})
+
+test_that("the joint models route accepts the full-length .data as well", {
+  # The two-model route rebuilds its designs from `.data` the way the single
+  # model routes do, so the frame a set of `na.exclude` fits was given is the
+  # frame it has to take: the rows every model read are the rows complete over
+  # the columns they read.
+  dat <- sim_na_exclude()
+  complete <- complete_rows(dat)
+
+  fit_joint <- function(d, na_action) {
+    ps_a <- glm(
+      bin ~ x1 + x2,
+      data = d,
+      family = binomial(),
+      na.action = na_action
+    )
+    ps_e <- glm(
+      bin2 ~ bin + x1,
+      data = d,
+      family = binomial(),
+      na.action = na_action
+    )
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_joint(
+        wt_ate(ps_a),
+        wt_ate(ps_e),
+        exposure_type = c("binary", "binary")
+      )
+    )
+    outcome_mod <- glm(
+      y ~ bin * bin2 + x1,
+      data = d,
+      family = quasibinomial(),
+      weights = wts,
+      na.action = na_action,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+
+    list(
+      models = joint_wt_models(bin = ps_a, bin2 = ps_e),
+      outcome_mod = outcome_mod
+    )
+  }
+
+  padded_fits <- fit_joint(dat, stats::na.exclude)
+  complete_fits <- fit_joint(complete, stats::na.omit)
+
+  padded <- ipw(padded_fits$models, padded_fits$outcome_mod, .data = dat)
+  reference <- ipw(
+    complete_fits$models,
+    complete_fits$outcome_mod,
+    .data = complete
+  )
+
+  expect_equal(padded$estimates, reference$estimates, tolerance = 1e-8)
+})
+
+test_that("the joint models route still refuses a .data that is longer for another reason", {
+  # The relaxation is for the rows a fit dropped and nothing else, on this route
+  # as on the others.
+  dat <- complete_rows(sim_na_exclude())
+
+  ps_a <- glm(bin ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(bin2 ~ bin + x1, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(wt_ate(ps_a), wt_ate(ps_e), exposure_type = c("binary", "binary"))
+  )
+  outcome_mod <- glm(
+    y ~ bin * bin2 + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  too_long <- rbind(dat, dat[1:5, , drop = FALSE])
+
+  expect_error(
+    ipw(
+      joint_wt_models(bin = ps_a, bin2 = ps_e),
+      outcome_mod,
+      .data = too_long
+    ),
     class = "propensity_ipw_data_error"
   )
 })

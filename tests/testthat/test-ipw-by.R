@@ -90,7 +90,9 @@ fit_by_models <- function(
   estimand = "ate",
   outcome_family = "binomial",
   outcome_rhs = "z * v",
-  ps_rhs = c("x1", "v")
+  ps_rhs = c("x1", "v"),
+  stabilize = NULL,
+  stab_score = NULL
 ) {
   ps_mod <- glm(
     stats::reformulate(ps_rhs, response = "z"),
@@ -99,7 +101,15 @@ fit_by_models <- function(
   )
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
-    switch(estimand, ate = wt_ate(ps_mod), att = wt_att(ps_mod))
+    switch(
+      estimand,
+      ate = wt_ate(
+        ps_mod,
+        stabilize = stabilize,
+        stabilization_score = stab_score
+      ),
+      att = wt_att(ps_mod)
+    )
   )
 
   outcome_var <- if (outcome_family == "binomial") "y" else "yc"
@@ -860,4 +870,74 @@ test_that(".by warns when the outcome model has no exposure-by-modifier term", {
   expect_true("group" %in% names(res$estimates))
 
   expect_propensity_warning(ipw(mods$ps_mod, mods$outcome_mod, .by = v))
+})
+
+test_that(".by reports a stabilizer that conditions on nothing", {
+  dat <- sim_by()
+  mods <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = TRUE
+  )
+
+  # The default stabilizer is the marginal probability of the exposure, which
+  # conditions on nothing: it tightens the weights by the little the whole
+  # sample explains and by nothing the modifier explains. A fit reporting
+  # effects within the strata of a modifier is the case where a numerator
+  # conditioning on that modifier is worth having, so the fit reports what it
+  # was given rather than leaving the reader to notice.
+  #
+  # It is a warning rather than an error, for the reason the missing
+  # interaction term is one: a numerator that conditions on nothing is a
+  # constant within each exposure arm, which leaves the estimator consistent
+  # for the same stratum effects, and the fit still returns.
+  expect_warning(
+    res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+  expect_s3_class(res, "ipw")
+  expect_true("group" %in% names(res$estimates))
+  expect_true(all(is.finite(res$estimates$estimate)))
+})
+
+test_that(".by says nothing about a numerator that reads the modifier", {
+  dat <- sim_by()
+
+  # The numerator the `ipw()` documentation recommends here: the probability of
+  # the exposure each unit took given the modifier, which conditions on a
+  # variable the outcome model reads and on nothing else.
+  num_mod <- glm(z ~ v, data = dat, family = binomial())
+  p_v <- as.numeric(fitted(num_mod))
+  score <- ifelse(dat$z == 1, p_v, 1 - p_v)
+
+  conditional <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = TRUE,
+    stab_score = score
+  )
+  expect_no_warning(
+    res <- ipw(conditional$ps_mod, conditional$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+  expect_s3_class(res, "ipw")
+
+  # Unstabilized weights have no numerator to report on, so they are silent as
+  # well.
+  plain <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
+  expect_no_warning(
+    ipw(plain$ps_mod, plain$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+
+  # So is a stabilized fit that reports no effects within strata.
+  stabilized <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = TRUE
+  )
+  expect_no_warning(
+    ipw(stabilized$ps_mod, stabilized$outcome_mod),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
 })

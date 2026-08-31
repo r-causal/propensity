@@ -2756,3 +2756,223 @@ test_that("a likelihood with no maximum at a positive scale is refused", {
     )
   )
 })
+
+# ---- a numerator model supplied to stabilize --------------------------------
+
+# A conditional numerator for the same problem: the exposure fit on a baseline
+# covariate the propensity score model does not read. The weights it stabilizes
+# are f(A | V) / f(A | X), each density read at the residual spread of its own
+# model rather than at one spread shared between them.
+continuous_numerator_model <- local({
+  v <- withr::with_seed(
+    20250830,
+    stats::rnorm(continuous_density_data$n)
+  )
+  exposure <- continuous_density_data$exposure
+
+  stats::lm(exposure ~ v)
+})
+
+# The pooled residual spread of a fitted model, which is what its density is
+# read at: the uncentered root mean square, the same estimator the conditional
+# density uses.
+continuous_model_rms <- function(model) {
+  sqrt(mean(stats::residuals(model)^2))
+}
+
+test_that("a numerator model supplied to stabilize is the conditional density ratio", {
+  exposure <- continuous_density_data$exposure
+  fit <- continuous_numerator_model
+
+  f_num <- stats::dnorm(
+    exposure,
+    as.numeric(stats::fitted(fit)),
+    continuous_model_rms(fit)
+  )
+  f_den <- stats::dnorm(
+    exposure,
+    continuous_density_data$mu,
+    continuous_density_pooled()
+  )
+
+  weights <- wt_ate(
+    continuous_density_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit
+  )
+
+  expect_s3_class(weights, "psw")
+  expect_equal(as.numeric(weights), f_num / f_den, tolerance = 1e-12)
+
+  # The conditional numerator is not the marginal one, so the weights it builds
+  # are a different set of weights rather than the same ones under another name.
+  marginal <- continuous_density_wt()
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    as.numeric(marginal),
+    tolerance = 1e-8
+  )))
+})
+
+test_that("the weights record the numerator model they were stabilized on", {
+  weights <- wt_ate(
+    continuous_density_data$mu,
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = continuous_numerator_model
+  )
+  record <- density_meta(weights)
+
+  expect_true(is_stabilized(weights))
+  expect_identical(estimand(weights), "ate")
+  expect_identical(exposure_type(weights), "continuous")
+
+  # The model itself is recorded, not the numerator it evaluates to: `ipw()`
+  # rebuilds the numerator at every value of theta, which takes the design and
+  # the coefficients rather than the fitted values.
+  expect_s3_class(record, "propensity_density_meta")
+  expect_identical(record$numerator, "model")
+  expect_identical(record$numerator_model, continuous_numerator_model)
+  expect_identical(record$sigma, "pooled")
+  expect_identical(format(record$density), "normal")
+
+  # A model is a numerator rather than a score, so nothing is recorded as one.
+  expect_null(stabilization_score(weights))
+
+  # The record prints the numerator it holds the way it prints every other
+  # field of the ratio.
+  expect_true(any(grepl("model", format(record), fixed = TRUE)))
+})
+
+test_that("the numerator model leaves the other stabilizations alone", {
+  exposure <- continuous_density_data$exposure
+  sigma <- continuous_density_pooled()
+
+  f_den <- stats::dnorm(exposure, continuous_density_data$mu, sigma)
+  f_marginal <- stats::dnorm(
+    exposure,
+    mean(exposure),
+    continuous_density_sd_a()
+  )
+
+  marginal <- continuous_density_wt()
+  expect_equal(as.numeric(marginal), f_marginal / f_den, tolerance = 1e-12)
+  expect_identical(density_meta(marginal)$numerator, "marginal")
+  expect_null(density_meta(marginal)$numerator_model)
+
+  unstabilized <- continuous_density_wt(stabilize = FALSE)
+  expect_equal(as.numeric(unstabilized), 1 / f_den, tolerance = 1e-12)
+  expect_identical(density_meta(unstabilized)$numerator, "none")
+  expect_null(density_meta(unstabilized)$numerator_model)
+  expect_false(is_stabilized(unstabilized))
+})
+
+test_that("a numerator model refuses a binary or a categorical exposure", {
+  set.seed(4218)
+  ps <- runif(20, 0.2, 0.8)
+  trt <- rbinom(20, 1, ps)
+  dose <- rnorm(20)
+  fit <- lm(dose ~ ps)
+
+  # Stabilizing on a fitted numerator is a statement about a ratio of
+  # densities, which is what a continuous exposure's weights are and what a
+  # binary or categorical exposure's weights are not. The refusal is the one an
+  # integrated numerator gets for the same reason.
+  expect_error(
+    wt_ate(ps, trt, exposure_type = "binary", stabilize = fit),
+    class = "propensity_numerator_error"
+  )
+  expect_error(
+    wt_ate(ps, trt, stabilize = fit),
+    class = "propensity_numerator_error"
+  )
+
+  exposure <- factor(rep(c("a", "b", "c"), each = 4))
+  categorical_ps <- matrix(
+    rep(c(0.5, 0.3, 0.2), times = 12),
+    ncol = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("a", "b", "c"))
+  )
+  categorical_fit <- lm(rnorm(12) ~ seq_len(12))
+
+  expect_error(
+    wt_ate(
+      categorical_ps,
+      exposure,
+      exposure_type = "categorical",
+      stabilize = categorical_fit
+    ),
+    class = "propensity_numerator_error"
+  )
+})
+
+test_that("a numerator model is read the way a propensity score model is", {
+  exposure <- continuous_density_data$exposure
+
+  # A fit whose spread changes with its fitted values describes no single
+  # conditional density, and it is refused as such wherever it arrives: the
+  # numerator model is held to the family the propensity score model is held to.
+  binary_outcome <- as.numeric(exposure > 0)
+  wrong_family <- glm(
+    binary_outcome ~ continuous_density_data$x,
+    family = binomial()
+  )
+
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = wrong_family
+    ),
+    class = "propensity_model_family_error"
+  )
+
+  # A model fit to a different number of observations has one numerator for
+  # each of its own units and none for the units here, so it is refused rather
+  # than recycled against them.
+  short <- stats::lm(
+    exposure[1:20] ~ continuous_density_data$x[1:20]
+  )
+
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = short
+    ),
+    class = "propensity_length_error"
+  )
+})
+
+test_that("a numerator model and a stabilization score are two numerators", {
+  # A score the caller computed is itself the numerator of the weights, and a
+  # model is a second one; the two together are two instructions about the same
+  # quantity, the way a supplied spread and an estimated one are.
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = continuous_numerator_model,
+      stabilization_score = rep(0.5, continuous_density_data$n)
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  # An integrated numerator marginalizes the conditional density over the
+  # units, which is a third numerator and not one a model can be read into.
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = continuous_numerator_model,
+      numerator = "integrated"
+    ),
+    class = "propensity_numerator_error"
+  )
+})

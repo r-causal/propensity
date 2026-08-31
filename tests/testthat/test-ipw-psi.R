@@ -295,6 +295,12 @@ categorical_spec <- function(
 # record, and the spec reads the first two straight off that record. The spread
 # is the exception: the record says only where it came from, so a fixed one is
 # carried here as the number it was.
+#
+# A fitted numerator model reaches `wt_ate()` through `stabilize` itself, so it
+# arrives here the same way. The spec carries it as the block the stacked system
+# estimates it in, described the way the propensity score block describes its
+# own model: the design, the entry that writes its score, the link its mean is
+# read back through, and the coefficients it was fit at.
 continuous_spec <- function(
   dat,
   stabilize = TRUE,
@@ -307,6 +313,7 @@ continuous_spec <- function(
   .sigma = NULL
 ) {
   ps_type <- match.arg(ps_type)
+  num_mod <- if (inherits(stabilize, "lm")) stabilize
   ps_mod <- switch(
     ps_type,
     lm = lm(A ~ x1 + x2, data = dat),
@@ -371,7 +378,19 @@ continuous_spec <- function(
       coefs = coef(ps_mod),
       k = NULL
     ),
-    stab = list(stabilized = isTRUE(stabilize), score = stab_score),
+    stab = list(
+      stabilized = isTRUE(stabilize) || !is.null(num_mod),
+      score = stab_score,
+      model = if (!is.null(num_mod)) {
+        list(
+          X = model.matrix(num_mod),
+          kind = if (inherits(num_mod, "glm")) "glm" else "lm",
+          link = if (inherits(num_mod, "glm")) num_mod$family$link else
+            "identity",
+          coefs = coef(num_mod)
+        )
+      }
+    ),
     density = meta$density,
     numerator = meta$numerator,
     sigma = if (is.null(.sigma)) {
@@ -1064,6 +1083,46 @@ test_that("ipw_theta_layout partitions theta for a continuous stabilized spec", 
   )
 })
 
+test_that("ipw_theta_layout gives a numerator model its own stabilization block", {
+  dat <- sim_continuous()
+  num_mod <- lm(A ~ x1, data = dat)
+  spec <- continuous_spec(dat, stabilize = num_mod)
+  layout <- ipw_theta_layout(spec)
+
+  # The spec reads its numerator off the weights, so this is what the record
+  # says as much as it is what the spec holds.
+  expect_identical(spec$numerator, "model")
+
+  # The numerator model is estimated where every other stabilizer is, in the
+  # stab block, and it is the same shape as the propensity score block it
+  # divides into: one parameter per coefficient and one for the spread its
+  # density is read at.
+  expect_layout_partition(
+    layout,
+    list(
+      ps = ncol(spec$ps$X) + 1,
+      stab = ncol(spec$stab$model$X) + 1,
+      out = ncol(spec$outcome$X),
+      mu = 0,
+      contrast = 0,
+      by_mu = 0,
+      by_contrast = 0
+    )
+  )
+
+  # The numerator's coefficients carry the block's prefix, which keeps them
+  # apart from the propensity score coefficients over the same terms, and its
+  # spread is named against `sigma2_d` the way it sits against it.
+  expect_equal(
+    names(layout$init)[layout$idx$stab],
+    c(paste0("stab_", colnames(spec$stab$model$X)), "sigma2_n")
+  )
+  expect_equal(
+    unname(layout$init[layout$idx$stab]),
+    c(unname(coef(num_mod)), mean(residuals(num_mod)^2))
+  )
+})
+
 test_that("ipw_theta_layout partitions theta for a continuous unstabilized spec", {
   # the ps block still carries the sigma2_d variance parameter (ncol(X) + 1),
   # but the stabilization block is empty
@@ -1121,6 +1180,17 @@ test_that("build_ipw_psi is root-seeded at init for continuous stabilized ate MS
 
 test_that("build_ipw_psi is root-seeded at init for continuous unstabilized ate MSM", {
   expect_root_seeded(continuous_spec(sim_continuous(), stabilize = FALSE))
+})
+
+test_that("build_ipw_psi is root-seeded at init for a numerator model", {
+  # The numerator model's own equations sit at their root at the coefficients it
+  # was fit at and at the second moment of its residuals, which is what makes
+  # the stacked system carry the uncertainty of having fit it.
+  dat <- sim_continuous()
+  spec <- continuous_spec(dat, stabilize = lm(A ~ x1, data = dat))
+
+  expect_identical(spec$numerator, "model")
+  expect_root_seeded(spec)
 })
 
 test_that("build_ipw_psi is root-seeded at init for continuous stabilized logistic MSM", {
