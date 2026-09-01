@@ -952,8 +952,8 @@ units the dose model was fit to and read at points spanning their dose, so it
 is rebuilt over those rows the way a single dose's is, and a dose model that
 keeps no model frame and whose fitting call can no longer be evaluated errors
 with class \code{propensity_ipw_data_error} under it, \code{.data} or no \code{.data}. A
-fixed scalar \code{.sigma} is a known constant, so the
-dose block is its coefficients alone and none of that number's uncertainty is
+fixed scalar \code{.sigma} is a known constant, so the dose block is its
+coefficients alone and none of that number's uncertainty is
 carried. A spread supplied for each observation has no counterpart in the
 system and errors with class \code{propensity_ipw_sigma_error}.
 
@@ -1662,7 +1662,7 @@ inference in epidemiology. \emph{Epidemiology}. 2000;11(5):550--560.
 
 Cole SR, Hernán MA. Constructing inverse probability weights for marginal
 structural models. \emph{American Journal of Epidemiology}.
-2008;168(6):656--664.
+2008;168(6):656--664. \doi{10.1093/aje/kwn164}
 
 Hernán MA, Robins JM. \emph{Causal Inference: What If}. Boca Raton: Chapman &
 Hall/CRC; 2020.

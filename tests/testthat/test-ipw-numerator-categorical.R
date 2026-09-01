@@ -449,6 +449,56 @@ test_that("the stratum effects a categorical numerator model reports are the sco
   )))
 })
 
+# ---- what a saturated model reads a numerator as ----------------------------
+
+test_that("a marginal structural model saturated in the numerator reads it as none", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical_numerator()
+  fits <- categorical_numerator_fits(dat, outcome_rhs = "z * v")
+
+  # The binary file's companion, over three levels. A numerator of the exposure
+  # on the modifier takes one value in each cell of the modifier and the
+  # exposure, so a model saturated in those cells fits the same coefficients
+  # with it and without it: a constant within a cell divides out of that cell's
+  # weighted mean. The estimator does not move when the numerator does, so
+  # nothing about having estimated the numerator can reach the standard error,
+  # and the model route reports exactly what the score route reports.
+  unstabilized <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      stats::fitted(fits$model$ps_mod),
+      dat$z,
+      exposure_type = "categorical",
+      stabilize = FALSE
+    )
+  )
+  saturated <- glm(
+    y ~ z * v,
+    data = dat,
+    family = quasibinomial(),
+    weights = unstabilized,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  expect_equal(
+    unname(coef(fits$model$outcome_mod)),
+    unname(coef(saturated)),
+    tolerance = 1e-8
+  )
+
+  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
+
+  # The tolerance is the one the block above uses to say the two routes report
+  # different standard errors on an unsaturated model, so the same number
+  # separates the two readings rather than each having its own.
+  expect_equal(
+    res_model$estimates$std.err,
+    res_score$estimates$std.err,
+    tolerance = 1e-6
+  )
+})
+
 # ---- the numerator that conditions on nothing -------------------------------
 #
 # A numerator model of the exposure on an intercept alone estimates the marginal

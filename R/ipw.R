@@ -1304,7 +1304,7 @@
 #'
 #' Cole SR, Hernán MA. Constructing inverse probability weights for marginal
 #' structural models. *American Journal of Epidemiology*.
-#' 2008;168(6):656--664.
+#' 2008;168(6):656--664. \doi{10.1093/aje/kwn164}
 #'
 #' Hernán MA, Robins JM. *Causal Inference: What If*. Boca Raton: Chapman &
 #' Hall/CRC; 2020.

@@ -804,19 +804,17 @@
 #'
 #' Robins, J. M., Hernán, M. A., & Brumback, B. (2000). Marginal structural
 #' models and causal inference in epidemiology. *Epidemiology*, 11(5),
-#' 550--560. (Stabilized weights, and a numerator conditional on baseline
-#' covariates)
+#' 550--560. (Stabilized weights and the conditional numerator)
 #'
 #' Cole, S. R., & Hernán, M. A. (2008). Constructing inverse probability weights
 #' for marginal structural models. *American Journal of Epidemiology*, 168(6),
-#' 656--664. (The covariates a numerator conditions on must appear in the
-#' weighted model)
+#' 656--664. (Numerator covariates in the weighted model)
 #'
 #' Hernán, M. A., & Robins, J. M. (2020). *Causal Inference: What If*. Chapman &
 #' Hall/CRC. (Chapter 12, stabilized weights and the conditional numerator)
 #'
 #' Imbens, G. W. (2000). The role of the propensity score in estimating
-#' dose-response functions. *Biometrika*, 87(3), 706--710. (The generalized
+#' dose-response functions. *Biometrika*, 87(3), 706--710. (Generalized
 #' propensity score of a multi-valued exposure)
 #'
 #' Feng, P., Zhou, X.-H., Zou, Q.-M., Fan, M.-Y., & Li, X.-S. (2012).
@@ -825,7 +823,7 @@
 #'
 #' van der Wal, W. M., & Geskus, R. B. (2011). ipw: An R package for inverse
 #' probability weighting. *Journal of Statistical Software*, 43(13), 1--23.
-#' (A multinomial numerator model for a multi-valued exposure)
+#' (Multinomial numerator model for a multi-valued exposure)
 #'
 #' Naimi, A. I., Moodie, E. E. M., Auger, N., & Kaufman, J. S. (2014).
 #' Constructing inverse probability weights for continuous exposures: a
