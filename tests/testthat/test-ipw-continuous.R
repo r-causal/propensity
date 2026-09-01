@@ -3312,6 +3312,51 @@ test_that("weights whose per-observation score was dropped raise nothing raw", {
   expect_equal(seen, character())
 })
 
+test_that("ipw() refuses weights whose score the subset dropped outright", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  sub <- dat[kept, ]
+
+  # The second shape the same drop arrives in. Restricting the rows by hand
+  # subsets the weights rather than shortening them behind their record, so the
+  # score is gone rather than stale, and the record still names it. Nothing
+  # recycles here and nothing raw is raised, so what a caller who wrote this
+  # would otherwise be told is that the weights disagree with the models they
+  # were built from, which is not what happened.
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = TRUE,
+    stab_score = continuous_seed_score_vector(dat)
+  )
+  expect_warning(
+    wts_kept <- wts[kept],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_null(stabilization_score(wts_kept))
+
+  ps_kept <- lm(A ~ x1, data = sub)
+  outcome_kept <- lm(yc ~ A + w, data = sub, weights = wts_kept)
+
+  seen <- character()
+  cnd <- withCallingHandlers(
+    tryCatch(ipw(ps_kept, outcome_kept), error = function(e) e),
+    warning = function(w) {
+      seen <<- c(seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(seen, character())
+  expect_s3_class(cnd, "propensity_ipw_stabilization_score_error")
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(cnd)),
+    "stabilization_score",
+    fixed = TRUE
+  )
+})
+
 test_that("a scalar stabilization score survives the subset the score cannot", {
   dat <- sim_continuous_seed_gap()
   kept <- !is.na(dat$w)

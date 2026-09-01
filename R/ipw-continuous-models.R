@@ -819,16 +819,101 @@ check_ipw_continuous_model <- function(entry, call = rlang::caller_env()) {
 # kernel density is refused only for the caller that is, since a route that
 # rebuilds the weights by calling `wt_ate()` again asks the density for nothing
 # a kernel cannot give.
+#
+# `n` is the number of observations the ratio is about to be read over, which is
+# what the score the record names is checked against.
 ipw_continuous_ratio <- function(
   wts,
+  n,
   stacked = TRUE,
   call = rlang::caller_env()
 ) {
-  ipw_continuous_ratio_meta(
+  score <- stabilization_score(wts)
+
+  ratio <- ipw_continuous_ratio_meta(
     density_meta(wts),
     stabilized = is_stabilized(wts),
-    score = stabilization_score(wts),
+    score = score,
     stacked = stacked,
+    call = call
+  )
+
+  check_ipw_stabilization_score(ratio$numerator, score, n, call = call)
+
+  ratio
+}
+
+# Refuse weights whose record names a score as their numerator when the score in
+# hand is not one value for each observation being weighted. The record
+# describes how the weights were built rather than what survived reaching here,
+# and two things break the agreement between the two.
+#
+# Subsetting the weights drops a per-observation score outright, since nothing
+# rebuilding a psw is given the indices behind a length change; the record still
+# says a score stabilized them and there is no vector left to read.
+# `stats::model.frame()` instead re-attaches the original attributes to the
+# shortened vector, so the score arrives at the length the weights were recorded
+# at rather than the length they now are.
+#
+# Either way the ratio would divide a density read over the analyzed rows by a
+# numerator describing other rows: zero-length in the first case, recycling in
+# the second. Neither is arithmetic the caller wrote, and the report that
+# followed named the estimand, the spread, and `.data` rather than the score, so
+# the score is checked here, before any ratio is built.
+#
+# A scalar score is exempt for the reason it is the remedy: one number scales
+# every weight whatever the rows are, so nothing about it is indexed and nothing
+# drops it.
+#
+# `component` names the component of a product weight the score belongs to, and
+# is `NULL` for the single-treatment route, whose weights carry the one score
+# they have on the vector itself.
+check_ipw_stabilization_score <- function(
+  numerator,
+  score,
+  n,
+  component = NULL,
+  call = rlang::caller_env()
+) {
+  if (!identical(numerator, "score")) {
+    return(invisible(TRUE))
+  }
+
+  if (!is.null(score) && stabilization_score_aligns(score, n)) {
+    return(invisible(TRUE))
+  }
+
+  # Both halves are cli templates rather than values spliced into one, because
+  # cli reads the message once: a brace inside a value is text by the time it
+  # arrives.
+  headline <- if (is.null(component)) {
+    "{.fun ipw} can't read the {.arg stabilization_score} the weights \\
+    supplied to {.arg outcome_mod} record as their numerator."
+  } else {
+    "{.fun ipw} can't read the {.arg stabilization_score} the \\
+    {.arg {component}} component of the weights supplied to \\
+    {.arg outcome_mod} records as its numerator."
+  }
+
+  held <- if (is.null(score)) {
+    "hold no score at all."
+  } else {
+    "hold {length(score)} of them."
+  }
+
+  abort(
+    c(
+      headline,
+      x = paste("They weight {n} observation{?s} and", held),
+      i = "A per-observation score is one value for each unit, so it does not \\
+      survive the rows being restricted: subsetting the weights drops it, and \\
+      a model frame that drops incomplete rows leaves it at the length the \\
+      weights were built at.",
+      i = "Rebuild the weights on the rows being analyzed, or stabilize on a \\
+      single {.arg stabilization_score}, which scales every weight and \\
+      survives any restriction."
+    ),
+    error_class = "propensity_ipw_stabilization_score_error",
     call = call
   )
 }

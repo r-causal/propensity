@@ -355,6 +355,27 @@ ipw_spec_joint_models <- function(
   # routes hold theirs.
   scores <- joint_wt_stabilization_scores(joint_wt_meta(wts))
 
+  # A score the record still holds has to describe the rows about to be
+  # weighted. A model frame that drops incomplete rows re-attaches the record
+  # whole, leaving a score at the length the product was built at, which is
+  # multiplied against a density read over fewer rows unless it is caught first.
+  #
+  # An empty slot is not this: it is the drop the record marks, and what stands
+  # in for it and what reports the difference are settled below.
+  for (i in seq_along(scores)) {
+    if (is.null(scores[[i]])) {
+      next
+    }
+
+    check_ipw_stabilization_score(
+      "score",
+      scores[[i]],
+      n,
+      component = names[[i]],
+      call = call
+    )
+  }
+
   # A dose whose weights record a score the record does not keep is the one
   # numerator this route cannot rebuild. A product written before the record
   # kept scores says the numerator was a score and holds no vector, so the

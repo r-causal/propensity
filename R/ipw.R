@@ -709,7 +709,12 @@
 #' without saying what by: the system stands that component's own marginal
 #' numerator in, and the weight-consistency check reports the difference,
 #' naming the components whose numerator was stood in for. Rebuild such weights
-#' with [wt_joint()] to have the score read back.
+#' with [wt_joint()] to have the score read back. A record left whole over
+#' fewer rows is refused instead: a model frame that drops incomplete rows
+#' re-attaches the record as it was, leaving a component's score at the length
+#' the product was built at, and a score that describes other observations than
+#' the ones being weighted errors with class
+#' `propensity_ipw_stabilization_score_error`.
 #'
 #' Dose weights built with a `"kernel"` density are refused with class
 #' `propensity_ipw_se_method_unavailable_error`. The bandwidth is not a function
@@ -1214,6 +1219,17 @@
 #' refused before anything is solved, with an error of class
 #' `propensity_ipw_sigma_error`. Rebuild the weights with the pooled default or
 #' with one number to use `ipw()`.
+#'
+#' It bears on a `stabilization_score` in the same way. A score written per
+#' observation is one value per unit, so it does not survive the rows being
+#' restricted: subsetting the weights drops it, and a model frame that drops
+#' incomplete rows leaves it at the length the weights were built at. Either way
+#' the record still names a score as the numerator and the score in hand no
+#' longer describes the observations being weighted, so `ipw()` refuses before
+#' anything is solved, with an error of class
+#' `propensity_ipw_stabilization_score_error`. Rebuild the weights on the rows
+#' being analyzed, or stabilize on a single `stabilization_score`, which scales
+#' every weight and survives any restriction.
 #'
 #' The propensity score model must not separate the exposure. A model whose
 #' covariates predict the exposure without error has no finite maximum likelihood

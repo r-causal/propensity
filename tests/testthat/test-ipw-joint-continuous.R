@@ -1974,6 +1974,52 @@ test_that("the weights mismatch names a component whose score was dropped", {
   expect_match(conditionMessage(cnd), "`a`", fixed = TRUE)
 })
 
+test_that("a component's score left stale by a model frame is refused", {
+  dat <- sim_joint_continuous()
+  dat$w <- rev(dat$x1)
+  dat$w[order(dat$e, decreasing = TRUE)[seq_len(10)]] <- NA
+  kept <- !is.na(dat$w)
+
+  # The other way the same drop arrives. Subsetting the weights empties the
+  # slot and marks it, which the block above pins; a model frame instead drops
+  # the incomplete rows in C and re-attaches the record whole, so the score
+  # reaches `ipw()` at the length the product was built at rather than at the
+  # length of the rows it is about to weight. Multiplying that score into a
+  # density read over the rows that remain recycles, which base R reports in
+  # terms of no argument the caller wrote, so the refusal comes first and names
+  # the component whose score is the wrong length.
+  dose_score <- dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
+
+  # The drop is reported where the outcome model restricts the rows, and is
+  # asserted here so that the only condition left for the call below is the one
+  # being pinned.
+  expect_warning(
+    fx <- fit_joint_continuous(
+      dat,
+      dose_score = dose_score,
+      outcome_rhs = "a * e + w"
+    ),
+    class = "propensity_stabilization_score_warning"
+  )
+
+  seen <- character()
+  cnd <- withCallingHandlers(
+    tryCatch(
+      ipw(fx$models, fx$outcome_mod, .data = dat[kept, ]),
+      error = function(e) e
+    ),
+    warning = function(w) {
+      seen <<- c(seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(seen, character())
+  expect_s3_class(cnd, "propensity_ipw_stabilization_score_error")
+  expect_match(conditionMessage(cnd), "stabilization_score")
+  expect_match(conditionMessage(cnd), "`e`", fixed = TRUE)
+})
+
 test_that("a record that keeps no score is read as one that records none", {
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, a_stabilize = TRUE)

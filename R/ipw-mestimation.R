@@ -2174,7 +2174,12 @@ ipw_spec_continuous <- function(
   # What ratio of densities the weights are, which is what the stacked system
   # has to rebuild. The record travels on the weights; weights that carry none
   # are read as the ratio every earlier version of the package built.
-  ratio <- ipw_continuous_ratio(wts, stacked = stacked, call = call)
+  ratio <- ipw_continuous_ratio(
+    wts,
+    length(exposure),
+    stacked = stacked,
+    call = call
+  )
 
   # A numerator model joins the stack the way the propensity score model does,
   # so it goes through the same registry and is refused on the same terms. A
