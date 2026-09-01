@@ -2356,3 +2356,74 @@ test_that("a dose component's numerator covariate absent from .data is refused",
 
   expect_match(joint_numerator_ipw_message(err), "vd", fixed = TRUE)
 })
+
+# ---- a dose component's integrated numerator read over its fit's rows -------
+#
+# A component's integrated numerator is the same reading the single-dose route
+# takes: the conditional density averaged over the units, interpolated from a
+# grid spanning their dose. The dose model was fit over one set of rows and the
+# weights carry that reading, and a `.data` that leaves fewer rows changes both
+# halves of it at once. The rebuild owes the fit's reading here as it does
+# there, alongside the spreads and the moments the component's blocks are
+# seeded at.
+
+# The crossing `sim_joint_continuous_numerator()` simulates with a covariate
+# only the outcome model reads, withheld at the ten largest doses. Withholding
+# it at one arbitrary row moves the numerator's average without moving the
+# grid; withholding it there moves the grid's upper end as well, so both halves
+# of the reading are exercised.
+sim_joint_continuous_grid_gap <- function(seed = 8811, n = 700) {
+  dat <- sim_joint_continuous_numerator(seed = seed, n = n)
+  dat$w <- rev(dat$x1)
+  dat$w[order(dat$e, decreasing = TRUE)[seq_len(10)]] <- NA
+
+  dat
+}
+
+test_that("a dose component's integrated numerator survives the rows .data drops", {
+  dat <- sim_joint_continuous_grid_gap()
+  kept <- !is.na(dat$w)
+  fits <- fit_joint_continuous(
+    dat,
+    outcome_rhs = "a * e + w",
+    numerator = "integrated"
+  )
+
+  # The grid's upper end moves under the restriction, which is what makes the
+  # agreement below a statement about which rows the numerator was read over.
+  expect_gt(max(dat$e), max(dat$e[kept]))
+
+  res <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$models, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
+test_that("the dose numerator the joint route rebuilds is the one its weights carry", {
+  dat <- sim_joint_continuous_grid_gap()
+  kept <- !is.na(dat$w)
+  fits <- fit_joint_continuous(
+    dat,
+    outcome_rhs = "a * e + w",
+    numerator = "integrated"
+  )
+
+  # An integrated numerator estimates nothing, so the component carries no
+  # stabilization block and the only thing that can move its half of the
+  # product is the reading itself.
+  spec <- ipw_spec_joint_models(fits$models, fits$outcome_mod, .data = dat)
+  layout <- expect_joint_weights_at_init(spec, as.double(fits$wts)[kept])
+  expect_length(layout$idx$stab, 0L)
+})

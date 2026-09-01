@@ -3382,3 +3382,103 @@ test_that("a scalar stabilization score survives the subset the score cannot", {
     tolerance = 1e-10
   )
 })
+
+# ---- an integrated numerator read over the fit's own rows -------------------
+#
+# The integrated numerator is the conditional density averaged over the units,
+# read at points spanning their exposure. Both halves of that are quantities of
+# a set of rows: which units the average runs over, and where the grid it is
+# interpolated from begins and ends. `wt_ate()` took both over the rows the
+# caller handed it, which are the rows the propensity score model was fit over,
+# and the weights the caller carries away are that reading.
+#
+# `.data` can leave fewer rows than the fits were made over. Read again over the
+# rows that remain, the average is over other units and the grid spans a
+# narrower interval, so the rebuilt numerator is a different function, the
+# rebuilt weights are different weights, and the preflight refuses a call whose
+# weights were exactly right. The reading the rebuild owes is the fit's own, the
+# same reading the spreads and the marginal moments are seeded at.
+
+# The propensity score model, integrated-numerator weights built from it, and a
+# marginal structural model that reads a covariate with a gap in it. Nothing
+# else stabilizes these: an integrated numerator estimates no parameters of its
+# own, so what moves under a restriction is the numerator's reading alone.
+continuous_integrated_fits <- function(dat, msm_rhs = c("A", "w")) {
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+  outcome_mod <- lm(
+    stats::reformulate(msm_rhs, response = "yc"),
+    data = dat,
+    weights = wts
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+test_that("an integrated numerator passes the preflight over the rows .data keeps", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  fits <- continuous_integrated_fits(dat)
+
+  # Supplying the frame the fits were given and supplying the rows `ipw()`
+  # restricts it to are the same request, so they report the same thing.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("the integrated numerator ipw() rebuilds is the one the weights carry", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  fits <- continuous_integrated_fits(dat)
+
+  # `sim_continuous_seed_gap()` withholds the covariate at the ten largest
+  # doses, so the rows `.data` leaves reach neither the largest dose nor the
+  # units nearest it. Asserted here so that the pin below says which rows the
+  # numerator was read over rather than passing on either reading.
+  expect_gt(max(dat$A), max(dat$A[kept]))
+
+  # The weights the system rebuilds before it solves anything are the weights
+  # the caller was given, over the rows it is about to weight. That holds only
+  # where the numerator is averaged over the fit's units and interpolated from
+  # a grid spanning the fit's exposure; every other reading of it reaches a
+  # different vector here.
+  spec <- ipw_spec_continuous(fits$ps_mod, fits$outcome_mod, .data = dat)
+  layout <- ipw_theta_layout(spec)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fits$wts)[kept],
+    tolerance = 1e-12
+  )
+
+  # The other reading, built through `wt_ate()` over the restricted rows alone:
+  # its average runs over those units and its grid spans their exposure. It
+  # differs from the weights the caller carries by percents rather than by
+  # rounding, which is what makes the comparison above say anything.
+  wts_kept <- continuous_weights(
+    as.double(fitted(fits$ps_mod))[kept],
+    dat$A[kept],
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+  supplied <- as.double(fits$wts)[kept]
+  expect_gt(max(abs(as.double(wts_kept) - supplied) / abs(supplied)), 0.01)
+})
