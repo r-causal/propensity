@@ -138,10 +138,11 @@ ipw_binary_weight_fn <- function(estimand) {
 
 # Categorical weight registry. `ps` is the n-by-K propensity score matrix,
 # `exposure` the n-by-K reference-first indicator, and `extras` carries the
-# focal column index, the length-K stabilization probabilities (column order),
-# the fixed stabilization score, and optionally a tilt already evaluated at
-# `ps`, on the same terms as the binary registry. Formulas mirror
-# calculate_categorical_weights() in R/weights.R.
+# focal column index, the stabilization probabilities in column order, either
+# length K for a numerator every unit shares or an n-by-K matrix for one a
+# model gives each unit, the fixed stabilization score, and optionally a tilt
+# already evaluated at `ps`, on the same terms as the binary registry. Formulas
+# mirror calculate_categorical_weights() in R/weights.R.
 ipw_categorical_weight_fn <- function(estimand) {
   is_ate <- identical(estimand, "ate")
 
@@ -163,12 +164,21 @@ ipw_categorical_weight_fn <- function(estimand) {
     if (!is.null(extras$score)) {
       weights <- weights * extras$score
     } else if (!is.null(extras$stab_probs)) {
-      stab_row <- matrix(
-        extras$stab_probs,
-        nrow = nrow(ps),
-        ncol = ncol(ps),
-        byrow = TRUE
-      )
+      # A numerator that conditions on nothing is one probability per level, the
+      # same row for every unit, while a numerator model gives each unit its
+      # own. The matrix is read as it stands: broadcasting it would fill each
+      # row with the whole matrix read column-wise and gather every unit at
+      # another unit's numerator.
+      stab_row <- if (is.matrix(extras$stab_probs)) {
+        extras$stab_probs
+      } else {
+        matrix(
+          extras$stab_probs,
+          nrow = nrow(ps),
+          ncol = ncol(ps),
+          byrow = TRUE
+        )
+      }
       weights <- weights * rowSums(exposure * stab_row)
     }
 
@@ -538,17 +548,26 @@ ipw_binary_seed_tilt <- function(spec, call = rlang::caller_env()) {
   ps_tilt_binary(e_fit, spec$estimand)
 }
 
-# Generate readable names for the multinomial ps coefficient block. The block is
-# as.vector(t(coef(multinom))): level-major, term-minor.
-ipw_name_categorical_ps <- function(spec) {
-  terms <- colnames(spec$ps$X)
-  levs <- names(spec$outcome$X_counterfactual)
-  nonref <- levs[-1]
-  nm <- as.vector(vapply(
-    nonref,
-    function(l) paste0(l, ":", terms),
+# Names for a multinomial coefficient block, which is
+# as.vector(t(coef(multinom))): level-major, term-minor, over the
+# non-reference levels. `prefix` says which side of the weight the block is,
+# the denominator writing its coefficients under their bare names and a
+# numerator model's under the "stab_" every stabilization block carries. Both
+# sides read the convention here rather than each writing it, because a name
+# the two spelled differently would report one block under the other's terms.
+ipw_name_categorical_coefs <- function(levels, terms, prefix = "") {
+  as.vector(vapply(
+    levels,
+    function(l) paste0(prefix, l, ":", terms),
     character(length(terms))
   ))
+}
+
+# Generate readable names for the multinomial ps coefficient block.
+ipw_name_categorical_ps <- function(spec) {
+  levs <- names(spec$outcome$X_counterfactual)
+  nm <- ipw_name_categorical_coefs(levs[-1], colnames(spec$ps$X))
+
   stats::setNames(spec$ps$coefs, nm)
 }
 
@@ -558,8 +577,21 @@ ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
   levs <- names(spec$outcome$X_counterfactual)
 
   if (spec$stab$stabilized && is.null(spec$stab$score)) {
-    props <- colMeans(spec$exposure)
-    stab_block <- stats::setNames(props[-1], paste0("stab_", levs[-1]))
+    # A numerator model's block is the shape the propensity score block is: one
+    # parameter per coefficient of the multinomial fit, seeded at the
+    # coefficients it was fit at, which is the exact root of the score written
+    # for it. The default stabilizer estimates the k - 1 free marginal
+    # proportions instead.
+    model <- spec$stab$model
+    stab_block <- if (is.null(model)) {
+      props <- colMeans(spec$exposure)
+      stats::setNames(props[-1], paste0("stab_", levs[-1]))
+    } else {
+      stats::setNames(
+        model$coefs,
+        ipw_name_categorical_coefs(levs[-1], colnames(model$X), "stab_")
+      )
+    }
   } else {
     stab_block <- numeric(0)
   }
@@ -921,6 +953,35 @@ ipw_categorical_ps <- function(x, theta, k) {
   ps / rowSums(ps)
 }
 
+# The probabilities the categorical stabilization block reports at one value of
+# theta, in the column order the exposure indicator carries: the k - 1 free
+# marginal proportions the default stabilizer estimates, completed by the
+# reference level's, or, where the caller stabilized on a fitted model, the
+# n-by-K matrix that model gives, rebuilt from the numerator design and the
+# block's own parameters. The preflight that rebuilds the weights once and the
+# psi that rebuilds them at every evaluation both read it here, so the two
+# cannot compute a different numerator from the same parameters. Weights with no
+# numerator to estimate leave the block empty and take no probability at all.
+#
+# `stab_block` is the stabilization block itself and `th_stab` the slice of
+# theta that belongs to it, rather than the whole spec, on the terms
+# `ipw_binary_stab_prob()` takes its own pair.
+ipw_categorical_stab_probs <- function(stab_block, th_stab, k) {
+  if (!length(th_stab)) {
+    return(NULL)
+  }
+
+  model <- stab_block$model
+  if (is.null(model)) {
+    return(c(1 - sum(th_stab), th_stab))
+  }
+
+  # The same softmax the denominator is rebuilt through, so the numerator a
+  # model reports is read back the way the model itself computes it, reference
+  # level first.
+  ipw_categorical_ps(model$X, th_stab, k)
+}
+
 ipw_psi_categorical <- function(
   spec,
   layout,
@@ -938,7 +999,8 @@ ipw_psi_categorical <- function(
   inv_out <- ipw_inv_link(out_link, call = call)
   x_cf <- spec$outcome$X_counterfactual
   levs <- names(x_cf)
-  score <- spec$stab$score
+  stab <- spec$stab
+  score <- stab$score
   focal_idx <- if (!is.null(spec$focal_level)) {
     match(spec$focal_level, levs)
   } else {
@@ -968,11 +1030,7 @@ ipw_psi_categorical <- function(
     ps_rows <- deli::ee_mlogit(th_ps, X = x_ps, y = z_ind)
     ps_mat <- ipw_categorical_ps(x_ps, th_ps, k)
 
-    stab_probs <- if (length(th_stab)) {
-      c(1 - sum(th_stab), th_stab)
-    } else {
-      NULL
-    }
+    stab_probs <- ipw_categorical_stab_probs(stab, th_stab, k)
     # Evaluated once and handed to both the weights and the marginal-mean rows.
     h <- if (tilted) {
       ps_tilt_categorical(ps_mat, estimand, focal_idx)
@@ -992,15 +1050,20 @@ ipw_psi_categorical <- function(
 
     out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
 
-    stab_rows <- if (length(th_stab)) {
+    stab_rows <- if (!length(th_stab)) {
+      NULL
+    } else if (!is.null(stab$model)) {
+      # The numerator model's own score, which is the multinomial score the
+      # denominator's block solves, written over the numerator's design and the
+      # same reference-first indicator matrix.
+      deli::ee_mlogit(th_stab, X = stab$model$X, y = z_ind)
+    } else {
       do.call(
         rbind,
         lapply(seq_len(k - 1), function(j) {
           matrix(z_ind[, j + 1] - th_stab[[j]], nrow = 1)
         })
       )
-    } else {
-      NULL
     }
 
     # Standardize each level's marginal mean to the estimand's tilted

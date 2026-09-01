@@ -777,3 +777,114 @@ test_that("a categorical numerator model whose data is gone is rebuilt from .dat
     tolerance = 1e-6
   )
 })
+
+# ---- a numerator covariate `.data` supplies as another type ------------------
+#
+# A numerator model is rebuilt from `.data` the way the other models are, so a
+# column it alone reads is a column the rebuild can be given as the wrong type.
+# The design that comes back is then coded against different columns from the
+# ones the coefficients were fit against, and the two are multiplied
+# positionally. The guards the other models meet report the column and both
+# types; without the numerator among them the same mistake surfaced as a raw
+# error out of the seed or out of `model.matrix()`, naming neither `.data`, nor
+# the column, nor the argument the model arrived in.
+
+# A numerator of the exposure on one covariate, which nothing else reads. The
+# fit is written out for the reason the fixtures above are: it is rebuilt from
+# its own fitting call.
+fit_categorical_ipw_numerator_x2 <- function(dat) {
+  nnet::multinom(
+    z ~ x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+}
+
+test_that("a numerator covariate supplied as a factor where the fit read a number is refused", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical_numerator()
+  dat$x2 <- round(dat$x1, 2)
+
+  num_mod <- fit_categorical_ipw_numerator_x2(dat)
+  fits <- categorical_numerator_fits(dat, numerator = num_mod)
+
+  # A factor of three levels takes two design columns where the number it stands
+  # in for took one, so the rebuilt design is wider than the coefficients it
+  # would be multiplied against.
+  supplied <- dat
+  supplied$x2 <- dat$g
+
+  err <- expect_error(
+    ipw(fits$model$ps_mod, fits$model$outcome_mod, .data = supplied),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- categorical_numerator_ipw_message(err)
+  expect_match(message, "x2", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a numerator covariate supplied as a number where the fit read a factor is refused", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical_numerator()
+  dat$x2 <- dat$g
+
+  num_mod <- fit_categorical_ipw_numerator_x2(dat)
+  fits <- categorical_numerator_fits(dat, numerator = num_mod)
+
+  # The other direction, which never reaches a width to compare: the rebuild
+  # asks for the fit's contrast coding of a column that arrives with no levels
+  # to code.
+  supplied <- dat
+  supplied$x2 <- as.numeric(dat$g)
+
+  err <- expect_error(
+    ipw(fits$model$ps_mod, fits$model$outcome_mod, .data = supplied),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- categorical_numerator_ipw_message(err)
+  expect_match(message, "x2", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a numerator record that is not a multinomial fit is refused by class", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical_numerator()
+  fits <- categorical_numerator_fits(dat)
+
+  # The weight layer refuses everything but an `nnet::multinom()` for a
+  # categorical exposure, so a record of another class arrives here only on
+  # weights it was attached to. It has no levels to compare with the propensity
+  # score model's, and a refusal reporting the levels it declares would report
+  # an empty set; what is wrong is the class.
+  other_mod <- glm(
+    as.numeric(z == "b") ~ v,
+    data = dat,
+    family = binomial()
+  )
+  wts <- fits$model$wts
+  attr(wts, "numerator_model") <- other_mod
+
+  outcome_mod <- glm(
+    y ~ z * v + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(fits$model$ps_mod, outcome_mod),
+    class = "propensity_ipw_numerator_error"
+  )
+
+  message <- categorical_numerator_ipw_message(err)
+  expect_match(message, "multinom", fixed = TRUE)
+  expect_match(message, "glm", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})

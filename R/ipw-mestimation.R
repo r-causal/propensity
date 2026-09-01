@@ -95,7 +95,7 @@ check_ipw_counterfactual_designs <- function(
 # multiply at all or pairs each column with a coefficient that belongs to
 # another. The width only ever moves when the designs are rebuilt from `.data`,
 # because the model frame reproduces the fit exactly, which is the mirror of the
-# check the propensity design gets in check_ipw_ps_design_width().
+# check the propensity design gets in check_ipw_design_width().
 #
 # A column type that disagrees with the fit is rejected before this, so what
 # reaches here is a categorical column whose observed levels differ from the ones
@@ -478,6 +478,144 @@ ipw_binary_numerator_block <- function(
   )
 }
 
+# The stabilization block a categorical exposure's numerator model contributes:
+# the design its coefficients multiply, those coefficients flattened the way the
+# propensity score block's are, and the number of levels the softmax reads them
+# back over. The score the block solves is the multinomial score, which is what
+# a numerator of a categorical exposure is fit by, so the block needs nothing
+# else.
+#
+# Every guard here is the guard the multinomial propensity score model meets,
+# read for the argument the numerator model arrived in: the same refusal of case
+# weights, the same rank requirement, and the same recovery of a design from a
+# fit that keeps no model frame. The level guard has no counterpart there,
+# because the propensity score model's levels have nothing to agree with.
+ipw_categorical_numerator_block <- function(
+  numerator_model,
+  ps_mod,
+  .data = NULL,
+  call = rlang::caller_env()
+) {
+  if (is.null(numerator_model)) {
+    return(NULL)
+  }
+
+  check_ipw_numerator_model_weights(numerator_model, call = call)
+  check_ipw_categorical_numerator_levels(numerator_model, ps_mod, call = call)
+
+  # The block below multiplies the fitted coefficients against the design
+  # positionally, as the propensity score block does, so the model needs a
+  # coefficient for every column of its design. Without this the numerator comes
+  # back missing at every value of theta, and the first report of it is the
+  # weights the system rebuilds failing to match the ones the caller built.
+  check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
+
+  numerator_design <- if (is.null(.data)) {
+    # `nnet::multinom()` keeps no model frame, so the design is recovered by
+    # re-evaluating the fitting call, which is what the denominator's recovery
+    # does and what a fit made inside a function whose frame is gone cannot do.
+    recovered <- tryCatch(
+      ipw_recover_ps_data(numerator_model),
+      error = function(e) e
+    )
+    if (inherits(recovered, "error")) {
+      cause <- conditionMessage(recovered)
+      abort(
+        c(
+          "Can't reconstruct the data behind {.arg stabilize}.",
+          x = "{cause}",
+          i = "The numerator model is estimated alongside everything else, so \\
+          {.fun ipw} needs the design its coefficients were fit over rather \\
+          than the probabilities they evaluate to.",
+          i = "Supply {.arg .data} with the exposure, outcome, and covariates."
+        ),
+        error_class = "propensity_ipw_data_error",
+        call = call
+      )
+    }
+    recovered$ps_X
+  } else {
+    rebuilt <- ipw_rebuild_design(
+      numerator_model,
+      stats::delete.response(stats::terms(numerator_model)),
+      .data,
+      call = call
+    )
+    check_ipw_design_width(rebuilt, numerator_model, "stabilize", call = call)
+    rebuilt
+  }
+
+  list(
+    X = numerator_design,
+    coefs = as.vector(t(stats::coef(numerator_model))),
+    k = length(numerator_model$lev)
+  )
+}
+
+# The levels a stacked categorical numerator model has to be fit to, order
+# included. Everything the block contributes is positional: its coefficients are
+# stacked level-major, the indicator matrix its score reads is laid out in the
+# propensity score model's level order, and the softmax the numerator is rebuilt
+# from takes the first level as the reference. Reordering the fit's columns
+# cannot repair a mismatch, because releveling a multinomial moves the reference
+# level and with it every coefficient, so the fit is refused instead.
+#
+# The weight side gathers the numerator by name and takes such a fit, which is
+# why the refusal is made here, and why it names the order rather than leaving
+# the mismatch to surface as the weight-consistency refusal, which is about how
+# the weights were built.
+check_ipw_categorical_numerator_levels <- function(
+  numerator_model,
+  ps_mod,
+  call = rlang::caller_env()
+) {
+  numerator_levels <- as.character(numerator_model$lev)
+  ps_levels <- as.character(ps_mod$lev)
+
+  if (identical(numerator_levels, ps_levels)) {
+    return(invisible(TRUE))
+  }
+
+  # A fit that declares no levels at all is not a multinomial fit. The weight
+  # layer refuses one for a categorical exposure, so it arrives here only on
+  # weights it was attached to, and a report of the levels it declares would
+  # report an empty set. What is wrong is the class, so that is what is named.
+  if (!length(numerator_levels)) {
+    numerator_class <- class(numerator_model)[[1]]
+    abort(
+      c(
+        "The model supplied to {.arg stabilize} must be an \\
+        {.fun nnet::multinom} fit of a categorical exposure.",
+        x = "{.arg stabilize} is {.cls {numerator_class}}, which declares no \\
+        exposure levels.",
+        i = "The stacked numerator is the multinomial score of a fit over the \\
+        levels {.arg wt_mod} was fit to, {.val {ps_levels}}.",
+        i = "Refit {.arg stabilize} with {.fun nnet::multinom}, and rebuild \\
+        the weights from it."
+      ),
+      error_class = "propensity_ipw_numerator_error",
+      call = call
+    )
+  }
+
+  abort(
+    c(
+      "The model supplied to {.arg stabilize} must declare the exposure's \\
+      levels in the level order {.arg wt_mod} declares them in.",
+      x = "{.arg stabilize} was fit to {.val {numerator_levels}} and \\
+      {.arg wt_mod} to {.val {ps_levels}}.",
+      i = "A multinomial fit's coefficients are read against its own level \\
+      order, the first level being the reference the others are contrasted \\
+      with, so a fit made under another order is a different parameterization \\
+      rather than a permutation of this one.",
+      i = "Refit {.arg stabilize} with the exposure factored on \\
+      {.val {ps_levels}}, and rebuild the weights from it."
+    ),
+    error_class = "propensity_ipw_numerator_error",
+    call = call
+  )
+}
+
 # Extract the propensity score design and the exposure and outcome vectors,
 # rebuilding from .data when it is supplied. A propensity model can lose the data
 # behind its fitting call (nnet::multinom stores no model frame; an lm or glm can
@@ -503,6 +641,10 @@ ipw_binary_numerator_block <- function(
 # instead and never forms it. What that saves is more than a matrix lookup for
 # some fits: an additive model's design is a smooth basis the fit has to
 # evaluate rather than the columns its formula names.
+#
+# `numerator_mod` is the model the weights were stabilized on, where there is
+# one. Its design is rebuilt from `.data` alongside the others, so the columns
+# it reads join the ones the rebuilds ask for before any of them goes looking.
 ipw_extract_ps_design <- function(
   ps_mod,
   outcome_mod,
@@ -512,6 +654,7 @@ ipw_extract_ps_design <- function(
   check_exposure_levels = FALSE,
   ps_design = TRUE,
   ps_X = NULL,
+  numerator_mod = NULL,
   call = rlang::caller_env()
 ) {
   # First, and independent of `.data`: the propensity model has to have a
@@ -588,7 +731,12 @@ ipw_extract_ps_design <- function(
     # covariate missing from `.data` otherwise surfaces as a raw
     # object-not-found from `model.matrix` rather than as the missing column it
     # is.
-    required <- ipw_required_columns(ps_mod, outcome_mod, exposure_name)
+    required <- ipw_required_columns(
+      ps_mod,
+      outcome_mod,
+      exposure_name,
+      numerator_mod
+    )
     assert_columns_exist(.data, required, call = call)
 
     # Everything downstream is sized to `.data` while the weights come from the
@@ -637,6 +785,7 @@ ipw_extract_ps_design <- function(
       ps_mod,
       outcome_mod,
       exposure_name,
+      numerator_mod = numerator_mod,
       call = call
     )
 
@@ -686,7 +835,7 @@ ipw_extract_ps_design <- function(
         .data,
         call = call
       )
-      check_ipw_ps_design_width(ps_X, ps_mod, call = call)
+      check_ipw_design_width(ps_X, ps_mod, call = call)
     }
   }
 
@@ -759,12 +908,21 @@ ipw_model_covariates <- function(mod) {
 # the deparsed expression: a transformed response such as `log(y)` is computed
 # from a column named `y`, and asking for one named `log` would report a column
 # that could not exist under any correct `.data`.
-ipw_required_columns <- function(ps_mod, outcome_mod, exposure_name) {
+#
+# A numerator model is rebuilt from `.data` on the same terms, so the columns it
+# reads join the set whenever the weights were stabilized on one.
+ipw_required_columns <- function(
+  ps_mod,
+  outcome_mod,
+  exposure_name,
+  numerator_mod = NULL
+) {
   unique(c(
     exposure_name,
     fmla_extract_left_vars(outcome_mod),
     ipw_model_covariates(ps_mod),
-    ipw_model_covariates(outcome_mod)
+    ipw_model_covariates(outcome_mod),
+    if (!is.null(numerator_mod)) ipw_model_covariates(numerator_mod)
   ))
 }
 
@@ -921,31 +1079,38 @@ check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
   )
 }
 
-# Require the design rebuilt from `.data` to be as wide as the one the propensity
-# model was fit to. Everything downstream multiplies the two together
-# positionally: the propensity scores, the stacked score block, and, for a
-# categorical exposure, the coefficient names built by pairing each level with
-# each design column. A width that disagrees produced a raw error about a names
-# attribute or a non-conformable multiply, neither of which mentions `.data`.
+# Require a design rebuilt from `.data` to be as wide as the one the model it
+# belongs to was fit to. Everything downstream multiplies the two together
+# positionally: the propensity scores, the numerator a stabilizing model
+# reports, the stacked score blocks, and, for a categorical exposure, the
+# coefficient names built by pairing each level with each design column. A width
+# that disagrees produced a raw error about a names attribute or a
+# non-conformable multiply, neither of which mentions `.data`.
 #
 # A column whose type differs between the fitting data and `.data` is rejected
 # before this by check_ipw_data_types(), which names the column and both types
 # and is the more specific diagnosis. What is left for a count to catch is a term
 # recorded under a call rather than a variable, which the type check has no
 # column to compare and which can still rebuild to a different width.
-check_ipw_ps_design_width <- function(
-  ps_X,
-  ps_mod,
+#
+# `arg` is the argument the model arrived in, the propensity score model and a
+# numerator model reaching the same failure and needing the same report of it,
+# each naming the fit the caller would have to look at.
+check_ipw_design_width <- function(
+  design,
+  mod,
+  arg = "wt_mod",
   call = rlang::caller_env()
 ) {
-  n_fitted <- ipw_ps_terms_per_equation(ps_mod)
+  n_fitted <- ipw_ps_terms_per_equation(mod)
 
-  if (!identical(ncol(ps_X), n_fitted)) {
+  if (!identical(ncol(design), n_fitted)) {
     abort(
       c(
-        "{.arg .data} must rebuild the design {.arg wt_mod} was fit to.",
-        x = "The design rebuilt from {.arg .data} has {ncol(ps_X)} column{?s}.",
-        x = "{.arg wt_mod} was fit with {n_fitted} coefficient{?s} per \\
+        "{.arg .data} must rebuild the design {.arg {arg}} was fit to.",
+        x = "The design rebuilt from {.arg .data} has {ncol(design)} \\
+        column{?s}.",
+        x = "{.arg {arg}} was fit with {n_fitted} coefficient{?s} per \\
         equation.",
         i = "A column whose type differs from the fitting data is the usual \\
         cause: a factor expands to one column per non-reference level where a \\
@@ -974,7 +1139,10 @@ check_ipw_ps_design_width <- function(
 # Both models are swept, and the outcome model's response with them. This runs
 # before the propensity design is rebuilt and before the outcome model's
 # counterfactual designs are built on every path, so an outcome-only covariate is
-# caught on its way to the same failure.
+# caught on its way to the same failure. A numerator model is swept on the same
+# terms, its design being rebuilt from `.data` as well: a column it alone reads
+# has no other model to be compared through, and left out of the sweep it
+# reached the rebuild as whatever type it arrived as.
 #
 # A name that is not a column of `.data`, `factor(x)` say, is skipped: it is a
 # term recorded under a call rather than a variable this can compare, and the
@@ -993,9 +1161,10 @@ check_ipw_data_types <- function(
   ps_mod,
   outcome_mod,
   exposure_name,
+  numerator_mod = NULL,
   call = rlang::caller_env()
 ) {
-  fitted <- ipw_fitted_classes(ps_mod, outcome_mod)
+  fitted <- ipw_fitted_classes(ps_mod, outcome_mod, numerator_mod)
   fitted <- fitted[names(fitted) %in% names(.data)]
   response <- fmla_extract_left_chr(outcome_mod)
 
@@ -1025,6 +1194,7 @@ check_ipw_data_types <- function(
         supplied_class = supplied,
         ps_mod = ps_mod,
         outcome_mod = outcome_mod,
+        numerator_mod = numerator_mod,
         response = identical(column, response),
         call = call
       )
@@ -1036,12 +1206,17 @@ check_ipw_data_types <- function(
 
 # The class each model recorded for every variable it reads, keyed by variable
 # name. The propensity model is taken first so the exposure, which is its
-# response, is described by the fit that owns it. Classes a design has no coding
-# for are dropped rather than compared.
-ipw_fitted_classes <- function(ps_mod, outcome_mod) {
+# response, is described by the fit that owns it, and a numerator model last, so
+# that it contributes the columns it alone reads and describes no column another
+# model already accounts for. Classes a design has no coding for are dropped
+# rather than compared.
+ipw_fitted_classes <- function(ps_mod, outcome_mod, numerator_mod = NULL) {
   classes <- c(
     attr(stats::terms(ps_mod), "dataClasses"),
-    attr(stats::terms(outcome_mod), "dataClasses")
+    attr(stats::terms(outcome_mod), "dataClasses"),
+    if (!is.null(numerator_mod)) {
+      attr(stats::terms(numerator_mod), "dataClasses")
+    }
   )
   classes <- classes[!duplicated(names(classes))]
 
@@ -1127,6 +1302,7 @@ abort_ipw_type_mismatch <- function(
   supplied_class,
   ps_mod,
   outcome_mod,
+  numerator_mod = NULL,
   response,
   call = rlang::caller_env()
 ) {
@@ -1164,9 +1340,22 @@ abort_ipw_type_mismatch <- function(
     if (column %in% names(attr(stats::terms(ps_mod), "dataClasses"))) "wt_mod",
     if (column %in% names(attr(stats::terms(outcome_mod), "dataClasses"))) {
       "outcome_mod"
+    },
+    # The argument the numerator model arrived in, so that a column only it
+    # reads names the fit the caller would have to change rather than the two
+    # that never saw it.
+    if (
+      !is.null(numerator_mod) &&
+        column %in% names(attr(stats::terms(numerator_mod), "dataClasses"))
+    ) {
+      "stabilize"
     }
   )
-  fit_levels <- c(ps_mod$xlevels, outcome_mod$xlevels)[[column]]
+  fit_levels <- c(
+    ps_mod$xlevels,
+    outcome_mod$xlevels,
+    numerator_mod$xlevels
+  )[[column]]
 
   recorded <- if (is.null(fit_levels)) {
     "{.arg {fit_args}} recorded {.val {column}} as {fit_article}, and the \\
@@ -1571,11 +1760,19 @@ ipw_spec_categorical <- function(
     call = call
   )
 
+  # Read before the designs are built rather than with the rest of what the
+  # weights record: a numerator model's design is rebuilt from `.data` alongside
+  # them, so the columns it reads have to be among the ones the rebuild asks for
+  # before it goes looking for them.
+  wts <- extract_weights(outcome_mod)
+  numerator_mod <- numerator_model(wts)
+
   extracted <- ipw_extract_ps_design(
     ps_mod,
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
+    numerator_mod = numerator_mod,
     call = call
   )
   exposure <- extracted$exposure
@@ -1621,7 +1818,25 @@ ipw_spec_categorical <- function(
 
   ps_coefs <- as.vector(t(stats::coef(ps_mod)))
 
-  wts <- extract_weights(outcome_mod)
+  # A numerator model joins the stack the way the propensity score model does,
+  # so it goes through the same guards and is refused on the same terms. Its
+  # design is rebuilt from `.data` where the caller supplied one, over the rows
+  # every other design here is built over.
+  numerator_block <- ipw_categorical_numerator_block(
+    numerator_mod,
+    ps_mod,
+    .data = if (!is.null(.data)) mm_data,
+    call = call
+  )
+  if (!is.null(numerator_block)) {
+    check_ipw_numerator_model(
+      numerator_mod,
+      numerator_block,
+      exposure_name,
+      length(exposure),
+      call = call
+    )
+  }
 
   # Estimand resolution mirrors the binary path: reconcile the psw estimand
   # attribute with an explicit `estimand` argument via check_estimand(), which
@@ -1752,7 +1967,12 @@ ipw_spec_categorical <- function(
     ),
     stab = list(
       stabilized = is_stabilized(wts),
-      score = stabilization_score(wts)
+      score = stabilization_score(wts),
+      # A numerator estimated by a model of the caller's is estimated again in
+      # the stacked system, so the block carries the model's design, its
+      # coefficients, and the number of levels its softmax reads them over
+      # rather than the probabilities they evaluate to.
+      model = numerator_block
     ),
     outcome = list(
       X = model.matrix(outcome_mod),
@@ -2193,7 +2413,7 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       } else {
         NULL
       }
-      stab_probs <- if (length(th_stab)) c(1 - sum(th_stab), th_stab) else NULL
+      stab_probs <- ipw_categorical_stab_probs(spec$stab, th_stab, k)
       weight_fn(
         ps_mat,
         spec$exposure,

@@ -345,14 +345,11 @@ multinomial fit has to report a probability for every level the exposure
 has, matched by name rather than by position.
 
 The model is recorded on the result, where \code{\link[=numerator_model]{numerator_model()}} reads it
-back. For a binary or continuous exposure, \code{\link[=ipw]{ipw()}} estimates it alongside
-everything else so that the standard errors account for it having been
-fitted; a categorical exposure's numerator model is not yet stacked
-there, so \code{\link[=ipw]{ipw()}} cannot rebuild such weights and they fail its
-weight-consistency check. Conditioning the
-numerator on \eqn{V} changes what is estimated unless the model the
-estimates are read from also reads \eqn{V}; see \strong{Stabilization} in
-Details.
+back, and \code{\link[=ipw]{ipw()}} estimates it alongside everything else so that the
+standard errors account for it having been fitted, whichever type the
+exposure is. Conditioning the numerator on \eqn{V} changes what is
+estimated unless the model the estimates are read from also reads
+\eqn{V}; see \strong{Stabilization} in Details.
 
 Any \code{\link[=lm]{lm()}}, or anything built on one, is read this way, as is an
 \code{\link[nnet:multinom]{nnet::multinom()}}. The model is held to the exposure: a fit whose spread

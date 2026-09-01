@@ -547,14 +547,11 @@
 #'     has, matched by name rather than by position.
 #'
 #'     The model is recorded on the result, where [numerator_model()] reads it
-#'     back. For a binary or continuous exposure, [ipw()] estimates it alongside
-#'     everything else so that the standard errors account for it having been
-#'     fitted; a categorical exposure's numerator model is not yet stacked
-#'     there, so [ipw()] cannot rebuild such weights and they fail its
-#'     weight-consistency check. Conditioning the
-#'     numerator on \eqn{V} changes what is estimated unless the model the
-#'     estimates are read from also reads \eqn{V}; see **Stabilization** in
-#'     Details.
+#'     back, and [ipw()] estimates it alongside everything else so that the
+#'     standard errors account for it having been fitted, whichever type the
+#'     exposure is. Conditioning the numerator on \eqn{V} changes what is
+#'     estimated unless the model the estimates are read from also reads
+#'     \eqn{V}; see **Stabilization** in Details.
 #'
 #'     Any [lm()], or anything built on one, is read this way, as is an
 #'     [nnet::multinom()]. The model is held to the exposure: a fit whose spread
