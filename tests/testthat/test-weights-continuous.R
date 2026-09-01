@@ -2890,9 +2890,12 @@ test_that("a numerator model of a dose refuses a binary or a categorical exposur
     class = "propensity_model_family_error"
   )
 
-  # A categorical exposure's weights are a ratio over more than two levels and
-  # take no fitted numerator at all, which is the refusal an integrated
-  # numerator gets for the same reason.
+  # A categorical exposure takes a fitted numerator too, but its numerator is
+  # a probability for the level each unit took, read from a multinomial fit,
+  # so a least-squares fit of a dose is refused as the wrong family the same
+  # way it is for a binary exposure; see
+  # tests/testthat/test-weights-numerator-categorical.R for the
+  # nnet::multinom() fit that is the right one.
   exposure <- factor(rep(c("a", "b", "c"), each = 4))
   categorical_ps <- matrix(
     rep(c(0.5, 0.3, 0.2), times = 12),
@@ -2909,7 +2912,7 @@ test_that("a numerator model of a dose refuses a binary or a categorical exposur
       exposure_type = "categorical",
       stabilize = categorical_fit
     ),
-    class = "propensity_numerator_error"
+    class = "propensity_model_family_error"
   )
 })
 

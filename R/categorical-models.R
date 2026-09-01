@@ -55,14 +55,22 @@ extract_categorical_ps.multinom <- function(
 # reports that as what it is, a model of something other than the exposure,
 # rather than leaving `check_ps_matrix()` to report the width of a matrix the
 # caller never built. Order is not part of the comparison, because the matrix
-# check matches the columns to the levels by name.
+# check matches the columns to the levels by name, as does the gather a
+# numerator model's fitted probabilities are read with.
 #
 # An exposure of fewer than three levels is not a categorical exposure at all,
 # whatever the model was fit to, and `transform_exposure_categorical()` reports
 # that; the comparison leaves such an exposure to it.
+#
+# `arg` and `remedy` name the argument the fit arrived in and what to do about
+# it, because the same question is asked of two models: the propensity score
+# model the weights are read off, and the numerator model they are stabilized
+# on. Both are read by level name, so both are held to the same set.
 check_multinom_levels <- function(
   model,
   exposure_levels,
+  arg = ".propensity",
+  remedy = "Fit the propensity score model to the exposure being weighted.",
   call = rlang::caller_env()
 ) {
   if (length(exposure_levels) < 3L) {
@@ -101,11 +109,11 @@ check_multinom_levels <- function(
     c(
       "Weights for a categorical exposure need a probability for every level
        of the exposure being weighted.",
-      x = "{.arg .propensity} was fit to {n_levels} level{?s}
+      x = "{.arg {arg}} was fit to {n_levels} level{?s}
            ({.val {model$lev}}), and the exposure has {n_exposure}
            ({.val {exposure_levels}}).",
       unused_level_remedy,
-      i = "Fit the propensity score model to the exposure being weighted."
+      i = remedy
     ),
     error_class = "propensity_model_family_error",
     call = call
@@ -160,9 +168,11 @@ model_levels.multinom <- function(model) {
 #
 # `remedy` goes unread here. What is wrong with a `multinom` of more than two
 # levels is the number of levels rather than the family, so the remedy is the
-# one written below whichever argument the model arrived in; and a `multinom`
-# reaches this generic only as a propensity score model, `stabilize` taking an
-# `lm` or a model built on one.
+# one written below whichever argument the model arrived in. A `multinom`
+# supplied as a numerator model never reaches this method at all:
+# `check_numerator_model()` refuses one for a binary exposure before the family
+# is read, since a two-level fit would pass here and the binary numerator is
+# then read off a response and a family a `multinom` does not carry.
 #' @export
 check_binary_model_family.multinom <- function(
   model,
@@ -234,10 +244,13 @@ extract_model_exposure.multinom <- function(model) {
 #
 # `arg` names the argument the fit arrived as, since the estimator takes it as
 # `wt_mod` and the weight functions as `.propensity`, and the refusal is the
-# same one in both places.
+# same one in both places. `what` names which side of the ratio the fit was
+# supplied for, a numerator model being held to the same requirement as the
+# model the scores themselves are read off.
 check_multinom_response <- function(
   model,
   arg = ".propensity",
+  what = "A propensity score model",
   call = rlang::caller_env()
 ) {
   if (length(model$lev) > 0) {
@@ -246,7 +259,7 @@ check_multinom_response <- function(
 
   abort(
     c(
-      "A propensity score model must be fit to the levels of the exposure.",
+      "{what} must be fit to the levels of the exposure.",
       x = "{.arg {arg}} was fit to a matrix response, which
            {.fun nnet::multinom} reads as counts rather than as levels.",
       i = "Refit the model with the exposure factor on the left-hand side, as
@@ -255,6 +268,84 @@ check_multinom_response <- function(
     error_class = "propensity_model_family_error",
     call = call
   )
+}
+
+# Whether a fitted model reports a probability for every level of a categorical
+# exposure. This is the categorical counterpart of `check_binary_model_family()`
+# and is asked of the numerator model a categorical exposure's weights are
+# stabilized on; the propensity score model of one is read by
+# `extract_categorical_ps()`, whose methods name the same set of classes. Which
+# classes answer is which classes have a method, so a model fitting one value
+# per unit is refused by the default whatever family it was fit with.
+#
+# `arg` names the argument the model arrived in and `remedy` says what to do
+# about it, both written the way the binary check takes them: the two sides of
+# the ratio arrive in different arguments and take different remedies.
+check_categorical_model_family <- function(
+  model,
+  arg = ".propensity",
+  remedy = "Pass a fitted {.fun nnet::multinom} of the exposure, or a matrix or
+            data frame with one column per level.",
+  call = rlang::caller_env()
+) {
+  UseMethod("check_categorical_model_family")
+}
+
+#' @export
+check_categorical_model_family.default <- function(
+  model,
+  arg = ".propensity",
+  remedy = "Pass a fitted {.fun nnet::multinom} of the exposure, or a matrix or
+            data frame with one column per level.",
+  call = rlang::caller_env()
+) {
+  abort(
+    c(
+      "Weights for a categorical exposure need a probability for every level.",
+      x = "{.arg {arg}} is {.cls {class(model)[[1]]}}, which fits one value for
+           each unit rather than one for each level.",
+      i = remedy
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}
+
+# A `multinom` reports a column per level, which is the shape both sides of the
+# ratio are read in. A matrix response is the one fit that does not: it is read
+# as counts rather than as a factor, so the fit records no levels and its
+# columns name none for the levels of the exposure to be matched against.
+#
+# The number of levels is no part of the question here. Two of them make a
+# binary exposure however the fit was made, and the exposure's own levels decide
+# which route the weights take, so a fit reporting too few columns for the
+# exposure is reported against those levels rather than against its family.
+#' @export
+check_categorical_model_family.multinom <- function(
+  model,
+  arg = ".propensity",
+  remedy = "Pass a fitted {.fun nnet::multinom} of the exposure, or a matrix or
+            data frame with one column per level.",
+  call = rlang::caller_env()
+) {
+  check_multinom_response(
+    model,
+    arg = arg,
+    what = categorical_model_role(arg),
+    call = call
+  )
+}
+
+# Which of the two models a refusal is about, read from the argument the fit
+# arrived in: the propensity score model of a categorical exposure is supplied
+# as `.propensity` and its numerator model as `stabilize`, so the argument name
+# is what tells the two apart wherever the same refusal serves both.
+categorical_model_role <- function(arg) {
+  if (identical(arg, "stabilize")) {
+    "A numerator model"
+  } else {
+    "A propensity score model"
+  }
 }
 
 # A categorical exposure needs a probability for every level, which a model

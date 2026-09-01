@@ -571,10 +571,12 @@ resolve_stabilize <- function(
        a fitted model of the exposure.",
       x = "It is {.obj_type_friendly {stabilize}}.",
       i = "A fitted model stabilizes the weights on the numerator it estimates:
-           a conditional density for a dose, and the conditional probability of
-           the level each unit took for a binary exposure. To stabilize on a
-           numerator you computed yourself, set {.code stabilize = TRUE} and
-           pass it as {.arg stabilization_score}."
+           a conditional density for a dose, the conditional probability of
+           the level each unit took for a binary exposure, and that same
+           probability read across every level for a categorical one. To
+           stabilize on a numerator you computed yourself, set
+           {.code stabilize = TRUE} and pass it as
+           {.arg stabilization_score}."
     ),
     error_class = "propensity_stabilize_error",
     call = call
@@ -582,15 +584,18 @@ resolve_stabilize <- function(
 }
 
 # The models a numerator can be fit with: everything [lm()] covers and
-# everything built on it, a [glm()] of any family included. What the weights ask
-# of such a model is its fitted values, and the residuals around them where a
-# density is spread by those, so a subclass is read as an `lm` here, the way
-# `.propensity` is. Which families answer for which exposure is
+# everything built on it, a [glm()] of any family included, and
+# [nnet::multinom()], which is the one fit reporting a probability for every
+# level of an exposure and so the one a categorical numerator is read from. What
+# the weights ask of such a model is its fitted values, and the residuals around
+# them where a density is spread by those, so a subclass is read as an `lm`
+# here, the way `.propensity` is; a `multinom` inherits from neither `lm` nor
+# `glm` and is named on its own. Which class answers for which exposure is
 # `check_numerator_model()`'s question rather than this one's: a model that is
 # not the right one for the exposure is refused there, by the same check the
 # propensity score model of that exposure meets.
 is_numerator_model <- function(x) {
-  inherits(x, "lm")
+  inherits(x, "lm") || inherits(x, "multinom")
 }
 
 # The fitted model a `stabilize` argument names, or NULL for one that names an
@@ -1342,9 +1347,9 @@ calculate_weight_from_modified_ps <- function(
 record_exposure_attrs <- function(psw_obj, wts, exposure_type) {
   attr(psw_obj, "exposure_type") <- exposure_type
   attr(psw_obj, "density_meta") <- attr(wts, "density_meta")
-  # A binary exposure's numerator model is recorded on its own, there being no
-  # density record for it to sit inside. A continuous exposure's sits in the
-  # density record, and `numerator_model()` reads the two back as one.
+  # A binary or categorical exposure's numerator model is recorded on its own,
+  # there being no density record for it to sit inside. A continuous exposure's
+  # sits in the density record, and `numerator_model()` reads them back as one.
   attr(psw_obj, "numerator_model") <- attr(wts, "numerator_model")
 
   psw_obj

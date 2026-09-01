@@ -529,9 +529,9 @@
 #'     weights are not the recommended ones. `NULL`, the default, reads the
 #'     answer from the exposure type: a continuous exposure is stabilized, and a
 #'     binary or categorical exposure is not.
-#'   * A fitted model of the exposure, for a binary or continuous exposure,
-#'     which stabilizes the weights on what that model estimates rather than on
-#'     the marginal probability or density of the exposure.
+#'   * A fitted model of the exposure, which stabilizes the weights on what that
+#'     model estimates rather than on the marginal probability or density of the
+#'     exposure.
 #'
 #'     For a binary exposure the model is a [binomial()] fit and the numerator
 #'     is its fitted probability of the level each unit took, so the weights
@@ -539,27 +539,36 @@
 #'     \eqn{V} the numerator model reads. For a continuous exposure the
 #'     numerator is the family `.density` names, read at the model's fitted mean
 #'     and the root mean square of its residuals, so the weights are
-#'     \eqn{f(A \mid V) / f(A \mid X)}.
+#'     \eqn{f(A \mid V) / f(A \mid X)}. For a categorical exposure the model is
+#'     an [nnet::multinom()] fit and the numerator is its fitted probability of
+#'     the level each unit took, read from the column named for that level, so
+#'     the weights are \eqn{P(Z = z_i \mid V_i) / f(z_i \mid X_i)}. The
+#'     multinomial fit has to report a probability for every level the exposure
+#'     has, matched by name rather than by position.
 #'
 #'     The model is recorded on the result, where [numerator_model()] reads it
-#'     back, and [ipw()] estimates it alongside everything else so that the
-#'     standard errors account for it having been fitted. Conditioning the
+#'     back. For a binary or continuous exposure, [ipw()] estimates it alongside
+#'     everything else so that the standard errors account for it having been
+#'     fitted; a categorical exposure's numerator model is not yet stacked
+#'     there, so [ipw()] cannot rebuild such weights and they fail its
+#'     weight-consistency check. Conditioning the
 #'     numerator on \eqn{V} changes what is estimated unless the model the
 #'     estimates are read from also reads \eqn{V}; see **Stabilization** in
 #'     Details.
 #'
-#'     Any [lm()], or anything built on one, is read this way. The family is
-#'     held to the exposure: a fit whose spread changes with its fitted values,
-#'     or a model of a conditional mean where a probability is needed, is
-#'     refused with `propensity_model_family_error`, which is also what a model
-#'     of a dose handed to a binary exposure and a [binomial()] model handed to
-#'     a dose are refused with. A categorical exposure takes no fitted
-#'     numerator, and neither does a model supplied together with
-#'     `stabilization_score` or `numerator = "integrated"`; those are
-#'     `propensity_numerator_error`. So is a model fit with case `weights`,
-#'     which estimates the numerator in a reweighted sample rather than in the
-#'     one the weights are being built for. A model with a fitted value for some
-#'     other set of observations is `propensity_length_error`.
+#'     Any [lm()], or anything built on one, is read this way, as is an
+#'     [nnet::multinom()]. The model is held to the exposure: a fit whose spread
+#'     changes with its fitted values, or a model of a conditional mean where a
+#'     probability is needed, is refused with `propensity_model_family_error`,
+#'     which is also what a model of a dose handed to a binary exposure, a
+#'     [binomial()] model handed to a dose, a multinomial fit handed either of
+#'     them, and a fit reporting some other set of levels than the exposure's
+#'     are refused with. A model supplied together with `stabilization_score`
+#'     or `numerator = "integrated"` is `propensity_numerator_error`. So is a
+#'     model fit with case `weights`, which estimates the numerator in a
+#'     reweighted sample rather than in the one the weights are being built
+#'     for. A model with a fitted value for some other set of observations is
+#'     `propensity_length_error`.
 #'
 #'   Anything else is refused with an error of class
 #'   `propensity_stabilize_error`. Stabilization is only supported by
@@ -958,6 +967,7 @@ wt_ate.numeric <- function(
       .focal_level = NULL,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
+      numerator_model = numerator_model,
       call = call
     )
   }
@@ -1437,6 +1447,7 @@ wt_att.numeric <- function(
       .focal_level = .focal_level,
       stabilize = FALSE,
       stabilization_score = NULL,
+      numerator_model = NULL,
       call = call
     )
   }
@@ -1680,6 +1691,7 @@ wt_atu.numeric <- function(
       .focal_level = .focal_level,
       stabilize = FALSE,
       stabilization_score = NULL,
+      numerator_model = NULL,
       call = call
     )
   }
@@ -1919,6 +1931,7 @@ wt_atm.numeric <- function(
       .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
+      numerator_model = NULL,
       call = call
     )
   }
@@ -2151,6 +2164,7 @@ wt_ato.numeric <- function(
       .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
+      numerator_model = NULL,
       call = call
     )
   }
@@ -2382,6 +2396,7 @@ wt_entropy.numeric <- function(
       .focal_level = NULL,
       stabilize = FALSE,
       stabilization_score = NULL,
+      numerator_model = NULL,
       call = call
     )
   }
@@ -3198,6 +3213,7 @@ calculate_categorical_weights <- function(
   .focal_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
+  numerator_model = NULL,
   call = rlang::caller_env()
 ) {
   # Ensure exposure is a factor
@@ -3206,6 +3222,21 @@ calculate_categorical_weights <- function(
     .focal_level,
     call = call
   )
+
+  # The numerator is gathered from the model's fitted column named for the level
+  # each unit took, so the levels the model reports have to be the levels the
+  # exposure has. That is read here rather than where the rest of the model is
+  # checked because the exposure has only just been made a factor: a character
+  # exposure has no levels to compare until then.
+  if (!is.null(numerator_model)) {
+    check_multinom_levels(
+      numerator_model,
+      levels(.exposure),
+      arg = "stabilize",
+      remedy = "Fit the numerator model to the exposure being weighted.",
+      call = call
+    )
+  }
 
   # Validate propensity score matrix
   ps_matrix <- check_ps_matrix(ps_matrix, .exposure, call = call)
@@ -3265,7 +3296,21 @@ calculate_categorical_weights <- function(
       )
     }
 
-    if (!is.null(stabilization_score)) {
+    if (!is.null(numerator_model)) {
+      # A fitted numerator is the conditional probability of the level each unit
+      # took, read out of the column named for that level rather than out of the
+      # column in that position. A unit with no observed level names no column
+      # and so takes a missing numerator, which is the answer the denominator
+      # gather and the marginal stabilizer already give it.
+      p_fit <- stats::fitted(numerator_model)
+      column <- match(as.character(.exposure), colnames(p_fit))
+      weights <- weights * p_fit[cbind(seq_len(n), column)]
+
+      # The model itself travels back with the weights, the way the binary
+      # route's does, so that it reaches the `psw` by the route every other
+      # exposure record takes.
+      attr(weights, "numerator_model") <- numerator_model
+    } else if (!is.null(stabilization_score)) {
       weights <- weights * stabilization_score
     } else {
       # Every marginal is a share of the units with an observed level, so with
