@@ -1308,7 +1308,14 @@ ipw_joint_models_dose_stab <- function(
     ))
   }
 
-  model <- ipw_numerator_model_block(numerator_model, call = call)
+  # Every design this route builds comes from the fits themselves, so a
+  # numerator whose frame cannot be recovered is asked for a fit that kept one
+  # rather than for a `.data` this route would not read.
+  model <- ipw_numerator_model_block(
+    numerator_model,
+    data_rebuild = FALSE,
+    call = call
+  )
   check_ipw_numerator_model(numerator_model, model, name, n, call = call)
 
   list(

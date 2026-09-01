@@ -873,8 +873,21 @@ ipw_continuous_ratio_meta <- function(
 # back through. The model goes through the registry the propensity score model
 # goes through, so a class whose score this stack cannot write is refused with
 # that registry's own reason, naming the argument the model arrived in.
+#
+# `.data` is the frame every other design in the stack is rebuilt from, over the
+# rows every model read, and this design is rebuilt from it alongside them.
+# Without one the design is read off the fit itself.
+#
+# `data_rebuild` says whether the calling route rebuilds this design from a
+# `.data` the caller supplied. The single-dose route does, so a fit whose frame
+# cannot be recovered is asked for one. The joint route builds every numerator
+# design from the fit itself, so asking it for `.data` there would be a remedy
+# that reaches the same refusal; what it asks for instead is a numerator that
+# kept its frame.
 ipw_numerator_model_block <- function(
   numerator_model,
+  .data = NULL,
+  data_rebuild = TRUE,
   call = rlang::caller_env()
 ) {
   if (is.null(numerator_model)) {
@@ -897,17 +910,17 @@ ipw_numerator_model_block <- function(
   # weights the system rebuilds failing to match the ones the caller built.
   check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
 
-  numerator_design <- entry$design
-  if (is.null(numerator_design)) {
-    numerator_design <- stats::model.matrix(numerator_model)
-  }
+  numerator_design <- ipw_numerator_model_design(
+    numerator_model,
+    entry,
+    .data = .data,
+    data_rebuild = data_rebuild,
+    call = call
+  )
 
   list(
-    # An additive fit's design is the smooth basis it reports rather than the
-    # columns its formula names, which `model.matrix()` returns for it as well.
-    # Such a fit's entry has already evaluated that basis, and it is the
-    # numerator model's own: a block multiplied by another model's design would
-    # rebuild a numerator nobody fit.
+    # The numerator model's own design, whichever way it was arrived at: a block
+    # multiplied by another model's design would rebuild a numerator nobody fit.
     X = numerator_design,
     kind = entry$kind,
     link = entry$link,
@@ -916,6 +929,72 @@ ipw_numerator_model_block <- function(
     penalty = entry$penalty,
     coefs = stats::coef(numerator_model)
   )
+}
+
+# The design a numerator model's block multiplies its coefficients against.
+#
+# With a `.data` the caller supplied it is rebuilt from that frame under the
+# fit's own terms, contrasts, and levels, which is what puts it over the rows
+# every other design in the stack is built over. Without one it is read off the
+# fit: an additive fit's entry has already evaluated its smooth basis, and every
+# other fit is asked for its own model matrix.
+#
+# An `lm` or `glm` usually keeps its model frame, but one fit with
+# `model = FALSE` keeps none and rebuilds it by re-evaluating the fitting call,
+# which a fit made inside a function whose frame is gone cannot do. That is the
+# denominator's recovery and the failure it can meet, so it is reported the way
+# the denominator's is, named for the argument this model arrived in.
+ipw_numerator_model_design <- function(
+  numerator_model,
+  entry,
+  .data = NULL,
+  data_rebuild = TRUE,
+  call = rlang::caller_env()
+) {
+  if (!is.null(.data)) {
+    rebuilt <- ipw_rebuild_design(
+      numerator_model,
+      stats::delete.response(stats::terms(numerator_model)),
+      .data,
+      call = call
+    )
+    check_ipw_design_width(rebuilt, numerator_model, "stabilize", call = call)
+
+    return(rebuilt)
+  }
+
+  if (!is.null(entry$design)) {
+    return(entry$design)
+  }
+
+  recovered <- tryCatch(
+    stats::model.matrix(numerator_model),
+    error = function(e) e
+  )
+
+  if (inherits(recovered, "error")) {
+    cause <- conditionMessage(recovered)
+    remedy <- if (data_rebuild) {
+      "Supply {.arg .data} with the exposure, outcome, and covariates."
+    } else {
+      "Refit {.arg stabilize} so that it keeps its own model frame, by \\
+      leaving {.arg model} at its default, and rebuild the weights from it."
+    }
+    abort(
+      c(
+        "Can't reconstruct the data behind {.arg stabilize}.",
+        x = "{cause}",
+        i = "The numerator model is estimated alongside everything else, so \\
+        {.fun ipw} needs the design its coefficients were fit over rather than \\
+        the numerator they evaluate to.",
+        i = remedy
+      ),
+      error_class = "propensity_ipw_data_error",
+      call = call
+    )
+  }
+
+  recovered
 }
 
 # The numerator model's prior case weights, refused for the reason the

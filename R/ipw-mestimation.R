@@ -2119,6 +2119,15 @@ ipw_spec_continuous <- function(
 
   exposure_name <- fmla_extract_left_chr(ps_mod)
 
+  # Read before the designs are built rather than with the rest of what the
+  # weights record: a numerator model's design is rebuilt from `.data` alongside
+  # them, so the columns it reads have to be among the ones the rebuild asks for
+  # before it goes looking for them. A route that only refits the models writes
+  # no numerator score and rebuilds no design for one, so it asks `.data` for
+  # nothing on its behalf.
+  wts <- extract_weights(outcome_mod)
+  numerator_mod <- if (stacked) numerator_model(wts)
+
   extracted <- ipw_extract_ps_design(
     ps_mod,
     outcome_mod,
@@ -2127,11 +2136,13 @@ ipw_spec_continuous <- function(
     counterfactual = FALSE,
     ps_design = stacked,
     ps_X = ps_model$design,
+    numerator_mod = numerator_mod,
     call = call
   )
   exposure <- as.double(extracted$exposure)
   outcome <- extracted$outcome
   ps_X <- extracted$ps_X
+  mm_data <- extracted$mm_data
 
   if (!identical(length(exposure), length(outcome))) {
     abort(
@@ -2145,8 +2156,6 @@ ipw_spec_continuous <- function(
     )
   }
 
-  wts <- extract_weights(outcome_mod)
-
   # What ratio of densities the weights are, which is what the stacked system
   # has to rebuild. The record travels on the weights; weights that carry none
   # are read as the ratio every earlier version of the package built.
@@ -2155,14 +2164,19 @@ ipw_spec_continuous <- function(
   # A numerator model joins the stack the way the propensity score model does,
   # so it goes through the same registry and is refused on the same terms. A
   # route that only refits the models asks nothing of its score and takes it as
-  # it is.
+  # it is. Its design is rebuilt from `.data` where the caller supplied one,
+  # over the rows every other design here is built over.
   numerator_block <- if (stacked) {
-    ipw_numerator_model_block(ratio$numerator_model, call = call)
+    ipw_numerator_model_block(
+      numerator_mod,
+      .data = if (!is.null(.data)) mm_data,
+      call = call
+    )
   }
 
   if (!is.null(numerator_block)) {
     check_ipw_numerator_model(
-      ratio$numerator_model,
+      numerator_mod,
       numerator_block,
       exposure_name,
       length(exposure),

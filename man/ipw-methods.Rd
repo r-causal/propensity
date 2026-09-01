@@ -1208,6 +1208,18 @@ class \code{propensity_ipw_ps_weights_error}, for the reason a weighted propensi
 score model does: the block written for it is its unweighted score, and its
 coefficients are not at the root of that.
 
+A dose numerator model's design is one of the designs \code{ipw()} rebuilds when
+\code{.data} is supplied, on the terms a discrete exposure's is: it is rebuilt
+over the rows every model read and under the coding the fit recorded, so a
+column only the numerator reads is asked of \code{.data} and is held to the type
+the fit recorded for it. A \code{.data} missing such a column errors with class
+\code{propensity_columns_exist_error}, and one supplying it as another type with
+class \code{propensity_ipw_data_error}. Without \code{.data} the design is read off the
+fit itself, and a fit that keeps no model frame rebuilds one by re-evaluating
+its fitting call. A \code{\link[stats:lm]{stats::lm()}} or \code{\link[stats:glm]{stats::glm()}} fit with \code{model = FALSE}
+is such a fit, so one made inside a function whose frame is gone errors with
+class \code{propensity_ipw_data_error}, and the remedy is to supply \code{.data}.
+
 One choice is refused for the standard error rather than for the model. A
 \code{"kernel"} density chooses its bandwidth from the residuals of the propensity
 score model, which is not a function of the parameters that the sandwich

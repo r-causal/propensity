@@ -951,6 +951,18 @@
 #' score model does: the block written for it is its unweighted score, and its
 #' coefficients are not at the root of that.
 #'
+#' A dose numerator model's design is one of the designs `ipw()` rebuilds when
+#' `.data` is supplied, on the terms a discrete exposure's is: it is rebuilt
+#' over the rows every model read and under the coding the fit recorded, so a
+#' column only the numerator reads is asked of `.data` and is held to the type
+#' the fit recorded for it. A `.data` missing such a column errors with class
+#' `propensity_columns_exist_error`, and one supplying it as another type with
+#' class `propensity_ipw_data_error`. Without `.data` the design is read off the
+#' fit itself, and a fit that keeps no model frame rebuilds one by re-evaluating
+#' its fitting call. A [stats::lm()] or [stats::glm()] fit with `model = FALSE`
+#' is such a fit, so one made inside a function whose frame is gone errors with
+#' class `propensity_ipw_data_error`, and the remedy is to supply `.data`.
+#'
 #' One choice is refused for the standard error rather than for the model. A
 #' `"kernel"` density chooses its bandwidth from the residuals of the propensity
 #' score model, which is not a function of the parameters that the sandwich
