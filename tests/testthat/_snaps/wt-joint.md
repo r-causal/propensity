@@ -1,3 +1,13 @@
+# the conflict warning names the record it dropped
+
+    Code
+      out <- c(normal, heavier)
+    Condition <propensity_metadata_conflict_warning>
+      Warning in `vec_ptype2.psw.psw()`:
+      Dropping the joint_wt_meta attribute from the result.
+      i The two sets of weights record it differently, so neither value describes the result.
+      i Every attribute the two agree on is carried through.
+
 # wt_joint() refuses a component that records no exposure type
 
     Code
@@ -60,9 +70,19 @@
     Condition <propensity_wt_joint_exposure_type_error>
       Error in `wt_joint()`:
       ! `exposure_type` must name the exposure type of each component.
-      x "ordinal" is not a supported exposure type.
-      i Supported types: "binary", "categorical", and "continuous".
       i Supply one per component, in the order the components were given, for example `exposure_type = c("binary", "continuous")`, or leave `exposure_type` unset to read each component's own record.
+      Caused by error in `wt_joint()`:
+      ! `exposure_type` must be one of "binary", "categorical", or "continuous", not "ordinal".
+
+# the unsupported-model refusal names the family of an additive fit
+
+    Code
+      expr
+    Condition <propensity_wt_joint_models_error>
+      Error in `joint_wt_models()`:
+      ! `joint_wt_models()` must be given models it can read a treatment density from.
+      x The model named `k` is <gam> fit with `poisson()`.
+      i Supported models: a binomial `glm()` for a binary treatment, a `nnet::multinom()` for a categorical one, and an `lm()`, a gaussian `glm()`, a gaussian `mgcv::gam()`, or a `MASS::rlm()` for a continuous one.
 
 # joint_wt_models() requires a discrete second model to condition on the first treatment
 
@@ -86,6 +106,19 @@
       x `a` reads "e", and `e` reads "a".
       i A sequential factorization has a first factor that is marginal in the second treatment, so such a pair are not the two factors of any factorization, in either order.
       i Refit the first treatment's model without "e".
+
+# the factorization refusal offers the swapped order when the pair is one reversed
+
+    Code
+      expr
+    Condition <propensity_wt_joint_factorization_error>
+      Error in `joint_wt_models()`:
+      ! `joint_wt_models()` requires the second model to condition on the first treatment.
+      x `e` does not read "a" on its right-hand side.
+      i A joint weight factorizes as f(a | L) f(e | a, L). The product of two marginal models, f(a | L) f(e | L), is a different quantity, and it is not the joint weight wherever "e" depends on "a".
+      i Nothing downstream can tell the two apart: the product is an ordinary vector of positive numbers either way.
+      i Add "a" to the formula of `e`, and model that dependence flexibly rather than as a single additive term.
+      i `a` already reads "e", so the pair in the other order, `joint_wt_models(e = ..., a = ...)`, is the factorization f(e | L) f(a | e, L). Supply them that way if that is the order the treatments are assigned in.
 
 # joint_wt_models() refuses arguments that do not name exactly two treatments
 

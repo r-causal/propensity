@@ -1,16 +1,26 @@
 #' @description
 #' The `multinom` method estimates causal effects for a categorical exposure
 #' from a fitted [nnet::multinom()] propensity score model and a weighted
-#' outcome model. Standard errors are computed by M-estimation.
-#' `se_method = "linearization"` is not available for a categorical exposure and
-#' is refused with an error of class `propensity_method_error`: the stacked
-#' system has a sandwich for every fit this exposure type accepts.
+#' outcome model. Standard errors are computed by M-estimation. Neither
+#' `se_method = "linearization"` nor `se_method = "robust"` is available for a
+#' categorical exposure, and both are refused with an error of class
+#' `propensity_method_error`: the stacked system has a sandwich for every fit
+#' this exposure type accepts, and the diagnostic sandwich describes two fitted
+#' cells that a categorical result does not report.
 #'
 #' For a K-level exposure, the counterfactual mean at each level is reported
 #' first, under the effect label `"mean"`, and then the effects for each
 #' non-reference level against the reference (first) factor level. The
 #' `contrast` column names the level each mean row belongs to and the pair of
 #' levels each effect row compares, as it does for a binary exposure.
+#'
+#' Two fits are refused with an error of class
+#' `propensity_model_family_error`. A [nnet::multinom()] fit to two levels
+#' reports the single probability of a binary exposure rather than one
+#' probability per level; fit such an exposure with [stats::glm()] and
+#' `family = binomial()` and pass it to the `glm` method instead. A fit to a
+#' matrix response records no levels at all, since [nnet::multinom()] reads a
+#' matrix as counts; refit it with the exposure factor on the left-hand side.
 #'
 #' @param .focal_level For the categorical (`multinom`) method with the `att`
 #'   or `atu` estimand, the focal exposure level. If `NULL`, it is taken from
@@ -28,7 +38,7 @@ ipw.multinom <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   .focal_level = NULL,
   effects = c("marginal", "conditional")
 ) {
@@ -43,10 +53,17 @@ ipw.multinom <- function(
   # argument rather than silently ignoring it.
   check_ipw_ps_link_absent(ps_link, "multinomial")
 
-  if (identical(se_method, "linearization")) {
+  # The same two refusals the weight path makes of a `multinom`, in the terms
+  # this method's arguments are named in. A matrix response is read as counts,
+  # so the fit records no levels and the exposure would be read as the deparsed
+  # response instead; a two-level fit is a binary propensity score model.
+  check_multinom_response(wt_mod, arg = "wt_mod")
+  check_ipw_multinom_levels(wt_mod)
+
+  if (!identical(se_method, "mestimation")) {
     abort(
       c(
-        "{.fun ipw} does not support {.val linearization} standard errors for \\
+        "{.fun ipw} does not support {.val {se_method}} standard errors for \\
         categorical exposures.",
         i = "Use {.code se_method = \"mestimation\"} for a categorical \\
         exposure."
@@ -87,17 +104,21 @@ ipw.multinom <- function(
 #' The `lm` method estimates the causal dose-response effect for a continuous
 #' exposure from a fitted [stats::lm()] (or gaussian-family [stats::glm()])
 #' propensity score model of the exposure and a weighted marginal structural
-#' outcome model. A [MASS::rlm()] fit with the Huber psi reaches this method by
-#' inheritance and is stacked at its own score. A gaussian model is read through
-#' its link, which may be identity or log; the other gaussian links, and every
-#' class the stacked system has no score for, are refused, as are the two fits
-#' that have no closed-form standard error, an [mgcv::gam()] propensity score
-#' model and weights built with a `"kernel"` density. See **Continuous
-#' propensity score models** in [ipw()] for what each refusal says and what to
-#' do about it. The only supported estimand is `"ate"`.
+#' outcome model. A [MASS::rlm()] fit with one of the psi functions MASS
+#' supplies and an [mgcv::gam()] of a gaussian family reach this method by
+#' inheritance and are stacked at their own scores, the additive fit with its
+#' smoothing parameters held at the values it reports. A gaussian model is read
+#' through its link, which may be identity or log; the other gaussian links, and
+#' every class the stacked system has no score for, are refused, as are weights
+#' built with a `"kernel"` density, which have no closed-form standard error.
+#' See **Continuous
+#' propensity score models** in [ipw()] for what each refusal says, what to do
+#' about it, and what the additive route conditions on. The only supported
+#' estimand is `"ate"`.
 #'
-#' Standard errors are computed by M-estimation; the linearization method is not
-#' available for continuous exposures. The package offers no resampling method,
+#' Standard errors are computed by M-estimation; neither the linearization
+#' method nor the robust diagnostic is available for continuous exposures. The
+#' package offers no resampling method,
 #' so a fit the stacked system cannot write has no standard error here, and the
 #' refusal points at a bootstrap of the whole pipeline written by hand. See
 #' **Continuous propensity score models** in [ipw()].
@@ -150,7 +171,7 @@ ipw.lm <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()

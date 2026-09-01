@@ -100,13 +100,16 @@ test_that("continuous weights still equal the recorded normal weights", {
 
   for (problem in fixture) {
     for (case in problem$cases) {
-      weights <- wt_ate(
+      # Some of the recorded cases were built with a spread small enough to put
+      # the weights past the finite-variance boundary. The recorded values are
+      # what this test is about, so the report that says so is muffled.
+      weights <- muffle_variance_warning(wt_ate(
         problem$mu,
         problem$exposure,
         .sigma = case$sigma,
         exposure_type = "continuous",
         stabilize = case$stabilize
-      )
+      ))
 
       expect_equal(
         as.numeric(weights),
@@ -123,23 +126,23 @@ test_that("the normal family reproduces the recorded weights exactly", {
 
   for (problem in fixture) {
     for (case in problem$cases) {
-      by_string <- wt_ate(
+      by_string <- muffle_variance_warning(wt_ate(
         problem$mu,
         problem$exposure,
         .sigma = case$sigma,
         exposure_type = "continuous",
         stabilize = case$stabilize,
         .density = "normal"
-      )
+      ))
 
-      by_spec <- wt_ate(
+      by_spec <- muffle_variance_warning(wt_ate(
         problem$mu,
         problem$exposure,
         .sigma = case$sigma,
         exposure_type = "continuous",
         stabilize = case$stabilize,
         .density = dens_normal()
-      )
+      ))
 
       label <- paste(problem$seed, case$stabilize, case$sigma_kind)
 
@@ -554,6 +557,118 @@ test_that("the density cannot be supplied by position", {
       dens_t(df = 4)
     ),
     class = "rlib_error_dots_nonempty"
+  )
+})
+
+# A multi-response linear model of the fixture's exposure. Its fitted values are
+# a matrix of conditional means, one column for each response, rather than the
+# vector of conditional means a continuous exposure is weighted from.
+continuous_multi_response_fit <- function() {
+  fit_data <- data.frame(
+    x = continuous_density_data$x,
+    dose = continuous_density_data$exposure,
+    other = continuous_density_data$exposure - 0.5 * continuous_density_data$x
+  )
+
+  stats::lm(cbind(dose, other) ~ x, data = fit_data)
+}
+
+test_that("a continuous exposure refuses a matrix of conditional means", {
+  # A continuous exposure has one conditional mean for each unit. A matrix with
+  # as many rows as the exposure is long otherwise passes the length check, and
+  # the conditional density is then evaluated over every cell of it, giving one
+  # weight for each entry of the matrix rather than one for each unit.
+  fit <- continuous_multi_response_fit()
+
+  expect_error(
+    wt_ate(
+      stats::fitted(fit),
+      continuous_density_data$exposure,
+      exposure_type = "continuous"
+    ),
+    class = "propensity_ps_shape_error"
+  )
+
+  # The same conditional mean written as a vector is still weighted.
+  expect_length(
+    continuous_density_wt(),
+    continuous_density_data$n
+  )
+})
+
+test_that("a continuous exposure reads one column of conditional means", {
+  # A one-column matrix and a one-dimensional array each hold one conditional
+  # mean for each unit, which is the shape the weights are built from, so each
+  # is read as the vector it is rather than refused for carrying a dimension.
+  # Both weighted correctly before the shape guard was written, and what the
+  # guard is for is a matrix holding more than one mean for each unit.
+  oracle <- as.numeric(continuous_density_wt())
+
+  one_column <- wt_ate(
+    matrix(continuous_density_data$mu, ncol = 1),
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_s3_class(one_column, "psw")
+  expect_equal(as.numeric(one_column), oracle)
+
+  one_dimension <- wt_ate(
+    array(continuous_density_data$mu),
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+  expect_s3_class(one_dimension, "psw")
+  expect_equal(as.numeric(one_dimension), oracle)
+})
+
+test_that("a multi-response linear model is refused by the model route", {
+  fit <- continuous_multi_response_fit()
+
+  expect_error(
+    wt_ate(fit, continuous_density_data$exposure, exposure_type = "continuous"),
+    class = "propensity_ps_shape_error"
+  )
+
+  # Read without an exposure, the model route takes the fit's own response,
+  # which is the response matrix. The refusal has to come before the lengths
+  # are compared, so that the account is of the multi-response fit rather than
+  # of a length the caller never wrote.
+  expect_error(
+    wt_ate(fit, exposure_type = "continuous"),
+    class = "propensity_ps_shape_error"
+  )
+  expect_error(wt_ate(fit), class = "propensity_ps_shape_error")
+})
+
+test_that("the refusal of a matrix of conditional means reads plainly", {
+  fit <- continuous_multi_response_fit()
+
+  expect_propensity_error(
+    wt_ate(
+      stats::fitted(fit),
+      continuous_density_data$exposure,
+      exposure_type = "continuous"
+    )
+  )
+
+  # Censoring weights reach the continuous formula through the same route, so
+  # the refusal is the same one, named for the function the user called.
+  expect_propensity_error(
+    wt_cens(
+      stats::fitted(fit),
+      continuous_density_data$exposure,
+      exposure_type = "continuous"
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(fit, continuous_density_data$exposure, exposure_type = "continuous")
+  )
+
+  expect_propensity_error(
+    wt_cens(fit, continuous_density_data$exposure, exposure_type = "continuous")
   )
 })
 
@@ -987,6 +1102,330 @@ test_that("no residual at all leaves every weight missing", {
   }
 })
 
+test_that("an infinite exposure or fitted value is refused where it arrives", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+
+  infinite_exposure <- exposure
+  infinite_exposure[[3]] <- Inf
+  infinite_mu <- mu
+  infinite_mu[[5]] <- -Inf
+
+  # A missing value is a unit with nothing to weight and leaves that unit's
+  # weight missing. An infinite one is not that: the spread computed from it is
+  # infinite, so every weight comes back missing however few units carry the
+  # infinity, and under a kernel the residuals it leaves are refused as
+  # residuals that do not vary, which they do. Neither report names the value
+  # that caused it, so the value is refused where it arrives.
+  for (family in list("normal", dens_t(df = 4), "kernel")) {
+    expect_error(
+      wt_ate(
+        mu,
+        infinite_exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = family
+      ),
+      class = "propensity_density_error"
+    )
+
+    expect_error(
+      wt_ate(
+        infinite_mu,
+        exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = family
+      ),
+      class = "propensity_density_error"
+    )
+  }
+
+  err <- expect_error(
+    wt_ate(
+      mu,
+      infinite_exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    class = "propensity_density_error"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "infinite", fixed = TRUE)
+  expect_match(message, ".exposure", fixed = TRUE)
+
+  expect_propensity_error(wt_ate(
+    mu,
+    infinite_exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  ))
+  expect_propensity_error(wt_ate(
+    infinite_mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  ))
+
+  # A missing value still weights the way it always has: the units that have a
+  # residual are weighted and the ones that do not are missing.
+  missing_exposure <- exposure
+  missing_exposure[[3]] <- NA_real_
+  weights <- expect_silent(wt_ate(
+    mu,
+    missing_exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  ))
+  expect_identical(which(is.na(as.numeric(weights))), 3L)
+})
+
+# ---- a density that reaches zero --------------------------------------------
+
+# A density with no support beyond two standardized residuals: what a
+# light-tailed family comes to at an outlier, and what a kernel estimate returns
+# past the range it was fit on. The conditional density is what a continuous
+# exposure's weights divide by, so a unit whose own exposure sits outside the
+# support has a weight of infinity.
+truncated_support_density <- function(limit = 2) {
+  dens_fn(function(z) ifelse(abs(z) > limit, 0, dnorm(z)))
+}
+
+test_that("a conditional density of zero is refused rather than weighted as infinite", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+
+  zero_density_weights <- function(...) {
+    wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      .density = truncated_support_density(),
+      ...
+    )
+  }
+
+  # A propensity score of exactly 0 or 1 is refused on the binary path because
+  # the weight it leaves is undefined. A conditional density of zero is the same
+  # case for a continuous exposure, and is answered the same way whatever stands
+  # over it: the marginal density, nothing at all, or the marginalized one.
+  expect_error(
+    zero_density_weights(stabilize = TRUE),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    zero_density_weights(stabilize = FALSE),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    zero_density_weights(stabilize = TRUE, numerator = "integrated"),
+    class = "propensity_density_error"
+  )
+
+  # One unit of this fixture sits outside the support, and the refusal says
+  # which one and what to do about it.
+  err <- expect_error(
+    zero_density_weights(stabilize = TRUE),
+    class = "propensity_density_error"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "33", fixed = TRUE)
+  expect_match(message, "heavier|dens_t|dens_kernel")
+})
+
+test_that("the zero-density refusal reads the way it is written", {
+  expect_propensity_error(wt_ate(
+    continuous_density_data$mu,
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = truncated_support_density()
+  ))
+})
+
+test_that("censoring weights refuse a conditional density of zero as well", {
+  expect_error(
+    wt_cens(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = truncated_support_density()
+    ),
+    class = "propensity_density_error"
+  )
+})
+
+test_that("a weight that is merely large is still a weight", {
+  # A conditional density that is small everywhere rather than zero anywhere.
+  # The weights it leaves are enormous, which is a fact about the fit and not an
+  # arithmetic failure, so they are returned.
+  weights <- expect_silent(wt_ate(
+    continuous_density_data$mu,
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_fn(function(z) dnorm(z, sd = 0.2))
+  ))
+
+  values <- as.numeric(weights)
+  expect_true(all(is.finite(values)))
+  expect_gt(max(values), 1e6)
+})
+
+test_that("a zero in the numerator is a weight of zero, not a refusal", {
+  # An exposure the model follows closely, with one unit far out in the
+  # marginal distribution and no unit far out in the conditional one. The
+  # marginal density is zero at that unit and the conditional density is
+  # positive at every unit, so the ratio is a weight of zero rather than an
+  # infinite one.
+  x <- c(seq(-1, 1, length.out = 20), 8)
+  mu <- 2 * x
+  exposure <- mu + rep(c(-0.4, 0.4), length.out = length(x))
+
+  weights <- expect_silent(wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = truncated_support_density()
+  ))
+
+  values <- as.numeric(weights)
+  expect_true(all(is.finite(values)))
+  expect_identical(which(values == 0), length(x))
+  expect_true(all(values[-length(x)] > 0))
+})
+
+# ---- the finite-variance boundary -------------------------------------------
+
+# Stabilized normal density-ratio weights have a finite second moment only while
+# the marginal variance of the exposure stays below twice the variance of the
+# conditional density. This builds an exposure sitting at a chosen point
+# relative to that boundary: `share` is Var(mu) as a multiple of the conditional
+# variance, so the marginal variance is `share + 1` times it and the boundary is
+# at `share = 1`. The residuals are made orthogonal to the covariate so that the
+# fitted model reproduces the decomposition exactly rather than to within
+# sampling.
+boundary_exposure <- function(share) {
+  withr::local_seed(913)
+
+  n <- 200
+  x <- rnorm(n)
+  x <- x - mean(x)
+  e <- as.numeric(residuals(lm(rnorm(n) ~ x)))
+  b <- sqrt(share * mean(e^2) / mean(x^2))
+  exposure <- b * x + e
+
+  list(n = n, x = x, exposure = exposure, mu = b * x)
+}
+
+# How many messages of one class a single call raises.
+count_class_messages <- function(expr, class) {
+  n <- 0L
+  withCallingHandlers(
+    expr,
+    message = function(cnd) {
+      if (inherits(cnd, class)) {
+        n <<- n + 1L
+        rlang::cnd_muffle(cnd)
+      }
+    }
+  )
+
+  n
+}
+
+test_that("stabilized normal weights report an exposure past the finite-variance boundary", {
+  past <- boundary_exposure(1.4)
+
+  wt_past <- function() {
+    wt_ate(
+      past$mu,
+      past$exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    )
+  }
+
+  cnd <- expect_message(
+    wt_past(),
+    class = "propensity_density_variance_message"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "variance", fixed = TRUE)
+
+  # One report for one call, whatever the weights are computed over.
+  expect_identical(
+    count_class_messages(wt_past(), "propensity_density_variance_message"),
+    1L
+  )
+
+  # The weights are a diagnostic short of nothing: they are still returned, and
+  # they are still finite.
+  weights <- suppressMessages(wt_past())
+  expect_length(weights, past$n)
+  expect_true(all(is.finite(as.numeric(weights))))
+})
+
+test_that("the finite-variance report reads the way it is written", {
+  past <- boundary_exposure(1.4)
+
+  expect_propensity_warning(wt_ate(
+    past$mu,
+    past$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  ))
+})
+
+test_that("the finite-variance boundary is read only where it holds", {
+  below <- boundary_exposure(0.4)
+  near <- boundary_exposure(0.9)
+  past <- boundary_exposure(1.4)
+
+  wt_continuous <- function(fixture, ...) {
+    wt_ate(
+      fixture$mu,
+      fixture$exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      ...
+    )
+  }
+
+  # Well inside the boundary, and just inside it. The second moment exists on
+  # both sides of that distinction, and the report is a statement that it does
+  # not, so it is made at the boundary rather than in front of it.
+  expect_no_message(wt_continuous(below))
+  expect_no_message(wt_continuous(near))
+
+  # The boundary is a property of the normal family read against the exposure's
+  # own marginal density. Unstabilized weights have no marginal density over
+  # them, a heavier-tailed family has a different boundary, a marginalized
+  # numerator is not the marginal density, and a score the caller supplied is
+  # not a density at all.
+  expect_no_message(wt_ate(
+    past$mu,
+    past$exposure,
+    exposure_type = "continuous",
+    stabilize = FALSE
+  ))
+  expect_no_message(wt_continuous(past, .density = dens_t(df = 4)))
+  expect_no_message(wt_continuous(past, numerator = "integrated"))
+  expect_no_message(wt_continuous(
+    past,
+    stabilization_score = rep(0.5, past$n)
+  ))
+
+  # One spread for each unit is not one conditional variance, so there is no
+  # boundary to read the marginal variance against.
+  expect_no_message(wt_continuous(
+    past,
+    .sigma = seq(0.3, 0.7, length.out = past$n)
+  ))
+})
+
 # ---- against WeightIt -------------------------------------------------------
 
 test_that("the denominator is the one WeightIt divides by", {
@@ -1262,6 +1701,109 @@ test_that("an intercept-only model gives integrated weights of exactly one", {
   )
 
   expect_identical(as.numeric(from_model), rep(1, continuous_density_data$n))
+})
+
+test_that("integrated weights do not depend on the units of the exposure", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+
+  # A density ratio is a ratio of densities in the same units, so it is the
+  # same number whether the dose is read in grams or in nanograms. Nothing
+  # about the exposure changes here except the unit it is measured in.
+  unscaled <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+
+  scaled <- wt_ate(
+    mu * 1e-9,
+    exposure * 1e-9,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+
+  expect_equal(as.numeric(scaled), as.numeric(unscaled), tolerance = 1e-8)
+
+  # The failure this guards against is silent: fitted means that vary by less
+  # than the absolute floor of the constancy test are read as one number, and
+  # every weight comes back as exactly one.
+  expect_false(all(as.numeric(scaled) == 1))
+})
+
+test_that("integrated weights do not depend on where the exposure is centered", {
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
+  offset <- 1e9
+
+  # A density ratio is invariant to the origin the dose is measured from as
+  # well as to the unit it is measured in: shifting the exposure and the fitted
+  # means by the same constant leaves every standardized residual and every
+  # standardized grid point where it was.
+  unshifted <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+
+  shifted <- wt_ate(
+    mu + offset,
+    exposure + offset,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+
+  # The comparison is to the precision doubles hold a shifted dose at, which is
+  # about seven digits below the shift itself.
+  expect_equal(
+    as.numeric(shifted),
+    as.numeric(unshifted),
+    tolerance = 1e-5
+  )
+
+  # The failure this guards against is silent: a constancy test whose floor is
+  # a fraction of the mean reads fitted means that differ by a unit or two at
+  # an offset of a billion as one number, and returns a weight of one for every
+  # unit of a model that conditions on a covariate.
+  expect_false(all(as.numeric(shifted) == 1))
+})
+
+test_that("is_constant() reads a spread against the scale it is on", {
+  mu <- continuous_density_data$mu
+  sigma <- continuous_density_pooled()
+
+  # The fitted means of a model with a covariate vary, and they vary just as
+  # much relative to the spread of the exposure when both are rescaled.
+  expect_false(is_constant(mu, scale = sigma))
+  expect_false(is_constant(mu * 1e-9, scale = sigma * 1e-9))
+
+  # Fitted means that really are one number are still read as one number.
+  expect_true(is_constant(rep(mean(mu), length(mu)), scale = sigma))
+  expect_true(is_constant(
+    rep(mean(mu) * 1e-9, length(mu)),
+    scale = sigma * 1e-9
+  ))
+
+  # An offset says nothing about how much the fitted means vary. Read against a
+  # floor that is a fraction of the mean, means that differ by a unit or two at
+  # an offset of a billion are one number, which they are not.
+  expect_false(is_constant(mu + 1e9, scale = sigma))
+
+  # What the offset term is for is still met: the fitted values of an
+  # intercept-only model at that offset spread over the last bits of the
+  # arithmetic that produced them, about 1e-5 here, and are one number as far
+  # as the model is concerned.
+  offset_intercept <- as.numeric(fitted(
+    lm(I(continuous_density_data$exposure + 1e9) ~ 1)
+  ))
+  expect_gt(diff(range(offset_intercept)), 0)
+  expect_true(is_constant(offset_intercept, scale = sigma))
 })
 
 test_that("an exposure that does not vary has no grid to be marginalized over", {
@@ -1969,4 +2511,621 @@ test_that("integrated weights are the weights WeightIt gives", {
       ignore_attr = TRUE
     )
   }
+})
+
+# ---- the t scale by maximum likelihood --------------------------------------
+
+# A continuous-exposure problem whose residuals come from a law with heavy
+# tails, which is what the t family is for. The root mean square of these
+# residuals is pulled out by the few large ones; the maximum likelihood scale of
+# the same t is not.
+continuous_t_data <- local({
+  set.seed(20260830)
+
+  n <- 400
+  x <- rnorm(n)
+  exposure <- 1 + 0.7 * x + rt(n, df = 3)
+
+  list(
+    x = x,
+    exposure = exposure,
+    mu = as.numeric(fitted(lm(exposure ~ x)))
+  )
+})
+
+continuous_t_residuals <- continuous_t_data$exposure - continuous_t_data$mu
+
+# Unstabilized weights for that problem, which are the conditional density and
+# nothing else. The marginal density that stabilizes weights is read at the
+# exposure's own moments, and what is under test here is the spread of the
+# conditional one.
+continuous_t_wt <- function(..., exposure = continuous_t_data$exposure) {
+  wt_ate(
+    continuous_t_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = FALSE,
+    ...
+  )
+}
+
+test_that("the t scale by maximum likelihood is the root of the t score", {
+  # The scale the weights were built at is not reported on its own, so it is
+  # read back through them: the same family spread by a number supplied by hand
+  # is the same ratio, and the two agree only if the package solved the equation
+  # the oracle solved.
+  scale <- t_scale_mle(continuous_t_residuals, df = 3)
+
+  mle <- continuous_t_wt(.density = dens_t(3, sigma_method = "mle"))
+  oracle <- continuous_t_wt(.density = dens_t(3), .sigma = scale)
+
+  expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
+})
+
+test_that("a maximum likelihood scale parts from the root mean square in heavy tails", {
+  rms <- continuous_t_wt(.density = dens_t(3))
+  mle <- continuous_t_wt(.density = dens_t(3, sigma_method = "mle"))
+
+  relative <- abs(as.numeric(mle) / as.numeric(rms) - 1)
+
+  # Neither set of weights is a rescaling of the other: the residuals that pull
+  # the root mean square out are the ones the two spreads disagree about most,
+  # and they are the units whose weights the choice of spread decides.
+  expect_gt(max(relative), 0.5)
+  expect_gt(mean(relative), 0.1)
+})
+
+test_that("the two spreads meet as the t approaches the normal", {
+  # A t with many degrees of freedom is the normal, and the maximum likelihood
+  # scale of a normal is its root mean square, so on residuals that are normal
+  # the two estimators answer the same question and answer it alike.
+  residuals <- continuous_density_data$exposure - continuous_density_data$mu
+  scale <- t_scale_mle(residuals, df = 1000)
+
+  expect_equal(scale, continuous_density_pooled(), tolerance = 0.005)
+
+  rms <- continuous_density_wt(stabilize = FALSE, .density = dens_t(1000))
+  mle <- continuous_density_wt(
+    stabilize = FALSE,
+    .density = dens_t(1000, sigma_method = "mle")
+  )
+
+  expect_lt(max(abs(as.numeric(mle) / as.numeric(rms) - 1)), 0.01)
+})
+
+test_that("the t family is spread by the root mean square unless asked otherwise", {
+  # The default is the estimator every family takes, so weights written the way
+  # they have always been written are the weights they have always been.
+  default <- continuous_t_wt(.density = dens_t(6))
+  asked <- continuous_t_wt(.density = dens_t(6, sigma_method = "rms"))
+
+  expect_identical(as.numeric(default), as.numeric(asked))
+  expect_identical(density_meta(default)$sigma, "pooled")
+  expect_identical(density_meta(asked)$sigma, "pooled")
+})
+
+test_that("weights record a maximum likelihood spread as a source of its own", {
+  mle <- continuous_t_wt(.density = dens_t(6, sigma_method = "mle"))
+
+  # A third source beside the pooled root mean square and a spread the caller
+  # supplied. It is estimated from the residuals, as the pooled one is, but by a
+  # different equation, and that is the equation `ipw()` has to solve to rebuild
+  # these weights.
+  expect_identical(density_meta(mle)$sigma, "mle")
+
+  # It is a function of the data rather than a number the caller chose, so there
+  # is no constant to keep, exactly as for the pooled spread.
+  expect_null(density_meta(mle)$sigma_value)
+})
+
+test_that("a maximum likelihood scale spreads the conditional density alone", {
+  # `.sigma` and `sigma_method` describe the same thing: the spread of the
+  # conditional density the weights divide by. The marginal density that
+  # stabilizes them is the exposure's own, read at the exposure's own mean and
+  # root mean square, which neither of them has ever changed.
+  scale <- t_scale_mle(continuous_t_residuals, df = 6)
+
+  stabilized <- wt_ate(
+    continuous_t_data$mu,
+    continuous_t_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(6, sigma_method = "mle")
+  )
+  oracle <- wt_ate(
+    continuous_t_data$mu,
+    continuous_t_data$exposure,
+    .sigma = scale,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(6)
+  )
+
+  expect_equal(as.numeric(stabilized), as.numeric(oracle), tolerance = 1e-8)
+})
+
+test_that("a maximum likelihood scale is fit on the residuals that are there", {
+  exposure <- continuous_t_data$exposure
+  exposure[c(4, 19)] <- NA
+
+  scale <- t_scale_mle(exposure - continuous_t_data$mu, df = 4)
+
+  mle <- continuous_t_wt(
+    exposure = exposure,
+    .density = dens_t(4, sigma_method = "mle")
+  )
+  oracle <- continuous_t_wt(
+    exposure = exposure,
+    .density = dens_t(4),
+    .sigma = scale
+  )
+
+  # A unit with no exposure has no residual for the likelihood to read and no
+  # weight to be given, and it is the only unit that comes back missing.
+  expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
+  expect_true(all(is.na(as.numeric(mle)[c(4, 19)])))
+  expect_false(anyNA(as.numeric(mle)[-c(4, 19)]))
+})
+
+test_that("a spread supplied and a spread estimated under the density are refused together", {
+  # `.sigma` says the spread is a number of the caller's own, and
+  # `sigma_method = "mle"` says it is estimated from the residuals: two
+  # instructions about the same quantity, one of which would go unread whichever
+  # way the pairing was resolved.
+  expect_propensity_error(
+    continuous_t_wt(.density = dens_t(4, sigma_method = "mle"), .sigma = 0.9)
+  )
+
+  # The default estimator takes a supplied spread as every other family does, so
+  # what is refused is the pairing rather than the family.
+  expect_no_error(continuous_t_wt(.density = dens_t(4), .sigma = 0.9))
+})
+
+# A propensity score model that all but interpolates its exposure: every unit
+# but one is reproduced to within a billionth, and the one that is not is far
+# away. Residuals like these have a maximum likelihood scale of their own, and
+# it sits orders of magnitude below their root mean square, which the single
+# large residual is almost all of.
+continuous_interpolating_data <- local({
+  set.seed(20260831)
+
+  mu <- rnorm(60)
+
+  list(mu = mu, exposure = mu + c(rep(1e-9, 59), 4))
+})
+
+test_that("a maximum likelihood scale far below the root mean square is found", {
+  mu <- continuous_interpolating_data$mu
+  exposure <- continuous_interpolating_data$exposure
+  scale <- t_scale_mle(exposure - mu, df = 4)
+
+  # The scale the likelihood is maximized at is nowhere near the spread the
+  # residuals average to, so an estimator that only looks near the root mean
+  # square never reaches it.
+  expect_lt(scale, sqrt(mean((exposure - mu)^2)) / 1e4)
+
+  mle <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = FALSE,
+    .density = dens_t(4, sigma_method = "mle")
+  )
+  oracle <- wt_ate(
+    mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = FALSE,
+    .density = dens_t(4),
+    .sigma = scale
+  )
+
+  expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
+})
+
+test_that("a likelihood with no maximum at a positive scale is refused", {
+  # Residuals a model reproduced exactly say nothing about the spread of the
+  # density around it, and once enough of them are exactly zero the likelihood
+  # rises the whole way down: there is no scale to return, and how many is
+  # enough is a question the degrees of freedom answer.
+  mu <- seq(0, 1, length.out = 10)
+  exposure <- mu
+  exposure[[3]] <- exposure[[3]] + 1
+
+  expect_propensity_error(
+    wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = FALSE,
+      .density = dens_t(4, sigma_method = "mle")
+    )
+  )
+
+  # The same residuals under a t with lighter tails still leave a maximum: how
+  # many exact zeros are too many is a question of how readily the family
+  # dismisses the residual that is there as an outlier, and a nearly normal t
+  # does not dismiss it at all.
+  expect_no_error(
+    wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = FALSE,
+      .density = dens_t(20, sigma_method = "mle")
+    )
+  )
+})
+
+# ---- a numerator model supplied to stabilize --------------------------------
+
+# A conditional numerator for the same problem: the exposure fit on a baseline
+# covariate the propensity score model does not read. The weights it stabilizes
+# are f(A | V) / f(A | X), each density read at the residual spread of its own
+# model rather than at one spread shared between them.
+continuous_numerator_model <- local({
+  v <- withr::with_seed(
+    20250830,
+    stats::rnorm(continuous_density_data$n)
+  )
+  exposure <- continuous_density_data$exposure
+
+  stats::lm(exposure ~ v)
+})
+
+# The pooled residual spread of a fitted model, which is what its density is
+# read at: the uncentered root mean square, the same estimator the conditional
+# density uses.
+continuous_model_rms <- function(model) {
+  sqrt(mean(stats::residuals(model)^2))
+}
+
+test_that("a numerator model supplied to stabilize is the conditional density ratio", {
+  exposure <- continuous_density_data$exposure
+  fit <- continuous_numerator_model
+
+  f_num <- stats::dnorm(
+    exposure,
+    as.numeric(stats::fitted(fit)),
+    continuous_model_rms(fit)
+  )
+  f_den <- stats::dnorm(
+    exposure,
+    continuous_density_data$mu,
+    continuous_density_pooled()
+  )
+
+  weights <- wt_ate(
+    continuous_density_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit
+  )
+
+  expect_s3_class(weights, "psw")
+  expect_equal(as.numeric(weights), f_num / f_den, tolerance = 1e-12)
+
+  # The conditional numerator is not the marginal one, so the weights it builds
+  # are a different set of weights rather than the same ones under another name.
+  marginal <- continuous_density_wt()
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    as.numeric(marginal),
+    tolerance = 1e-8
+  )))
+})
+
+test_that("the weights record the numerator model they were stabilized on", {
+  weights <- wt_ate(
+    continuous_density_data$mu,
+    continuous_density_data$exposure,
+    exposure_type = "continuous",
+    stabilize = continuous_numerator_model
+  )
+  record <- density_meta(weights)
+
+  expect_true(is_stabilized(weights))
+  expect_identical(estimand(weights), "ate")
+  expect_identical(exposure_type(weights), "continuous")
+
+  # The model itself is recorded, not the numerator it evaluates to: `ipw()`
+  # rebuilds the numerator at every value of theta, which takes the design and
+  # the coefficients rather than the fitted values.
+  expect_s3_class(record, "propensity_density_meta")
+  expect_identical(record$numerator, "model")
+  expect_identical(record$numerator_model, continuous_numerator_model)
+  expect_identical(record$sigma, "pooled")
+  expect_identical(format(record$density), "normal")
+
+  # A model is a numerator rather than a score, so nothing is recorded as one.
+  expect_null(stabilization_score(weights))
+
+  # The record prints the numerator it holds the way it prints every other
+  # field of the ratio.
+  expect_true(any(grepl("model", format(record), fixed = TRUE)))
+})
+
+test_that("the numerator model leaves the other stabilizations alone", {
+  exposure <- continuous_density_data$exposure
+  sigma <- continuous_density_pooled()
+
+  f_den <- stats::dnorm(exposure, continuous_density_data$mu, sigma)
+  f_marginal <- stats::dnorm(
+    exposure,
+    mean(exposure),
+    continuous_density_sd_a()
+  )
+
+  marginal <- continuous_density_wt()
+  expect_equal(as.numeric(marginal), f_marginal / f_den, tolerance = 1e-12)
+  expect_identical(density_meta(marginal)$numerator, "marginal")
+  expect_null(density_meta(marginal)$numerator_model)
+
+  unstabilized <- continuous_density_wt(stabilize = FALSE)
+  expect_equal(as.numeric(unstabilized), 1 / f_den, tolerance = 1e-12)
+  expect_identical(density_meta(unstabilized)$numerator, "none")
+  expect_null(density_meta(unstabilized)$numerator_model)
+  expect_false(is_stabilized(unstabilized))
+})
+
+test_that("a numerator model of a dose refuses a binary or a categorical exposure", {
+  set.seed(4218)
+  ps <- runif(20, 0.2, 0.8)
+  trt <- rbinom(20, 1, ps)
+  dose <- rnorm(20)
+  fit <- lm(dose ~ ps)
+
+  # Stabilizing on a fitted numerator is a statement about the exposure the
+  # model reads. A binary exposure takes one too, but its numerator is a
+  # probability rather than a density, so a least-squares fit of a dose names
+  # nothing a binary exposure's weights could divide by and is refused as the
+  # wrong family; see tests/testthat/test-weights-numerator-binary.R for the
+  # binomial fit that is the right one.
+  expect_error(
+    wt_ate(ps, trt, exposure_type = "binary", stabilize = fit),
+    class = "propensity_model_family_error"
+  )
+  expect_error(
+    wt_ate(ps, trt, stabilize = fit),
+    class = "propensity_model_family_error"
+  )
+
+  # A categorical exposure's weights are a ratio over more than two levels and
+  # take no fitted numerator at all, which is the refusal an integrated
+  # numerator gets for the same reason.
+  exposure <- factor(rep(c("a", "b", "c"), each = 4))
+  categorical_ps <- matrix(
+    rep(c(0.5, 0.3, 0.2), times = 12),
+    ncol = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("a", "b", "c"))
+  )
+  categorical_fit <- lm(rnorm(12) ~ seq_len(12))
+
+  expect_error(
+    wt_ate(
+      categorical_ps,
+      exposure,
+      exposure_type = "categorical",
+      stabilize = categorical_fit
+    ),
+    class = "propensity_numerator_error"
+  )
+})
+
+test_that("a numerator model is read the way a propensity score model is", {
+  exposure <- continuous_density_data$exposure
+
+  # A fit whose spread changes with its fitted values describes no single
+  # conditional density, and it is refused as such wherever it arrives: the
+  # numerator model is held to the family the propensity score model is held to.
+  binary_outcome <- as.numeric(exposure > 0)
+  wrong_family <- glm(
+    binary_outcome ~ continuous_density_data$x,
+    family = binomial()
+  )
+
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = wrong_family
+    ),
+    class = "propensity_model_family_error"
+  )
+
+  # A model fit to a different number of observations has one numerator for
+  # each of its own units and none for the units here, so it is refused rather
+  # than recycled against them.
+  short <- stats::lm(
+    exposure[1:20] ~ continuous_density_data$x[1:20]
+  )
+
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = short
+    ),
+    class = "propensity_length_error"
+  )
+})
+
+test_that("a numerator model fit with case weights is refused", {
+  # The numerator is a quantity in the sample the weights are being built for,
+  # and a fit made under case weights estimates it in a reweighted one. The
+  # weights also record the model so that `ipw()` can rebuild the numerator at
+  # every value of theta, and the equations it stacks for that are the model's
+  # unweighted score, which a weighted fit is not at the root of. Refusing the
+  # model where it arrives names the argument the caller wrote rather than
+  # leaving the fit to be refused a step later.
+  exposure <- continuous_density_data$exposure
+  case_wt <- rep(c(1, 2), length.out = continuous_density_data$n)
+  weighted <- stats::lm(
+    exposure ~ continuous_density_data$x,
+    weights = case_wt
+  )
+
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = weighted
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  # Unit weights are the weights an unweighted fit records, so a model fit
+  # under them is the unweighted fit and is taken.
+  unit <- stats::lm(
+    exposure ~ continuous_density_data$x,
+    weights = rep(1, continuous_density_data$n)
+  )
+
+  expect_s3_class(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = unit
+    ),
+    "psw"
+  )
+})
+
+test_that("a numerator model and a stabilization score are two numerators", {
+  # A score the caller computed is itself the numerator of the weights, and a
+  # model is a second one; the two together are two instructions about the same
+  # quantity, the way a supplied spread and an estimated one are.
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = continuous_numerator_model,
+      stabilization_score = rep(0.5, continuous_density_data$n)
+    ),
+    class = "propensity_numerator_error"
+  )
+
+  # An integrated numerator marginalizes the conditional density over the
+  # units, which is a third numerator and not one a model can be read into.
+  expect_error(
+    wt_ate(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = continuous_numerator_model,
+      numerator = "integrated"
+    ),
+    class = "propensity_numerator_error"
+  )
+})
+
+test_that("the numerator model refusals read as the refusals they are", {
+  exposure <- continuous_density_data$exposure
+  fit <- continuous_numerator_model
+
+  # A model of a dose handed to a binary exposure is refused as the wrong
+  # family rather than as a model where none is taken, so its wording belongs
+  # with the binary route's own refusals.
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = fit,
+      stabilization_score = rep(0.5, continuous_density_data$n)
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = fit,
+      numerator = "integrated"
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = stats::glm(
+        as.numeric(exposure > 0) ~ continuous_density_data$x,
+        family = binomial()
+      )
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = stats::lm(
+        exposure[1:20] ~ continuous_density_data$x[1:20]
+      )
+    )
+  )
+})
+
+test_that("stabilize takes one of the answers or a model and nothing else", {
+  # Every consumer of the resolved argument asks `isTRUE()` of it, so a value
+  # naming neither answer would otherwise be read as `FALSE` and the weights
+  # would come back unstabilized without a word.
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = "yes"
+    )
+  )
+
+  expect_propensity_error(
+    wt_ate(
+      continuous_density_data$mu,
+      continuous_density_data$exposure,
+      exposure_type = "continuous",
+      stabilize = NA
+    )
+  )
+})
+
+test_that("censoring weights reach the numerator model route too", {
+  # `wt_cens()` builds its weights with the ATE formula, so a numerator model
+  # arrives there through the same argument and is recorded the same way.
+  exposure <- continuous_density_data$exposure
+  fit <- continuous_numerator_model
+
+  weights <- wt_cens(
+    continuous_density_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit
+  )
+
+  f_num <- stats::dnorm(
+    exposure,
+    as.numeric(stats::fitted(fit)),
+    continuous_model_rms(fit)
+  )
+  f_den <- stats::dnorm(
+    exposure,
+    continuous_density_data$mu,
+    continuous_density_pooled()
+  )
+
+  expect_identical(estimand(weights), "uncensored")
+  expect_equal(as.numeric(weights), f_num / f_den, tolerance = 1e-12)
+  expect_identical(density_meta(weights)$numerator, "model")
+  expect_identical(density_meta(weights)$numerator_model, fit)
 })

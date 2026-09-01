@@ -19,6 +19,15 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
+# ipw() rejects robust standard errors for a continuous exposure
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support "robust" standard errors for continuous exposures.
+      i Use `se_method = "mestimation"` for a continuous exposure.
+
 # the continuous ps_link error explains why the argument does not apply
 
     Code
@@ -55,9 +64,9 @@
       expr
     Condition <propensity_ipw_robust_psi_error>
       Error in `ipw()`:
-      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
-      x `wt_mod` was fit with `MASS::psi.bisquare()`.
-      i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
+      x `wt_mod` was fit with a psi function this path cannot recognize.
+      i Refit `wt_mod` with `MASS::psi.huber()`, `MASS::psi.bisquare()`, or `MASS::psi.hampel()`, whose constants `ipw()` reads off the fit.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # the MM refusal names the method and the psi it finishes on
@@ -66,9 +75,20 @@
       expr
     Condition <propensity_ipw_robust_psi_error>
       Error in `ipw()`:
-      ! `ipw()` stacks only the Huber score of a <rlm/lm> propensity score model of a continuous exposure.
-      x `wt_mod` was fit with `method = "MM"`, which starts from a high-breakdown fit and finishes on `MASS::psi.bisquare()`.
-      i Refit `wt_mod` with `MASS::psi.huber()`, the default, whose threshold `ipw()` reads off the fit.
+      ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
+      x `wt_mod` was fit with `method = "MM"`, whose high-breakdown start decides which root of `MASS::psi.bisquare()` the fit finishes at and supplies the scale it clips at, and neither of those is an equation this system writes, so a sandwich read at those coefficients would not describe how the fit behaves across samples.
+      i Refit `wt_mod` with the default `method = "M"`, whose psi score `ipw()` writes.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# ipw() refuses the MM method whose psi it cannot name
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
+      x `wt_mod` was fit with `method = "MM"`, whose high-breakdown start decides which root the fit finishes at and supplies the scale it clips at, and neither of those is an equation this system writes.
+      i Refit `wt_mod` with the default `method = "M"`, whose psi score `ipw()` writes.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
 
 # the robust convergence refusal names the arguments that fix it
@@ -87,10 +107,20 @@
       expr
     Condition <propensity_class_error>
       Error in `ipw()`:
-      ! `ipw()` supports only `stats::lm()`, gaussian `stats::glm()`, or `MASS::rlm()` propensity score models for a continuous exposure.
+      ! `ipw()` supports only `stats::lm()`, gaussian `stats::glm()`, `MASS::rlm()`, or `mgcv::gam()` as the propensity score model of a continuous exposure.
       x `wt_mod` has class <mymodel/lm>.
-      i A <gam> is recognized and refused on its own terms; every other class reaches this refusal.
+      i Each of those is read as the class it is rather than by what it inherits from, so a subclass of one of them reaches this refusal too.
       i Refit `wt_mod` with `stats::lm()` or `stats::glm(family = gaussian())`.
+
+# ipw() refuses a propensity model fit without a formula
+
+    Code
+      expr
+    Condition <propensity_ipw_response_error>
+      Error in `ipw()`:
+      ! `ipw()` needs a propensity score model fit through the formula interface.
+      x `wt_mod` records no formula with a response, so the exposure cannot be read off it.
+      i Refit `wt_mod` from a formula whose left-hand side is the exposure, as in `exposure ~ x`, rather than from a design matrix and a response vector.
 
 # the continuous propensity-link error names the link and the remedy
 
@@ -102,16 +132,6 @@
       x `wt_mod` is a gaussian model fit with the "inverse" link.
       i Refit `wt_mod` with one of "identity" and "log", or as an `lm()`.
 
-# the unavailable-method error explains what the sandwich cannot do
-
-    Code
-      expr
-    Condition <propensity_ipw_se_method_unavailable_error>
-      Error in `ipw()`:
-      ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> propensity score model of a continuous exposure.
-      x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
-      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
-
 # the kernel-density refusal names the bandwidth as the reason
 
     Code
@@ -121,4 +141,57 @@
       ! `ipw()` cannot build a sandwich variance for weights built with a "kernel" density.
       x The bandwidth of a kernel estimate is chosen from the residuals of the propensity score model, so the weights are not a differentiable function of that model's parameters.
       i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# ipw() refuses a numerator model whose score it cannot write
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot write the equation this <rlm/lm> numerator model of a continuous exposure is the root of.
+      x `stabilize` was fit with a psi function this path cannot recognize.
+      i Refit `stabilize` with `MASS::psi.huber()`, `MASS::psi.bisquare()`, or `MASS::psi.hampel()`, whose constants `ipw()` reads off the fit.
+      i propensity has no resampling method; bootstrap the whole fit yourself: resample the rows, refit the propensity score model, rebuild the weights with `wt_ate()`, and refit the outcome model on each resample.
+
+# ipw() refuses a numerator model fit with case weights
+
+    Code
+      expr
+    Condition <propensity_ipw_ps_weights_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support a numerator model fit with case weights.
+      x `stabilize` was fit with non-unit `weights`, so its coefficients are not the root of the unweighted score stacked for it.
+      i Refit `stabilize` without `weights`.
+
+# ipw() refuses a numerator model of another response
+
+    Code
+      expr
+    Condition <propensity_ipw_numerator_error>
+      Error in `ipw()`:
+      ! The model supplied to `stabilize` must model the exposure.
+      x It models "yc" and `wt_mod` models "A".
+      i The numerator of the weights is what the numerator model reports about the exposure given what it reads, so both models describe the same response.
+
+# ipw() refuses a numerator model fit to other observations
+
+    Code
+      expr
+    Condition <propensity_ipw_numerator_error>
+      Error in `ipw()`:
+      ! The model supplied to `stabilize` must be fit to the observations the other models were fit to.
+      x It was fit to 200 observations and `outcome_mod` to 197.
+      i Refit the numerator model on the data the other models were fit to, and rebuild the weights from it.
+
+# ipw() refuses a numerator model with a dropped coefficient
+
+    Code
+      expr
+    Condition <propensity_ipw_rank_error>
+      Error in `ipw()`:
+      ! `stabilize` must have a coefficient for every column of its design.
+      x `stabilize` has no fitted coefficient for "x1_again".
+      i A model reports that for a column its design cannot separate from the others: the column is a linear combination of them, exactly or to within the tolerance the fit pivots at, so the fit has no unique solution for it and drops it.
+      i `ipw()` rebuilds the numerator of the weights by multiplying the fitted coefficients against that design, so a column with no coefficient leaves every numerator undefined.
+      i Refit `stabilize` without the redundant column, or combine it with the column it duplicates.
 

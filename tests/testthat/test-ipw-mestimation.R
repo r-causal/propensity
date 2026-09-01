@@ -1,6 +1,4 @@
 test_that("deli integration: M-estimation solves and returns sandwich variance", {
-  skip_if_not_installed("deli")
-
   set.seed(1)
   y <- rnorm(50, mean = 3, sd = 2)
 
@@ -193,7 +191,6 @@ expect_estimate_match <- function(estimates, reference, tolerance = 1e-8) {
 # ---- point-estimate parity with the g-computation plug-in -------------------
 
 test_that("ipw_mestimation ate point estimates match the g-computation plug-in for binomial outcomes", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   # The g-computation plug-in is the point-estimate oracle. Both standard error
@@ -208,7 +205,6 @@ test_that("ipw_mestimation ate point estimates match the g-computation plug-in f
 })
 
 test_that("ipw_mestimation ate point estimates match the g-computation plug-in for gaussian outcomes", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate", outcome_family = "gaussian")
   ref <- plugin_contrasts(mods$outcome_mod, dat, "z", estimand = "ate")
@@ -229,7 +225,6 @@ test_that("ipw_mestimation ate point estimates match the g-computation plug-in f
 # sanity check while accommodating that inherent gap. The outcome model is fit on
 # the exposure alone, the domain where the linearization comparator is valid.
 test_that("ipw_mestimation std.err matches linearization within 3 percent", {
-  skip_if_not_installed("deli")
   configs <- list(
     list(est = "ate", link = "logit", family = "binomial"),
     list(est = "ate", link = "probit", family = "binomial"),
@@ -282,7 +277,6 @@ test_that("ipw_mestimation std.err matches linearization within 3 percent", {
 # is only exercised for a converged fit with finite, positive standard errors and
 # ordered intervals, which holds regardless of the marginal-mean standardization.
 test_that("ipw_mestimation runs atu and entropy with finite SEs", {
-  skip_if_not_installed("deli")
   for (est in c("atu", "entropy")) {
     dat <- sim_binary()
     mods <- fit_binary_models(dat, est)
@@ -297,7 +291,6 @@ test_that("ipw_mestimation runs atu and entropy with finite SEs", {
 # ---- stabilized ate ---------------------------------------------------------
 
 test_that("ipw_mestimation runs stabilized ate and matches the stabilized plug-in", {
-  skip_if_not_installed("deli")
   dat <- sim_binary(seed = 99, n = 2000)
   mods <- fit_binary_models(dat, "ate", stabilize = TRUE)
   spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
@@ -311,7 +304,6 @@ test_that("ipw_mestimation runs stabilized ate and matches the stabilized plug-i
 # ---- estimates table shape --------------------------------------------------
 
 test_that("ipw_mestimation estimates table has the documented shape", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
 
   mods <- fit_binary_models(dat, "ate")
@@ -357,7 +349,6 @@ test_that("ipw_mestimation estimates table has the documented shape", {
 # ---- fit object -------------------------------------------------------------
 
 test_that("ipw_mestimation returns a converged deli fit with named theta", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
@@ -386,7 +377,6 @@ test_that("ipw_mestimation returns a converged deli fit with named theta", {
 # ---- name collisions between covariates and contrast labels ------------------
 
 test_that("ipw_mestimation addresses contrast rows by position, not by name", {
-  skip_if_not_installed("deli")
   # A covariate literally named "rd" collides with the rd contrast label. The ps
   # and outcome coefficient blocks precede the contrast block in theta and keep
   # their term names, so name-based subsetting of coef(fit) would return the ps
@@ -428,7 +418,6 @@ test_that("ipw_mestimation addresses contrast rows by position, not by name", {
 # ---- weight-consistency preflight -------------------------------------------
 
 test_that("ipw_check_weight_consistency passes for consistent models", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
@@ -437,7 +426,6 @@ test_that("ipw_check_weight_consistency passes for consistent models", {
 })
 
 test_that("ipw_check_weight_consistency recomputes from the layout it is given", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
@@ -461,7 +449,6 @@ test_that("ipw_check_weight_consistency recomputes from the layout it is given",
 })
 
 test_that("ipw_check_weight_consistency reads two positional arguments", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
@@ -478,7 +465,6 @@ test_that("ipw_check_weight_consistency reads two positional arguments", {
 })
 
 test_that("ipw_check_weight_consistency errors on weights from a different ps model", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   ps_a <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts_a <- withr::with_options(
@@ -503,7 +489,6 @@ test_that("ipw_check_weight_consistency errors on weights from a different ps mo
 })
 
 test_that("ipw_check_weight_consistency errors on manually doubled weights", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
@@ -515,7 +500,6 @@ test_that("ipw_check_weight_consistency errors on manually doubled weights", {
 })
 
 test_that("the weight-consistency error names a focal level as a possible cause", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   spec <- ipw_spec_binary(mods$ps_mod, mods$outcome_mod)
@@ -582,7 +566,6 @@ weight_mismatch_error <- function() {
 }
 
 test_that("the weight-consistency error opens with the comparison it made", {
-  skip_if_not_installed("deli")
   parts <- mismatch_message_parts(weight_mismatch_error())
 
   # The first line names both sides of the comparison and the fact that they
@@ -605,7 +588,6 @@ test_that("the weight-consistency error opens with the comparison it made", {
 })
 
 test_that("the weight-consistency error lists the causes of a divergence", {
-  skip_if_not_installed("deli")
   parts <- mismatch_message_parts(weight_mismatch_error())
   info <- parts$bullets[names(parts$bullets) == "i"]
   expect_gt(length(info), 0)
@@ -628,7 +610,6 @@ test_that("the weight-consistency error lists the causes of a divergence", {
 })
 
 test_that("the weight-consistency error hedges the refit remedy", {
-  skip_if_not_installed("deli")
   parts <- mismatch_message_parts(weight_mismatch_error())
   refit <- parts$bullets[grepl("Refit", parts$bullets, fixed = TRUE)]
   expect_length(refit, 1)
@@ -640,7 +621,6 @@ test_that("the weight-consistency error hedges the refit remedy", {
 })
 
 test_that("the weight-consistency error message is stable on the binary mestimation route", {
-  skip_if_not_installed("deli")
   mods <- fit_mismatched_binary_models(sim_binary())
 
   expect_error(
@@ -655,7 +635,6 @@ test_that("the weight-consistency error message is stable on the binary mestimat
 })
 
 test_that("ipw_spec_binary errors when the estimand cannot be determined", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   # plain numeric weights carry no estimand attribute, so with estimand = NULL
   # there is nothing to detect
@@ -693,7 +672,6 @@ sim_tilt <- function(seed = 501, n = 20000) {
 }
 
 test_that("mestimation diff matches the tilted oracle under a heterogeneous effect", {
-  skip_if_not_installed("deli")
   dat <- sim_tilt()
   ps_mod <- glm(z ~ x, data = dat, family = binomial())
   e_hat <- as.double(predict(ps_mod, type = "response"))
@@ -731,7 +709,6 @@ test_that("mestimation diff matches the tilted oracle under a heterogeneous effe
 })
 
 test_that("mestimation att marginal means equal the tilt-standardized predictions at the solved theta", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- withr::with_options(list(propensity.quiet = TRUE), wt_att(ps_mod))
@@ -770,7 +747,6 @@ test_that("mestimation att marginal means equal the tilt-standardized prediction
 })
 
 test_that("mestimation tilted point estimates match the tilt-standardized plug-in for binomial outcomes", {
-  skip_if_not_installed("deli")
   for (est in c("att", "atu", "atm", "ato", "entropy")) {
     dat <- sim_binary()
     mods <- fit_binary_models(dat, est)
@@ -789,7 +765,6 @@ test_that("mestimation tilted point estimates match the tilt-standardized plug-i
 })
 
 test_that("mestimation att with a saturated outcome model matches the tilt-standardized plug-in", {
-  skip_if_not_installed("deli")
   # A saturated outcome model has predictions constant within arm, so the att
   # tilt is a no-op on the contrast and the engine matches the tilt-standardized
   # plug-in whether or not the standardization is applied. This anchors the
@@ -810,7 +785,6 @@ test_that("mestimation att with a saturated outcome model matches the tilt-stand
 })
 
 test_that("mestimation categorical att matches the tilt-standardized plug-in", {
-  skip_if_not_installed("deli")
   skip_if_not_installed("nnet")
   withr::local_seed(913)
   n <- 900
@@ -892,7 +866,6 @@ boot_gcomp_diffs <- function(dat, estimand, reps = 200, seed = 7) {
 }
 
 test_that("mestimation ate SE matches a nonparametric bootstrap for an adjusted outcome model", {
-  skip_if_not_installed("deli")
   dat <- sim_tilt(seed = 321, n = 1500)
   ps_mod <- glm(z ~ x, data = dat, family = binomial())
   wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
@@ -912,7 +885,6 @@ test_that("mestimation ate SE matches a nonparametric bootstrap for an adjusted 
 })
 
 test_that("mestimation att SE matches a nonparametric bootstrap for an adjusted outcome model", {
-  skip_if_not_installed("deli")
   dat <- sim_tilt(seed = 321, n = 1500)
   ps_mod <- glm(z ~ x, data = dat, family = binomial())
   wts <- withr::with_options(list(propensity.quiet = TRUE), wt_att(ps_mod))
@@ -1050,7 +1022,6 @@ test_that("ipw_spec_binary accepts lm, gaussian-identity, binomial, and quasibin
 # cloglog.
 
 test_that("mestimation rejects a propensity score link outside the supported set", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   # Both entry points are asserted. The validation belongs at spec construction,
   # so ipw_spec_binary() must reject the link on its own rather than relying on
@@ -1071,7 +1042,6 @@ test_that("mestimation rejects a propensity score link outside the supported set
 })
 
 test_that("the propensity score link error names the link and the supported set", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate", ps_link = "cauchit")
 
@@ -1094,7 +1064,6 @@ test_that("the propensity score link error names the link and the supported set"
 })
 
 test_that("the ps_link argument is validated against the supported set", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate", ps_link = "logit")
 
@@ -1162,7 +1131,6 @@ response_outcome <- function(response, dat, wts) {
 }
 
 test_that("mestimation matches a factor outcome response to the numeric fit", {
-  skip_if_not_installed("deli")
   dat <- response_binary_data()
   s <- response_binary_setup(dat)
   num <- ipw(s$ps_mod, response_outcome("y", dat, s$wts))$estimates
@@ -1172,7 +1140,6 @@ test_that("mestimation matches a factor outcome response to the numeric fit", {
 })
 
 test_that("mestimation matches a logical outcome response to the numeric fit", {
-  skip_if_not_installed("deli")
   dat <- response_binary_data()
   s <- response_binary_setup(dat)
   num <- ipw(s$ps_mod, response_outcome("y", dat, s$wts))$estimates
@@ -1182,7 +1149,6 @@ test_that("mestimation matches a logical outcome response to the numeric fit", {
 })
 
 test_that("mestimation matches a factor outcome supplied through .data", {
-  skip_if_not_installed("deli")
   dat <- response_binary_data()
   s <- response_binary_setup(dat)
   num <- ipw(s$ps_mod, response_outcome("y", dat, s$wts), .data = dat)$estimates
@@ -1196,7 +1162,6 @@ test_that("mestimation matches a factor outcome supplied through .data", {
 })
 
 test_that("mestimation matches a three-level factor outcome to the numeric fit", {
-  skip_if_not_installed("deli")
   dat <- response_binary_data()
   # A three-level factor whose first level is the failure: glm maps every
   # non-first level to success, so the response is 0/1, but as.double(f) is
@@ -1260,7 +1225,6 @@ ps_design_categorical <- function(dat, seed = 2025) {
 }
 
 test_that("mestimation reconstructs the binary ps design from .data when the fit frame is gone", {
-  skip_if_not_installed("deli")
   dat <- ps_design_data()
   ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
   # model = FALSE drops the stored model frame; removing the fitting data leaves
@@ -1338,7 +1302,6 @@ test_that("the ps frame-gone error names the propensity model and the remedy", {
 })
 
 test_that("mestimation rejects an outcome model that cannot distinguish the exposure levels", {
-  skip_if_not_installed("deli")
   # The binary companion to the categorical indistinguishable-design tests. A
   # term that is constant across both exposure levels leaves the two
   # counterfactual designs identical, so the contrast between them is degenerate.
@@ -1390,7 +1353,6 @@ test_that("mestimation rejects an outcome model that cannot distinguish the expo
 })
 
 test_that("mestimation binary estimates are unchanged when redundant .data is supplied", {
-  skip_if_not_installed("deli")
   # A normal, reconstructable ps fit with a factor covariate: supplying .data
   # must not change the estimates. The rebuild reproduces the same design
   # (xlevels and all), so this guards against drift when .data is redundant and
@@ -1422,7 +1384,6 @@ test_that("mestimation binary estimates are unchanged when redundant .data is su
 })
 
 test_that("mestimation binary estimates are unchanged when .data re-levels a ps factor covariate", {
-  skip_if_not_installed("deli")
   # .data with the same factor-covariate values but a reordered levels attribute
   # (a user re-leveling for presentation after fitting) stays row-aligned. The
   # ps design rebuild honors ps_mod$xlevels so the design matches the fit.
@@ -1495,7 +1456,6 @@ frame_gone_outcome <- function(dat, wts) {
 }
 
 test_that("mestimation errors informatively when the outcome model frame is gone", {
-  skip_if_not_installed("deli")
   dat <- ps_design_data()
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- withr::with_options(
@@ -1547,7 +1507,6 @@ test_that("linearization errors informatively when the outcome model frame is go
 })
 
 test_that("the frame-gone outcome error explains why .data cannot help", {
-  skip_if_not_installed("deli")
   dat <- ps_design_data()
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- withr::with_options(
@@ -1569,7 +1528,6 @@ test_that("the frame-gone outcome error explains why .data cannot help", {
 
 test_that("the categorical path errors informatively when the outcome frame is gone", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The weight extraction is per method, so the guided treatment has to reach
   # every one of them.
   dat <- ps_design_data()
@@ -1621,7 +1579,6 @@ test_that("the categorical path errors informatively when the outcome frame is g
 # test-ipw-categorical.R.
 
 test_that("mestimation rejects a .data whose covariate types skew the design", {
-  skip_if_not_installed("deli")
   dat <- ps_design_data()
   # x1 is numeric in the fit, so the propensity model records no contrasts for
   # it and the design has one column for it. As a three-level factor in .data it
@@ -1681,7 +1638,6 @@ test_that("mestimation rejects a .data whose covariate types skew the design", {
 # different route.
 
 test_that("mestimation rejects a numeric .data column where the ps model fit a factor", {
-  skip_if_not_installed("deli")
   dat <- ps_design_data()
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- withr::with_options(
@@ -1718,7 +1674,6 @@ test_that("mestimation rejects a numeric .data column where the ps model fit a f
 })
 
 test_that("mestimation rejects a numeric .data column where the outcome model fit a factor", {
-  skip_if_not_installed("deli")
   # The propensity model never reads cov, so the ps design rebuild is untroubled
   # by it and the mismatch first reaches the counterfactual designs.
   dat <- ps_design_data()
@@ -1755,7 +1710,6 @@ test_that("mestimation rejects a numeric .data column where the outcome model fi
 })
 
 test_that("the fitted-factor .data error names the column and how the fit recorded it", {
-  skip_if_not_installed("deli")
   # Snapshots are reported as skips under `--as-cran`, so the classed assertion
   # below carries the contract and the snapshot records the wording.
   dat <- ps_design_data()
@@ -1788,7 +1742,6 @@ test_that("the fitted-factor .data error names the column and how the fit record
 })
 
 test_that("mestimation accepts a character .data column where the ps model fit a factor", {
-  skip_if_not_installed("deli")
   # Character is not the rejected case, and the guard must not widen into one.
   # The rebuild re-levels a character column against the recorded levels, so the
   # rebuilt design is the fitted one and the estimates match the model-frame
@@ -1824,7 +1777,6 @@ test_that("mestimation accepts a character .data column where the ps model fit a
 })
 
 test_that("mestimation accepts a character .data column where the outcome model fit a factor", {
-  skip_if_not_installed("deli")
   # The same seam on the outcome model's side, and the same non-alphabetical
   # fitted levels, so the counterfactual designs are rebuilt under the order the
   # fit recorded rather than under the one a character column sorts into.
@@ -1874,7 +1826,6 @@ test_that("mestimation accepts a character .data column where the outcome model 
 # "linearization errors when .data has fewer rows than the fitted models".
 
 test_that("mestimation rejects a .data with too few rows", {
-  skip_if_not_installed("deli")
   dat <- ps_design_data()
   ps_mod <- glm(z ~ x1 + cov, data = dat, family = binomial())
   wts <- withr::with_options(
@@ -1904,7 +1855,6 @@ test_that("mestimation rejects a .data with too few rows", {
 })
 
 test_that("mestimation rejects a .data with too many rows", {
-  skip_if_not_installed("deli")
   # A longer .data is the same mistake as a shorter one and today produces the
   # same weights-mismatch message. The check is on inequality, not on being
   # short, so both directions must report the row counts.
@@ -1942,7 +1892,6 @@ test_that("mestimation rejects a .data with too many rows", {
 })
 
 test_that("a right-sized .data with the wrong content stays a weights problem", {
-  skip_if_not_installed("deli")
   # The boundary between the two checks. Different data of the same size passes
   # any row count comparison, and the propensity scores recomputed from it no
   # longer reproduce the supplied weights, which is what the preflight exists to
@@ -2025,7 +1974,6 @@ fit_contrast_models <- function(dat) {
 }
 
 test_that("mestimation accepts a sum-coded ps covariate rebuilt from .data", {
-  skip_if_not_installed("deli")
   # The ps design rebuild drops the sum coding and rebuilds under treatment
   # coding, so the recomputed propensity scores no longer match the fit. The
   # weights supplied to the outcome model are correct; it is the rebuild that is
@@ -2070,7 +2018,6 @@ test_that("mestimation accepts a sum-coded ps covariate rebuilt from .data", {
 })
 
 test_that("the .data ps design rebuild does not warn on a sum-coded covariate", {
-  skip_if_not_installed("deli")
   # Rebuilding the factor against xlev drops its contrasts attribute, and R
   # signals that with a bare "contrasts dropped from factor g" warning. The
   # linearization estimates survive it because the two codings span the same
@@ -2092,7 +2039,6 @@ test_that("the .data ps design rebuild does not warn on a sum-coded covariate", 
 })
 
 test_that("mestimation binary counterfactual designs keep a sum-coded outcome covariate", {
-  skip_if_not_installed("deli")
   # Regression pin, correct today. The counterfactual rebuild replaces only the
   # exposure column, and model.frame() hands back the covariate with its
   # contrasts attribute intact, so the rebuilt design already matches the fit.
@@ -2131,7 +2077,6 @@ test_that("mestimation binary counterfactual designs keep a sum-coded outcome co
 })
 
 test_that("mestimation binary counterfactual designs keep a sum-coded factor exposure", {
-  skip_if_not_installed("deli")
   # A two-level factor exposure carries contrasts of its own. The counterfactual
   # levels come from sort(unique(exposure)), and that subsetting drops the
   # attribute before the column is ever set,
@@ -2176,7 +2121,6 @@ test_that("mestimation binary counterfactual designs keep a sum-coded factor exp
 })
 
 test_that("mestimation is unaffected by a contrasts option changed after fitting", {
-  skip_if_not_installed("deli")
   # The rebuilds used to consult the ambient contrasts option rather than the
   # fit, so a fit made under a non-default option and analyzed after it was
   # restored silently disagreed with itself. Reading the coding off the fitted
@@ -2269,7 +2213,6 @@ separation_models <- function(dat) {
 }
 
 test_that("mestimation reports separation in the propensity model as its own error", {
-  skip_if_not_installed("deli")
   dat <- separation_data()
   mods <- separation_models(dat)
 
@@ -2288,7 +2231,6 @@ test_that("mestimation reports separation in the propensity model as its own err
 })
 
 test_that("mestimation reports separation when .data is supplied", {
-  skip_if_not_installed("deli")
   # The propensity scores are rebuilt from the same coefficients either way, so
   # supplying .data does not change what saturates.
   dat <- separation_data()
@@ -2304,7 +2246,6 @@ test_that("mestimation reports separation when .data is supplied", {
 })
 
 test_that("mestimation reports separation for every estimand", {
-  skip_if_not_installed("deli")
   # Only the ate weights go non-finite under separation: every other estimand
   # carries a tilt that vanishes where the propensity score saturates, which
   # cancels the singularity and left the weight comparison satisfied. Those
@@ -2352,7 +2293,6 @@ test_that("mestimation reports separation for every estimand", {
 })
 
 test_that("the separation error reads in the user's terms and points at the model", {
-  skip_if_not_installed("deli")
   dat <- separation_data()
   mods <- separation_models(dat)
 
@@ -2383,7 +2323,6 @@ test_that("the separation error reads in the user's terms and points at the mode
 # check_exposure() and is pinned in test-ipw.R.
 
 test_that("mestimation rejects a binary outcome model that omits the exposure when .data is supplied", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   no_exposure <- fit_outcome_without_exposure(dat, mods$wts)
@@ -2395,7 +2334,6 @@ test_that("mestimation rejects a binary outcome model that omits the exposure wh
 })
 
 test_that("mestimation rejects a binary outcome model that omits the exposure without .data", {
-  skip_if_not_installed("deli")
   # The guard reads the model terms, so it fires before the frame-based
   # check_exposure() on this route too. Without it the call reached
   # check_exposure(), whose "Please specify .data" hint sent the user to the
@@ -2411,7 +2349,6 @@ test_that("mestimation rejects a binary outcome model that omits the exposure wi
 })
 
 test_that("the missing-exposure error names the exposure and directs the user to refit", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   no_exposure <- fit_outcome_without_exposure(dat, mods$wts)
@@ -2423,7 +2360,6 @@ test_that("the missing-exposure error names the exposure and directs the user to
 })
 
 test_that("mestimation accepts a binary outcome model containing the exposure when .data is supplied", {
-  skip_if_not_installed("deli")
   # The guard must not fire on the ordinary case: the same call with the
   # exposure on the right-hand side runs through to an ipw object.
   dat <- sim_binary()
@@ -2487,7 +2423,6 @@ fit_outcome_no_intercept <- function(dat, wts, outcome_family = "binomial") {
 }
 
 test_that("mestimation rejects a binary outcome model whose unexposed design is identically zero", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   no_intercept <- fit_outcome_no_intercept(dat, mods$wts)
@@ -2506,7 +2441,6 @@ test_that("mestimation rejects a binary outcome model whose unexposed design is 
 })
 
 test_that("mestimation rejects a degenerate counterfactual design when .data is supplied", {
-  skip_if_not_installed("deli")
   # Supplying .data rebuilds the counterfactual designs from the supplied
   # columns rather than from the model frame. The guard must fire on that route
   # too.
@@ -2522,7 +2456,6 @@ test_that("mestimation rejects a degenerate counterfactual design when .data is 
 })
 
 test_that("mestimation rejects a degenerate counterfactual design in a linear outcome model", {
-  skip_if_not_installed("deli")
   # The guard reads the design, not the family, so the linear model whose mu0 is
   # pinned at 0 rather than 0.5 is rejected on the same grounds.
   dat <- sim_binary()
@@ -2537,7 +2470,6 @@ test_that("mestimation rejects a degenerate counterfactual design in a linear ou
 })
 
 test_that("the degenerate-design error names the pinned level and the remedy", {
-  skip_if_not_installed("deli")
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
   no_intercept <- fit_outcome_no_intercept(dat, mods$wts)
@@ -2549,7 +2481,6 @@ test_that("the degenerate-design error names the pinned level and the remedy", {
 })
 
 test_that("mestimation accepts a saturated no-intercept factor outcome model", {
-  skip_if_not_installed("deli")
   # y ~ 0 + zf is a reparameterization of y ~ zf, not a model without a
   # baseline: its counterfactual designs are the level indicators, which are
   # never zero. It must give the same answer as the with-intercept fit.
@@ -2575,7 +2506,6 @@ test_that("mestimation accepts a saturated no-intercept factor outcome model", {
 })
 
 test_that("mestimation accepts a no-intercept outcome model adjusted for a covariate", {
-  skip_if_not_installed("deli")
   # y ~ z + x1 - 1 has no intercept, but the covariate still varies at z = 0, so
   # mu0 is estimated from the data rather than pinned. It is g-computation on
   # the model as specified and must run.
@@ -2720,7 +2650,6 @@ fit_categorical_arm_models <- function(dat) {
 }
 
 test_that("a degenerate binary contrast warns with a propensity class", {
-  skip_if_not_installed("deli")
   dat <- sim_degenerate_binary()
   mods <- fit_degenerate_binary_models(dat)
 
@@ -2736,7 +2665,6 @@ test_that("a degenerate binary contrast warns with a propensity class", {
 })
 
 test_that("the degenerate binary contrast warning names the effect it concerns", {
-  skip_if_not_installed("deli")
   # The degeneracy is in the logit of the exposed marginal mean, so the warning
   # has to name log(or) rather than report an undefined number in the abstract.
   dat <- sim_degenerate_binary()
@@ -2751,7 +2679,6 @@ test_that("the degenerate binary contrast warning names the effect it concerns",
 })
 
 test_that("no bare base warning escapes a degenerate binary contrast", {
-  skip_if_not_installed("deli")
   dat <- sim_degenerate_binary()
   mods <- fit_degenerate_binary_models(dat)
 
@@ -2763,7 +2690,6 @@ test_that("no bare base warning escapes a degenerate binary contrast", {
 })
 
 test_that("a degenerate categorical contrast warning names its effect and contrast", {
-  skip_if_not_installed("deli")
   skip_if_not_installed("nnet")
   # One contrast of several degenerates here, so naming the effect alone would
   # leave the user reading three contrasts to find it.
@@ -2780,7 +2706,6 @@ test_that("a degenerate categorical contrast warning names its effect and contra
 })
 
 test_that("no bare base warning escapes a degenerate categorical contrast", {
-  skip_if_not_installed("deli")
   skip_if_not_installed("nnet")
   # This fit ends in an error from the solver rather than returning estimates.
   # The unclassed warning is signalled before that and reaches the user anyway,
@@ -2796,7 +2721,6 @@ test_that("no bare base warning escapes a degenerate categorical contrast", {
 })
 
 test_that("a healthy binary mestimation fit raises no warning", {
-  skip_if_not_installed("deli")
   # The guard against a diagnostic that fires on working fits.
   dat <- sim_binary()
   mods <- fit_binary_models(dat, "ate")
@@ -2810,7 +2734,6 @@ test_that("a healthy binary mestimation fit raises no warning", {
 })
 
 test_that("a healthy categorical mestimation fit raises no warning", {
-  skip_if_not_installed("deli")
   skip_if_not_installed("nnet")
   dat <- sim_categorical_arms(0.35)
   mods <- fit_categorical_arm_models(dat)
@@ -2833,7 +2756,6 @@ degenerate_mu_theta <- function(layout) {
 }
 
 test_that("a degenerate contrast reports once however often psi is evaluated", {
-  skip_if_not_installed("deli")
   # The solver evaluates psi at the same undefined marginal means many times
   # over a fit, once per step and again per column of the bread, so the report
   # is held for the life of the built psi rather than raised per evaluation.
@@ -2858,7 +2780,6 @@ test_that("a degenerate contrast reports once however often psi is evaluated", {
 })
 
 test_that("a freshly built psi reports a degenerate contrast again", {
-  skip_if_not_installed("deli")
   # The report is held per built psi, not for the session: a second fit of the
   # same models has to hear about the same degenerate effect.
   dat <- sim_binary()

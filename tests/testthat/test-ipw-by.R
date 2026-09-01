@@ -90,7 +90,9 @@ fit_by_models <- function(
   estimand = "ate",
   outcome_family = "binomial",
   outcome_rhs = "z * v",
-  ps_rhs = c("x1", "v")
+  ps_rhs = c("x1", "v"),
+  stabilize = NULL,
+  stab_score = NULL
 ) {
   ps_mod <- glm(
     stats::reformulate(ps_rhs, response = "z"),
@@ -99,7 +101,15 @@ fit_by_models <- function(
   )
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
-    switch(estimand, ate = wt_ate(ps_mod), att = wt_att(ps_mod))
+    switch(
+      estimand,
+      ate = wt_ate(
+        ps_mod,
+        stabilize = stabilize,
+        stabilization_score = stab_score
+      ),
+      att = wt_att(ps_mod)
+    )
   )
 
   outcome_var <- if (outcome_family == "binomial") "y" else "yc"
@@ -204,7 +214,6 @@ by_std_err <- function(estimates, effect, group) {
 # ---- the oracle, anchored against the ungrouped estimates -------------------
 
 test_that("the stratum oracle reproduces the ungrouped estimates over the whole sample", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   whole <- rep(TRUE, nrow(dat))
 
@@ -241,7 +250,6 @@ test_that("the stratum oracle reproduces the ungrouped estimates over the whole 
 })
 
 test_that("an ungrouped binary fit names no subgroups", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod)
 
@@ -263,7 +271,6 @@ test_that("an ungrouped binary fit names no subgroups", {
 # ---- the shape of a grouped result ------------------------------------------
 
 test_that("a .by fit orders its rows overall, then by stratum, then by stratum contrast", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -332,7 +339,6 @@ test_that("a .by fit orders its rows overall, then by stratum, then by stratum c
 })
 
 test_that("a .by fit reports no odds ratio outside its overall rows", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -344,7 +350,6 @@ test_that("a .by fit reports no odds ratio outside its overall rows", {
 })
 
 test_that("a .by fit leaves the overall rows it already reported unchanged", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   baseline <- ipw(mods$ps_mod, mods$outcome_mod)
   grouped <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -364,7 +369,6 @@ test_that("a .by fit leaves the overall rows it already reported unchanged", {
 })
 
 test_that(".by = NULL reports the frame an ungrouped fit reports", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   baseline <- ipw(mods$ps_mod, mods$outcome_mod)
   explicit <- ipw(mods$ps_mod, mods$outcome_mod, .by = NULL)
@@ -378,7 +382,6 @@ test_that(".by = NULL reports the frame an ungrouped fit reports", {
 # ---- point estimates --------------------------------------------------------
 
 test_that("a .by ate fit reports the stratum-specific risk differences and log risk ratios", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -407,7 +410,6 @@ test_that("a .by ate fit reports the stratum-specific risk differences and log r
 })
 
 test_that("a .by ate fit contrasts each stratum against the reference stratum", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -429,7 +431,6 @@ test_that("a .by ate fit contrasts each stratum against the reference stratum", 
 })
 
 test_that("a .by att fit weights each stratum mean by the tilt within the stratum", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, estimand = "att", outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -471,7 +472,6 @@ test_that("a .by att fit weights each stratum mean by the tilt within the stratu
 })
 
 test_that("a .by fit on a continuous outcome reports one diff row per stratum", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
@@ -523,7 +523,6 @@ test_that("a .by fit on a continuous outcome reports one diff row per stratum", 
 })
 
 test_that("a .by contrast recovers the simulated difference in effects", {
-  skip_if_not_installed("deli")
   dat <- sim_by_het()
   ps_mod <- glm(z ~ x + v, data = dat, family = binomial())
   wts <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_mod))
@@ -553,7 +552,6 @@ test_that("a .by contrast recovers the simulated difference in effects", {
 # ---- standard errors and labels ---------------------------------------------
 
 test_that("a .by fit reports a usable standard error for every row", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   est <- res$estimates
@@ -571,7 +569,6 @@ test_that("a .by fit reports a usable standard error for every row", {
 })
 
 test_that("a .by fit's covariance couples the groups it reports", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by(), outcome_rhs = by_outcome_rhs)
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
   covariance <- vcov(res)
@@ -604,7 +601,6 @@ test_that("a .by fit's covariance couples the groups it reports", {
 })
 
 test_that("a .by fit labels its coefficients, covariance, and printed rows alike", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -625,16 +621,12 @@ test_that("a .by fit labels its coefficients, covariance, and printed rows alike
     list(labels, labels)
   )
 
-  printed <- capture.output(print(res))
-  expect_true(all(vapply(
-    labels,
-    function(label) any(startsWith(printed, label)),
-    logical(1)
-  )))
+  # Every row is printed exactly once. Without the count, the row for
+  # "rd 1 vs 0 v = 1 vs v = 0" would answer for the row for "rd 1 vs 0 v = 1".
+  expect_printed_labels_once(res, labels)
 })
 
 test_that("the conditional reading of a .by fit is the ungrouped fit's", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   plain <- causalgenerics::as_conditional(ipw(mods$ps_mod, mods$outcome_mod))
   grouped <- causalgenerics::as_conditional(
@@ -651,7 +643,6 @@ test_that("the conditional reading of a .by fit is the ungrouped fit's", {
 # ---- the tidier surfaces ----------------------------------------------------
 
 test_that("as.data.frame() heads its subgroup column after the term column", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -691,7 +682,6 @@ test_that("as.data.frame() heads its subgroup column after the term column", {
 })
 
 test_that("tidy() carries the subgroup column", {
-  skip_if_not_installed("deli")
   mods <- fit_by_models(sim_by())
   res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
 
@@ -738,7 +728,6 @@ test_that(".by refuses linearization standard errors", {
 })
 
 test_that(".by refuses a continuous exposure", {
-  skip_if_not_installed("deli")
   dat <- sim_by_continuous()
   ps_mod <- lm(a ~ x1 + v, data = dat)
   wts <- withr::with_options(
@@ -760,7 +749,6 @@ test_that(".by refuses a continuous exposure", {
 })
 
 test_that(".by refuses a selection that does not name exactly one modifier", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   # Both columns the selection reaches are in the outcome model's frame, so what
   # is wrong with the request is how many it names rather than a name that is
@@ -792,10 +780,25 @@ test_that(".by refuses a selection that does not name exactly one modifier", {
     ipw(mods$ps_mod, mods$outcome_mod, .by = starts_with("nomatch")),
     class = "propensity_error"
   )
+
+  # The remedy has to follow the count. Crossing two variables with
+  # `interaction()` is advice for a selection that reached more than one column;
+  # a selection that reached none has nothing to cross, and the thing to do is
+  # to name a column that is there.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = starts_with("nomatch")),
+    regexp = "matched no column"
+  )
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = c(v, x1)),
+    regexp = "interaction"
+  )
+  expect_propensity_error(
+    ipw(mods$ps_mod, mods$outcome_mod, .by = starts_with("nomatch"))
+  )
 })
 
 test_that(".by refuses a modifier with missing values", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   dat$w <- factor(rep(c("lo", "hi"), length.out = nrow(dat)))
   dat$w[1] <- NA
@@ -814,7 +817,6 @@ test_that(".by refuses a modifier with missing values", {
 })
 
 test_that(".by refuses a numeric modifier", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   # The outcome model carries the exposure-by-modifier term, so the only thing
   # wrong with the request is the type of the modifier.
@@ -828,7 +830,6 @@ test_that(".by refuses a numeric modifier", {
 })
 
 test_that(".by refuses a stratum missing an exposure level", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   # Every unit of stratum "b" is exposed, so that stratum holds no unexposed arm
   # to contrast against and its effect is not estimable from the data. The
@@ -854,7 +855,6 @@ test_that(".by refuses a stratum missing an exposure level", {
 })
 
 test_that(".by warns when the outcome model has no exposure-by-modifier term", {
-  skip_if_not_installed("deli")
   dat <- sim_by()
   mods <- fit_by_models(dat, outcome_rhs = "z + v")
 
@@ -870,4 +870,163 @@ test_that(".by warns when the outcome model has no exposure-by-modifier term", {
   expect_true("group" %in% names(res$estimates))
 
   expect_propensity_warning(ipw(mods$ps_mod, mods$outcome_mod, .by = v))
+})
+
+test_that(".by reports a stabilizer that conditions on nothing", {
+  dat <- sim_by()
+  mods <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = TRUE
+  )
+
+  # The default stabilizer is the marginal probability of the exposure, which
+  # conditions on nothing: it tightens the weights by the little the whole
+  # sample explains and by nothing the modifier explains. A fit reporting
+  # effects within the strata of a modifier is the case where a numerator
+  # conditioning on that modifier is worth having, so the fit reports what it
+  # was given rather than leaving the reader to notice.
+  #
+  # It is a warning rather than an error, for the reason the missing
+  # interaction term is one: a numerator that conditions on nothing is a
+  # constant within each exposure arm, which leaves the estimator consistent
+  # for the same stratum effects, and the fit still returns.
+  expect_warning(
+    res <- ipw(mods$ps_mod, mods$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+  expect_s3_class(res, "ipw")
+  expect_true("group" %in% names(res$estimates))
+  expect_true(all(is.finite(res$estimates$estimate)))
+})
+
+test_that(".by says nothing about a numerator that reads the modifier", {
+  dat <- sim_by()
+
+  # The numerator the `ipw()` documentation recommends here: the probability of
+  # the exposure each unit took given the modifier, which conditions on a
+  # variable the outcome model reads and on nothing else.
+  num_mod <- glm(z ~ v, data = dat, family = binomial())
+  p_v <- as.numeric(fitted(num_mod))
+  score <- ifelse(dat$z == 1, p_v, 1 - p_v)
+
+  conditional <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = TRUE,
+    stab_score = score
+  )
+  expect_no_warning(
+    res <- ipw(conditional$ps_mod, conditional$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+  expect_s3_class(res, "ipw")
+
+  # Unstabilized weights have no numerator to report on, so they are silent as
+  # well.
+  plain <- fit_by_models(dat, outcome_rhs = by_outcome_rhs)
+  expect_no_warning(
+    ipw(plain$ps_mod, plain$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+
+  # So is a stabilized fit that reports no effects within strata.
+  stabilized <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = TRUE
+  )
+  expect_no_warning(
+    ipw(stabilized$ps_mod, stabilized$outcome_mod),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+})
+
+test_that("the stabilizer report names the modifier it was not built on", {
+  dat <- sim_by()
+  mods <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = TRUE
+  )
+
+  expect_propensity_warning(ipw(mods$ps_mod, mods$outcome_mod, .by = v))
+})
+
+test_that(".by reports a numerator model that does not read the modifier", {
+  dat <- sim_by()
+
+  # A model carries the terms it reads, which a score does not, so the report a
+  # marginal numerator gets can be made of a model as well: a numerator of the
+  # exposure on the covariate alone conditions on nothing the modifier
+  # explains, which is the hazard the report exists for, and it is the default
+  # stabilizer's hazard whatever shape the numerator arrived in.
+  blind <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ x1, data = dat, family = binomial())
+  )
+
+  expect_warning(
+    res <- ipw(blind$ps_mod, blind$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+})
+
+test_that(".by says nothing about a numerator model that reads the modifier", {
+  dat <- sim_by()
+
+  reading <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ v, data = dat, family = binomial())
+  )
+  expect_no_warning(
+    ipw(reading$ps_mod, reading$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+
+  # The modifier is read whether it enters the numerator on its own or through
+  # a transformation of it, since either way the numerator varies with it.
+  transformed <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ x1 + factor(v), data = dat, family = binomial())
+  )
+  expect_no_warning(
+    ipw(transformed$ps_mod, transformed$outcome_mod, .by = v),
+    class = "propensity_ipw_by_stabilizer_warning"
+  )
+})
+
+test_that("the stabilizer report names the terms the numerator model read", {
+  dat <- sim_by()
+  blind <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ x1, data = dat, family = binomial())
+  )
+
+  expect_propensity_warning(ipw(blind$ps_mod, blind$outcome_mod, .by = v))
+})
+
+test_that("the stabilizer report reads an intercept-only numerator as marginal", {
+  dat <- sim_by()
+
+  # An intercept-only model reports terms and reads none: it is the marginal
+  # numerator fit as a model, and the report must say so in a whole sentence
+  # rather than interpolating an empty vector where the terms would go.
+  marginal_as_model <- fit_by_models(
+    dat,
+    outcome_rhs = by_outcome_rhs,
+    stabilize = glm(z ~ 1, data = dat, family = binomial())
+  )
+
+  expect_propensity_warning(ipw(
+    marginal_as_model$ps_mod,
+    marginal_as_model$outcome_mod,
+    .by = v
+  ))
 })

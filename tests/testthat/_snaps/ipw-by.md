@@ -29,6 +29,16 @@
       x It names 2 columns.
       i Effects are reported within the levels of a single variable. Cross two variables into one column, with `interaction()`, and name that column instead.
 
+---
+
+    Code
+      expr
+    Condition <propensity_ipw_by_arg_error>
+      Error in `ipw()`:
+      ! `.by` must name exactly one modifier.
+      x It names 0 columns.
+      i The selection matched no column of the outcome model's data. Name one column of it, or leave `.by` unset for the ungrouped fit.
+
 # .by refuses a modifier with missing values
 
     Code
@@ -71,4 +81,34 @@
       `outcome_mod` has no term reading both "z" and "v".
       i The stratum effects are g-computation on `outcome_mod` as it was specified, so a model with no such term forces one and the same effect on every subgroup.
       i Add `z:v` to `outcome_mod` and refit it to let the effect differ across the levels of "v".
+
+# the stabilizer report names the modifier it was not built on
+
+    Code
+      out <- ipw(mods$ps_mod, mods$outcome_mod, .by = v)
+    Condition <propensity_ipw_by_stabilizer_warning>
+      Warning in `ipw()`:
+      The weights `outcome_mod` was fit with are stabilized on a numerator that conditions on nothing.
+      i The default stabilizer is the marginal probability of the exposure, which is constant within each exposure arm, so it tightens the weights by nothing "v" explains.
+      i A numerator conditioning on "v" leaves the estimator consistent for the same stratum effects and tightens the weights further. Build one with `wt_ate()`'s `stabilize`, given a model of the exposure on "v", or with its `stabilization_score`, evaluated at the exposure each unit took; see Stabilization in `wt_ate()`.
+
+# the stabilizer report names the terms the numerator model read
+
+    Code
+      out <- ipw(blind$ps_mod, blind$outcome_mod, .by = v)
+    Condition <propensity_ipw_by_stabilizer_warning>
+      Warning in `ipw()`:
+      The weights `outcome_mod` was fit with are stabilized on a numerator that does not read "v".
+      i `stabilize` was given a model of the exposure on "x1", so the numerator does not vary with "v" and tightens the weights by nothing it explains.
+      i A numerator conditioning on "v" as well leaves the estimator consistent for the same stratum effects and tightens the weights further. Refit the model supplied to `stabilize` with "v" among its terms; see Stabilization in `wt_ate()`.
+
+# the stabilizer report reads an intercept-only numerator as marginal
+
+    Code
+      out <- ipw(marginal_as_model$ps_mod, marginal_as_model$outcome_mod, .by = v)
+    Condition <propensity_ipw_by_stabilizer_warning>
+      Warning in `ipw()`:
+      The weights `outcome_mod` was fit with are stabilized on a numerator that does not read "v".
+      i `stabilize` was given a model of the exposure on an intercept alone, the marginal numerator fit as a model, so the numerator does not vary with "v" and tightens the weights by nothing it explains.
+      i A numerator conditioning on "v" as well leaves the estimator consistent for the same stratum effects and tightens the weights further. Refit the model supplied to `stabilize` with "v" among its terms; see Stabilization in `wt_ate()`.
 

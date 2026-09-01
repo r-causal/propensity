@@ -111,6 +111,15 @@ joint_wt_weights <- function(dat, mods) {
       exposure_type = "continuous",
       stabilize = TRUE,
       .sigma = 1.25
+    )),
+    # The same dose again, differing from `d` in the numerator of the ratio
+    # alone, which is the finest difference the density record carries.
+    d_integrated = quiet(wt_ate(
+      as.double(fitted(mods$d)),
+      dat$d,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      numerator = "integrated"
     ))
   )
 }
@@ -204,7 +213,9 @@ test_that("wt_joint() multiplies two binary ate weights", {
     list(
       exposure_type = c("binary", "binary"),
       stabilized = c(FALSE, FALSE),
-      density = list(NULL, NULL)
+      density = list(NULL, NULL),
+      numerator_model = list(NULL, NULL),
+      stabilization_score = list(NULL, NULL)
     )
   )
 
@@ -232,9 +243,283 @@ test_that("wt_joint() multiplies a binary weight by a stabilized continuous weig
     list(
       exposure_type = c("binary", "continuous"),
       stabilized = c(FALSE, TRUE),
-      density = list(NULL, density_meta(fx$w$d))
+      density = list(NULL, density_meta(fx$w$d)),
+      numerator_model = list(NULL, NULL),
+      stabilization_score = list(NULL, NULL)
     )
   )
+})
+
+test_that("wt_joint() records each component's numerator model", {
+  fx <- joint_wt_fixture()
+
+  # A component stabilized on a fitted model records that model, and a component
+  # stabilized on anything else records none. The slot is what an estimator
+  # reads to estimate the numerator again rather than to take the value it
+  # evaluated to as a constant.
+  num_a <- glm(a ~ x1, data = fx$dat, family = binomial())
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = num_a)
+  )
+
+  joint <- wt_joint(w_a, fx$w$d, exposure_type = c("binary", "continuous"))
+  models <- joint_wt_meta(joint)$numerator_model
+
+  expect_length(models, 2L)
+  expect_identical(coef(models[[1]]), coef(num_a))
+  expect_null(models[[2]])
+
+  # A dose keeps its model in its own density record, where the single
+  # continuous route has always kept it, so the slot holds none for it. One
+  # model in one place is what makes two copies unable to disagree.
+  num_d <- lm(d ~ x1, data = fx$dat)
+  w_d <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(fx$mods$d)),
+      fx$dat$d,
+      exposure_type = "continuous",
+      stabilize = num_d
+    )
+  )
+
+  dose_joint <- wt_joint(fx$w$a, w_d, exposure_type = c("binary", "continuous"))
+  dose_meta <- joint_wt_meta(dose_joint)
+
+  expect_null(dose_meta$numerator_model[[1]])
+  expect_null(dose_meta$numerator_model[[2]])
+  expect_identical(
+    coef(dose_meta$density[[2]]$numerator_model),
+    coef(num_d)
+  )
+
+  # The reader is what an estimator asks, and it answers for every component
+  # alike, falling through to the density record for the ones that have one.
+  read <- joint_wt_numerator_models(dose_meta)
+  expect_null(read[[1]])
+  expect_identical(coef(read[[2]]), coef(num_d))
+})
+
+test_that("a record holding a dose's model in the slot still reads", {
+  fx <- joint_wt_fixture()
+
+  # A product built before the density record was the canonical home holds the
+  # dose's model in the slot and in the record both. The reader takes the slot
+  # where it holds one, so such a record answers as it always did.
+  num_d <- lm(d ~ x1, data = fx$dat)
+  w_d <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      as.double(fitted(fx$mods$d)),
+      fx$dat$d,
+      exposure_type = "continuous",
+      stabilize = num_d
+    )
+  )
+
+  joint <- wt_joint(fx$w$a, w_d, exposure_type = c("binary", "continuous"))
+  meta <- joint_wt_meta(joint)
+  meta$numerator_model[[2]] <- num_d
+
+  expect_identical(coef(joint_wt_numerator_models(meta)[[2]]), coef(num_d))
+
+  # And one written before the slot existed at all reads the dose's model out
+  # of the density record, which is where it has always been.
+  meta$numerator_model <- NULL
+  expect_identical(coef(joint_wt_numerator_models(meta)[[2]]), coef(num_d))
+  expect_null(joint_wt_numerator_models(meta)[[1]])
+})
+
+test_that("wt_joint() records each component's stabilization score", {
+  fx <- joint_wt_fixture()
+
+  # A numerator the caller computed is a vector rather than a model, and the
+  # product records it per component the way it records the model. Without it a
+  # discrete component stabilized on a score leaves the record the default
+  # stabilizer leaves, and a dose's score is named by the density record and
+  # then nowhere to be found.
+  score_a <- rep(0.4, nrow(fx$dat))
+  score_d <- stats::dnorm(fx$dat$d, mean(fx$dat$d), stats::sd(fx$dat$d))
+
+  quiet <- function(expr) {
+    withr::with_options(list(propensity.quiet = TRUE), expr)
+  }
+
+  w_a <- quiet(wt_ate(
+    fx$mods$a,
+    stabilize = TRUE,
+    stabilization_score = score_a
+  ))
+  w_d <- quiet(wt_ate(
+    as.double(fitted(fx$mods$d)),
+    fx$dat$d,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    stabilization_score = score_d
+  ))
+
+  scores <- joint_wt_meta(
+    wt_joint(w_a, w_d, exposure_type = c("binary", "continuous"))
+  )$stabilization_score
+
+  expect_length(scores, 2L)
+  expect_identical(scores[[1]], score_a)
+  expect_identical(scores[[2]], score_d)
+
+  # A component stabilized on anything else records no score, which is what
+  # says the numerator is one the estimator can rebuild for itself.
+  expect_identical(
+    joint_wt_meta(wt_joint(
+      fx$w$a,
+      fx$w$d,
+      c("binary", "continuous")
+    ))$stabilization_score,
+    list(NULL, NULL)
+  )
+})
+
+test_that("a length-changing operation drops a per-observation joint score", {
+  fx <- joint_wt_fixture()
+
+  # The joint record names the components rather than the units, with the one
+  # exception a score is: it holds a value per observation, and a subset it no
+  # longer describes would be rebuilt from a numerator belonging to units the
+  # result does not hold. The score on the weights themselves is dropped for
+  # that reason, and the one inside the record is the same vector.
+  score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
+  )
+  joint <- wt_joint(w_a, fx$w$e)
+
+  expect_identical(joint_wt_meta(joint)$stabilization_score[[1]], score_a)
+
+  expect_warning(
+    subset <- joint[1:10],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_null(joint_wt_meta(subset)$stabilization_score[[1]])
+
+  # A single value scales every weight at any length, so it is carried the way
+  # the score on the weights themselves is.
+  one <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = 0.4)
+  )
+  short <- expect_silent(wt_joint(one, fx$w$e)[1:10])
+  expect_identical(joint_wt_meta(short)$stabilization_score[[1]], 0.4)
+})
+
+test_that("a dropped joint score is marked apart from one never supplied", {
+  fx <- joint_wt_fixture()
+
+  # Nulling a component's score leaves the record saying what a component the
+  # caller never stabilized by hand says, and the two are not the same claim:
+  # one numerator is the marginal proportion an estimator can rebuild, and the
+  # other is a vector that existed and is now gone. The mark is what keeps them
+  # apart, so a numerator stood in for is a numerator that can be named.
+  score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
+  )
+  joint <- wt_joint(w_a, fx$w$e)
+
+  # A product nothing has shortened records no drop, and a record holding no
+  # mark says of every component what a mark of `FALSE` says.
+  expect_null(joint_wt_meta(joint)$score_dropped)
+  expect_identical(
+    joint_wt_dropped_scores(joint_wt_meta(joint)),
+    c(FALSE, FALSE)
+  )
+
+  reported <- list()
+  subset <- withCallingHandlers(
+    joint[1:10],
+    propensity_stabilization_score_warning = function(cnd) {
+      reported <<- c(reported, list(cnd))
+      rlang::cnd_muffle(cnd)
+    }
+  )
+
+  # Every score a set of weights carries describes the same observations, so
+  # one operation reports the drop once however many homes it emptied.
+  expect_length(reported, 1L)
+  expect_null(joint_wt_meta(subset)$stabilization_score[[1]])
+  expect_identical(joint_wt_meta(subset)$score_dropped, c(TRUE, FALSE))
+
+  # A second subset has nothing left to drop and so nothing to say, and the
+  # mark the first one left still describes the component.
+  again <- expect_silent(subset[1:5])
+  expect_identical(joint_wt_meta(again)$score_dropped, c(TRUE, FALSE))
+
+  # Two records marked the same way describe the same product, so a combine
+  # carries the mark the way it carries the rest of the record.
+  combined <- vctrs::vec_c(subset, again)
+  expect_identical(joint_wt_meta(combined)$score_dropped, c(TRUE, FALSE))
+
+  # A single value scales every weight at any length, so a subset drops nothing
+  # and marks nothing.
+  one <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = 0.4)
+  )
+  short <- expect_silent(wt_joint(one, fx$w$e)[1:10])
+  expect_null(joint_wt_meta(short)$score_dropped)
+})
+
+test_that("a dropped score and a score never supplied are different records", {
+  fx <- joint_wt_fixture()
+
+  # The mark is part of what the record says about the product, so a record
+  # carrying it and one that never held a score describe two different
+  # products and a combine reports them as the disagreement they are.
+  score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
+  )
+  expect_warning(
+    marked <- wt_joint(w_a, fx$w$e)[1:10],
+    class = "propensity_stabilization_score_warning"
+  )
+
+  bare <- marked
+  bare_meta <- joint_wt_meta(bare)
+  bare_meta$score_dropped <- NULL
+  attr(bare, "joint_wt_meta") <- bare_meta
+
+  expect_warning(
+    combined <- vctrs::vec_c(marked, bare),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(joint_wt_meta(combined))
+})
+
+test_that("an unstabilized product keeps no mark of a dropped score", {
+  fx <- joint_wt_fixture()
+
+  # A reduced record claims no numerator for any component, so there is nothing
+  # left for a mark to qualify: a component whose score was dropped and one
+  # that never had a score are the same unstabilized component afterwards.
+  score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
+  )
+  expect_warning(
+    marked <- wt_joint(w_a, fx$w$e)[1:10],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_identical(joint_wt_meta(marked)$score_dropped, c(TRUE, FALSE))
+
+  out <- expect_silent(marked * psw(rep(1.5, 10), estimand = "ate"))
+
+  expect_false(is_stabilized(out))
+  expect_null(joint_wt_meta(out)$score_dropped)
+  expect_identical(joint_wt_meta(out)$stabilization_score, list(NULL, NULL))
 })
 
 test_that("wt_joint() marks the product stabilized when any component is", {
@@ -309,6 +594,285 @@ test_that("the product keeps its joint record through subsetting", {
   expect_identical(estimand(subset), "ate")
   expect_identical(is_stabilized(subset), is_stabilized(joint))
   expect_equal(as.double(subset), as.double(joint)[1:10], tolerance = 1e-12)
+})
+
+# ---- wt_joint(): arithmetic on product weights ------------------------------
+
+test_that("arithmetic that leaves the result unstabilized reduces the record", {
+  fx <- joint_wt_fixture()
+
+  # The joint record answers the same question the single record answers: which
+  # numerator were these weights divided by. A product half of which was never
+  # divided by one was not, so the numerator side of the record has nothing left
+  # to describe. The denominator side does: the density each component's weights
+  # divide by is what it always was, and so are the two components' types.
+  num_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      fx$mods$a,
+      stabilize = glm(a ~ x1, data = fx$dat, family = binomial())
+    )
+  )
+  joint <- wt_joint(num_a, fx$w$d, exposure_type = c("binary", "continuous"))
+  plain <- psw(rep(1.5, nrow(fx$dat)), estimand = "ate")
+
+  results <- list(
+    `joint * plain` = expect_silent(joint * plain),
+    `plain * joint` = expect_silent(plain * joint),
+    `joint + plain` = expect_silent(joint + plain)
+  )
+
+  for (label in names(results)) {
+    out <- results[[label]]
+    meta <- joint_wt_meta(out)
+
+    expect_false(is_stabilized(out), label = label)
+    expect_true(is_joint_wt(out), label = label)
+
+    # The component structure stays: the record still names two components and
+    # says which exposure each of them weights.
+    expect_identical(
+      meta$exposure_type,
+      c("binary", "continuous"),
+      label = label
+    )
+    expect_identical(meta$stabilized, c(FALSE, FALSE), label = label)
+    expect_identical(
+      joint_wt_numerator_models(meta),
+      list(NULL, NULL),
+      label = label
+    )
+    expect_identical(meta$stabilization_score, list(NULL, NULL), label = label)
+    expect_identical(meta$density[[2]]$numerator, "none", label = label)
+    expect_null(meta$density[[2]]$numerator_model, label = label)
+
+    # The denominator the dose's weights divide by is untouched.
+    expect_identical(
+      format(meta$density[[2]]$density),
+      format(density_meta(fx$w$d)$density),
+      label = label
+    )
+    expect_identical(meta$density[[2]]$sigma, "pooled", label = label)
+
+    # Nothing printed names a numerator the result was never divided by.
+    expect_false(
+      any(grepl("stabilize:", capture.output(print(out)), fixed = TRUE)),
+      label = label
+    )
+  }
+})
+
+test_that("arithmetic between identically stabilized products keeps the record", {
+  fx <- joint_wt_fixture()
+
+  # The reduction belongs to the unstabilized result rather than to every
+  # product: two joint weights divided by the same numerators give a product
+  # that was divided by them too.
+  joint <- wt_joint(
+    fx$w$a_stabilized,
+    fx$w$d,
+    exposure_type = c("binary", "continuous")
+  )
+
+  out <- expect_silent(joint * joint)
+  expect_true(is_stabilized(out))
+  expect_identical(joint_wt_meta(out), joint_wt_meta(joint))
+})
+
+# ---- wt_joint(): combining product weights ----------------------------------
+
+test_that("the product keeps its joint record through combination", {
+  fx <- joint_wt_fixture()
+  joint <- wt_joint(fx$w$a, fx$w$e)
+
+  # Appending one set of product weights to another leaves every observation a
+  # product of the same two components, so the record describes the result as
+  # well as it describes either input and travels with it.
+  combined <- expect_silent(c(joint, joint))
+  expect_true(is_psw(combined))
+  expect_length(combined, 2L * length(joint))
+  expect_true(is_joint_wt(combined))
+  expect_identical(joint_wt_meta(combined), joint_wt_meta(joint))
+  expect_identical(estimand(combined), "ate")
+  expect_identical(is_stabilized(combined), is_stabilized(joint))
+  expect_equal(
+    as.double(combined),
+    rep(as.double(joint), 2),
+    tolerance = 1e-12
+  )
+
+  # `c()` settles its type through `vec_ptype2()`, so the vctrs entry point and
+  # the base one answer alike.
+  through_vctrs <- expect_silent(vctrs::vec_c(joint, joint))
+  expect_true(is_joint_wt(through_vctrs))
+  expect_identical(joint_wt_meta(through_vctrs), joint_wt_meta(joint))
+
+  # A column of weights stacked with the rest of its data frame settles the
+  # same way, which is how the record reaches a result assembled by row.
+  df <- tibble::tibble(id = seq_along(joint), wt = joint)
+  stacked <- expect_silent(vctrs::vec_rbind(df, df))
+  expect_s3_class(stacked$wt, "psw")
+  expect_true(is_joint_wt(stacked$wt))
+  expect_identical(joint_wt_meta(stacked$wt), joint_wt_meta(joint))
+})
+
+test_that("two products built the same way agree on the record", {
+  first <- wt_joint(joint_wt_fixture()$w$a, joint_wt_fixture()$w$d)
+  second <- wt_joint(joint_wt_fixture()$w$a, joint_wt_fixture()$w$d)
+
+  # The density slot holds the specification the ratio was read in, whose
+  # function is written afresh on every call, so two products built the same way
+  # hold two records that say the same thing and are not the same object. A
+  # merge comparing them by identity would report a disagreement between weights
+  # nothing distinguishes.
+  combined <- expect_silent(c(first, second))
+  expect_true(is_joint_wt(combined))
+  expect_identical(
+    joint_wt_meta(combined)$exposure_type,
+    c("binary", "continuous")
+  )
+  expect_identical(joint_wt_meta(combined)$stabilized, c(FALSE, TRUE))
+  expect_null(joint_wt_meta(combined)$density[[1]])
+  expect_identical(joint_wt_meta(combined)$density[[2]]$numerator, "marginal")
+  expect_identical(joint_wt_meta(combined)$density[[2]]$sigma, "pooled")
+})
+
+test_that("combining products read in different densities drops the record", {
+  fx <- joint_wt_fixture()
+  normal <- wt_joint(fx$w$a, fx$w$d)
+  heavier <- wt_joint(fx$w$a, fx$w$d_t)
+
+  # The two products weight the same pair of exposures and stabilize the same
+  # component, and differ in the density the dose's ratio was read in. That is
+  # the ratio an estimator would rebuild the weights from, so neither record
+  # describes the combination.
+  out <- NULL
+  cnd <- expect_warning(
+    out <- c(normal, heavier),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(out, "psw")
+  expect_length(out, 2L * length(normal))
+  expect_identical(estimand(out), "ate")
+  expect_false(is_joint_wt(out))
+  expect_null(joint_wt_meta(out))
+  expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("combining products over different exposures drops the record", {
+  fx <- joint_wt_fixture()
+  binary_dose <- wt_joint(fx$w$a, fx$w$d)
+  two_doses <- wt_joint(fx$w$d, fx$w$d2)
+
+  # A product of a binary weight and a dose weight is not the same kind of
+  # object as a product of two dose weights, and the record is what says which
+  # one a set of weights is.
+  out <- NULL
+  cnd <- expect_warning(
+    out <- c(binary_dose, two_doses),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(out, "psw")
+  expect_false(is_joint_wt(out))
+  expect_null(joint_wt_meta(out))
+  expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("combining products that stabilize different components drops the record", {
+  fx <- joint_wt_fixture()
+  plain <- wt_joint(fx$w$a, fx$w$d)
+  both <- wt_joint(fx$w$a_stabilized, fx$w$d)
+
+  # The two products weight the same pair of exposures with the same density,
+  # and differ in whether the binary component's weight is stabilized. The
+  # product is marked stabilized when any component is, so both are, and the
+  # per-component record is the only thing that says which of the two the
+  # stabilization belongs to.
+  expect_true(is_stabilized(plain))
+  expect_true(is_stabilized(both))
+  expect_identical(joint_wt_meta(plain)$stabilized, c(FALSE, TRUE))
+  expect_identical(joint_wt_meta(both)$stabilized, c(TRUE, TRUE))
+
+  out <- NULL
+  cnd <- expect_warning(
+    out <- c(plain, both),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(out, "psw")
+  expect_length(out, 2L * length(plain))
+  expect_identical(estimand(out), "ate")
+  expect_false(is_joint_wt(out))
+  expect_null(joint_wt_meta(out))
+  expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("combining products read with different numerators drops the record", {
+  fx <- joint_wt_fixture()
+  marginal <- wt_joint(fx$w$a, fx$w$d)
+  integrated <- wt_joint(fx$w$a, fx$w$d_integrated)
+
+  # The finest difference the density record carries: the same dose, the same
+  # density family, the same spread, and a numerator read one way rather than
+  # the other. It is still the ratio an estimator would rebuild the weights
+  # from, so the record does not survive the disagreement.
+  expect_identical(
+    joint_wt_meta(marginal)$density[[2]]$numerator,
+    "marginal"
+  )
+  expect_identical(
+    joint_wt_meta(integrated)$density[[2]]$numerator,
+    "integrated"
+  )
+  expect_identical(
+    joint_wt_meta(marginal)$stabilized,
+    joint_wt_meta(integrated)$stabilized
+  )
+
+  out <- NULL
+  cnd <- expect_warning(
+    out <- c(marginal, integrated),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_s3_class(out, "psw")
+  expect_length(out, 2L * length(marginal))
+  expect_false(is_joint_wt(out))
+  expect_null(joint_wt_meta(out))
+  expect_true(grepl("joint_wt_meta", conditionMessage(cnd), fixed = TRUE))
+})
+
+test_that("the conflict warning names the record it dropped", {
+  fx <- joint_wt_fixture()
+  normal <- wt_joint(fx$w$a, fx$w$d)
+  heavier <- wt_joint(fx$w$a, fx$w$d_t)
+
+  # The warning is the whole account a caller gets of a record the result no
+  # longer carries, so it names that record by the name the accessor reads it
+  # under.
+  out <- expect_propensity_warning(c(normal, heavier))
+  expect_false(is_joint_wt(out))
+})
+
+test_that("combining a product with a plain psw carries the record", {
+  fx <- joint_wt_fixture()
+  joint <- wt_joint(fx$w$a, fx$w$e)
+  plain <- recordless_psw(fx$w$a)
+
+  # Weights recording nothing about a product have nothing to disagree with,
+  # which is the rule every carried attribute follows: the one operand that
+  # records the thing speaks for the result. A disagreement takes two records
+  # that say different things.
+  combined <- expect_silent(c(joint, plain))
+  expect_true(is_joint_wt(combined))
+  expect_identical(joint_wt_meta(combined), joint_wt_meta(joint))
+
+  # The rule does not depend on the order the two were written in.
+  reversed <- expect_silent(c(plain, joint))
+  expect_true(is_joint_wt(reversed))
+  expect_identical(joint_wt_meta(reversed), joint_wt_meta(joint))
 })
 
 # ---- wt_joint(): what the components record ---------------------------------
@@ -607,6 +1171,49 @@ test_that("wt_joint() refuses an exposure_type that does not name both component
   )
 })
 
+test_that("the unsupported-type refusal is causalgenerics' refusal wrapped", {
+  fx <- joint_wt_fixture()
+
+  # Exposure-type vocabulary belongs to causalgenerics, which owns the list of
+  # types and refuses one it does not know. This function keeps its own class,
+  # because the same class also answers a vector of the wrong length and a
+  # component that records no type at all, neither of which causalgenerics has
+  # anything to say about. The refusal it raised is carried as the parent, so
+  # the reader is told what was wrong with the type as well as which argument
+  # was wrong.
+  err <- expect_error(
+    wt_joint(fx$w$a, fx$w$e, exposure_type = c("binary", "ordinal")),
+    class = "propensity_wt_joint_exposure_type_error"
+  )
+  expect_s3_class(err, "propensity_error")
+  expect_s3_class(err$parent, "condition")
+
+  # The parent is raised outside this package: causalgenerics' own condition
+  # where it recognizes the type, and the `arg_match()` refusal it answers a
+  # type it has never heard of with. Either way it names the type, which is the
+  # half of the report this package has nothing to say about.
+  expect_false(inherits(err$parent, "propensity_error"))
+  expect_true(
+    inherits(err$parent, "causalgenerics_error") ||
+      inherits(err$parent, "rlang_error")
+  )
+  expect_match(conditionMessage(err$parent), "ordinal", fixed = TRUE)
+
+  # The length of the vector is this function's own requirement, and the refusal
+  # for it stays its own: there is no single type for causalgenerics to read.
+  short <- expect_error(
+    wt_joint(fx$w$a, fx$w$e, exposure_type = "binary"),
+    class = "propensity_wt_joint_exposure_type_error"
+  )
+  expect_null(short$parent)
+
+  # A pair of types the package supports still passes.
+  expect_s3_class(
+    wt_joint(fx$w$a, fx$w$e, exposure_type = c("binary", "binary")),
+    "psw"
+  )
+})
+
 # ---- joint_wt_models(): the container ---------------------------------------
 
 test_that("joint_wt_models() records the two treatment models in order", {
@@ -702,6 +1309,60 @@ test_that("the unsupported-model refusal names the dose models it reads", {
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
   expect_match(msg, "rlm", fixed = TRUE)
   expect_match(msg, "gam", fixed = TRUE)
+
+  # What is refused is the family rather than the class: a `glm` is on the list
+  # of classes the container reads, and every model it rejects here is a class
+  # that is on that list fit to a family that is not. Naming only the class
+  # leaves the reader looking at a class the same message says is supported.
+  expect_match(msg, "poisson()", fixed = TRUE)
+})
+
+test_that("the unsupported-model refusal names the family of an additive fit", {
+  skip_if_not_installed("mgcv")
+  fx <- joint_wt_fixture()
+  withr::local_seed(5302)
+  dat <- fx$dat
+  dat$k <- rpois(nrow(dat), 2)
+
+  # An additive model is read as a dose model when it is gaussian and refused
+  # when it is not, and it is the family that decides, so it is the family the
+  # refusal names.
+  counted <- mgcv::gam(k ~ a + s(x1), data = dat, family = poisson())
+  err <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = counted),
+    class = "propensity_wt_joint_models_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "poisson()", fixed = TRUE)
+
+  expect_propensity_error(joint_wt_models(a = fx$mods$a, k = counted))
+})
+
+test_that("the unsupported-model refusal survives an argument that is no model", {
+  fx <- joint_wt_fixture()
+
+  # An argument that is not a fitted model at all has no family to read, and
+  # reading one anyway raises a base error about subscripts in place of the
+  # refusal that would have named what arrived.
+  err <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = "not a model"),
+    class = "propensity_wt_joint_models_error"
+  )
+  expect_match(conditionMessage(err), "character", fixed = TRUE)
+
+  err_fn <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = function(x) x),
+    class = "propensity_wt_joint_models_error"
+  )
+  expect_match(conditionMessage(err_fn), "function", fixed = TRUE)
+
+  # A data frame is a list, so the guard cannot be a test of that alone: `[[`
+  # asks it for a column of that name and has none to return.
+  err_df <- expect_error(
+    joint_wt_models(a = fx$mods$a, k = fx$dat),
+    class = "propensity_wt_joint_models_error"
+  )
+  expect_match(conditionMessage(err_df), "data.frame", fixed = TRUE)
 })
 
 test_that("joint_wt_models() requires a discrete second model to condition on the first treatment", {
@@ -823,6 +1484,44 @@ test_that("joint_wt_models() refuses a pair in which neither model conditions on
   expect_error(
     joint_wt_models(e = fx$mods$e_marginal, a = fx$mods$a),
     class = "propensity_wt_joint_factorization_error"
+  )
+})
+
+test_that("the factorization refusal offers the swapped order when the pair is one reversed", {
+  fx <- joint_wt_fixture()
+
+  # `a_on_e` reads "e" and `e_marginal` does not read "a", so this pair is a
+  # factorization written backwards rather than a pair of marginal models. The
+  # refusal stands, since the order the caller wrote is not a factorization, but
+  # adding "a" to the second model is not the only way out: the same two fits
+  # supplied the other way round are f(e | L) f(a | e, L) and need no refitting.
+  # Which of the two is right is a modelling choice about the order the
+  # treatments are assigned in, so the message offers it rather than deciding.
+  expect_error(
+    joint_wt_models(a = fx$mods$a_on_e, e = fx$mods$e_marginal),
+    class = "propensity_wt_joint_factorization_error"
+  )
+  expect_error(
+    joint_wt_models(a = fx$mods$a_on_e, e = fx$mods$e_marginal),
+    regexp = "other order"
+  )
+
+  # The swapped pair really is accepted, which is what makes the advice advice.
+  expect_true(is_joint_wt_models(
+    joint_wt_models(e = fx$mods$e_marginal, a = fx$mods$a_on_e)
+  ))
+
+  # The other quadrant keeps the message it has: neither model reads the other's
+  # treatment, so there is no order in which this pair is a factorization and
+  # nothing to offer beyond refitting.
+  plain <- expect_error(
+    joint_wt_models(a = fx$mods$a, e = fx$mods$e_marginal),
+    class = "propensity_wt_joint_factorization_error"
+  )
+  expect_false(grepl("other order", conditionMessage(plain), fixed = TRUE))
+
+  expect_propensity_error(
+    joint_wt_models(a = fx$mods$a_on_e, e = fx$mods$e_marginal)
   )
 })
 

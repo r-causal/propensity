@@ -26,10 +26,17 @@ a binary exposure is reduced to a single column: the second column of a two
 column data frame, which is the probability of the second level in the
 layout model predictions come in, and the first column otherwise. The
 column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
-announcement. A matrix is held to the same open interval as a vector, so a
-score of exactly 0 or 1 in any cell is refused and a separated multinomial
-fit cannot be repaired by truncating it; see \strong{Propensity scores at 0 and
-1} in \code{\link[=wt_ate]{wt_ate()}}.}
+announcement. A vector is held to the open interval, so a score of exactly
+0 or 1 is refused. A matrix is held to the closed interval instead: a cell
+of exactly 0 or 1 is bounded rather than refused, which is how a separated
+multinomial fit is repaired, and what comes back lies strictly inside
+(0, 1). Anything outside \eqn{[0, 1]} is refused either way, and so is a
+truncation whose own computed bounds leave a score at an endpoint; see
+\strong{Propensity scores at 0 and 1} in \code{\link[=wt_ate]{wt_ate()}}. A data frame holding a
+\code{.pred_class} column, which a fitted tidymodels classification model
+returns when no prediction type is named, carries predicted levels rather
+than probabilities and is refused with an error of class
+\code{propensity_df_class_column_error}.}
 
 \item{method}{One of \code{"ps"}, \code{"pctl"}, or \code{"cr"}:
 \itemize{
@@ -133,6 +140,23 @@ weights), the result is no longer a propensity score.
 \strong{Combining behavior}: Combining \code{ps_trunc} objects with \code{c()} requires
 matching truncation parameters. Mismatched parameters produce a warning and
 return a plain numeric vector.
+\subsection{Fitted models}{
+
+\code{.propensity} can be the fitted propensity score model instead of the scores
+it reports. A binomial \code{\link[stats:glm]{stats::glm()}} and a two-level \code{nnet::multinom()} are
+read as one score per unit; a \code{nnet::multinom()} of three or more levels is
+read as one column per level. Those are the shapes \code{predict(fit, type = "response")} and \code{fitted(fit)} give, and truncating a fit bounds exactly what
+bounding those values would.
+
+The methods that read an exposure (\code{"cr"}, and every method on the
+categorical route) take it from the model when \code{.exposure} is not supplied,
+announcing the variable they read; \code{options(propensity.quiet = TRUE)}
+silences the announcement. An \code{.exposure} you supply is used instead, and a
+categorical model's columns are matched to its levels by name, so an exposure
+whose levels are ordered differently is still bounded against the right
+column.
+}
+
 \subsection{Missing values}{
 
 A propensity score that arrives missing is not one this function pinned to a
@@ -220,6 +244,15 @@ wt_ate(ps_t, .exposure = z)
 
 # Inspect which observations were truncated
 is_unit_truncated(ps_t)
+
+# Bound the scores a fitted model reports, reading the exposure off the model
+ps_trunc(fit, method = "cr")
+
+if (rlang::is_installed("nnet")) {
+  trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+  multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
+  ps_trunc(multinomial_fit, method = "ps")
+}
 
 }
 \references{

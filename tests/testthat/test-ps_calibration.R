@@ -468,6 +468,16 @@ test_that("smooth parameter is ignored for isotonic regression", {
 
 # Cross-validation tests against WeightIt and the probably package
 
+# `probably::cal_estimate_logistic()` loads butcher the first time it is called,
+# and butcher and generics both register `as.character.dev_topic`. propensity
+# has already loaded generics by then, so the second registration prints an S3
+# method overwrite note. The note is package-load output rather than a
+# condition a test can catch, so the calls that trigger it are made through this
+# helper, which quiets it along with the warnings the calibration fits raise.
+quiet_calibration <- function(expr) {
+  suppressPackageStartupMessages(suppressWarnings(expr))
+}
+
 test_that("ps_calibrate with smooth=FALSE matches WeightIt::calibrate for logistic calibration", {
   skip_if_not_installed("WeightIt")
 
@@ -571,7 +581,7 @@ test_that("ps_calibrate produces similar results to probably package", {
     .pred_1 = obs_ps
   )
 
-  suppressWarnings({
+  quiet_calibration({
     cal_data <- probably::cal_estimate_logistic(
       df,
       truth = treat,
@@ -628,7 +638,7 @@ test_that("ps_calibrate with smooth=TRUE matches probably's default behavior exa
     .pred_1 = ps
   )
 
-  suppressWarnings({
+  quiet_calibration({
     cal_data <- probably::cal_estimate_logistic(
       df,
       truth = treat,
@@ -668,7 +678,7 @@ test_that("ps_calibrate with smooth=FALSE matches probably's simple logistic exa
     .pred_1 = ps
   )
 
-  suppressWarnings({
+  quiet_calibration({
     cal_data <- probably::cal_estimate_logistic(
       df,
       truth = treat,
@@ -1379,16 +1389,18 @@ test_that("ps_calibrate reports a matrix of propensity scores informatively", {
   )
 })
 
-# Regression guard: a data frame of scores is already refused under the class
-# a matrix is pinned to above.
-test_that("ps_calibrate refuses a data frame of propensity scores", {
-  expect_error(
-    ps_calibrate(
-      data.frame(a = c(0.2, 0.4, 0.6, 0.8), b = c(0.8, 0.6, 0.4, 0.2)),
-      c(0, 1, 0, 1),
-      smooth = FALSE
-    ),
-    class = "propensity_type_error"
+# The contrast to the matrix above: a data frame of predicted probabilities is
+# the shape a fitted model's predictions arrive in, and calibration reduces it
+# to one column the way trimming and truncation do rather than refusing it. A
+# matrix carries no such route, since `.propensity_col` and the announcement
+# both belong to the frame methods.
+test_that("ps_calibrate reads a data frame of propensity scores", {
+  scores <- data.frame(a = c(0.2, 0.4, 0.6, 0.8), b = c(0.8, 0.6, 0.4, 0.2))
+  exposure <- c(0, 1, 0, 1)
+
+  expect_equal(
+    as.numeric(ps_calibrate(scores, exposure, smooth = FALSE)),
+    as.numeric(ps_calibrate(scores$b, exposure, smooth = FALSE))
   )
 })
 
@@ -1628,4 +1640,210 @@ test_that("ps_calibrate() names the propensity scores it was not given", {
     class = "propensity_missing_arg_error"
   )
   expect_match(conditionMessage(err), "`.propensity`", fixed = TRUE)
+})
+
+# ---- fitted-model methods ---------------------------------------------------
+
+# `ps_calibrate()` reads a fitted propensity score model the way the weight
+# functions read one: the scores come off the fit, and so does the exposure,
+# which calibration always needs, unless the caller names an exposure of their
+# own. Calibration reads one score per observation, so a binomial fit and a
+# two-level multinomial fit are what it accepts; a multinomial fit of three or
+# more levels reports one column per level and is refused as a model of
+# something calibration has no reading for.
+
+calib_model_data <- local({
+  set.seed(20250930)
+
+  n <- 300
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+
+  odds_b <- exp(0.9 * x1 - 0.5 * x2)
+  odds_c <- exp(-0.7 * x1 + 0.8 * x2)
+  total <- 1 + odds_b + odds_c
+  p_b <- odds_b / total
+  p_c <- odds_c / total
+  u <- runif(n)
+
+  data.frame(
+    x1 = x1,
+    x2 = x2,
+    trt = factor(ifelse(u < p_b, "b", ifelse(u < p_b + p_c, "c", "a"))),
+    z = rbinom(n, 1, plogis(1.6 * x1 - 0.9 * x2)),
+    a2 = factor(ifelse(
+      runif(n) < plogis(1.2 * x1 - 0.6 * x2),
+      "control",
+      "treated"
+    ))
+  )
+})
+
+calib_binary_fit <- function() {
+  glm(z ~ x1 + x2, data = calib_model_data, family = binomial())
+}
+
+calib_categorical_fit <- function() {
+  nnet::multinom(trt ~ x1 + x2, data = calib_model_data, trace = FALSE)
+}
+
+calib_two_level_fit <- function() {
+  nnet::multinom(a2 ~ x1 + x2, data = calib_model_data, trace = FALSE)
+}
+
+expect_same_calibration <- function(from_model, oracle) {
+  testthat::expect_equal(
+    as.numeric(from_model),
+    as.numeric(oracle),
+    tolerance = 1e-12
+  )
+  testthat::expect_identical(class(from_model), class(oracle))
+  testthat::expect_identical(ps_calib_meta(from_model), ps_calib_meta(oracle))
+}
+
+test_that("ps_calibrate() calibrates the scores a binomial fit reports", {
+  fit <- calib_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_same_calibration(
+    ps_calibrate(fit, smooth = FALSE),
+    ps_calibrate(scores, calib_model_data$z, smooth = FALSE)
+  )
+  expect_same_calibration(
+    ps_calibrate(fit, method = "isoreg"),
+    ps_calibrate(scores, calib_model_data$z, method = "isoreg")
+  )
+})
+
+test_that("an explicit .exposure wins over the one a fit carries in ps_calibrate()", {
+  fit <- calib_binary_fit()
+  scores <- predict(fit, type = "response")
+  reordered <- rev(calib_model_data$z)
+
+  expect_same_calibration(
+    ps_calibrate(fit, reordered, smooth = FALSE),
+    ps_calibrate(scores, reordered, smooth = FALSE)
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_calibrate(fit, reordered, smooth = FALSE)),
+    as.numeric(ps_calibrate(fit, smooth = FALSE))
+  )))
+})
+
+test_that("ps_calibrate() reads a two-level multinomial fit on the binary path", {
+  skip_if_not_installed("nnet")
+
+  fit <- calib_two_level_fit()
+  scores <- as.numeric(fitted(fit))
+
+  expect_same_calibration(
+    ps_calibrate(fit, smooth = FALSE),
+    ps_calibrate(scores, calib_model_data$a2, smooth = FALSE)
+  )
+})
+
+test_that("ps_calibrate() refuses a multinomial fit of three or more levels", {
+  skip_if_not_installed("nnet")
+
+  expect_error(
+    ps_calibrate(calib_categorical_fit(), smooth = FALSE),
+    class = "propensity_model_family_error"
+  )
+})
+
+test_that("ps_calibrate() refuses a fit it cannot read propensity scores from", {
+  linear <- lm(z ~ x1 + x2, data = calib_model_data)
+
+  expect_error(
+    ps_calibrate(linear, calib_model_data$z, smooth = FALSE),
+    class = "propensity_method_error"
+  )
+  expect_error(
+    ps_calibrate(
+      structure(list(), class = "not_a_model"),
+      calib_model_data$z,
+      smooth = FALSE
+    ),
+    class = "propensity_method_error"
+  )
+})
+
+test_that("ps_calibrate() names the class of a fit it has no reading for", {
+  expect_propensity_error(
+    ps_calibrate(
+      lm(z ~ x1 + x2, data = calib_model_data),
+      calib_model_data$z,
+      smooth = FALSE
+    )
+  )
+})
+
+test_that("ps_calibrate() reports a multinomial fit of too many levels", {
+  skip_if_not_installed("nnet")
+
+  expect_propensity_error(ps_calibrate(calib_categorical_fit(), smooth = FALSE))
+})
+
+# A missing exposure used to be reported by R against the argument it could not
+# force, which now names the method dispatch reached rather than the function
+# the caller wrote.
+test_that("ps_calibrate() names the exposure it was not given", {
+  expect_propensity_error(ps_calibrate(c(0.2, 0.4, 0.6, 0.8)))
+})
+
+# A fit reports the probability of the level the response's default coding
+# treats as focal, so naming the other level means calibrating the complement of
+# what the fit reports.
+test_that("ps_calibrate() inverts a fit's scores for a named focal level", {
+  fit <- calib_binary_fit()
+  inverted <- 1 - predict(fit, type = "response")
+
+  expect_same_calibration(
+    ps_calibrate(fit, .focal_level = 0, smooth = FALSE),
+    ps_calibrate(
+      inverted,
+      calib_model_data$z,
+      .focal_level = 0,
+      smooth = FALSE
+    )
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_calibrate(fit, .focal_level = 0, smooth = FALSE)),
+    as.numeric(ps_calibrate(fit, smooth = FALSE))
+  )))
+})
+
+test_that("ps_calibrate() inverts a two-level multinomial fit for a named level", {
+  skip_if_not_installed("nnet")
+
+  fit <- calib_two_level_fit()
+  inverted <- 1 - as.numeric(fitted(fit))
+
+  expect_same_calibration(
+    ps_calibrate(fit, .focal_level = "control", smooth = FALSE),
+    ps_calibrate(
+      inverted,
+      calib_model_data$a2,
+      .focal_level = "control",
+      smooth = FALSE
+    )
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(ps_calibrate(fit, .focal_level = "control", smooth = FALSE)),
+    as.numeric(ps_calibrate(fit, smooth = FALSE))
+  )))
+})
+
+# The model route maps the deprecated spelling itself, before the scores reach
+# the method that would map it again, so the reader is told about it once and
+# under the name of the function they called.
+test_that("the deprecated .treated on a fit is attributed to ps_calibrate()", {
+  messages <- deprecation_warnings_from_user(
+    quote(ps_calibrate(fit, .treated = 0, smooth = FALSE)),
+    list(fit = calib_binary_fit())
+  )
+
+  expect_length(messages, 1)
+  expect_match(messages[[1]], "ps_calibrate()", fixed = TRUE)
+  expect_false(deprecation_misattributed(messages))
 })

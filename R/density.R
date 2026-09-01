@@ -13,11 +13,23 @@ density_kernels <- function() {
   eval(formals(stats::density.default)$kernel)
 }
 
-new_density_spec <- function(family, params = list(), fn = NULL) {
-  structure(
-    list(family = family, params = params, fn = fn),
-    class = "propensity_density"
-  )
+new_density_spec <- function(
+  family,
+  params = list(),
+  fn = NULL,
+  sigma_method = NULL
+) {
+  spec <- list(family = family, params = params, fn = fn)
+
+  # How the spread of the standardized residuals is estimated is not a parameter
+  # of the density: `t(df = 4)` is the same density however its scale was
+  # arrived at. It sits beside the parameters, and only for a family that offers
+  # a choice, so a family with one estimator carries no field saying which.
+  if (!is.null(sigma_method)) {
+    spec$sigma_method <- sigma_method
+  }
+
+  structure(spec, class = "propensity_density")
 }
 
 #' Density specifications for continuous exposures
@@ -40,7 +52,9 @@ new_density_spec <- function(family, params = list(), fn = NULL) {
 #' * `dens_laplace()` is the standard Laplace density,
 #'   \eqn{\exp(-|z|) / 2}, which puts more mass in the tails than the normal.
 #' * `dens_t()` is Student's t density with `df` degrees of freedom, heavier
-#'   tailed still, and heavier the smaller `df` is.
+#'   tailed still, and heavier the smaller `df` is. Its scale is estimated by
+#'   the root mean square of the residuals, as every other family's spread is,
+#'   or by maximum likelihood under the t itself.
 #' * `dens_kernel()` is a kernel density estimate of the standardized
 #'   residuals, fit with [stats::density()] and interpolated to each
 #'   observation. It assumes no family at all, at the cost of a density that
@@ -52,6 +66,9 @@ new_density_spec <- function(family, params = list(), fn = NULL) {
 #'
 #' @param df Degrees of freedom for Student's t, a single positive, finite
 #'   number.
+#' @param sigma_method How the spread of the conditional density is estimated
+#'   from the residuals of the propensity score model, either `"rms"` or
+#'   `"mle"`. See the section below.
 #' @param bw The bandwidth passed to [stats::density()]: a single positive
 #'   number, or the name of one of its selection rules
 #'   (`"nrd0"`, `"nrd"`, `"ucv"`, `"bcv"`, `"SJ"`, `"SJ-ste"`, or `"SJ-dpi"`).
@@ -66,13 +83,49 @@ new_density_spec <- function(family, params = list(), fn = NULL) {
 #'   non-negative, finite density value for each element it is given.
 #'
 #' @return An object of class `propensity_density`: a list with the elements
-#'   `family`, `params`, and `fn`. `fn` is the function that evaluates the
-#'   density, and is `NULL` for `dens_kernel()`.
+#'   `family`, the name of the family; `params`, the parameters that identify
+#'   it, which is an empty list for a family that takes none; and `fn`, the
+#'   function that evaluates the density, which is `NULL` for `dens_kernel()`.
+#'   `dens_t()` carries a fourth element, `sigma_method`, the name of the
+#'   estimator its scale is read with.
+#'
+#' @section The spread of a t density:
+#'
+#' Both densities are evaluated on a residual standardized by a spread, and for
+#' the conditional density that spread is estimated from the residuals of the
+#' propensity score model. Every family takes the root mean square of those
+#' residuals, which is `sigma_method = "rms"`, the default, and is the maximum
+#' likelihood estimator of the spread of a normal density.
+#'
+#' It is not the maximum likelihood estimator of the scale of a t. The scale of
+#' a t is smaller than its standard deviation by a factor that depends on `df`,
+#' and the root mean square is pulled outward by the large residuals a heavy
+#' tail produces, which is what the family was chosen to accommodate.
+#' `sigma_method = "mle"` estimates the scale under the t itself, as the root of
+#' \eqn{\sum_i \left[(\nu + 1) r_i^2 / (\nu \sigma^2 + r_i^2)\right] = n},
+#' where \eqn{r_i} is the residual and \eqn{\nu} is `df`. Each residual enters
+#' that sum through a bounded term, so a residual far out in the tail moves the
+#' estimate by less than it moves the root mean square. Prefer it when the
+#' residuals are heavy tailed, which is the case the t family is for; the two
+#' estimators answer the same question, and answer it alike, as `df` grows and
+#' the t approaches the normal.
+#'
+#' The choice describes the conditional density alone. The marginal density
+#' that stabilizes the weights is the exposure's own, read at the exposure's
+#' mean and root mean square, whatever the conditional spread was estimated by.
+#' A scale estimated by maximum likelihood is recorded by [density_meta()] as
+#' `sigma = "mle"`, and [ipw()] estimates it alongside the propensity score
+#' model's coefficients, solving the equation above as part of its stacked
+#' system so that the standard errors account for it. Supplying a `.sigma` says
+#' the spread is a number of your own rather than one estimated from the
+#' residuals, so the two cannot be given together.
 #'
 #' @examples
 #' dens_normal()
 #'
 #' dens_t(df = 4)
+#'
+#' dens_t(df = 4, sigma_method = "mle")
 #'
 #' dens_kernel(adjust = 1.5)
 #'
@@ -92,14 +145,16 @@ dens_laplace <- function() {
 
 #' @rdname dens_normal
 #' @export
-dens_t <- function(df) {
+dens_t <- function(df, sigma_method = c("rms", "mle")) {
   check_density_number(df, "df")
+  sigma_method <- rlang::arg_match(sigma_method)
   force(df)
 
   new_density_spec(
     "t",
     params = list(df = df),
-    fn = function(z) stats::dt(z, df = df)
+    fn = function(z) stats::dt(z, df = df),
+    sigma_method = sigma_method
   )
 }
 
@@ -160,7 +215,11 @@ print.propensity_density <- function(x, ...) {
 # be told apart by, and the function on it is the object the user supplied
 # rather than one a constructor built, so there it is the comparison.
 density_specs_agree <- function(x, y) {
-  if (!identical(x$family, y$family) || !identical(x$params, y$params)) {
+  if (
+    !identical(x$family, y$family) ||
+      !identical(x$params, y$params) ||
+      !identical(x$sigma_method, y$sigma_method)
+  ) {
     return(FALSE)
   }
 
@@ -283,6 +342,7 @@ check_numerator <- function(
   stabilize,
   stabilization_score,
   .sigma,
+  numerator_model = NULL,
   call = rlang::caller_env()
 ) {
   if (!identical(numerator, "integrated")) {
@@ -299,6 +359,21 @@ check_numerator <- function(
              continuous exposure over the units. A {exposure_type} exposure has
              a probability rather than a density, so leave {.arg numerator}
              unset for one."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  if (!is.null(numerator_model)) {
+    abort(
+      c(
+        "{.arg numerator} = {.val integrated} cannot be used with a model
+         supplied to {.arg stabilize}.",
+        x = "A model you supply estimates the numerator of the weights itself.",
+        i = "Set {.code stabilize = TRUE} to stabilize on the marginalized
+             conditional density, or leave {.arg numerator} unset to keep the
+             numerator the model estimates."
       ),
       error_class = "propensity_numerator_error",
       call = call
@@ -343,7 +418,7 @@ check_numerator <- function(
              model estimated at every unit's fitted mean, and {.arg .sigma}
              replaces the spread of that density with one of your own.",
         i = "Leave {.arg .sigma} unset to spread the conditional density by the
-             pooled residual standard deviation, or use {.arg numerator} =
+             pooled residual root mean square, or use {.arg numerator} =
              {.val marginal}, which takes a spread you supply."
       ),
       error_class = "propensity_numerator_error",
@@ -354,17 +429,346 @@ check_numerator <- function(
   invisible(NULL)
 }
 
-# The spread of the conditional density: the one the caller supplied, or the
-# pooled uncentered root mean square of the residuals. It is uncentered because
-# the residuals of a fitted model already average to zero, and because the
+# What a fitted numerator model has to be able to be. The model estimates the
+# numerator of the weights given whatever it reads: the conditional density of
+# a dose, or the conditional probability of a binary exposure. The weights it
+# stabilizes are the ratio of that quantity to the one the propensity score
+# model estimates, so every requirement here is a requirement of that ratio.
+check_numerator_model <- function(
+  numerator_model,
+  exposure_type,
+  n,
+  stabilization_score,
+  call = rlang::caller_env()
+) {
+  if (is.null(numerator_model)) {
+    return(invisible(NULL))
+  }
+
+  # A categorical exposure is weighted by a ratio over more than two levels,
+  # and one fitted model reports neither side of it. The other two types each
+  # take a model, of the family their own side of the ratio is read in.
+  if (identical(exposure_type, "categorical")) {
+    abort(
+      c(
+        "A model supplied to {.arg stabilize} applies only to binary and
+         continuous exposures.",
+        x = "{.arg .exposure} is being treated as categorical.",
+        i = "A categorical exposure's weights are a ratio of probabilities over
+             every level, which one fitted model does not report. Stabilize
+             them with {.code stabilize = TRUE}, which reads the marginal
+             probability of each level, or with a {.arg stabilization_score} of
+             your own."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  if (!is.null(stabilization_score)) {
+    abort(
+      c(
+        "A model supplied to {.arg stabilize} cannot be used with
+         {.arg stabilization_score}.",
+        x = "A score you supply is itself the numerator of the weights, and the
+             model estimates a second one.",
+        i = "Drop {.arg stabilization_score} to stabilize on the density the
+             model estimates, or set {.code stabilize = TRUE} to keep the
+             numerator you wrote."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  # Prior case weights, refused for both exposure types the model route serves.
+  # The numerator is a quantity in the sample the weights are being built for,
+  # and a fit made under case weights reports it for a reweighted one. The
+  # weights also record the model rather than the numbers it evaluated to, so
+  # that `ipw()` can rebuild the numerator at every value of theta, and the
+  # equations stacked for that are the model's unweighted score, which a
+  # weighted fit is not at the root of. `ipw()` refuses such a fit again where
+  # it stacks it, for weights built by hand or by an older version, but a caller
+  # who builds the weights here is told in the call that supplied the model.
+  numerator_weights <- ipw_model_prior_weights(numerator_model)
+  if (!is.null(numerator_weights) && !all(numerator_weights == 1)) {
+    abort(
+      c(
+        "A model supplied to {.arg stabilize} cannot be fit with case weights.",
+        x = "It was fit with non-unit {.arg weights}, so what it estimates is
+             the numerator in a reweighted sample rather than in this one.",
+        i = "Refit the model without {.arg weights} and stabilize on that fit."
+      ),
+      error_class = "propensity_numerator_error",
+      call = call
+    )
+  }
+
+  # The numerator model is held to the family the propensity score model of the
+  # same exposure is held to, and by the same check, read from the other side
+  # of the ratio: a dose's numerator is a density around a conditional mean
+  # with one spread, and a binary exposure's numerator is the probability of
+  # the level each unit took. A model of the wrong exposure's numerator is
+  # therefore reported as the wrong family rather than as a model where none is
+  # taken, which is what it is.
+  if (identical(exposure_type, "binary")) {
+    check_binary_model_family(
+      numerator_model,
+      arg = "stabilize",
+      remedy = "The numerator is the fitted probability of the level each unit
+                took, so refit it with
+                {.code stats::glm(family = stats::binomial())}.",
+      call = call
+    )
+  } else {
+    check_continuous_model_family(
+      numerator_model,
+      arg = "stabilize",
+      remedy = "The numerator is a density read at the model's fitted mean and
+                the spread of its residuals, so refit it with {.fun stats::lm}
+                or {.code stats::glm(family = gaussian())}.",
+      call = call
+    )
+  }
+
+  fitted <- as.numeric(stats::fitted(numerator_model))
+  if (!identical(length(fitted), as.integer(n))) {
+    abort(
+      c(
+        "The model supplied to {.arg stabilize} must have one fitted value for
+         each observation.",
+        x = "It has {length(fitted)} fitted value{?s} and {.arg .exposure} has
+             {n} observation{?s}.",
+        i = "Fit the numerator model on the data the weights are being built
+             for."
+      ),
+      error_class = "propensity_length_error",
+      call = call
+    )
+  }
+
+  invisible(NULL)
+}
+
+# What the numerator model contributes to the ratio: the conditional mean it
+# fits for each unit and the spread of its residuals around them. The spread is
+# the uncentered root mean square, the estimator the conditional density is read
+# at, so the two densities of the ratio are spread by the same estimator applied
+# to each model's own residuals.
+numerator_model_moments <- function(numerator_model) {
+  mu <- as.numeric(stats::fitted(numerator_model))
+  residuals <- as.numeric(stats::residuals(numerator_model, type = "response"))
+
+  list(mu = mu, sigma = sqrt(mean(residuals^2, na.rm = TRUE)))
+}
+
+# What a binary exposure's numerator model contributes to the ratio: the fitted
+# probability of the level each unit actually took, which is P(Z = z_i | V_i)
+# for the modifiers V the model reads.
+#
+# It is read against the model's own response rather than against the exposure
+# the weights are being built for, because the two can be coded against
+# different levels: `.focal_level` recodes the exposure so the focal level is
+# 1, while the model's fitted values are the probability of whichever level its
+# own response codes as a success. Reading both sides in the model's coding
+# leaves the numerator the same quantity under either labelling, since
+# `y p + (1 - y)(1 - p)` is unchanged when `y` and `p` are both complemented.
+numerator_model_probability <- function(numerator_model) {
+  p <- as.numeric(stats::fitted(numerator_model))
+  y <- numerator_model[["y"]]
+
+  # A `glm()` fit with `y = FALSE` keeps no response, so it is read back out of
+  # the model frame and coded the way a binomial fit codes it: the first level
+  # of a factor is the failure and every other level the success.
+  if (is.null(y)) {
+    y <- ipw_outcome_numeric(
+      stats::model.response(stats::model.frame(numerator_model))
+    )
+  }
+
+  y <- as.numeric(y)
+
+  y * p + (1 - y) * (1 - p)
+}
+
+# An infinite exposure or fitted value, refused where it arrives. A missing
+# value is a unit with nothing to weight and leaves that unit's weight missing,
+# which is a local answer to a local gap. An infinite one is not local: the
+# pooled spread computed from it is infinite, so every weight comes back
+# missing however few units carry the infinity, and under a kernel the
+# residuals it leaves are reported as residuals that do not vary, which they
+# do. Neither report names the value that caused it, so the value is named
+# here, before anything is computed from it.
+check_continuous_finite <- function(x, arg, call = rlang::caller_env()) {
+  unusable <- !is.na(x) & !is.finite(x)
+
+  if (!any(unusable)) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "Weights for a continuous exposure cannot be computed from an infinite
+       value.",
+      x = "{sum(unusable)} value{?s} of {.arg {arg}} {?is/are} infinite.",
+      i = "An infinite value leaves the spread of the conditional density
+           infinite, so every weight is missing rather than that unit's alone.
+           Drop those observations before weighting."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
+}
+
+# The spread of the conditional density: the one the caller supplied, the scale
+# of a t density estimated by maximum likelihood, or the pooled uncentered root
+# mean square of the residuals. The root mean square is uncentered because the
+# residuals of a fitted model already average to zero, and because the
 # estimating equation `ipw()` solves for the same quantity is the uncentered
 # moment.
-continuous_sigma <- function(exposure, mu, .sigma = NULL) {
+continuous_sigma <- function(
+  exposure,
+  mu,
+  .sigma = NULL,
+  density = NULL,
+  call = rlang::caller_env()
+) {
   if (!is.null(.sigma)) {
     return(.sigma)
   }
 
-  sqrt(mean((exposure - mu)^2, na.rm = TRUE))
+  residuals <- exposure - mu
+
+  if (density_sigma_is_mle(density)) {
+    return(t_sigma_mle(residuals, density$params$df, call = call))
+  }
+
+  sqrt(mean(residuals^2, na.rm = TRUE))
+}
+
+# Whether a density asks for its scale to be estimated under itself rather than
+# by the root mean square every family otherwise takes. Only `dens_t()` records
+# the field, so every other specification answers no.
+density_sigma_is_mle <- function(density) {
+  identical(density$sigma_method, "mle")
+}
+
+# Where the spread of the conditional density came from, as the record keeps it.
+# A spread the caller supplied is the caller's whatever the family would have
+# estimated, so it is read first, and it is the pairing `check_sigma_method()`
+# refuses.
+density_sigma_source <- function(.sigma, density) {
+  if (!is.null(.sigma)) {
+    return("supplied")
+  }
+
+  if (density_sigma_is_mle(density)) {
+    return("mle")
+  }
+
+  "pooled"
+}
+
+# The maximum likelihood scale of a Student's t with `df` degrees of freedom fit
+# to the residuals that are there. A missing exposure or fitted value leaves a
+# unit with no residual for the likelihood to read, exactly as it leaves that
+# unit out of the root mean square.
+#
+# The score for the scale, multiplied through by the scale so that it is a mean
+# of bounded terms, is the function below. It falls the whole way as the scale
+# grows, from `(df + 1)` times the share of residuals that are not zero, less
+# one, at a scale of nothing, to -1 as the scale grows without bound, so the
+# root is bracketed rather than searched for and the equation is solved on the
+# log of the scale, where a bracket of any width is read to the same relative
+# precision. The upper end is the root mean square scaled by enough to put the
+# score below zero for any degrees of freedom: the mean is at most
+# `(df + 1) / df` times the squared root mean square over the squared scale.
+t_sigma_mle <- function(residuals, df, call = rlang::caller_env()) {
+  residuals <- residuals[!is.na(residuals)]
+  rms <- sqrt(mean(residuals^2))
+
+  # Nothing to fit on, or residuals a model reproduced exactly. Neither leaves a
+  # likelihood with a maximum to find, and both are the number the root mean
+  # square returns for them, so the two estimators agree on the degenerate cases
+  # and whatever the ratio does with such a spread it does either way.
+  if (!is.finite(rms) || rms == 0) {
+    return(rms)
+  }
+
+  # A residual of exactly zero contributes nothing to the score at any positive
+  # scale, so the sum runs over the rest and stays a number however small the
+  # scale gets.
+  nonzero <- residuals[residuals != 0]
+  n <- length(residuals)
+
+  score <- function(sigma) {
+    sum((df + 1) * nonzero^2 / (df * sigma^2 + nonzero^2)) / n - 1
+  }
+
+  # Where the score starts. The likelihood has no maximum at a positive scale
+  # when it starts at or below zero, because the score only falls from there:
+  # the fit is degenerate rather than merely tight, and how many exact zeros it
+  # takes to get there is a question the degrees of freedom answer.
+  score_at_zero <- (df + 1) * length(nonzero) / n - 1
+
+  if (score_at_zero <= 0) {
+    n_zero <- n - length(nonzero)
+    abort(
+      c(
+        "The scale of a {.val t} density cannot be estimated by maximum
+         likelihood from these residuals.",
+        x = "{n_zero} of the {n} residuals of the propensity score model
+             {?is/are} exactly zero, and with {df} degrees of freedom that
+             leaves the likelihood no maximum at a positive scale.",
+        i = "Use {.code sigma_method = \"rms\"}, or supply a spread with
+             {.arg .sigma}."
+      ),
+      error_class = "propensity_density_error",
+      call = call
+    )
+  }
+
+  upper <- rms * max(50, 2 * sqrt((df + 1) / df))
+
+  # A model that all but interpolates its exposure has a scale far below the
+  # spread its residuals average to, so the lower end is taken below the root
+  # mean square and below a scale the score is positive at whatever the fit: at
+  # `min(|r|) * sqrt(score_at_zero / (2 * df))` every term is at least
+  # `(df + 1) / (1 + score_at_zero / 2)`, which leaves the mean above one.
+  reach <- min(abs(nonzero)) * sqrt(score_at_zero / (2 * df))
+  lower <- min(rms / 1e4, reach)
+
+  exp(
+    stats::uniroot(
+      function(log_sigma) score(exp(log_sigma)),
+      interval = log(c(lower, upper)),
+      tol = .Machine$double.eps^0.75
+    )$root
+  )
+}
+
+# A spread the caller supplied and a spread estimated under the density are two
+# instructions about the same quantity, and the second is not a family the
+# weights take but an estimator that is then not run. They are refused together
+# the way an integrated numerator refuses a `.sigma`, and for the same reason.
+check_sigma_method <- function(.sigma, density, call = rlang::caller_env()) {
+  if (is.null(.sigma) || !density_sigma_is_mle(density)) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "{.code sigma_method = \"mle\"} cannot be used with {.arg .sigma}.",
+      x = "{.code sigma_method = \"mle\"} estimates the scale of the
+           conditional density from the residuals of the propensity score
+           model, and {.arg .sigma} is a spread of your own that replaces it.",
+      i = "Drop {.arg .sigma} to estimate the scale under the t density, or
+           build the density with {.code sigma_method = \"rms\"} to spread the
+           one you supplied."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
 }
 
 # The density ratio a continuous exposure's weights are. Both densities are
@@ -374,18 +778,22 @@ continuous_sigma <- function(exposure, mu, .sigma = NULL) {
 # exposure's units returns.
 #
 # The numerator is the marginal density of the exposure, the conditional density
-# marginalized over the units, a stabilization score the caller supplied, or
-# nothing at all. `grid` is the evaluation grid an integrated numerator averages
-# the conditional density over, and is built from the exposure when it is not
-# supplied.
+# marginalized over the units, the conditional density a second model estimates,
+# a stabilization score the caller supplied, or nothing at all. `grid` is the
+# evaluation grid an integrated numerator averages the conditional density over,
+# and is built from the exposure when it is not supplied. `mu_n` and `sigma_n`
+# are the conditional mean and the residual spread of the numerator model, which
+# stand where `mu_a` and `sigma_a` stand for the marginal density.
 continuous_density_ratio <- function(
   exposure,
   mu,
   sigma,
   density,
-  numerator = c("marginal", "integrated", "none", "score"),
+  numerator = c("marginal", "integrated", "none", "score", "model"),
   mu_a = NULL,
   sigma_a = NULL,
+  mu_n = NULL,
+  sigma_n = NULL,
   score = NULL,
   grid = NULL,
   call = rlang::caller_env()
@@ -405,6 +813,7 @@ continuous_density_ratio <- function(
 
   z <- (exposure - mu) / sigma
   f_den <- density_eval_present(density, z, call = call) / sigma
+  check_density_denominator(f_den, z, call = call)
 
   if (identical(numerator, "none")) {
     return(1 / f_den)
@@ -412,6 +821,16 @@ continuous_density_ratio <- function(
 
   if (identical(numerator, "score")) {
     return(score / f_den)
+  }
+
+  # A numerator model estimates a conditional density of its own, read at its
+  # own fitted mean and its own residual spread, so it is standardized by those
+  # the way the marginal density is standardized by the exposure's moments.
+  if (identical(numerator, "model")) {
+    z_n <- (exposure - mu_n) / sigma_n
+    f_num <- density_eval_present(density, z_n, call = call) / sigma_n
+
+    return(f_num / f_den)
   }
 
   # The marginal density is the same family read at the exposure's own center
@@ -433,10 +852,25 @@ continuous_grid_n <- 50L
 # Whether a vector holds one number, to within the arithmetic that produced it.
 # Fitted values that ought to be identical seldom are: an intercept-only model
 # reaches each of them through a decomposition, and the last few bits differ, so
-# counting distinct doubles would find several where the model means one. The
-# tolerance is relative to the size of the values, as `all.equal()`'s is.
-is_constant <- function(x) {
-  diff(range(x)) <= sqrt(.Machine$double.eps) * max(1, abs(mean(x)))
+# counting distinct doubles would find several where the model means one.
+#
+# `scale` is the size the spread of `x` is read against, and is the spread of
+# the residuals wherever this is called from. A density ratio is the same
+# number whatever unit the exposure is measured in, so the test that decides
+# which ratio to return has to be the same number too: a fixed floor of one
+# would read an exposure in nanograms as a single value and return weights of
+# one for a model that conditions on covariates.
+#
+# `abs(mean(x))` is a second floor, for values that are large and constant: an
+# offset of a billion leaves the last bits of the arithmetic differing by about
+# 1e-6, which is a spread of nothing at that offset but far more than the
+# residuals' own floor allows. It carries a much smaller coefficient than the
+# scale term, because it is measuring the arithmetic rather than the model: at
+# the coefficient the scale term uses, fitted means that differ by a unit or
+# two at that offset read as one number, and a model that conditions on a
+# covariate silently returns a weight of one for every unit.
+is_constant <- function(x, scale) {
+  diff(range(x)) <= max(sqrt(.Machine$double.eps) * scale, 1e-12 * abs(mean(x)))
 }
 
 # The density ratio under an integrated numerator, which is the conditional
@@ -473,8 +907,10 @@ continuous_integrated_ratio <- function(
   # arithmetic that produced them rather than exactly, so the case is read from
   # the spread of the fitted means rather than from how many distinct doubles
   # they are. Fitted means that vary by that little leave weights of one either
-  # way; this returns the ones the model means.
-  if (length(mu) == 0 || is_constant(mu)) {
+  # way; this returns the ones the model means. How little that is depends on
+  # the units the exposure is measured in, so the spread of the fitted means is
+  # read against the spread of the residuals rather than against one.
+  if (length(mu) == 0 || is_constant(mu, scale = sigma)) {
     wt[present] <- 1
     return(wt)
   }
@@ -531,6 +967,8 @@ continuous_integrated_ratio <- function(
     call = call
   ) /
     sigma
+
+  check_density_denominator(f_den, z, index = which(present), call = call)
 
   f_num <- continuous_numerator_integrated(
     exposure = exposure,
@@ -674,15 +1112,57 @@ check_density_kernel_fit <- function(
   range,
   call = rlang::caller_env()
 ) {
-  if (anyNA(fit_on)) {
-    n_missing <- sum(is.na(fit_on))
+  # The sample size is read first because the range a kernel is fit over
+  # defaults to the range of the residuals, and `base::range()` of nothing at
+  # all warns about its missing arguments twice before it returns a pair of
+  # infinities. Nothing is learned from that pair, and the count below says
+  # everything there is to say about it.
+  if (length(fit_on) < 2) {
     abort(
       c(
-        "{.arg .density} cannot fit a kernel on missing standardized
+        "{.arg .density} cannot fit a kernel on fewer than two standardized
          residuals.",
-        x = "{n_missing} of them {?is/are} missing.",
-        i = "A missing exposure or fitted value leaves a missing residual.
+        x = "It was given {length(fit_on)} to fit on.",
+        i = "The bandwidth is chosen from the spread of the residuals, which
+             takes at least two of them. Use a parametric family, such as
+             {.fun dens_normal}, on a sample this small."
+      ),
+      error_class = "propensity_density_error",
+      call = call
+    )
+  }
+
+  # A residual that is infinite is refused alongside one that is missing. An
+  # infinite residual among the values the ends of the estimate are read from
+  # reaches `stats::density()` as an error about its own `from` and `to`; one
+  # that arrives only in `fit_on` reaches nothing at all, and leaves a kernel
+  # fit over a range its residuals overflow, which integrates to less than one
+  # with nothing said.
+  if (!all(is.finite(fit_on))) {
+    n_unusable <- sum(!is.finite(fit_on))
+    abort(
+      c(
+        "{.arg .density} cannot fit a kernel on missing or infinite
+         standardized residuals.",
+        x = "{n_unusable} of them {?is/are} missing or infinite.",
+        i = "A missing exposure or fitted value leaves a missing residual, and
+             an infinite exposure or a spread of zero leaves an infinite one.
              Drop those observations before weighting."
+      ),
+      error_class = "propensity_density_error",
+      call = call
+    )
+  }
+
+  # The two ends are read one at a time below, so there have to be two of them.
+  # A range of some other length was indexed for an end it does not have.
+  if (length(range) != 2L) {
+    abort(
+      c(
+        "{.arg .density} fits a kernel between the two ends of a range.",
+        x = "It was given {length(range)} end{?s} rather than two.",
+        i = "A kernel is fit from the lower end of the range to the upper one.
+             Give both ends, in that order."
       ),
       error_class = "propensity_density_error",
       call = call
@@ -703,22 +1183,41 @@ check_density_kernel_fit <- function(
     )
   }
 
-  if (sum(is.finite(fit_on)) < 2) {
+  # An infinite end passed the missingness test and reached `stats::density()`
+  # as an error about its own `from` and `to`. A kernel is fit between two
+  # numbers, so it is refused here in terms of the range it was given.
+  if (!all(is.finite(range))) {
     abort(
       c(
-        "{.arg .density} cannot fit a kernel on fewer than two standardized
-         residuals.",
-        x = "It was given {sum(is.finite(fit_on))} to fit on.",
-        i = "The bandwidth is chosen from the spread of the residuals, which
-             takes at least two of them. Use a parametric family, such as
-             {.fun dens_normal}, on a sample this small."
+        "{.arg .density} cannot fit a kernel over an infinite range.",
+        x = "The range it was given runs from {.val {range[[1]]}} to
+             {.val {range[[2]]}}.",
+        i = "A kernel is fit between two finite ends. An infinite end comes
+             from an infinite exposure or fitted value; drop those
+             observations before weighting."
       ),
       error_class = "propensity_density_error",
       call = call
     )
   }
 
-  if (range[[2]] <= range[[1]]) {
+  # Ends given the wrong way round are a range the caller wrote backwards, not
+  # residuals that do not vary, and are said to be that.
+  if (range[[2]] < range[[1]]) {
+    abort(
+      c(
+        "{.arg .density} cannot fit a kernel over a reversed range.",
+        x = "The range it was given runs from {.val {range[[1]]}} down to
+             {.val {range[[2]]}}.",
+        i = "A kernel is fit from the lower end of the range to the upper one.
+             Give the ends in that order."
+      ),
+      error_class = "propensity_density_error",
+      call = call
+    )
+  }
+
+  if (range[[2]] == range[[1]]) {
     abort(
       c(
         "{.arg .density} cannot fit a kernel on standardized residuals that do
@@ -839,6 +1338,107 @@ check_density_values <- function(
   }
 
   invisible(TRUE)
+}
+
+# Stabilized normal density-ratio weights have a finite second moment only while
+# the marginal variance of the exposure stays below twice the variance of the
+# conditional density. Past that boundary the weights have infinite variance,
+# and estimates built from them are erratic however large the sample is, so the
+# boundary is reported rather than left for the reader to work out.
+#
+# It is a property of the normal family read against the exposure's own marginal
+# density, so it is reported for that configuration alone: the normal family, a
+# marginal numerator, and one conditional spread describing every unit. A
+# heavier-tailed family sits at a different boundary, an integrated numerator
+# and a supplied stabilization score are not the marginal density, and a spread
+# for each observation is not a single conditional variance the marginal
+# variance can be read against.
+#
+# The report is a message rather than a refusal because the weights are still
+# the weights the estimand asks for; what fails is the precision of anything
+# built from them. And it is a message rather than a warning because the
+# boundary is reached exactly when the model explains at least half of the
+# exposure's variance, which is a well-fitting model doing what it was asked
+# to do: the reader should know where the weights sit, but nothing went wrong.
+check_density_variance <- function(
+  density,
+  sigma,
+  sigma_a,
+  numerator,
+  call = rlang::caller_env()
+) {
+  reportable <- identical(numerator, "marginal") &&
+    identical(density$family, "normal") &&
+    length(sigma) == 1L &&
+    length(sigma_a) == 1L &&
+    !is.na(sigma) &&
+    !is.na(sigma_a)
+
+  if (!reportable || sigma_a^2 < 2 * sigma^2) {
+    return(invisible(TRUE))
+  }
+
+  var_a <- signif(sigma_a^2, 3)
+  var_d <- signif(sigma^2, 3)
+
+  inform(
+    c(
+      "Stabilized normal weights have no finite variance for this exposure.",
+      x = "The marginal variance of the exposure is {var_a}, which is at least
+           twice the conditional variance {var_d}.",
+      i = "The second moment of a stabilized normal density ratio exists only
+           while the marginal variance stays below twice the conditional one.
+           The weights are returned, but estimates built from them are erratic
+           however large the sample is.",
+      i = "The boundary tightens as the model explains more of the exposure,
+           since a better fit lowers the conditional variance while the
+           marginal variance is fixed by the data. A family with heavier
+           tails, such as {.fun dens_t}, has a different boundary, and an
+           unstabilized weight has none."
+    ),
+    message_class = "propensity_density_variance_message",
+    call = call
+  )
+
+  invisible(TRUE)
+}
+
+# The conditional density is what a continuous exposure's weights divide by, so
+# a unit whose own exposure falls where that density is exactly zero has a
+# weight of infinity. It is the continuous form of a propensity score of exactly
+# 0 or 1, and is refused for the same reason: an infinite weight leaves every
+# estimate built from it undefined.
+#
+# Only the denominator is held to this. A zero in the numerator is a marginal
+# density that gives the unit no weight, which is a legitimate weight of zero.
+#
+# `index` maps the positions of `f_den` back to the observations they came from,
+# for a caller that dropped the missing units before evaluating the density.
+check_density_denominator <- function(
+  f_den,
+  z,
+  index = NULL,
+  call = rlang::caller_env()
+) {
+  zero <- !is.na(f_den) & f_den == 0
+  if (!any(zero)) {
+    return(invisible(TRUE))
+  }
+
+  units <- if (is.null(index)) which(zero) else index[zero]
+
+  abort(
+    c(
+      "The conditional density is zero where the weight would divide by it.",
+      x = "It is zero at {length(units)} observation{?s}: {units}.",
+      i = density_range_hint(z, zero),
+      i = "A weight built from a conditional density of zero is infinite. Use a
+           family with heavier tails, such as {.fun dens_t} or
+           {.fun dens_kernel}."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
 }
 
 # How extreme the standardized residuals were, over all of them or over the

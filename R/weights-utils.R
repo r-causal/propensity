@@ -9,6 +9,43 @@ abort_no_method <- function(.propensity, call = rlang::caller_env()) {
   )
 }
 
+# The propensity score modifiers hold their vector route in a default method, so
+# an object with no method of its own arrives there. The shapes that route reads
+# are a vector of scores and, where the modifier accepts one, a data frame of
+# them; anything else, a fitted model of a class the package has no method for
+# among it, carries no scores to read and is reported as such rather than as a
+# value out of range or a type the modifier cannot use.
+#
+# A vector that is atomic and holds something other than numbers is refused here
+# as well. The range check compares the scores against the two bounds, and a
+# character vector is coerced on the way there, so the values the caller wrote
+# are reported as missing scores rather than as an argument of a type the
+# modifiers have no score to read from.
+check_ps_method <- function(.propensity, call = rlang::caller_env()) {
+  if (!is.atomic(.propensity) && !is.data.frame(.propensity)) {
+    abort_no_method(.propensity, call = call)
+  }
+
+  numeric_scores <- is.data.frame(.propensity) ||
+    is.numeric(.propensity) ||
+    is.logical(.propensity)
+
+  if (!numeric_scores) {
+    abort(
+      c(
+        "{.arg .propensity} must be a numeric vector.",
+        x = "It is {.cls {class(.propensity)[[1]]}}, which holds no score to
+             read.",
+        i = "Pass the propensity scores as numbers between 0 and 1."
+      ),
+      error_class = "propensity_type_error",
+      call = call
+    )
+  }
+
+  invisible(NULL)
+}
+
 # lifecycle decides whether a deprecation belongs to the caller or to the
 # package that raised it from `user_env`, and says so: one it judges indirect
 # carries a bullet naming this package and asking the reader to report an issue
@@ -502,13 +539,65 @@ check_ps_range <- function(ps, call = rlang::caller_env()) {
 # is recommended, and it is what an unnamed `stabilize` asks for. A binary or
 # categorical exposure is weighted by a probability ratio that needs no such
 # numerator, so it stays unstabilized, as it always has been. An explicit `TRUE`
-# or `FALSE` is passed through untouched.
-resolve_stabilize <- function(stabilize, exposure_type) {
-  if (!is.null(stabilize)) {
+# or `FALSE` is passed through untouched, and a fitted numerator model is a
+# request to stabilize on what that model estimates, the conditional density of
+# a dose or the conditional probability of a binary exposure, so it resolves to
+# `TRUE` and the model itself travels beside it.
+#
+# Anything else is refused rather than read as one of the two answers. Every
+# consumer of the resolved value asks `isTRUE()` of it, so a value naming no
+# answer at all would otherwise be carried as `FALSE` and the weights would come
+# back unstabilized without a word.
+resolve_stabilize <- function(
+  stabilize,
+  exposure_type,
+  call = rlang::caller_env()
+) {
+  if (is.null(stabilize)) {
+    return(identical(exposure_type, "continuous"))
+  }
+
+  if (is_numerator_model(stabilize)) {
+    return(TRUE)
+  }
+
+  if (rlang::is_bool(stabilize)) {
     return(stabilize)
   }
 
-  identical(exposure_type, "continuous")
+  abort(
+    c(
+      "{.arg stabilize} must be {.code TRUE}, {.code FALSE}, {.code NULL}, or
+       a fitted model of the exposure.",
+      x = "It is {.obj_type_friendly {stabilize}}.",
+      i = "A fitted model stabilizes the weights on the numerator it estimates:
+           a conditional density for a dose, and the conditional probability of
+           the level each unit took for a binary exposure. To stabilize on a
+           numerator you computed yourself, set {.code stabilize = TRUE} and
+           pass it as {.arg stabilization_score}."
+    ),
+    error_class = "propensity_stabilize_error",
+    call = call
+  )
+}
+
+# The models a numerator can be fit with: everything [lm()] covers and
+# everything built on it, a [glm()] of any family included. What the weights ask
+# of such a model is its fitted values, and the residuals around them where a
+# density is spread by those, so a subclass is read as an `lm` here, the way
+# `.propensity` is. Which families answer for which exposure is
+# `check_numerator_model()`'s question rather than this one's: a model that is
+# not the right one for the exposure is refused there, by the same check the
+# propensity score model of that exposure meets.
+is_numerator_model <- function(x) {
+  inherits(x, "lm")
+}
+
+# The fitted model a `stabilize` argument names, or NULL for one that names an
+# answer instead. Read once in the weight function and carried alongside the
+# resolved logical, so that every route reads the same argument the same way.
+as_numerator_model <- function(stabilize) {
+  if (is_numerator_model(stabilize)) stabilize else NULL
 }
 
 # The conditional spread of a continuous exposure, checked where the exposure
@@ -727,12 +816,19 @@ check_quantile_probs <- function(lower, upper, call = rlang::caller_env()) {
 # compares as outside a missing bound, or as inside one, so the whole sample is
 # trimmed or the recorded bounds are never applied. The missing exposure is
 # reported instead.
+#
+# `observed` marks the units that hold a propensity score. A unit without one
+# takes no part in working the cutoffs out and is left as it arrived, so its
+# exposure has nothing to leave undefined. That is the shape a model fit under
+# `na.action = na.exclude` reports: the rows it dropped come back missing on
+# both sides at once.
 check_exposure_complete <- function(
   .exposure,
   method,
+  observed = TRUE,
   call = rlang::caller_env()
 ) {
-  n_missing <- sum(is.na(.exposure))
+  n_missing <- sum(is.na(.exposure) & observed)
 
   if (n_missing == 0) {
     return(invisible(TRUE))
@@ -785,6 +881,51 @@ check_cr_groups_observed <- function(
     ),
     call = call,
     error_class = "propensity_no_data_error"
+  )
+}
+
+# The shape a continuous exposure's `.propensity` has to have. The weights are
+# a ratio of densities evaluated at one conditional mean for each unit, and the
+# arithmetic that evaluates them vectorizes over whatever it is handed, so a
+# matrix of means yields a weight for every cell rather than a weight for every
+# unit. Anything holding more than one mean for each unit is refused here,
+# rather than left to produce a result of the wrong length.
+#
+# A one-column matrix and a one-dimensional array hold one mean for each unit,
+# which is the shape the weights are built from, so the dimension is dropped and
+# the scores are read as the vector they are. `ps_calibrate()` drops a
+# single dimension for the same reason. The scores are returned rather than
+# checked in place, since the route that reads them has to read the shape this
+# settled on.
+check_continuous_ps_shape <- function(
+  .propensity,
+  call = rlang::caller_env()
+) {
+  dims <- dim(.propensity)
+
+  if (is.null(dims)) {
+    return(.propensity)
+  }
+
+  if (length(dims) == 1L || (length(dims) == 2L && dims[[2]] == 1L)) {
+    dim(.propensity) <- NULL
+
+    return(.propensity)
+  }
+
+  shape <- paste(dims, collapse = " by ")
+
+  abort(
+    c(
+      "Weights for a continuous exposure need one conditional mean for each
+       unit.",
+      x = "{.arg .propensity} is {shape} and of class
+           {.cls {class(.propensity)[[1]]}}.",
+      i = "Pass a numeric vector of conditional means, such as the single
+           column of {.arg .propensity} that holds the mean of this exposure."
+    ),
+    call = call,
+    error_class = "propensity_ps_shape_error"
   )
 }
 
@@ -859,9 +1000,14 @@ transform_exposure_categorical <- function(
   .exposure
 }
 
+# `closed` widens the range check to the closed interval, for the one caller
+# whose job is to pull a score at an endpoint back inside: the categorical
+# matrix route of `ps_trunc()`. Everywhere else a score of exactly 0 or 1
+# leaves a weight undefined and is refused.
 check_ps_matrix <- function(
   ps_matrix,
   .exposure,
+  closed = FALSE,
   call = rlang::caller_env()
 ) {
   # Convert to matrix if data frame first
@@ -873,6 +1019,18 @@ check_ps_matrix <- function(
   if (!is.matrix(ps_matrix)) {
     abort(
       "For categorical exposures, `.propensity` must be a matrix or data frame.",
+      call = call,
+      error_class = "propensity_matrix_type_error"
+    )
+  }
+
+  # The row sums are read before the range is, and `rowSums()` answers a matrix
+  # that is not made of numbers with base R's own refusal, which names neither
+  # the argument the scores arrived in nor this package. The range check refuses
+  # the same matrix on its own, so the type is settled once, here, ahead of both.
+  if (!is.numeric(ps_matrix) && !is.logical(ps_matrix)) {
+    abort(
+      "{.arg .propensity} must be numeric.",
       call = call,
       error_class = "propensity_matrix_type_error"
     )
@@ -907,7 +1065,7 @@ check_ps_matrix <- function(
   }
 
   check_ps_matrix_rowsums(ps_matrix, call = call)
-  check_ps_matrix_range(ps_matrix, call = call)
+  check_ps_matrix_range(ps_matrix, closed = closed, call = call)
 
   # Ensure columns are in the same order as factor levels
   # This is critical for correct weight calculation
@@ -919,8 +1077,16 @@ check_ps_matrix <- function(
     # Handle both plain names (A, B, C) and parsnip-style names (.pred_A, .pred_B, .pred_C)
     col_names <- colnames(ps_matrix)
 
-    # Remove common prefixes like ".pred_"
-    clean_names <- gsub("^\\.pred_", "", col_names)
+    # Names that already cover the levels are matched as they arrive, and the
+    # ".pred_" prefix comes off only when they do not. The prefix is a
+    # convention of the columns a fitted parsnip model predicts into, not a
+    # reserved string, so an exposure is allowed levels that begin with it, and
+    # stripping first would report those levels as missing from columns that
+    # name them exactly.
+    clean_names <- col_names
+    if (!setequal(clean_names, exp_levels)) {
+      clean_names <- gsub("^\\.pred_", "", col_names)
+    }
 
     # Check if clean names match factor levels
     if (setequal(clean_names, exp_levels)) {
@@ -964,27 +1130,54 @@ check_ps_matrix <- function(
 # Shared with ps_tilt(), which reads a matrix with no exposure beside it and so
 # cannot run the rest of check_ps_matrix().
 check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
-  # Only check non-NA rows
+  # A row holding a missing score has a missing sum, which is not a number to
+  # compare against 1, so such a row is passed over rather than refused. The
+  # sums are read once and every question below is asked of them.
   row_sums <- rowSums(ps_matrix, na.rm = FALSE)
   ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
-  non_na_rows <- !is.na(row_sums)
 
-  if (any(non_na_rows)) {
-    # Check only the rows that don't have NA values
-    if (any(abs(row_sums[non_na_rows] - 1) > ROW_SUM_TOLERANCE)) {
-      bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE & non_na_rows)
-      abort(
-        c(
-          "Propensity score matrix rows must sum to 1.",
-          i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
-        ),
-        call = call,
-        error_class = "propensity_matrix_sum_error"
-      )
-    }
+  # `min()` and `max()` skip the missing sums without copying them, but they
+  # have no extreme to report when every sum is missing and no rows to read at
+  # all when the matrix is empty, so both cases are answered before they run.
+  if (length(row_sums) == 0 || (anyNA(row_sums) && all(is.na(row_sums)))) {
+    return(invisible(TRUE))
   }
 
-  invisible(TRUE)
+  # Every row sum sits within the tolerance exactly when the smallest and the
+  # largest of them do, so the extremes settle the whole matrix. An infinite
+  # sum is a number outside the tolerance on the side it is infinite on, so the
+  # extremes catch it as well.
+  #
+  # Each extreme is asked the question every row was asked, the distance from 1
+  # against the tolerance, rather than the equivalent-looking one of whether it
+  # falls between `1 - ROW_SUM_TOLERANCE` and `1 + ROW_SUM_TOLERANCE`. Neither
+  # of those bounds is a double exactly one tolerance from 1, so a sum landing
+  # on one of them is admitted or refused by which way the bound rounded rather
+  # than by how far the sum is from 1.
+  lowest <- min(row_sums, na.rm = TRUE)
+  highest <- max(row_sums, na.rm = TRUE)
+
+  if (
+    abs(lowest - 1) <= ROW_SUM_TOLERANCE &&
+      abs(highest - 1) <= ROW_SUM_TOLERANCE
+  ) {
+    return(invisible(TRUE))
+  }
+
+  # The refusal names the rows the caller has to go and look at, which the
+  # extremes do not say, so the comparison over every row is built here rather
+  # than on the way in. `which()` passes over the missing sums, and the
+  # positions it returns are positions in the matrix the caller handed over.
+  bad_rows <- which(abs(row_sums - 1) > ROW_SUM_TOLERANCE)
+
+  abort(
+    c(
+      "Propensity score matrix rows must sum to 1.",
+      i = "Problem rows: {bad_rows[1:min(5, length(bad_rows))]}{if (length(bad_rows) > 5) ' ...' else ''}"
+    ),
+    call = call,
+    error_class = "propensity_matrix_sum_error"
+  )
 }
 
 # The bounds are the same open interval that check_ps_range() enforces on the
@@ -995,21 +1188,61 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
 # The refusal names `.propensity`, the argument every function that reads
 # propensity scores takes them in; reporting a bare range says nothing about
 # what the caller has to correct.
-check_ps_matrix_range <- function(ps_matrix, call = rlang::caller_env()) {
-  ps_vals <- as.numeric(ps_matrix)
-  non_na_vals <- ps_vals[!is.na(ps_vals)]
+#
+# `closed` reads the interval as [0, 1] instead, for a caller that bounds the
+# endpoints back inside rather than dividing by them. Anything outside the unit
+# interval is refused either way: a negative score and a score above one are not
+# probabilities, and no bound pulls them back into one.
+check_ps_matrix_range <- function(
+  ps_matrix,
+  closed = FALSE,
+  call = rlang::caller_env()
+) {
+  # `min()` and `max()` compare strings rather than numbers, so a matrix that
+  # is not made of numbers has to be refused before the bounds are read.
+  if (!is.numeric(ps_matrix) && !is.logical(ps_matrix)) {
+    abort(
+      "{.arg .propensity} must be numeric.",
+      call = call,
+      error_class = "propensity_matrix_type_error"
+    )
+  }
 
-  if (
-    length(non_na_vals) > 0 &&
-      any(non_na_vals <= 0 | non_na_vals >= 1 | !is.finite(non_na_vals))
-  ) {
+  # Missing values are not scores, so they neither decide the bounds nor are
+  # refused. `min()` and `max()` skip them without copying the matrix, but they
+  # have no bounds to report when there is nothing left to read, so that case is
+  # answered first.
+  if (length(ps_matrix) == 0 || (anyNA(ps_matrix) && all(is.na(ps_matrix)))) {
+    return(invisible(TRUE))
+  }
+
+  lower <- min(ps_matrix, na.rm = TRUE)
+  upper <- max(ps_matrix, na.rm = TRUE)
+
+  # An infinite score is out of bounds on the side it is infinite on, so the
+  # bounds alone catch it.
+  out_of_bounds <- if (closed) {
+    lower < 0 || upper > 1
+  } else {
+    lower <= 0 || upper >= 1
+  }
+
+  if (out_of_bounds) {
+    bound_bullet <- if (closed) {
+      "The bounds are inclusive here: a score of exactly 0 or 1 is one that
+       truncation bounds, but a score outside the interval is not a
+       probability."
+    } else {
+      "The bounds are exclusive: a score of exactly 0 or 1 leaves the \\
+      weight undefined."
+    }
+
     abort(
       c(
         "All propensity scores must be between 0 and 1.",
-        i = "The bounds are exclusive: a score of exactly 0 or 1 leaves the \\
-        weight undefined.",
+        i = bound_bullet,
         i = "The range of values in {.arg .propensity} is \\
-        {format(range(non_na_vals), nsmall = 1, digits = 1)}"
+        {format(as.numeric(c(lower, upper)), nsmall = 1, digits = 1)}"
       ),
       call = call,
       error_class = "propensity_range_error"
@@ -1087,6 +1320,18 @@ calculate_weight_from_modified_ps <- function(
     attr(base_wt, "ps_calib_meta") <- ps_calib_meta(.propensity)
   }
 
+  # Trimming and truncation read the scores a calibrated object holds and record
+  # the calibration in their own metadata, so weights built from one were built
+  # from calibrated scores. The record travels to the weights the way it does on
+  # the calibrated route, since `is_ps_calibrated()` reads it off the `psw`
+  # rather than off the score the weights were built from. There is no
+  # `ps_calib_meta` to carry: the calibration's own record is dropped with the
+  # class when the score is trimmed or bounded.
+  if (modification_type != "calib" && is_ps_calibrated(.propensity)) {
+    estimand(base_wt) <- paste0(estimand(base_wt), "; calibrated")
+    attr(base_wt, "calibrated") <- TRUE
+  }
+
   base_wt
 }
 
@@ -1097,6 +1342,10 @@ calculate_weight_from_modified_ps <- function(
 record_exposure_attrs <- function(psw_obj, wts, exposure_type) {
   attr(psw_obj, "exposure_type") <- exposure_type
   attr(psw_obj, "density_meta") <- attr(wts, "density_meta")
+  # A binary exposure's numerator model is recorded on its own, there being no
+  # density record for it to sit inside. A continuous exposure's sits in the
+  # density record, and `numerator_model()` reads the two back as one.
+  attr(psw_obj, "numerator_model") <- attr(wts, "numerator_model")
 
   psw_obj
 }
@@ -1135,6 +1384,13 @@ binary_exposure_levels <- function(.exposure) {
 # coincidental match cannot redirect the selection. A reference level that
 # leaves more than one candidate resolves to no focal level at all, which is
 # likewise unanswerable.
+#
+# Names that cover the levels as they arrive are read as they arrive, and the
+# `.pred_` prefix comes off only when they do not. The prefix is a convention
+# of the frames a fitted parsnip model predicts into, not a reserved string, so
+# an exposure is allowed levels that begin with it; stripping first would match
+# such levels against the halves of their own names and select the other
+# column.
 match_focal_level_column <- function(
   .propensity,
   .exposure,
@@ -1143,7 +1399,11 @@ match_focal_level_column <- function(
   call = rlang::caller_env()
 ) {
   exposure_levels <- as.character(binary_exposure_levels(.exposure))
-  if (!all(exposure_levels %in% names(.propensity))) {
+  column_levels <- names(.propensity)
+  if (!all(exposure_levels %in% column_levels)) {
+    column_levels <- level_column_names(column_levels)
+  }
+  if (!all(exposure_levels %in% column_levels)) {
     return(NULL)
   }
 
@@ -1156,7 +1416,7 @@ match_focal_level_column <- function(
     return(NULL)
   }
 
-  col_pos <- match(as.character(focal_level), names(.propensity))
+  col_pos <- match(as.character(focal_level), column_levels)
   if (is.na(col_pos)) {
     return(NULL)
   }
@@ -1165,6 +1425,7 @@ match_focal_level_column <- function(
     .propensity,
     focal_level = focal_level,
     col_pos = col_pos,
+    column_levels = column_levels,
     call = call
   )
 
@@ -1183,6 +1444,7 @@ warn_ambiguous_focal_column <- function(
   .propensity,
   focal_level,
   col_pos,
+  column_levels = names(.propensity),
   call = rlang::caller_env()
 ) {
   focal_name <- as.character(focal_level)
@@ -1190,15 +1452,15 @@ warn_ambiguous_focal_column <- function(
   # name as `NA` rather than as no match. Left in, that `NA` reaches the
   # comparison below and stops the call on a frame this function has nothing to
   # say about.
-  n_matching <- sum(names(.propensity) == focal_name, na.rm = TRUE)
+  n_matching <- sum(column_levels == focal_name, na.rm = TRUE)
   if (n_matching < 2) {
     return(invisible(FALSE))
   }
 
   warn(
     c(
-      "{.arg .propensity} has {n_matching} columns named {.val {focal_name}}, \\
-      the level resolved as focal.",
+      "{.arg .propensity} has {n_matching} columns holding the probability of \\
+      {.val {focal_name}}, the level resolved as focal.",
       i = "Read column {col_pos}, the first of them.",
       i = "Give the columns distinct names, or set {.arg .propensity_col}, to \\
       select the column you mean."
@@ -1252,6 +1514,27 @@ extract_propensity_from_df <- function(
       "`.propensity` data frame must have at least one column.",
       call = call,
       error_class = "propensity_df_ncol_error"
+    )
+  }
+
+  # A binary exposure names its levels, so a frame of scores can be read
+  # against them and the column holding the focal level's probability found. A
+  # continuous exposure names nothing: several columns of conditional means
+  # offer no way to tell which one the weights are meant to be built from, and
+  # one taken by position is as likely to be the wrong one. Whether the other
+  # columns are numeric makes no difference to that, so the count is of columns
+  # rather than of candidates.
+  if (identical(exposure_type, "continuous") && ncol(.propensity) > 1) {
+    abort(
+      c(
+        "Can't tell which column of {.arg .propensity} holds the conditional
+         mean of the exposure.",
+        x = "{.arg .propensity} has {ncol(.propensity)} columns, and a
+             continuous exposure has no levels to read them against.",
+        i = "Set {.arg .propensity_col} to the column of conditional means."
+      ),
+      call = call,
+      error_class = "propensity_df_ambiguous_column_error"
     )
   }
 
@@ -1312,9 +1595,14 @@ extract_binary_ps.default <- function(model, call = rlang::caller_env()) {
 # that fit one; a categorical exposure needs a probability for every level,
 # which `extract_categorical_ps()` reads from the classes that fit one per
 # level.
+#
+# `exposure_levels` carries the levels of the exposure being weighted, so that a
+# categorical model fit to some other set of them is reported against the model
+# rather than against the shape of what it returns.
 extract_model_propensity <- function(
   model,
   exposure_type,
+  exposure_levels = NULL,
   call = rlang::caller_env()
 ) {
   if (identical(exposure_type, "binary")) {
@@ -1327,7 +1615,7 @@ extract_model_propensity <- function(
     return(extract_continuous_ps(model, call = call)$mu)
   }
 
-  extract_categorical_ps(model, call = call)
+  extract_categorical_ps(model, exposure_levels, call = call)
 }
 
 # Helper function to handle common data frame method pattern
@@ -1370,6 +1658,11 @@ handle_data_frame_weight_calculation <- function(
       error_class = "propensity_matrix_type_error"
     )
   }
+
+  # Read before the exposure type is resolved: a frame of predicted classes
+  # holds no scores on any route, so there is nothing for the resolution to
+  # decide and nothing to announce.
+  check_predicted_class_column(.propensity, call = call)
 
   # Check exposure type
   exposure_type_check <- causalgenerics::match_exposure_type(
@@ -1493,7 +1786,20 @@ extract_model_exposure <- function(model) {
 
 #' @export
 extract_model_exposure.default <- function(model) {
-  fmla_extract_left_vctr(model)
+  pad_dropped_rows(model, fmla_extract_left_vctr(model))
+}
+
+# A fitted model records only the rows it analyzed, and under
+# `na.action = na.exclude` reports everything it predicts back at the length of
+# the data it was given, missing where a row was dropped. The exposure is read
+# off the recorded side and the scores off the predicted one, so the exposure is
+# padded to the same length before anything is computed from the two together.
+# The weights are then as long as the data the model was given, missing at
+# exactly the rows it dropped, which is what a caller who supplied the exposure
+# themselves already gets. `stats::naresid()` pads for `na.exclude` and returns
+# everything else unchanged, `na.omit` and a fit with nothing dropped included.
+pad_dropped_rows <- function(model, x) {
+  stats::naresid(model$na.action, x)
 }
 
 # Helper function to handle optional exposure in the model methods
@@ -1560,7 +1866,19 @@ prepare_model_weight_args <- function(
     call = call
   )
 
-  ps_vec <- extract_model_propensity(model, exposure_type, call = call)
+  # The levels a categorical model has to report a probability for are the
+  # levels of the exposure it is weighting, read the way the categorical path
+  # reads them. The other exposure types have no levels to compare.
+  exposure_levels <- if (identical(exposure_type, "categorical")) {
+    levels(as.factor(.exposure))
+  }
+
+  ps_vec <- extract_model_propensity(
+    model,
+    exposure_type,
+    exposure_levels = exposure_levels,
+    call = call
+  )
 
   invert <- identical(exposure_type, "binary") &&
     !resolved_focal_is_default(
@@ -1577,6 +1895,112 @@ prepare_model_weight_args <- function(
     propensity = ps_vec,
     exposure = .exposure,
     exposure_type = exposure_type,
+    focal_level = focal_params$.focal_level,
+    reference_level = focal_params$.reference_level
+  )
+}
+
+# Shared preparation for the model methods of the propensity score modifiers.
+#
+# A modifier reads a fitted model the way the weight functions read one, and
+# the extraction is the same: the scores come off the fit, and so does the
+# exposure when the modification needs one. What differs is that a modifier has
+# no exposure type to resolve. Which route a fit takes is a property of the fit
+# itself, read by `model_fits_levels()`, so a call that needs no exposure never
+# reads one off the model and is not told about an exposure it makes no use of.
+#
+# `needs_exposure` is what the modification itself requires: trimming to the
+# preference scale or to a common range reads the exposure, trimming a matrix of
+# scores reads it to hold the columns against the levels, and calibration always
+# does, while a tilt and a trimming to a fixed threshold read none. A named focal
+# level requires it too, because the fitted values report the probability of the
+# level the response's default coding treats as focal, so naming the other level
+# means inverting them, exactly as `prepare_model_weight_args()` does.
+prepare_model_ps <- function(
+  model,
+  .exposure = NULL,
+  needs_exposure = FALSE,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  .treated = NULL,
+  .untreated = NULL,
+  fn_name,
+  call = rlang::caller_env(),
+  user_env = rlang::caller_env(2)
+) {
+  # The deprecated arguments are resolved here rather than downstream, for the
+  # same reason as in `prepare_model_weight_args()`: the resolved focal level
+  # decides whether the fitted values are inverted, and mapping it twice would
+  # emit the deprecation warning twice, so the route below receives the mapped
+  # levels and no deprecated arguments.
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    fn_name,
+    user_env = user_env
+  )
+  check_focal_levels(
+    focal_params$.focal_level,
+    focal_params$.reference_level,
+    call = call
+  )
+
+  if (model_fits_levels(model)) {
+    # The levels a categorical model has to report a probability for are the
+    # levels of the exposure being modified, read the way the categorical path
+    # reads them. A modification that reads no exposure has nothing to hold the
+    # columns against, and recovering one anyway would announce a reading that
+    # never happened, so the levels are taken off the fit, which records them.
+    if (needs_exposure || !is.null(.exposure)) {
+      .exposure <- extract_exposure_from_model(model, .exposure)
+      exposure_levels <- levels(as.factor(.exposure))
+    } else {
+      exposure_levels <- model_levels(model)
+    }
+
+    return(list(
+      propensity = extract_model_propensity(
+        model,
+        "categorical",
+        exposure_levels = exposure_levels,
+        call = call
+      ),
+      exposure = .exposure,
+      exposure_type = "categorical",
+      focal_level = focal_params$.focal_level,
+      reference_level = focal_params$.reference_level
+    ))
+  }
+
+  # Read before the exposure, so that a fit whose scores cannot be read at all
+  # is reported as such rather than after an announcement about an exposure
+  # nothing goes on to use.
+  ps_vec <- extract_model_propensity(model, "binary", call = call)
+
+  focal_named <- !is.null(focal_params$.focal_level) ||
+    !is.null(focal_params$.reference_level)
+
+  if (needs_exposure || focal_named) {
+    .exposure <- extract_exposure_from_model(model, .exposure)
+  }
+
+  invert <- !is.null(.exposure) &&
+    !resolved_focal_is_default(
+      .exposure,
+      .focal_level = focal_params$.focal_level,
+      .reference_level = focal_params$.reference_level
+    )
+
+  if (invert) {
+    ps_vec <- 1 - ps_vec
+  }
+
+  list(
+    propensity = ps_vec,
+    exposure = .exposure,
+    exposure_type = "binary",
     focal_level = focal_params$.focal_level,
     reference_level = focal_params$.reference_level
   )

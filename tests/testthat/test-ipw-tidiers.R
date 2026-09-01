@@ -582,7 +582,6 @@ expect_augment_contract <- function(
 # ---- binary exposure, M-estimation ------------------------------------------
 
 test_that("tidy() returns the broom columns for a binary mestimation fit", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -597,7 +596,6 @@ test_that("tidy() returns the broom columns for a binary mestimation fit", {
 })
 
 test_that("tidy(conf.int = TRUE) returns the stored bounds for a binary fit", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -609,7 +607,6 @@ test_that("tidy(conf.int = TRUE) returns the stored bounds for a binary fit", {
 })
 
 test_that("tidy() reports the diff row for a gaussian binary outcome", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -645,7 +642,6 @@ test_that("tidy() returns the broom columns for a binary linearization fit", {
 
 test_that("tidy() keeps the contrast column after term for a categorical fit", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -670,7 +666,6 @@ test_that("tidy() keeps the contrast column after term for a categorical fit", {
 # ---- continuous exposure -----------------------------------------------------
 
 test_that("tidy() returns the single slope row for a continuous exposure fit", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -683,7 +678,6 @@ test_that("tidy() returns the single slope row for a continuous exposure fit", {
 })
 
 test_that("tidy() returns the log odds ratio row for a continuous logit fit", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat, outcome_family = "binomial")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -708,7 +702,6 @@ test_that("tidy() returns the log odds ratio row for a continuous logit fit", {
 # one of them.
 
 test_that("tidy() reports the coercion surface of a binary fit as a tibble", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -732,7 +725,6 @@ test_that("tidy() reports the coercion surface of a binary fit as a tibble", {
 
 test_that("tidy() reports the coercion surface of a categorical fit as a tibble", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -747,7 +739,6 @@ test_that("tidy() reports the coercion surface of a categorical fit as a tibble"
 })
 
 test_that("tidy() reports the coercion surface of a continuous fit as a tibble", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat, outcome_family = "binomial")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -764,7 +755,6 @@ test_that("tidy() reports the coercion surface of a continuous fit as a tibble",
 # ---- confidence level --------------------------------------------------------
 
 test_that("tidy() recomputes the interval at a non-default conf.level", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -782,7 +772,6 @@ test_that("tidy() recomputes the interval at a non-default conf.level", {
 })
 
 test_that("tidy() recomputes when the fit stores a non-default conf.level", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(
@@ -816,7 +805,6 @@ test_that("tidy() recomputes when the fit stores a non-default conf.level", {
 })
 
 test_that("tidy() ignores conf.level when conf.int is FALSE", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -867,8 +855,30 @@ test_that("tidy() rejects a conf.level that is not one number inside (0, 1)", {
   )
 })
 
+test_that("tidy() reports the refusals of its arguments against tidy()", {
+  # The argument is validated by the result's own coercion surface, which the
+  # tidier delegates to. Reported against that delegation the refusal names a
+  # function the caller never wrote, so the tidier hands the surface its own
+  # call to report against.
+  dat <- sim_tidy_binary()
+  mods <- fit_tidy_binary_models(dat)
+  res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
+
+  expect_identical(
+    condition_call_name(tidy(res, conf.int = TRUE, conf.level = 2)),
+    "tidy"
+  )
+  expect_identical(
+    condition_call_name(tidy(res, conf.level = "0.95")),
+    "tidy"
+  )
+  expect_identical(
+    condition_call_name(tidy(res, exponentiate = "yes")),
+    "tidy"
+  )
+})
+
 test_that("tidy() rejects the argument values the coercion surface refuses", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -947,7 +957,6 @@ test_that("tidy() rejects an argument that lands in the dots", {
 # ---- exponentiate ------------------------------------------------------------
 
 test_that("tidy(exponentiate = TRUE) relabels and exponentiates ratio rows", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -996,7 +1005,6 @@ test_that("tidy(exponentiate = TRUE) relabels and exponentiates ratio rows", {
 })
 
 test_that("tidy(exponentiate = TRUE) matches as.data.frame on a binary fit", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1019,7 +1027,6 @@ test_that("tidy(exponentiate = TRUE) matches as.data.frame on a binary fit", {
 
 test_that("tidy(exponentiate = TRUE) relabels ratio rows per contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1043,7 +1050,6 @@ test_that("tidy(exponentiate = TRUE) relabels ratio rows per contrast", {
 })
 
 test_that("tidy(exponentiate = TRUE) relabels the continuous log odds ratio", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat, outcome_family = "binomial")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1059,7 +1065,6 @@ test_that("tidy(exponentiate = TRUE) relabels the continuous log odds ratio", {
 })
 
 test_that("tidy() exponentiates the bounds it recomputed, not the stored ones", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1094,7 +1099,6 @@ test_that("tidy() exponentiates the bounds it recomputed, not the stored ones", 
 # ---- glance ------------------------------------------------------------------
 
 test_that("glance() summarizes a binary mestimation fit in one row", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1135,7 +1139,6 @@ test_that("glance() reports NA degrees of freedom without a deli fit", {
 
 test_that("glance() summarizes a categorical fit in one row", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1155,7 +1158,6 @@ test_that("glance() summarizes a categorical fit in one row", {
 })
 
 test_that("glance() summarizes a continuous exposure fit in one row", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1171,7 +1173,6 @@ test_that("glance() summarizes a continuous exposure fit in one row", {
 })
 
 test_that("glance() reports the estimand the fit was built for", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat, estimand = "att")
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1191,7 +1192,6 @@ test_that("glance() reports the estimand the fit was built for", {
 
 test_that("glance() returns the same columns and types on every build route", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   binary <- fit_tidy_binary_models(sim_tidy_binary())
   categorical <- fit_tidy_categorical_models(sim_tidy_categorical())
   continuous <- fit_tidy_continuous_models(sim_tidy_continuous())
@@ -1239,7 +1239,6 @@ test_that("glance() rejects an argument that lands in the dots", {
 # ---- augment, binary exposure ------------------------------------------------
 
 test_that("augment() adds the fit's own columns to the outcome model frame", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1275,7 +1274,6 @@ test_that("augment() adds the fit's own columns to the outcome model frame", {
 })
 
 test_that("augment() reports the propensity score the weight functions take", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1294,7 +1292,6 @@ test_that("augment() reports the propensity score the weight functions take", {
 })
 
 test_that("augment() carries the weights of a non-default estimand", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat, estimand = "att")
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1318,7 +1315,6 @@ test_that("augment() carries the weights of a non-default estimand", {
 })
 
 test_that("augment() differences a factor outcome on the scale it was fit on", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
 
@@ -1351,7 +1347,6 @@ test_that("augment() differences a factor outcome on the scale it was fit on", {
 })
 
 test_that("augment() returns the same frame on both standard error methods", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   mestimation <- ipw(
@@ -1381,7 +1376,6 @@ test_that("augment() returns the same frame on both standard error methods", {
 
 test_that("augment() adds one propensity column per categorical level", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1425,7 +1419,6 @@ test_that("augment() adds one propensity column per categorical level", {
 # ---- augment, continuous exposure --------------------------------------------
 
 test_that("augment() reports the fitted exposure for a continuous exposure", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1473,7 +1466,6 @@ test_that("augment() reports the fitted exposure for a continuous exposure", {
 # ---- augment, the data argument ----------------------------------------------
 
 test_that("augment(data = ) returns that data with the fit's columns added", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1497,7 +1489,6 @@ test_that("augment(data = ) returns that data with the fit's columns added", {
 })
 
 test_that("augment(data = ) keeps a weight column the supplied data holds", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1523,7 +1514,6 @@ test_that("augment(data = ) keeps a weight column the supplied data holds", {
 })
 
 test_that("augment(data = ) drops .resid when the data omits the outcome", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1538,7 +1528,6 @@ test_that("augment(data = ) drops .resid when the data omits the outcome", {
 })
 
 test_that("augment(data = ) rejects data that is not one row per observation", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1633,7 +1622,6 @@ test_that("augment(data = ) counts a .resid column only when it adds one", {
 
 test_that("augment(data = ) clashes on the level columns of a categorical fit", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -1764,7 +1752,6 @@ test_that("augment() rejects models of different rows carrying equal labels", {
 })
 
 test_that("augment() carries a factor exposure against its numeric encoding", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   factor_dat <- dat
   factor_dat$z <- factor(dat$z)
@@ -1798,7 +1785,6 @@ test_that("augment() carries a factor exposure against its numeric encoding", {
 })
 
 test_that("augment() carries an exposure recoded past what a number reads", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   labeled <- dat
   labeled$z <- factor(ifelse(dat$z == 1, "b", "a"), levels = c("a", "b"))
@@ -1957,7 +1943,6 @@ test_that("augment() rejects a result whose outcome model has no weights", {
 # while treating the weights it was fit with as fixed.
 
 test_that("tidy() reports the outcome model's coefficients conditionally", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -1984,7 +1969,6 @@ test_that("tidy() reports the outcome model's coefficients conditionally", {
 })
 
 test_that("the conditional tidy table is the result's own conditional table", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2022,7 +2006,6 @@ test_that("the conditional tidy table is the result's own conditional table", {
 })
 
 test_that("tidy() reports the corrected standard errors conditionally", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2059,7 +2042,6 @@ test_that("tidy() reports the corrected standard errors conditionally", {
 })
 
 test_that("tidy() follows the reading the result records", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2096,7 +2078,6 @@ test_that("tidy() follows the reading the result records", {
 })
 
 test_that("tidy() follows a dose basis result into its only reading", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -2133,7 +2114,6 @@ test_that("tidy() follows a dose basis result into its only reading", {
 })
 
 test_that("tidy() rebuilds the conditional interval at the level asked for", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2228,7 +2208,6 @@ test_that("tidy() has no conditional reading of a linearization fit", {
 
 test_that("tidy() reports one conditional row per categorical coefficient", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_tidy_categorical()
   mods <- fit_tidy_categorical_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -2248,7 +2227,6 @@ test_that("tidy() reports one conditional row per categorical coefficient", {
 })
 
 test_that("tidy() reports the conditional reading of a continuous fit", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_continuous()
   mods <- fit_tidy_continuous_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -2292,7 +2270,6 @@ test_that("tidy() reports the conditional reading of a continuous fit", {
 # delta-method rescaling of the standard error and no renaming of a term.
 
 test_that("tidy(exponentiate = TRUE) exponentiates every conditional row", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2351,7 +2328,6 @@ test_that("tidy(exponentiate = TRUE) exponentiates every conditional row", {
 })
 
 test_that("tidy(exponentiate = TRUE) exponentiates a log link conditionally", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat, outcome_link = "log")
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2379,7 +2355,6 @@ test_that("tidy(exponentiate = TRUE) exponentiates a log link conditionally", {
 })
 
 test_that("tidy(exponentiate = TRUE) rejects an identity link conditionally", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2421,7 +2396,6 @@ test_that("tidy(exponentiate = TRUE) rejects an identity link conditionally", {
 })
 
 test_that("tidy(exponentiate = TRUE) rejects the other binary links", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
 
   # A probit and a cloglog link are the other two links a binary outcome model
@@ -2508,7 +2482,6 @@ test_that("tidy() rejects an effects value naming neither reading", {
 })
 
 test_that("glance() reports the same row in either reading", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2534,7 +2507,6 @@ test_that("glance() reports the same row in either reading", {
 })
 
 test_that("augment() returns the same frame in either reading", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2569,7 +2541,6 @@ test_that("augment() returns the same frame in either reading", {
 # every other stray argument is still refused.
 
 test_that("tidy() accepts the argument shape mice's pooling calls it with", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2599,7 +2570,6 @@ test_that("tidy() accepts the argument shape mice's pooling calls it with", {
 })
 
 test_that("tidy() takes parametric on its own and reports without it", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2618,7 +2588,6 @@ test_that("tidy() takes parametric on its own and reports without it", {
 })
 
 test_that("a stray argument other than parametric is still refused", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2651,7 +2620,6 @@ test_that("a stray argument other than parametric is still refused", {
 })
 
 test_that("the tolerance for parametric belongs to tidy() alone", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2671,7 +2639,6 @@ test_that("the tolerance for parametric belongs to tidy() alone", {
 })
 
 test_that("accepting fixed does not widen what effects otherwise accepts", {
-  skip_if_not_installed("deli")
   dat <- sim_tidy_binary()
   mods <- fit_tidy_binary_models(dat)
   res <- ipw(mods$ps_mod, mods$outcome_mod, se_method = "mestimation")
@@ -2834,7 +2801,6 @@ expect_pooled_tidy_wraps_frame <- function(
 }
 
 test_that("tidy() reports a pooled binary result as a tibble", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   # The attribute is on the frame to be dropped in the first place, which is
@@ -2857,7 +2823,6 @@ test_that("tidy() reports a pooled binary result as a tibble", {
 })
 
 test_that("tidy() reports a pooled interval at the level the pooling stored", {
-  skip_if_not_installed("deli")
   withr::local_seed(2024)
 
   # Pooled at a level other than 0.95 on purpose. The default `conf.level` of
@@ -2895,7 +2860,6 @@ test_that("tidy() reports a pooled interval at the level the pooling stored", {
 
 test_that("tidy() reports a pooled categorical result as a tibble", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_categorical()
 
   expect_pooled_tidy_wraps_frame(pooled)
@@ -2913,7 +2877,6 @@ test_that("tidy() reports a pooled categorical result as a tibble", {
 })
 
 test_that("the tidied pooled table carries no covariance under any arguments", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   # Swept rather than left to the cases above, because the attribute is dropped
@@ -2934,7 +2897,6 @@ test_that("the tidied pooled table carries no covariance under any arguments", {
 })
 
 test_that("glance() describes a pooled fit in one row", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   glanced <- glance(pooled)
@@ -2968,7 +2930,6 @@ test_that("glance() describes a pooled fit in one row", {
 
 test_that("glance() describes a pooled fit in one row whatever it reports", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_categorical()
 
   # Nine effects, one mean per level and three measures for each of two
@@ -2980,8 +2941,25 @@ test_that("glance() describes a pooled fit in one row whatever it reports", {
   expect_identical(glance(pooled)$m, 3L)
 })
 
+test_that("tidy() reports the conditional reading of a categorical pool", {
+  skip_if_not_installed("nnet")
+  pooled <- fit_pooled_categorical()
+
+  # The conditional reading pools the outcome models' coefficients, so a
+  # categorical pool reports one row per exposure-level coefficient rather than
+  # the nine rows the marginal reading reports, and no contrast column: a
+  # coefficient is not a contrast of exposure levels.
+  tidied <- tidy(pooled, effects = "conditional")
+  expect_identical(tidied$term, c("(Intercept)", "ab", "ac"))
+  expect_identical(nrow(tidied), 3L)
+  expect_false("contrast" %in% names(tidied))
+
+  # `effects` names the other reading for one call, so it reports what flipping
+  # the whole object reports.
+  expect_identical(tidied, tidy(as_conditional(pooled)))
+})
+
 test_that("the tidiers report a pooled conditional result", {
-  skip_if_not_installed("deli")
   withr::local_seed(2024)
   fits <- lapply(c(0, 0.05, -0.05), pooled_binary_fit)
   pooled <- pool_ipw(fits, effects = "conditional")
@@ -3016,8 +2994,20 @@ test_that("the tidiers report a pooled conditional result", {
   expect_identical(glance(pooled), glance(pool_ipw(fits)))
 })
 
+test_that("the pooled tidier reports its refusals against tidy() too", {
+  pooled <- fit_pooled_binary()
+
+  expect_identical(
+    condition_call_name(tidy(pooled, conf.int = TRUE, conf.level = 2)),
+    "tidy"
+  )
+  expect_identical(
+    condition_call_name(tidy(pooled, exponentiate = "yes")),
+    "tidy"
+  )
+})
+
 test_that("tidy() rejects an argument that lands in the pooled dots", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   # The dots exist to match the generic. A misspelled argument absorbed there
@@ -3029,13 +3019,21 @@ test_that("tidy() rejects an argument that lands in the pooled dots", {
 })
 
 test_that("glance() rejects an argument that lands in the pooled dots", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   # The dots exist to match the generic and carry nothing. An argument absorbed
   # there would otherwise be silently ignored.
   expect_error(
     glance(pooled, bogus = 1),
+    class = "rlib_error_dots_nonempty"
+  )
+
+  # `effects` is the argument a reader expects the pooled tidier family to
+  # take, since `tidy()` takes it, so the refusal of that name in particular is
+  # worth naming. `glance()` describes the pooled fit rather than its
+  # estimates, which the reading leaves alone.
+  expect_error(
+    glance(pooled, effects = "conditional"),
     class = "rlib_error_dots_nonempty"
   )
 })
@@ -3055,7 +3053,6 @@ test_that("glance() rejects an argument that lands in the pooled dots", {
 # rather than returning the reading that was pooled under the other one's name.
 
 test_that("tidy() reports the pooled reading the call names", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   # The whole-object flip and the per-call argument are two routes to one table,
@@ -3079,7 +3076,6 @@ test_that("tidy() reports the pooled reading the call names", {
 })
 
 test_that("tidy() defaults to the reading a marginal pool recorded", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   # `NULL` is the reading the pooled result records rather than a reading of the
@@ -3100,7 +3096,6 @@ test_that("tidy() defaults to the reading a marginal pool recorded", {
 })
 
 test_that("tidy() reports the marginal reading of a conditional pool", {
-  skip_if_not_installed("deli")
   withr::local_seed(2024)
   fits <- lapply(c(0, 0.05, -0.05), pooled_binary_fit)
   pooled <- pool_ipw(fits, effects = "conditional")
@@ -3122,7 +3117,6 @@ test_that("tidy() reports the marginal reading of a conditional pool", {
 })
 
 test_that("tidy() has no conditional reading of a linearization pool", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_linearization()
 
   # Linearization stacks no system, so the outcome models record no corrected
@@ -3153,7 +3147,6 @@ test_that("tidy() has no conditional reading of a linearization pool", {
 })
 
 test_that("tidy() refuses an effects value naming neither pooled reading", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   # `tidy.ipw()` takes `"fixed"` because `mice::pool()` reaches an analysis
@@ -3183,7 +3176,6 @@ test_that("tidy() refuses an effects value naming neither pooled reading", {
 })
 
 test_that("the pooled reading composes with the interval and the scale", {
-  skip_if_not_installed("deli")
   pooled <- fit_pooled_binary()
 
   # The reading is one of the things a call says about how the stored table is

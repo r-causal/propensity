@@ -110,3 +110,21 @@
     Message
       i Using the ".pred_1" column as the propensity score for `ps_trunc()`.
 
+# ps_trunc() names the class of a fit it has no reading for
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_trunc()`:
+      ! No method for objects of class lm
+
+# ps_trunc() refuses scores that are not numbers
+
+    Code
+      expr
+    Condition <propensity_type_error>
+      Error in `ps_trunc()`:
+      ! `.propensity` must be a numeric vector.
+      x It is <character>, which holds no score to read.
+      i Pass the propensity scores as numbers between 0 and 1.
+

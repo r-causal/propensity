@@ -22,16 +22,6 @@
       i A term reading the exposure alone is admitted however it is written, so a curve such as `e + I(e^2)` reports one row per coefficient.
       i Read the full coefficient vector from the returned fit object for a model this surface cannot report.
 
-# ipw() refuses a dose model whose score it cannot write
-
-    Code
-      expr
-    Condition <propensity_ipw_se_method_unavailable_error>
-      Error in `ipw()`:
-      ! `ipw()` cannot build a sandwich variance for a <gam/glm/lm> propensity score model of a continuous exposure.
-      x An additive model chooses how much to smooth by REML, and no estimating equation stacked here reproduces that choice, so the stacked system would describe a different fit.
-      i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
-
 # ipw() refuses dose weights built from a kernel density
 
     Code
@@ -42,6 +32,17 @@
       x The bandwidth of a kernel estimate is chosen from the residuals of the propensity score model, so the weights are not a differentiable function of that model's parameters.
       i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
 
+# ipw() refuses a dose psi it cannot write, under the component's name
+
+    Code
+      expr
+    Condition <propensity_ipw_robust_psi_error>
+      Error in `ipw()`:
+      ! `ipw()` cannot write the equation this <rlm/lm> propensity score model of a continuous exposure is the root of.
+      x `e` was fit with a psi function this path cannot recognize.
+      i Refit `e` with `MASS::psi.huber()`, `MASS::psi.bisquare()`, or `MASS::psi.hampel()`, whose constants `ipw()` reads off the fit.
+      i This route builds standard errors from the stacked system alone. Build the dose weights from a model and a density that system can differentiate, or bootstrap the whole joint fit yourself: resample the rows, refit both treatment models, rebuild the weights with `wt_joint()`, and refit the outcome model on each resample.
+
 # the weights mismatch names the ratio the dose records
 
     Code
@@ -49,13 +50,12 @@
     Condition <propensity_ipw_weights_mismatch_error>
       Error in `ipw()`:
       ! The "ate" weights recomputed from `wt_mod` differ from the weights supplied to `outcome_mod` (compared at relative tolerance 1e-6).
-      i The estimand or the focal level the weights were built for may differ from the ones `ipw()` resolved.
+      i The estimand the weights were built for may differ from the one `ipw()` resolved.
       i `ipw()` rebuilt these weights as a "t(df = 4)" density with a "marginal" numerator.
-      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual standard deviation, which is what `wt_ate()` uses when no `.sigma` is given.
-      i A dose component built with a fixed `stabilization_score` is one cause: the product records that the numerator was a score without recording the vector it was, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
+      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual root mean square, which is what `wt_ate()` uses when no `.sigma` is given.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
-      i Refit `outcome_mod` with weights from this propensity score model and estimand if the weights are the cause.
+      i Refit `outcome_mod` with weights from the two treatment models `wt_mod` holds, and this estimand, if the weights are the cause.
 
 # ipw() still refuses a term reading a treatment and a covariate
 
@@ -89,6 +89,7 @@
       x `a` and `a:e` in `outcome_mod` contribute a column coded some other way.
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
       i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
 
 ---
@@ -101,22 +102,23 @@
       x `a` and `a:e` in `outcome_mod` contribute a column coded some other way.
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
       i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
 
-# the weights mismatch names a fixed stabilization score
+# the weights mismatch names a score the record does not keep
 
     Code
       expr
     Condition <propensity_ipw_weights_mismatch_error>
       Error in `ipw()`:
       ! The "ate" weights recomputed from `wt_mod` differ from the weights supplied to `outcome_mod` (compared at relative tolerance 1e-6).
-      i The estimand or the focal level the weights were built for may differ from the ones `ipw()` resolved.
+      i The estimand the weights were built for may differ from the one `ipw()` resolved.
       i `ipw()` rebuilt these weights as a "normal" density with a "marginal" numerator.
-      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual standard deviation, which is what `wt_ate()` uses when no `.sigma` is given.
-      i A dose component built with a fixed `stabilization_score` is one cause: the product records that the numerator was a score without recording the vector it was, so `ipw()` rebuilds the dose weights from the exposure's own marginal moments instead.
+      i Weights built with an observation-level `.sigma`, such as `influence(model)$sigma`, are one cause: `ipw()` models the conditional density with a single pooled residual root mean square, which is what `wt_ate()` uses when no `.sigma` is given.
+      i A component built with a fixed `stabilization_score` is one cause: the record on `e` keeps no score, so `ipw()` rebuilt its numerator from the exposure's own marginal distribution instead. A product assembled by hand, built by a version of this package that recorded no score, or subset after it was built, which drops a score held per observation, carries such a record.
       i Weights trimmed, truncated, or normalized after `wt_mod` was fit differ from the ones rebuilt here, which come from that model alone.
       i `.data` values that differ from the data the models were fit to move the recomputed weights on their own and leave the supplied weights exactly right.
-      i Refit `outcome_mod` with weights from this propensity score model and estimand if the weights are the cause.
+      i Refit `outcome_mod` with weights from the two treatment models `wt_mod` holds, and this estimand, if the weights are the cause.
 
 # a bare-term model with no intercept is refused, not errored
 
@@ -128,6 +130,7 @@
       x `a` in `outcome_mod` contributes a column coded some other way.
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
       i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
 
 # ipw() refuses .by on a joint continuous fit
@@ -149,4 +152,14 @@
       ! `ipw()` does not support "linearization" standard errors for a joint treatment model.
       x The cell means and every contrast built from them are parameters of the stacked estimating equations, and the linearization path solves no such system.
       i Use `se_method = "mestimation"` for a joint treatment model.
+
+# the joint dose weights refusal comes before the estimates do
+
+    Code
+      expr
+    Condition <propensity_ipw_ps_weights_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support a treatment model fit with case weights.
+      x `e` was fit with non-unit `weights`, so its coefficients are not the root of the unweighted score stacked for it.
+      i Refit `e` without `weights`.
 

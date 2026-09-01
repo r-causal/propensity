@@ -33,7 +33,10 @@ reached.}
 \value{
 A \code{ps_trim} object with re-estimated propensity scores for retained
 observations and \code{NA} for trimmed observations. Use \code{\link[=is_refit]{is_refit()}} to
-confirm refitting was applied.
+confirm refitting was applied. Refitting replaces the values a calibrated
+score held with predictions from the refit model, so a score trimmed after
+\code{\link[=ps_calibrate]{ps_calibrate()}} is no longer calibrated and \code{\link[=is_ps_calibrated]{is_ps_calibrated()}} answers
+\code{FALSE} for the result.
 }
 \description{
 Re-estimates a propensity score model using only the observations retained

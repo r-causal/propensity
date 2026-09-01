@@ -307,6 +307,20 @@ test_that("a multinomial fit reads its own exposure and says which it read", {
   expect_identical(as.numeric(from_model), as.numeric(supplied))
 })
 
+test_that("the quiet option silences what the model route says it read", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(trt ~ x1 + x2)
+
+  # The two alerts above are informational, and the option is how a caller turns
+  # them off. Every other test in the suite runs under it, so the silence is the
+  # condition the rest of the suite depends on and is asserted here rather than
+  # left to be inferred from tests that assert something else.
+  withr::local_options(propensity.quiet = TRUE)
+
+  expect_no_message(wt_ate(fit))
+})
+
 test_that("a tilting estimand reads the exposure the fit holds", {
   skip_if_not_installed("nnet")
 
@@ -372,6 +386,106 @@ test_that("a three-level fit refuses a two-level exposure", {
   expect_error(
     wt_ate(fit, collapsed),
     class = "propensity_model_family_error"
+  )
+})
+
+test_that("a two-level fit refuses a categorical exposure of three levels", {
+  skip_if_not_installed("nnet")
+
+  fit <- fit_multinom(a2 ~ x1 + x2)
+  trt <- categorical_model_data$trt
+
+  # A two-level fit reports one probability, so the categorical path has one
+  # column where it needs three. The mismatch belongs to the model rather than
+  # to a matrix the caller built, and the refusal has to say so: it names the
+  # levels the fit was made to and the levels of the exposure being weighted.
+  err <- expect_error(
+    wt_ate(fit, trt, exposure_type = "categorical"),
+    class = "propensity_model_family_error"
+  )
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+
+  for (level in levels(categorical_model_data$a2)) {
+    expect_match(message, level, fixed = TRUE)
+  }
+
+  # The one column is a property of the fit, so the refusal is about what
+  # `.propensity` was fit to rather than the matrix validator's report of a
+  # matrix the caller never built.
+  expect_match(message, ".propensity", fixed = TRUE)
+  expect_no_match(message, "Matrix columns", fixed = TRUE)
+
+  expect_propensity_error(wt_ate(fit, trt, exposure_type = "categorical"))
+})
+
+test_that("a four-level fit refuses a categorical exposure of three levels", {
+  skip_if_not_installed("nnet")
+
+  # A fourth level split off the first one, so that the fit reports a column
+  # more than the exposure has levels while both remain readable from the same
+  # covariates.
+  four_level <- within(categorical_model_data, {
+    four <- factor(ifelse(
+      trt == "a" & x1 > 0,
+      "d",
+      as.character(trt)
+    ))
+  })
+  fit <- nnet::multinom(four ~ x1 + x2, data = four_level, trace = FALSE)
+  trt <- categorical_model_data$trt
+
+  expect_length(fit$lev, 4L)
+
+  # More columns than levels is the same mismatch as fewer, and it is reported
+  # the same way, against the levels of the fit rather than against the width of
+  # a matrix.
+  err <- expect_error(
+    wt_ate(fit, trt, exposure_type = "categorical"),
+    class = "propensity_model_family_error"
+  )
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+
+  # The refusal is about what `.propensity` was fit to, the way the binary
+  # counterpart's is, rather than about the width of a matrix.
+  expect_match(message, ".propensity", fixed = TRUE)
+  expect_no_match(message, "Matrix columns", fixed = TRUE)
+
+  # Dropping the exposure's unused levels is no remedy for a fit reporting a
+  # level the exposure does not have, so that bullet belongs to the other
+  # direction of the mismatch alone.
+  expect_no_match(message, "droplevels", fixed = TRUE)
+
+  expect_propensity_error(wt_ate(fit, trt, exposure_type = "categorical"))
+})
+
+test_that("an exposure carrying an unused level is sent to droplevels()", {
+  skip_if_not_installed("nnet")
+
+  # `nnet::multinom()` drops a level no unit took, so a fit made to an exposure
+  # with an empty level reports one column fewer than the exposure declares
+  # levels. The two sets disagree for a reason the caller can fix without
+  # refitting anything, and the refusal names it.
+  fit <- fit_multinom(trt ~ x1 + x2)
+  with_empty_level <- factor(
+    as.character(categorical_model_data$trt),
+    levels = c("a", "b", "c", "d")
+  )
+
+  expect_length(fit$lev, 3L)
+  expect_length(levels(with_empty_level), 4L)
+
+  err <- expect_error(
+    wt_ate(fit, with_empty_level, exposure_type = "categorical"),
+    class = "propensity_model_family_error"
+  )
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "droplevels", fixed = TRUE)
+
+  expect_propensity_error(
+    wt_ate(fit, with_empty_level, exposure_type = "categorical")
   )
 })
 

@@ -9,10 +9,6 @@
 # two marginal weights is an ordinary vector of positive numbers that nothing
 # downstream can tell from the real thing.
 
-# The exposure types a component may declare. A joint weight is a product over
-# two treatments, and each of them is weighted the way its own type is.
-joint_wt_exposure_types <- c("binary", "categorical", "continuous")
-
 # The model classes a treatment model may be, and the exposure type each one
 # implies, in the vocabulary the rest of the package uses for exposures.
 #
@@ -137,6 +133,14 @@ joint_wt_response <- function(model) {
 #' propensity scores the components were built from. Those records name the
 #' observations of one component, and the product is not that component.
 #'
+#' Arithmetic that leaves a result unstabilized, such as multiplying the product
+#' by unstabilized weights, reduces the numerator side of the record it carries:
+#' the components read as unstabilized, their numerator models and stabilization
+#' scores are dropped, and each density record's numerator fields read as the
+#' record of no numerator. Such a result was divided by no numerator, so a
+#' record naming one would describe a different vector. What each component's
+#' weights divide by stays, and so does the component structure.
+#'
 #' @param w_a,w_e The two component weight vectors, as [psw()] objects. Both
 #'   must target the `ate`, both must be the same length, and a component
 #'   weighting a continuous exposure must be stabilized. The order is the
@@ -157,19 +161,50 @@ joint_wt_response <- function(model) {
 #'
 #' `is_joint_wt()` returns a single logical.
 #'
-#' `joint_wt_meta()` returns the record as a list of three elements, each one
-#' per component and in the order the components were given, or `NULL` for
-#' weights that are not a product:
+#' `joint_wt_meta()` returns the record as a list of five elements, with a
+#' sixth on a record that has dropped a stabilization score, each one per
+#' component and in the order the components were given, or `NULL` for weights
+#' that are not a product:
 #' \describe{
 #'   \item{`exposure_type`}{The two components' exposure types, in order.}
 #'   \item{`stabilized`}{Whether each component was stabilized, in order.}
 #'   \item{`density`}{Each component's density record, as [density_meta()]
 #'     returns it, in order. A component weighting a discrete exposure is
 #'     `NULL`, since its weights are no ratio of densities.}
+#'   \item{`numerator_model`}{Each component's numerator model, as
+#'     [numerator_model()] returns it, in order, for the components that have
+#'     nowhere else to keep one. A component weighting a continuous exposure
+#'     keeps its model inside its own `density` record, so this element is
+#'     `NULL` for it, and so it is for a component stabilized on anything other
+#'     than a fitted model. A record written before this element existed holds
+#'     none at all, which says the same thing as a record whose components each
+#'     record no model.}
+#'   \item{`stabilization_score`}{Each component's stabilization score, as
+#'     [stabilization_score()] returns it, in order. A component stabilized on
+#'     anything other than a score the caller supplied is `NULL`. A record
+#'     written before this element existed holds none at all, which says the
+#'     same thing as a record whose components each record no score.}
+#'   \item{`score_dropped`}{Whether each component's stabilization score was
+#'     dropped by an operation that changed the length of the weights, in
+#'     order. A drop empties the component's `stabilization_score` slot, which
+#'     is the slot a component stabilized on anything else has, so a component
+#'     marked `TRUE` here was stabilized on a score that is gone rather than on
+#'     a numerator an estimator can rebuild. A record holding no such element,
+#'     which is what a product nothing has shortened carries, says no
+#'     component's score was dropped.}
 #' }
 #'
 #' The record names the components rather than the observations, so it survives
-#' subsetting and every other operation that keeps the vector a [psw()].
+#' subsetting and every other operation that keeps the vector a [psw()]. A
+#' stabilization score is the exception: it holds one value per observation, so
+#' a score that no longer describes the observations the result holds is dropped
+#' the way the score on the weights themselves is, and a score of one value is
+#' carried at any length. Such a drop is recorded in `score_dropped`, so a
+#' component stabilized on a score that is gone stays distinguishable from one
+#' stabilized on the marginal numerator, and [ipw()] names it rather than
+#' standing a numerator in for it silently. Arithmetic that leaves the result
+#' unstabilized reduces the record's numerator side, as described under **What
+#' the product records**.
 #'
 #' @seealso [joint_wt_models()] for the container recording the two treatment
 #'   models, and [wt_ate()] for building the components. These are used by
@@ -233,7 +268,32 @@ wt_joint <- function(w_a, w_e, exposure_type = NULL) {
     # what an estimator has to rebuild them from. The slot is one per component,
     # empty for a component weighting no density, so the record is read
     # positionally either way.
-    density = list(density_meta(w_a), density_meta(w_e))
+    density = list(density_meta(w_a), density_meta(w_e)),
+    # The model a component's numerator was estimated with, so an estimator can
+    # estimate it again rather than reading the numerator it evaluated to. The
+    # slot is one per component and empty for a component whose numerator was no
+    # model, so it is read positionally the way the density slot is.
+    #
+    # It is empty for a component that has a density record as well, since that
+    # record is where the single continuous route has always kept the model. Two
+    # copies written from the same object agree the day they are written and
+    # nothing afterwards checks that they still do, so there is one copy and the
+    # reader falls through to it.
+    numerator_model = list(
+      joint_wt_component_model(w_a),
+      joint_wt_component_model(w_e)
+    ),
+    # The numerator a caller computed rather than fit, kept as the vector it
+    # was. An estimator can rebuild a model and can rebuild the marginal
+    # numerator the default stabilizer estimates, and a score is neither: it is
+    # a fixed multiplier that exists nowhere but here. Without the slot a
+    # discrete component stabilized on a score leaves the record the default
+    # stabilizer leaves, so the two are indistinguishable, and a dose's score is
+    # named by its density record and then nowhere to be found.
+    stabilization_score = list(
+      stabilization_score(w_a),
+      stabilization_score(w_e)
+    )
   )
 
   out
@@ -297,31 +357,140 @@ joint_wt_meta <- function(x) {
   attr(x, "joint_wt_meta")
 }
 
+# The numerator model the record stores for one component: none for a component
+# whose density record holds it already, which is every component weighting a
+# dose. `joint_wt_numerator_models()` reads the two homes as one.
+joint_wt_component_model <- function(w) {
+  if (!is.null(density_meta(w))) {
+    return(NULL)
+  }
+
+  numerator_model(w)
+}
+
+# The numerator models the record names, one per component and in the
+# components' own order, read from whichever home holds each one: the slot for a
+# component with no density record, and the density record for the rest. A
+# record written before the slot existed holds none, which says what a record
+# whose components each record no model says, and one written while the slot was
+# the dose's home too still answers out of the slot.
+joint_wt_numerator_models <- function(meta) {
+  n <- length(meta$exposure_type)
+  models <- meta$numerator_model
+  density <- meta$density
+
+  lapply(seq_len(n), function(i) {
+    stored <- if (i <= length(models)) models[[i]]
+
+    if (!is.null(stored)) {
+      return(stored)
+    }
+
+    if (i <= length(density)) density[[i]]$numerator_model
+  })
+}
+
+# The stabilization scores the record holds, one per component and in the
+# components' own order. A record written before the slot existed holds none,
+# which says what a record whose components each record no score says.
+joint_wt_stabilization_scores <- function(meta) {
+  scores <- meta$stabilization_score
+
+  if (is.null(scores)) {
+    return(vector("list", length(meta$exposure_type)))
+  }
+
+  scores
+}
+
+# Whether the record has the score slot at all, which is not the same question
+# as whether any component recorded a score. A record written before the slot
+# existed is the one place a score of the caller's is still indistinguishable
+# from the numerator the default stabilizer estimates, so it is the one place an
+# estimator that could not rebuild a numerator has anything to say about why.
+joint_wt_records_scores <- function(meta) {
+  !is.null(meta$stabilization_score)
+}
+
+# Which components held a score that a length change took away, one logical per
+# component and in the components' own order. A component that never held one
+# and a component whose score was dropped leave the same empty slot, and they do
+# not say the same thing: the first names the marginal numerator an estimator
+# rebuilds for itself, and the second names a vector that existed and is now
+# beyond recovery. The mark is the difference, so it is written where the drop
+# happens and read wherever the slot alone would mislead.
+#
+# A record carrying no mark says no component's score was dropped, which is what
+# a record written before the mark existed says and what a product nothing has
+# shortened says.
+joint_wt_dropped_scores <- function(meta) {
+  dropped <- meta$score_dropped
+
+  if (is.null(dropped)) {
+    return(rep(FALSE, length(meta$exposure_type)))
+  }
+
+  dropped
+}
+
+# A joint weight is a product over two treatments, and each of them is weighted
+# the way its own type is. The vocabulary of exposure types belongs to
+# causalgenerics, so each entry is put to `match_exposure_type()` rather than
+# compared against a list kept here, and its refusal is carried as the parent of
+# this one: the reader is told what is wrong with the type by the package that
+# owns the answer, and which argument was wrong by the function they called.
+#
+# The length is this function's own requirement and keeps its own refusal.
+# `match_exposure_type()` reads one type, so a vector of any other length names
+# nothing it could be asked about.
 check_wt_joint_exposure_type <- function(
   exposure_type,
   call = rlang::caller_env()
 ) {
-  problem <- if (!is.character(exposure_type) || length(exposure_type) != 2) {
-    "{.arg exposure_type} names {length(exposure_type)} exposure type{?s}."
-  } else if (!all(exposure_type %in% joint_wt_exposure_types)) {
-    unsupported <- setdiff(exposure_type, joint_wt_exposure_types)
-    "{.val {unsupported}} {?is/are} not {?a/} supported exposure type{?s}."
-  } else {
-    return(invisible(TRUE))
+  if (!is.character(exposure_type) || length(exposure_type) != 2) {
+    abort(
+      c(
+        "{.arg exposure_type} must name the exposure type of each component.",
+        x = "{.arg exposure_type} names {length(exposure_type)} exposure \\
+        type{?s}.",
+        i = wt_joint_exposure_type_hint()
+      ),
+      error_class = "propensity_wt_joint_exposure_type_error",
+      call = call
+    )
   }
 
-  abort(
-    c(
-      "{.arg exposure_type} must name the exposure type of each component.",
-      x = problem,
-      i = "Supported types: {.val {joint_wt_exposure_types}}.",
-      i = "Supply one per component, in the order the components were given, \\
-      for example {.code exposure_type = c(\"binary\", \"continuous\")}, or \\
-      leave {.arg exposure_type} unset to read each component's own record."
-    ),
-    error_class = "propensity_wt_joint_exposure_type_error",
-    call = call
-  )
+  for (type in exposure_type) {
+    rlang::try_fetch(
+      causalgenerics::match_exposure_type(
+        type,
+        valid_types = c("binary", "categorical", "continuous"),
+        call = call
+      ),
+      error = function(cnd) {
+        abort(
+          c(
+            "{.arg exposure_type} must name the exposure type of each \\
+            component.",
+            i = wt_joint_exposure_type_hint()
+          ),
+          error_class = "propensity_wt_joint_exposure_type_error",
+          call = call,
+          parent = cnd
+        )
+      }
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# The remedy both refusals above end on, which is the same whichever of them
+# fired: the argument takes one type per component, or nothing at all.
+wt_joint_exposure_type_hint <- function() {
+  "Supply one per component, in the order the components were given, for \\
+  example {.code exposure_type = c(\"binary\", \"continuous\")}, or leave \\
+  {.arg exposure_type} unset to read each component's own record."
 }
 
 check_wt_joint_class <- function(w_a, w_e, call = rlang::caller_env()) {
@@ -593,12 +762,34 @@ check_joint_wt_models_supported <- function(
 
   if (any(unsupported)) {
     bad <- names[unsupported]
-    bad_class <- class(models[[which(unsupported)[[1]]]])[[1]]
+    bad_model <- models[[which(unsupported)[[1]]]]
+    bad_class <- class(bad_model)[[1]]
+
+    # What is refused is usually the family rather than the class: a
+    # {.cls glm} and a {.cls gam} are both on the list of classes below, and
+    # each is read as a dose model when it is gaussian and refused when it is
+    # not. Naming the class alone leaves the reader looking at a class the same
+    # message says is supported.
+    # A `family` element belongs to a fitted model, and what reaches here need
+    # not be one: an argument that is not a model at all is refused here too,
+    # and asking a string, a function, or a data frame for an element of that
+    # name raises a base error about subscripts in place of this refusal.
+    family <- if (is.list(bad_model) && !is.data.frame(bad_model)) {
+      bad_model[["family"]]
+    }
+
+    what_it_is <- if (is.list(family)) {
+      "The model named {.arg {bad[[1]]}} is {.cls {bad_class}} fit with \\
+      {.code {model_family_label(family)}}."
+    } else {
+      "The model named {.arg {bad[[1]]}} is {.cls {bad_class}}."
+    }
+
     abort(
       c(
         "{.fun joint_wt_models} must be given models it can read a treatment \\
         density from.",
-        x = "The model named {.arg {bad[[1]]}} is {.cls {bad_class}}.",
+        x = what_it_is,
         i = "Supported models: a binomial {.fun glm} for a binary treatment, \\
         a {.fun nnet::multinom} for a categorical one, and an {.fun lm}, a \\
         gaussian {.fun glm}, a gaussian {.fun mgcv::gam}, or a \\
@@ -683,6 +874,25 @@ check_joint_wt_models_factorization <- function(
     return(invisible(TRUE))
   }
 
+  # When the first model reads the second treatment, the same two fits supplied
+  # the other way round are a factorization already, so refitting is not the
+  # only way out. Which order is right is a claim about the order the treatments
+  # are assigned in, which the pair of models does not settle, so the message
+  # offers the swap rather than making it.
+  swap_call <- paste0(
+    "joint_wt_models(",
+    second,
+    " = ..., ",
+    first,
+    " = ...)"
+  )
+  swapped <- if (first_reads_second) {
+    "{.arg {first}} already reads {.val {second}}, so the pair in the other \\
+    order, {.code {swap_call}}, is the factorization f({second} | L) \\
+    f({first} | {second}, L). Supply them that way if that is the order the \\
+    treatments are assigned in."
+  }
+
   abort(
     c(
       "{.fun joint_wt_models} requires the second model to condition on the \\
@@ -696,7 +906,8 @@ check_joint_wt_models_factorization <- function(
       i = "Nothing downstream can tell the two apart: the product is an \\
       ordinary vector of positive numbers either way.",
       i = "Add {.val {first}} to the formula of {.arg {second}}, and model \\
-      that dependence flexibly rather than as a single additive term."
+      that dependence flexibly rather than as a single additive term.",
+      i = swapped
     ),
     error_class = "propensity_wt_joint_factorization_error",
     call = call

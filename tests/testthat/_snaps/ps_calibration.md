@@ -5,6 +5,8 @@
     Condition <propensity_type_error>
       Error in `ps_calibrate()`:
       ! `.propensity` must be a numeric vector.
+      x It is <character>, which holds no score to read.
+      i Pass the propensity scores as numbers between 0 and 1.
 
 # errors for out-of-range ps
 
@@ -91,4 +93,31 @@
       ! `.propensity` must be a numeric vector.
       x It is <matrix> with 2 dimensions.
       i Calibration reads one propensity score per observation. Calibrate the columns of a matrix of scores one at a time.
+
+# ps_calibrate() names the class of a fit it has no reading for
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_calibrate()`:
+      ! No method for objects of class lm
+
+# ps_calibrate() reports a multinomial fit of too many levels
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_calibrate()`:
+      ! Calibration reads one propensity score for each unit.
+      x `.propensity` was fit to 3 levels ("a", "b", and "c"), so it fits one probability for each level rather than one for each unit.
+      i Calibrate the columns of `fitted(fit)` one at a time against the indicator for each level.
+
+# ps_calibrate() names the exposure it was not given
+
+    Code
+      expr
+    Condition <propensity_missing_arg_error>
+      Error in `ps_calibrate()`:
+      ! `.exposure` must be supplied.
+      i Calibration reads the propensity scores against the exposure they are the probability of.
 

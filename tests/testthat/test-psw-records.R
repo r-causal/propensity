@@ -13,18 +13,77 @@ records_mu <- c(0.2, 0.3, 0.5, 0.6, 0.7, 0.85)
 # Continuous ATE weights, stabilized on the marginal density unless the caller
 # asks for something else. The arguments the record is written from are named
 # rather than passed through dots so that a fixture cannot collide with them.
+#
+# The fitted means track the exposure closely, so the weights sit past the
+# finite-variance boundary and say so. These tests are written about what the
+# weights record rather than about how well behaved they are, so the report is
+# muffled here.
 continuous_records_psw <- function(
   stabilize = TRUE,
   stabilization_score = NULL,
-  .sigma = NULL
+  .sigma = NULL,
+  .density = "normal"
 ) {
-  wt_ate(
+  muffle_variance_warning(wt_ate(
     records_mu,
     records_exposure,
     .sigma = .sigma,
     exposure_type = "continuous",
     stabilize = stabilize,
-    stabilization_score = stabilization_score
+    stabilization_score = stabilization_score,
+    .density = .density
+  ))
+}
+
+# A numerator model for the same exposure: the exposure on a baseline covariate
+# the conditional means above do not read. `shift` moves the covariate, which
+# moves the coefficients the model is fit at without changing the terms it
+# reads.
+records_numerator_model <- function(shift = 0) {
+  exposure <- records_exposure
+  covariate <- c(0.1, 0.5, 0.2, 0.9, 0.4, 0.7) + shift
+
+  stats::lm(exposure ~ covariate)
+}
+
+# A numerator model whose formula is too long for `deparse()` to write on one
+# line. The covariate names are what make it wrap, so the record has several
+# deparsed lines to read back as one.
+records_long_numerator_model <- function() {
+  frame <- data.frame(
+    exposure = records_exposure,
+    baseline_covariate_measured_at_enrollment = c(
+      0.1,
+      0.5,
+      0.2,
+      0.9,
+      0.4,
+      0.7
+    ),
+    baseline_covariate_measured_at_randomization = c(
+      0.3,
+      0.2,
+      0.8,
+      0.1,
+      0.6,
+      0.5
+    ),
+    baseline_covariate_measured_at_the_first_visit = c(
+      0.4,
+      0.7,
+      0.1,
+      0.3,
+      0.9,
+      0.2
+    )
+  )
+
+  stats::lm(
+    exposure ~
+      baseline_covariate_measured_at_enrollment +
+      baseline_covariate_measured_at_randomization +
+      baseline_covariate_measured_at_the_first_visit,
+    data = frame
   )
 }
 
@@ -123,7 +182,7 @@ test_that("the record accessors read what the weights carry", {
   expect_type(density_meta(w), "list")
   expect_named(
     density_meta(w),
-    c("density", "numerator", "sigma", "sigma_value")
+    c("density", "numerator", "sigma", "sigma_value", "numerator_model")
   )
 })
 
@@ -276,13 +335,50 @@ test_that("combining weights spread by different numbers drops the density", {
   expect_identical(density_meta(same)$sigma_value, 0.12)
 })
 
+test_that("combining weights stabilized on different models drops the density", {
+  # A numerator model is compared by what it says rather than by identity, the
+  # way the density specification is: a fit carries the frame it was made in
+  # and the call that made it, so the same numerator fit in two calls would
+  # otherwise read as a disagreement.
+  first <- continuous_records_psw(stabilize = records_numerator_model())
+  again <- continuous_records_psw(stabilize = records_numerator_model())
+
+  same <- expect_silent(c(first, again))
+  expect_identical(
+    stats::coef(density_meta(same)$numerator_model),
+    stats::coef(records_numerator_model())
+  )
+
+  # Two models that read the same terms and were fit to different values of
+  # them estimate two different numerators, so the combination is stabilized on
+  # neither.
+  other <- continuous_records_psw(
+    stabilize = records_numerator_model(shift = 0.4)
+  )
+
+  out <- NULL
+  expect_warning(
+    out <- c(first, other),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(density_meta(out))
+
+  # So do a model and the marginal density it was supplied instead of.
+  marginal <- NULL
+  expect_warning(
+    marginal <- c(first, continuous_records_psw()),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(density_meta(marginal))
+})
+
 test_that("continuous censoring weights record both", {
-  w <- wt_cens(
+  w <- muffle_variance_warning(wt_cens(
     records_mu,
     records_exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  )
+  ))
 
   expect_identical(estimand(w), "uncensored")
   expect_identical(exposure_type(w), "continuous")
@@ -313,6 +409,161 @@ test_that("a density record prints the density, numerator, and spread", {
       "sigma:     supplied"
     )
   )
+
+  # A numerator of "model" says that a model the caller fit estimated the
+  # numerator, but not which one, so the record reads the model's formula back
+  # under the three choices, in the terms of the argument it arrived in.
+  modeled <- continuous_records_psw(stabilize = records_numerator_model())
+  expect_identical(
+    capture.output(print(density_meta(modeled))),
+    c(
+      "density:   normal",
+      "numerator: model",
+      "sigma:     pooled",
+      "stabilize: exposure ~ covariate"
+    )
+  )
+})
+
+test_that("a wrapped numerator formula reads back as one line of formula spacing", {
+  # `deparse()` breaks a long formula across lines and indents the
+  # continuation, so collapsing those lines leaves runs of spaces inside the
+  # formula. The record reads it back spaced the way a formula is written.
+  modeled <- continuous_records_psw(stabilize = records_long_numerator_model())
+  printed <- capture.output(print(density_meta(modeled)))
+
+  line <- printed[startsWith(printed, "stabilize:")]
+  expect_length(line, 1L)
+
+  read_back <- sub("^stabilize: +", "", line)
+  expect_false(grepl("  ", read_back, fixed = TRUE))
+  expect_identical(
+    read_back,
+    paste(
+      "exposure ~ baseline_covariate_measured_at_enrollment +",
+      "baseline_covariate_measured_at_randomization +",
+      "baseline_covariate_measured_at_the_first_visit"
+    )
+  )
+})
+
+# ---- the density record under the printed weights ---------------------------
+
+# What printing a set of weights writes, at a width no line of it wraps at.
+psw_printed <- function(x) {
+  withr::local_options(width = 200)
+
+  utils::capture.output(print(x))
+}
+
+test_that("printing continuous weights writes the density record under them", {
+  w <- continuous_records_psw()
+  printed <- psw_printed(w)
+
+  # The footer is the record's own `format()` method rather than a second
+  # rendering of the same three lines, so the printed weights and the printed
+  # record cannot come to disagree.
+  expect_identical(utils::tail(printed, 3L), format(density_meta(w)))
+
+  expect_match(printed, "^density:\\s+normal$", all = FALSE)
+  expect_match(printed, "^numerator:\\s+marginal$", all = FALSE)
+  expect_match(printed, "^sigma:\\s+pooled$", all = FALSE)
+
+  # The header and the weights themselves are what they always were: the record
+  # is written under them and nothing else moves.
+  expect_length(printed, 5L)
+  expect_identical(printed[[1]], "<psw{estimand = ate; stabilized}[6]>")
+
+  # Weights stabilized on a model carry a fourth line naming it, and it reaches
+  # the printed weights the same way: through the record's own `format()`.
+  modeled <- continuous_records_psw(stabilize = records_numerator_model())
+  modeled_printed <- psw_printed(modeled)
+
+  expect_identical(
+    utils::tail(modeled_printed, 4L),
+    format(density_meta(modeled))
+  )
+  expect_match(modeled_printed, "^numerator:\\s+model$", all = FALSE)
+  expect_match(
+    modeled_printed,
+    "^stabilize:\\s+exposure ~ covariate$",
+    all = FALSE
+  )
+  expect_length(modeled_printed, 6L)
+})
+
+test_that("the footer tells apart weights whose values print alike", {
+  # Two sets of weights built from different families carry the same estimand
+  # and, to a reader of the numbers, much the same weights. What each is a ratio
+  # of is the difference between them, and it is the footer that says so.
+  normal <- psw_printed(continuous_records_psw())
+  heavy <- psw_printed(continuous_records_psw(.density = dens_t(4)))
+
+  expect_identical(normal[[1]], heavy[[1]])
+  expect_match(heavy, "^density:\\s+t\\(df = 4\\)$", all = FALSE)
+  expect_false(any(grepl("^density:\\s+t", normal)))
+})
+
+test_that("binary and categorical weights print with no footer", {
+  weights <- list(
+    binary = wt_ate(records_binary_ps, records_binary_exposure),
+    categorical = wt_ate(
+      records_categorical_ps,
+      records_categorical_exposure
+    )
+  )
+
+  for (name in names(weights)) {
+    printed <- psw_printed(weights[[name]])
+
+    # Weights that are not a ratio of densities record no ratio and print none:
+    # the header and the values, exactly as they always have.
+    expect_identical(length(printed), 2L, label = name)
+    expect_false(
+      any(grepl("^(density|numerator|sigma):", printed)),
+      label = name
+    )
+  }
+})
+
+test_that("the footer follows the record through a shorter slice", {
+  w <- continuous_records_psw()
+  footer <- format(density_meta(w))
+
+  # The record describes the exposure the weights were built for rather than the
+  # units, so it survives a slice, and what is printed under the weights follows
+  # it.
+  expect_identical(utils::tail(psw_printed(w[1:3]), 3L), footer)
+  expect_identical(utils::tail(psw_printed(utils::head(w, 2L)), 3L), footer)
+})
+
+test_that("weights that lost the record print no footer", {
+  first <- continuous_records_psw(.sigma = 0.12)
+  second <- continuous_records_psw(.sigma = 0.2)
+
+  out <- NULL
+  expect_warning(
+    out <- c(first, second),
+    class = "propensity_metadata_conflict_warning"
+  )
+
+  expect_null(density_meta(out))
+  expect_false(any(grepl("^(density|numerator|sigma):", psw_printed(out))))
+})
+
+test_that("the printed weights read as they are pinned", {
+  # The whole of what printing writes, for weights that carry a record and for
+  # weights that do not: the footer is user-visible output, and the header and
+  # the values under it are what they were before there was one.
+  expect_snapshot({
+    print(continuous_records_psw())
+
+    print(continuous_records_psw(.density = dens_t(4)))
+
+    print(continuous_records_psw(stabilize = records_numerator_model()))
+
+    print(wt_ate(records_binary_ps, records_binary_exposure))
+  })
 })
 
 # ---- the records hold at any length -----------------------------------------
@@ -390,6 +641,65 @@ test_that("the records survive arithmetic", {
   # An operand's own record travels through unchanged where there is only one of
   # them to travel.
   expect_identical(density_meta(expect_silent(w * 2)), meta)
+})
+
+test_that("arithmetic that leaves the result unstabilized drops the numerator", {
+  # A numerator is what the weights were divided into, and a product only half
+  # of which was divided by it was not. The merge already drops the
+  # stabilization status and the score there, and the numerator fields of the
+  # density record say the same thing a third time: left standing, the record
+  # reads back as a ratio the product is not, and prints a `stabilize:` line
+  # naming a model that never multiplied it.
+  #
+  # The other operand carries no record of its own, so the modeled record
+  # reaches the result by the single-operand route rather than by agreeing with
+  # anything. Two records that disagree about the numerator are a conflict, and
+  # are dropped whole with a report of their own.
+  modeled <- continuous_records_psw(stabilize = records_numerator_model())
+  plain <- psw(rep(1.5, length(records_exposure)), estimand = "ate")
+
+  results <- list(
+    `modeled * plain` = expect_silent(modeled * plain),
+    `plain * modeled` = expect_silent(plain * modeled),
+    `modeled + plain` = expect_silent(modeled + plain)
+  )
+
+  for (label in names(results)) {
+    out <- results[[label]]
+    expect_false(is_stabilized(out), label = label)
+    expect_null(numerator_model(out), label = label)
+    expect_null(density_meta(out)$numerator_model, label = label)
+    expect_identical(density_meta(out)$numerator, "none", label = label)
+
+    # The denominator is the conditional density the weights divide by, which
+    # the arithmetic leaves alone, so the family and the spread stay.
+    expect_identical(
+      format(density_meta(out)$density),
+      format(density_meta(modeled)$density),
+      label = label
+    )
+    expect_identical(density_meta(out)$sigma, "pooled", label = label)
+    expect_false(
+      any(grepl("stabilize:", format(density_meta(out)), fixed = TRUE)),
+      label = label
+    )
+  }
+})
+
+test_that("arithmetic that stays stabilized keeps the numerator model", {
+  # The drop above is the unstabilized result's, not every product's: two sets
+  # of weights stabilized on the same model were both divided by it, and so was
+  # their product.
+  modeled <- continuous_records_psw(stabilize = records_numerator_model())
+  twin <- continuous_records_psw(stabilize = records_numerator_model())
+
+  out <- expect_silent(modeled * twin)
+  expect_true(is_stabilized(out))
+  expect_identical(density_meta(out)$numerator, "model")
+  expect_identical(
+    stats::coef(numerator_model(out)),
+    stats::coef(records_numerator_model())
+  )
 })
 
 # ---- combining --------------------------------------------------------------
@@ -542,12 +852,12 @@ test_that("weights that differ only in these records cast to each other", {
 test_that("weights from a trimmed propensity score carry the records", {
   trimmed <- ps_trim(records_mu, method = "ps", lower = 0.25, upper = 0.8)
 
-  w <- muffle_refit_warning(wt_ate(
+  w <- muffle_variance_warning(muffle_refit_warning(wt_ate(
     trimmed,
     records_exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  ))
+  )))
 
   expect_identical(estimand(w), "ate; trimmed")
   expect_identical(exposure_type(w), "continuous")
@@ -567,12 +877,12 @@ test_that("weights from a trimmed propensity score carry the records", {
 test_that("weights from a truncated propensity score carry the records", {
   truncated <- ps_trunc(records_mu, method = "ps", lower = 0.25, upper = 0.8)
 
-  w <- wt_ate(
+  w <- muffle_variance_warning(wt_ate(
     truncated,
     records_exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  )
+  ))
 
   expect_identical(estimand(w), "ate; truncated")
   expect_identical(exposure_type(w), "continuous")
@@ -609,4 +919,51 @@ test_that("weights from a calibrated propensity score carry the records", {
   expect_identical(estimand(w), "ate; calibrated")
   expect_identical(exposure_type(w), "binary")
   expect_null(density_meta(w))
+})
+
+test_that("weights from a calibrated score that was trimmed carry the calibration", {
+  # Trimming and truncation read the scores a calibrated object holds and
+  # record the calibration in their own metadata, so the weights built from one
+  # were built from calibrated scores and say so, exactly as the weights built
+  # from the calibrated score itself do.
+  exposure <- c(0, 1, 0, 0, 1, 0, 1, 1, 0, 1)
+  calibrated <- ps_calibrate(
+    c(0.14, 0.22, 0.31, 0.4, 0.48, 0.55, 0.62, 0.7, 0.78, 0.86),
+    exposure
+  )
+
+  trimmed <- muffle_refit_warning(wt_ate(
+    ps_trim(calibrated, method = "ps", lower = 0.05, upper = 0.95),
+    exposure,
+    exposure_type = "binary",
+    .focal_level = 1
+  ))
+
+  expect_identical(estimand(trimmed), "ate; trimmed; calibrated")
+  expect_true(is_ps_calibrated(trimmed))
+  expect_true(is_ps_trimmed(trimmed))
+
+  # The record is the score's rather than the estimand's, so it reaches the
+  # weights whichever formula built them.
+  truncated <- wt_att(
+    ps_trunc(calibrated, method = "ps", lower = 0.05, upper = 0.95),
+    exposure,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+
+  expect_identical(estimand(truncated), "att; truncated; calibrated")
+  expect_true(is_ps_calibrated(truncated))
+  expect_true(is_ps_truncated(truncated))
+
+  # A score that was never calibrated records nothing that says it was.
+  plain <- wt_att(
+    ps_trunc(records_binary_ps, method = "ps", lower = 0.05, upper = 0.95),
+    records_binary_exposure,
+    exposure_type = "binary",
+    .focal_level = 1
+  )
+
+  expect_identical(estimand(plain), "att; truncated")
+  expect_false(is_ps_calibrated(plain))
 })

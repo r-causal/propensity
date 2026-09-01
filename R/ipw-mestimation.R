@@ -218,8 +218,10 @@ ipw_spec_binary <- function(
   # A binary propensity model fit with case weights would need a weighted score
   # in the stacked system; the ee_glm ps block is unweighted, so the fitted
   # coefficients would not sit at the score root and the estimates would drift.
-  # A glm records prior weights in prior.weights (all one when unweighted).
-  if (!is.null(ps_mod$prior.weights) && !all(ps_mod$prior.weights == 1)) {
+  # Which field holds the prior weights is the class's own business, which the
+  # shared reader settles.
+  ps_weights <- ipw_model_prior_weights(ps_mod)
+  if (!is.null(ps_weights) && !all(ps_weights == 1)) {
     abort(
       c(
         "{.fun ipw} does not support a propensity score model fit with case \\
@@ -289,6 +291,20 @@ ipw_spec_binary <- function(
 
   wts <- extract_weights(outcome_mod)
   estimand <- check_estimand(wts, estimand, call = call)
+
+  # A numerator model joins the stack the way the propensity score model does,
+  # so it goes through the same guards and is refused on the same terms.
+  numerator_mod <- numerator_model(wts)
+  numerator_block <- ipw_binary_numerator_block(numerator_mod, call = call)
+  if (!is.null(numerator_block)) {
+    check_ipw_numerator_model(
+      numerator_mod,
+      numerator_block,
+      exposure_name,
+      length(exposure),
+      call = call
+    )
+  }
 
   exposure_values <- sort(unique(exposure))
 
@@ -363,6 +379,7 @@ ipw_spec_binary <- function(
     exposure_name = exposure_name,
     outcome_mod = outcome_mod,
     contrasts = contrasts,
+    wts = wts,
     call = call
   )
 
@@ -383,7 +400,12 @@ ipw_spec_binary <- function(
     ),
     stab = list(
       stabilized = is_stabilized(wts),
-      score = stabilization_score(wts)
+      score = stabilization_score(wts),
+      # A numerator estimated by a model of the caller's is estimated again in
+      # the stacked system, so the block carries the model's design, its score,
+      # and the coefficients it was fit at rather than the probabilities they
+      # evaluate to.
+      model = numerator_block
     ),
     outcome = list(
       X = model.matrix(outcome_mod),
@@ -401,12 +423,68 @@ ipw_spec_binary <- function(
   )
 }
 
+# The stabilization block a binary exposure's numerator model contributes: the
+# design its coefficients multiply, and the link its fitted probability is read
+# back through. The score the block solves is the binomial score, which is what
+# a numerator of a binary exposure is fit by, so the block needs nothing else.
+#
+# Every guard here is the guard the binary propensity score model meets, read
+# for the argument the numerator model arrived in: the same family, the same
+# three links, the same refusal of a penalized fit, the same refusal of case
+# weights, and the same rank requirement.
+ipw_binary_numerator_block <- function(
+  numerator_model,
+  call = rlang::caller_env()
+) {
+  if (is.null(numerator_model)) {
+    return(NULL)
+  }
+
+  check_ipw_binary_gam(
+    numerator_model,
+    arg = "stabilize",
+    what = "a binary numerator model",
+    call = call
+  )
+  check_ipw_numerator_model_weights(numerator_model, call = call)
+
+  # The block below multiplies the fitted coefficients against the design
+  # positionally, as the propensity score block does, so the model needs a
+  # coefficient for every column of its design. Without this the numerator comes
+  # back missing at every value of theta, and the first report of it is the
+  # weights the system rebuilds failing to match the ones the caller built.
+  check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
+
+  link <- numerator_model[["family"]]$link
+  supported <- c("logit", "probit", "cloglog")
+  if (!isTRUE(link %in% supported)) {
+    abort(
+      c(
+        "{.fun ipw} does not support the {.val {link}} link for a binary \\
+        numerator model.",
+        i = "Supported links: {.val {supported}}.",
+        i = "Refit {.arg stabilize} with a supported link and rebuild the \\
+        weights from it."
+      ),
+      error_class = "propensity_ipw_link_error",
+      call = call
+    )
+  }
+
+  list(
+    X = stats::model.matrix(numerator_model),
+    link = link,
+    coefs = stats::coef(numerator_model)
+  )
+}
+
 # Extract the propensity score design and the exposure and outcome vectors,
 # rebuilding from .data when it is supplied. A propensity model can lose the data
 # behind its fitting call (nnet::multinom stores no model frame; an lm or glm can
-# be fit in an environment that is later gone), so model.matrix(ps_mod) is wrapped
-# and the user is directed to supply .data on failure. When .data is supplied the
-# design is rebuilt from the model terms so no re-evaluation is needed.
+# be fit in an environment that is later gone), so `ipw_recover_ps_data()` is
+# wrapped and the user is directed to supply .data on failure. When .data is
+# supplied the design is rebuilt from the model terms so no re-evaluation is
+# needed.
 #
 # `counterfactual` says whether the caller goes on to rebuild the outcome design
 # at each exposure value. The continuous path does not: it reports a coefficient
@@ -422,10 +500,9 @@ ipw_spec_binary <- function(
 # `ps_design` says whether the propensity score design is wanted at all. Every
 # route that stacks estimating equations multiplies that design by a block of
 # theta and needs it; the resampling route refits the propensity score model
-# instead and never forms it. Asking for it there is not merely wasted work: an
-# additive model's design is a smooth basis rather than the columns its formula
-# names, so rebuilding one from the formula would report a width that disagrees
-# with the fit for a model resampling handles perfectly well.
+# instead and never forms it. What that saves is more than a matrix lookup for
+# some fits: an additive model's design is a smooth basis the fit has to
+# evaluate rather than the columns its formula names.
 ipw_extract_ps_design <- function(
   ps_mod,
   outcome_mod,
@@ -434,6 +511,7 @@ ipw_extract_ps_design <- function(
   counterfactual = TRUE,
   check_exposure_levels = FALSE,
   ps_design = TRUE,
+  ps_X = NULL,
   call = rlang::caller_env()
 ) {
   # First, and independent of `.data`: the propensity model has to have a
@@ -442,12 +520,20 @@ ipw_extract_ps_design <- function(
   # positionally.
   check_ipw_model_rank(stats::coef(ps_mod), "wt_mod", call = call)
 
+  # A design the caller already holds is the design over the rows the model was
+  # fit to, which is what the recovery below builds, so the recovery is asked
+  # for the exposure alone. It is the rows that make this a reuse rather than a
+  # substitution: a design supplied with `.data` would be read over the wrong
+  # ones, so the branch that rebuilds from `.data` builds its own. A caller
+  # wanting no design at all gets none, whatever it supplied.
+  if (!ps_design) {
+    ps_X <- NULL
+  }
+  recover_design <- ps_design && is.null(ps_X)
+
   if (is.null(.data)) {
     ps_extract <- tryCatch(
-      list(
-        exposure = fmla_extract_left_vctr(ps_mod),
-        ps_X = if (ps_design) model.matrix(ps_mod)
-      ),
+      ipw_recover_ps_data(ps_mod, ps_design = recover_design),
       error = function(e) e
     )
     if (inherits(ps_extract, "error")) {
@@ -463,7 +549,9 @@ ipw_extract_ps_design <- function(
       )
     }
     exposure <- ps_extract$exposure
-    ps_X <- ps_extract$ps_X
+    if (recover_design) {
+      ps_X <- ps_extract$ps_X
+    }
 
     # The outcome model's frame gets the same treatment. Every public `ipw()`
     # method reads the weights out of that frame before any design work, so a
@@ -518,6 +606,17 @@ ipw_extract_ps_design <- function(
     # for it here cannot fail on its own.
     outcome_frame <- stats::model.frame(outcome_mod)
     n_fitted <- nrow(outcome_frame)
+
+    # A model fit to data holding a missing value in a column it reads analyzed
+    # fewer rows than it was given, and the frame the caller has is the one the
+    # models were given: under `na.action = na.exclude` that is the whole point
+    # of the fit, since everything it predicts comes back at the length of that
+    # frame. Restricting `.data` to the rows every model read reconciles the
+    # two, and it happens before any design is built so that the designs, the
+    # exposure, the outcome, and the weights are all sized to the rows the fits
+    # used. A `.data` that is longer for any other reason has no such
+    # restriction to make and keeps the report below.
+    .data <- restrict_ipw_data(.data, required, n_fitted)
 
     if (!identical(nrow(.data), n_fitted)) {
       abort(
@@ -594,6 +693,47 @@ ipw_extract_ps_design <- function(
   list(exposure = exposure, outcome = outcome, ps_X = ps_X, mm_data = mm_data)
 }
 
+# The exposure and the propensity score design, read off the fit rather than
+# from a `.data` the caller supplied. Most classes keep their model frame, so
+# the default reads each through the accessor that knows how to find it.
+#
+# `nnet::multinom()` keeps none: both `model.frame()` and `model.matrix()`
+# rebuild one by re-evaluating the fitting call, so reading the two separately
+# evaluates the fitting data twice. The method below builds the frame once and
+# reads both from it, which matters whenever evaluating that call is expensive
+# or has an effect of its own.
+ipw_recover_ps_data <- function(ps_mod, ps_design = TRUE) {
+  UseMethod("ipw_recover_ps_data")
+}
+
+#' @export
+ipw_recover_ps_data.default <- function(ps_mod, ps_design = TRUE) {
+  list(
+    exposure = fmla_extract_left_vctr(ps_mod),
+    ps_X = if (ps_design) model.matrix(ps_mod)
+  )
+}
+
+#' @export
+ipw_recover_ps_data.multinom <- function(ps_mod, ps_design = TRUE) {
+  ps_frame <- stats::model.frame(ps_mod)
+
+  list(
+    exposure = ps_frame[[1]],
+    # The frame carries the terms it was built from, so the design comes out
+    # of it without going back to the fitting call. The contrasts are the
+    # fit's own, the way `model.matrix()` on a model that keeps its frame
+    # takes them.
+    ps_X = if (ps_design) {
+      stats::model.matrix(
+        stats::terms(ps_frame),
+        ps_frame,
+        contrasts.arg = ps_mod$contrasts
+      )
+    }
+  )
+}
+
 # Terms per estimating equation in a fitted propensity model. A glm or lm has one
 # equation and a coefficient vector as long as its design. nnet::multinom has one
 # per non-reference level and returns a level-by-term matrix, except at two
@@ -626,6 +766,32 @@ ipw_required_columns <- function(ps_mod, outcome_mod, exposure_name) {
     ipw_model_covariates(ps_mod),
     ipw_model_covariates(outcome_mod)
   ))
+}
+
+# The rows of `.data` the models were fit to, when `.data` is the longer frame
+# they were given. The columns the rebuilds read are the columns the model
+# frames were built from, so the rows complete across all of them are the rows
+# every fit kept. The restriction is made only when that count is exactly the
+# number of observations the outcome model was fit to: a frame that is longer
+# for any other reason is left as it arrived, for the row-count report to name.
+#
+# Matching counts also settle which rows those are. A model frame drops the rows
+# incomplete over the columns that model reads, and those columns are among the
+# ones swept here, so the rows dropped by the fit are among the rows dropped
+# here; equal counts make the two sets the same.
+restrict_ipw_data <- function(.data, columns, n_fitted) {
+  if (identical(nrow(.data), n_fitted)) {
+    return(.data)
+  }
+
+  present <- intersect(columns, names(.data))
+  complete <- stats::complete.cases(.data[present])
+
+  if (!identical(sum(complete), n_fitted)) {
+    return(.data)
+  }
+
+  .data[complete, , drop = FALSE]
 }
 
 # Reject a `.data` that is missing values in a column the rebuilds read. Every
@@ -728,6 +894,10 @@ check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
     "{.fun ipw} rebuilds the propensity scores by multiplying the fitted \\
     coefficients against that design, so a column with no coefficient leaves \\
     every score undefined."
+  } else if (identical(arg, "stabilize")) {
+    "{.fun ipw} rebuilds the numerator of the weights by multiplying the \\
+    fitted coefficients against that design, so a column with no coefficient \\
+    leaves every numerator undefined."
   } else {
     "{.fun ipw} estimates the marginal means by multiplying the fitted \\
     coefficients against that design, so a column with no coefficient leaves \\
@@ -1059,6 +1229,15 @@ ipw_rebuild_design <- function(
   data,
   call = rlang::caller_env()
 ) {
+  # An additive fit's design is a smooth basis rather than the columns its
+  # formula names, and the basis is a property of the fit rather than of the
+  # rows in front of it, so the fit is asked to evaluate its own at the supplied
+  # rows. `model.matrix()` on such a fit asks the same question of the rows it
+  # was fit to, which is what makes the two routes the same design.
+  if (inherits(mod, "gam")) {
+    return(stats::predict(mod, newdata = data, type = "lpmatrix"))
+  }
+
   frame <- stats::model.frame(
     mod_terms,
     data = drop_contrasts_attrs(data, names(mod$contrasts))
@@ -1363,9 +1542,12 @@ ipw_spec_categorical <- function(
 
   # A multinom fit with case weights would need a weighted score in the stacked
   # system; the ee_mlogit block is unweighted, so the fitted coefficients would
-  # not sit at the score root and the estimates would drift. multinom always
-  # carries a length-n weights vector, unit for an unweighted fit.
-  if (!is.null(ps_mod$weights) && !all(ps_mod$weights == 1)) {
+  # not sit at the score root and the estimates would drift. Which field holds
+  # the prior weights is the class's own business, which the shared reader
+  # settles; a multinom always carries a length-n vector of them, unit for an
+  # unweighted fit.
+  ps_weights <- ipw_model_prior_weights(ps_mod)
+  if (!is.null(ps_weights) && !all(ps_weights == 1)) {
     abort(
       c(
         "{.fun ipw} does not support a propensity score model fit with case \\
@@ -1552,6 +1734,7 @@ ipw_spec_categorical <- function(
     exposure_name = exposure_name,
     outcome_mod = outcome_mod,
     contrasts = contrasts,
+    wts = wts,
     call = call
   )
 
@@ -1604,6 +1787,7 @@ ipw_spec_continuous <- function(
   .data = NULL,
   estimand = NULL,
   stacked = TRUE,
+  ps_model = NULL,
   call = rlang::caller_env()
 ) {
   assert_class(ps_mod, c("glm", "lm"))
@@ -1618,7 +1802,13 @@ ipw_spec_continuous <- function(
   # and how the conditional mean is read back from it. A model this path has no
   # score for is refused here, whether because no equation describes it or
   # because the class is not one this path knows at all.
-  ps_model <- ipw_continuous_model(ps_mod, call = call)
+  #
+  # A caller that has already read the model through the registry, which every
+  # route reaching this one has, hands its entry over rather than having the
+  # model read twice.
+  if (is.null(ps_model)) {
+    ps_model <- ipw_continuous_model(ps_mod, call = call)
+  }
   if (stacked) {
     check_ipw_continuous_model(ps_model, call = call)
   }
@@ -1626,13 +1816,9 @@ ipw_spec_continuous <- function(
   # A propensity model fit with prior case weights would need a weighted score in
   # the stacked system; the ee_regression ps block is unweighted, so the fitted
   # coefficients would not sit at the score root and the estimates would drift.
-  # A glm records prior weights in prior.weights (all one when unweighted); an lm
-  # records them in weights (NULL when unweighted).
-  ps_weights <- if (inherits(ps_mod, "glm")) {
-    ps_mod$prior.weights
-  } else {
-    ps_mod$weights
-  }
+  # Which field holds them is the class's own business, which the shared reader
+  # settles.
+  ps_weights <- ipw_model_prior_weights(ps_mod)
   if (!is.null(ps_weights) && !all(ps_weights == 1)) {
     abort(
       c(
@@ -1655,6 +1841,7 @@ ipw_spec_continuous <- function(
     exposure_name = exposure_name,
     counterfactual = FALSE,
     ps_design = stacked,
+    ps_X = ps_model$design,
     call = call
   )
   exposure <- as.double(extracted$exposure)
@@ -1679,6 +1866,24 @@ ipw_spec_continuous <- function(
   # has to rebuild. The record travels on the weights; weights that carry none
   # are read as the ratio every earlier version of the package built.
   ratio <- ipw_continuous_ratio(wts, stacked = stacked, call = call)
+
+  # A numerator model joins the stack the way the propensity score model does,
+  # so it goes through the same registry and is refused on the same terms. A
+  # route that only refits the models asks nothing of its score and takes it as
+  # it is.
+  numerator_block <- if (stacked) {
+    ipw_numerator_model_block(ratio$numerator_model, call = call)
+  }
+
+  if (!is.null(numerator_block)) {
+    check_ipw_numerator_model(
+      ratio$numerator_model,
+      numerator_block,
+      exposure_name,
+      length(exposure),
+      call = call
+    )
+  }
 
   # Membership first, so that a value naming no estimand at all is reported as
   # that on this path too. The restriction below says the estimand asked for is
@@ -1752,13 +1957,20 @@ ipw_spec_continuous <- function(
       X = ps_X,
       kind = ps_model$kind,
       link = ps_model$link,
-      huber_k = ps_model$huber_k,
+      psi_loss = ps_model$psi_loss,
+      psi_k = ps_model$psi_k,
+      penalty = ps_model$penalty,
       coefs = stats::coef(ps_mod),
       k = NULL
     ),
     stab = list(
       stabilized = is_stabilized(wts),
-      score = stabilization_score(wts)
+      score = stabilization_score(wts),
+      # A numerator estimated by a model of the caller's is estimated again in
+      # the stacked system, so the block carries the model's design, its score,
+      # and the coefficients it was fit at rather than the numerator they
+      # evaluate to.
+      model = numerator_block
     ),
     density = ratio$density,
     numerator = ratio$numerator,
@@ -1959,7 +2171,7 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       inv_ps <- ipw_inv_link(spec$ps$link)
       e <- inv_ps(as.vector(spec$ps$X %*% th_ps))
       check_ipw_ps_separation(sum(e == 0 | e == 1), call = call)
-      stab_prob <- if (length(th_stab)) th_stab[[1]] else NULL
+      stab_prob <- ipw_binary_stab_prob(spec$stab$model, th_stab)
       weight_fn(e, spec$exposure, list(stab_prob = stab_prob, score = score))
     },
     categorical = {
@@ -2046,6 +2258,17 @@ ipw_check_weight_consistency <- function(
     ratio = if (!is.null(spec$density)) {
       spec[c("density", "numerator")]
     },
+    # The components whose stabilizing numerator the system stood a marginal
+    # one in for, which is the closest the preflight gets to naming the factor
+    # that differs: the comparison sees the product alone, so which component
+    # moved it cannot be read off the two vectors.
+    stand_in = if (identical(spec$exposure_type, "joint_models")) {
+      unlist(spec$names)[vapply(
+        spec$stab$components,
+        function(component) isTRUE(component$stand_in),
+        logical(1)
+      )]
+    },
     call = call
   )
 }
@@ -2062,6 +2285,7 @@ ipw_compare_weights <- function(
   estimand,
   components = NULL,
   ratio = NULL,
+  stand_in = NULL,
   call = rlang::caller_env()
 ) {
   recomputed <- as.double(recomputed)
@@ -2076,9 +2300,11 @@ ipw_compare_weights <- function(
     # offers the causes as possibilities rather than naming the weights as the
     # fault.
     #
-    # A continuous exposure has no focal level, so its causes bullet names only
-    # the estimand.
-    resolved_cause <- if (exposure_type == "continuous") {
+    # Only a binary and a categorical exposure have a focal level, so the causes
+    # bullet names one only for them. A dose has none, and a joint specification
+    # targets the joint ate and resolves none, so naming it there would send the
+    # reader after a setting the route never read.
+    resolved_cause <- if (!exposure_type %in% c("binary", "categorical")) {
       "The estimand the weights were built for may differ from the one \\
       {.fun ipw} resolved."
     } else {
@@ -2109,23 +2335,27 @@ ipw_compare_weights <- function(
     sigma_hint <- if (dose) {
       "Weights built with an observation-level {.arg .sigma}, such as \\
       {.code influence(model)$sigma}, are one cause: {.fun ipw} models the \\
-      conditional density with a single pooled residual standard deviation, \\
+      conditional density with a single pooled residual root mean square, \\
       which is what {.fun wt_ate} uses when no {.arg .sigma} is given."
     } else {
       NULL
     }
-    # A joint weight is a product, and a product records that a component's
-    # numerator was a score without recording the score itself. The stacked
-    # system therefore estimates the dose's own marginal moments, and a
-    # component carrying a numerator of its own is a different function of the
-    # data that no parameter value reproduces. A single dose keeps its score,
-    # which is read off the weights and held fixed, so this cause belongs to
-    # the joint route alone.
-    score_hint <- if (identical(exposure_type, "joint_models") && dose) {
-      "A dose component built with a fixed {.arg stabilization_score} is one \\
-      cause: the product records that the numerator was a score without \\
-      recording the vector it was, so {.fun ipw} rebuilds the dose weights \\
-      from the exposure's own marginal moments instead."
+    # A joint weight is a product, and a product records each component's
+    # stabilization score so the stacked system can hold it fixed the way the
+    # single routes do. A record that keeps none says a component was
+    # stabilized without saying what by, so the component's own marginal
+    # numerator stands in and a score of the caller's is a different function of
+    # the data that no parameter value reproduces. The components a numerator
+    # was stood in for are named, which is as close to the fault as the
+    # comparison gets: it sees the product alone and cannot say which factor of
+    # it moved.
+    score_hint <- if (length(stand_in)) {
+      "A component built with a fixed {.arg stabilization_score} is one \\
+      cause: the record on {.arg {stand_in}} keeps no score, so {.fun ipw} \\
+      rebuilt {cli::qty(stand_in)}{?its/their} numerator from the exposure's \\
+      own marginal distribution instead. A product assembled by hand, built by \\
+      a version of this package that recorded no score, or subset after it was \\
+      built, which drops a score held per observation, carries such a record."
     } else {
       NULL
     }
@@ -2157,6 +2387,17 @@ ipw_compare_weights <- function(
     if (!is.null(score_hint)) {
       msg <- c(msg, i = score_hint)
     }
+    # On the joint route `wt_mod` is the container the two treatment models
+    # arrived in rather than one propensity score model, so the remedy names
+    # what it holds. A reader told to refit from "this propensity score model"
+    # is being sent to a model the call never had.
+    refit_hint <- if (identical(exposure_type, "joint_models")) {
+      "Refit {.arg outcome_mod} with weights from the two treatment models \\
+      {.arg wt_mod} holds, and this estimand, if the weights are the cause."
+    } else {
+      "Refit {.arg outcome_mod} with weights from this propensity score \\
+      model and estimand if the weights are the cause."
+    }
     msg <- c(
       msg,
       i = "Weights trimmed, truncated, or normalized after {.arg wt_mod} was \\
@@ -2165,8 +2406,7 @@ ipw_compare_weights <- function(
       i = "{.arg .data} values that differ from the data the models were fit \\
       to move the recomputed weights on their own and leave the supplied \\
       weights exactly right.",
-      i = "Refit {.arg outcome_mod} with weights from this propensity score \\
-      model and estimand if the weights are the cause."
+      i = refit_hint
     )
     abort(
       msg,
@@ -2412,8 +2652,9 @@ warn_ipw_degenerate_se <- function(estimates, call = rlang::caller_env()) {
       estimate{?s} {?it accompanies/they accompany} that the test statistic{?s} \\
       and the interval{?s} built from {?it/them} carry no information.",
       i = "An exposure group the outcome does not vary within is one cause: \\
-      the contrast is then a fixed value rather than a quantity with any \\
-      spread. Check the outcome within each level of the exposure.",
+      its counterfactual mean, and any contrast built on that mean, is then a \\
+      fixed value rather than a quantity with any spread. Check the outcome \\
+      within each level of the exposure.",
       i = "The estimates are reported as they were computed."
     ),
     warning_class = "propensity_ipw_degenerate_se_warning",

@@ -86,11 +86,10 @@
 #'   equations attaches to the outcome model it stores:
 #'   `se_method = "mestimation"` for a binary exposure, the categorical and
 #'   joint routes, which run on M-estimation alone, and the continuous route
-#'   under that method. A linearization fit stacks no system and records no
-#'   covariance of either kind, so its conditional reading errors rather than
-#'   reporting the
-#'   covariance the outcome model computed for itself, which treats the
-#'   estimated weights as fixed.
+#'   under that method. A linearization or robust fit stacks no system and
+#'   records no covariance of either kind, so its conditional reading errors
+#'   rather than reporting the covariance the outcome model computed for itself,
+#'   which treats the estimated weights as fixed.
 #' @param parametric Accepted and ignored. [mice::pool()] passes
 #'   `parametric = TRUE` to every tidier it calls, to ask the models it was
 #'   written against for their parametric coefficient table rather than for a
@@ -207,7 +206,7 @@ tidy.ipw <- function(
   # reported, so the same test is made here and the absence is refused against
   # the call that asked for the reading rather than against the coercion below.
   if (reading == "conditional" && !inherits(x$outcome_mod, "ipw_model")) {
-    stop_no_conditional_vcov()
+    stop_no_conditional_vcov(x$se_method)
   }
 
   # The result's own coercion surface, in the reading this call reports rather
@@ -216,12 +215,22 @@ tidy.ipw <- function(
   # one reading of a result and refused in the other. Both readings are tabled
   # there in the columns a tidier uses, so both are read off this one call and
   # neither is assembled a second time here.
-  frame <- as.data.frame(
+  #
+  # The surface is handed this call to report its refusals against, since a
+  # `conf.level` the caller wrote into `tidy()` is refused as an argument of a
+  # function the caller never called otherwise. It is read off this frame
+  # rather than taken from `sys.call()`, which inside a method names `tidy.ipw`
+  # where the caller wrote `tidy()`; `error_call()` resolves the frame to the
+  # generic. The surface stores what it is given in the condition as it stands,
+  # so a call is what it is given rather than the frame itself.
+  frame <- rlang::exec(
+    as.data.frame,
     x,
     conf.int = conf.int,
     conf.level = conf.level,
     exponentiate = exponentiate,
-    effects = reading
+    effects = reading,
+    call = rlang::error_call(rlang::current_env())
   )
 
   # The covariance the frame attaches is the one thing that does not travel: it
@@ -243,14 +252,28 @@ ipw_stored_effects <- function(x) {
 # so a caller handling either of them is unaffected by where the refusal was
 # made; the message is this package's, since this package knows which of its
 # standard error methods leaves the covariance unrecorded.
-stop_no_conditional_vcov <- function(call = rlang::caller_env()) {
+stop_no_conditional_vcov <- function(
+  se_method = "linearization",
+  call = rlang::caller_env()
+) {
+  # The method the result records, so that a result fit for the diagnostic is
+  # told what its own method leaves unrecorded rather than what another method
+  # would have.
+  absence <- if (identical(se_method, "robust")) {
+    "The {.val robust} standard error method treats the weights as known and \\
+    reports what the outcome model computes for itself, so it stores no \\
+    covariance for the conditional reading."
+  } else {
+    "The {.val linearization} standard error method corrects the \\
+      marginal estimates only, so it stores no covariance for the conditional \\
+      reading."
+  }
+
   abort(
     c(
       "The conditional reading reports the covariance the joint estimation of \\
       the weights and the outcome implies, and this result records none.",
-      x = "The {.val linearization} standard error method corrects the \\
-      marginal estimates only, so it stores no covariance for the conditional \\
-      reading.",
+      x = absence,
       i = "Fit with {.code se_method = \"mestimation\"}, which solves the two \\
       models as one system and stores that covariance."
     ),
@@ -310,8 +333,9 @@ check_exponentiate_link <- function(outcome_mod, call = rlang::caller_env()) {
 #' at once. Its residual degrees of freedom are the observations it was solved
 #' on less the parameters it solves for, so a multinomial propensity score model
 #' leaves fewer of them than a binary one does on the same data. Linearization
-#' stacks nothing and records no parameter count, so the observations are the
-#' outcome model's and there is no count to subtract from them.
+#' and the robust diagnostic stack nothing and record no parameter count, so the
+#' observations are the outcome model's and there is no count to subtract from
+#' them.
 #'
 #' The columns and their types are the same on every route [ipw()] takes, so the
 #' rows of several results stack into one table.
@@ -515,13 +539,16 @@ tidy.ipw_pooled <- function(
   # exactly as the marginal reading of `tidy()` on a single result does. It also
   # owns `effects`, resolving a `NULL` against the reading the pooled result
   # records and refusing both a value naming neither reading and a reading the
-  # pooling had nothing to compute from.
-  frame <- as.data.frame(
+  # pooling had nothing to compute from. As on a single result, it is handed
+  # this frame so that its refusals name the tidier the caller wrote.
+  frame <- rlang::exec(
+    as.data.frame,
     x,
     conf.int = conf.int,
     conf.level = conf.level,
     exponentiate = exponentiate,
-    effects = effects
+    effects = effects,
+    call = rlang::error_call(rlang::current_env())
   )
 
   # The covariance of the effects the frame attaches is the one thing that does
@@ -779,16 +806,12 @@ augment_propensity_columns <- function(wt_mod) {
     ))
   }
 
+  # `predict(type = "probs")` is the matrix of level probabilities for a fit of
+  # three or more levels, which is every multinomial fit an `ipw` result can
+  # hold: a two-level fit, whose prediction is the single probability of the
+  # second level, is refused when the result is built.
   levels <- wt_mod$lev
   probs <- stats::predict(wt_mod, type = "probs")
-
-  # nnet::multinom() predicts a two-level exposure as the probability of the
-  # second level alone rather than as the matrix of level probabilities it
-  # returns for more levels.
-  if (!is.matrix(probs)) {
-    probs <- cbind(1 - probs, probs)
-    colnames(probs) <- levels
-  }
 
   rlang::set_names(
     lapply(levels, function(level) unname(probs[, level])),

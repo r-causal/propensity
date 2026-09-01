@@ -57,7 +57,8 @@
 #' ## Stabilization
 #'
 #' Stabilization multiplies the base weight by an estimate of P(A) (binary) or
-#' f_A(A) (continuous), reducing variance. When no `stabilization_score` is
+#' f_A(A) (continuous), or by an estimate of either conditional on variables a
+#' model of the exposure reads, reducing variance. When no `stabilization_score` is
 #' supplied, that estimate is the marginal mean of `.exposure` for a binary or
 #' categorical exposure, and for a continuous exposure the marginal density of
 #' the family `.density` names, evaluated at the population mean and standard
@@ -123,6 +124,49 @@
 #' `V` at all is a question about the reported model rather than about the
 #' weights; see **Effect modification** in [ipw()].
 #'
+#' There is a third way of writing the same thing: pass the fitted numerator
+#' model to `stabilize` itself, and what it estimates becomes the numerator.
+#'
+#' ```
+#' num <- glm(A ~ V, data = dat, family = binomial())
+#' wt_ate(ps_mod, stabilize = num)
+#'
+#' num <- lm(A ~ V, data = dat)
+#' wt_ate(dose_mod, stabilize = num)
+#' ```
+#'
+#' For a binary exposure the weights are then
+#' \eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)}: the model's fitted probability
+#' read at the level each unit actually took, which is \eqn{p_i} for a unit
+#' with \eqn{A_i = 1} and \eqn{1 - p_i} for a unit with \eqn{A_i = 0}, over
+#' the same denominator the unstabilized weights divide by. Writing it as the
+#' model rather than as the numbers is what keeps the untreated units from
+#' carrying \eqn{P(A = 1 \mid V)}, which is the mistake the
+#' `stabilization_score` form has to be written around by hand.
+#'
+#' For a continuous exposure they are \eqn{f(A \mid V) / f(A \mid X)}: the
+#' family `.density` names, read at the numerator model's fitted mean and the
+#' root mean square of its residuals, over the same family read at the
+#' propensity score model's.
+#'
+#' The same caveat governs both. A numerator conditioning on `V` targets the
+#' effect in a pseudo-population where `V` still predicts the exposure, so the
+#' estimand is the effect conditional on `V` being balanced rather than the
+#' marginal one, and it answers the question you meant only when the model the
+#' estimates are read from also reads `V`.
+#'
+#' Handing the model over rather than the numbers it evaluates to is what lets
+#' [ipw()] estimate it: the model's own estimating equations join the stacked
+#' system, so the standard errors account for the numerator having been fitted,
+#' where a `stabilization_score` is carried as a known constant. That accounting
+#' has something to say only where the reported model is not saturated in the
+#' variables the numerator reads. A numerator of a binary exposure on an effect
+#' modifier is constant within each cell of the modifier and the exposure, so a
+#' model saturated in those cells fits the same coefficients with the numerator
+#' and without it, and the standard errors do not move either.
+#'
+#' [numerator_model()] reads the model back off the weights.
+#'
 #' ## Handling extreme weights
 #'
 #' Extreme weights signal positivity violations, poor model fit, or limited
@@ -163,11 +207,19 @@
 #' [nnet::multinom()] reaches the endpoints readily. Under separation the
 #' softmax puts the probability at a unit's assigned level at exactly 1 in
 #' double precision, and the columns for the other levels can underflow to
-#' exactly 0. Trimming is no way around the refusal: [ps_trim()] and
-#' [ps_trunc()] validate a categorical matrix under the same open interval and
-#' refuse it before either reaches a threshold. Bound the fitted probabilities
-#' away from 0 and 1 yourself, renormalizing each row to sum to 1, or refit the
-#' propensity score model so that it does not separate.
+#' exactly 0. [ps_trunc()] is the repair for such a matrix: its categorical
+#' matrix method reads the closed interval \eqn{[0, 1]}, so it accepts a cell of
+#' exactly 0 or 1, pins every score below its threshold up to it, and
+#' renormalizes each row to sum to 1. What it returns lies strictly inside
+#' (0, 1) and weights like any other truncated matrix. That relaxation belongs
+#' to the categorical matrix method alone: [ps_trim()] sets extreme scores to
+#' missing and gains nothing from an endpoint, so it holds the open interval,
+#' and so does the binary vector path of [ps_trunc()]. If the bounds a
+#' truncation computes for itself leave a score at an endpoint anyway, which
+#' `method = "pctl"` can do when the lower quantile of the scores is itself
+#' zero, the call is refused and names the bound it computed; supply `lower` and
+#' `upper` explicitly instead. Refitting the propensity score model so that it
+#' does not separate remains the alternative.
 #'
 #' ## Weight formulas
 #'
@@ -241,7 +293,11 @@
 #' and a [MASS::rlm()], and read the exposure from the model's response when
 #' `.exposure` is not supplied. Each of these reports its conditional mean on
 #' the scale of the exposure, so a log, inverse, or square root link never has
-#' to be undone.
+#' to be undone. Any other subclass of [lm()] is read as an `lm`, because the
+#' fitted conditional means are all the weights ask of a model. [ipw()] names
+#' the classes it supports instead of accepting a subclass on those terms: it
+#' stacks each model's own estimating equations, which it can only write for a
+#' score it knows.
 #'
 #' A family whose spread changes with its fitted values, such as [poisson()] or
 #' `quasi(variance = "mu")`, describes a different density for every unit, which
@@ -256,9 +312,11 @@
 #' \eqn{\sigma} is the pooled residual spread
 #' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies a single
 #' standard deviation, or one for each unit, which the model methods do not do
-#' on their own. The marginal density is spread by \eqn{s_A} whatever `.sigma`
-#' says, the spread of the exposure itself being no business of the conditional
-#' model's.
+#' on their own. [dens_t()] offers a second estimator, the maximum likelihood
+#' scale of the t itself, through `sigma_method = "mle"`; see **The spread of a
+#' t density** in its documentation. The marginal density is spread by
+#' \eqn{s_A} whatever the conditional spread was arrived at, the spread of the
+#' exposure itself being no business of the conditional model's.
 #'
 #' Every model class is spread that same way, [MASS::rlm()] included. `rlm`
 #' reports a robust scale estimate of its own in `fit$s`, which resists the
@@ -270,8 +328,10 @@
 #' constant, and reads `.sigma = fit$s` as a fixed spread in the same way,
 #' propagating the uncertainty of neither.
 #'
-#' [ipw()] models the conditional density with a single pooled residual
-#' variance, estimated jointly with the rest of the parameter vector. A single
+#' [ipw()] models the conditional density with a single conditional variance,
+#' estimated jointly with the rest of the parameter vector, by the moment the
+#' pooled spread is the root of or, for a density built with
+#' `sigma_method = "mle"`, by the score of the t. A single
 #' `.sigma` is taken instead as a known constant: the weights are rebuilt at the
 #' number that was supplied, and the stacked system carries none of that
 #' number's uncertainty. An observation-level `.sigma` is a different function
@@ -279,6 +339,32 @@
 #' before anything is solved, with an error of class
 #' `propensity_ipw_sigma_error`. Build weights with the pooled default, or with
 #' one number, when the outcome model is headed for [ipw()].
+#'
+#' A conditional density of exactly zero at a unit's own exposure is the
+#' continuous counterpart of a propensity score of exactly 0 or 1: the weight it
+#' leaves is infinite, and every estimate built from it is undefined. It is
+#' refused with an error of class `propensity_density_error` naming the
+#' observations it happened at. A light-tailed family at an outlying residual
+#' and a kernel read past the range it was fit on both reach it, so the remedy
+#' is a family with heavier tails, such as [dens_t()] or [dens_kernel()]. A zero
+#' in the numerator is not refused: a marginal density of zero is a weight of
+#' zero, which is a weight like any other.
+#'
+#' Stabilized weights from the normal family have a finite second moment only
+#' while the marginal variance of the exposure stays below twice the variance of
+#' the conditional density, \eqn{\mathrm{Var}(A) < 2\sigma^2}. Past that
+#' boundary the weights have no finite variance, and estimates built from them
+#' are erratic however large the sample is. Reaching it is reported with a
+#' message of class `propensity_density_variance_message`; the weights are
+#' still returned, and the report is informational because a well-fitting
+#' model reaches the boundary in ordinary use. Explaining more of the exposure
+#' lowers \eqn{\sigma^2} while the marginal variance is fixed by the data, so
+#' a better fit tightens the boundary rather than escaping it; a
+#' heavier-tailed family sits at a different one, and an unstabilized weight
+#' has no boundary at all. The boundary is a property of the normal family read
+#' against the exposure's own marginal density, so nothing is reported for an
+#' unstabilized weight, a supplied `stabilization_score`, `numerator =
+#' "integrated"`, another family, or an observation-level `.sigma`.
 #'
 #' ### Categorical exposures
 #'
@@ -298,9 +384,16 @@
 #'   * A **numeric vector** of predicted probabilities (binary/continuous).
 #'   * A **data frame** or **matrix** with one column per exposure level. Both
 #'     shapes are read the same way, for categorical exposures and for binary
-#'     ones alike, including the default choice of column described under
+#'     ones alike, including the choice of column described under
 #'     `.propensity_col`. That argument is itself a formal of the data frame
 #'     methods only, so selecting a column by name means passing a data frame.
+#'     A frame of probabilities predicted from a fitted tidymodels
+#'     classification model has its columns named `.pred_<level>`, and the
+#'     level a column holds is read from the part of the name after that
+#'     prefix. A frame holding a `.pred_class` column, which the same models
+#'     return when no prediction type is named, carries predicted levels rather
+#'     than probabilities and is refused with an error of class
+#'     `propensity_df_class_column_error`.
 #'   * A fitted **propensity score model** -- fitted values are extracted
 #'     automatically. For a binary exposure that is a [glm()] fit with
 #'     [binomial()] or `quasibinomial()`. For a continuous exposure it is a
@@ -325,10 +418,17 @@
 #'   response's second level, and subtract them from one when the resolved
 #'   focal level is the first level instead. A data frame or matrix reduces to
 #'   a single column, read on the same scale; see `.propensity_col` for how
-#'   that column is chosen. A matrix reduces by those same defaults, but
+#'   that column is chosen. A matrix reduces by those same rules, but
 #'   `.propensity_col` belongs to the data frame methods alone, so a matrix
 #'   whose column you want to name has to be converted with `as.data.frame()`
 #'   first.
+#'
+#'   For a continuous exposure, `.propensity` is the conditional mean of the
+#'   exposure. A data frame of a single column is read as that mean; a data
+#'   frame of several columns is refused with an error of class
+#'   `propensity_df_ambiguous_column_error` unless `.propensity_col` names the
+#'   column to read, since a continuous exposure has no levels the columns
+#'   could be matched against.
 #' @param .exposure The exposure (treatment) variable. For binary exposures, a
 #'   numeric 0/1 vector, logical, or two-level factor. For categorical
 #'   exposures, a factor or character vector. For continuous exposures, a
@@ -360,7 +460,10 @@
 #'   Must be numeric, and applies only to continuous exposures. `.sigma` sits in
 #'   the third position, which is where a value meant for `exposure_type`
 #'   arrives when it is supplied without a name, so anything else is refused
-#'   with an error of class `propensity_sigma_error`.
+#'   with an error of class `propensity_sigma_error`. A spread you supply and a
+#'   density built with `sigma_method = "mle"`, which estimates one from the
+#'   residuals, are two instructions about the same quantity and are refused
+#'   together with an error of class `propensity_density_error`.
 #' @param .density The family of the conditional density for continuous
 #'   exposures, described under **Continuous exposures** in Details. One of the
 #'   strings `"normal"` (the default), `"laplace"`, or `"kernel"`; a
@@ -418,13 +521,49 @@
 #'   supplied.
 #' @param ... These dots are for future extensions and must be empty.
 #' @param stabilize Whether to multiply the weights by an estimate of the
-#'   marginal treatment probability (binary) or density (continuous). `NULL`,
-#'   the default, reads the answer from the exposure type: a continuous
-#'   exposure is stabilized, and a binary or categorical exposure is not.
-#'   `TRUE` and `FALSE` ask for one or the other outright, and an unstabilized
-#'   continuous exposure reports that its weights are not the recommended ones.
-#'   Only supported by `wt_ate()` and `wt_cens()`. See **Stabilization** in
-#'   Details.
+#'   marginal treatment probability (binary) or density (continuous), and what
+#'   that estimate is. It takes one of three forms:
+#'
+#'   * A logical. `TRUE` and `FALSE` ask for stabilization or its absence
+#'     outright, and an unstabilized continuous exposure reports that its
+#'     weights are not the recommended ones. `NULL`, the default, reads the
+#'     answer from the exposure type: a continuous exposure is stabilized, and a
+#'     binary or categorical exposure is not.
+#'   * A fitted model of the exposure, for a binary or continuous exposure,
+#'     which stabilizes the weights on what that model estimates rather than on
+#'     the marginal probability or density of the exposure.
+#'
+#'     For a binary exposure the model is a [binomial()] fit and the numerator
+#'     is its fitted probability of the level each unit took, so the weights
+#'     are \eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)} for the variables
+#'     \eqn{V} the numerator model reads. For a continuous exposure the
+#'     numerator is the family `.density` names, read at the model's fitted mean
+#'     and the root mean square of its residuals, so the weights are
+#'     \eqn{f(A \mid V) / f(A \mid X)}.
+#'
+#'     The model is recorded on the result, where [numerator_model()] reads it
+#'     back, and [ipw()] estimates it alongside everything else so that the
+#'     standard errors account for it having been fitted. Conditioning the
+#'     numerator on \eqn{V} changes what is estimated unless the model the
+#'     estimates are read from also reads \eqn{V}; see **Stabilization** in
+#'     Details.
+#'
+#'     Any [lm()], or anything built on one, is read this way. The family is
+#'     held to the exposure: a fit whose spread changes with its fitted values,
+#'     or a model of a conditional mean where a probability is needed, is
+#'     refused with `propensity_model_family_error`, which is also what a model
+#'     of a dose handed to a binary exposure and a [binomial()] model handed to
+#'     a dose are refused with. A categorical exposure takes no fitted
+#'     numerator, and neither does a model supplied together with
+#'     `stabilization_score` or `numerator = "integrated"`; those are
+#'     `propensity_numerator_error`. So is a model fit with case `weights`,
+#'     which estimates the numerator in a reweighted sample rather than in the
+#'     one the weights are being built for. A model with a fitted value for some
+#'     other set of observations is `propensity_length_error`.
+#'
+#'   Anything else is refused with an error of class
+#'   `propensity_stabilize_error`. Stabilization is only supported by
+#'   `wt_ate()` and `wt_cens()`. See **Stabilization** in Details.
 #' @param stabilization_score Optional stabilization multiplier to use instead
 #'   of the default described under **Stabilization**: the marginal mean of
 #'   `.exposure`, or its marginal normal density for a continuous exposure.
@@ -439,18 +578,28 @@
 #'   length. Ignored when stabilization is off, whether because `stabilize` is
 #'   `FALSE` or because the exposure type resolves the default that way.
 #' @param .propensity_col Column to use when `.propensity` is a data frame
-#'   with a binary exposure. Accepts a column name (quoted or unquoted) or
-#'   numeric index. Whichever column is selected is read as the probability of
-#'   the resolved focal level.
+#'   with a binary or continuous exposure. Accepts a column name (quoted or
+#'   unquoted) or numeric index. For a binary exposure the selected column is
+#'   read as the probability of the resolved focal level; for a continuous one
+#'   it is read as the conditional mean of the exposure.
 #'
-#'   With no column named, the exposure's levels drive the choice. When the
-#'   data frame has a column named for every level of `.exposure`, the column
-#'   named for the resolved focal level is used, wherever it sits in the frame.
-#'   Otherwise the second column is used, or the only column when the frame has
-#'   just one. Falling back to position after `.focal_level` or
-#'   `.reference_level` was supplied warns and reports the column used, since
-#'   the named level could not be matched to a column; the fallback is silent
-#'   when no level was named and when the frame has a single column.
+#'   With no column named and a binary exposure, the exposure's levels drive
+#'   the choice. When the data frame has a column named for every level of
+#'   `.exposure`, the column named for the resolved focal level is used,
+#'   wherever it sits in the frame. Columns named `.pred_<level>`, the shape a
+#'   fitted tidymodels classification model predicts probabilities in, are
+#'   matched by the level after the prefix. Otherwise the second column is
+#'   used, or the only column when the frame has just one. Falling back to
+#'   position after `.focal_level` or `.reference_level` was supplied warns and
+#'   reports the column used, since the named level could not be matched to a
+#'   column; the fallback is silent when no level was named and when the frame
+#'   has a single column.
+#'
+#'   With no column named and a continuous exposure, a frame of a single column
+#'   is read as the conditional mean, and a frame of several columns is refused
+#'   with an error of class `propensity_df_ambiguous_column_error`. There are no
+#'   levels to read the names against, so nothing distinguishes one column of
+#'   conditional means from another and there is no position worth trusting.
 #'
 #'   Ignored for categorical exposures, where all columns are used.
 #'
@@ -527,6 +676,12 @@
 #'   .density = dens_t(df = 4),
 #'   numerator = "integrated"
 #' )
+#'
+#' # It can also be the conditional density a second model estimates, which is
+#' # worth having when the model the estimates are read from also reads the
+#' # variables that model conditions on
+#' num_model <- lm(dose ~ x1)
+#' w_cond <- wt_ate(dose_model, stabilize = num_model)
 #'
 #' # What each set of weights records about the ratio it is
 #' density_meta(w_dose)
@@ -696,8 +851,10 @@ wt_ate.numeric <- function(
   # The default for `stabilize` is read from the exposure type, so it can only
   # be resolved once the type is known. Every other route funnels through this
   # method and forwards `stabilize` unchanged, so this is the single place the
-  # per-type default is decided.
-  stabilize <- resolve_stabilize(stabilize, exposure_type)
+  # per-type default is decided, and the single place a fitted numerator model
+  # is read out of the argument that carries it.
+  numerator_model <- as_numerator_model(stabilize)
+  stabilize <- resolve_stabilize(stabilize, exposure_type, call = call)
 
   check_sigma(.sigma, exposure_type, length(.exposure), call = call)
 
@@ -707,6 +864,7 @@ wt_ate.numeric <- function(
   # in the same place and for the same reason.
   .density <- as_density_spec(.density, arg = ".density", call = call)
   check_density_arg(.density, exposure_type, call = call)
+  check_sigma_method(.sigma, .density, call = call)
 
   numerator <- rlang::arg_match(numerator, error_call = call)
   check_numerator(
@@ -715,8 +873,25 @@ wt_ate.numeric <- function(
     stabilize = stabilize,
     stabilization_score = stabilization_score,
     .sigma = .sigma,
+    numerator_model = numerator_model,
     call = call
   )
+  check_numerator_model(
+    numerator_model,
+    exposure_type,
+    n = length(.exposure),
+    stabilization_score = stabilization_score,
+    call = call
+  )
+
+  # A continuous exposure is weighted from one conditional mean for each unit,
+  # so a `.propensity` holding more than one of them is refused before the
+  # lengths are compared. `check_lengths_match()` reads a matrix by its rows, so
+  # a matrix with a row for each unit passes it, and the conditional density is
+  # then evaluated over every cell rather than over one mean for each unit.
+  if (exposure_type == "continuous") {
+    .propensity <- check_continuous_ps_shape(.propensity, call = call)
+  }
 
   # The exposure supplies the number of observations the score is checked
   # against, so a `.propensity` of a different length has to be caught first.
@@ -758,6 +933,7 @@ wt_ate.numeric <- function(
       .reference_level = .reference_level,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
+      numerator_model = numerator_model,
       call = call
     )
   } else if (exposure_type == "continuous") {
@@ -767,6 +943,7 @@ wt_ate.numeric <- function(
       .sigma = .sigma,
       .density = .density,
       numerator = numerator,
+      numerator_model = numerator_model,
       stabilize = stabilize,
       stabilization_score = stabilization_score,
       call = call
@@ -1011,6 +1188,7 @@ ate_binary <- function(
   .reference_level = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
+  numerator_model = NULL,
   call = rlang::caller_env()
 ) {
   .exposure <- transform_exposure_binary(
@@ -1020,17 +1198,29 @@ ate_binary <- function(
     call = call
   )
 
-  if (isTRUE(stabilize) && is.null(stabilization_score)) {
+  unstabilized <- (.exposure / .propensity) +
+    ((1 - .exposure) / (1 - .propensity))
+
+  if (isTRUE(stabilize) && !is.null(numerator_model)) {
+    # A fitted numerator is the conditional probability of the level each unit
+    # took, so the weights are P(Z = z_i | V_i) / f(Z_i | X_i): the unstabilized
+    # weights scaled unit by unit rather than by one number for each arm.
+    wt <- unstabilized * numerator_model_probability(numerator_model)
+
+    # The model itself travels back with the weights, the way a density record
+    # does, so that it reaches the `psw` by the route every other exposure
+    # record takes.
+    attr(wt, "numerator_model") <- numerator_model
+  } else if (isTRUE(stabilize) && is.null(stabilization_score)) {
     p1 <- ipw_default_stab_seed(.exposure)
     p0 <- 1 - p1
 
     wt <- (.exposure * p1 / .propensity) +
       ((1 - .exposure) * p0 / (1 - .propensity))
   } else if (isTRUE(stabilize) && !is.null(stabilization_score)) {
-    wt <- (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
-    wt <- wt * stabilization_score
+    wt <- unstabilized * stabilization_score
   } else {
-    wt <- (.exposure / .propensity) + ((1 - .exposure) / (1 - .propensity))
+    wt <- unstabilized
   }
 
   wt
@@ -1042,26 +1232,54 @@ ate_continuous <- function(
   .sigma,
   .density = dens_normal(),
   numerator = "marginal",
+  numerator_model = NULL,
   stabilize = FALSE,
   stabilization_score = NULL,
   call = rlang::caller_env()
 ) {
+  # Every quantity below is computed from the exposure and the fitted means
+  # together, so an infinite value in either reaches all of them. It is refused
+  # here, where the argument that carries it can still be named.
+  check_continuous_finite(.exposure, ".exposure", call = call)
+  check_continuous_finite(.propensity, ".propensity", call = call)
+
   # The conditional density f_{A|X}(A_i | X_i) is the one the propensity model
-  # estimates, so its spread is that model's residual standard deviation: the
-  # observation-level `.sigma` when the caller supplies one, the pooled residual
-  # standard deviation otherwise.
-  sigma_i <- continuous_sigma(.exposure, .propensity, .sigma)
+  # estimates, so its spread is the spread of that model's residuals: the
+  # observation-level `.sigma` when the caller supplies one, the scale the
+  # density asks to be fit by maximum likelihood when it asks for one, and the
+  # pooled residual root mean square otherwise.
+  sigma_i <- continuous_sigma(
+    .exposure,
+    .propensity,
+    .sigma,
+    density = .density,
+    call = call
+  )
 
   # What divides the conditional density: nothing at all when the weights are
-  # not stabilized, a score the caller supplied when there is one, and otherwise
+  # not stabilized, a score the caller supplied when there is one, the density a
+  # numerator model estimates when the caller stabilized on one, and otherwise
   # the numerator asked for. The combinations `check_numerator()` refuses cannot
-  # reach here, so the two that answer for themselves are read first.
+  # reach here, so the three that answer for themselves are read first.
   numerator <- if (!isTRUE(stabilize)) {
     "none"
   } else if (!is.null(stabilization_score)) {
     "score"
+  } else if (!is.null(numerator_model)) {
+    "model"
   } else {
     numerator
+  }
+
+  # The conditional density the numerator model estimates is read at its own
+  # fitted mean and its own residual spread, which are to that model what the
+  # fitted means in `.propensity` and their pooled spread are to this one.
+  mu_n <- NULL
+  sigma_n <- NULL
+  if (identical(numerator, "model")) {
+    moments <- numerator_model_moments(numerator_model)
+    mu_n <- moments$mu
+    sigma_n <- moments$sigma
   }
 
   # The marginal density f_A(A_i) is read at the exposure's population moments,
@@ -1073,6 +1291,18 @@ ate_continuous <- function(
     sigma_a <- sqrt(mean((.exposure - mu_a)^2, na.rm = TRUE))
   }
 
+  # Whether the weights this call is about to build have a finite second moment.
+  # The boundary is read here rather than inside the ratio so that it is
+  # reported once for a call the user made, and not again for every step of the
+  # estimating equations `ipw()` rebuilds the same weights from.
+  check_density_variance(
+    .density,
+    sigma = sigma_i,
+    sigma_a = sigma_a,
+    numerator = numerator,
+    call = call
+  )
+
   wt <- continuous_density_ratio(
     exposure = .exposure,
     mu = .propensity,
@@ -1081,6 +1311,8 @@ ate_continuous <- function(
     numerator = numerator,
     mu_a = mu_a,
     sigma_a = sigma_a,
+    mu_n = mu_n,
+    sigma_n = sigma_n,
     score = stabilization_score,
     call = call
   )
@@ -1098,12 +1330,15 @@ ate_continuous <- function(
   attr(wt, "density_meta") <- new_density_meta(
     density = .density,
     numerator = numerator,
-    sigma = if (is.null(.sigma)) "pooled" else "supplied",
+    sigma = density_sigma_source(.sigma, .density),
     # A spread of one number describes the conditional density of every unit, so
     # it is a constant the ratio can be rebuilt from and the record keeps it. One
     # number per observation describes each unit's density separately, and there
-    # is no constant to keep.
-    sigma_value = if (length(.sigma) == 1L) as.double(.sigma)
+    # is no constant to keep. A spread estimated from the residuals, by either
+    # estimator, is a function of the data rather than a constant, so there is
+    # nothing to keep for it either.
+    sigma_value = if (length(.sigma) == 1L) as.double(.sigma),
+    numerator_model = numerator_model
   )
 
   wt
@@ -2883,12 +3118,6 @@ wt_entropy.ps_trunc <- function(
 }
 
 #' @export
-wt_atc.ps_trim <- wt_atu.ps_trim
-
-#' @export
-wt_atc.ps_trunc <- wt_atu.ps_trunc
-
-#' @export
 wt_cens.ps_trim <- function(
   .propensity,
   .exposure,
@@ -2986,22 +3215,25 @@ calculate_categorical_weights <- function(
   k <- nlevels(.exposure)
   levels_exp <- levels(.exposure)
 
-  # Create indicator matrix for exposures
-  # Each row i has a 1 in column j if observation i has exposure level j
-  Z <- matrix(0, nrow = n, ncol = k)
-  for (j in 1:k) {
-    Z[.exposure == levels_exp[j], j] <- 1
-  }
+  # Extract the propensity score for each unit's actual exposure, e_{i,Z_i}.
+  # `check_ps_matrix()` has put the columns in level order, so the integer code
+  # of the exposure is the column to read.
+  e_actual <- ps_matrix[cbind(seq_len(n), as.integer(.exposure))]
 
-  # Extract the propensity score for each unit's actual exposure
-  # e_{i,Z_i} = sum over j of Z_{ij} * e_{ij}
-  e_actual <- rowSums(Z * ps_matrix)
-
-  # A unit with no observed level has an all-zero indicator row, so e_{i,Z_i}
-  # comes back as 0. There is no weight to give such a unit, so it is missing
-  # here just as it is on the binary and continuous paths.
+  # A unit whose level is missing has no column to read, so the index above
+  # already returns a missing score for it. A row holding any missing score is
+  # not a probability vector, so it has no score to read either. There is no
+  # weight to give either unit, so both are missing here just as they are on
+  # the binary and continuous paths.
+  #
+  # Which rows those are is worth reading only once the matrix is known to hold
+  # a missing score at all: `complete.cases()` visits every cell and builds a
+  # flag for every row, where `anyNA()` builds nothing and stops at the first
+  # missing value it finds.
   missing_exposure <- is.na(.exposure)
-  e_actual[missing_exposure] <- NA_real_
+  if (anyNA(ps_matrix)) {
+    e_actual[!stats::complete.cases(ps_matrix)] <- NA_real_
+  }
 
   if (!estimand %in% ipw_estimands) {
     abort(
@@ -3241,9 +3473,6 @@ wt_entropy.ps_calib <- function(
     ...
   )
 }
-
-#' @export
-wt_atc.ps_calib <- wt_atu.ps_calib
 
 #' @export
 wt_cens.ps_calib <- function(

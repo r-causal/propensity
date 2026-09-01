@@ -263,7 +263,6 @@ joint_models_expected_estimates <- function(mu, forms = c("rd", "log(rr)")) {
 
 test_that("the fixture fits both routes and the constructors accept them", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
 
   # Every cell of the crossing is populated, which the declared-exposure route
@@ -344,7 +343,6 @@ test_that("saturated parameterizations imply the same weights", {
 # ---- the reported surface ---------------------------------------------------
 
 test_that("ipw() over two treatment models reports the joint surface", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -384,7 +382,6 @@ test_that("ipw() over two treatment models reports the joint surface", {
 })
 
 test_that("ipw() over two treatment models hand-computes its cell risks and contrasts", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -411,7 +408,6 @@ test_that("ipw() over two treatment models hand-computes its cell risks and cont
 })
 
 test_that("ipw() over two treatment models reports diffs for a continuous outcome", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat, outcome_family = "gaussian")
   res <- ipw(two$models, two$outcome_mod)
@@ -435,7 +431,6 @@ test_that("ipw() over two treatment models reports diffs for a continuous outcom
 
 test_that("the two routes agree as estimators of the same joint effects", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
 
   two <- fit_joint_models_route(dat)
@@ -474,7 +469,6 @@ test_that("the two routes agree as estimators of the same joint effects", {
 
 test_that("saturated parameterizations make the two routes agree tightly", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_joint_models_saturated()
 
   two <- fit_joint_models_route(
@@ -511,7 +505,6 @@ test_that("saturated parameterizations make the two routes agree tightly", {
 # ---- standard errors ---------------------------------------------------------
 
 test_that("ipw() over two treatment models reports a usable standard error for every row", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -527,7 +520,6 @@ test_that("ipw() over two treatment models reports a usable standard error for e
 })
 
 test_that("the stacked system carries both treatment models", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -563,7 +555,6 @@ test_that("the stacked system carries both treatment models", {
 })
 
 test_that("the covariance of a two-model joint fit couples its blocks", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -598,7 +589,6 @@ test_that("the covariance of a two-model joint fit couples its blocks", {
 })
 
 test_that("a two-model joint fit labels every surface alike", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   res <- ipw(two$models, two$outcome_mod)
@@ -634,7 +624,6 @@ test_that("a two-model joint fit labels every surface alike", {
 })
 
 test_that("the conditional reading of a two-model joint fit is the outcome model's", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
   conditional <- causalgenerics::as_conditional(
@@ -662,7 +651,6 @@ test_that("the conditional reading of a two-model joint fit is the outcome model
 # ---- refusals ----------------------------------------------------------------
 
 test_that("ipw() refuses an outcome model that does not read both treatments", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
 
   # A joint surface sets both treatments at once, so an outcome model reading
@@ -685,7 +673,6 @@ test_that("ipw() refuses an outcome model that does not read both treatments", {
 })
 
 test_that("ipw() refuses weights that are not a joint product", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
 
@@ -717,7 +704,6 @@ test_that("ipw() refuses weights that are not a joint product", {
 })
 
 test_that("ipw() refuses a joint fit whose weights are not the ate", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
 
@@ -744,8 +730,44 @@ test_that("ipw() refuses a joint fit whose weights are not the ate", {
   )
 })
 
+test_that("the weights mismatch on two binary treatments names no focal level", {
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+
+  # A joint product scaled after it was built is still the product the
+  # container asks for, so the route reaches the preflight that rebuilds the
+  # weights from the two models and reports that they disagree. A joint
+  # specification targets the joint ate and resolves no focal level, so naming
+  # a focal level among the causes would send the reader after a setting this
+  # route never read.
+  scaled <- two$wts * 1.5
+  expect_true(is_joint_wt(scaled))
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = scaled,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  err <- expect_error(
+    ipw(two$models, outcome_mod),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_no_match(msg, "focal level", fixed = TRUE)
+
+  # On this route `wt_mod` is the container of the two treatment models rather
+  # than one propensity score model, so the remedy names what it holds. A
+  # reader told to refit the outcome model with weights from "this propensity
+  # score model" is being sent to a model the call never had.
+  expect_match(msg, "two treatment models", fixed = TRUE)
+  expect_no_match(msg, "this propensity score model", fixed = TRUE)
+
+  expect_propensity_error(ipw(two$models, outcome_mod))
+})
+
 test_that("ipw() refuses .by on the two-model route", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))
   # The outcome model carries the modifier interacted with both treatments, so
@@ -763,7 +785,6 @@ test_that("ipw() refuses .by on the two-model route", {
 })
 
 test_that("ipw() refuses linearization standard errors on the two-model route", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_models()
   two <- fit_joint_models_route(dat)
 
@@ -776,4 +797,244 @@ test_that("ipw() refuses linearization standard errors on the two-model route", 
   expect_propensity_error(
     ipw(two$models, two$outcome_mod, se_method = "linearization")
   )
+})
+
+test_that("ipw() refuses robust standard errors on the two-model route", {
+  dat <- sim_joint_models()
+  two <- fit_joint_models_route(dat)
+
+  # The cell means of a joint treatment are parameters of the stacked system,
+  # so the weights-fixed sandwich of a two-cell outcome model describes none of
+  # them. The refusal names the method that was asked for.
+  expect_error(
+    ipw(two$models, two$outcome_mod, se_method = "robust"),
+    class = "propensity_ipw_joint_models_method_error",
+    regexp = "robust"
+  )
+  expect_propensity_error(
+    ipw(two$models, two$outcome_mod, se_method = "robust")
+  )
+})
+
+# ---- treatment models fit under case weights --------------------------------
+#
+# Every score this route stacks is unweighted, so a treatment model fit with
+# prior case weights is not at the root of the equation written for it: the
+# solve, seeded at its coefficients, would move away from them and report a
+# treatment model nobody fit. The single-treatment routes refuse such a fit by
+# name, and this route reads the same field of the same fitted objects, so the
+# refusal is the same one and is made of each component in turn.
+
+test_that("ipw() refuses a joint binary treatment model fit with case weights", {
+  dat <- sim_joint_models()
+  dat$cw <- rep(c(1, 2), length.out = nrow(dat))
+
+  # Integer weights, so the binomial fit raises nothing of its own and the only
+  # condition in the test is the refusal being asserted.
+  weighted_route <- function(which) {
+    a_weights <- if (identical(which, "a")) dat$cw else rep(1, nrow(dat))
+    e_weights <- if (identical(which, "e")) dat$cw else rep(1, nrow(dat))
+    ps_a <- glm(
+      a ~ x1 + x2,
+      data = dat,
+      family = binomial(),
+      weights = a_weights
+    )
+    ps_e <- glm(
+      e ~ a * x1 + x2,
+      data = dat,
+      family = binomial(),
+      weights = e_weights
+    )
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_joint(
+        wt_ate(ps_a),
+        wt_ate(ps_e),
+        exposure_type = c("binary", "binary")
+      )
+    )
+    outcome_mod <- lm(yc ~ a * e + x1, data = dat, weights = wts)
+
+    list(
+      models = joint_wt_models(a = ps_a, e = ps_e),
+      outcome_mod = outcome_mod
+    )
+  }
+
+  # The message of whatever the call raised, or the empty string when it raised
+  # nothing, so that one component failing to refuse does not stop the other
+  # from being asserted.
+  refusal_message <- function(expr) {
+    cnd <- tryCatch(expr, error = function(e) e)
+    if (!inherits(cnd, "condition")) {
+      return("")
+    }
+    gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  }
+
+  for (which in c("a", "e")) {
+    fx <- weighted_route(which)
+    expect_error(
+      ipw(fx$models, fx$outcome_mod),
+      class = "propensity_ipw_ps_weights_error",
+      label = which
+    )
+
+    # The refusal names the component that carries the weights rather than the
+    # container the two models arrived in, which is not a model to refit.
+    msg <- refusal_message(ipw(fx$models, fx$outcome_mod))
+    expect_match(msg, paste0("`", which, "`"), fixed = TRUE)
+    expect_no_match(msg, "wt_mod", fixed = TRUE)
+  }
+})
+
+# ---- stabilized discrete components -----------------------------------------
+#
+# Both components of a discrete pair may be stabilized, and each numerator is
+# estimated in a block of its own, whether it is the marginal proportion the
+# default stabilizer is or a model the caller fit. What the route used to do
+# instead was rebuild every discrete component unstabilized, which reached a
+# different product and was reported as a weights mismatch the caller had not
+# caused.
+
+test_that("ipw() stacks a stabilized discrete component's own numerator", {
+  dat <- sim_joint_models()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+  # One component takes the default numerator, the marginal proportion, and the
+  # other a fitted model of its treatment on a covariate the outcome model
+  # reads, which is what a numerator may condition on.
+  num_e <- glm(e ~ x1, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a, stabilize = TRUE),
+      wt_ate(ps_e, stabilize = num_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  models <- joint_wt_models(a = ps_a, e = ps_e)
+
+  # The product written out, so the rebuild is held to the arithmetic rather
+  # than to the preflight's tolerance.
+  p1 <- mean(dat$a)
+  p_e <- as.numeric(fitted(num_e))
+  expected <- (((dat$a * p1) / fitted(ps_a)) +
+    (((1 - dat$a) * (1 - p1)) / (1 - fitted(ps_a)))) *
+    (((dat$e / fitted(ps_e)) + ((1 - dat$e) / (1 - fitted(ps_e)))) *
+      (dat$e * p_e + (1 - dat$e) * (1 - p_e)))
+  expect_equal(as.numeric(wts), unname(expected), tolerance = 1e-12)
+
+  spec <- ipw_spec_joint_models(models, outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(wts),
+    tolerance = 1e-12
+  )
+
+  # Every equation in the stacked system sits at its root at the seed, which is
+  # what makes the solve report the models the caller fit.
+  mat <- build_ipw_psi(spec, layout)(layout$init)
+  expect_false(anyNA(mat))
+  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-8))
+
+  res <- ipw(models, outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    joint_models_expected_estimates(joint_models_cell_means(outcome_mod, dat)),
+    tolerance = 1e-6
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+
+  # One proportion for the component that took the default numerator, and one
+  # parameter per coefficient for the component that took a model, each named
+  # for the component it belongs to.
+  theta <- coef(res$fit)
+  stab <- theta[grepl("^stab_", names(theta))]
+  expect_length(stab, 1L + length(coef(num_e)))
+  expect_equal(unname(theta[["stab_a_pi"]]), p1, tolerance = 1e-8)
+  expect_equal(
+    unname(stab[grepl("^stab_e_", names(stab))]),
+    unname(coef(num_e)),
+    tolerance = 1e-6
+  )
+})
+
+# ---- a component stabilized on a fixed score --------------------------------
+
+test_that("ipw() rebuilds a discrete component stabilized on a fixed score", {
+  dat <- sim_joint_models()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  # A numerator the caller computed rather than one the estimator can fit. It
+  # is away from the marginal proportion, which is the record a stabilized
+  # discrete component used to leave whatever it was built with, so a system
+  # that stood the proportion in would reach a different product and be
+  # reported as a mismatch the caller did not cause.
+  score <- 0.3 + 0.4 * plogis(dat$x2)
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a, stabilize = TRUE, stabilization_score = score),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  models <- joint_wt_models(a = ps_a, e = ps_e)
+
+  # The product written out, so the rebuild is held to the arithmetic rather
+  # than to the preflight's tolerance.
+  expected <- (((dat$a / fitted(ps_a)) +
+    ((1 - dat$a) / (1 - fitted(ps_a)))) *
+    score) *
+    ((dat$e / fitted(ps_e)) + ((1 - dat$e) / (1 - fitted(ps_e))))
+  expect_equal(as.numeric(wts), unname(expected), tolerance = 1e-12)
+
+  spec <- ipw_spec_joint_models(models, outcome_mod)
+  layout <- ipw_theta_layout(spec)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(wts),
+    tolerance = 1e-12
+  )
+
+  mat <- build_ipw_psi(spec, layout)(layout$init)
+  expect_false(anyNA(mat))
+  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-8))
+
+  res <- ipw(models, outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    joint_models_expected_estimates(joint_models_cell_means(outcome_mod, dat)),
+    tolerance = 1e-6
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+
+  # A score is a known multiplier, so it widens the system by nothing at all
+  # where the marginal proportion the default stabilizer estimates would have
+  # taken one parameter.
+  expect_false(any(grepl("^stab_", names(coef(res$fit)))))
 })

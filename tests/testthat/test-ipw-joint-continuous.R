@@ -170,6 +170,9 @@ fit_joint_continuous <- function(
   outcome_rhs = "a * e",
   outcome_family = "gaussian",
   dose_score = NULL,
+  dose_stabilize = TRUE,
+  a_stabilize = NULL,
+  a_score = NULL,
   dose_type = c("lm", "glm_log", "rlm", "gam"),
   .density = "normal",
   numerator = "marginal",
@@ -184,12 +187,17 @@ fit_joint_continuous <- function(
   ps_e <- fit_joint_dose(dose_type, e_rhs, dat)
 
   wts <- quiet_wt(wt_joint(
-    wt_ate(ps_a),
+    # `NULL` leaves a binary component unstabilized, which is the default a
+    # binary exposure resolves to, and a fitted model stabilizes it on the
+    # probability of the level each unit took.
+    wt_ate(ps_a, stabilize = a_stabilize, stabilization_score = a_score),
     wt_ate(
       as.double(fitted(ps_e)),
       dat$e,
       exposure_type = "continuous",
-      stabilize = TRUE,
+      # `TRUE` for the default numerator, and a fitted model for the one the
+      # single-dose route estimates in its stacked system.
+      stabilize = dose_stabilize,
       # A numerator the caller computed rather than one the estimator can
       # rebuild, which `dose_score` is here to supply.
       stabilization_score = dose_score,
@@ -403,7 +411,6 @@ test_that("the continuous fixture builds the container and the product weights",
 })
 
 test_that("a single-term dose model still reports one slope with no contrast column", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_curve()
   fx <- fit_dose_msm(dat, "e")
   res <- ipw(fx$ps_mod, fx$outcome_mod)
@@ -429,7 +436,6 @@ test_that("a single-term dose model still reports one slope with no contrast col
 })
 
 test_that("a marginal structural model reading a covariate is still refused", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_curve()
 
   # The relaxation narrows the requirement to terms that read the exposure and
@@ -457,7 +463,6 @@ test_that("a marginal structural model reading a covariate is still refused", {
 # ---- part 2: the validator relaxation ---------------------------------------
 
 test_that("a polynomial dose model reports one row per dose coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_curve()
   fx <- fit_dose_msm(dat, "e + I(e^2)")
   res <- ipw(fx$ps_mod, fx$outcome_mod)
@@ -534,7 +539,6 @@ test_that("a polynomial dose model reports one row per dose coefficient", {
 })
 
 test_that("the relaxation admits any term that reads the exposure alone", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_curve()
 
   # The boundary is variable membership, not the shape of the function: what
@@ -559,7 +563,6 @@ test_that("the relaxation admits any term that reads the exposure alone", {
 # ---- part 1: the joint route with a dose ------------------------------------
 
 test_that("ipw() over a binary and a continuous treatment reports the vocabulary surface", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   res <- ipw(fx$models, fx$outcome_mod)
@@ -600,7 +603,6 @@ test_that("ipw() over a binary and a continuous treatment reports the vocabulary
 })
 
 test_that("the reported coefficients are the weighted marginal structural model's", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   res <- ipw(fx$models, fx$outcome_mod)
@@ -636,7 +638,6 @@ test_that("the reported coefficients are the weighted marginal structural model'
 })
 
 test_that("a logit marginal structural model reports the same rows on the odds scale", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, outcome_family = "binomial")
   res <- ipw(fx$models, fx$outcome_mod)
@@ -659,7 +660,6 @@ test_that("a logit marginal structural model reports the same rows on the odds s
 })
 
 test_that("an additive marginal structural model reports two ungrouped rows", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, outcome_rhs = "a + e")
   res <- ipw(fx$models, fx$outcome_mod)
@@ -683,7 +683,6 @@ test_that("an additive marginal structural model reports two ungrouped rows", {
 })
 
 test_that("a covariate in a bare-term model contributes no vocabulary row", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # Adjusting the marginal structural model for a covariate is a different thing
@@ -725,7 +724,6 @@ test_that("a covariate in a bare-term model contributes no vocabulary row", {
 # ---- standard errors and the stacked system ---------------------------------
 
 test_that("a joint continuous fit reports a usable standard error for every row", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   res <- ipw(fx$models, fx$outcome_mod)
@@ -753,7 +751,6 @@ test_that("a joint continuous fit reports a usable standard error for every row"
 })
 
 test_that("the stacked system carries the dose model's score and its variance", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   res <- ipw(fx$models, fx$outcome_mod)
@@ -785,7 +782,6 @@ test_that("the stacked system carries the dose model's score and its variance", 
 })
 
 test_that("the estimator rebuilds the product weights the container implies", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
 
@@ -808,7 +804,6 @@ test_that("the estimator rebuilds the product weights the container implies", {
 })
 
 test_that("the conditional reading of a joint continuous fit is the outcome model's", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
   conditional <- causalgenerics::as_conditional(ipw(fx$models, fx$outcome_mod))
@@ -888,7 +883,6 @@ expect_joint_dose_estimates <- function(res, outcome_mod) {
 }
 
 test_that("a log-link dose model is stacked at its own score", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous_positive()
   fx <- fit_joint_continuous(dat, dose_type = "glm_log")
 
@@ -911,7 +905,6 @@ test_that("a log-link dose model is stacked at its own score", {
 })
 
 test_that("an integrated numerator on the dose stacks no marginal moments", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, numerator = "integrated")
 
@@ -932,7 +925,6 @@ test_that("an integrated numerator on the dose stacks no marginal moments", {
 })
 
 test_that("a heavier-tailed dose density is the one the system rebuilds", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, .density = dens_t(4))
 
@@ -948,8 +940,29 @@ test_that("a heavier-tailed dose density is the one the system rebuilds", {
   expect_joint_dose_estimates(res, fx$outcome_mod)
 })
 
+test_that("a dose scale fit by maximum likelihood is stacked at its own equation", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, .density = dens_t(4, sigma_method = "mle"))
+
+  # The dose records which estimator its scale was read with, so the scale sits
+  # in the dose block as the pooled spread does, and the row that estimates it
+  # is the equation the scale the weights were built at is the root of. A block
+  # stacked at the residual moment instead would be seeded away from its own
+  # root and would rebuild a different vector of weights.
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  layout <- expect_joint_weights_at_init(spec, fx$wts)
+  expect_length(
+    layout$idx$ps,
+    length(coef(fx$ps_a)) + length(coef(fx$ps_e)) + 1L
+  )
+  expect_joint_root_seeded(spec)
+
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_joint_dose_estimates(res, fx$outcome_mod)
+  expect_true("sigma2_e" %in% names(coef(res$fit)))
+})
+
 test_that("a fixed scalar sigma on the dose is a constant rather than a parameter", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A spread the caller fixed is a known constant, so the dose block is its
@@ -974,7 +987,6 @@ test_that("a fixed scalar sigma on the dose is a constant rather than a paramete
 
 test_that("a robust dose model is stacked at the score it solves", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous_outliers()
   fx <- fit_joint_continuous(dat, dose_type = "rlm")
 
@@ -1004,34 +1016,81 @@ test_that("a robust dose model is stacked at the score it solves", {
   expect_gt(max(abs(unname(coef(fx$ps_e)) - unname(ls_coefs))), 0.1)
 })
 
-test_that("ipw() refuses a dose model whose score it cannot write", {
+test_that("an additive dose model is stacked at its penalized score", {
   skip_if_not_installed("mgcv")
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, dose_type = "gam")
 
-  # An additive model chooses how much to smooth by REML, and no equation
-  # stacked here reproduces that choice, so what is unavailable is the standard
-  # error method rather than the weights, which are exactly what they claim to
-  # be. The single-dose route says the same thing about the same fit.
-  expect_error(
-    ipw(fx$models, fx$outcome_mod),
-    class = "propensity_ipw_se_method_unavailable_error"
+  # A dose model is read through the registry the single-dose route reads, so an
+  # additive fit reaches this route on the same terms: its design is the smooth
+  # basis the fit reports, and the equation its coefficients solve is the
+  # least-squares score less the penalty its smoothing parameters define. A
+  # block written without that penalty would sit away from its root here.
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  layout <- expect_joint_root_seeded(spec)
+
+  # The rebuilt weights are held to a looser tolerance here than the other dose
+  # models are held to. An additive fit's conditional mean comes back as its
+  # basis times its coefficients rather than out of `fitted()`, and the two
+  # agree to about 1e-11 rather than to the last bit; the preflight's own guard
+  # is 1e-6.
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fx$wts),
+    tolerance = 1e-8
   )
 
-  # Both routes point at a bootstrap the user writes, and this one says it in
-  # its own terms: the weights a replicate rebuilds are the product weights of
-  # two treatment models rather than the dose ratio of one.
-  msg <- joint_error_message(ipw(fx$models, fx$outcome_mod))
-  expect_match(msg, "joint", fixed = TRUE)
-  expect_match(msg, "wt_joint", fixed = TRUE)
-  expect_no_match(msg, "wt_ate", fixed = TRUE)
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_joint_dose_estimates(res, fx$outcome_mod)
 
-  expect_propensity_error(ipw(fx$models, fx$outcome_mod))
+  theta <- coef(res$fit)
+  dose_block <- theta[length(coef(fx$ps_a)) + seq_along(coef(fx$ps_e))]
+  expect_equal(
+    unname(dose_block),
+    unname(coef(fx$ps_e)),
+    tolerance = 1e-8
+  )
+})
+
+test_that("ipw() reads a joint additive dose model's design once", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, dose_type = "gam")
+
+  # The dose component is read through the registry, whose entry evaluates the
+  # smooth basis the fit's penalized score is checked at. That basis is the
+  # design this route multiplies the dose block by as well, so one call needs
+  # one of it. The binary component's design is a lookup and is not counted
+  # here: `predict.gam()` is not what builds it.
+  counted <- count_gam_designs(ipw(fx$models, fx$outcome_mod))
+
+  expect_identical(counted$builds, 1L)
+
+  # Counting the builds does not change what the call reports.
+  expect_joint_dose_estimates(counted$value, fx$outcome_mod)
+})
+
+test_that("the joint additive route reports the estimates it reports today", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, dose_type = "gam")
+
+  # How often the design is built is arithmetic the answer must not see, so a
+  # route that builds it once has to reproduce these to the digit.
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_equal(
+    res$estimates$estimate,
+    c(0.6282057290, 0.4153889358, 0.6694390103),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    res$estimates$std.err,
+    c(0.0747616013, 0.0445820487, 0.0546759779),
+    tolerance = 1e-6
+  )
 })
 
 test_that("ipw() refuses dose weights built from a kernel density", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, .density = "kernel")
 
@@ -1052,8 +1111,94 @@ test_that("ipw() refuses dose weights built from a kernel density", {
   expect_propensity_error(ipw(fx$models, fx$outcome_mod))
 })
 
+test_that("ipw() refuses a dose psi it cannot write, under the component's name", {
+  skip_if_not_installed("MASS")
+  dat <- sim_joint_continuous_outliers()
+
+  # A psi of the caller's own is the root of an equation this path does not
+  # write, and the single-treatment route refuses it by name. Reached as the
+  # second component of a joint intervention the refusal is the same one, and it
+  # names the component rather than the container the two treatment models
+  # arrived in, since `wt_mod` is not a model the reader can refit.
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  own_psi <- function(u, k = 1.5) pmin(1, k / abs(u))
+  ps_e <- suppressWarnings(MASS::rlm(
+    e ~ a + x1 + x2,
+    data = dat,
+    psi = own_psi,
+    acc = 1e-10,
+    maxit = 200
+  ))
+  wts <- quiet_wt(wt_joint(
+    wt_ate(ps_a),
+    wt_ate(
+      as.double(fitted(ps_e)),
+      dat$e,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    exposure_type = c("binary", "continuous")
+  ))
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+  models <- joint_wt_models(a = ps_a, e = ps_e)
+
+  expect_error(
+    ipw(models, outcome_mod),
+    class = "propensity_ipw_robust_psi_error"
+  )
+
+  msg <- joint_error_message(ipw(models, outcome_mod))
+  expect_match(msg, "recognize", fixed = TRUE)
+  expect_match(msg, "`e`", fixed = TRUE)
+  expect_no_match(msg, "wt_mod", fixed = TRUE)
+
+  expect_propensity_error(ipw(models, outcome_mod))
+})
+
+test_that("ipw() refuses a dose link it cannot write the score for", {
+  dat <- sim_joint_continuous_positive()
+
+  # The single-treatment route refuses the remaining gaussian links by name,
+  # because the coefficients an IRLS iteration stops at under one of them are
+  # not a tight enough root to seed the solve from. A dose reached as the second
+  # component of a joint intervention is read by the same registry and is
+  # refused the same way.
+  for (link in c("inverse", "sqrt")) {
+    ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+    ps_e <- glm(
+      e ~ a + x1 + x2,
+      data = dat,
+      family = gaussian(link = link)
+    )
+    wts <- quiet_wt(wt_joint(
+      wt_ate(ps_a),
+      wt_ate(
+        as.double(fitted(ps_e)),
+        dat$e,
+        exposure_type = "continuous",
+        stabilize = TRUE
+      ),
+      exposure_type = c("binary", "continuous")
+    ))
+    outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+    models <- joint_wt_models(a = ps_a, e = ps_e)
+
+    err <- expect_error(
+      ipw(models, outcome_mod),
+      class = "propensity_ipw_link_error"
+    )
+    msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+    expect_match(msg, link, fixed = TRUE)
+
+    # The refused model is the dose component, and the message names it. On
+    # this route `wt_mod` is the container the two treatment models arrived in,
+    # so a reader told to refit `wt_mod` is told to refit the wrong thing.
+    expect_match(msg, "`e`", fixed = TRUE)
+    expect_no_match(msg, "wt_mod", fixed = TRUE)
+  }
+})
+
 test_that("the weights mismatch names the ratio the dose records", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A dose component built from a model the container does not hold is a weight
@@ -1086,13 +1231,17 @@ test_that("the weights mismatch names the ratio the dose records", {
   expect_match(msg, "t(df = 4)", fixed = TRUE)
   expect_match(msg, "marginal", fixed = TRUE)
 
+  # A joint specification targets the joint ate and resolves no focal level, so
+  # a focal level is a cause that cannot apply here and naming it sends the
+  # reader after a setting the route never read.
+  expect_no_match(msg, "focal level", fixed = TRUE)
+
   expect_propensity_error(ipw(models, outcome_mod))
 })
 
 # ---- refusals ----------------------------------------------------------------
 
 test_that("ipw() refuses an outcome model that does not read both treatments", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The class is the one the package already uses for an outcome model that does
@@ -1115,7 +1264,6 @@ test_that("ipw() refuses an outcome model that does not read both treatments", {
 })
 
 test_that("a transformed dose term reports one row per treatment coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A curve written without a bare dose term at all. Every treatment-reading
@@ -1138,7 +1286,6 @@ test_that("a transformed dose term reports one row per treatment coefficient", {
 })
 
 test_that("a covariate in a transformed model contributes no coefficient row", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The rule that a covariate term contributes no row holds on this surface too,
@@ -1167,7 +1314,6 @@ test_that("a covariate in a transformed model contributes no coefficient row", {
 })
 
 test_that("a curve beside the bare terms reports every treatment coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The bare terms are still there and still contribute their coefficients; the
@@ -1185,7 +1331,6 @@ test_that("a curve beside the bare terms reports every treatment coefficient", {
 })
 
 test_that("a transformed term reading both treatments is named by its coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # `I(a * sin(e))` reads both treatments without being their bare interaction.
@@ -1207,7 +1352,6 @@ test_that("a transformed term reading both treatments is named by its coefficien
 })
 
 test_that("a basis in the dose reports its basis and interaction coefficients", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A basis is where naming rows by the coefficient stops being a refinement and
@@ -1235,7 +1379,6 @@ test_that("a basis in the dose reports its basis and interaction coefficients", 
 })
 
 test_that("a basis joint fit needs no .data, unlike the single-treatment route", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The single-treatment route reads the exposure off the outcome model frame
@@ -1261,7 +1404,6 @@ test_that("a basis joint fit needs no .data, unlike the single-treatment route",
 })
 
 test_that("a logit joint dose model reports coefficient rows on the odds scale", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The scale word follows the outcome link exactly as it does everywhere else.
@@ -1285,7 +1427,6 @@ test_that("a logit joint dose model reports coefficient rows on the odds scale",
 })
 
 test_that("the conditional reading of a transformed joint fit is the outcome model's", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, outcome_rhs = "a * sin(e)")
   conditional <- causalgenerics::as_conditional(
@@ -1309,7 +1450,6 @@ test_that("the conditional reading of a transformed joint fit is the outcome mod
 })
 
 test_that("ipw() still refuses a term reading a treatment and a covariate", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # The boundary the coefficient surface moves is what a treatment term may look
@@ -1333,7 +1473,6 @@ test_that("ipw() still refuses a term reading a treatment and a covariate", {
 })
 
 test_that("ipw() refuses a treatment column coded some other way", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # A bare term says which variables a column is built from and nothing about
@@ -1364,7 +1503,6 @@ test_that("ipw() refuses a treatment column coded some other way", {
 })
 
 test_that("a factor treatment under treatment contrasts reports the numeric fit", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
 
   # Treatment contrasts code a two-level factor as the indicator the rows
@@ -1407,17 +1545,14 @@ test_that("a factor treatment under treatment contrasts reports the numeric fit"
   )
 })
 
-test_that("the weights mismatch names a fixed stabilization score", {
-  skip_if_not_installed("deli")
+test_that("the weights mismatch names a score the record does not keep", {
   dat <- sim_joint_continuous()
 
-  # A product weight records that a component was stabilized and not which
-  # numerator it was built with, so a dose component carrying one of its own is
-  # a weight the stacked system cannot rebuild: it estimates the dose's marginal
-  # moments and reaches a different vector. The numerator here is the one a
-  # caller would write by hand, whose `sd()` divides by n - 1 where the
-  # estimator's own moment divides by n, so the two differ by more than the
-  # preflight's tolerance and by little else.
+  # A product records the score each component was stabilized on, so a score is
+  # a numerator the stacked system rebuilds exactly. What is left is a record
+  # written before the slot existed, or one assembled by hand: it says the dose
+  # was stabilized on a score and keeps no vector, so the system estimates the
+  # dose's marginal moments and reaches a different product.
   #
   # The refusal has to name that cause. Reaching this message and reading
   # through a list of estimands, focal levels, and trimming, none of which
@@ -1427,24 +1562,26 @@ test_that("the weights mismatch names a fixed stabilization score", {
     dose_score = dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
   )
 
+  wts <- strip_joint_scores(fx$wts)
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+
   expect_error(
-    ipw(fx$models, fx$outcome_mod),
+    ipw(fx$models, outcome_mod),
     class = "propensity_ipw_weights_mismatch_error",
     regexp = "stabilization_score"
   )
-  expect_propensity_error(ipw(fx$models, fx$outcome_mod))
+  expect_propensity_error(ipw(fx$models, outcome_mod))
 
   # The observation-level spread is the other cause a dose brings, and it was
   # reported for a single dose before it was reported for this one.
   expect_error(
-    ipw(fx$models, fx$outcome_mod),
+    ipw(fx$models, outcome_mod),
     class = "propensity_ipw_weights_mismatch_error",
     regexp = "\\.sigma"
   )
 })
 
 test_that("a bare-term model with no intercept is refused, not errored", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   dat$a <- factor(
     ifelse(dat$a == 1, "yes", "no"),
@@ -1483,11 +1620,20 @@ test_that("a bare-term model with no intercept is refused, not errored", {
     ipw(models, outcome_mod),
     class = "propensity_ipw_msm_error"
   )
+
+  # The remedy has to name the cause a reader of this fit is looking at. The
+  # treatment here is already an unordered factor under treatment contrasts, so
+  # the second half of the remedy describes what was done; only the dropped
+  # intercept explains why that was not enough.
+  expect_error(
+    ipw(models, outcome_mod),
+    regexp = "no intercept"
+  )
+
   expect_propensity_error(ipw(models, outcome_mod))
 })
 
 test_that("ipw() refuses .by on a joint continuous fit", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))
   # The `.by` refusal fires before the marginal structural model's shape is
@@ -1507,7 +1653,6 @@ test_that("ipw() refuses .by on a joint continuous fit", {
 })
 
 test_that("ipw() refuses linearization on a joint continuous fit", {
-  skip_if_not_installed("deli")
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat)
 
@@ -1520,4 +1665,427 @@ test_that("ipw() refuses linearization on a joint continuous fit", {
   expect_propensity_error(
     ipw(fx$models, fx$outcome_mod, se_method = "linearization")
   )
+})
+
+# ---- a binary component's own stabilizing numerator -------------------------
+#
+# A binary component may be stabilized as readily as a dose must be, and the
+# numerator it carries is a factor of the product like any other. The system
+# estimates it where the single-treatment route estimates it, in a block of its
+# own, rather than rebuilding the component unstabilized and reporting the
+# difference as a mismatch the caller did not cause.
+
+test_that("the joint route stacks a marginal-stabilized binary component", {
+  dat <- sim_joint_continuous()
+  fits <- fit_joint_continuous(dat, a_stabilize = TRUE)
+
+  # The product the container holds, written out: the binary factor is the
+  # unstabilized one scaled by the marginal probability of the level each unit
+  # took, and the dose factor is the density ratio it always was.
+  ps_a <- as.numeric(fitted(fits$ps_a))
+  p1 <- mean(dat$a)
+  binary_wt <- ((dat$a * p1) / ps_a) + (((1 - dat$a) * (1 - p1)) / (1 - ps_a))
+  dose_wt <- as.numeric(quiet_wt(wt_ate(
+    as.double(fitted(fits$ps_e)),
+    dat$e,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )))
+
+  expect_equal(as.numeric(fits$wts), binary_wt * dose_wt, tolerance = 1e-12)
+
+  # The system rebuilds that product at its seed, which is what the preflight
+  # compares, and every equation in it is at its root there.
+  spec <- ipw_spec_joint_models(fits$models, fits$outcome_mod)
+  expect_joint_weights_at_init(spec, fits$wts)
+  expect_joint_root_seeded(spec)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_joint_dose_estimates(res, fits$outcome_mod)
+})
+
+test_that("a stabilized binary component's proportion is a parameter", {
+  dat <- sim_joint_continuous()
+  fits <- fit_joint_continuous(dat, a_stabilize = TRUE)
+  unstabilized <- fit_joint_continuous(dat)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  res_unstabilized <- ipw(unstabilized$models, unstabilized$outcome_mod)
+
+  # The binary numerator is one marginal proportion, so the system is exactly
+  # one parameter wider than the same fit whose binary component carries no
+  # numerator at all.
+  expect_identical(
+    as.integer(res$fit@n_params),
+    as.integer(res_unstabilized$fit@n_params) + 1L
+  )
+
+  # Blocks are named for the component they belong to, since a joint system
+  # carries two of them and a name saying only which role a parameter plays
+  # would not say whose.
+  theta <- coef(res$fit)
+  stab <- theta[grepl("^stab_", names(theta))]
+  expect_length(stab, 3L)
+  expect_equal(
+    unname(theta[["stab_a_pi"]]),
+    mean(dat$a),
+    tolerance = 1e-8
+  )
+})
+
+test_that("the joint route stacks a dose stabilized on a numerator model", {
+  # The single-dose route estimates a numerator model in its own stabilization
+  # block. This route estimates each component's numerator in a block of its
+  # own, so a dose whose weights record a fitted numerator is answered with the
+  # weights the caller built rather than refused for want of somewhere to put
+  # the model.
+  dat <- sim_joint_continuous()
+  num_mod <- lm(e ~ x2, data = dat)
+  fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  expect_s3_class(res, "ipw")
+
+  # The point estimates are the weighted marginal structural model's own
+  # coefficients, which is the oracle every other fit on this route is held to.
+  # A system that rebuilt the dose's numerator as anything but the model's would
+  # not reach them at all: the preflight compares the weights it rebuilds
+  # against the ones the outcome model was fit with.
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fits$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+test_that("the dose's numerator model is a block of the joint system", {
+  dat <- sim_joint_continuous()
+  num_mod <- lm(e ~ x2, data = dat)
+  fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
+  marginal <- fit_joint_continuous(dat)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  res_marginal <- ipw(marginal$models, marginal$outcome_mod)
+
+  # The default numerator is the dose's own two marginal moments. A fitted one
+  # is its coefficients and the spread its density is read at, which is what the
+  # single-dose route stacks for the same model, so the system is wider by the
+  # difference between the two.
+  expect_identical(
+    as.integer(res$fit@n_params),
+    as.integer(res_marginal$fit@n_params) + length(coef(num_mod)) + 1L - 2L
+  )
+
+  # The block is solved at the model it was given rather than carried at
+  # whatever the seed was, with the spread after the coefficients as the
+  # single-dose route orders them.
+  theta <- coef(res$fit)
+  stab <- theta[grepl("^stab_", names(theta))]
+  expect_identical(length(stab), length(coef(num_mod)) + 1L)
+  expect_equal(
+    unname(stab[seq_along(coef(num_mod))]),
+    unname(coef(num_mod)),
+    tolerance = 1e-6
+  )
+})
+
+test_that("the joint route stacks a binary component's numerator model", {
+  # Both components may carry a fitted numerator, and each one is estimated in
+  # its own block. A binary component's numerator is the probability of the
+  # level each unit took, so the product the container holds is the dose's
+  # density ratio times that probability over the binary denominator.
+  dat <- sim_joint_continuous()
+  num_a <- glm(a ~ x2, data = dat, family = binomial())
+  fits <- fit_joint_continuous(dat, a_stabilize = num_a)
+
+  ps_a <- as.numeric(fitted(fits$ps_a))
+  p_a <- as.numeric(fitted(num_a))
+  binary_wt <- ((dat$a / ps_a) + ((1 - dat$a) / (1 - ps_a))) *
+    (dat$a * p_a + (1 - dat$a) * (1 - p_a))
+  dose_wt <- as.numeric(quiet_wt(wt_ate(
+    as.double(fitted(fits$ps_e)),
+    dat$e,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )))
+
+  expect_equal(as.numeric(fits$wts), binary_wt * dose_wt, tolerance = 1e-12)
+
+  res <- ipw(fits$models, fits$outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fits$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+
+  # The binary numerator's coefficients are parameters of the system, alongside
+  # the dose's own two marginal moments.
+  theta <- coef(res$fit)
+  expect_identical(
+    as.integer(sum(grepl("^stab_", names(theta)))),
+    length(coef(num_a)) + 2L
+  )
+})
+
+# ---- a component stabilized on a fixed score --------------------------------
+#
+# A numerator the caller computed is a vector rather than a model, and the
+# product records it per component. The stacked system reads it back and holds
+# it fixed, which is what the single-treatment routes do with a score: it
+# multiplies the weights and estimates nothing.
+
+test_that("the joint route rebuilds a dose stabilized on a fixed score", {
+  dat <- sim_joint_continuous()
+
+  # The numerator a caller would write by hand, whose `sd()` divides by n - 1
+  # where the estimator's own moment divides by n. The two differ by more than
+  # the preflight's tolerance, so a system that stood the marginal moments in
+  # would be reported as a mismatch rather than reaching these estimates.
+  score <- dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
+  fx <- fit_joint_continuous(dat, dose_score = score)
+
+  # The product written out: the binary factor is the unstabilized one, and the
+  # dose factor is the score over the conditional density.
+  ps_a <- as.numeric(fitted(fx$ps_a))
+  binary_wt <- (dat$a / ps_a) + ((1 - dat$a) / (1 - ps_a))
+  mu <- as.numeric(fitted(fx$ps_e))
+  sigma <- sqrt(mean(residuals(fx$ps_e)^2))
+  dose_wt <- score / dnorm(dat$e, mu, sigma)
+
+  expect_equal(as.numeric(fx$wts), binary_wt * dose_wt, tolerance = 1e-12)
+
+  # The system rebuilds that product at its seed, which is what the preflight
+  # compares, and every equation in it is at its root there.
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  expect_joint_weights_at_init(spec, fx$wts)
+  expect_joint_root_seeded(spec)
+
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fx$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+test_that("a fixed score on the dose is no parameter of the system", {
+  dat <- sim_joint_continuous()
+  score <- dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
+
+  fixed <- fit_joint_continuous(dat, dose_score = score)
+  marginal <- fit_joint_continuous(dat)
+
+  res <- ipw(fixed$models, fixed$outcome_mod)
+  res_marginal <- ipw(marginal$models, marginal$outcome_mod)
+
+  # A score is a known multiplier rather than a quantity the system estimates,
+  # so the dose's slice of the stabilization block is empty where the default
+  # numerator's holds the exposure's two marginal moments.
+  expect_identical(
+    as.integer(res$fit@n_params),
+    as.integer(res_marginal$fit@n_params) - 2L
+  )
+  expect_false(any(grepl("^stab_", names(coef(res$fit)))))
+})
+
+test_that("the joint route rebuilds a binary component stabilized on a score", {
+  dat <- sim_joint_continuous()
+
+  # A discrete component's score is the one the product used to record nothing
+  # at all about: `stabilize = TRUE` and a score of the caller's left the same
+  # record, so a score that differed from the marginal proportion was reported
+  # as a mismatch naming a component the caller never stabilized by hand.
+  score <- 0.3 + 0.4 * plogis(dat$x2)
+  fx <- fit_joint_continuous(dat, a_stabilize = TRUE, a_score = score)
+
+  ps_a <- as.numeric(fitted(fx$ps_a))
+  binary_wt <- ((dat$a / ps_a) + ((1 - dat$a) / (1 - ps_a))) * score
+  dose_wt <- as.numeric(quiet_wt(wt_ate(
+    as.double(fitted(fx$ps_e)),
+    dat$e,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )))
+
+  expect_equal(as.numeric(fx$wts), binary_wt * dose_wt, tolerance = 1e-12)
+
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  expect_joint_weights_at_init(spec, fx$wts)
+  expect_joint_root_seeded(spec)
+
+  res <- ipw(fx$models, fx$outcome_mod)
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fx$outcome_mod)[c("a", "e", "a:e")]),
+    tolerance = 1e-8
+  )
+
+  # The binary component estimates nothing for its numerator, so the only
+  # stabilization parameters are the dose's own two marginal moments.
+  theta <- coef(res$fit)
+  expect_identical(sum(grepl("^stab_", names(theta))), 2L)
+  expect_false(any(grepl("^stab_a_", names(theta))))
+})
+
+test_that("the weights mismatch names a component whose score was dropped", {
+  dat <- sim_joint_continuous()
+
+  # A score holds one value per observation, so an operation that changes the
+  # length of the weights drops it. What is left is a component the record says
+  # was stabilized and holds no vector for, which is what a component
+  # stabilized on the marginal proportion looks like: the system stands the
+  # marginal proportion in, reaches a different product, and the preflight is
+  # where the caller finds out. The refusal has to name the component whose
+  # numerator went missing, since the comparison sees the product alone.
+  score <- 0.3 + 0.4 * plogis(dat$x2)
+  fx <- fit_joint_continuous(dat, a_stabilize = TRUE, a_score = score)
+
+  half <- seq_len(floor(nrow(dat) / 2))
+  expect_warning(
+    first <- fx$wts[half],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_warning(
+    second <- fx$wts[-half],
+    class = "propensity_stabilization_score_warning"
+  )
+
+  # The halves hold every observation between them and each of them dropped the
+  # same component's score, so the combined weights are the product the outcome
+  # model was fit with, carrying a record that says the score is gone.
+  wts <- vctrs::vec_c(first, second)
+
+  expect_identical(joint_wt_meta(wts)$score_dropped, c(TRUE, FALSE))
+  expect_equal(as.numeric(wts), as.numeric(fx$wts), tolerance = 1e-12)
+
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+
+  cnd <- expect_error(
+    ipw(fx$models, outcome_mod),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+  expect_match(conditionMessage(cnd), "stabilization_score")
+  expect_match(conditionMessage(cnd), "`a`", fixed = TRUE)
+})
+
+test_that("a record that keeps no score is read as one that records none", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, a_stabilize = TRUE)
+
+  # A product built before the slot existed holds a record one element short,
+  # which says what a record whose components each record no score says. The
+  # fit it supports is the fit it supported then.
+  wts <- strip_joint_scores(fx$wts)
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+
+  res <- expect_silent(ipw(fx$models, outcome_mod))
+  expect_equal(
+    res$estimates$estimate,
+    ipw(fx$models, fx$outcome_mod)$estimates$estimate,
+    tolerance = 1e-10
+  )
+})
+
+# ---- a dose model fit under case weights ------------------------------------
+#
+# The dose block this route stacks is the unweighted score of whichever class
+# the registry read, so a dose model fit with prior case weights sits away from
+# the root of the equation written for it and the solve, seeded at its
+# coefficients, would walk off the fit the user has. The single-dose route
+# refuses such a fit by name for every class it stacks, and this route reads the
+# same field of the same fitted objects, so the refusal is the same one and is
+# made of each class in turn.
+#
+# Where each class records prior weights differs: an `lm` and an `rlm` keep them
+# in `weights`, and a `glm` and a `gam` in `prior.weights`. A guard reading one
+# field would pass half of these fits through.
+
+test_that("ipw() refuses a joint dose model fit with case weights", {
+  skip_if_not_installed("MASS")
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_continuous()
+  dat$cw <- rep(c(1, 2), length.out = nrow(dat))
+
+  weighted_dose <- function(dose_type) {
+    switch(
+      dose_type,
+      lm = lm(e ~ a + x1 + x2, data = dat, weights = cw),
+      glm = glm(
+        e ~ a + x1 + x2,
+        data = dat,
+        family = gaussian(),
+        weights = cw
+      ),
+      rlm = MASS::rlm(
+        e ~ a + x1 + x2,
+        data = dat,
+        weights = dat$cw,
+        acc = 1e-10,
+        maxit = 200
+      ),
+      gam = mgcv::gam(e ~ a + s(x1) + x2, data = dat, weights = cw)
+    )
+  }
+
+  for (dose_type in c("lm", "glm", "rlm", "gam")) {
+    ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+    ps_e <- weighted_dose(dose_type)
+    wts <- quiet_wt(wt_joint(
+      wt_ate(ps_a),
+      wt_ate(
+        as.double(fitted(ps_e)),
+        dat$e,
+        exposure_type = "continuous",
+        stabilize = TRUE
+      ),
+      exposure_type = c("binary", "continuous")
+    ))
+    outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+    models <- joint_wt_models(a = ps_a, e = ps_e)
+
+    expect_error(
+      ipw(models, outcome_mod),
+      class = "propensity_ipw_ps_weights_error",
+      label = dose_type
+    )
+
+    msg <- joint_error_message(ipw(models, outcome_mod))
+    expect_match(msg, "`e`", fixed = TRUE)
+    expect_no_match(msg, "wt_mod", fixed = TRUE)
+  }
+})
+
+test_that("the joint dose weights refusal comes before the estimates do", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_continuous()
+  dat$cw <- rep(c(1, 2), length.out = nrow(dat))
+
+  # The failure this guard prevents is silent: without it the route returns a
+  # full table of estimates whose dose block sits at the unweighted score. The
+  # unweighted fit of the same columns is a different model, which is what makes
+  # the drift real rather than notional.
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- lm(e ~ a + x1 + x2, data = dat, weights = cw)
+  unweighted <- lm(e ~ a + x1 + x2, data = dat)
+  expect_gt(max(abs(unname(coef(ps_e)) - unname(coef(unweighted)))), 1e-3)
+
+  wts <- quiet_wt(wt_joint(
+    wt_ate(ps_a),
+    wt_ate(
+      as.double(fitted(ps_e)),
+      dat$e,
+      exposure_type = "continuous",
+      stabilize = TRUE
+    ),
+    exposure_type = c("binary", "continuous")
+  ))
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+
+  expect_propensity_error(ipw(joint_wt_models(a = ps_a, e = ps_e), outcome_mod))
 })

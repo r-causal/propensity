@@ -48,6 +48,33 @@
       ---
       Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
+---
+
+    Code
+      print(ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust"))
+    Output
+      Inverse Probability Weight Estimator
+      Estimand: ATE 
+      Effects: marginal (population-averaged) 
+      
+      Weight Estimator:
+        Call: glm(formula = z ~ x1 + x2, family = binomial(), data = dat) 
+      
+      Outcome Model:
+        Call: glm(formula = y ~ z, family = quasibinomial(), data = dat, weights = wts) 
+      
+      Marginal estimates:
+                     estimate  std.err       z ci.lower ci.upper conf.level   p.value    
+      mean 0         0.297445 0.032318  9.2036  0.23410  0.36079       0.95 < 2.2e-16 ***
+      mean 1         0.540531 0.037526 14.4041  0.46698  0.61408       0.95 < 2.2e-16 ***
+      rd 1 vs 0      0.243086 0.049525  4.9084  0.14602  0.34015       0.95 9.183e-07 ***
+      log(rr) 1 vs 0 0.597322 0.128939  4.6326  0.34461  0.85004       0.95 3.611e-06 ***
+      log(or) 1 vs 0 1.021974 0.216214  4.7267  0.59820  1.44575       0.95 2.282e-06 ***
+      ---
+      Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+      
+      Standard errors: robust, a diagnostic that treats the weights as known
+
 # the no-intercept rejection names the intercept and the SE method
 
     Code
@@ -137,5 +164,44 @@
       Error in `ipw()`:
       ! `ipw()` supports "linearization" standard errors only for an outcome model of the exposure alone.
       x `outcome_mod` does not include the exposure "z".
+      i Use `se_method = "mestimation"` for a covariate-adjusted outcome model.
+
+# a robust result has no conditional reading
+
+    Code
+      expr
+    Condition <propensity_no_conditional_vcov_error>
+      Error in `tidy()`:
+      ! The conditional reading reports the covariance the joint estimation of the weights and the outcome implies, and this result records none.
+      x The "robust" standard error method treats the weights as known and reports what the outcome model computes for itself, so it stores no covariance for the conditional reading.
+      i Fit with `se_method = "mestimation"`, which solves the two models as one system and stores that covariance.
+
+# ipw() refuses .by with robust standard errors
+
+    Code
+      expr
+    Condition <propensity_ipw_by_method_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support `.by` with "robust" standard errors.
+      x The stratum effects and their contrasts are parameters of the stacked estimating equations, and the robust path solves no such system.
+      i Use `se_method = "mestimation"` to report effects by `.by`.
+
+# robust rejects the atu estimand as linearization does
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support "robust" standard errors for the "atu" estimand.
+      i Use `se_method = "mestimation"` for the "atu" estimand.
+
+# robust rejects a covariate-adjusted outcome model as linearization does
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ipw()`:
+      ! `ipw()` supports "robust" standard errors only for an outcome model of the exposure alone.
+      x `outcome_mod` is adjusted for terms beyond "z".
       i Use `se_method = "mestimation"` for a covariate-adjusted outcome model.
 

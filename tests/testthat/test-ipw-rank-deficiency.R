@@ -62,7 +62,6 @@ rank_msg <- function(cnd) {
 # neither model.
 
 test_that("ipw() rejects a propensity score model with an unseparable design", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x1_near + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -79,7 +78,6 @@ test_that("ipw() rejects a propensity score model with an unseparable design", {
 })
 
 test_that("ipw() rejects an exactly duplicated propensity score column", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x1_copy + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -93,7 +91,6 @@ test_that("ipw() rejects an exactly duplicated propensity score column", {
 })
 
 test_that("the linearization path rejects the same propensity score model", {
-  skip_if_not_installed("deli")
   # The guard sits in the shared design extraction, so both standard error
   # methods reach it. This route failed inside LAPACK as an exactly singular
   # system.
@@ -112,7 +109,6 @@ test_that("the linearization path rejects the same propensity score model", {
 })
 
 test_that("ipw() rejects an unseparable continuous propensity score design", {
-  skip_if_not_installed("deli")
   # An lm propensity model drops a dependent column the same way, and the report
   # is the same one. This reached the weight-consistency preflight, which
   # reported a disagreement about the estimand and the focal level.
@@ -144,7 +140,6 @@ test_that("ipw() rejects an unseparable continuous propensity score design", {
 # Neither name appears in anything the user wrote.
 
 test_that("ipw() rejects an outcome model with an exactly duplicated column", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -162,7 +157,6 @@ test_that("ipw() rejects an outcome model with an exactly duplicated column", {
 })
 
 test_that("ipw() rejects a near-collinear outcome design", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -176,7 +170,6 @@ test_that("ipw() rejects a near-collinear outcome design", {
 })
 
 test_that("ipw() rejects an unseparable gaussian outcome design", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -191,7 +184,6 @@ test_that("ipw() rejects an unseparable gaussian outcome design", {
 
 test_that("ipw() rejects an unseparable outcome design for a categorical exposure", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- rank_data()
   dat$g <- factor(
     ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
@@ -214,7 +206,6 @@ test_that("ipw() rejects an unseparable outcome design for a categorical exposur
 })
 
 test_that("the rank-deficient design errors read in the user's terms", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -224,7 +215,6 @@ test_that("the rank-deficient design errors read in the user's terms", {
 })
 
 test_that("the propensity rank error reads in the user's terms", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x1_copy + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -236,7 +226,6 @@ test_that("the propensity rank error reads in the user's terms", {
 # ---- fits the guards must leave alone ---------------------------------------
 
 test_that("a correlated but separable design is still accepted", {
-  skip_if_not_installed("deli")
   # Correlation is not rank deficiency. A copy perturbed far enough for the
   # fits to keep a coefficient for it is a legitimate, if poorly conditioned,
   # model and must still run.
@@ -255,7 +244,6 @@ test_that("a correlated but separable design is still accepted", {
 
 test_that("a categorical propensity model keeps a duplicated column", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The rank guard reads the `NA` a fit records for a column it dropped, and
   # `nnet::multinom()` records none: it optimizes rather than pivots and returns
   # a finite coefficient for a dependent column. Its design and its coefficient
@@ -324,7 +312,6 @@ zero_event_fit <- function() {
 }
 
 test_that("ipw() warns in its own terms when the equations have no unique root", {
-  skip_if_not_installed("deli")
   mods <- zero_event_fit()
 
   expect_warning(
@@ -334,7 +321,6 @@ test_that("ipw() warns in its own terms when the equations have no unique root",
 })
 
 test_that("the unsolved-equations warning names the effects it applies to", {
-  skip_if_not_installed("deli")
   mods <- zero_event_fit()
 
   cnd <- NULL
@@ -354,7 +340,6 @@ test_that("the unsolved-equations warning names the effects it applies to", {
 })
 
 test_that("the unsolved-equations warning replaces the solver's own", {
-  skip_if_not_installed("deli")
   mods <- zero_event_fit()
 
   seen <- character()
@@ -370,7 +355,6 @@ test_that("the unsolved-equations warning replaces the solver's own", {
 })
 
 test_that("the unsolved-equations warning is raised once per fit", {
-  skip_if_not_installed("deli")
   mods <- zero_event_fit()
 
   n_warnings <- 0L
@@ -386,7 +370,6 @@ test_that("the unsolved-equations warning is raised once per fit", {
 })
 
 test_that("the unsolved-equations warning leaves the estimates in the output", {
-  skip_if_not_installed("deli")
   mods <- zero_event_fit()
 
   res <- suppressWarnings(
@@ -399,7 +382,6 @@ test_that("the unsolved-equations warning leaves the estimates in the output", {
 })
 
 test_that("the unsolved-equations warning reads in the user's terms", {
-  skip_if_not_installed("deli")
   mods <- zero_event_fit()
 
   # The row labels name the effect measure and the contrast together, so the
@@ -471,7 +453,6 @@ no_event_level_fit <- function() {
 }
 
 test_that("ipw() reports a fit whose variance could not be built", {
-  skip_if_not_installed("deli")
   mods <- ill_conditioned_fit()
   expect_false(anyNA(coef(mods$ps_mod)))
 
@@ -485,7 +466,6 @@ test_that("ipw() reports a fit whose variance could not be built", {
 })
 
 test_that("the no-variance report replaces the ones deli makes", {
-  skip_if_not_installed("deli")
   mods <- ill_conditioned_fit()
   expect_false(anyNA(coef(mods$ps_mod)))
 
@@ -505,7 +485,6 @@ test_that("the no-variance report replaces the ones deli makes", {
 })
 
 test_that("the no-variance error names an exposure arm whose outcome never varies", {
-  skip_if_not_installed("deli")
   mods <- all_event_fit()
 
   err <- suppressWarnings(expect_error(
@@ -519,7 +498,6 @@ test_that("the no-variance error names an exposure arm whose outcome never varie
 
 test_that("the no-variance error names an exposure level whose outcome never varies", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- no_event_level_fit()
 
   # The level with no events also drives its marginal mean to the boundary,
@@ -535,7 +513,6 @@ test_that("the no-variance error names an exposure level whose outcome never var
 
 test_that("the no-variance error reads in the user's terms", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- no_event_level_fit()
 
   expect_snapshot(
@@ -545,7 +522,6 @@ test_that("the no-variance error reads in the user's terms", {
 })
 
 test_that("the undiagnosable no-variance error reads in the user's terms", {
-  skip_if_not_installed("deli")
   mods <- ill_conditioned_fit()
   expect_false(anyNA(coef(mods$ps_mod)))
 
@@ -558,7 +534,6 @@ test_that("the undiagnosable no-variance error reads in the user's terms", {
 # ---- healthy fits stay quiet ------------------------------------------------
 
 test_that("a healthy binary fit raises no solver warning", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -568,7 +543,6 @@ test_that("a healthy binary fit raises no solver warning", {
 })
 
 test_that("a healthy gaussian outcome fit raises no solver warning", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -588,7 +562,6 @@ test_that("a healthy binary fit raises no solver warning under linearization", {
 
 test_that("a healthy categorical fit raises no solver warning", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- rank_data()
   dat$g <- factor(
     ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
@@ -607,7 +580,6 @@ test_that("a healthy categorical fit raises no solver warning", {
 })
 
 test_that("a healthy continuous fit raises no solver warning", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   withr::local_seed(12)
   dat$a <- 0.5 + 0.8 * dat$x1 - 0.4 * dat$x2 + rnorm(nrow(dat))
@@ -652,7 +624,6 @@ constant_outcome_fit <- function() {
 constant_outcome_rows <- c("mean for 0", "mean for 1", "diff for 1 vs 0")
 
 test_that("a solved fit with a collapsed standard error is reported", {
-  skip_if_not_installed("deli")
   mods <- constant_outcome_fit()
 
   w <- expect_warning(
@@ -690,7 +661,6 @@ test_that("the linearization path reports a collapsed standard error too", {
 })
 
 test_that("the collapsed standard error is reported once per fit", {
-  skip_if_not_installed("deli")
   mods <- constant_outcome_fit()
 
   seen <- character()
@@ -703,6 +673,41 @@ test_that("the collapsed standard error is reported once per fit", {
   )
 
   expect_equal(seen, "propensity_ipw_degenerate_se_warning")
+})
+
+# A gaussian outcome that is constant in one arm and varies in the other, with
+# an outcome model that reads the exposure alone. Only the counterfactual mean
+# in the constant arm collapses: the other mean and the contrast between them
+# are ordinary estimates with a spread of their own.
+mean_only_degenerate_fit <- function() {
+  dat <- rank_data()
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
+  wts <- rank_weights(ps_mod)
+  dat$ymean <- ifelse(dat$z == 1, 1, dat$yc)
+  out <- lm(ymean ~ z, data = dat, weights = wts)
+  list(ps_mod = ps_mod, out = out, dat = dat)
+}
+
+test_that("a collapsed counterfactual mean is reported as a mean", {
+  mods <- mean_only_degenerate_fit()
+
+  for (method in c("mestimation", "linearization")) {
+    w <- expect_warning(
+      res <- ipw(mods$ps_mod, mods$out, se_method = method),
+      class = "propensity_ipw_degenerate_se_warning"
+    )
+
+    # One row collapses and it is a mean, so the report names that row and no
+    # other.
+    expect_identical(ipw_degenerate_se_rows(res$estimates), "mean for 1")
+    expect_match(rank_msg(w), "mean for 1", fixed = TRUE)
+
+    # The cause the message offers has to cover the row it named. A mean that
+    # is a fixed value is what an arm the outcome does not vary within reports,
+    # and speaking only of the contrast describes a row this fit reports with a
+    # spread.
+    expect_match(rank_msg(w), "counterfactual mean", fixed = TRUE)
+  }
 })
 
 # The same collapse on a categorical exposure, where the rows the report names
@@ -734,7 +739,6 @@ constant_outcome_categorical_fit <- function() {
 
 test_that("a categorical collapsed standard error names the pair each row compares", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   mods <- constant_outcome_categorical_fit()
 
   w <- expect_warning(
@@ -767,7 +771,6 @@ test_that("a categorical collapsed standard error names the pair each row compar
 
 test_that("a fit the solver could not pin down reports that rather than the collapse", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- rank_data()
   dat$g <- factor(
     ifelse(dat$x1 < -0.5, "a", ifelse(dat$x1 < 0.5, "b", "c")),
@@ -801,7 +804,6 @@ test_that("a fit the solver could not pin down reports that rather than the coll
 })
 
 test_that("the collapsed standard error report reads in the user's terms", {
-  skip_if_not_installed("deli")
   mods <- constant_outcome_fit()
 
   # The row labels name the effect measure and the contrast together, so the
@@ -837,7 +839,6 @@ small_scale_outcome_fit <- function() {
 }
 
 test_that("a healthy fit of a small-unit outcome reports no collapse", {
-  skip_if_not_installed("deli")
   mods <- small_scale_outcome_fit()
 
   for (se in c("mestimation", "linearization")) {
@@ -846,7 +847,6 @@ test_that("a healthy fit of a small-unit outcome reports no collapse", {
 })
 
 test_that("a small-unit outcome keeps an informative test statistic", {
-  skip_if_not_installed("deli")
   mods <- small_scale_outcome_fit()
   est <- as.data.frame(
     ipw(mods$ps_mod, mods$out, se_method = "mestimation"),
@@ -866,7 +866,6 @@ test_that("a small-unit outcome keeps an informative test statistic", {
 # ---- a standard error of exactly zero ---------------------------------------
 
 test_that("a standard error of exactly zero is reported whatever the estimate", {
-  skip_if_not_installed("deli")
   dat <- rank_data()
   ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial())
   wts <- rank_weights(ps_mod)
@@ -937,7 +936,6 @@ degenerate_se_min_z <- function(res) {
 
 test_that("healthy fits clear the degenerate-standard-error threshold by orders", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   threshold <- 1 / sqrt(.Machine$double.eps)
   fits <- list()
 
@@ -997,7 +995,6 @@ test_that("healthy fits clear the degenerate-standard-error threshold by orders"
 })
 
 test_that("every reported row of a degenerate fit carries the signature", {
-  skip_if_not_installed("deli")
   threshold <- 1 / sqrt(.Machine$double.eps)
   fits <- list()
 

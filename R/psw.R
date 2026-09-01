@@ -26,6 +26,8 @@
 #' * `stabilization_score()` returns the user-supplied stabilization score, or
 #'   `NULL` when none was recorded or when a per-observation score was dropped
 #'   because an operation changed the length of the weights.
+#' * [numerator_model()] returns the fitted model supplied to `stabilize` that
+#'   estimated the numerator of the weights, or `NULL` when no model did.
 #'
 #' ## The stabilization score
 #'
@@ -83,7 +85,11 @@
 #' Two density records agree when they name the same family with the same
 #' parameters and the same numerator and residual spread, so weights built the
 #' same way in two calls agree even though each call builds its own copy of the
-#' function that evaluates the density.
+#' function that evaluates the density. A numerator estimated by a fitted model
+#' is read the same way: two records agree when their models write the same
+#' formula and were fit to the same coefficients, and a model is not compared
+#' against the marginal density or against no numerator at all, both of which
+#' are disagreements.
 #'
 #' A `density_meta` record describes a continuous exposure, so a result that
 #' drops `exposure_type` for a disagreement drops the density record with it,
@@ -317,16 +323,34 @@ stabilization_score <- function(wt) {
 #'   by [dens_normal()] and its relatives.
 #' * `numerator`, what stabilized the weights: `"marginal"` for the marginal
 #'   density of the exposure, `"integrated"` for the conditional density
-#'   marginalized over the units, `"score"` for a `stabilization_score` the
-#'   caller supplied, and `"none"` for weights that were not stabilized.
+#'   marginalized over the units, `"model"` for the conditional density a
+#'   fitted model supplied to `stabilize` estimates, `"score"` for a
+#'   `stabilization_score` the caller supplied, and `"none"` for weights that
+#'   were not stabilized.
+#' * `numerator_model`, that fitted model itself, and `NULL` under every other
+#'   numerator. The model is kept whole rather than the numerator it evaluates
+#'   to, since [ipw()] rebuilds that numerator at every value of its parameter
+#'   vector, which takes the model's design and its coefficients. Two sets of
+#'   weights stabilized on models that read different terms, or that were fit
+#'   to different values of the same terms, record different numerators and are
+#'   combined the way any other disagreeing records are.
 #' * `sigma`, where the residual spread of the conditional density came from:
-#'   `"pooled"` for the pooled residual standard deviation, and `"supplied"`
-#'   for a `.sigma` the caller gave.
+#'   `"pooled"` for the pooled residual root mean square, `"mle"` for the scale
+#'   a [dens_t()] built with `sigma_method = "mle"` estimates under the t
+#'   itself, and `"supplied"` for a `.sigma` the caller gave.
 #' * `sigma_value`, the single spread the caller supplied, and `NULL` for a
-#'   pooled spread and for one supplied per observation. A spread that is one
+#'   spread estimated from the residuals, by either estimator, and for one
+#'   supplied per observation. A spread that is one
 #'   number is a constant the weights can be rebuilt from, which is what
 #'   [ipw()] needs of it; a spread that changes with the observation is not,
 #'   so the record holds where it came from and nothing more.
+#'
+#' Weights that carry a density record print it under their values, as the
+#' lines `format()` renders: the density family, the numerator, and the spread,
+#' followed by the formula of the model supplied to `stabilize` when a model
+#' estimated the numerator. Weights that carry none, which is every set of
+#' weights for a binary or categorical exposure, print exactly as they always
+#' have.
 #'
 #' @param wt A `psw` or `causal_wts` object.
 #' @param x A density record, as returned by `density_meta()`.
@@ -335,9 +359,10 @@ stabilization_score <- function(wt) {
 #' @return
 #' * `exposure_type()`: a single string, or `NULL`.
 #' * `density_meta()`: a list of class `propensity_density_meta` with the
-#'   elements `density`, `numerator`, `sigma`, and `sigma_value`, or `NULL`.
+#'   elements `density`, `numerator`, `sigma`, `sigma_value`, and
+#'   `numerator_model`, or `NULL`.
 #' * `print()` and `format()`: the record, invisibly, and a character vector of
-#'   one line per element.
+#'   one line per choice the record describes.
 #'
 #' @seealso [psw()] for the weight vector class and the rest of what it
 #'   records, and [wt_ate()] for the functions that write these records.
@@ -371,32 +396,194 @@ density_meta <- function(wt) {
   attr(wt, "density_meta")
 }
 
+#' The model a set of weights was stabilized on
+#'
+#' @description
+#' `numerator_model()` returns the fitted model supplied to `stabilize` that
+#' estimated the numerator of a set of weights, and `NULL` for weights whose
+#' numerator was not estimated by one.
+#'
+#' @details
+#' A model supplied to [wt_ate()]'s `stabilize` argument estimates the
+#' numerator of the weights: the conditional density of a dose, or the
+#' conditional probability of a binary exposure at the level each unit took.
+#' The model itself is recorded rather than the numerator it evaluates to,
+#' because [ipw()] rebuilds that numerator at every value of its parameter
+#' vector, which takes the model's design and its coefficients.
+#'
+#' Where the record is kept differs by exposure type, and this accessor is the
+#' one place to read it either way. Weights for a continuous exposure are a
+#' ratio of densities and keep the model inside the density record
+#' [density_meta()] returns; weights for a binary exposure are a ratio of
+#' probabilities, leave no density record, and keep the model on its own. Both
+#' come back here.
+#'
+#' The record describes the numerator rather than the units, so it holds no
+#' length of its own and survives subsetting, arithmetic, and anything else that
+#' changes the number of weights. Two sets of weights record the same numerator
+#' when their models write the same formula and were fit to the same
+#' coefficients; combining two that record different ones drops the record, with
+#' a warning of class `propensity_metadata_conflict_warning`. Weights stabilized
+#' without a model were divided by a numerator no model estimated, which is a
+#' different numerator again: combining those with weights stabilized on a model
+#' drops the model the same way, and the result is stabilized on nothing it can
+#' name.
+#'
+#' A `stabilization_score` is a numerator the caller computed rather than one a
+#' model estimated, so weights stabilized on a score record no model, and
+#' [stabilization_score()] returns `NULL` for weights stabilized on a model.
+#'
+#' @param wt A `psw` or `causal_wts` object.
+#'
+#' @return The fitted model supplied to `stabilize`, or `NULL`.
+#'
+#' @seealso [wt_ate()] for the `stabilize` argument that writes this record,
+#'   [stabilization_score()] for the numerator a caller supplies as a vector,
+#'   and [density_meta()] for the rest of what a continuous exposure's weights
+#'   record.
+#'
+#' @examples
+#' set.seed(1)
+#' x <- rnorm(50)
+#' v <- rbinom(50, 1, 0.5)
+#' z <- rbinom(50, 1, plogis(0.4 * x - 0.7 * v))
+#'
+#' ps_mod <- glm(z ~ x + v, family = binomial())
+#' num_mod <- glm(z ~ v, family = binomial())
+#'
+#' w <- wt_ate(ps_mod, stabilize = num_mod)
+#' numerator_model(w)
+#'
+#' # Weights stabilized on the marginal probability record no model.
+#' numerator_model(wt_ate(ps_mod, stabilize = TRUE))
+#'
+#' @export
+numerator_model <- function(wt) {
+  model <- attr(wt, "numerator_model")
+  if (!is.null(model)) {
+    return(model)
+  }
+
+  density_meta(wt)$numerator_model
+}
+
 # What weights that are a ratio of densities record about the ratio: the
 # specification that evaluates the density, which numerator stabilized them,
 # where the residual spread came from, and, when that spread is a single number
 # the caller supplied, the number itself. A spread of one number is a constant
 # the ratio can be rebuilt from; one number per observation is not, and is
 # recorded only as having been supplied.
-new_density_meta <- function(density, numerator, sigma, sigma_value = NULL) {
+new_density_meta <- function(
+  density,
+  numerator,
+  sigma,
+  sigma_value = NULL,
+  numerator_model = NULL
+) {
   structure(
     list(
       density = density,
       numerator = numerator,
       sigma = sigma,
-      sigma_value = sigma_value
+      sigma_value = sigma_value,
+      # The model a caller stabilized on, kept whole rather than as the
+      # numerator it evaluates to: `ipw()` rebuilds that numerator at every
+      # value of theta, which takes the model's design and its coefficients.
+      numerator_model = numerator_model
     ),
     class = "propensity_density_meta"
   )
 }
 
+# The density record left of one whose weights are no longer stabilized. The
+# denominator is the conditional density the weights divide by, which the
+# family, the spread, and a spread the caller supplied all describe, and which
+# an operation on the weights leaves standing. The numerator fields describe
+# what the weights were divided into, which an unstabilized result was not
+# divided into at all, so they are reduced to the record of no numerator that
+# unstabilized weights are built with in the first place.
+unstabilized_density_meta <- function(meta) {
+  if (is.null(meta) || identical(meta$numerator, "none")) {
+    return(meta)
+  }
+
+  new_density_meta(
+    density = meta$density,
+    numerator = "none",
+    sigma = meta$sigma,
+    sigma_value = meta$sigma_value
+  )
+}
+
+# The joint record left of one whose product is no longer stabilized. A joint
+# record answers the question the single record answers, once per component:
+# which numerator were these weights divided by. A product half of which was
+# never divided by one was not, so the numerator side of the record has nothing
+# left to describe and is reduced the way the single record's is. What each
+# component's weights divide by stays, and so does the component structure: the
+# record still names two components and says which exposure each one weights.
+unstabilized_joint_wt_meta <- function(meta) {
+  if (is.null(meta)) {
+    return(meta)
+  }
+
+  meta$stabilized <- rep(FALSE, length(meta$exposure_type))
+  meta$numerator_model <- vector("list", length(meta$exposure_type))
+  meta$density <- lapply(meta$density, unstabilized_density_meta)
+
+  if (!is.null(meta$stabilization_score)) {
+    meta$stabilization_score <- vector("list", length(meta$exposure_type))
+  }
+
+  # A mark says which component's numerator is a score no longer to be found,
+  # and a reduced record claims no numerator for any component, so there is
+  # nothing left for it to qualify. It goes with the scores it describes.
+  meta$score_dropped <- NULL
+
+  meta
+}
+
 #' @rdname exposure_type
 #' @export
 format.propensity_density_meta <- function(x, ...) {
-  # `format()` pads the labels to the longest of them, so the three values read
-  # down the same column.
-  labels <- format(c("density:", "numerator:", "sigma:"))
+  labels <- c("density:", "numerator:", "sigma:")
+  values <- c(format(x$density), x$numerator, x$sigma)
 
-  paste(labels, c(format(x$density), x$numerator, x$sigma))
+  # A numerator of "model" says that a model the caller fit estimated the
+  # numerator, but not which one. The formula is what the model reads, so the
+  # record names it under the three choices, labelled by the argument the model
+  # arrived in.
+  formula <- density_meta_model_formula(x$numerator_model)
+  if (!is.null(formula)) {
+    labels <- c(labels, "stabilize:")
+    values <- c(values, formula)
+  }
+
+  # `format()` pads the labels to the longest of them, so the values read down
+  # the same column.
+  paste(format(labels), values)
+}
+
+# The formula a numerator model reads, as one line. A fitted model that cannot
+# report a formula still stabilized the weights it was given, so the record
+# leaves the line out rather than refusing to print at all.
+density_meta_model_formula <- function(numerator_model) {
+  if (is.null(numerator_model)) {
+    return(NULL)
+  }
+
+  formula <- tryCatch(
+    stats::formula(numerator_model),
+    error = function(e) NULL
+  )
+  if (is.null(formula)) {
+    return(NULL)
+  }
+
+  # `deparse()` breaks a long formula across lines and indents the
+  # continuations, so collapsing them leaves runs of spaces inside the formula.
+  # The record reads it back spaced the way a formula is written.
+  squash_whitespace(paste(deparse(formula), collapse = " "))
 }
 
 #' @rdname exposure_type
@@ -416,7 +603,31 @@ density_meta_agrees <- function(x, y) {
   identical(x$numerator, y$numerator) &&
     identical(x$sigma, y$sigma) &&
     identical(x$sigma_value, y$sigma_value) &&
+    numerator_models_agree(x$numerator_model, y$numerator_model) &&
     density_specs_agree(x$density, y$density)
+}
+
+# Two numerator models describe the same numerator when they read the same
+# terms and were fit to the same values of them, which is what the formula and
+# the coefficients say. They are not compared by identity for the reason the
+# density is not: a fit carries the frame it was fit in and the call that made
+# it, so two models of the same numerator fit in two calls would otherwise be
+# read as a disagreement. Anything else is a disagreement, including one record
+# holding a model where the other holds none.
+numerator_models_agree <- function(x, y) {
+  if (is.null(x) || is.null(y)) {
+    return(is.null(x) && is.null(y))
+  }
+
+  formulas <- tryCatch(
+    identical(
+      deparse(stats::formula(x)),
+      deparse(stats::formula(y))
+    ),
+    error = function(e) FALSE
+  )
+
+  formulas && identical(stats::coef(x), stats::coef(y))
 }
 
 #' @rdname psw
@@ -612,6 +823,33 @@ vec_ptype_full.psw <- function(x, ...) {
 }
 
 #' @export
+#' @method obj_print_footer psw
+obj_print_footer.psw <- function(x, ...) {
+  meta <- density_meta(x)
+
+  # Weights that are a ratio of densities print the record's own `format()`
+  # method rather than a second rendering of the same lines, so the printed
+  # weights and the printed record cannot come to disagree. The model that
+  # estimated the numerator is named there, among the rest of the ratio.
+  if (!is.null(meta)) {
+    writeLines(format(meta))
+
+    return(invisible(x))
+  }
+
+  # Weights that are not a ratio of densities record no ratio and print none.
+  # A numerator the caller's model estimated is still worth naming, the
+  # reader's question being the same one either way: which numerator are these
+  # weights divided by.
+  formula <- density_meta_model_formula(numerator_model(x))
+  if (!is.null(formula)) {
+    writeLines(paste("stabilize:", formula))
+  }
+
+  invisible(x)
+}
+
+#' @export
 #' @method vec_arith psw
 vec_arith.psw <- function(op, x, y, ...) {
   UseMethod("vec_arith.psw", y)
@@ -648,9 +886,27 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
   # status. That is the same kind of reduction as a drop for length rather than
   # a disagreement between the operands, so it goes without comment and takes
   # any disagreement about the score with it.
+  #
+  # A numerator model is the same record in another form: it names the quantity
+  # the weights were divided by rather than holding its value. An unstabilized
+  # result was divided by no numerator, so the model has nothing left to
+  # describe either, and is dropped in the same place and for the same reason.
+  # A continuous exposure keeps that record inside the density record, whose
+  # numerator fields are reduced there while the fields describing the
+  # denominator stay: what the weights divide by survives the arithmetic.
+  #
+  # A joint record says all of that once per component, so its numerator side is
+  # reduced the same way and for the same reason. The component structure and
+  # each component's denominator stay, those describing where the product came
+  # from rather than what it was divided into.
   if (!stabilized) {
     attrs["stabilization_score"] <- list(NULL)
-    conflicts <- setdiff(conflicts, "stabilization_score")
+    attrs["numerator_model"] <- list(NULL)
+    attrs["density_meta"] <- list(unstabilized_density_meta(attrs$density_meta))
+    attrs[psw_joint_attr] <- list(
+      unstabilized_joint_wt_meta(attrs[[psw_joint_attr]])
+    )
+    conflicts <- setdiff(conflicts, c("stabilization_score", "numerator_model"))
   }
 
   if (length(conflicts) > 0) {
@@ -850,7 +1106,7 @@ psw_categorical_attrs <- c("n_categories", "category_names", "focal_category")
 # for weights whose value is a ratio of densities, the record of that ratio.
 # Both describe the exposure rather than the units, so both carry no length of
 # their own and hold at any length.
-psw_exposure_attrs <- c("exposure_type", "density_meta")
+psw_exposure_attrs <- c("exposure_type", "density_meta", "numerator_model")
 
 # A modification record is judged against `to`, the object supplying it: the
 # record was written for `to`'s observations, so data arriving at `to`'s length
@@ -871,9 +1127,52 @@ modification_meta_aligns <- function(n, to) {
   n == 0 || n == length(to)
 }
 
+# What the joint record can still say once data has arrived at `n` observations.
+# The record names the two components rather than the units, with the one
+# exception a stabilization score is: it holds a value per observation, and a
+# score that no longer describes the observations the result holds is reported
+# as absent, for the reason the score on the weights themselves is.
+aligned_joint_wt_meta <- function(meta, n) {
+  if (is.null(meta) || is.null(meta$stabilization_score)) {
+    return(meta)
+  }
+
+  aligned <- vapply(
+    meta$stabilization_score,
+    stabilization_score_aligns,
+    logical(1),
+    n = n
+  )
+
+  if (all(aligned)) {
+    return(meta)
+  }
+
+  meta$stabilization_score[!aligned] <- list(NULL)
+  # The emptied slot is the slot a component the caller never stabilized on a
+  # score has, so the drop is recorded rather than left to be read off an
+  # absence. A component whose score is gone was stabilized on a numerator
+  # nothing can rebuild, and an estimator that stands its own numerator in has
+  # something to say about which component it did that for. A record already
+  # carrying a mark keeps it: a later operation drops nothing a first one
+  # already took, and what it took is still gone.
+  meta$score_dropped <- joint_wt_dropped_scores(meta) | !aligned
+
+  meta
+}
+
+# Every per-observation stabilization score a set of weights carries: the one on
+# the weights themselves, and one per component of a product's record. All of
+# them describe the same observations and are dropped on the same terms, so the
+# drop is decided over the whole set rather than once per home.
+psw_stabilization_scores <- function(x) {
+  c(list(stabilization_score(x)), joint_wt_meta(x)$stabilization_score)
+}
+
 # The record `wt_joint()` leaves on a product weight. Like the categorical
 # attributes, it names the two components rather than the units, so it carries
-# no length of its own and holds at any length.
+# no length of its own and holds at any length, save for the stabilization
+# scores inside it, which `aligned_joint_wt_meta()` measures against the data.
 psw_joint_attr <- "joint_wt_meta"
 
 # Everything a psw carries beyond the six fields describing the weights as a
@@ -934,6 +1233,10 @@ aligned_psw_attrs <- function(to, n) {
   if (!modification_meta_aligns(n, to)) {
     attrs[psw_modification_meta] <- list(NULL)
   }
+
+  attrs[psw_joint_attr] <- list(
+    aligned_joint_wt_meta(attrs[[psw_joint_attr]], n)
+  )
 
   # The record of what a fold has already dropped belongs to the prototype being
   # folded and goes no further. Data arriving at observations is the result the
@@ -1006,6 +1309,28 @@ merge_psw_estimands <- function(x, y) {
   paste0(x, ", ", y)
 }
 
+# Which numerator a set of weights was divided by, as the merge compares it. A
+# fitted model the caller supplied is one answer and the marginal probability of
+# the level each unit took is another, and weights recording the second record
+# no model at all. Compared as attribute values, that reads as one operand
+# recording nothing rather than as two operands recording different numerators,
+# and the merge carries the model onto a result half of which was never
+# stabilized on it. Compared as records, model against no model is the
+# disagreement it already is inside a density record.
+#
+# Weights that are a ratio of densities record their numerator in that record,
+# which answers for it and names the model there, and unstabilized weights were
+# divided by no numerator at all. Neither records a numerator here, so neither
+# has anything to disagree with and both leave the other operand's model
+# standing, which is the single-operand route every carried attribute takes.
+psw_numerator_record <- function(x, attrs) {
+  if (!is_stabilized(x) || !is.null(attrs$density_meta)) {
+    return(NULL)
+  }
+
+  list(model = attrs$numerator_model)
+}
+
 # An operation on two psw objects has two sets of carried attributes to answer
 # for, each already reduced to what it can still speak for at the result's
 # length. One only a single operand records has nothing to disagree with, which
@@ -1018,6 +1343,8 @@ merge_psw_estimands <- function(x, y) {
 merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
   x_attrs <- aligned_psw_attrs(x, n)
   y_attrs <- aligned_psw_attrs(y, n)
+  x_attrs["numerator_model"] <- list(psw_numerator_record(x, x_attrs))
+  y_attrs["numerator_model"] <- list(psw_numerator_record(y, y_attrs))
   dropped <- union(conflicted_psw_attrs(x), conflicted_psw_attrs(y))
 
   attrs <- list()
@@ -1049,10 +1376,19 @@ merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
   # reported; it is named in `conflicted` so that a later pair of the same
   # operation cannot carry it back.
   exposure_dropped <- "exposure_type" %in% c(dropped, conflicts)
-  if (exposure_dropped && "density_meta" %in% names(attrs)) {
-    attrs["density_meta"] <- list(NULL)
-    dropped <- union(dropped, "density_meta")
-    conflicts <- setdiff(conflicts, "density_meta")
+  for (field in c("density_meta", "numerator_model")) {
+    if (exposure_dropped && field %in% names(attrs)) {
+      attrs[field] <- list(NULL)
+      dropped <- union(dropped, field)
+      conflicts <- setdiff(conflicts, field)
+    }
+  }
+
+  # The numerator was compared as the record of which numerator the weights
+  # were divided by; what the result carries is the model that record names, or
+  # nothing when it names none.
+  if ("numerator_model" %in% names(attrs)) {
+    attrs["numerator_model"] <- list(attrs$numerator_model$model)
   }
 
   list(
@@ -1063,14 +1399,91 @@ merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
 }
 
 # How two values of one carried attribute are compared. Identity is the question
-# for all but the density record, which holds a function that is written afresh
-# on every call and so is compared by what it says.
+# for all but the two records holding a density, each of which holds a function
+# that is written afresh on every call and so is compared by what it says.
 psw_attrs_agree <- function(field, x, y) {
   if (identical(field, "density_meta")) {
     return(density_meta_agrees(x, y))
   }
 
+  # The numerator arrives as the record of which numerator the weights were
+  # divided by, so two records agree when they name the same model, or when
+  # neither names one and both therefore name the marginal numerator. A fitted
+  # model carries the frame it was fit in and the call that made it, so two
+  # models of the same numerator fit in two calls are not identical and are
+  # compared by what they say, the way the model inside a density record is.
+  if (identical(field, "numerator_model")) {
+    return(numerator_models_agree(x$model, y$model))
+  }
+
+  if (identical(field, psw_joint_attr)) {
+    return(joint_wt_meta_agrees(x, y))
+  }
+
   identical(x, y)
+}
+
+# Two joint records describe the same product when they name the same pair of
+# components. The exposure types and the stabilization flags are the values the
+# record was written with, so identity answers for them, while each density slot
+# holds a density record and is compared the way those are. A component
+# weighting no density records nothing there, and two of those say the same
+# thing.
+#
+# The numerator models are compared the way a single record's is, by what they
+# say rather than by identity, since a fit carries the frame it was made in. A
+# record written before the slot existed reads as one model per component and
+# none of them fitted, so it agrees with a product of components that record no
+# model rather than disagreeing with every record at all.
+joint_wt_meta_agrees <- function(x, y) {
+  agrees <- identical(x$exposure_type, y$exposure_type) &&
+    identical(x$stabilized, y$stabilized) &&
+    length(x$density) == length(y$density)
+
+  if (!agrees) {
+    return(FALSE)
+  }
+
+  models_x <- joint_wt_numerator_models(x)
+  models_y <- joint_wt_numerator_models(y)
+
+  if (length(models_x) != length(models_y)) {
+    return(FALSE)
+  }
+
+  # A score is the numerator itself rather than a description of one, so two
+  # records naming different scores describe different products and identity
+  # answers for them. A record written before the slot existed reads as one
+  # score per component and none of them supplied, so it agrees with a product
+  # of components that record no score.
+  if (
+    !identical(
+      joint_wt_stabilization_scores(x),
+      joint_wt_stabilization_scores(y)
+    )
+  ) {
+    return(FALSE)
+  }
+
+  # A component whose score was dropped and one that never held a score leave
+  # the same empty slot and describe different products, so the mark telling
+  # them apart is compared the way the rest of the record is.
+  if (!identical(joint_wt_dropped_scores(x), joint_wt_dropped_scores(y))) {
+    return(FALSE)
+  }
+
+  densities <- all(vapply(
+    seq_along(x$density),
+    function(i) density_meta_agrees(x$density[[i]], y$density[[i]]),
+    logical(1)
+  ))
+
+  densities &&
+    all(vapply(
+      seq_along(models_x),
+      function(i) numerator_models_agree(models_x[[i]], models_y[[i]]),
+      logical(1)
+    ))
 }
 
 # Unlike a drop for length, which happens to records that also travel by routes
@@ -1103,12 +1516,19 @@ vec_restore.psw <- function(x, to, ...) {
   # than the incoming data. Outside vctrs' subassignment intermediates, where
   # the restore that follows reattaches the target's score anyway, a cast's `to`
   # is a prototype, which cannot carry a score misaligned with itself.
-  score <- stabilization_score(to)
-  if (!stabilization_score_aligns(score, length(x))) {
+  scores <- psw_stabilization_scores(to)
+  dropped <- !vapply(
+    scores,
+    stabilization_score_aligns,
+    logical(1),
+    n = length(x)
+  )
+  if (any(dropped)) {
+    lengths <- unique(lengths(scores[dropped]))
     warn(
       c(
         "Dropping the per-observation {.arg stabilization_score}.",
-        i = "A score of length {length(score)} cannot be carried through an
+        i = "A score of length {lengths} cannot be carried through an
              operation that changes the length of the weights to
              {length(x)}.",
         i = "The result is still marked as stabilized. Recompute the weights
@@ -1190,13 +1610,14 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
   # from the other input. Nothing rebuilding the combined vector is handed the
   # offsets, so the records are left off the prototype whether or not the inputs
   # agree on them. The categorical attributes name exposure levels rather than
-  # positions, and the exposure records describe the exposure rather than any
-  # unit, so both mean the same thing at the combined length.
+  # positions, the exposure records describe the exposure rather than any unit,
+  # and the joint record names the two components a product was built from, so
+  # all of them mean the same thing at the combined length.
   merged <- merge_psw_attrs(
     x,
     y,
     0,
-    fields = c(psw_categorical_attrs, psw_exposure_attrs)
+    fields = c(psw_categorical_attrs, psw_exposure_attrs, psw_joint_attr)
   )
   if (length(merged$conflicts) > 0) {
     warn_conflicting_psw_attrs(merged$conflicts)

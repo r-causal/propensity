@@ -472,6 +472,11 @@ test_that("ipw() print output is stable per SE method", {
   expect_snapshot(
     print(ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization"))
   )
+
+  # Pins the diagnostic mark the robust path adds under the same table.
+  expect_snapshot(
+    print(ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust"))
+  )
 })
 
 test_that("a marginal linear outcome model works on the linearization path", {
@@ -1177,7 +1182,6 @@ test_that("linearization recodes a factor exposure for the att estimand", {
 })
 
 test_that("mestimation matches a factor exposure to the numeric fit", {
-  skip_if_not_installed("deli")
   for (factor_col in c("trt", "trt_rev")) {
     arms <- factor_numeric_arms(factor_exposure_data(), factor_col, wt_ate)
     res_fac <- ipw(
@@ -1420,7 +1424,6 @@ matrix_outcome_models <- function() {
 }
 
 test_that("a matrix-response outcome model errors on its shape without .data", {
-  skip_if_not_installed("deli")
   m <- matrix_outcome_models()
 
   # the fixture is the shape it claims to be
@@ -1473,7 +1476,6 @@ transformed_response_outcome <- function(response, dat, wts) {
 }
 
 test_that("a transformed single-column outcome response is not a matrix response", {
-  skip_if_not_installed("deli")
   # `log(y)` and friends make the formula's left-hand side a call rather than a
   # symbol, which is what the propensity guard rejects and what an early version
   # of this guard rejected too. They are ordinary single-column responses and
@@ -1500,7 +1502,6 @@ test_that("a transformed single-column outcome response is not a matrix response
 })
 
 test_that("a scale-transformed outcome response matches its precomputed column", {
-  skip_if_not_installed("deli")
   # The log and sqrt pair above leaves a plain vector in the model frame.
   # `scale()` leaves a one-column matrix there instead, so it is the shape the
   # precomputed cross-check has nothing to say about yet, and it is excluded
@@ -1523,7 +1524,6 @@ test_that("a scale-transformed outcome response matches its precomputed column",
 })
 
 test_that("the matrix-response outcome model error names the outcome model", {
-  skip_if_not_installed("deli")
   m <- matrix_outcome_models()
 
   expect_snapshot(
@@ -1533,7 +1533,6 @@ test_that("the matrix-response outcome model error names the outcome model", {
 })
 
 test_that("a matrix-response outcome model errors on its shape with .data", {
-  skip_if_not_installed("deli")
   # The .data route fails differently today, asking for a "cbind" column, so it
   # is pinned separately rather than folded into the test above.
   m <- matrix_outcome_models()
@@ -1564,7 +1563,6 @@ test_that("a matrix-response outcome model errors on its shape with .data", {
 # reference to compare a binomial one against.
 
 test_that("a log-transformed outcome response through .data matches the model-frame route", {
-  skip_if_not_installed("deli")
   m <- transformed_response_models()
   outcome_mod <- transformed_response_outcome("log(y)", m$dat, m$wts)
 
@@ -1578,7 +1576,6 @@ test_that("a log-transformed outcome response through .data matches the model-fr
 })
 
 test_that("a sqrt-transformed outcome response through .data matches the model-frame route", {
-  skip_if_not_installed("deli")
   m <- transformed_response_models()
   outcome_mod <- transformed_response_outcome("sqrt(y)", m$dat, m$wts)
 
@@ -1595,7 +1592,6 @@ test_that("a sqrt-transformed outcome response through .data matches the model-f
 })
 
 test_that("a scale-transformed outcome response through .data matches the model-frame route", {
-  skip_if_not_installed("deli")
   m <- transformed_response_models()
   outcome_mod <- transformed_response_outcome("scale(y)", m$dat, m$wts)
 
@@ -1617,7 +1613,6 @@ test_that("a scale-transformed outcome response through .data matches the model-
 })
 
 test_that("a covariate missing from .data is reported as the missing column", {
-  skip_if_not_installed("deli")
   # Guard for the pins above: the report has to keep working for a column that
   # really is absent, not go quiet along with the spurious ones.
   m <- transformed_response_models()
@@ -1636,7 +1631,6 @@ test_that("a covariate missing from .data is reported as the missing column", {
 })
 
 test_that("a .data missing the outcome column names the response, not its transformation", {
-  skip_if_not_installed("deli")
   m <- transformed_response_models()
   outcome_mod <- transformed_response_outcome("log(y)", m$dat, m$wts)
   without_y <- m$dat[setdiff(names(m$dat), "y")]
@@ -1653,7 +1647,6 @@ test_that("a .data missing the outcome column names the response, not its transf
 })
 
 test_that("a response the formula's environment holds is still a missing column", {
-  skip_if_not_installed("deli")
   # The response is evaluated rather than looked up, with the formula's own
   # environment as the enclosure, so a `.data` missing the column reaches
   # whatever that environment happens to bind and estimates on it with nothing
@@ -2356,7 +2349,6 @@ test_that("the ps_link mismatch error names both links", {
 })
 
 test_that("mestimation reports a mismatched ps_link as a weights mismatch", {
-  skip_if_not_installed("deli")
   # The deliberate boundary between the two paths, pinned so neither drifts into
   # the other. The membership guard checks only that the link is one this package
   # supports, and a supported-but-wrong link passes it. What catches the misuse
@@ -2432,7 +2424,6 @@ test_that("linearization deprecates a ps_link equal to the model's link", {
 })
 
 test_that("mestimation deprecates a ps_link equal to the model's link", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   mods <- se_link_fit(dat, "logit")
 
@@ -2455,7 +2446,6 @@ test_that("mestimation deprecates a ps_link equal to the model's link", {
 })
 
 test_that("omitting ps_link deprecates nothing on either path", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   mods <- se_link_fit(dat, "logit")
 
@@ -2583,7 +2573,6 @@ se_method_outcome_focal_lower <- function(dat, ps_mod, exposure_name, wt_fun) {
 }
 
 test_that("both paths reject att weights focal on 0 for a 0/1 exposure", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   outcome_mod <- se_method_outcome_focal_lower(dat, ps_mod, "z", wt_att)
@@ -2608,7 +2597,6 @@ test_that("both paths reject att weights focal on 0 for a 0/1 exposure", {
 })
 
 test_that("both paths reject atu weights focal on FALSE for a logical exposure", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   dat$zl <- as.logical(dat$z)
   ps_mod <- glm(zl ~ x1 + x2, data = dat, family = binomial())
@@ -2634,7 +2622,6 @@ test_that("both paths reject atu weights focal on FALSE for a logical exposure",
 })
 
 test_that("both paths reject a lower focal level without .data", {
-  skip_if_not_installed("deli")
   # The exposure comes from the propensity model's own frame when `.data` is
   # absent, so the guard has to reach the same values by that route.
   dat <- se_method_data()
@@ -2858,7 +2845,6 @@ test_that("linearization rejects a separated propensity model given .data", {
 })
 
 test_that("both SE methods reject a separated propensity model alike", {
-  skip_if_not_installed("deli")
   dat <- se_separation_data()
   mods <- se_separation_models(dat)
 
@@ -3024,7 +3010,6 @@ se_score_mest_rd <- function(dat, ps_mod, wts) {
 }
 
 test_that("mestimation accepts a scalar stabilization score and reproduces the unstabilized estimates", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   ps <- as.double(predict(ps_mod, type = "response"))
@@ -3061,7 +3046,6 @@ test_that("mestimation accepts a scalar stabilization score and reproduces the u
 })
 
 test_that("mestimation uses a per-observation stabilization score", {
-  skip_if_not_installed("deli")
   dat <- se_method_data()
   ps_mod <- se_method_ps_mod(dat)
   ps <- as.double(predict(ps_mod, type = "response"))
@@ -3249,4 +3233,310 @@ test_that("ipw() binary names its contrast column contrast under both routes", {
     )
     expect_identical(res$estimates$contrast, c("0", "1", rep("1 vs 0", 3)))
   }
+})
+
+# ---- se_method = "robust": the HC0 diagnostic -------------------------------
+#
+# The diagnostic route reports the sandwich the weighted outcome model computes
+# for itself, with the weights entering as known constants: it is the
+# linearization route with the correction for having estimated the propensity
+# score dropped. The point estimates are therefore the linearization ones and
+# only the standard errors move. The oracle below is built from the bread and
+# the meat by hand rather than read off a package, so the route is checked
+# against the definition of the thing it claims to report.
+
+# The HC0 covariance of a weighted model's coefficients: the inverse of the
+# weighted information, the outer product of the weighted score contributions,
+# and the inverse of the information again. The prior weights enter as known
+# constants, which is the whole of what this diagnostic leaves out. Written
+# through the family's variance function and link derivative so the
+# quasibinomial and the linear outcome models are read the same way.
+hc0_coef_vcov <- function(model) {
+  design <- stats::model.matrix(model)
+  y <- as.numeric(stats::model.response(stats::model.frame(model)))
+  w <- as.numeric(stats::weights(model))
+  mu <- as.numeric(stats::fitted(model))
+
+  if (inherits(model, "glm")) {
+    dmu <- model$family$mu.eta(as.numeric(model$linear.predictors))
+    variance <- model$family$variance(mu)
+  } else {
+    dmu <- rep(1, length(mu))
+    variance <- rep(1, length(mu))
+  }
+
+  information <- crossprod(design, design * (w * dmu^2 / variance))
+  score <- w * (y - mu) * dmu / variance
+  meat <- crossprod(design, design * score^2)
+  bread <- solve(information)
+
+  bread %*% meat %*% bread
+}
+
+# The delta-method covariance of the reported effects, in the row order the
+# estimates table reports them: the counterfactual mean at each exposure level,
+# their difference, and, where the outcome model is not linear, the log risk
+# ratio and the log odds ratio. The outcome model is the exposure alone with an
+# intercept, so the two means are the two fitted cells.
+hc0_effect_vcov <- function(model, linear = FALSE) {
+  b <- unname(stats::coef(model))
+  linkinv <- if (inherits(model, "glm")) model$family$linkinv else identity
+  mu_eta <- if (inherits(model, "glm")) {
+    model$family$mu.eta
+  } else {
+    function(eta) 1
+  }
+
+  mu0 <- linkinv(b[[1]])
+  mu1 <- linkinv(b[[1]] + b[[2]])
+  d0 <- mu_eta(b[[1]])
+  d1 <- mu_eta(b[[1]] + b[[2]])
+
+  jacobian <- rbind(
+    c(d0, 0),
+    c(d1, d1),
+    c(d1 - d0, d1)
+  )
+
+  if (!linear) {
+    odds0 <- mu0 * (1 - mu0)
+    odds1 <- mu1 * (1 - mu1)
+    jacobian <- rbind(
+      jacobian,
+      c(d1 / mu1 - d0 / mu0, d1 / mu1),
+      c(d1 / odds1 - d0 / odds0, d1 / odds1)
+    )
+  }
+
+  jacobian %*% hc0_coef_vcov(model) %*% t(jacobian)
+}
+
+test_that("ipw(se_method = 'robust') reports the linearization estimates with its own SEs", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  res_r <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+  res_l <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "linearization")
+
+  expect_s3_class(res_r, "ipw")
+  expect_equal(res_r$se_method, "robust")
+
+  # No system is solved here, as none is solved on the linearization route.
+  expect_null(res_r$fit)
+
+  # The estimates table keeps the shared column contract and the shared rows.
+  expect_named(res_r$estimates, estimates_columns)
+  expect_identical(res_r$estimates$effect, res_l$estimates$effect)
+  expect_identical(res_r$estimates$contrast, res_l$estimates$contrast)
+  expect_equal(
+    res_r$estimates$estimate,
+    res_l$estimates$estimate,
+    tolerance = 1e-10
+  )
+
+  # Only the standard errors move, and on this fixture they move up: the
+  # correction the diagnostic drops is what removes the variance of having
+  # estimated the propensity score from the ATE.
+  expect_false(isTRUE(all.equal(
+    res_r$estimates$std.err,
+    res_l$estimates$std.err
+  )))
+  expect_true(all(res_r$estimates$std.err > res_l$estimates$std.err))
+})
+
+test_that("robust standard errors are the hand-built HC0 sandwich of the outcome model", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+  oracle <- hc0_effect_vcov(outcome_mod)
+
+  expect_equal(res$estimates$std.err, sqrt(diag(oracle)), tolerance = 1e-8)
+
+  # The meat is divided by n rather than by n - 1, so what is reported is the
+  # HC0 sandwich itself rather than a finite-sample rescaling of it.
+  n <- nrow(dat)
+  expect_false(isTRUE(all.equal(
+    res$estimates$std.err,
+    sqrt(diag(oracle) * n / (n - 1))
+  )))
+
+  # The covariance the result attaches is that same sandwich, so the reported
+  # standard errors and the block a caller reads off the frame describe one
+  # variance rather than two.
+  expect_equal(
+    unname(attr(res$estimates, "ipw_vcov")),
+    oracle,
+    tolerance = 1e-8
+  )
+
+  # The test statistic is built from the reported standard error, as on every
+  # other route.
+  expect_equal(
+    res$estimates$z,
+    res$estimates$estimate / res$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("robust standard errors of a linear outcome model are the hand-built HC0 sandwich", {
+  dat <- se_method_data_cont()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_marginal_lm(dat, ps_mod)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+  oracle <- hc0_effect_vcov(outcome_mod, linear = TRUE)
+
+  # A linear outcome model reports the two means and their difference, the
+  # ratio measures belonging to a risk.
+  expect_identical(res$estimates$effect, c("mean", "mean", "diff"))
+  expect_equal(res$estimates$std.err, sqrt(diag(oracle)), tolerance = 1e-8)
+  expect_equal(
+    unname(attr(res$estimates, "ipw_vcov")),
+    oracle,
+    tolerance = 1e-8
+  )
+})
+
+test_that("a robust result marks its standard errors as diagnostic when printed", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  # The estimate table needs more than the 80 columns testthat pins or it wraps.
+  withr::local_options(width = 120)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+
+  # The mark is a class on the result, which is what gives the printed output a
+  # method of its own. The result is an `ipw` to everything else.
+  expect_identical(class(res)[[1]], "ipw_diagnostic_se")
+  expect_s3_class(res, "ipw")
+
+  printed <- utils::capture.output(print(res))
+  marked <- grepl("^Standard errors: robust", printed)
+  expect_identical(sum(marked), 1L)
+  expect_match(printed[marked], "diagnostic")
+
+  # The two methods that account for the estimated weights carry neither the
+  # class nor the line, so the mark reads as the exception it is.
+  for (method in c("mestimation", "linearization")) {
+    other <- ipw(ps_mod, outcome_mod, .data = dat, se_method = method)
+    expect_false(inherits(other, "ipw_diagnostic_se"))
+    expect_false(any(grepl(
+      "^Standard errors:",
+      utils::capture.output(print(other))
+    )))
+  }
+})
+
+test_that("tidy() and as.data.frame() of a robust result carry the diagnostic mark", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+
+  # The mark travels as an attribute rather than as a column, the table being
+  # the one every other route reports.
+  expect_identical(attr(as.data.frame(res), "ipw_se_diagnostic"), "robust")
+  expect_identical(attr(tidy(res), "ipw_se_diagnostic"), "robust")
+  expect_identical(
+    attr(tidy(res, conf.int = TRUE), "ipw_se_diagnostic"),
+    "robust"
+  )
+  expect_identical(
+    attr(as.data.frame(res, exponentiate = TRUE), "ipw_se_diagnostic"),
+    "robust"
+  )
+
+  reference <- ipw(
+    ps_mod,
+    outcome_mod,
+    .data = dat,
+    se_method = "linearization"
+  )
+  expect_identical(names(tidy(res)), names(tidy(reference)))
+
+  for (method in c("mestimation", "linearization")) {
+    other <- ipw(ps_mod, outcome_mod, .data = dat, se_method = method)
+    expect_null(attr(as.data.frame(other), "ipw_se_diagnostic"))
+    expect_null(attr(tidy(other), "ipw_se_diagnostic"))
+  }
+})
+
+test_that("a robust result has no conditional reading", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+
+  # The conditional reading reports the covariance the joint estimation of the
+  # weights and the outcome implies, and this route estimates nothing jointly.
+  # The refusal names the method the result records rather than naming the
+  # linearization method the result was not fit with.
+  expect_error(
+    tidy(res, effects = "conditional"),
+    class = "propensity_no_conditional_vcov_error",
+    regexp = "robust"
+  )
+  expect_propensity_error(tidy(res, effects = "conditional"))
+})
+
+test_that("ipw() refuses .by with robust standard errors", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_ate(dat, ps_mod)
+
+  # The stratum effects and their contrasts are parameters of the stacked
+  # system, which this route no more solves than the linearization route does.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, .by = x2, se_method = "robust"),
+    class = "propensity_ipw_by_method_error",
+    regexp = "robust"
+  )
+  expect_propensity_error(
+    ipw(ps_mod, outcome_mod, .data = dat, .by = x2, se_method = "robust")
+  )
+})
+
+test_that("robust rejects the atu estimand as linearization does", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  wts <- withr::with_options(list(propensity.quiet = TRUE), wt_atu(ps_mod))
+  outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+
+  # The diagnostic route is the linearization route with the correction
+  # dropped, so it accepts the estimands that route accepts and no others,
+  # leaving one set of requirements to learn rather than two. The refusal names
+  # the method that was asked for.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust"),
+    class = "propensity_method_error",
+    regexp = "robust"
+  )
+  expect_propensity_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+  )
+})
+
+test_that("robust rejects a covariate-adjusted outcome model as linearization does", {
+  dat <- se_method_data()
+  ps_mod <- se_method_ps_mod(dat)
+  outcome_mod <- se_method_outcome_adjusted_glm(dat, ps_mod)
+
+  # The reported estimates are the Hajek means of a two-cell outcome model, and
+  # an adjusted model reports something else, whichever variance is put beside
+  # them.
+  expect_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust"),
+    class = "propensity_method_error",
+    regexp = "robust"
+  )
+  expect_propensity_error(
+    ipw(ps_mod, outcome_mod, .data = dat, se_method = "robust")
+  )
 })

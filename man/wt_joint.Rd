@@ -35,19 +35,50 @@ types are named.}
 
 \code{is_joint_wt()} returns a single logical.
 
-\code{joint_wt_meta()} returns the record as a list of three elements, each one
-per component and in the order the components were given, or \code{NULL} for
-weights that are not a product:
+\code{joint_wt_meta()} returns the record as a list of five elements, with a
+sixth on a record that has dropped a stabilization score, each one per
+component and in the order the components were given, or \code{NULL} for weights
+that are not a product:
 \describe{
 \item{\code{exposure_type}}{The two components' exposure types, in order.}
 \item{\code{stabilized}}{Whether each component was stabilized, in order.}
 \item{\code{density}}{Each component's density record, as \code{\link[=density_meta]{density_meta()}}
 returns it, in order. A component weighting a discrete exposure is
 \code{NULL}, since its weights are no ratio of densities.}
+\item{\code{numerator_model}}{Each component's numerator model, as
+\code{\link[=numerator_model]{numerator_model()}} returns it, in order, for the components that have
+nowhere else to keep one. A component weighting a continuous exposure
+keeps its model inside its own \code{density} record, so this element is
+\code{NULL} for it, and so it is for a component stabilized on anything other
+than a fitted model. A record written before this element existed holds
+none at all, which says the same thing as a record whose components each
+record no model.}
+\item{\code{stabilization_score}}{Each component's stabilization score, as
+\code{\link[=stabilization_score]{stabilization_score()}} returns it, in order. A component stabilized on
+anything other than a score the caller supplied is \code{NULL}. A record
+written before this element existed holds none at all, which says the
+same thing as a record whose components each record no score.}
+\item{\code{score_dropped}}{Whether each component's stabilization score was
+dropped by an operation that changed the length of the weights, in
+order. A drop empties the component's \code{stabilization_score} slot, which
+is the slot a component stabilized on anything else has, so a component
+marked \code{TRUE} here was stabilized on a score that is gone rather than on
+a numerator an estimator can rebuild. A record holding no such element,
+which is what a product nothing has shortened carries, says no
+component's score was dropped.}
 }
 
 The record names the components rather than the observations, so it survives
-subsetting and every other operation that keeps the vector a \code{\link[=psw]{psw()}}.
+subsetting and every other operation that keeps the vector a \code{\link[=psw]{psw()}}. A
+stabilization score is the exception: it holds one value per observation, so
+a score that no longer describes the observations the result holds is dropped
+the way the score on the weights themselves is, and a score of one value is
+carried at any length. Such a drop is recorded in \code{score_dropped}, so a
+component stabilized on a score that is gone stays distinguishable from one
+stabilized on the marginal numerator, and \code{\link[=ipw]{ipw()}} names it rather than
+standing a numerator in for it silently. Arithmetic that leaves the result
+unstabilized reduces the record's numerator side, as described under \strong{What
+the product records}.
 }
 \description{
 \code{wt_joint()} builds the weight for a joint intervention on two treatments by
@@ -103,6 +134,14 @@ per-component truth, so the coarse flag hides nothing.
 The product records nothing about trimming, truncation, or calibration of the
 propensity scores the components were built from. Those records name the
 observations of one component, and the product is not that component.
+
+Arithmetic that leaves a result unstabilized, such as multiplying the product
+by unstabilized weights, reduces the numerator side of the record it carries:
+the components read as unstabilized, their numerator models and stabilization
+scores are dropped, and each density record's numerator fields read as the
+record of no numerator. Such a result was divided by no numerator, so a
+record naming one would describe a different vector. What each component's
+weights divide by stays, and so does the component structure.
 }
 
 \examples{

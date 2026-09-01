@@ -234,3 +234,21 @@
       i Scores predicted from a fit with `na.action = na.exclude` are padded back to the full length of the data, so they outnumber the rows the model analyzed.
       i Trim scores from a fit whose `na.action` drops those rows, such as `stats::na.omit()`.
 
+# ps_trim() names the class of a fit it has no reading for
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_trim()`:
+      ! No method for objects of class lm
+
+# ps_trim() refuses scores that are not numbers
+
+    Code
+      expr
+    Condition <propensity_type_error>
+      Error in `ps_trim()`:
+      ! `.propensity` must be a numeric vector.
+      x It is <character>, which holds no score to read.
+      i Pass the propensity scores as numbers between 0 and 1.
+

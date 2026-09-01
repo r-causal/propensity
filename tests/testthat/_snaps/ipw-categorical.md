@@ -1,3 +1,12 @@
+# ipw() rejects robust standard errors for a categorical exposure
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ipw()`:
+      ! `ipw()` does not support "robust" standard errors for categorical exposures.
+      i Use `se_method = "mestimation"` for a categorical exposure.
+
 # ipw() categorical print output is stable
 
     Code
@@ -39,6 +48,26 @@
       x `.data` has "x2" as a factor.
       x `wt_mod` recorded "x2" as a numeric vector, and the designs rebuilt from `.data` use that coding.
       i Supply "x2" as that numeric column, or refit the models on the factor.
+
+# ipw() rejects a two-level multinom propensity score model
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ipw()`:
+      ! `ipw()` needs a propensity score model of three or more exposure levels for a categorical exposure.
+      x `wt_mod` was fit to 2 levels ("control" and "treated"), so it fits the single probability of a binary exposure.
+      i For a binary exposure, fit the propensity score model with `stats::glm()` and `family = binomial()`; for a categorical one, fit a `nnet::multinom()` to its three or more levels.
+
+# ipw() rejects a multinom fit to a matrix response
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ipw()`:
+      ! A propensity score model must be fit to the levels of the exposure.
+      x `wt_mod` was fit to a matrix response, which `nnet::multinom()` reads as counts rather than as levels.
+      i Refit the model with the exposure factor on the left-hand side, as in `nnet::multinom(exposure ~ x)`.
 
 # the categorical degenerate-design error names the pinned levels
 

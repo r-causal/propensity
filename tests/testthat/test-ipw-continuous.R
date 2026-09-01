@@ -55,7 +55,10 @@ continuous_weights <- function(
 ) {
   withr::with_options(
     list(propensity.quiet = TRUE),
-    wt_ate(
+    # A bootstrap resample of a fixture near the finite-variance boundary lands
+    # on either side of it, so the report is muffled here rather than left to
+    # arrive on whichever resamples happen to cross.
+    muffle_variance_warning(wt_ate(
       fitted_ps,
       A,
       .sigma = .sigma,
@@ -64,7 +67,7 @@ continuous_weights <- function(
       stabilization_score = stab_score,
       .density = .density,
       numerator = numerator
-    )
+    ))
   )
 }
 
@@ -151,7 +154,6 @@ estimates_columns <- c(
 # ---- end-to-end -------------------------------------------------------------
 
 test_that("ipw() runs continuous ate end to end and auto-detects the estimand", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
 
@@ -166,7 +168,6 @@ test_that("ipw() runs continuous ate end to end and auto-detects the estimand", 
 # ---- point-estimate parity with the MSM exposure coefficient ----------------
 
 test_that("ipw() continuous point estimate equals the MSM exposure coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   # identity link (lm) is exact
@@ -193,7 +194,6 @@ test_that("ipw() continuous point estimate equals the MSM exposure coefficient",
 # ---- estimates table shape and effect labels --------------------------------
 
 test_that("ipw() continuous labels the effect by the outcome link", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   # identity link: a single slope, the eight-column contract, no contrast
@@ -220,7 +220,6 @@ test_that("ipw() continuous labels the effect by the outcome link", {
 # The two are asymptotically equivalent; a 15 percent relative band accommodates
 # the finite-sample and Monte Carlo gap while keeping this a meaningful check.
 test_that("ipw() continuous mestimation SE tracks a nonparametric bootstrap", {
-  skip_if_not_installed("deli")
   skip_on_cran()
 
   dat <- sim_continuous(seed = 2024, n = 600)
@@ -255,7 +254,6 @@ test_that("ipw() continuous mestimation SE tracks a nonparametric bootstrap", {
 # ---- stabilization variants -------------------------------------------------
 
 test_that("ipw() continuous runs stabilized, unstabilized, and fixed-score weights", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   # stabilized: the recommended default for a continuous exposure
@@ -285,10 +283,141 @@ test_that("ipw() continuous runs stabilized, unstabilized, and fixed-score weigh
   )
 })
 
+# ---- a numerator model in the stack -----------------------------------------
+
+# The three fits this section compares. All three weight the same propensity
+# score model; what separates them is the numerator. `model` stabilizes on a
+# fitted model of the dose on a baseline covariate, `score` stabilizes on the
+# very same numerator handed over as a vector of numbers, and `marginal` takes
+# the default. The first two build one and the same set of weights, so anything
+# that differs between them is the sandwich reading the numerator differently
+# rather than the weights being different.
+continuous_numerator_fits <- function(dat) {
+  num_mod <- lm(A ~ x1, data = dat)
+  score <- stats::dnorm(
+    dat$A,
+    as.numeric(fitted(num_mod)),
+    sqrt(mean(residuals(num_mod)^2))
+  )
+
+  list(
+    num_mod = num_mod,
+    score = score,
+    model = fit_continuous_models(dat, stabilize = num_mod),
+    score_fit = fit_continuous_models(
+      dat,
+      stabilize = TRUE,
+      stab_score = score
+    ),
+    marginal = fit_continuous_models(dat)
+  )
+}
+
+test_that("ipw() reports the same estimate from a numerator model and its score", {
+  dat <- sim_continuous()
+  fits <- continuous_numerator_fits(dat)
+
+  # The two routes weight the units identically, which is what makes the
+  # standard errors below comparable at all.
+  expect_equal(
+    as.numeric(fits$model$wts),
+    as.numeric(fits$score_fit$wts),
+    tolerance = 1e-12
+  )
+
+  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
+
+  expect_equal(
+    res_model$estimates$estimate,
+    unname(coef(fits$model$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_model$estimates$estimate,
+    res_score$estimates$estimate,
+    tolerance = 1e-8
+  )
+})
+
+test_that("ipw() stacks the numerator model it was given", {
+  dat <- sim_continuous()
+  fits <- continuous_numerator_fits(dat)
+
+  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
+
+  # A supplied score is a constant of the stacked system and a supplied model is
+  # not: the model's coefficients and the spread its density is read at are
+  # parameters solved alongside everything else.
+  theta_model <- coef(res_model$fit)
+  theta_score <- coef(res_score$fit)
+
+  expect_equal(
+    length(theta_model),
+    length(theta_score) + length(coef(fits$num_mod)) + 1L
+  )
+  expect_equal(
+    names(theta_model),
+    c(
+      names(coef(fits$model$ps_mod)),
+      "sigma2_d",
+      paste0("stab_", names(coef(fits$num_mod))),
+      "sigma2_n",
+      names(coef(fits$model$outcome_mod))
+    )
+  )
+
+  # The block is solved at the model it was given rather than carried at
+  # whatever the seed was.
+  stab_block <- theta_model[grepl("^stab_", names(theta_model))]
+  expect_equal(
+    unname(stab_block),
+    unname(coef(fits$num_mod)),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    unname(theta_model[["sigma2_n"]]),
+    mean(residuals(fits$num_mod)^2),
+    tolerance = 1e-6
+  )
+})
+
+test_that("a stacked numerator model reports a different standard error", {
+  dat <- sim_continuous()
+  fits <- continuous_numerator_fits(dat)
+
+  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
+  res_marginal <- ipw(fits$marginal$ps_mod, fits$marginal$outcome_mod)
+
+  se_model <- res_model$estimates$std.err
+  se_score <- res_score$estimates$std.err
+  se_marginal <- res_marginal$estimates$std.err
+
+  expect_true(is.finite(se_model) && se_model > 0)
+
+  # The comparison against the score fit is only about the numerator while the
+  # weights are the same weights, which is what this restates.
+  expect_equal(
+    as.numeric(fits$model$wts),
+    as.numeric(fits$score_fit$wts),
+    tolerance = 1e-12
+  )
+
+  # The score fit is the same weights with the numerator held fixed, so the
+  # difference between the two standard errors is exactly the uncertainty of
+  # having fit the numerator model.
+  expect_false(isTRUE(all.equal(se_model, se_score, tolerance = 1e-6)))
+
+  # The marginal stabilizer is a different numerator over the same denominator,
+  # so it is a different set of weights and a different standard error again.
+  expect_false(isTRUE(all.equal(se_model, se_marginal, tolerance = 1e-6)))
+})
+
 # ---- estimand support -------------------------------------------------------
 
 test_that("ipw() continuous rejects estimands other than ate", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
 
@@ -308,7 +437,6 @@ test_that("ipw() continuous rejects estimands other than ate", {
 # ---- MSM guard --------------------------------------------------------------
 
 test_that("ipw() continuous rejects an MSM term that reads a covariate", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat, msm_rhs = c("A", "A:x1"))
 
@@ -342,7 +470,6 @@ test_that("ipw() continuous rejects an MSM term that reads a covariate", {
 # decides whether the stacked system's rows are named after their coefficients.
 
 test_that("ipw() continuous reports the conditional reading for a curve", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   curve <- fit_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
   res <- ipw(curve$ps_mod, curve$outcome_mod)
@@ -360,7 +487,6 @@ test_that("ipw() continuous reports the conditional reading for a curve", {
 })
 
 test_that("ipw() continuous refuses the marginal reading of a curve", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   curve <- fit_continuous_models(dat, msm_rhs = c("A", "I(A^2)"))
 
@@ -384,7 +510,6 @@ test_that("ipw() continuous refuses the marginal reading of a curve", {
 })
 
 test_that("ipw() continuous leaves a single exposure term marginal", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   # One design column is one slope, and that slope is the dose response
@@ -408,7 +533,6 @@ test_that("ipw() continuous leaves a single exposure term marginal", {
 # ---- gaussian-glm routing ---------------------------------------------------
 
 test_that("ipw() routes a gaussian-family glm ps model identically to lm", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   ps_lm <- lm(A ~ x1 + x2, data = dat)
@@ -443,8 +567,6 @@ test_that("ipw() routes a gaussian-family glm ps model identically to lm", {
 # ---- fit object -------------------------------------------------------------
 
 test_that("ipw() continuous fit theta matches the reported estimate", {
-  skip_if_not_installed("deli")
-  skip_if_not_installed("generics")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -460,7 +582,6 @@ test_that("ipw() continuous fit theta matches the reported estimate", {
 # ---- print and as.data.frame ------------------------------------------------
 
 test_that("ipw() continuous print output is stable", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat, outcome_family = "gaussian")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -469,7 +590,6 @@ test_that("ipw() continuous print output is stable", {
 })
 
 test_that("as.data.frame(exponentiate = TRUE) relabels the continuous log odds ratio", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat, outcome_family = "binomial")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -486,7 +606,6 @@ test_that("as.data.frame(exponentiate = TRUE) relabels the continuous log odds r
 # ---- offset guard -----------------------------------------------------------
 
 test_that("ipw() continuous rejects an outcome model with an offset term", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   dat$off <- 0.3 * dat$x1
 
@@ -510,7 +629,6 @@ test_that("ipw() continuous rejects an outcome model with an offset term", {
 # ---- linearization is unsupported for continuous ----------------------------
 
 test_that("ipw() rejects linearization for a continuous exposure", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   # the lm propensity route
@@ -525,6 +643,33 @@ test_that("ipw() rejects linearization for a continuous exposure", {
   expect_error(
     ipw(mods_glm$ps_mod, mods_glm$outcome_mod, se_method = "linearization"),
     class = "propensity_method_error"
+  )
+})
+
+test_that("ipw() rejects robust standard errors for a continuous exposure", {
+  dat <- sim_continuous()
+
+  # A continuous exposure reports the marginal structural model's own
+  # coefficients rather than counterfactual means of two cells, so there are no
+  # Hajek means for a weights-fixed sandwich to describe. The refusal names the
+  # method that was asked for.
+  mods_lm <- fit_continuous_models(dat, ps_type = "lm")
+  expect_error(
+    ipw(mods_lm$ps_mod, mods_lm$outcome_mod, se_method = "robust"),
+    class = "propensity_method_error",
+    regexp = "robust"
+  )
+
+  mods_glm <- fit_continuous_models(dat, ps_type = "glm")
+  expect_error(
+    ipw(mods_glm$ps_mod, mods_glm$outcome_mod, se_method = "robust"),
+    class = "propensity_method_error",
+    regexp = "robust"
+  )
+
+  # One wording for both routes, pinned once.
+  expect_propensity_error(
+    ipw(mods_lm$ps_mod, mods_lm$outcome_mod, se_method = "robust")
   )
 })
 
@@ -580,7 +725,6 @@ test_that("ipw() rejects a non-identity link on the continuous marginal structur
 })
 
 test_that("ipw() continuous works with a log-link marginal structural model", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   # Low baseline risk and a weak dose effect keep the log-binomial fitted
   # probabilities below 1 so the marginal structural model converges.
@@ -683,7 +827,6 @@ test_that("the continuous ps_link error explains why the argument does not apply
 # ---- factor outcome response ------------------------------------------------
 
 test_that("continuous logistic MSM matches a factor outcome response to the numeric fit", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   dat$ybf <- factor(ifelse(dat$yb == 1, "yes", "no"), levels = c("no", "yes"))
   ps_mod <- lm(A ~ x1 + x2, data = dat)
@@ -715,7 +858,6 @@ test_that("continuous logistic MSM matches a factor outcome response to the nume
 # ---- ps design reconstruction from .data ------------------------------------
 
 test_that("continuous reconstructs the ps design from .data when the fit frame is gone", {
-  skip_if_not_installed("deli")
   # The continuous path routes the ps design through ipw_extract_ps_design:
   # with the fitting data gone, no .data raises the guarded error and .data
   # rebuilds the design. The binary path matches this behavior; see
@@ -736,7 +878,6 @@ test_that("continuous reconstructs the ps design from .data when the fit frame i
 })
 
 test_that("continuous errors informatively when the outcome model frame is gone", {
-  skip_if_not_installed("deli")
   # The companion to the binary and categorical pins in test-ipw-mestimation.R.
   # The guard lives in the weight extraction every ipw() method runs first, so
   # the continuous route gets it by sharing that helper rather than by having
@@ -767,7 +908,6 @@ test_that("continuous errors informatively when the outcome model frame is gone"
 })
 
 test_that("continuous rejects a .data whose covariate types skew the design", {
-  skip_if_not_installed("deli")
   # The continuous companion to the binary and categorical width pins. Same
   # rationale as the frame-gone pin above: the check lives in the shared
   # extraction, and this fixes that it covers this route.
@@ -789,7 +929,6 @@ test_that("continuous rejects a .data whose covariate types skew the design", {
 })
 
 test_that("a log-transformed continuous outcome response through .data matches the model-frame route", {
-  skip_if_not_installed("deli")
   # The continuous companion to the binary pins in test-ipw-se-method.R. Same
   # rationale as the pins above: the response is read out of `.data` by the
   # shared extraction, so a transformation of a column has to be computed rather
@@ -817,7 +956,6 @@ test_that("a log-transformed continuous outcome response through .data matches t
 # .data with too few rows" in test-ipw-mestimation.R.
 
 test_that("ipw() continuous rejects a .data with too few rows", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
 
@@ -833,7 +971,6 @@ test_that("ipw() continuous rejects a .data with too few rows", {
 # ---- weight-consistency hint wording ----------------------------------------
 
 test_that("the continuous weight-consistency error names no focal level", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
   spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
@@ -858,7 +995,6 @@ test_that("the continuous weight-consistency error names no focal level", {
 })
 
 test_that("ipw() refuses continuous weights built with an observation-level `.sigma`", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   ps_mod <- lm(A ~ x1 + x2, data = dat)
 
@@ -889,7 +1025,6 @@ test_that("ipw() refuses continuous weights built with an observation-level `.si
 })
 
 test_that("the observation-level spread refusal names both spreads it takes", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   ps_mod <- lm(A ~ x1 + x2, data = dat)
   sigma_wts <- wt_ate(
@@ -913,12 +1048,12 @@ test_that("the observation-level spread refusal names both spreads it takes", {
 # user never fit, and no downstream guard catches it: an lm subclass reaches the
 # lm method by inheritance, and the weights built from its fitted values agree
 # with the weights recomputed at the seeded init, so the weight-consistency
-# preflight passes. The same holds through the gaussian-family branch of the glm
-# method, which routes a gaussian mgcv::gam to the identical path. Every class
-# the registry was not written for is refused at entry, naming the class it was
-# given; which refusal each one gets is pinned with the rest of the registry
-# below. MASS::rlm is the one lm subclass with a score of its own, so it is
-# stacked rather than refused, on the terms pinned in the robust section below.
+# preflight passes. Every class the registry was not written for is refused at
+# entry, naming the class it was given; which refusal each one gets is pinned
+# with the rest of the registry below. MASS::rlm is the one lm subclass with a
+# score of its own, so it is stacked rather than refused, on the terms pinned in
+# the robust section below; a gaussian mgcv::gam is stacked as the penalized fit
+# it is, on the terms pinned in tests/testthat/test-ipw-gam.R.
 
 # A fixture whose robust and least-squares propensity fits genuinely disagree:
 # adding a block of large outliers to the exposure pulls the least-squares fit
@@ -936,7 +1071,6 @@ sim_continuous_outliers <- function(seed = 2024, n = 800, n_outliers = 40) {
 }
 
 test_that("a least-squares propensity model still runs on the outlier fixture", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
   # The control for the robust section below: on the contaminated fixture the
@@ -948,28 +1082,9 @@ test_that("a least-squares propensity model still runs on the outlier fixture", 
   expect_s3_class(ipw(lm_mod, lm_msm), "ipw")
 })
 
-test_that("ipw() rejects a gaussian gam propensity model on the continuous path", {
-  skip_if_not_installed("mgcv")
-  dat <- sim_continuous_outliers()
-
-  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
-  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
-  msm <- lm(yc ~ A, data = dat, weights = wts)
-
-  # A gaussian gam reaches the continuous path through the glm method, so the
-  # restriction has to hold at that entry point too and not only in the lm
-  # method.
-  expect_error(
-    ipw(ps_mod, msm),
-    class = "propensity_error",
-    regexp = "gam"
-  )
-})
-
 # ---- arguments that fall into the dots --------------------------------------
 
 test_that("ipw() lm rejects arguments that fall into the dots", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
 
@@ -987,7 +1102,6 @@ test_that("ipw() lm rejects arguments that fall into the dots", {
 })
 
 test_that("ipw() lm accepts every argument supplied by name", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
 
@@ -1132,7 +1246,6 @@ test_that("the transformed continuous propensity response error reads in the use
 })
 
 test_that("a plain continuous propensity response is still accepted", {
-  skip_if_not_installed("deli")
   dat <- continuous_lhs_data()
   mods <- fit_continuous_models(dat)
 
@@ -1142,7 +1255,6 @@ test_that("a plain continuous propensity response is still accepted", {
 # ---- the contrast column a continuous exposure has no use for ---------------
 
 test_that("ipw() continuous stores no contrast column under either name", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   # A continuous exposure has no pair of levels to name, so its rows are keyed
@@ -1166,7 +1278,6 @@ test_that("ipw() continuous stores no contrast column under either name", {
 # refusal with a different remedy.
 
 test_that("ipw() stacks a log-link gaussian propensity model", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_positive()
   mods <- fit_continuous_models(dat, ps_type = "glm_log")
 
@@ -1211,7 +1322,6 @@ test_that("ipw() stacks a log-link gaussian propensity model", {
 
 test_that("ipw() stacks a robust Huber propensity model", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
   mods <- fit_continuous_models(dat, ps_type = "rlm")
 
@@ -1240,7 +1350,6 @@ test_that("ipw() stacks a robust Huber propensity model", {
 
 test_that("the weights ipw() rebuilds at its seed match a robust fit's", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
   mods <- fit_continuous_models(dat, ps_type = "rlm")
 
@@ -1264,7 +1373,6 @@ test_that("the weights ipw() rebuilds at its seed match a robust fit's", {
 
 test_that("ipw() stacks a robust fit whose psi threshold was retuned", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
   # Passing `k` retunes the Huber psi rather than replacing it: `rlm` rewrites
@@ -1290,17 +1398,197 @@ test_that("ipw() stacks a robust fit whose psi threshold was retuned", {
   expect_equal(unname(ps_block), unname(coef(ps_mod)), tolerance = 1e-6)
 })
 
-test_that("ipw() refuses a robust fit whose psi it cannot write", {
+# ---- the redescending psi functions -----------------------------------------
+#
+# `MASS::psi.bisquare` and `MASS::psi.hampel` are the other two psi functions
+# `rlm` ships, and deli writes both as losses of its own: the bisquare is deli's
+# "tukey" and Hampel is deli's "hampel". The translation is the one the Huber
+# route already makes, applied per psi: `rlm` clips the residual divided by its
+# scale estimate and deli clips the raw residual, so each of the psi's own
+# constants is multiplied by the scale the fit settled on. Which constants those
+# are differs by psi, and each is read off the formals `rlm` rewrote: `c` for
+# the bisquare, and `a`, `b`, and `c` for Hampel.
+#
+# Both psi functions redescend, so the equation the stacked system writes has
+# more than one root and the solve reports whichever one it is seeded at. The
+# seed is the fit's own coefficients, so what the sandwich describes is the fit
+# the user has, read locally: it is the covariance of that root and carries no
+# claim about the others. The tests below pin the seeding, which is what makes
+# the local reading the right one.
+#
+# `method = "MM"` stays refused. Its final step converges the bisquare at a
+# fixed scale, so its coefficients do sit at a root of the score this route
+# would write; what the route cannot write is how it got there. The
+# high-breakdown start decides which root the fit finishes at and supplies the
+# scale it clips at, and a sandwich read locally at those coefficients
+# describes neither, so it is not the sampling behavior of an MM fit.
+
+test_that("ipw() stacks a bisquare propensity model at its own coefficients", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
   ps_mod <- MASS::rlm(
     A ~ x1 + x2,
     data = dat,
     psi = MASS::psi.bisquare,
-    acc = 1e-10
+    acc = 1e-10,
+    maxit = 200
   )
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  res <- ipw(ps_mod, msm)
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(msm)[["A"]]),
+    tolerance = 1e-6
+  )
+
+  # The parity that matters: the solved propensity block is the coefficient
+  # vector `MASS::rlm()` reports, so the sandwich describes the fit the user
+  # has rather than another root of the same redescending score.
+  theta <- coef(res$fit)
+  ps_block <- theta[seq_along(coef(ps_mod))]
+  expect_equal(unname(ps_block), unname(coef(ps_mod)), tolerance = 1e-6)
+
+  # The contamination is what makes the parity worth asserting: a bisquare fit
+  # and a least-squares fit of the same columns disagree here, so a system that
+  # stacked the wrong score would report a different propensity model.
+  lm_coefs <- coef(lm(A ~ x1 + x2, data = dat))
+  expect_gt(max(abs(unname(coef(ps_mod)) - unname(lm_coefs))), 0.1)
+
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("ipw() stacks a Hampel propensity model at its own coefficients", {
+  skip_if_not_installed("MASS")
+  dat <- sim_continuous_outliers()
+
+  ps_mod <- MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = MASS::psi.hampel,
+    acc = 1e-10,
+    maxit = 200
+  )
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  res <- ipw(ps_mod, msm)
+
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(msm)[["A"]]),
+    tolerance = 1e-6
+  )
+
+  theta <- coef(res$fit)
+  ps_block <- theta[seq_along(coef(ps_mod))]
+  expect_equal(unname(ps_block), unname(coef(ps_mod)), tolerance = 1e-6)
+
+  lm_coefs <- coef(lm(A ~ x1 + x2, data = dat))
+  expect_gt(max(abs(unname(coef(ps_mod)) - unname(lm_coefs))), 0.1)
+
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("ipw() reads a redescending psi's constants off the fit", {
+  skip_if_not_installed("MASS")
+  dat <- sim_continuous_outliers()
+
+  # Each psi names its constants differently and `rlm` records a caller's
+  # choice by rewriting the psi's formals, so a translation that read Huber's
+  # `k` for every psi would find nothing here, and one that read the defaults
+  # rather than the formals would write the score of a fit nobody made. The
+  # Hampel case is the one that pins the arity as well: three constants rather
+  # than one.
+  bisquare <- MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = MASS::psi.bisquare,
+    c = 3,
+    acc = 1e-10,
+    maxit = 200
+  )
+  expect_equal(as.numeric(formals(bisquare$psi)$c), 3)
+
+  hampel <- MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = MASS::psi.hampel,
+    a = 1.5,
+    b = 3,
+    c = 6,
+    acc = 1e-10,
+    maxit = 200
+  )
+  expect_equal(
+    as.numeric(c(
+      formals(hampel$psi)$a,
+      formals(hampel$psi)$b,
+      formals(hampel$psi)$c
+    )),
+    c(1.5, 3, 6)
+  )
+
+  for (ps_mod in list(bisquare, hampel)) {
+    wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+    msm <- lm(yc ~ A, data = dat, weights = wts)
+
+    res <- ipw(ps_mod, msm)
+    theta <- coef(res$fit)
+    expect_equal(
+      unname(theta[seq_along(coef(ps_mod))]),
+      unname(coef(ps_mod)),
+      tolerance = 1e-6
+    )
+  }
+})
+
+test_that("the MM method stays refused now that the bisquare is written", {
+  skip_if_not_installed("MASS")
+  dat <- sim_continuous_outliers()
+
+  # `rlm(method = "MM")` finishes on the bisquare, which this route can now
+  # write, and it is still refused: the high-breakdown start decides which root
+  # the fit finishes at and supplies the scale it clips at, neither of which the
+  # stacked system writes, so a sandwich read locally at those coefficients
+  # would not describe how the fit behaves across samples.
+  ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, method = "MM")
+  expect_equal(ipw_rlm_psi_name(ps_mod), "MASS::psi.bisquare")
+
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_robust_psi_error"
+  )
+  expect_match(conditionMessage(err), "MM", fixed = TRUE)
+})
+
+test_that("ipw() refuses a robust fit whose psi it cannot write", {
+  skip_if_not_installed("MASS")
+  dat <- sim_continuous_outliers()
+
+  # A psi of the caller's own is the refusal that survives: `rlm` accepts any
+  # function here, and one this route has no name for is one whose score it
+  # cannot write. The three psi functions MASS ships are all written now, so the
+  # refusal is reached through a custom psi rather than through the bisquare.
+  own_psi <- function(u, k = 1.5) pmin(1, k / abs(u))
+  ps_mod <- suppressWarnings(MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = own_psi,
+    acc = 1e-10,
+    maxit = 200
+  ))
+  expect_null(ipw_rlm_psi_name(ps_mod))
+
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
   msm <- lm(yc ~ A, data = dat, weights = wts)
 
@@ -1309,22 +1597,91 @@ test_that("ipw() refuses a robust fit whose psi it cannot write", {
     class = "propensity_ipw_robust_psi_error"
   )
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
-  expect_match(msg, "psi.bisquare", fixed = TRUE)
-  expect_match(msg, "psi.huber", fixed = TRUE)
+  expect_match(msg, "recognize", fixed = TRUE)
   expect_match(msg, "bootstrap the whole fit yourself", fixed = TRUE)
+})
+
+test_that("ipw() refuses a robust bisquare fit that did not converge", {
+  skip_if_not_installed("MASS")
+  dat <- sim_continuous_outliers()
+
+  # The convergence guard is not psi-specific, and it matters more for a
+  # redescending psi than for Huber: a fit stopped short sits at no root at all,
+  # and a solve seeded there would walk to whichever root it reached.
+  ps_mod <- suppressWarnings(MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = MASS::psi.bisquare,
+    maxit = 1
+  ))
+  expect_false(ps_mod$converged)
+
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_convergence_error"
+  )
+})
+
+test_that("the registry translates each rlm psi to its deli loss and scale", {
+  skip_if_not_installed("MASS")
+  dat <- sim_continuous_outliers()
+
+  # The translation itself, read off the registry entry rather than through a
+  # solve: which loss deli writes, and the constants on the raw-residual scale
+  # deli clips at, which are the psi's own constants times the scale `rlm`
+  # settled on.
+  fits <- list(
+    huber = MASS::rlm(A ~ x1 + x2, data = dat, acc = 1e-10, maxit = 200),
+    tukey = MASS::rlm(
+      A ~ x1 + x2,
+      data = dat,
+      psi = MASS::psi.bisquare,
+      acc = 1e-10,
+      maxit = 200
+    ),
+    hampel = MASS::rlm(
+      A ~ x1 + x2,
+      data = dat,
+      psi = MASS::psi.hampel,
+      acc = 1e-10,
+      maxit = 200
+    )
+  )
+
+  expected_k <- list(
+    huber = as.numeric(formals(fits$huber$psi)$k) * fits$huber$s,
+    tukey = as.numeric(formals(fits$tukey$psi)$c) * fits$tukey$s,
+    hampel = as.numeric(c(
+      formals(fits$hampel$psi)$a,
+      formals(fits$hampel$psi)$b,
+      formals(fits$hampel$psi)$c
+    )) *
+      fits$hampel$s
+  )
+
+  for (loss in names(fits)) {
+    entry <- ipw_continuous_model(fits[[loss]])
+    expect_true(entry$stackable, label = loss)
+    expect_identical(entry$psi_loss, loss, label = loss)
+    expect_equal(entry$psi_k, expected_k[[loss]], label = loss)
+  }
 })
 
 test_that("the robust psi refusal names the psi it found and the remedy", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
-  ps_mod <- MASS::rlm(
+  own_psi <- function(u, k = 1.5) pmin(1, k / abs(u))
+  ps_mod <- suppressWarnings(MASS::rlm(
     A ~ x1 + x2,
     data = dat,
-    psi = MASS::psi.bisquare,
-    acc = 1e-10
-  )
+    psi = own_psi,
+    acc = 1e-10,
+    maxit = 200
+  ))
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
   msm <- lm(yc ~ A, data = dat, weights = wts)
 
@@ -1333,11 +1690,11 @@ test_that("the robust psi refusal names the psi it found and the remedy", {
 
 test_that("ipw() refuses the MM method as an equation it cannot write", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
-  # MM starts from a high-breakdown fit and finishes on a redescending psi, so
-  # the refusal is the same one a psi the system cannot write gets.
+  # MM reaches its coefficients through a high-breakdown start whose root
+  # selection and scale this system does not write, so the refusal is the same
+  # one a psi the system cannot write gets.
   ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, method = "MM")
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
   msm <- lm(yc ~ A, data = dat, weights = wts)
@@ -1350,7 +1707,6 @@ test_that("ipw() refuses the MM method as an equation it cannot write", {
 
 test_that("ipw() refuses the MM method named through a variable", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
   # `rlm` records the method as it was written rather than as it was resolved,
@@ -1370,7 +1726,6 @@ test_that("ipw() refuses the MM method named through a variable", {
 
 test_that("the MM refusal names the method and the psi it finishes on", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
   ps_mod <- MASS::rlm(A ~ x1 + x2, data = dat, method = "MM")
@@ -1380,9 +1735,40 @@ test_that("the MM refusal names the method and the psi it finishes on", {
   expect_propensity_error(ipw(ps_mod, msm))
 })
 
+test_that("ipw() refuses the MM method whose psi it cannot name", {
+  skip_if_not_installed("MASS")
+  dat <- sim_continuous_outliers()
+
+  # The refusal reads the method off the call and the psi off the fitted object,
+  # and it has a third thing to say when the first is MM and the second is a psi
+  # it has no name for: the method alone is enough to refuse on, so the psi it
+  # cannot name goes unmentioned. `rlm()` writes no such fit itself, because
+  # `method = "MM"` replaces whatever psi it was handed with the bisquare, so
+  # the pair is assembled here rather than fit.
+  own_psi <- function(u, k = 1.5) pmin(1, k / abs(u))
+  ps_mod <- suppressWarnings(MASS::rlm(
+    A ~ x1 + x2,
+    data = dat,
+    psi = own_psi,
+    acc = 1e-10,
+    maxit = 200
+  ))
+  ps_mod$call$method <- "MM"
+  expect_identical(ipw_rlm_method(ps_mod), "MM")
+  expect_null(ipw_rlm_psi_name(ps_mod))
+
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  msm <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_robust_psi_error"
+  )
+  expect_propensity_error(ipw(ps_mod, msm))
+})
+
 test_that("ipw() refuses a robust fit that did not converge", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
   # A fit stopped after one step is not at the root of the Huber score, so the
@@ -1405,7 +1791,6 @@ test_that("ipw() refuses a robust fit that did not converge", {
 
 test_that("the robust convergence refusal names the arguments that fix it", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   dat <- sim_continuous_outliers()
 
   ps_mod <- suppressWarnings(MASS::rlm(A ~ x1 + x2, data = dat, maxit = 1))
@@ -1417,7 +1802,6 @@ test_that("the robust convergence refusal names the arguments that fix it", {
 
 test_that("ipw() takes a robust fit's own scale as a fixed spread", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
 
   # The uncontaminated fixture, deliberately: `rlm` reports a scale that resists
   # outliers, so on the contaminated data the conditional density read at that
@@ -1452,7 +1836,6 @@ test_that("ipw() takes a robust fit's own scale as a fixed spread", {
 })
 
 test_that("ipw() continuous refuses an lm subclass it does not know", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
 
@@ -1472,7 +1855,6 @@ test_that("ipw() continuous refuses an lm subclass it does not know", {
 })
 
 test_that("the unknown-subclass error names the classes that are supported", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
   unknown <- structure(mods$ps_mod, class = c("mymodel", "lm"))
@@ -1480,8 +1862,32 @@ test_that("the unknown-subclass error names the classes that are supported", {
   expect_propensity_error(ipw(unknown, mods$outcome_mod))
 })
 
+test_that("ipw() refuses a propensity model fit without a formula", {
+  dat <- sim_continuous()
+
+  # A robust fit through the matrix interface records no formula and no terms.
+  # The weights read nothing but its fitted values, so it builds them, and then
+  # every `ipw()` route deparses the left-hand side of the formula to name the
+  # exposure and finds none there.
+  fit <- MASS::rlm(cbind(1, dat$x1, dat$x2), dat$A)
+  wts <- continuous_weights(as.numeric(fitted(fit)), dat$A)
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(fit, outcome_mod),
+    class = "propensity_ipw_response_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+
+  # The refusal names the interface the model has to be refit through, rather
+  # than reporting a subscript of a formula that was never written.
+  expect_match(msg, "formula", fixed = TRUE)
+  expect_match(msg, "wt_mod", fixed = TRUE)
+
+  expect_propensity_error(ipw(fit, outcome_mod))
+})
+
 test_that("ipw() refuses a propensity link it cannot write the score for", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_positive()
 
   # An identity link is least squares and a log link is the score deli writes
@@ -1500,7 +1906,6 @@ test_that("ipw() refuses a propensity link it cannot write the score for", {
 })
 
 test_that("the continuous propensity-link error names the link and the remedy", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_positive()
   ps_mod <- glm(A ~ x1 + x2, data = dat, family = gaussian(link = "inverse"))
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
@@ -1509,49 +1914,113 @@ test_that("the continuous propensity-link error names the link and the remedy", 
   expect_propensity_error(ipw(ps_mod, msm))
 })
 
-test_that("ipw() refuses a gam propensity model as a method it cannot produce", {
-  skip_if_not_installed("mgcv")
-  skip_if_not_installed("deli")
-  dat <- sim_continuous()
+# ---- a dose model of a family that is not gaussian --------------------------
+#
+# The exposure type a fitted propensity score model implies is read off its
+# family: a gaussian one is a dose, and every other family is a binary
+# propensity score. A dose model of a third family is neither, and reading it as
+# the second of the two describes it wrongly: the refusal a reader gets names
+# the links a binary propensity score is written for, which is a set the fit
+# they have could not be refit into and a remedy for a model they did not fit.
+#
+# What such a fit needs said is the family it has and the family a continuous
+# exposure needs, so the refusal is written on the family rather than on the
+# link a family that reached the wrong route happens to carry. The links a
+# binomial fit is refused for are unchanged: a binomial model is a binary
+# propensity score whatever its link, and it keeps the refusal that names them.
 
-  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
+test_that("ipw() refuses a non-gaussian glm dose model by its family", {
+  dat <- sim_continuous_positive()
+
+  ps_mod <- glm(A ~ x1 + x2, data = dat, family = Gamma())
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
   msm <- lm(yc ~ A, data = dat, weights = wts)
 
-  # An additive fit chooses its smoothing by REML, which no estimating equation
-  # here reproduces, so the sandwich is unavailable rather than the model being
-  # wrong. The package offers no second method, so the refusal points at a
-  # bootstrap of the whole pipeline written by hand.
   err <- expect_error(
     ipw(ps_mod, msm),
-    class = "propensity_ipw_se_method_unavailable_error"
+    class = "propensity_model_family_error"
   )
-  expect_s3_class(err, "propensity_method_error")
   msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
-  expect_match(msg, "no resampling method", fixed = TRUE)
-  expect_match(msg, "bootstrap the whole fit yourself", fixed = TRUE)
+
+  # The family the fit has, and the family each exposure type needs. Naming the
+  # binary links here is what the old refusal did and is what misdescribed the
+  # fit, so the message must not fall back on them.
+  expect_match(msg, "Gamma", fixed = TRUE)
+  expect_match(msg, "gaussian", fixed = TRUE)
+  expect_match(msg, "continuous", fixed = TRUE)
+  expect_no_match(msg, "cloglog", fixed = TRUE)
 })
 
-test_that("the unavailable-method error explains what the sandwich cannot do", {
+test_that("ipw() refuses a non-gaussian gam dose model by its family", {
   skip_if_not_installed("mgcv")
-  skip_if_not_installed("deli")
-  dat <- sim_continuous()
-  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = gaussian())
+  dat <- sim_continuous_positive()
+
+  # A gam reaches the same routing through the glm method it inherits from, so
+  # the fault and the refusal are shared.
+  ps_mod <- mgcv::gam(A ~ s(x1) + x2, data = dat, family = Gamma())
   wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
   msm <- lm(yc ~ A, data = dat, weights = wts)
 
-  expect_propensity_error(ipw(ps_mod, msm))
+  err <- expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_model_family_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "Gamma", fixed = TRUE)
+  expect_match(msg, "gaussian", fixed = TRUE)
+  expect_no_match(msg, "cloglog", fixed = TRUE)
+})
+
+test_that("ipw() refuses a poisson dose model by its family", {
+  dat <- sim_continuous_positive()
+
+  # A count dose is the case that reaches this most naturally, and the family
+  # named in the message is the one the fit carries rather than a family the
+  # refusal assumed.
+  withr::local_seed(31)
+  dat$count <- rpois(nrow(dat), exp(0.2 * dat$x1 + 0.4))
+  ps_mod <- glm(count ~ x1 + x2, data = dat, family = poisson())
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$count)
+  msm <- lm(yc ~ count, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_model_family_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "poisson", fixed = TRUE)
+  expect_match(msg, "gaussian", fixed = TRUE)
+})
+
+test_that("a binomial propensity model keeps its link refusal", {
+  dat <- sim_continuous()
+
+  # The family check must not swallow the refusal a binomial fit already gets.
+  # A binomial model is a binary propensity score whatever its link, so an
+  # unsupported link is still reported as a link.
+  dat$z <- as.numeric(dat$A > stats::median(dat$A))
+  ps_mod <- glm(z ~ x1 + x2, data = dat, family = binomial(link = "cauchit"))
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(as.double(fitted(ps_mod)), dat$z, exposure_type = "binary")
+  )
+  msm <- lm(yc ~ z, data = dat, weights = wts)
+
+  expect_error(
+    ipw(ps_mod, msm),
+    class = "propensity_ipw_link_error"
+  )
 })
 
 test_that("ipw() refuses kernel-density weights as a method it cannot produce", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat, .density = "kernel")
 
   # A kernel bandwidth is chosen from the residuals rather than written as a
   # function of the parameters, so the weights are not differentiable in theta
-  # and the sandwich has nothing to differentiate. The class is the same one the
-  # gam refusal carries: what is unavailable is the method, not the model.
+  # and the sandwich has nothing to differentiate. What is unavailable is the
+  # method, not the model: the weights are exactly what they claim to be, and
+  # the refusal points at a bootstrap of the whole pipeline written by hand.
   err <- expect_error(
     ipw(mods$ps_mod, mods$outcome_mod),
     class = "propensity_ipw_se_method_unavailable_error"
@@ -1565,7 +2034,6 @@ test_that("ipw() refuses kernel-density weights as a method it cannot produce", 
 })
 
 test_that("the kernel-density refusal names the bandwidth as the reason", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat, .density = "kernel")
 
@@ -1573,7 +2041,6 @@ test_that("the kernel-density refusal names the bandwidth as the reason", {
 })
 
 test_that("ipw() stacks a density the user wrote", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(
     dat,
@@ -1604,7 +2071,6 @@ continuous_density_cases <- list(
 )
 
 test_that("ipw() continuous point estimates match the MSM coefficient for every density", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   for (case in continuous_density_cases) {
@@ -1624,7 +2090,6 @@ test_that("ipw() continuous point estimates match the MSM coefficient for every 
 })
 
 test_that("the weights ipw() rebuilds at its seed are the weights it was given", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   # The preflight compares the two at a relative tolerance of 1e-6 before
@@ -1653,7 +2118,6 @@ test_that("the weights ipw() rebuilds at its seed are the weights it was given",
 })
 
 test_that("a log-link propensity model rebuilds its weights at the seed too", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_positive()
   mods <- fit_continuous_models(dat, ps_type = "glm_log")
 
@@ -1667,7 +2131,6 @@ test_that("a log-link propensity model rebuilds its weights at the seed too", {
 })
 
 test_that("an integrated numerator stacks no marginal moments", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat, numerator = "integrated")
 
@@ -1687,7 +2150,6 @@ test_that("an integrated numerator stacks no marginal moments", {
 # ---- the spread the weights were built with ---------------------------------
 
 test_that("ipw() accepts a fixed scalar `.sigma` as a constant", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   # A spread the user fixed is a number rather than a parameter, so the ps block
@@ -1717,7 +2179,6 @@ test_that("ipw() accepts a fixed scalar `.sigma` as a constant", {
 # ---- what the weights record and what the spec reads ------------------------
 
 test_that("ipw_spec_continuous reads the density, numerator, and spread off the weights", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
 
   mods <- fit_continuous_models(
@@ -1738,7 +2199,6 @@ test_that("ipw_spec_continuous reads the density, numerator, and spread off the 
 })
 
 test_that("ipw() reads weights carrying no density record as a normal ratio", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous()
   mods <- fit_continuous_models(dat)
 
@@ -1766,7 +2226,6 @@ test_that("ipw() reads weights carrying no density record as a normal ratio", {
 # ---- standard-error oracles for the new routes ------------------------------
 
 test_that("the sandwich SE for a heavy-tailed integrated ratio tracks a bootstrap", {
-  skip_if_not_installed("deli")
   skip_on_cran()
 
   dat <- sim_continuous(seed = 2024, n = 600)
@@ -1805,7 +2264,6 @@ test_that("the sandwich SE for a heavy-tailed integrated ratio tracks a bootstra
 })
 
 test_that("the sandwich SE for a log-link propensity model tracks a bootstrap", {
-  skip_if_not_installed("deli")
   skip_on_cran()
 
   dat <- sim_continuous_positive(seed = 2024, n = 600)
@@ -1841,7 +2299,6 @@ test_that("the sandwich SE for a log-link propensity model tracks a bootstrap", 
 
 test_that("the sandwich SE for a robust Huber propensity model tracks a bootstrap", {
   skip_if_not_installed("MASS")
-  skip_if_not_installed("deli")
   skip_on_cran()
 
   # The sandwich holds the fit's MAD scale fixed while the bootstrap re-estimates
@@ -1912,7 +2369,6 @@ test_that("the sandwich SE for a robust Huber propensity model tracks a bootstra
 
 test_that("ipw() continuous m-estimation standard errors match WeightIt", {
   skip_on_cran()
-  skip_if_not_installed("deli")
   skip_if_not_installed("WeightIt", "2.0.0")
 
   set.seed(123)
@@ -1977,4 +2433,175 @@ test_that("ipw() continuous m-estimation standard errors match WeightIt", {
       ignore_attr = TRUE
     )
   }
+})
+
+# ---- a spread estimated by maximum likelihood -------------------------------
+
+test_that("ipw() solves the scale equation of a t spread by maximum likelihood", {
+  dat <- sim_continuous()
+  ps_mod <- lm(A ~ x1 + x2, data = dat)
+  scale <- t_scale_mle(dat$A - as.double(fitted(ps_mod)), df = 6)
+
+  # The same weights twice: once with the scale the package estimates, once with
+  # the number it estimates supplied as a constant. The weights are equal, so
+  # the point estimates are, and what differs between the two fits is what the
+  # sandwich accounts for.
+  mle <- fit_continuous_models(dat, .density = dens_t(6, sigma_method = "mle"))
+  fixed <- fit_continuous_models(dat, .density = dens_t(6), .sigma = scale)
+  expect_equal(as.double(mle$wts), as.double(fixed$wts), tolerance = 1e-8)
+
+  res_mle <- ipw(mle$ps_mod, mle$outcome_mod)
+  res_fixed <- ipw(fixed$ps_mod, fixed$outcome_mod)
+
+  # The scale is a parameter of the stacked system under the name the moment
+  # equation gives it, and it is solved to the scale the weights were built at.
+  # A spread held fixed is no parameter at all.
+  expect_true("sigma2_d" %in% names(coef(res_mle$fit)))
+  expect_false("sigma2_d" %in% names(coef(res_fixed$fit)))
+  expect_equal(
+    unname(coef(res_mle$fit)[["sigma2_d"]]),
+    scale^2,
+    tolerance = 1e-6
+  )
+
+  expect_equal(
+    res_mle$estimates$estimate,
+    res_fixed$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_gt(
+    abs(res_mle$estimates$std.err / res_fixed$estimates$std.err - 1),
+    1e-4
+  )
+})
+
+test_that("ipw_spec_continuous reads a maximum likelihood spread off the weights", {
+  dat <- sim_continuous()
+  mods <- fit_continuous_models(
+    dat,
+    .density = dens_t(6, sigma_method = "mle")
+  )
+
+  spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+
+  # A spread estimated by maximum likelihood is estimated alongside the
+  # coefficients, as the pooled one is, so the propensity block carries a row
+  # for it beyond the columns of the design.
+  expect_length(layout$idx$ps, ncol(spec$ps$X) + 1L)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(mods$wts),
+    tolerance = 1e-12
+  )
+})
+
+test_that("ipw() refuses a numerator model whose score it cannot write", {
+  skip_if_not_installed("MASS")
+
+  # The numerator model joins the stack the way the propensity score model
+  # does, so it is read through the same registry and refused on the same
+  # terms, in the argument it arrived in. A robust fit descending a psi of the
+  # caller's own is the case the registry refuses on both sides: its
+  # coefficients are the root of a loss no equation stacked here writes.
+  dat <- sim_continuous()
+  own_psi <- function(u, k = 1.5) pmin(1, k / abs(u))
+  num_mod <- suppressWarnings(MASS::rlm(
+    A ~ x1,
+    data = dat,
+    psi = own_psi,
+    acc = 1e-10,
+    maxit = 200
+  ))
+  fits <- fit_continuous_models(dat, stabilize = num_mod)
+
+  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+})
+
+test_that("ipw() refuses a numerator model fit with case weights", {
+  # The stabilization block writes the numerator model's unweighted score, the
+  # same score every other model in the stack is written at, so a fit made under
+  # case weights is not at the root of the row seeded for it and the solve would
+  # walk it off the fit the user has. The refusal names the argument the model
+  # arrived in, since a reader told to refit the propensity score model would be
+  # told to refit the wrong thing.
+  #
+  # `wt_ate()` refuses such a model where it arrives, so weights recording one
+  # were built by hand or by a version that took it. The record is written here
+  # rather than built, which is what those weights are, and the check reads it
+  # the same way either way.
+  dat <- sim_continuous()
+  dat$case_wt <- rep(c(1, 2), length.out = nrow(dat))
+  weighted <- lm(A ~ x1, data = dat, weights = case_wt)
+
+  fits <- fit_continuous_models(dat, stabilize = lm(A ~ x1, data = dat))
+  wts <- fits$wts
+  meta <- density_meta(wts)
+  meta$numerator_model <- weighted
+  attr(wts, "density_meta") <- meta
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  expect_error(
+    ipw(fits$ps_mod, outcome_mod),
+    class = "propensity_ipw_ps_weights_error"
+  )
+  expect_propensity_error(ipw(fits$ps_mod, outcome_mod))
+})
+
+test_that("ipw() refuses a numerator model of another response", {
+  # The block the numerator model contributes reads the exposure the propensity
+  # score model reads, so a model of anything else would sit away from the root
+  # of the row seeded for it and the solve would move it, reporting a numerator
+  # nobody fit.
+  dat <- sim_continuous()
+  num_mod <- lm(yc ~ x1, data = dat)
+  fits <- fit_continuous_models(dat, stabilize = num_mod)
+
+  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+})
+
+test_that("ipw() refuses a numerator model fit to other observations", {
+  # The models here were fit under `na.exclude` to a frame with a hole in `x1`,
+  # so they analyzed the rows complete over it while the numerator model, which
+  # reads a complete column, analyzed every row. The weights are built at the
+  # padded length the fits predict at and are the weights the caller meant; what
+  # the stacked system cannot do is multiply a design of one length by a block
+  # of another.
+  dat <- sim_continuous(n = 200)
+  dat$x1[c(3, 17, 42)] <- NA
+
+  ps_mod <- lm(A ~ x1 + x2, data = dat, na.action = stats::na.exclude)
+  num_mod <- lm(A ~ x2, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = num_mod
+  )
+  outcome_mod <- lm(
+    yc ~ A,
+    data = dat,
+    weights = wts,
+    na.action = stats::na.exclude
+  )
+
+  expect_propensity_error(ipw(ps_mod, outcome_mod))
+})
+
+test_that("ipw() refuses a numerator model with a dropped coefficient", {
+  # The stabilization block multiplies the numerator model's coefficients
+  # against its design, exactly as the propensity score block multiplies its
+  # own, so a column the fit could not separate from the others leaves every
+  # numerator undefined. Without the guard the failure arrives much later, as
+  # weights that no longer match the ones the caller built, and the report
+  # blames the record rather than the model.
+  dat <- sim_continuous()
+  dat$x1_again <- dat$x1
+  num_mod <- lm(A ~ x1 + x1_again, data = dat)
+  fits <- fit_continuous_models(dat, stabilize = num_mod)
+
+  expect_error(
+    ipw(fits$ps_mod, fits$outcome_mod),
+    class = "propensity_ipw_rank_error"
+  )
+  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
 })

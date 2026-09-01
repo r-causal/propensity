@@ -14,8 +14,9 @@
 #' [stats::lm()] or gaussian [stats::glm()] propensity score model with a
 #' weighted marginal structural outcome model whose link is identity, logit, or
 #' log, and `ipw()` reports the single exposure coefficient of that model. A
-#' subclass of either propensity score model, such as a robust or an additive
-#' fit, errors.
+#' [MASS::rlm()] fit with one of the psi functions MASS supplies and an
+#' [mgcv::gam()] fit of a gaussian family are read as the equations their own
+#' coefficients solve; every other subclass errors.
 #'
 #' @param wt_mod The weighting object: a fitted propensity score model that
 #'   produced the weights, typically a logistic regression of class
@@ -105,10 +106,9 @@
 #'   model on the binary path. A multinomial or continuous propensity score
 #'   model has no link for `ps_link` to override, so a non-`NULL` value errors
 #'   on both of those paths; leave it `NULL` there. `ps_link` cannot name a link
-#'   other than the one `wt_mod` was fit with:
-#'   `se_method = "linearization"` errors, and `se_method = "mestimation"`
-#'   reports the resulting weights as inconsistent with the propensity score
-#'   model.
+#'   other than the one `wt_mod` was fit with: `se_method = "linearization"`
+#'   and `se_method = "robust"` error, and `se_method = "mestimation"` reports
+#'   the resulting weights as inconsistent with the propensity score model.
 #' @param conf_level Confidence level for intervals. Default is `0.95`.
 #' @param se_method Method for standard error estimation. `"mestimation"` (the
 #'   default) stacks the propensity score, outcome, and estimand estimating
@@ -116,26 +116,37 @@
 #'   uses the influence-function linearization of Kostouraki et al. (2024).
 #'   Both account for the uncertainty of estimating the propensity scores.
 #'
-#'   Which exposure types support which: `"mestimation"` supports every one of
-#'   them; `"linearization"` supports a binary exposure alone. A binary or a
-#'   categorical exposure has a sandwich for every fit it accepts. A few
-#'   continuous fits have no sandwich, and the package computes no standard
-#'   error for them: an [mgcv::gam()] propensity score model and weights built
-#'   with a `"kernel"` density are refused, and so is a [MASS::rlm()] fit the
-#'   stacked system cannot write. See **Continuous propensity score models**
-#'   below.
+#'   `"robust"` does not, and is a diagnostic rather than an inference. It is
+#'   the linearization route with the correction for having estimated the
+#'   propensity score dropped, so it reports the sandwich the weighted outcome
+#'   model computes for itself: the delta-method reading of
+#'   `sandwich::vcovHC(outcome_mod, type = "HC0")`, exactly. Ignoring that the
+#'   weights were estimated generally understates the variance, and understates
+#'   it most where the weights are least stable, so this is offered for reading
+#'   beside one of the other two rather than in place of it. A result fit this
+#'   way says so when printed and marks the tables it coerces to; see
+#'   **Standard errors as a diagnostic** below.
 #'
-#'   `"linearization"` supports only an outcome model of the exposure alone, fit
-#'   with an intercept; a covariate-adjusted outcome model requires
-#'   `"mestimation"`. For a binary or categorical exposure, both methods require
-#'   an outcome model that can represent a baseline, so a numeric no-intercept
-#'   coding such as `y ~ z - 1` errors on either. The standard errors of the
-#'   conditional reading described under `effects` require `"mestimation"`
-#'   as well: the
-#'   linearization route stores its outcome model unwrapped, so [stats::vcov()],
-#'   [stats::confint()], and [`tidy()`][tidy.ipw()] refuse
-#'   `effects = "conditional"` there with a classed error rather than reporting
-#'   the covariance the outcome model computed for itself.
+#'   Which exposure types support which: `"mestimation"` supports every one of
+#'   them; `"linearization"` and `"robust"` support a binary exposure alone. A
+#'   binary or a categorical exposure has a sandwich for every fit it accepts.
+#'   A few
+#'   continuous fits have no sandwich, and the package computes no standard
+#'   error for them: weights built with a `"kernel"` density are refused, and so
+#'   are a [MASS::rlm()] and an [mgcv::gam()] fit whose score the stacked system
+#'   cannot write. See **Continuous propensity score models** below.
+#'
+#'   `"linearization"` and `"robust"` support only an outcome model of the
+#'   exposure alone, fit with an intercept; a covariate-adjusted outcome model
+#'   requires `"mestimation"`. For a binary or categorical exposure, every
+#'   method requires an outcome model that can represent a baseline, so a
+#'   numeric no-intercept coding such as `y ~ z - 1` errors on any of them. The
+#'   standard errors of the conditional reading described under `effects`
+#'   require `"mestimation"` as well: the linearization and robust routes store
+#'   the outcome model unwrapped, so [stats::vcov()], [stats::confint()], and
+#'   [`tidy()`][tidy.ipw()] refuse `effects = "conditional"` there with a
+#'   classed error rather than reporting the covariance the outcome model
+#'   computed for itself.
 #' @param effects The presentation mode the result records, either `"marginal"`
 #'   (the default) or `"conditional"`. The marginal reading reports the
 #'   population-averaged causal contrasts; the conditional reading reports the
@@ -163,12 +174,11 @@
 #'   equations attaches to the outcome model it stores:
 #'   `se_method = "mestimation"` for a binary exposure, the categorical and
 #'   joint routes, which run on M-estimation alone, and the continuous route
-#'   under that method. A
-#'   linearization fit stacks no system and records no covariance of either
-#'   kind, so [stats::vcov()] and [stats::confint()] error on its conditional
-#'   reading, and printing it writes the coefficients under a note saying the
-#'   standard errors are not reported rather than beside the ones the outcome
-#'   model computed for itself.
+#'   under that method. A linearization or robust fit stacks no system and
+#'   records no covariance of either kind, so [stats::vcov()] and
+#'   [stats::confint()] error on its conditional reading, and printing it writes
+#'   the coefficients under a note saying the standard errors are not reported
+#'   rather than beside the ones the outcome model computed for itself.
 #' @param ... These dots are for future extensions and must be empty. They
 #'   separate the two models from the remaining arguments, which must therefore
 #'   be supplied by name. Anything left in them, such as a `.data` argument
@@ -404,7 +414,24 @@
 #' recipe. The sandwich treats a supplied score as a known constant, so the
 #' standard errors do not account for the numerator model having been fitted.
 #' The default stabilizer is estimated in the stacked system instead, which is
-#' one parameter wider as a result.
+#' one parameter wider as a result. There is a third way: pass the fitted
+#' numerator model to `stabilize` itself, and its own equations join the stack,
+#' which is what a supplied score has none of. That accounting has something to
+#' say only where the reported model is not saturated in the variables the
+#' numerator reads; a binary exposure's numerator on a modifier the reported
+#' model interacts with fully divides out of every cell, so the estimates and
+#' the standard errors are the ones the unstabilized weights give.
+#'
+#' A stabilized fit reporting effects within the strata of a modifier, and
+#' carrying the default numerator, warns with class
+#' `propensity_ipw_by_stabilizer_warning` and returns: the default numerator
+#' conditions on nothing, which is consistent for the same stratum effects and
+#' leaves precision on the table. A numerator model the caller supplied is read
+#' the same way, since a fitted model carries the terms it read: one that never
+#' reads the modifier warns with the same class, naming the terms it was built
+#' on, and one that reads the modifier, on its own or through a transformation
+#' of it, is silent. A `stabilization_score` says nothing either way, being a
+#' vector of numbers that does not carry what it conditions on.
 #'
 #' Every reported row is a parameter of one stacked system solved on one sample,
 #' so the covariance couples them: [stats::vcov()] reports nonzero entries
@@ -575,19 +602,72 @@
 #' hold.
 #'
 #' The dose model contributes its coefficients and the conditional variance its
-#' density ratio divides by, and a marginal stabilizing numerator contributes
-#' the dose's two marginal moments, all as parameters of the same stacked
-#' system.
+#' density ratio divides by, all as parameters of the same stacked system. Each
+#' component's stabilizing numerator is estimated in a block of its own; see
+#' **Stabilizing numerators, one per component**.
+#'
+#' ### Stabilizing numerators, one per component
+#'
+#' Either component may be stabilized, and each component's numerator is
+#' estimated in its own block of the stacked system, so the standard errors
+#' account for that numerator having been fitted rather than reading it as a
+#' constant. What the block holds follows what the component's weights record.
+#' A discrete component stabilized by the default numerator contributes the one
+#' marginal proportion that numerator is, and a dose stabilized by the default
+#' numerator contributes the exposure's two marginal moments. A component
+#' stabilized on a fitted model passed to [wt_ate()]'s `stabilize` contributes
+#' that model instead: one parameter per coefficient for a discrete component,
+#' and for a dose one per coefficient plus one for the spread its density is
+#' read at. A dose stabilized with `numerator = "integrated"` is built from the
+#' dose block and the data alone and contributes nothing, and an unstabilized
+#' discrete component contributes nothing either.
+#'
+#' Those parameters are named `stab_<component>_<parameter>`, where
+#' `<component>` is the name the component was recorded under in
+#' [joint_wt_models()]: a joint system carries two components, and a name
+#' saying only which role a parameter plays would not say whose.
+#'
+#' A numerator model is read through the guards its own single-treatment route
+#' reads it through. A discrete component's is read as an unpenalized binomial
+#' fit at a logit, probit, or cloglog link, and a dose's goes through the
+#' registry under **Continuous propensity score models**. A model of a response
+#' other than the treatment it stabilizes, or one fit to a different set of
+#' observations, errors with class `propensity_ipw_numerator_error`; one fit
+#' with case weights errors with class `propensity_ipw_ps_weights_error`.
+#'
+#' What a numerator may condition on is a statement about the reported model
+#' rather than a free choice, and it is the same statement here as for a single
+#' treatment. A numerator may condition on any variable the marginal structural
+#' model already reads, such as a modifier `V`: \eqn{P(Z | V)} for a discrete
+#' treatment and \eqn{f(A | V)} for a dose leave the estimator consistent for
+#' the same effects and only tighten the weights. A numerator conditioning on a
+#' variable the reported model does not read changes what is estimated rather
+#' than the precision, because the pseudo-population it builds is one in which
+#' that variable still predicts the treatment, and the estimates are then read
+#' with `V` or not at all. The accounting a stacked numerator adds has something
+#' to say only where the reported model is not saturated in the variables the
+#' numerator reads: a numerator that divides out of every cell of the reported
+#' model moves neither the estimates nor their standard errors.
 #'
 #' ### The dose model and the ratio its weights are
 #'
 #' The dose model goes through the registry described under **Continuous
 #' propensity score models**, so the classes and links this route stacks are the
 #' ones the single-treatment route stacks: an [stats::lm()], a gaussian
-#' [stats::glm()] fit with an identity or a log link, and a [MASS::rlm()] fit
-#' with the Huber psi. A gaussian dose model fit with another link errors with
-#' class `propensity_ipw_link_error`, and a robust fit whose score the system
-#' cannot write raises the same conditions it raises for a single dose.
+#' [stats::glm()] fit with an identity or a log link, a [MASS::rlm()] fit with
+#' one of the psi functions MASS supplies, and an [mgcv::gam()] of a gaussian
+#' family read at its own penalized score. A gaussian dose model fit with
+#' another link errors with class `propensity_ipw_link_error`, and a robust or
+#' an additive fit whose score the system cannot write raises the same
+#' conditions it raises for a single dose. The limitations of the additive route
+#' are the ones listed under **Continuous propensity score models**, and they
+#' apply here unchanged.
+#'
+#' Every score this route stacks is the unweighted one, so a component model fit
+#' with prior case weights is not at the root of the block written for it and
+#' errors with class `propensity_ipw_ps_weights_error`, naming the component
+#' rather than the container the two models arrived in. Refit that component
+#' without `weights`.
 #'
 #' The dose component's weights may be any ratio [wt_ate()] builds: a
 #' heavier-tailed `.density`, `numerator = "integrated"`, or a single `.sigma`
@@ -600,20 +680,24 @@
 #' carried. A spread supplied for each observation has no counterpart in the
 #' system and errors with class `propensity_ipw_sigma_error`.
 #'
-#' A dose component built with a `stabilization_score` is the one numerator this
-#' route cannot reproduce. The product records that the numerator was a score
-#' without recording the vector it was, so the system rebuilds the dose weights
-#' from the exposure's own marginal moments and the weight-consistency check
-#' reports the difference. Weight the dose on its own to use a numerator
-#' computed by hand.
+#' A component built with a `stabilization_score` is rebuilt from the score
+#' itself. [wt_joint()] records each component's score on the product, and the
+#' sandwich treats it as a known constant here exactly as it does for a single
+#' treatment, so it adds no stabilization parameters and none of its
+#' uncertainty is carried. A product built by a version of this package that
+#' recorded no score, one assembled by hand, or one subset after it was built,
+#' which drops a score held per observation, says a component was stabilized
+#' without saying what by: the system stands that component's own marginal
+#' numerator in, and the weight-consistency check reports the difference,
+#' naming the components whose numerator was stood in for. Rebuild such weights
+#' with [wt_joint()] to have the score read back.
 #'
-#' An [mgcv::gam()] dose model, and dose weights built with a `"kernel"`
-#' density, are refused with class
-#' `propensity_ipw_se_method_unavailable_error`. Neither is a function of the
-#' parameters that the sandwich could differentiate, and the package has no
-#' second method to fall back on, so the refusal points at building the dose
-#' weights from a model and a density the stacked system can write, or at
-#' bootstrapping the whole fit by hand.
+#' Dose weights built with a `"kernel"` density are refused with class
+#' `propensity_ipw_se_method_unavailable_error`. The bandwidth is not a function
+#' of the parameters that the sandwich could differentiate, and the package has
+#' no second method to fall back on, so the refusal points at building the dose
+#' weights from a density the stacked system can write, or at bootstrapping the
+#' whole fit by hand.
 #'
 #' # Variance estimation
 #'
@@ -632,12 +716,25 @@
 #' M-estimation standard errors are available for all exposure types: binary
 #' (from a [stats::glm()] propensity score model), categorical (from a
 #' [nnet::multinom()] model), and continuous (from an [stats::lm()], a gaussian
-#' [stats::glm()], or a [MASS::rlm()] model; see **Continuous propensity score
-#' models** below). The `atm` weight
+#' [stats::glm()], a [MASS::rlm()], or an [mgcv::gam()] model; see **Continuous
+#' propensity score models** below). The `atm` weight
 #' `pmin(e, 1 - e)` is not differentiable at a propensity score of `0.5`; deli's
 #' central finite difference straddles the kink there and averages the one-sided
 #' slopes. Its effect on the variance is negligible unless many observations sit
 #' at exactly `0.5`.
+#'
+#' A binary exposure's propensity score model is read as an unpenalized logistic
+#' fit, whatever the standard error method: the stacked system solves that
+#' score, and both the linearization and the robust diagnostic differentiate it.
+#' An [mgcv::gam()] fit of a binomial family is not at the root of that score
+#' but of a penalized one, so it is refused with class
+#' `propensity_ipw_se_method_unavailable_error` rather than described by a
+#' standard error for a model that was not fit. What is refused is the standard
+#' error and not the weights: [wt_ate()] reads the same fit and builds them from
+#' its fitted probabilities. Write the shape each smooth term carries out as
+#' columns of a [stats::glm()] formula, or bootstrap the whole fit by hand. An
+#' additive dose model is stacked at its penalized score instead, as described
+#' under **Continuous propensity score models**.
 #'
 #' M-estimation standard errors for a categorical exposure allocate memory
 #' roughly linearly in the number of observations, on the order of 70 to 90
@@ -651,23 +748,45 @@
 #'
 #' A continuous exposure's weights are a ratio of densities centered on the
 #' conditional mean the propensity score model fits, so the stacked system
-#' carries that model's own score. Three classes supply one: an [stats::lm()],
-#' a gaussian [stats::glm()] fit with an identity or a log link, and a
-#' [MASS::rlm()] fit with the Huber psi. A gaussian model fit with any other
-#' link is refused by name, because the coefficients its iteration stops at are
-#' not a tight enough root to seed the stacked solve from; refit it with one of
-#' the two links or as an [stats::lm()]. Any other class errors, since solving
-#' it here would report a propensity score model that was never fit.
+#' carries that model's own score. Four classes supply one: an [stats::lm()],
+#' a gaussian [stats::glm()] fit with an identity or a log link, a
+#' [MASS::rlm()] fit with one of the psi functions MASS supplies, and a
+#' gaussian [mgcv::gam()] fit with one of the same two links. A model fit with a
+#' family that is neither gaussian nor binomial is neither a dose model nor a
+#' binary propensity score model, and errors with class
+#' `propensity_model_family_error` naming the family it has. A gaussian model
+#' fit with any other link is refused by name, because the coefficients its
+#' iteration stops at are not a tight enough root to seed the stacked solve
+#' from; refit it with one of the two links or as an [stats::lm()]. Any other
+#' class errors, since solving
+#' it here would report a propensity score model that was never fit. Each class
+#' is read as the class it is rather than by what it inherits from, so a
+#' subclass of a supported fit errors as well.
 #'
-#' A [MASS::rlm()] is stacked as the Huber score its coefficients are the root
-#' of, clipped where the fit itself clipped: at the psi's own constant, which is
-#' the constant a caller passed as `k` when they passed one, times the scale the
-#' fit settled on. That scale enters the location score as a known constant. It
-#' solves an equation of its own that the stacked system does not write, so none
-#' of its sampling variability is propagated, and the standard errors are those
-#' of a Huber score read at a scale treated as fixed. The spread of the
-#' conditional density is a separate quantity, and is the pooled residual
-#' spread there as it is for every other class.
+#' A [MASS::rlm()] is stacked as the psi score its coefficients are the root of,
+#' clipped where the fit itself clipped. Each of the three psi functions MASS
+#' supplies has a loss of its own in the stacked system: [MASS::psi.huber()],
+#' [MASS::psi.bisquare()], and [MASS::psi.hampel()]. `rlm()` clips the residual
+#' divided by its scale estimate at the psi's own constants, and the stacked
+#' score clips the raw residual, so each constant is multiplied by the scale the
+#' fit settled on. Those constants are read off the psi the fit carries, which
+#' is where `rlm()` records a caller's choice of them, so a retuned psi is
+#' stacked at the values it was retuned to. That scale enters the location score
+#' as a known constant. It solves an equation of its own that the stacked system
+#' does not write, so none of its sampling variability is propagated, and the
+#' standard errors are those of a psi score read at a scale treated as fixed.
+#' The spread of the conditional density is a separate quantity, and is the
+#' pooled residual spread there as it is for every other class.
+#'
+#' [MASS::psi.bisquare()] and [MASS::psi.hampel()] redescend, and that is worth
+#' knowing about the standard errors they get. A redescending psi's estimating
+#' equation has more than one root, so there is no single set of coefficients it
+#' identifies and the solve reports whichever root it is seeded at. The seed
+#' here is the fit's own coefficients, so what comes back is the root the user
+#' has, and the sandwich is the covariance of that root read locally. It carries
+#' no claim about the other roots, and it does not describe the sampling
+#' behavior of a procedure that might have converged to one of them instead. Use
+#' a bootstrap of the whole fit if that behavior is what you need.
 #'
 #' Weights built with `.sigma = fit$s`, the robust scale, are read as the fixed
 #' spread they are, but that combination is usually a poor choice: the robust
@@ -677,15 +796,60 @@
 #' Leave `.sigma` unset unless you have a reason to hold the spread at a
 #' particular value.
 #'
-#' Three robust fits are refused. One fit with a psi that is not Huber, and one
-#' fit with `method = "MM"`, which starts from a high-breakdown fit and finishes
-#' on a redescending psi, are the roots of equations the stacked system does not
-#' write; both error with class `propensity_ipw_robust_psi_error`. One whose
-#' iteration stopped short of its own tolerance is the root of nothing, and
-#' errors with class `propensity_ipw_convergence_error`. The first two point to
-#' a Huber refit or to a bootstrap of the whole fit written by hand; the last
-#' points to a larger `maxit` or a looser `acc`, which is what a fit needs to
-#' reach its own tolerance.
+#' Three robust fits are refused. One fit with a psi function of the caller's
+#' own has no loss here to write its score as, and one fit with
+#' `method = "MM"` reaches its coefficients through a high-breakdown start that
+#' decides which root of a redescending psi the fit finishes at and supplies the
+#' scale it clips at, neither of which is an equation this system writes. A
+#' sandwich read locally at those coefficients would therefore not describe how
+#' an MM fit behaves across samples. Both error with class
+#' `propensity_ipw_robust_psi_error`. One whose iteration stopped short of
+#' its own tolerance is the root of nothing, and errors with class
+#' `propensity_ipw_convergence_error`. The first points to a refit with one of
+#' the three psi functions or to a bootstrap of the whole fit written by hand,
+#' the second to the default `method = "M"`, and the last to a larger `maxit` or
+#' a looser `acc`, which is what a fit needs to reach its own tolerance.
+#'
+#' An [mgcv::gam()] is stacked as the penalized least squares it is, with its
+#' smoothing parameters held at the values the fit reports. Its design is the
+#' smooth basis it was built on rather than the columns its formula names, and
+#' its coefficients are the root of the least-squares score of that basis less
+#' the penalty those smoothing parameters define. An [mgcv::bam()] is the same
+#' fit computed for larger data and is read the same way. The additive part of
+#' an [mgcv::gamm()] fit is not: it carries the `gam` class alone, without the
+#' `glm` and `lm` classes `ipw()` reads a model through, and errors with class
+#' `propensity_method_error`. Refit it with [mgcv::gam()] or [mgcv::bam()]. A
+#' penalty attached to a parametric term, such as one from `paraPen`, belongs to
+#' no smooth term and is not one this route can place, so such a fit errors with
+#' class `propensity_ipw_se_method_unavailable_error`. A fit made under a
+#' smoothing floor from `min.sp` errors with the same class, because mgcv adds
+#' that floor to the penalty and leaves it out of the smoothing parameters the
+#' fitted object reports, so nothing in the fit records the penalty it was made
+#' under; refit without `min.sp`, which [mgcv::bam()] ignores in any case.
+#'
+#' Four limitations come with the additive route, and each is a property of the
+#' method rather than of a particular fit.
+#'
+#' 1. The variance conditions on the smoothing parameters rather than estimating
+#'    them, so none of the uncertainty of having chosen them is carried. A
+#'    simulation put that at roughly three percent of the standard error at
+#'    `n = 500`, roughly seven percent at `n = 200`, and less at larger
+#'    samples. A fit handed its
+#'    smoothing parameters and a fit that chose them report the same standard
+#'    error here, which is the same limitation stated as an equality.
+#' 2. What the propensity score block reports is the frequentist variance of a
+#'    penalized fit rather than the Bayesian covariance mgcv reports by default,
+#'    so `vcov()` on the stacked fit reads like `vcov(fit, freq = TRUE)` and
+#'    will not match `vcov(fit)`.
+#' 3. The envelope is the one every other continuous fit has: a gaussian family,
+#'    an identity or a log link, and no prior weights. A fit outside it is
+#'    refused where every other model of the wrong family, link, or weighting
+#'    is.
+#' 4. Coverage degrades as the weights grow heavier tails, and the interval is
+#'    optimistic once the effective sample size falls much below 60 percent of
+#'    the observations. That holds whatever the dose model is: the same
+#'    simulation found it for a correctly specified [stats::glm()] on the same
+#'    data.
 #'
 #' Every density [wt_ate()] builds a ratio in is stacked as it was built: the
 #' normal, Laplace, and Student t families, and a density you wrote yourself,
@@ -699,20 +863,39 @@
 #' any written with [psw()] by hand, are read as the normal ratio the package
 #' built before the record existed.
 #'
-#' Two fits are refused for the standard error rather than for the model. An
-#' [mgcv::gam()] chooses how much to smooth by REML, and a `"kernel"` density
-#' chooses its bandwidth from the residuals of the propensity score model;
-#' neither is a function of the parameters that the sandwich could
-#' differentiate, so weights built from either have no closed-form standard
-#' error. Both raise an error of class
+#' A numerator estimated by a model the caller passed to [wt_ate()]'s
+#' `stabilize` contributes that model: one parameter per coefficient, named with
+#' a `stab_` prefix so the terms it shares with the propensity score model stay
+#' apart from it, and one for the spread its density is read at, `sigma2_n`. Its
+#' score and the moment its spread is the root of are stacked alongside the
+#' propensity score model's, so the standard errors account for the numerator
+#' having been fitted, which is what separates this from a
+#' `stabilization_score`: a score the caller computed is carried as a known
+#' constant and contributes no parameter at all. The numerator model is read
+#' through the registry above, so a class, family, or link whose score this
+#' system cannot write is refused there in the terms that registry refuses a
+#' propensity score model in, naming `stabilize`. A model of a response other
+#' than the exposure, or one fit to a different set of observations, errors with
+#' class `propensity_ipw_numerator_error`. One fit with case weights errors with
+#' class `propensity_ipw_ps_weights_error`, for the reason a weighted propensity
+#' score model does: the block written for it is its unweighted score, and its
+#' coefficients are not at the root of that.
+#'
+#' One choice is refused for the standard error rather than for the model. A
+#' `"kernel"` density chooses its bandwidth from the residuals of the propensity
+#' score model, which is not a function of the parameters that the sandwich
+#' could differentiate, so weights built from it have no closed-form standard
+#' error and raise an error of class
 #' `propensity_ipw_se_method_unavailable_error`. The package offers no
 #' resampling method of its own, so the remedy the refusal names is a bootstrap
 #' of the whole pipeline written by hand: resample the rows, refit the
 #' propensity score model, rebuild the weights with [wt_ate()], and refit the
 #' outcome model on each resample, then read the spread of the coefficient
 #' across the resamples. Doing it that way rather than inside `ipw()` keeps what
-#' each replicate re-estimates, such as a kernel bandwidth or a smoothing
-#' parameter, under the writer's control.
+#' each replicate re-estimates, such as a kernel bandwidth, under the writer's
+#' control. It is also how to carry a smoothing choice that the additive route
+#' conditions on: a bootstrap that refits the [mgcv::gam()] each time re-chooses
+#' the smoothing parameters along with everything else.
 #'
 #' ## Standard errors by linearization
 #'
@@ -734,6 +917,16 @@
 #' than replaced by the covariance the outcome model computed for itself, which
 #' treats the estimated weights as fixed.
 #'
+#' Weights stabilized on a fitted numerator model are refused here as well, with
+#' an error of class `propensity_ipw_se_method_unavailable_error`. The influence
+#' functions read the stabilizer as a known constant, which is exact for the
+#' default stabilizer and for a `stabilization_score` the caller fixed and is
+#' not exact for a model fit to the same data, so the method is refused rather
+#' than a standard error reported for a numerator nobody fit.
+#' `se_method = "mestimation"` estimates the numerator model alongside
+#' everything else. `se_method = "robust"` reads every weight as a known
+#' constant by design, that being what the diagnostic is, so it is not refused.
+#'
 #' The linearization outcome model must also carry an intercept, which is a
 #' stricter requirement than the M-estimation path imposes. Under a numeric
 #' coding such as `y ~ z - 1` the linear predictor under no exposure is fixed at
@@ -744,6 +937,41 @@
 #' it, but the linearization influence functions are derived for the intercept
 #' parameterization, so every no-intercept outcome model errors here. See
 #' **Model requirements** for the baseline contract both methods impose.
+#'
+#' ## Standard errors as a diagnostic
+#'
+#' Setting `se_method = "robust"` reports the sandwich the weighted outcome
+#' model computes for itself, with the weights entering as known constants. It
+#' is the linearization route with the correction for having estimated the
+#' propensity score dropped, so the point estimates are the linearization ones
+#' and only the standard errors move. What it reports for the two counterfactual
+#' means and the contrasts built from them is the delta-method reading of
+#' `sandwich::vcovHC(outcome_mod, type = "HC0")`, exactly: the influence
+#' variance is read as a plain mean of squares rather than as a sample variance,
+#' so what comes back is the HC0 sandwich itself rather than a finite-sample
+#' rescaling of it.
+#'
+#' This is offered as a diagnostic and not as an inference. It ignores that the
+#' weights were estimated, and the correction it drops is generally what a
+#' propensity score model contributes to the variance, so the standard errors it
+#' reports generally understate it, and understate it most where the weights are
+#' least stable. Use `"mestimation"` or `"linearization"` to report a standard
+#' error. Reach for the diagnostic to see what the propensity correction is
+#' worth on a given fit, by reading it beside one of them.
+#'
+#' A result fit this way carries the class `"ipw_diagnostic_se"` ahead of
+#' `"ipw"`, and printing it writes one line naming the method, so the numbers
+#' are not read as accounting for the propensity score model. `as.data.frame()`
+#' and [`tidy()`][tidy.ipw()] carry the same mark as an `ipw_se_diagnostic`
+#' attribute on the table. Every requirement of the linearization route applies
+#' here: a binary exposure, the `ate`, `att`, `ato`, and `atm` estimands, an
+#' outcome model of the exposure alone fit with an intercept, no `.by`, and no
+#' conditional reading. The categorical, continuous, and joint treatment routes
+#' refuse it as they refuse linearization.
+#'
+#' The printed mark does not survive [pool_ipw()]: a pooled object is a summary
+#' of results rather than a result, and what says its standard errors are the
+#' diagnostic ones is the method it records, `se_method = "robust"`.
 #'
 #' # Multiple imputation
 #'
@@ -768,10 +996,11 @@
 #' result keeps the contrast each row reports, and the complete-data degrees of
 #' freedom fall back to the outcome models whenever a result records none of its
 #' own. That fallback is written for the condition rather than for one route: a
-#' fit under `se_method = "linearization"` records none, and so does a result
-#' another package built on the same class from estimating equations that report
-#' no residual degrees of freedom. It also takes the smallest degrees of freedom
-#' across the pooled results, which is the conservative choice when they differ.
+#' fit under `se_method = "linearization"` or `se_method = "robust"` records
+#' none, and so does a result another package built on the same class from
+#' estimating equations that report no residual degrees of freedom. It also
+#' takes the smallest degrees of freedom across the pooled results, which is the
+#' conservative choice when they differ.
 #' [`tidy()`][tidy.ipw_pooled()] and [`glance()`][glance.ipw_pooled()] report
 #' what it returns.
 #'
@@ -784,13 +1013,15 @@
 #' categorical pooled table shows each effect measure repeated with no contrast
 #' label beside it, and the labels have to be read off `pooled$pooled` instead.
 #' A result that records no complete-data degrees of freedom of its own, a fit
-#' under `se_method = "linearization"` among them, leaves the pooled degrees of
-#' freedom missing unless `dfcom` is passed explicitly, as in
+#' under `se_method = "linearization"` or `se_method = "robust"` among them,
+#' leaves the pooled degrees of freedom missing unless `dfcom` is passed
+#' explicitly, as in
 #' `mice::pool(fits, dfcom = df.residual(fits$analyses[[1]]$outcome_mod))`. Every
 #' result of that kind has to be told, where [pool_ipw()] reads the outcome
 #' models for all of them unasked. That remedy is what the package's requirement
 #' of mice 3.18.0 or later is for: mice 3.17.0 introduced a regression in the
-#' `dfcom` argument of `pool()`, and 3.18.0 is the version that repairs it. And the `exponentiate` argument of
+#' `dfcom` argument of `pool()`, and 3.18.0 is the version that repairs it. And
+#' the `exponentiate` argument of
 #' `summary()` on a pooled `mipo` is not the one these methods take: a `mipo`
 #' records no scale for the rows it holds, so it exponentiates every one of them,
 #' returning a risk difference as its exponential and still labeling the row
@@ -816,8 +1047,9 @@
 #' A reading the pooling could not compute is refused rather than reported under
 #' the other one's name. The conditional reading needs the covariance the joint
 #' estimation of the weights and the outcome implies, and a fit under
-#' `se_method = "linearization"` stacks no such system and records no such block,
-#' so a set of those fits pools the marginal reading alone. The pooled result
+#' `se_method = "linearization"` or `se_method = "robust"` stacks no such
+#' system and records no such block, so a set of those fits pools the marginal
+#' reading alone. The pooled result
 #' records why the other reading is missing, and asking for it, whether by
 #' flipping the result or by naming it for one call, errors with that recorded
 #' explanation under the classes
@@ -861,14 +1093,15 @@
 #' the M-estimation path the counterfactual design at the zero-coded level is
 #' identically zero, so the marginal mean there is fixed by the outcome link
 #' (`0.5` under a logit or probit link, `0` for a linear model) rather than
-#' estimated from the data. On the linearization path the intercept is required
-#' outright, because without it the g-computation means stop matching the Hajek
-#' means the influence functions describe. A saturated factor coding such as
-#' `y ~ 0 + zf` is a reparameterization whose designs are the level indicators,
-#' so the M-estimation path accepts it and reproduces the with-intercept fit; the
-#' linearization path still requires the intercept. A no-intercept model that
-#' keeps a covariate, such as `y ~ z + x1 - 1`, still estimates the marginal mean
-#' from that covariate and runs on the M-estimation path. A continuous exposure
+#' estimated from the data. On the linearization and robust paths the intercept
+#' is required outright, because without it the g-computation means stop
+#' matching the Hajek means the influence functions describe. A saturated factor
+#' coding such as `y ~ 0 + zf` is a reparameterization whose designs are the
+#' level indicators, so the M-estimation path accepts it and reproduces the
+#' with-intercept fit; the linearization and robust paths still require the
+#' intercept. A no-intercept model that keeps a covariate, such as
+#' `y ~ z + x1 - 1`, still estimates the marginal mean from that covariate and
+#' runs on the M-estimation path. A continuous exposure
 #' has no counterfactual designs, since `ipw()` reports the marginal structural
 #' model's own exposure coefficient, and is unaffected.
 #'
@@ -909,18 +1142,23 @@
 #' The weight functions apply a stricter rule to the propensity scores they are
 #' handed: a categorical matrix holding an exact 0 or 1 anywhere is refused,
 #' whichever level the cell belongs to. A separated [nnet::multinom()] fit is
-#' therefore stopped where its weights are built rather than here, and neither
-#' [ps_trim()] nor [ps_trunc()] offers a way past that, since both validate a
-#' categorical matrix under the same open interval. See **Propensity scores at 0
+#' therefore stopped where its weights are built rather than here. [ps_trunc()]
+#' repairs such a matrix, its categorical matrix method reading the closed
+#' interval so that a cell at an endpoint is bounded rather than refused, while
+#' [ps_trim()] holds the open interval as the weight functions do. Weights built
+#' from a truncated score are their own refusal here, since [ipw()] cannot yet
+#' account for a modified propensity score, so a separated fit is repaired for
+#' the weight functions rather than for this one. See **Propensity scores at 0
 #' and 1** in [wt_ate()] for the remedy.
 #'
 #' The propensity score model must also be fit without case weights, since the
 #' stacked propensity score equations are unweighted and a weighted fit would not
 #' sit at the score root; that requirement applies to `se_method = "mestimation"`
-#' alone, because the linearization path does not restack the propensity score
-#' model. It still corrects for the uncertainty of estimating the propensity
-#' scores; it does so through the influence functions rather than through a
-#' stacked score.
+#' alone, because neither the linearization path nor the robust one restacks the
+#' propensity score model. Linearization still corrects for the uncertainty of
+#' estimating the propensity scores; it does so through the influence functions
+#' rather than through a stacked score. The robust diagnostic drops that
+#' correction, which is what makes it a diagnostic.
 #'
 #' @references
 #' Stefanski LA, Boos DD. The calculus of M-estimation. *The American
@@ -944,13 +1182,14 @@
 #' \describe{
 #'   \item{`estimand`}{One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or
 #'     `"entropy"`.}
-#'   \item{`se_method`}{One of `"mestimation"` or `"linearization"`.}
+#'   \item{`se_method`}{One of `"mestimation"`, `"linearization"`, or
+#'     `"robust"`.}
 #'   \item{`fit`}{The fitted M-estimator object when `se_method` is
 #'     `"mestimation"`. Calling [stats::vcov()] or
 #'     [generics::tidy()] on this object exposes the full stacked system of
 #'     estimating equations, including the propensity score, outcome, and
-#'     estimand parameters. It is `NULL` under `"linearization"`, which solves
-#'     no system.}
+#'     estimand parameters. It is `NULL` under `"linearization"` and
+#'     `"robust"`, neither of which solves a system.}
 #' }
 #'
 #'   The result answers the standard model accessors, which causalgenerics
@@ -1091,7 +1330,7 @@ ipw.glm <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
@@ -1138,6 +1377,22 @@ ipw.glm <- function(
     ))
   }
 
+  # Everything below reads `wt_mod` as a binary propensity score model, which
+  # is what a binomial family makes it. A third family is neither that nor the
+  # dose model the branch above takes, and reading it as the second of the two
+  # would refuse it for the links a binary propensity score is written for: a
+  # set the fit could not be refit into, and a remedy for a model the caller
+  # did not fit. So the family is read here, ahead of the link.
+  check_ipw_model_family(wt_mod)
+
+  # A binary propensity score model is stacked, differentiated, and linearized
+  # at the unpenalized score of a logistic fit. An additive fit's coefficients
+  # are the root of the penalized score instead, so every method here would
+  # describe a model that was not fit, which makes the refusal the model's
+  # rather than any one method's. The continuous route writes the penalized
+  # score; this one does not.
+  check_ipw_binary_gam(wt_mod)
+
   # Both standard error methods accept only the link `wt_mod` was fit with, so
   # the one value `ps_link` can carry without changing the result is the value
   # the default already resolves to. That leaves the argument as pure
@@ -1160,6 +1415,7 @@ ipw.glm <- function(
   wts <- extract_weights(outcome_mod)
   check_ipw_weights(wts)
   check_ipw_binary_focal(wts, wt_mod, .data = .data, estimand = estimand)
+  check_ipw_linearization_numerator(wts, se_method)
 
   if (identical(se_method, "mestimation")) {
     spec <- ipw_spec_binary(
@@ -1190,7 +1446,7 @@ ipw.glm <- function(
   # through whatever the reconstruction happens to fail on first.
   check_ipw_offset(outcome_mod)
   check_ipw_outcome_response(outcome_mod)
-  check_ipw_linearization_outcome(outcome_mod, exposure_name)
+  check_ipw_linearization_outcome(outcome_mod, exposure_name, se_method)
   check_ipw_outcome_family(outcome_mod)
 
   # Shared with the mestimation specs, so a propensity model that has lost the
@@ -1247,7 +1503,7 @@ ipw.glm <- function(
     abort(
       c(
         "{.arg ps_link} must match the link {.arg wt_mod} was fit with for \\
-        {.val linearization} standard errors.",
+        {.val {se_method}} standard errors.",
         x = "{.arg ps_link} is {.val {ps_link}}; {.arg wt_mod} was fit with a \\
         {.val {fitted_link}} link.",
         i = "Omit {.arg ps_link} to use the model's own link, or refit \\
@@ -1282,10 +1538,15 @@ ipw.glm <- function(
   # atm; atu and entropy require the mestimation path. Reject them here with the
   # documented classed error rather than letting the request reach derive_weights,
   # whose internal arg_match raises a bare, misleading error.
+  #
+  # The robust diagnostic uses none of those derivatives, but it is the same
+  # route with the propensity correction dropped and it reports the same means,
+  # so it accepts the estimands this route accepts and no others. That leaves
+  # one set of requirements to learn rather than two.
   if (!estimand %in% c("ate", "att", "ato", "atm")) {
     abort(
       c(
-        "{.fun ipw} does not support {.val linearization} standard errors for \\
+        "{.fun ipw} does not support {.val {se_method}} standard errors for \\
         the {.val {estimand}} estimand.",
         i = "Use {.code se_method = \"mestimation\"} for the {.val {estimand}} \\
         estimand."
@@ -1315,11 +1576,19 @@ ipw.glm <- function(
   # was dropped in a length-changing operation be caught here rather than
   # silently rebuilt from the wrong stabilizer.
   stab_score <- stabilization_score(wts)
+  num_mod <- numerator_model(wts)
   recomputed_wts <- ipw_weight_fn("binary", estimand)(
     ps,
     exposure_binary,
     list(
-      stab_prob = if (is_stabilized(wts) && is.null(stab_score)) {
+      # A numerator model reports one probability per unit rather than one per
+      # arm, so the rebuild reads it at the model's own fitted values. The
+      # linearization refuses such weights above; the robust diagnostic reaches
+      # here with them, and rebuilding them from the marginal seed would report
+      # a disagreement about weights that agree.
+      stab_prob = if (!is.null(num_mod)) {
+        as.numeric(stats::fitted(num_mod))
+      } else if (is_stabilized(wts) && is.null(stab_score)) {
         ipw_default_stab_seed(exposure_binary)
       },
       score = stab_score
@@ -1342,17 +1611,26 @@ ipw.glm <- function(
     marginal_means
   )
 
-  lin_vars <- linearize_variables_for_ps(
-    exposure = exposure_binary,
-    outcome = outcome,
-    wts = wts,
-    ps = ps,
-    estimand = estimand,
-    weight_matrix = weight_matrix,
-    marginal_means = marginal_means,
-    uncorrected_lin_vars = uncorrected_lin_vars,
-    ps_link = ps_link
-  )
+  # The robust diagnostic stops here. Its influence functions are those of the
+  # Hajek means with the weights entering as known constants, which is what
+  # `linearize_variables_for_wts()` returns; the correction below is the whole
+  # of what accounts for having estimated the propensity score, and dropping it
+  # is what makes the reported variance the outcome model's own sandwich.
+  lin_vars <- if (identical(se_method, "robust")) {
+    uncorrected_lin_vars
+  } else {
+    linearize_variables_for_ps(
+      exposure = exposure_binary,
+      outcome = outcome,
+      wts = wts,
+      ps = ps,
+      estimand = estimand,
+      weight_matrix = weight_matrix,
+      marginal_means = marginal_means,
+      uncorrected_lin_vars = uncorrected_lin_vars,
+      ps_link = ps_link
+    )
+  }
 
   estimates <- calculate_estimates(
     lin_vars = lin_vars,
@@ -1360,7 +1638,8 @@ ipw.glm <- function(
     n = length(outcome),
     linear_regression = is_linear_regression(outcome_mod),
     conf_level = conf_level,
-    exposure_levels = sort(unique(exposure))
+    exposure_levels = marginal_means$levels,
+    se_method = se_method
   )
 
   # The same collapse the M-estimation path reports, from the seam this path
@@ -1370,15 +1649,17 @@ ipw.glm <- function(
   # returns its contrast with an interval of no width.
   warn_ipw_degenerate_se(estimates)
 
-  new_ipw(
+  result <- new_ipw(
     estimand = estimand,
     wt_mod = wt_mod,
     outcome_mod = outcome_mod,
     estimates = estimates,
-    se_method = "linearization",
+    se_method = se_method,
     fit = NULL,
     effects = effects
   )
+
+  ipw_mark_diagnostic_se(result)
 }
 
 # Shared continuous-exposure route for ipw.lm and the gaussian-family branch of
@@ -1407,28 +1688,29 @@ ipw_continuous_estimate <- function(
   # `lm()` they already used. The response guard names the response instead.
   check_ipw_ps_response(wt_mod, call = call)
 
-  # The stacked system carries the propensity score model's own score and
-  # rebuilds its design from the model formula, so the registry decides what can
-  # be here: a class whose coefficients are not the root of any equation it
-  # writes, such as a robust fit descending a redescending loss, would drift
-  # silently to the root of the one it does write, and a class whose design is
-  # not the formula's, such as an additive fit's smooth basis, would be
-  # reconstructed as something else.
-  # Either way the estimates would describe a propensity score model the user
-  # never fit. The refusal runs before every other guard here so that a
+  # The stacked system carries the propensity score model's own score, so the
+  # registry decides what can be here: a class whose coefficients are not the
+  # root of any equation it writes, such as a robust fit descending a
+  # redescending loss or an additive fit holding a penalty this path cannot
+  # place, would drift silently to the root of the one it does write, and the
+  # estimates would describe a propensity score model the user never fit. The
+  # refusal runs before every other guard here so that a
   # recognized model with no sandwich is reported as the method it lacks rather
   # than as the class it is.
-  check_ipw_continuous_model(
-    ipw_continuous_model(wt_mod, call = call),
-    call = call
-  )
+  #
+  # The entry the refusal is read from is the one the spec is built with, so
+  # the model is read through the registry once for the call. What that saves
+  # is more than a lookup for an additive fit, whose entry evaluates the smooth
+  # basis its score is checked at and carries it.
+  ps_model <- ipw_continuous_model(wt_mod, call = call)
+  check_ipw_continuous_model(ps_model, call = call)
 
   check_ipw_ps_link_absent(ps_link, "continuous", call = call)
 
-  if (identical(se_method, "linearization")) {
+  if (!identical(se_method, "mestimation")) {
     abort(
       c(
-        "{.fun ipw} does not support {.val linearization} standard errors for \\
+        "{.fun ipw} does not support {.val {se_method}} standard errors for \\
         continuous exposures.",
         i = "Use {.code se_method = \"mestimation\"} for a continuous exposure."
       ),
@@ -1447,6 +1729,7 @@ ipw_continuous_estimate <- function(
     outcome_mod,
     .data = .data,
     estimand = estimand,
+    ps_model = ps_model,
     call = call
   )
 
@@ -1482,6 +1765,142 @@ ipw_continuous_estimate <- function(
     effects = effects,
     readings = readings
   )
+}
+
+# The exposure a fitted propensity score model implies is read off its family:
+# a gaussian one models a dose, and a binomial one models the probability of a
+# binary exposure. A model of a third family is neither, so what it needs said
+# is the family it has and the family each exposure type is written for, rather
+# than the links whichever of the two routes it happened to reach is written
+# for.
+check_ipw_model_family <- function(wt_mod, call = rlang::caller_env()) {
+  family <- wt_mod[["family"]]
+  binomial_family <- is.list(family) &&
+    isTRUE(family$family %in% c("binomial", "quasibinomial"))
+
+  if (binomial_family) {
+    return(invisible(TRUE))
+  }
+
+  described <- if (is.list(family) && family_is_named(family)) {
+    "{.arg wt_mod} was fit with {.code {model_family_label(family)}}."
+  } else {
+    "{.arg wt_mod} names no family {.fun ipw} can read an exposure from."
+  }
+
+  abort(
+    c(
+      "{.fun ipw} reads the exposure {.arg wt_mod} models off its family, and \\
+      supports a binomial family for a binary exposure and a gaussian family \\
+      for a continuous exposure.",
+      x = described,
+      i = "Refit {.arg wt_mod} with {.fun stats::binomial} for a binary \\
+      exposure, or with {.fun stats::lm} or \\
+      {.code stats::glm(family = gaussian())} for a continuous exposure."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}
+
+# The binary route reads a propensity score model as an unpenalized logistic
+# fit: the stacked system solves that score, and the linearization and the
+# robust diagnostic both differentiate it. An additive fit's coefficients are
+# the root of the penalized score instead, so none of the three describes the
+# fit and the refusal belongs to the model rather than to a method. What is
+# refused is the standard error and not the weights: `wt_ate()` reads the same
+# fit and builds them from its fitted probabilities.
+check_ipw_binary_gam <- function(
+  wt_mod,
+  arg = "wt_mod",
+  what = "a binary propensity score model",
+  call = rlang::caller_env()
+) {
+  if (!inherits(wt_mod, "gam")) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} stacks {what} at the unpenalized \\
+      score of a {.fun stats::glm}.",
+      x = "{.arg {arg}} has class {.cls {class(wt_mod)}}, whose coefficients \\
+      are the root of a penalized score instead, so every standard error \\
+      here would describe a model that was not fit.",
+      i = "Refit {.arg {arg}} as a {.fun stats::glm}, writing the shape each \\
+      smooth term carries out as columns of the formula.",
+      i = ipw_continuous_resample_hint()
+    ),
+    error_class = c(
+      "propensity_ipw_se_method_unavailable_error",
+      "propensity_method_error"
+    ),
+    call = call
+  )
+}
+
+# Weights stabilized on a fitted numerator model, refused for the linearization.
+#
+# The influence functions this path composes treat the stabilizer as a factor
+# that does not depend on any estimated parameter: `effective_stabilizer()`
+# multiplies the unstabilized weight derivatives by it and nothing
+# differentiates it. That is exact for the default stabilizer, which is one
+# constant per exposure arm and cancels from each arm's Hajek ratio, and exact
+# for a `stabilization_score` the caller fixed, which is a constant by
+# construction. A numerator model is neither: its coefficients were fit to the
+# same data, they move with it, and the terms carrying that estimation into the
+# variance are not written here. Reading it as fixed would report a standard
+# error for a numerator nobody knew, so the method is refused rather than the
+# weights, which are exactly what they claim to be.
+#
+# `se_method = "robust"` treats the weights as fixed throughout, that being what
+# the diagnostic is, so it is not refused: it reports the outcome model's own
+# sandwich, which is what it reports for every other stabilizer too.
+check_ipw_linearization_numerator <- function(
+  wts,
+  se_method,
+  call = rlang::caller_env()
+) {
+  if (!identical(se_method, "linearization")) {
+    return(invisible(TRUE))
+  }
+
+  if (is.null(numerator_model(wts))) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} does not support {.val linearization} standard errors for \\
+      weights stabilized on a fitted numerator model.",
+      x = "The influence functions here read the stabilizer as a known \\
+      constant, and a numerator model's coefficients were estimated from the \\
+      same data, so the reported standard error would describe a numerator \\
+      nobody fit.",
+      i = "Use {.code se_method = \"mestimation\"}, which estimates the \\
+      numerator model alongside everything else and carries its uncertainty \\
+      into the sandwich."
+    ),
+    error_class = c(
+      "propensity_ipw_se_method_unavailable_error",
+      "propensity_method_error"
+    ),
+    call = call
+  )
+}
+
+# The prior case weights a fitted treatment model was made under, or `NULL` for
+# a fit that records none. Where a class keeps them differs: an `lm` and an
+# `rlm` hold them in `weights`, and a `glm` and a `gam` in `prior.weights`,
+# where the `weights` element is the iteration's own working weights instead. A
+# guard reading one field would pass half the classes this package stacks
+# through unchecked.
+ipw_model_prior_weights <- function(fit) {
+  if (inherits(fit, "glm")) {
+    return(fit$prior.weights)
+  }
+
+  fit$weights
 }
 
 # Guard the weights that fit the outcome model. ipw() cannot yet account for
@@ -1702,6 +2121,33 @@ check_ipw_ps_link_absent <- function(
   invisible(TRUE)
 }
 
+# A `multinom` fit to two levels is a binary propensity score model written with
+# a multinomial fitter: it reports one probability, the shape a binomial glm
+# reports, and the weight functions read such a fit on the binary path. The
+# categorical stacked system has no multinomial coefficient block to build from
+# it, so the estimator refuses the pair of models here, before deli is asked for
+# a multinomial score it cannot write and reports the shortfall in terms of its
+# own arguments.
+check_ipw_multinom_levels <- function(wt_mod, call = rlang::caller_env()) {
+  if (!identical(length(wt_mod$lev), 2L)) {
+    return(invisible(TRUE))
+  }
+
+  abort(
+    c(
+      "{.fun ipw} needs a propensity score model of three or more exposure \\
+      levels for a categorical exposure.",
+      x = "{.arg wt_mod} was fit to 2 levels ({.val {wt_mod$lev}}), so it \\
+      fits the single probability of a binary exposure.",
+      i = "For a binary exposure, fit the propensity score model with \\
+      {.fun stats::glm} and {.code family = binomial()}; for a categorical \\
+      one, fit a {.fun nnet::multinom} to its three or more levels."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}
+
 # Require the propensity score model's response to be the exposure column
 # itself. Everything downstream names the exposure by deparsing that left-hand
 # side, so a left-hand side that is not a single symbol yields a vector of names
@@ -1734,8 +2180,37 @@ check_ipw_ps_link_absent <- function(
 # that omits the exposure, one that codes it numerically, one whose factor
 # levels are ordered against the propensity model's, the counterfactual design
 # guards, and an exposure value the propensity model never saw.
-check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
-  lhs <- formula(ps_mod)[[2]]
+#
+# `arg` names the argument the fit arrived as, the way it does in
+# `check_multinom_response()`. Every route into this guard takes the propensity
+# score model as `wt_mod`, which is the default.
+check_ipw_ps_response <- function(
+  ps_mod,
+  arg = "wt_mod",
+  call = rlang::caller_env()
+) {
+  # A fit made through a matrix interface records no formula and no terms, so
+  # there is no left-hand side to read the exposure off. Reading the formula
+  # defensively keeps that a refusal of this package's rather than a subscript
+  # error raised on a formula that was never written.
+  fmla <- tryCatch(stats::formula(ps_mod), error = function(e) NULL)
+  if (!rlang::is_formula(fmla) || length(fmla) < 3L) {
+    abort(
+      c(
+        "{.fun ipw} needs a propensity score model fit through the formula \\
+        interface.",
+        x = "{.arg {arg}} records no formula with a response, so the exposure \\
+        cannot be read off it.",
+        i = "Refit {.arg {arg}} from a formula whose left-hand side is the \\
+        exposure, as in {.code exposure ~ x}, rather than from a design \\
+        matrix and a response vector."
+      ),
+      error_class = "propensity_ipw_response_error",
+      call = call
+    )
+  }
+
+  lhs <- fmla[[2]]
   lhs_not_single <- length(fmla_extract_left_chr(ps_mod)) != 1L
   frame_response_is_matrix <- tryCatch(
     is.matrix(stats::model.response(stats::model.frame(ps_mod))),
@@ -1755,7 +2230,7 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
     c(
       "{.fun ipw} does not support a matrix response in the propensity score \\
       model.",
-      x = "{.arg wt_mod} has a matrix response, such as \\
+      x = "{.arg {arg}} has a matrix response, such as \\
       {.code cbind(successes, failures)}; the exposure must be a \\
       single-column response."
     )
@@ -1764,7 +2239,7 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
     c(
       "{.fun ipw} does not support a transformed response in the propensity \\
       score model.",
-      x = "{.arg wt_mod} reads the exposure through {.code {lhs_text}}, an \\
+      x = "{.arg {arg}} reads the exposure through {.code {lhs_text}}, an \\
       expression rather than a single column."
     )
   }
@@ -1772,7 +2247,7 @@ check_ipw_ps_response <- function(ps_mod, call = rlang::caller_env()) {
   abort(
     c(
       problem,
-      i = "Fit {.arg wt_mod} with the exposure itself as the response, adding \\
+      i = "Fit {.arg {arg}} with the exposure itself as the response, adding \\
       it to the data as its own column first if it has to be computed."
     ),
     error_class = "propensity_ipw_response_error",
@@ -2390,9 +2865,15 @@ check_ipw_continuous_outcome_link <- function(
 # therefore worded as the fact of the missing intercept rather than as the
 # numeric coding's consequence. The check is on the terms object, so it applies
 # to lm and glm outcome models alike.
+# `se_method` names the method the caller asked for, since the robust diagnostic
+# reaches this guard through the same route and has the same requirement: it is
+# the linearization route with the correction for having estimated the weights
+# dropped, so it reports the same Hajek means and needs the same outcome model
+# to report them from.
 check_ipw_linearization_outcome <- function(
   outcome_mod,
   exposure_name,
+  se_method = "linearization",
   call = rlang::caller_env()
 ) {
   outcome_terms <- stats::terms(outcome_mod)
@@ -2420,7 +2901,7 @@ check_ipw_linearization_outcome <- function(
 
     abort(
       c(
-        "{.fun ipw} supports {.val linearization} standard errors only for an \\
+        "{.fun ipw} supports {.val {se_method}} standard errors only for an \\
         outcome model of the exposure alone.",
         x = problem,
         i = "Use {.code se_method = \"mestimation\"} for a covariate-adjusted \\
@@ -2434,7 +2915,7 @@ check_ipw_linearization_outcome <- function(
   if (!identical(attr(outcome_terms, "intercept"), 1L)) {
     abort(
       c(
-        "{.fun ipw} supports {.val linearization} standard errors only for an \\
+        "{.fun ipw} supports {.val {se_method}} standard errors only for an \\
         outcome model with an intercept.",
         x = "{.arg outcome_mod} was fit without an intercept.",
         i = "This covers every no-intercept coding, including a saturated \\
@@ -2459,7 +2940,7 @@ ipw.default <- function(
   estimand = NULL,
   ps_link = NULL,
   conf_level = 0.95,
-  se_method = c("mestimation", "linearization"),
+  se_method = c("mestimation", "linearization", "robust"),
   effects = c("marginal", "conditional")
 ) {
   rlang::check_dots_empty()
@@ -2486,19 +2967,26 @@ ipw.default <- function(
 # `l1` and `l0` are the influence functions of `mu1` and `mu0` themselves, so
 # each mean's variance is the variance of its own influence function over n,
 # which is the calculation the contrasts already apply to differences of the two.
+#
+# `se_method` decides only how an influence function is read into a variance,
+# which the two helpers below settle. Everything else about the calculation is
+# shared, the diagnostic being the same influence functions with the propensity
+# correction dropped.
 calculate_estimates <- function(
   lin_vars,
   marginal_means,
   n,
   linear_regression,
   conf_level,
-  exposure_levels
+  exposure_levels,
+  se_method = "linearization"
 ) {
   z_val <- qnorm(1 - ((1 - conf_level) / 2))
+  exact <- identical(se_method, "robust")
 
   mu_est <- c(marginal_means$mu0, marginal_means$mu1)
   mu_inf <- cbind(lin_vars$l0, lin_vars$l1)
-  mu_se <- sqrt(apply(mu_inf, 2, var) / n)
+  mu_se <- sqrt(apply(mu_inf, 2, influence_variance, n = n, exact = exact))
   mu_z <- mu_est / mu_se
   mu_contrast <- as.character(exposure_levels)
   contrast_label <- paste(mu_contrast[[2]], "vs", mu_contrast[[1]])
@@ -2507,7 +2995,7 @@ calculate_estimates <- function(
   # --------------------------------
   # Influence = (l1 - l0)
   rd_inf <- lin_vars$l1 - lin_vars$l0
-  rd_var <- var(rd_inf) / n
+  rd_var <- influence_variance(rd_inf, n, exact)
 
   rd_est <- marginal_means$mu1 - marginal_means$mu0
   rd_se <- sqrt(rd_var)
@@ -2533,7 +3021,8 @@ calculate_estimates <- function(
     return(ipw_attach_influence_vcov(
       estimates,
       cbind(mu_inf, rd_inf),
-      n
+      n,
+      exact
     ))
   }
 
@@ -2551,7 +3040,7 @@ calculate_estimates <- function(
     marginal_means$mu1 -
     lin_vars$l0 / marginal_means$mu0
 
-  log_rr_var <- var(log_rr_inf) / n
+  log_rr_var <- influence_variance(log_rr_inf, n, exact)
   log_rr_se <- sqrt(log_rr_var)
 
   log_rr_ci_lower <- log_rr_est - z_val * log_rr_se
@@ -2574,7 +3063,7 @@ calculate_estimates <- function(
     (marginal_means$mu1 * (1 - marginal_means$mu1))) -
     (lin_vars$l0 / (marginal_means$mu0 * (1 - marginal_means$mu0)))
 
-  log_or_var <- var(log_or_inf) / n
+  log_or_var <- influence_variance(log_or_inf, n, exact)
   log_or_se <- sqrt(log_or_var)
 
   log_or_ci_lower <- log_or_est - z_val * log_or_se
@@ -2609,7 +3098,8 @@ calculate_estimates <- function(
   ipw_attach_influence_vcov(
     estimates,
     cbind(mu_inf, rd_inf, log_rr_inf, log_or_inf),
-    n
+    n,
+    exact
   )
 }
 
@@ -2653,17 +3143,160 @@ ipw_linearization_estimates <- function(
 # The block is labeled the way every surface of the result labels its rows,
 # read off the frame it belongs to rather than off the influence matrix, whose
 # columns are the influence functions and not the rows they describe.
-ipw_attach_influence_vcov <- function(estimates, influence, n) {
-  covariance <- cov(influence) / n
+ipw_attach_influence_vcov <- function(estimates, influence, n, exact = FALSE) {
+  covariance <- influence_covariance(influence, n, exact)
   labels <- ipw_effect_labels(estimates)
   dimnames(covariance) <- list(labels, labels)
   attr(estimates, "ipw_vcov") <- covariance
   estimates
 }
 
-# accounts for dependence introduced by weights
-# treats them as fixed, not estimated
-# equivalent to usual robust sandwich estimator
+# How an influence function is read into the variance of the estimate it
+# belongs to. The linearization route takes the sample variance of the influence
+# values over n, the estimator's asymptotic variance read off the sample. The
+# robust diagnostic reports the HC0 sandwich of the weighted outcome model
+# exactly, whose meat is the plain sum of squares over n. The influence values
+# already sum to zero over the sample, so the two readings differ by the factor
+# n / (n - 1) and nothing else, and dividing by n is what makes the diagnostic
+# the sandwich itself rather than a finite-sample rescaling of it.
+influence_variance <- function(x, n, exact) {
+  if (exact) {
+    return(sum(x^2) / n^2)
+  }
+
+  var(x) / n
+}
+
+# The same two readings for a set of influence functions at once, giving the
+# covariance the reported rows are read at.
+influence_covariance <- function(influence, n, exact) {
+  if (exact) {
+    return(crossprod(influence) / n^2)
+  }
+
+  cov(influence) / n
+}
+
+# Mark a result whose standard errors are the diagnostic ones. The class leads
+# the vector, so the result is an `ipw` to everything that does not care and the
+# few surfaces that do can say so; a result fit by a method that accounts for
+# the estimated weights is left exactly as it was built.
+ipw_mark_diagnostic_se <- function(result) {
+  if (!identical(result$se_method, "robust")) {
+    return(result)
+  }
+
+  class(result) <- c("ipw_diagnostic_se", class(result))
+  result
+}
+
+#' Print a result whose standard errors are a diagnostic
+#'
+#' `se_method = "robust"` reports the sandwich the weighted outcome model
+#' computes for itself, which treats the estimated weights as known. Printing
+#' such a result writes what [print()][base::print] writes for any [ipw()]
+#' result and then one line naming the method, so that the number beside each
+#' estimate is not read as one accounting for the propensity score model. See
+#' **Standard errors as a diagnostic** in [ipw()] for what the diagnostic does
+#' and does not cover.
+#'
+#' @param x An `ipw` result fit with `se_method = "robust"`.
+#' @param ... Passed to the next method.
+#'
+#' @return `x`, invisibly.
+#'
+#' @examples
+#' set.seed(2)
+#' n <- 300
+#' x <- rnorm(n)
+#' z <- rbinom(n, 1, plogis(0.4 * x))
+#' y <- rbinom(n, 1, plogis(-0.3 + 0.7 * z + 0.5 * x))
+#' dat <- data.frame(x, z, y)
+#'
+#' ps_mod <- glm(z ~ x, data = dat, family = binomial())
+#' wts <- wt_ate(ps_mod)
+#' outcome_mod <- glm(y ~ z, data = dat, family = quasibinomial(), weights = wts)
+#'
+#' print(ipw(ps_mod, outcome_mod, se_method = "robust"))
+#'
+#' @seealso [ipw()] for the estimator and the standard error methods.
+#'
+#' @export
+print.ipw_diagnostic_se <- function(x, ...) {
+  NextMethod()
+  cat("\n")
+  cat(paste0(
+    "Standard errors: ",
+    x$se_method,
+    ", a diagnostic that treats the weights as known\n"
+  ))
+
+  invisible(x)
+}
+
+#' @rdname print.ipw_diagnostic_se
+#'
+#' @param row.names,optional Passed to the next method.
+#'
+#' @return `as.data.frame()` returns what it returns for any [ipw()] result,
+#'   carrying an `ipw_se_diagnostic` attribute naming the method.
+#'
+#' @export
+as.data.frame.ipw_diagnostic_se <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  ...
+) {
+  # Forced here rather than passed on as an unevaluated argument: a promise
+  # holding `NextMethod()` runs in whatever frame first forces it, and a
+  # refusal raised inside it would then name that frame rather than the call
+  # the user made.
+  frame <- NextMethod()
+
+  mark_ipw_se_diagnostic(frame, x)
+}
+
+#' @rdname print.ipw_diagnostic_se
+#'
+#' @return `tidy()` returns what it returns for any [ipw()] result, carrying an
+#'   `ipw_se_diagnostic` attribute naming the method.
+#'
+#' @exportS3Method generics::tidy ipw_diagnostic_se
+tidy.ipw_diagnostic_se <- function(x, ...) {
+  # Forced for the reason the coercion above forces it.
+  tidied <- NextMethod()
+
+  # The tidier reaches the table through the coercion above, which marks it, but
+  # a tidied table is a tibble built from that frame and an attribute is not one
+  # of its columns. The mark is therefore reattached here rather than relied on
+  # to survive the coercion.
+  mark_ipw_se_diagnostic(tidied, x)
+}
+
+# The mark a table of a diagnostic result carries: the name of the method,
+# rather than a flag, so that a caller reading it learns which diagnostic it
+# was. It is an attribute rather than a column, the table being the one every
+# other route reports.
+mark_ipw_se_diagnostic <- function(table, result) {
+  attr(table, "ipw_se_diagnostic") <- result$se_method
+  table
+}
+
+# The influence functions of the two counterfactual means, read with the weights
+# as known constants. Each observation contributes its weighted deviation from
+# the marginal mean at its own exposure level, scaled by the sample size over
+# the weighted count of that level. Both routes that reach here restrict the
+# outcome model to the exposure alone, which is what makes these the influence
+# functions of the Hajek weighted means the reported estimates coincide with.
+#
+# What they account for is the dependence the weights induce among the
+# observations, not the fact that the weights were estimated, so the variance
+# they give is the usual robust sandwich of the weighted outcome model. That is
+# the whole of the diagnostic route, which reports these values as they are, and
+# the first half of the linearization route, which adds the propensity score
+# correction in correct_for_ps() to reach the variance of the two-step
+# estimator.
 linearize_variables_for_wts <- function(Z, Y, wts, marginal_means) {
   n <- length(Z)
   wts <- as.double(wts)
@@ -2860,7 +3493,12 @@ estimate_marginal_means <- function(
     mu1 = mu1,
     # exposure = 0
     n0 = n0,
-    mu0 = mu0
+    mu0 = mu0,
+    # The levels the means are keyed to: `mu0` is the mean at the first and
+    # `mu1` the mean at the second. Reporting them beside the means is what
+    # lets the estimates be keyed by the pair the means were computed at,
+    # rather than by a second sort of the exposure taken on trust to agree.
+    levels = exposure_values
   )
 }
 

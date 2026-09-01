@@ -14,10 +14,17 @@
 #'   column data frame, which is the probability of the second level in the
 #'   layout model predictions come in, and the first column otherwise. The
 #'   column taken is announced; `options(propensity.quiet = TRUE)` silences the
-#'   announcement. A matrix is held to the same open interval as a vector, so a
-#'   score of exactly 0 or 1 in any cell is refused and a separated multinomial
-#'   fit cannot be repaired by truncating it; see **Propensity scores at 0 and
-#'   1** in [wt_ate()].
+#'   announcement. A vector is held to the open interval, so a score of exactly
+#'   0 or 1 is refused. A matrix is held to the closed interval instead: a cell
+#'   of exactly 0 or 1 is bounded rather than refused, which is how a separated
+#'   multinomial fit is repaired, and what comes back lies strictly inside
+#'   (0, 1). Anything outside \eqn{[0, 1]} is refused either way, and so is a
+#'   truncation whose own computed bounds leave a score at an endpoint; see
+#'   **Propensity scores at 0 and 1** in [wt_ate()]. A data frame holding a
+#'   `.pred_class` column, which a fitted tidymodels classification model
+#'   returns when no prediction type is named, carries predicted levels rather
+#'   than probabilities and is refused with an error of class
+#'   `propensity_df_class_column_error`.
 #' @param .exposure An exposure vector. Required for method `"cr"` (binary
 #'   exposure vector) and for categorical exposures (factor or character vector)
 #'   with any method.
@@ -92,6 +99,23 @@
 #' **Combining behavior**: Combining `ps_trunc` objects with `c()` requires
 #' matching truncation parameters. Mismatched parameters produce a warning and
 #' return a plain numeric vector.
+#'
+#' ## Fitted models
+#'
+#' `.propensity` can be the fitted propensity score model instead of the scores
+#' it reports. A binomial [stats::glm()] and a two-level `nnet::multinom()` are
+#' read as one score per unit; a `nnet::multinom()` of three or more levels is
+#' read as one column per level. Those are the shapes `predict(fit, type =
+#' "response")` and `fitted(fit)` give, and truncating a fit bounds exactly what
+#' bounding those values would.
+#'
+#' The methods that read an exposure (`"cr"`, and every method on the
+#' categorical route) take it from the model when `.exposure` is not supplied,
+#' announcing the variable they read; `options(propensity.quiet = TRUE)`
+#' silences the announcement. An `.exposure` you supply is used instead, and a
+#' categorical model's columns are matched to its levels by name, so an exposure
+#' whose levels are ordered differently is still bounded against the right
+#' column.
 #'
 #' ## Missing values
 #'
@@ -198,6 +222,15 @@
 #' # Inspect which observations were truncated
 #' is_unit_truncated(ps_t)
 #'
+#' # Bound the scores a fitted model reports, reading the exposure off the model
+#' ps_trunc(fit, method = "cr")
+#'
+#' if (rlang::is_installed("nnet")) {
+#'   trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+#'   multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
+#'   ps_trunc(multinomial_fit, method = "ps")
+#' }
+#'
 #' @export
 ps_trunc <- function(
   .propensity,
@@ -244,9 +277,30 @@ ps_trunc.default <- function(
   call = rlang::current_env()
 ) {
   check_call_arg(call)
+  # The dots reach every route but are read by none of them, so a misspelled
+  # bound such as `lowr` would bound the scores at the default the caller
+  # believed they had replaced. The model methods forward their dots here, so
+  # the refusal covers a fit as well as a vector.
+  rlang::check_dots_empty(call = call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_ps_method(.propensity, call = call)
+
+  # A calibrated score is a propensity score, so this reads the scores it holds
+  # the way the weight functions do rather than refusing a vector of numbers
+  # for the class attached to it. What comes back is a bounded score rather
+  # than a calibrated one, so the class is dropped and what it recorded is kept
+  # in the truncation metadata, where `is_ps_calibrated()` reads it.
+  calibrated <- inherits(.propensity, "ps_calib")
+  if (calibrated) {
+    .propensity <- as.numeric(.propensity)
+  }
+
   method <- rlang::arg_match(method, error_call = call)
   meta_list <- list(method = method)
+
+  if (calibrated) {
+    meta_list$calibrated <- TRUE
+  }
 
   # Handle deprecation
   focal_params <- handle_focal_deprecation(
@@ -298,7 +352,12 @@ ps_trunc.default <- function(
         call = call
       )
     }
-    check_exposure_complete(.exposure, method, call = call)
+    check_exposure_complete(
+      .exposure,
+      method,
+      observed = !is.na(.propensity),
+      call = call
+    )
     .exposure <- transform_exposure_binary(
       .exposure,
       .focal_level = .focal_level,
@@ -356,6 +415,7 @@ ps_trunc.matrix <- function(
   call = rlang::current_env()
 ) {
   check_call_arg(call)
+  rlang::check_dots_empty(call = call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
   # The generic offers every method, so match against that full set and then
@@ -396,10 +456,15 @@ ps_trunc.matrix <- function(
   # Transform to factor and validate
   .exposure <- transform_exposure_categorical(.exposure, call = call)
 
-  # Validate matrix
+  # Validate matrix. Truncation exists to pull a score at an endpoint back
+  # inside the interval, which is the repair a separated multinomial fit needs,
+  # so this route reads the closed interval: a cell of exactly 0 or 1 is bounded
+  # rather than refused. Everything outside [0, 1] is still refused, and so is
+  # any endpoint left standing after the bounds are applied.
   .propensity <- check_ps_matrix(
     .propensity,
     .exposure,
+    closed = TRUE,
     call = call
   )
 
@@ -504,6 +569,13 @@ ps_trunc.matrix <- function(
     upper_bound <- upper_threshold
   }
 
+  check_truncated_matrix_interior(
+    bounded,
+    lower_bound = lower_bound,
+    upper_bound = upper_bound,
+    call = call
+  )
+
   meta <- list(
     method = method,
     lower_bound = lower_bound,
@@ -520,6 +592,55 @@ ps_trunc.matrix <- function(
   }
 
   new_ps_trunc(bounded, meta)
+}
+
+# The categorical matrix route reads the closed interval because bounding a
+# score of exactly 0 or 1 is the repair it exists to make. What comes back has
+# to be a propensity score matrix the rest of the package will read, so the
+# result is held to the open interval the input was excused from.
+#
+# The case this catches is a `"pctl"` truncation of a matrix with enough zeros
+# in it that the lower quantile is itself zero: the bound is then the endpoint,
+# and the truncation pins those cells to where they already sat. The bound is
+# reported because it is what the caller has to replace.
+check_truncated_matrix_interior <- function(
+  bounded,
+  lower_bound,
+  upper_bound,
+  call = rlang::caller_env()
+) {
+  at_endpoint <- !is.na(bounded) & (bounded <= 0 | bounded >= 1)
+  if (!any(at_endpoint)) {
+    return(invisible(TRUE))
+  }
+
+  n_left <- sum(at_endpoint)
+
+  # Written out here rather than in the bullet: a threshold and a pair of
+  # bounds are two different sentences, and neither is a plural of the other.
+  bound_text <- if (is.na(upper_bound)) {
+    cli::format_inline(
+      "The threshold computed from the scores is
+       {.val {as.numeric(lower_bound)}}."
+    )
+  } else {
+    cli::format_inline(
+      "The bounds computed from the scores run from
+       {.val {as.numeric(lower_bound)}} to {.val {as.numeric(upper_bound)}}."
+    )
+  }
+
+  abort(
+    c(
+      "Truncation left {n_left} propensity score{?s} at 0 or 1.",
+      x = bound_text,
+      i = "A bound at an endpoint pins a score to where it already sat.",
+      i = "Supply {.arg lower} and {.arg upper} explicitly, inside the open
+           interval, so that every score is bounded away from 0 and 1."
+    ),
+    error_class = "propensity_range_error",
+    call = call
+  )
 }
 
 #' @export
@@ -539,12 +660,14 @@ ps_trunc.data.frame <- function(
 ) {
   check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_predicted_class_column(.propensity, call = call)
 
   # For categorical exposures, convert to matrix and call matrix method
   if (!is.null(.exposure)) {
     exposure_type <- causalgenerics::detect_exposure_type(
       .exposure,
-      announce = !be_quiet()
+      announce = !be_quiet(),
+      call = call
     )
     if (exposure_type == "categorical") {
       ps_matrix <- as.matrix(.propensity)
@@ -588,6 +711,157 @@ ps_trunc.data.frame <- function(
     .treated = .treated,
     .untreated = .untreated,
     user_env = rlang::caller_env(),
+    call = call
+  )
+}
+
+# The fitted propensity score models truncation reads, registered for the same
+# classes the weight functions read: a `glm`, whose binomial families fit the
+# probability of a binary exposure, and a `multinom`, which fits a probability
+# for every level. A `lm` is not among them, its fitted values being conditional
+# means rather than probabilities, and it reaches the default method, which
+# reports that it has no scores to bound.
+#' @export
+ps_trunc.glm <- function(
+  .propensity,
+  method = c("ps", "pctl", "cr"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
+  ps_trunc_from_model(
+    .propensity,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
+    .treated = .treated,
+    .untreated = .untreated,
+    call = call,
+    user_env = rlang::caller_env()
+  )
+}
+
+# A `multinom` is `c("multinom", "nnet")` and inherits from neither `glm` nor
+# `lm`, so it reaches a method of its own. What it was fit to is checked before
+# anything reads it, so that a fit the route cannot read is reported as such
+# rather than as whatever its fitted values are made of.
+#' @export
+ps_trunc.multinom <- function(
+  .propensity,
+  method = c("ps", "pctl", "cr"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_multinom_response(.propensity, call = call)
+
+  ps_trunc_from_model(
+    .propensity,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
+    .treated = .treated,
+    .untreated = .untreated,
+    call = call,
+    user_env = rlang::caller_env()
+  )
+}
+
+# The model methods differ only in the class they are registered for and in what
+# that class needs checked before it is read, so both route through here. The
+# method is resolved first because it decides whether the truncation reads an
+# exposure at all.
+#
+# The vector and matrix methods are reached by a call rather than by dispatch,
+# so they are handed the frame the route was entered on. Left to their own, a
+# refusal here would name a method the caller never wrote.
+ps_trunc_from_model <- function(
+  model,
+  method,
+  lower,
+  upper,
+  .exposure,
+  .focal_level,
+  .reference_level,
+  ...,
+  .treated,
+  .untreated,
+  call,
+  user_env
+) {
+  method <- rlang::arg_match(
+    method,
+    values = c("ps", "pctl", "cr"),
+    error_call = call
+  )
+
+  args <- prepare_model_ps(
+    model,
+    .exposure,
+    # Truncating a matrix of scores reads the exposure whatever the method, to
+    # hold the columns against its levels, so a fit that reports a column for
+    # every level is read for its exposure too.
+    needs_exposure = method == "cr" || model_fits_levels(model),
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    .treated = .treated,
+    .untreated = .untreated,
+    fn_name = "ps_trunc",
+    call = call,
+    user_env = user_env
+  )
+
+  if (identical(args$exposure_type, "categorical")) {
+    return(ps_trunc.matrix(
+      .propensity = args$propensity,
+      method = method,
+      lower = lower,
+      upper = upper,
+      .exposure = args$exposure,
+      .focal_level = args$focal_level,
+      .reference_level = args$reference_level,
+      ...,
+      call = call
+    ))
+  }
+
+  ps_trunc.default(
+    .propensity = args$propensity,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = args$exposure,
+    .focal_level = args$focal_level,
+    .reference_level = args$reference_level,
+    ...,
+    user_env = user_env,
     call = call
   )
 }

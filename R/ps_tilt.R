@@ -91,6 +91,17 @@
 #' probability vector with a missing entry is not one this can tilt on,
 #' whichever level the tilt reads.
 #'
+#' # Fitted models
+#'
+#' `.propensity` can be the fitted propensity score model instead of the scores
+#' it reports. A binomial [stats::glm()] and a two-level `nnet::multinom()`
+#' report one score per unit and are tilted as a vector; a `nnet::multinom()` of
+#' three or more levels reports one column per level and is tilted as a matrix,
+#' with `.focal_level` naming the column `"att"` and `"atu"` read. Those are the
+#' shapes `predict(fit, type = "response")` and `fitted(fit)` give, and tilting
+#' a fit tilts exactly what tilting those values would. A tilt reads no
+#' exposure, so nothing but the scores is taken off the model.
+#'
 #' # Modified propensity scores
 #'
 #' `ps_tilt()` takes plain propensity scores. A score modified by [ps_trim()],
@@ -102,7 +113,10 @@
 #' @param .propensity Propensity scores. A numeric vector of
 #'   \eqn{P(Z = \text{focal} \mid X)} for a binary exposure, or a matrix or data
 #'   frame with one column per exposure level, named for that level, for a
-#'   categorical exposure.
+#'   categorical exposure. A data frame holding a `.pred_class` column, which a
+#'   fitted tidymodels classification model returns when no prediction type is
+#'   named, carries predicted levels rather than probabilities and is refused
+#'   with an error of class `propensity_df_class_column_error`.
 #' @param estimand One of `"ate"`, `"att"`, `"atu"`, `"atm"`, `"ato"`, or
 #'   `"entropy"`.
 #' @param ... These dots are for future extensions and must be empty.
@@ -154,6 +168,15 @@
 #' # the same predictions standardized to everyone give the ATE instead
 #' mean(m1) - mean(m0)
 #'
+#' # the tilt of the scores a fitted model reports
+#' ps_tilt(glm(z ~ x, data = sim, family = binomial()), "ato")
+#'
+#' if (rlang::is_installed("nnet")) {
+#'   sim$trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+#'   multinomial_fit <- nnet::multinom(trt ~ x, data = sim, trace = FALSE)
+#'   head(ps_tilt(multinomial_fit, "att", .focal_level = "b"))
+#' }
+#'
 #' @export
 ps_tilt <- function(
   .propensity,
@@ -199,10 +222,14 @@ ps_tilt.default <- function(
   abort(
     c(
       "No method for objects of class {.cls {class(.propensity)}}.",
-      i = "{.fun ps_tilt} takes plain propensity scores. A score modified by \\
-      {.fun ps_trim}, {.fun ps_trunc}, or {.fun ps_calibrate} carries a class \\
-      of its own; pass the scores underneath it, with {.code as.numeric(x)} \\
-      for a binary exposure or {.code as.matrix(x)} for a categorical one."
+      i = "{.fun ps_tilt} takes plain propensity scores, or a fitted model \\
+      that reports them: a numeric vector, a matrix or data frame with one \\
+      column per exposure level, a binomial {.fun stats::glm}, or an \\
+      {.fun nnet::multinom}.",
+      i = "A score modified by {.fun ps_trim}, {.fun ps_trunc}, or \\
+      {.fun ps_calibrate} carries a class of its own; pass the scores \\
+      underneath it, with {.code as.numeric(x)} for a binary exposure or \\
+      {.code as.matrix(x)} for a categorical one."
     ),
     error_class = "propensity_method_error"
   )
@@ -214,12 +241,23 @@ ps_tilt.numeric <- function(
   estimand,
   ...,
   .focal_level = NULL,
-  ps = lifecycle::deprecated()
+  ps = lifecycle::deprecated(),
+  # The frame every condition here is attributed to. The generic empties its
+  # dots, so no caller reaches this by anything but dispatch or a call from
+  # another method, and the model methods are the second of those: they read
+  # the scores off a fit and hand them here under the frame the user entered
+  # the route on.
+  call = rlang::current_env()
 ) {
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
-  estimand <- check_tilt_estimand(estimand)
-  check_tilt_focal_unused(.focal_level, estimand, matrix_ps = FALSE)
-  check_ps_range(.propensity)
+  estimand <- check_tilt_estimand(estimand, call = call)
+  check_tilt_focal_unused(
+    .focal_level,
+    estimand,
+    matrix_ps = FALSE,
+    call = call
+  )
+  check_ps_range(.propensity, call = call)
 
   .propensity <- as.double(.propensity)
 
@@ -253,12 +291,83 @@ ps_tilt.data.frame <- function(
   ps = lifecycle::deprecated()
 ) {
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_predicted_class_column(.propensity, call = rlang::current_env())
 
   tilt_from_matrix(
     as.matrix(.propensity),
     estimand,
     .focal_level,
     call = rlang::current_env()
+  )
+}
+
+# The fitted propensity score models a tilt reads, registered for the same
+# classes the weight functions read: a `glm`, whose binomial families fit the
+# probability of a binary exposure, and a `multinom`, which fits a probability
+# for every level. A `lm` is not among them, its fitted values being conditional
+# means rather than probabilities, and it reaches the default method, which
+# reports that it has no scores to tilt.
+#' @export
+ps_tilt.glm <- function(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
+  tilt_from_model(
+    .propensity,
+    estimand,
+    .focal_level,
+    call = rlang::current_env()
+  )
+}
+
+# A `multinom` is `c("multinom", "nnet")` and inherits from neither `glm` nor
+# `lm`, so it reaches a method of its own. What it was fit to is checked before
+# anything reads it, so that a fit the route cannot read is reported as such
+# rather than as whatever its fitted values are made of.
+#' @export
+ps_tilt.multinom <- function(
+  .propensity,
+  estimand,
+  ...,
+  .focal_level = NULL,
+  ps = lifecycle::deprecated()
+) {
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+  check_multinom_response(.propensity, call = rlang::current_env())
+
+  tilt_from_model(
+    .propensity,
+    estimand,
+    .focal_level,
+    call = rlang::current_env()
+  )
+}
+
+# A tilt has no exposure of its own to recover, so the only thing a fitted model
+# adds is where the scores come from and which route they take: a fit of three
+# or more levels reports a column for each of them and is tilted as a matrix,
+# and a fit reporting one probability for each unit is tilted as a vector.
+#
+# `.focal_level` names a column of a categorical tilt rather than the level a
+# binary coding treats as focal, so it travels on untouched and is refused by
+# the vector route the way it is for a vector of scores.
+tilt_from_model <- function(model, estimand, .focal_level, call) {
+  args <- prepare_model_ps(model, fn_name = "ps_tilt", call = call)
+
+  if (identical(args$exposure_type, "categorical")) {
+    return(tilt_from_matrix(args$propensity, estimand, .focal_level, call))
+  }
+
+  ps_tilt.numeric(
+    args$propensity,
+    estimand,
+    .focal_level = .focal_level,
+    call = call
   )
 }
 

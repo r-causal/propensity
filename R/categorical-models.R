@@ -13,12 +13,20 @@
 # resolves as binary, so such a fit is read on the binary path instead. The
 # methods below hold both halves of that: what the categorical path reads, and
 # what the binary path accepts and reads.
-extract_categorical_ps <- function(model, call = rlang::caller_env()) {
+extract_categorical_ps <- function(
+  model,
+  exposure_levels = NULL,
+  call = rlang::caller_env()
+) {
   UseMethod("extract_categorical_ps")
 }
 
 #' @export
-extract_categorical_ps.default <- function(model, call = rlang::caller_env()) {
+extract_categorical_ps.default <- function(
+  model,
+  exposure_levels = NULL,
+  call = rlang::caller_env()
+) {
   abort_categorical_model(model, call = call)
 }
 
@@ -31,17 +39,135 @@ extract_categorical_ps.default <- function(model, call = rlang::caller_env()) {
 # The response check that every model method runs first has already refused a
 # fit with no levels, so the columns are named whenever this is reached.
 #' @export
-extract_categorical_ps.multinom <- function(model, call = rlang::caller_env()) {
+extract_categorical_ps.multinom <- function(
+  model,
+  exposure_levels = NULL,
+  call = rlang::caller_env()
+) {
+  check_multinom_levels(model, exposure_levels, call = call)
+
   stats::fitted(model)
+}
+
+# The levels a `multinom` was fit to are the columns it reports, so a fit made
+# to some other set of levels than those of the exposure being weighted has no
+# column to read as the probability of each level. Comparing the two sets here
+# reports that as what it is, a model of something other than the exposure,
+# rather than leaving `check_ps_matrix()` to report the width of a matrix the
+# caller never built. Order is not part of the comparison, because the matrix
+# check matches the columns to the levels by name.
+#
+# An exposure of fewer than three levels is not a categorical exposure at all,
+# whatever the model was fit to, and `transform_exposure_categorical()` reports
+# that; the comparison leaves such an exposure to it.
+check_multinom_levels <- function(
+  model,
+  exposure_levels,
+  call = rlang::caller_env()
+) {
+  if (length(exposure_levels) < 3L) {
+    return(invisible(NULL))
+  }
+
+  if (setequal(as.character(exposure_levels), model$lev)) {
+    return(invisible(NULL))
+  }
+
+  n_levels <- length(model$lev)
+  n_exposure <- length(exposure_levels)
+
+  # The mismatch an unused factor level makes: `nnet::multinom()` drops a level
+  # no unit took, so a fit made to an exposure with an empty level reports
+  # every level the exposure has units at and no other. The fit is of the
+  # exposure being weighted and only the declaration disagrees, which is fixed
+  # without refitting anything, so it is worth naming. A fit reporting a level
+  # the exposure does not declare is not that, whatever else it reports: it is
+  # a fit of something else, and dropping levels cannot supply the column it is
+  # missing.
+  exposure_levels_chr <- as.character(exposure_levels)
+  unfitted <- setdiff(exposure_levels_chr, model$lev)
+  unused_level_remedy <- if (
+    length(unfitted) > 0 && all(model$lev %in% exposure_levels_chr)
+  ) {
+    c(
+      i = "{.fun nnet::multinom} drops a level no unit took, so an exposure
+           declaring {.val {unfitted}} with no unit there is fit one column
+           short; call {.fun droplevels} on {.arg .exposure} if that is the
+           disagreement."
+    )
+  }
+
+  abort(
+    c(
+      "Weights for a categorical exposure need a probability for every level
+       of the exposure being weighted.",
+      x = "{.arg .propensity} was fit to {n_levels} level{?s}
+           ({.val {model$lev}}), and the exposure has {n_exposure}
+           ({.val {exposure_levels}}).",
+      unused_level_remedy,
+      i = "Fit the propensity score model to the exposure being weighted."
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
+}
+
+# Whether a fitted model reports a probability for every level of the exposure
+# rather than a single probability for each unit. That is what decides which
+# route a fit takes through the propensity score modifiers, whose vector and
+# matrix methods read the two shapes. The weight functions settle the same
+# question from the exposure they were given, which a modifier such as
+# `ps_tilt()` does not have, so the answer is read from the fit itself.
+model_fits_levels <- function(model) {
+  UseMethod("model_fits_levels")
+}
+
+#' @export
+model_fits_levels.default <- function(model) {
+  FALSE
+}
+
+# A two-level fit reports one column, the shape a binomial `glm` reports, and a
+# two-level exposure is binary however it was fit, so such a fit is read on the
+# vector route. `check_multinom_response()` has already refused a fit with no
+# levels wherever this is reached.
+#' @export
+model_fits_levels.multinom <- function(model) {
+  length(model$lev) > 2L
+}
+
+# The levels a fitted model reports a probability for, read off the fit itself.
+# A modification that reads no exposure still has to know which levels the
+# columns it is given belong to, and the fit records them, so nothing has to be
+# recovered from the data the model was fit to. This is the pair of
+# `model_fits_levels()`: a class that answers `TRUE` there reports a column for
+# every level and so has levels to name here.
+model_levels <- function(model) {
+  UseMethod("model_levels")
+}
+
+# `lev` is the response's levels in the order the columns of `fitted()` are laid
+# out in, which is the order the columns are named in.
+#' @export
+model_levels.multinom <- function(model) {
+  model$lev
 }
 
 # A `multinom` fits a probability for every level and so has a single
 # probability to give only when it was fit to two of them. More levels than
 # that leave nothing to read as the probability of the exposure, which is what a
 # binary exposure needs.
+#
+# `remedy` goes unread here. What is wrong with a `multinom` of more than two
+# levels is the number of levels rather than the family, so the remedy is the
+# one written below whichever argument the model arrived in; and a `multinom`
+# reaches this generic only as a propensity score model, `stabilize` taking an
+# `lm` or a model built on one.
 #' @export
 check_binary_model_family.multinom <- function(
   model,
+  arg = ".propensity",
+  remedy = NULL,
   call = rlang::caller_env()
 ) {
   n_levels <- length(model$lev)
@@ -52,9 +178,9 @@ check_binary_model_family.multinom <- function(
 
   abort(
     c(
-      "Weights for a binary exposure need the probability of one of its two
-       levels.",
-      x = "{.arg .propensity} was fit to {n_levels} levels
+      "A binary propensity score needs the probability of one of the
+       exposure's two levels.",
+      x = "{.arg {arg}} was fit to {n_levels} levels
            ({.val {model$lev}}), so it fits no single probability to read
            against a binary exposure.",
       i = "Fit the propensity score model to the exposure being weighted, or
@@ -96,7 +222,7 @@ extract_model_exposure.multinom <- function(model) {
     max.col(indicators)
   }
 
-  factor(model$lev[indicated], levels = model$lev)
+  pad_dropped_rows(model, factor(model$lev[indicated], levels = model$lev))
 }
 
 # What a `multinom` was fit to. A matrix response is read as counts rather than
@@ -105,16 +231,23 @@ extract_model_exposure.multinom <- function(model) {
 # anything reads the model, including before the exposure is taken off it, so
 # that a fit the route cannot read is reported as such rather than as whatever
 # the exposure detector makes of a matrix of counts.
-check_multinom_response <- function(model, call = rlang::caller_env()) {
+#
+# `arg` names the argument the fit arrived as, since the estimator takes it as
+# `wt_mod` and the weight functions as `.propensity`, and the refusal is the
+# same one in both places.
+check_multinom_response <- function(
+  model,
+  arg = ".propensity",
+  call = rlang::caller_env()
+) {
   if (length(model$lev) > 0) {
     return(invisible(NULL))
   }
 
   abort(
     c(
-      "Weights need a propensity score model fit to the levels of the
-       exposure.",
-      x = "{.arg .propensity} was fit to a matrix response, which
+      "A propensity score model must be fit to the levels of the exposure.",
+      x = "{.arg {arg}} was fit to a matrix response, which
            {.fun nnet::multinom} reads as counts rather than as levels.",
       i = "Refit the model with the exposure factor on the left-hand side, as
            in {.code nnet::multinom(exposure ~ x)}."

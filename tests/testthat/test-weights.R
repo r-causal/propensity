@@ -34,7 +34,7 @@ test_that("wt_atc is an alias for wt_atu", {
   expect_identical(wts_atu_glm, wts_atc_glm)
 
   # Test with ps_trim
-  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  ps_trimmed <- ps_trim(ps, .exposure = exposure)
   # Suppress refit warnings - we're testing the alias behavior, not the warning
   suppressWarnings({
     wts_atu_trim <- wt_atu(ps_trimmed, exposure)
@@ -44,11 +44,21 @@ test_that("wt_atc is an alias for wt_atu", {
   expect_identical(wts_atu_trim, wts_atc_trim)
 
   # Test with ps_trunc
-  ps_truncated <- ps_trunc(ps, .exposure = exposure, trunc_at = 0.2)
+  ps_truncated <- ps_trunc(ps, .exposure = exposure)
   wts_atu_trunc <- wt_atu(ps_truncated, exposure)
   wts_atc_trunc <- wt_atc(ps_truncated, exposure)
 
   expect_identical(wts_atu_trunc, wts_atc_trunc)
+
+  # Test with ps_calib. `wt_atc` is `wt_atu`, whose body dispatches on
+  # "wt_atu", so the alias reaches the modified-score methods under that name
+  # and needs no registrations of its own. Calibration fits a model, so it
+  # reads the hundred scores above rather than the four.
+  calibrated <- ps_calibrate(fitted(ps_model), treatment)
+  wts_atu_calib <- wt_atu(calibrated, treatment)
+  wts_atc_calib <- wt_atc(calibrated, treatment)
+
+  expect_identical(wts_atu_calib, wts_atc_calib)
 })
 
 test_that("wt_atc works with all object types", {
@@ -147,7 +157,7 @@ test_that("psw objects can be multiplied together", {
   expect_false(is_stabilized(combined_mixed)) # Should be FALSE since only one is stabilized
 
   # Test with trimmed weights
-  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  ps_trimmed <- ps_trim(ps, .exposure = exposure)
   # Suppress refit warnings - we're testing combination behavior, not the warning
   suppressWarnings({
     wts_ate_trim <- wt_ate(ps_trimmed, exposure)
@@ -214,7 +224,7 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
   expect_equal(estimand(wts_cens_cont), "uncensored")
 
   # Test with ps_trim
-  ps_trimmed <- ps_trim(ps, .exposure = exposure, trim_at = 0.2)
+  ps_trimmed <- ps_trim(ps, .exposure = exposure)
   # Suppress refit warnings - we're testing wt_cens behavior, not the warning
   suppressWarnings({
     wts_cens_trim <- wt_cens(ps_trimmed, exposure)
@@ -224,7 +234,7 @@ test_that("wt_cens uses ATE formula with uncensored estimand", {
   expect_true(is_ps_trimmed(wts_cens_trim))
 
   # Test with ps_trunc
-  ps_truncated <- ps_trunc(ps, .exposure = exposure, trunc_at = 0.2)
+  ps_truncated <- ps_trunc(ps, .exposure = exposure)
   wts_cens_trunc <- wt_cens(ps_truncated, exposure)
 
   expect_equal(estimand(wts_cens_trunc), "uncensored; truncated")
@@ -2969,13 +2979,29 @@ test_that("`wt_cens()` names itself in the deprecation on the numeric and glm ro
   expect_no_match(glm_deprecations[[1]], "wt_ate()", fixed = TRUE)
 })
 
-test_that("continuous exposures keep the positional data frame default", {
+test_that("continuous exposures refuse a data frame of several columns", {
+  # A binary exposure names its levels, so a frame of scores can be read against
+  # them and a column chosen. A continuous exposure names nothing: a frame of
+  # several conditional means offers no way to tell which one the weights are
+  # meant to be built from, and a column taken by position is as likely to be
+  # the wrong one. The caller is asked to name it.
   set.seed(2024)
   exposure <- rnorm(10)
   ps_df <- data.frame(first = rnorm(10), second = rnorm(10))
 
-  expect_equal(
+  expect_error(
     wt_ate(ps_df, exposure, exposure_type = "continuous", stabilize = TRUE),
+    class = "propensity_df_ambiguous_column_error"
+  )
+
+  expect_equal(
+    wt_ate(
+      ps_df,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .propensity_col = second
+    ),
     wt_ate(
       ps_df$second,
       exposure,
@@ -5133,7 +5159,7 @@ test_that("ATE weights match PSweight", {
   expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
 })
 
-test_that("Overlap (ATO) weights use different formula than PSweight", {
+test_that("Overlap (ATO) weights match PSweight", {
   skip_if_not_installed("PSweight")
   skip_on_cran()
 
@@ -5149,6 +5175,17 @@ test_that("Overlap (ATO) weights use different formula than PSweight", {
     exposure_type = "binary"
   )
 
+  # The overlap tilt is h(e) = e(1 - e) and the weight is h(e) divided by the
+  # probability of the exposure the unit took, which reduces to 1 - e for the
+  # treated and to e for the untreated. Both packages compute that quantity;
+  # the two only look different written as the tilt over the score.
+  trt <- PSweight::psdata_cl$trt
+  expect_equal(
+    as.numeric(our_weights),
+    ifelse(trt == 1, 1 - ps_fitted, ps_fitted),
+    ignore_attr = "names"
+  )
+
   # Calculate weights with PSweight
   psw_obj <- PSweight::SumStat(
     ps.formula = ps_formula,
@@ -5161,8 +5198,7 @@ test_that("Overlap (ATO) weights use different formula than PSweight", {
   psw_weights_norm <- psw_obj$ps.weights$overlap
 
   # Calculate sum of raw weights for each group to un-normalize
-  trt <- PSweight::psdata_cl$trt
-  raw_wts <- ps_fitted * (1 - ps_fitted) # ATO weights are same for both groups
+  raw_wts <- ifelse(trt == 1, 1 - ps_fitted, ps_fitted)
   sum_raw_trt1 <- sum(raw_wts[trt == 1])
   sum_raw_trt0 <- sum(raw_wts[trt == 0])
 
@@ -5171,11 +5207,8 @@ test_that("Overlap (ATO) weights use different formula than PSweight", {
   psw_weights_raw[trt == 1] <- psw_weights_norm[trt == 1] * sum_raw_trt1
   psw_weights_raw[trt == 0] <- psw_weights_norm[trt == 0] * sum_raw_trt0
 
-  # Our package uses (1-ps) for treated and ps for control
-  # PSweight uses ps*(1-ps) for both groups
-  # These are different formulations of overlap weights
-  # So we skip the direct comparison
-  skip("ATO formulas differ between packages")
+  # Compare
+  expect_equal(as.numeric(our_weights), psw_weights_raw, tolerance = 1e-10)
 })
 
 test_that("Matching (ATM) weights match PSweight", {
@@ -5848,12 +5881,15 @@ test_that("continuous ATE weights fall back to the pooled residual standard devi
   f_num <- continuous_marginal_density(fixture$exposure)
   f_den <- dnorm(fixture$exposure, mean = fixture$fitted, sd = pooled_sd)
 
-  stabilized <- wt_ate(
+  # The fitted values of this fixture track its exposure closely enough to put
+  # the weights past the finite-variance boundary, which these tests are not
+  # about: they are about which spread the weights were divided by.
+  stabilized <- muffle_variance_warning(wt_ate(
     fixture$fitted,
     fixture$exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  )
+  ))
   expect_equal(as.numeric(stabilized), f_num / f_den)
 
   withr::local_options(propensity.quiet = FALSE)
@@ -5892,13 +5928,15 @@ test_that("wt_ate() on a gaussian model pools the residual standard deviation un
 
   # A model carries no observation-level standard deviations of its own into
   # the weights, so the model route is the numeric route on its fitted values.
-  from_model <- wt_ate(model, exposure_type = "continuous", stabilize = TRUE)
-  from_numeric <- wt_ate(
+  from_model <- muffle_variance_warning(
+    wt_ate(model, exposure_type = "continuous", stabilize = TRUE)
+  )
+  from_numeric <- muffle_variance_warning(wt_ate(
     fitted(model),
     fixture$exposure,
     exposure_type = "continuous",
     stabilize = TRUE
-  )
+  ))
   expect_equal(as.numeric(from_model), as.numeric(from_numeric))
   expect_equal(
     as.numeric(from_model),

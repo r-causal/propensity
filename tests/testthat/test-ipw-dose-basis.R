@@ -218,7 +218,6 @@ expect_dose_basis_refuses_marginal <- function(res) {
 # ---- one row per basis coefficient ------------------------------------------
 
 test_that("a polynomial basis reports one row per basis coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
@@ -256,7 +255,6 @@ test_that("a polynomial basis reports one row per basis coefficient", {
 })
 
 test_that("a natural spline basis reports one row per basis coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
 
   # No bare `e` term anywhere in this model. The boundary is variable
@@ -289,7 +287,6 @@ test_that("a natural spline basis reports one row per basis coefficient", {
 })
 
 test_that("a B-spline basis reports one row per basis coefficient", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "splines::bs(e, 3)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
@@ -317,7 +314,6 @@ test_that("a B-spline basis reports one row per basis coefficient", {
 # ---- the reading a basis fit reports ----------------------------------------
 
 test_that("a basis fit announces the reading it reports", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
 
@@ -333,7 +329,6 @@ test_that("a basis fit announces the reading it reports", {
 })
 
 test_that("naming the conditional reading silences the announcement", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
 
@@ -358,7 +353,6 @@ test_that("naming the conditional reading silences the announcement", {
 })
 
 test_that("a basis fit refuses the marginal reading", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
 
@@ -375,7 +369,6 @@ test_that("a basis fit refuses the marginal reading", {
 })
 
 test_that("the marginal reading is refused wherever it is asked for", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "splines::ns(e, 3)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
@@ -393,7 +386,6 @@ test_that("the marginal reading is refused wherever it is asked for", {
 })
 
 test_that("a basis fit is an ipw result reporting its conditional reading", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
@@ -448,7 +440,6 @@ dose_basis_messages <- function(expr) {
 }
 
 test_that("a wrapper forwarding the reading default reports the default", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
 
@@ -479,7 +470,6 @@ test_that("a wrapper forwarding the reading default reports the default", {
 })
 
 test_that("a forwarded reading default reaches the gaussian glm route", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
 
@@ -503,7 +493,6 @@ test_that("a forwarded reading default reaches the gaussian glm route", {
 })
 
 test_that("a forwarded reading is still the caller naming one", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
 
@@ -533,7 +522,6 @@ test_that("a forwarded reading is still the caller naming one", {
 })
 
 test_that("a forwarded reading default leaves a single-column fit marginal", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
 
   # One exposure column is one slope, so there is a row that answers the
@@ -556,7 +544,6 @@ test_that("a forwarded reading default leaves a single-column fit marginal", {
 # ---- the closed form ---------------------------------------------------------
 
 test_that("the conditional reading is the outcome block of the stacked system", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
@@ -591,7 +578,6 @@ test_that("the conditional reading is the outcome block of the stacked system", 
 })
 
 test_that("a logit marginal structural model reports the same rows on the odds scale", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)", outcome_family = "binomial")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
@@ -616,7 +602,6 @@ test_that("a logit marginal structural model reports the same rows on the odds s
 })
 
 test_that("the conditional reading of a basis fit is the outcome model's", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "splines::ns(e, 3)")
   conditional <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
@@ -638,8 +623,6 @@ test_that("the conditional reading of a basis fit is the outcome model's", {
 # ---- pooling -----------------------------------------------------------------
 
 test_that("pool_ipw() over basis fits pools the conditional reading", {
-  skip_if_not_installed("deli")
-
   # Three fits of the same model to three datasets, which is the shape a set of
   # imputations arrives in. What is pooled is the reading the results record,
   # so a set of basis fits pools by coefficient.
@@ -672,7 +655,6 @@ test_that("pool_ipw() over basis fits pools the conditional reading", {
 # ---- the .data requirement ---------------------------------------------------
 
 test_that("a basis fit without .data directs the user to supply it", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
 
   # A model frame records the term, so a basis fit has no exposure column in it
@@ -691,7 +673,6 @@ test_that("a basis fit without .data directs the user to supply it", {
 })
 
 test_that("the refusal without .data names the exposure and the remedy", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2)")
 
@@ -720,7 +701,6 @@ test_that("the refusal without .data names the exposure and the remedy", {
 })
 
 test_that("a spline propensity model rebuilds from .data as it was fit", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
 
   # The one design that is rebuilt rather than read off a fit. `.data` is passed
@@ -751,7 +731,6 @@ test_that("a spline propensity model rebuilds from .data as it was fit", {
 # ---- basis terms that are not exposure terms ---------------------------------
 
 test_that("a basis term reading a covariate is admitted as a covariate", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
 
   # `splines::ns(x1, 3)` reads a covariate and nothing else, so it is a
@@ -802,7 +781,6 @@ test_that("a basis term reading a covariate is admitted as a covariate", {
 })
 
 test_that("an exposure basis beside a covariate basis reports only its own rows", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2) + splines::ns(x1, 3)")
   res <- ipw(fx$ps_mod, fx$outcome_mod, .data = dat)
@@ -826,7 +804,6 @@ test_that("an exposure basis beside a covariate basis reports only its own rows"
 })
 
 test_that("a basis term mixing the exposure and a covariate is refused", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
 
   # A basis expanded against a covariate contributes coefficients that are
@@ -847,7 +824,6 @@ test_that("a basis term mixing the exposure and a covariate is refused", {
 })
 
 test_that("the mixed-term refusal names the term and the way out", {
-  skip_if_not_installed("deli")
   dat <- sim_dose_basis()
   fx <- fit_dose_basis(dat, "poly(e, 2):x1")
 

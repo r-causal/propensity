@@ -297,141 +297,107 @@ test_that("ps_trim.ps_trim warns about already trimmed scores", {
 })
 
 # PSweight comparison tests
+#
+# `PSweight::PStrim()` reports the propensity score matrix it trimmed on only
+# when it is given one: asked to fit the model itself it returns the trimmed
+# data and nothing to compare column by column, which left these comparisons
+# skipping on their own fixture. Both tests therefore fit the multinomial model
+# here and hand the same matrix to both implementations, which is also what
+# makes the comparison a comparison of the trimming rules rather than of two
+# model fits.
+#
+# `PStrim()` applies no trimming at all when its rule would empty a treatment
+# group, and with a supplied matrix it does that silently, so each test pins
+# that the rule actually removed observations before comparing what was kept.
+
+psweight_trim_fixture <- function() {
+  utils::data("psdata", package = "PSweight", envir = environment())
+  psdata$trt <- factor(psdata$trt)
+  ps_mod <- nnet::multinom(
+    trt ~ cov1 + cov2 + cov3 + cov4 + cov5 + cov6,
+    data = psdata,
+    trace = FALSE
+  )
+
+  list(data = psdata, ps_matrix = stats::fitted(ps_mod))
+}
+
+# The rows PStrim kept, read off the row names of the data it returned.
+psweight_kept_rows <- function(trimmed) {
+  as.integer(rownames(trimmed$data))
+}
+
 test_that("ps_trim symmetric trimming matches PSweight for categorical exposures", {
   skip_if_not_installed("PSweight")
+  skip_if_not_installed("nnet")
   skip_on_cran()
 
-  # Load PSweight data
-  data(psdata, package = "PSweight")
+  fixture <- psweight_trim_fixture()
+  n <- nrow(fixture$data)
 
-  # Create a 3-category exposure from existing variables
-  set.seed(123)
-  psdata$trt_3cat <- cut(
-    psdata$cov1,
-    breaks = 3,
-    labels = c("Low", "Med", "High")
-  )
+  # Both implementations keep a row whose smallest score is above the
+  # threshold, so the two agree row for row rather than only in how many rows
+  # they kept. Three thresholds, so the agreement is over a rule rather than
+  # over one cutoff.
+  for (delta in c(0.05, 0.1, 0.15)) {
+    psw_trimmed <- PSweight::PStrim(
+      data = fixture$data,
+      zname = "trt",
+      ps.estimate = fixture$ps_matrix,
+      delta = delta
+    )
+    psw_kept <- psweight_kept_rows(psw_trimmed)
 
-  # Estimate propensity scores using multinomial regression
-  ps_formula <- trt_3cat ~ cov1 + cov2 + cov3 + cov4
+    ours <- ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$data$trt,
+      method = "ps",
+      lower = delta
+    )
+    meta <- ps_trim_meta(ours)
 
-  # PSweight approach
-  expect_warning(
-    psw_result <- PSweight::PStrim(
-      data = psdata,
-      ps.formula = ps_formula,
-      zname = "trt_3cat",
-      delta = 0.1
-    ),
-    "One or more groups removed after trimming"
-  )
-
-  # Extract propensity scores from PSweight
-  ps_matrix_psw <- psw_result$ps.estimate
-
-  # Check if PSweight returned a matrix
-  if (is.null(ps_matrix_psw) || !is.matrix(ps_matrix_psw)) {
-    skip("PSweight didn't return a valid propensity score matrix")
-  }
-
-  # Our approach
-  our_result <- ps_trim(
-    .propensity = ps_matrix_psw,
-    .exposure = psdata$trt_3cat,
-    method = "ps",
-    lower = 0.1
-  )
-
-  # Compare results
-  meta <- ps_trim_meta(our_result)
-
-  # PSweight returns the trimmed dataset
-  # Count how many were retained
-  n_retained_psw <- nrow(psw_result$data)
-  n_retained_our <- length(meta$keep_idx)
-
-  # PSweight warning indicates no trimming was applied due to group removal
-  # In this case, both should retain all observations
-  if (n_retained_psw == nrow(psdata)) {
-    expect_equal(n_retained_our, nrow(psdata))
-    expect_equal(length(meta$trimmed_idx), 0)
-  } else {
-    # Both should retain the same number of observations
-    expect_equal(n_retained_our, n_retained_psw)
-
-    # Check that both identified similar proportions to trim
-    prop_trimmed_psw <- (nrow(psdata) - n_retained_psw) / nrow(psdata)
-    prop_trimmed_our <- length(meta$trimmed_idx) / nrow(psdata)
-    expect_equal(prop_trimmed_our, prop_trimmed_psw, tolerance = 0.01)
+    expect_lt(length(psw_kept), n)
+    expect_equal(
+      as.integer(meta$keep_idx),
+      psw_kept,
+      ignore_attr = TRUE
+    )
+    expect_equal(
+      as.integer(meta$trimmed_idx),
+      setdiff(seq_len(n), psw_kept),
+      ignore_attr = TRUE
+    )
   }
 })
 
 test_that("ps_trim optimal trimming matches PSweight for multi-category", {
   skip_if_not_installed("PSweight")
+  skip_if_not_installed("nnet")
   skip_on_cran()
 
-  # Create test data with 4 categories
-  set.seed(456)
-  n <- 200
-  x1 <- rnorm(n)
-  x2 <- rnorm(n)
+  fixture <- psweight_trim_fixture()
+  n <- nrow(fixture$data)
 
-  # Create 4-category treatment based on covariates
-  # Use plogis to ensure positive probabilities
-  trt_probs <- cbind(
-    plogis(0.5 + 0.3 * x1),
-    plogis(0.5 - 0.3 * x1 + 0.3 * x2),
-    plogis(0.5 + 0.3 * x2),
-    plogis(0.5 - 0.3 * x2)
-  )
-  trt_probs <- trt_probs / rowSums(trt_probs)
-
-  trt <- factor(apply(trt_probs, 1, function(p) sample.int(4, 1, prob = p)))
-
-  test_data <- data.frame(
-    trt = trt,
-    x1 = x1,
-    x2 = x2
-  )
-
-  # PSweight optimal trimming
   psw_optimal <- PSweight::PStrim(
-    data = test_data,
-    ps.formula = trt ~ x1 + x2,
+    data = fixture$data,
     zname = "trt",
+    ps.estimate = fixture$ps_matrix,
     optimal = TRUE
   )
+  psw_kept <- psweight_kept_rows(psw_optimal)
 
-  # Our optimal trimming
-  ps_matrix <- psw_optimal$ps.estimate
-
-  # Check if PSweight returned valid propensity scores
-  if (is.null(ps_matrix)) {
-    skip("PSweight didn't return propensity scores for optimal trimming")
-  }
-
-  # Ensure ps_matrix is actually a matrix
-  if (!is.matrix(ps_matrix)) {
-    ps_matrix <- as.matrix(ps_matrix)
-  }
-
-  our_optimal <- ps_trim(
-    .propensity = ps_matrix,
-    .exposure = test_data$trt,
+  ours <- ps_trim(
+    fixture$ps_matrix,
+    .exposure = fixture$data$trt,
     method = "optimal"
   )
+  meta <- ps_trim_meta(ours)
 
-  # Compare lambda values if both found a solution
-  meta <- ps_trim_meta(our_optimal)
-  if (!is.null(meta$lambda) && !is.null(psw_optimal$lambda)) {
-    expect_equal(meta$lambda, psw_optimal$lambda, tolerance = 1e-4)
-  }
-
-  # Compare which observations were kept
-  psw_keep_idx <- seq_len(n) %in% seq_len(nrow(psw_optimal$data))
-  our_keep_idx <- seq_len(n) %in% meta$keep_idx
-
-  expect_equal(our_keep_idx, psw_keep_idx)
+  # The threshold Yang et al. solve for is a root of the same function, so the
+  # two implementations report the same lambda and keep the same rows.
+  expect_equal(meta$lambda, psw_optimal$lambda, tolerance = 1e-6)
+  expect_lt(length(psw_kept), n)
+  expect_equal(as.integer(meta$keep_idx), psw_kept, ignore_attr = TRUE)
 })
 
 test_that("ps_trim handles edge cases consistently with PSweight", {

@@ -1,3 +1,23 @@
+# density_eval() refuses a range that is not two finite ends
+
+    Code
+      expr
+    Condition <propensity_density_error>
+      Error:
+      ! `.density` cannot fit a kernel over an infinite range.
+      x The range it was given runs from -Inf to 2.
+      i A kernel is fit between two finite ends. An infinite end comes from an infinite exposure or fitted value; drop those observations before weighting.
+
+---
+
+    Code
+      expr
+    Condition <propensity_density_error>
+      Error:
+      ! `.density` fits a kernel between the two ends of a range.
+      x It was given 1 end rather than two.
+      i A kernel is fit from the lower end of the range to the upper one. Give both ends, in that order.
+
 # the constructors say what they refuse
 
     Code
@@ -204,9 +224,9 @@
       expr
     Condition <propensity_density_error>
       Error:
-      ! `.density` cannot fit a kernel on missing standardized residuals.
-      x 1 of them is missing.
-      i A missing exposure or fitted value leaves a missing residual. Drop those observations before weighting.
+      ! `.density` cannot fit a kernel on missing or infinite standardized residuals.
+      x 1 of them is missing or infinite.
+      i A missing exposure or fitted value leaves a missing residual, and an infinite exposure or a spread of zero leaves an infinite one. Drop those observations before weighting.
 
 ---
 
@@ -217,6 +237,26 @@
       ! `.density` cannot fit a kernel over a missing range.
       x The range a kernel is fit over is read from the standardized residuals, and at least one of them is missing.
       i A missing exposure or fitted value leaves a missing residual. Drop those observations before weighting.
+
+---
+
+    Code
+      expr
+    Condition <propensity_density_error>
+      Error:
+      ! `.density` cannot fit a kernel on missing or infinite standardized residuals.
+      x 1 of them is missing or infinite.
+      i A missing exposure or fitted value leaves a missing residual, and an infinite exposure or a spread of zero leaves an infinite one. Drop those observations before weighting.
+
+---
+
+    Code
+      expr
+    Condition <propensity_density_error>
+      Error:
+      ! `.density` cannot fit a kernel over a reversed range.
+      x The range it was given runs from 2 down to -2.
+      i A kernel is fit from the lower end of the range to the upper one. Give the ends in that order.
 
 # as_density_spec() says what it refuses more than one of
 

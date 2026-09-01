@@ -279,34 +279,52 @@ categorical_spec <- function(
 # `ps_type` selects the propensity model and, with it, the equation the ps score
 # is written as: `kind` says which of the registry's entries wrote it and `link`
 # says how the conditional mean is read back from the coefficients. A robust fit
-# carries one thing more, the threshold its Huber score clips at, which is held
-# fixed rather than estimated.
+# carries two things more, the loss its psi is and the constants that loss clips
+# the raw residual at, both held fixed rather than estimated.
 #
-# That threshold is read off the psi function itself. `rlm` tunes the psi by
-# rewriting its formals, so `formals(fit$psi)$k` is the constant the fit
+# Those constants are read off the psi function itself. `rlm` tunes a psi by
+# rewriting its formals, so the formals of `fit$psi` hold the constants the fit
 # actually clipped the standardized residual at, and the raw residual is clipped
-# at that constant times the scale the fit settled on. The `k2` element is a
-# different constant: it tunes the scale estimator rather than the psi, it is
-# unchanged when the caller passes `k`, and it changes when the caller passes
-# `k2` without the psi's threshold moving at all. `rlm_args` exists to fit both
-# of those cases.
+# at those constants times the scale the fit settled on. Which formals they are
+# depends on the psi: `k` for Huber, `c` for the bisquare, and `a`, `b`, and `c`
+# for Hampel. The `k2` element is a different constant: it tunes the scale
+# estimator rather than the psi, it is unchanged when the caller passes `k`, and
+# it changes when the caller passes `k2` without the psi's threshold moving at
+# all. `rlm_args` exists to fit both of those cases.
 #
 # `.density`, `numerator`, and `.sigma` are the three choices the weights
 # record, and the spec reads the first two straight off that record. The spread
 # is the exception: the record says only where it came from, so a fixed one is
 # carried here as the number it was.
+#
+# A fitted numerator model reaches `wt_ate()` through `stabilize` itself, so it
+# arrives here the same way. The spec carries it as the block the stacked system
+# estimates it in, described the way the propensity score block describes its
+# own model: the design, the entry that writes its score, the link its mean is
+# read back through, and the coefficients it was fit at.
 continuous_spec <- function(
   dat,
   stabilize = TRUE,
   stab_score = NULL,
   outcome_family = "gaussian",
-  ps_type = c("lm", "glm_log", "rlm"),
+  ps_type = c("lm", "glm_log", "rlm", "rlm_tukey", "rlm_hampel"),
   rlm_args = list(),
   .density = "normal",
   numerator = "marginal",
   .sigma = NULL
 ) {
   ps_type <- match.arg(ps_type)
+  num_mod <- if (inherits(stabilize, "lm")) stabilize
+  rlm_fit <- function(...) {
+    do.call(
+      MASS::rlm,
+      c(
+        list(A ~ x1 + x2, data = dat, acc = 1e-10, maxit = 200),
+        list(...),
+        rlm_args
+      )
+    )
+  }
   ps_mod <- switch(
     ps_type,
     lm = lm(A ~ x1 + x2, data = dat),
@@ -316,16 +334,40 @@ continuous_spec <- function(
       family = gaussian(link = "log"),
       control = glm.control(epsilon = 1e-14, maxit = 200)
     ),
-    rlm = do.call(
-      MASS::rlm,
-      c(list(A ~ x1 + x2, data = dat, acc = 1e-10), rlm_args)
-    )
+    rlm = rlm_fit(),
+    rlm_tukey = rlm_fit(psi = MASS::psi.bisquare),
+    rlm_hampel = rlm_fit(psi = MASS::psi.hampel)
   )
-  ps_kind <- if (ps_type == "glm_log") "glm" else ps_type
-  ps_link <- if (ps_type == "glm_log") "log" else "identity"
-  huber_k <- if (ps_type == "rlm") {
-    as.numeric(formals(ps_mod$psi)$k) * ps_mod$s
+  robust <- ps_type %in% c("rlm", "rlm_tukey", "rlm_hampel")
+  ps_kind <- if (ps_type == "glm_log") {
+    "glm"
+  } else if (robust) {
+    "rlm"
+  } else {
+    ps_type
   }
+  ps_link <- if (ps_type == "glm_log") "log" else "identity"
+  psi_loss <- switch(
+    ps_type,
+    rlm = "huber",
+    rlm_tukey = "tukey",
+    rlm_hampel = "hampel"
+  )
+  # The constants each psi clips the standardized residual at, scaled onto the
+  # raw residual deli clips. A Hampel psi carries three of them and the other
+  # two carry one, so what the spec holds is a vector rather than a number.
+  psi_formals <- if (robust) formals(ps_mod$psi)
+  psi_k <- switch(
+    ps_type,
+    rlm = as.numeric(psi_formals$k) * ps_mod$s,
+    rlm_tukey = as.numeric(psi_formals$c) * ps_mod$s,
+    rlm_hampel = as.numeric(c(
+      psi_formals$a,
+      psi_formals$b,
+      psi_formals$c
+    )) *
+      ps_mod$s
+  )
   fitted_ps <- as.double(fitted(ps_mod))
   A <- dat$A
   wts <- withr::with_options(
@@ -367,11 +409,27 @@ continuous_spec <- function(
       X = model.matrix(ps_mod),
       kind = ps_kind,
       link = ps_link,
-      huber_k = huber_k,
+      psi_loss = psi_loss,
+      psi_k = psi_k,
       coefs = coef(ps_mod),
       k = NULL
     ),
-    stab = list(stabilized = isTRUE(stabilize), score = stab_score),
+    stab = list(
+      stabilized = isTRUE(stabilize) || !is.null(num_mod),
+      score = stab_score,
+      model = if (!is.null(num_mod)) {
+        list(
+          X = model.matrix(num_mod),
+          kind = if (inherits(num_mod, "glm")) "glm" else "lm",
+          link = if (inherits(num_mod, "glm")) {
+            num_mod$family$link
+          } else {
+            "identity"
+          },
+          coefs = coef(num_mod)
+        )
+      }
+    ),
     density = meta$density,
     numerator = meta$numerator,
     sigma = if (is.null(.sigma)) {
@@ -1064,6 +1122,46 @@ test_that("ipw_theta_layout partitions theta for a continuous stabilized spec", 
   )
 })
 
+test_that("ipw_theta_layout gives a numerator model its own stabilization block", {
+  dat <- sim_continuous()
+  num_mod <- lm(A ~ x1, data = dat)
+  spec <- continuous_spec(dat, stabilize = num_mod)
+  layout <- ipw_theta_layout(spec)
+
+  # The spec reads its numerator off the weights, so this is what the record
+  # says as much as it is what the spec holds.
+  expect_identical(spec$numerator, "model")
+
+  # The numerator model is estimated where every other stabilizer is, in the
+  # stab block, and it is the same shape as the propensity score block it
+  # divides into: one parameter per coefficient and one for the spread its
+  # density is read at.
+  expect_layout_partition(
+    layout,
+    list(
+      ps = ncol(spec$ps$X) + 1,
+      stab = ncol(spec$stab$model$X) + 1,
+      out = ncol(spec$outcome$X),
+      mu = 0,
+      contrast = 0,
+      by_mu = 0,
+      by_contrast = 0
+    )
+  )
+
+  # The numerator's coefficients carry the block's prefix, which keeps them
+  # apart from the propensity score coefficients over the same terms, and its
+  # spread is named against `sigma2_d` the way it sits against it.
+  expect_equal(
+    names(layout$init)[layout$idx$stab],
+    c(paste0("stab_", colnames(spec$stab$model$X)), "sigma2_n")
+  )
+  expect_equal(
+    unname(layout$init[layout$idx$stab]),
+    c(unname(coef(num_mod)), mean(residuals(num_mod)^2))
+  )
+})
+
 test_that("ipw_theta_layout partitions theta for a continuous unstabilized spec", {
   # the ps block still carries the sigma2_d variance parameter (ncol(X) + 1),
   # but the stabilization block is empty
@@ -1123,6 +1221,17 @@ test_that("build_ipw_psi is root-seeded at init for continuous unstabilized ate 
   expect_root_seeded(continuous_spec(sim_continuous(), stabilize = FALSE))
 })
 
+test_that("build_ipw_psi is root-seeded at init for a numerator model", {
+  # The numerator model's own equations sit at their root at the coefficients it
+  # was fit at and at the second moment of its residuals, which is what makes
+  # the stacked system carry the uncertainty of having fit it.
+  dat <- sim_continuous()
+  spec <- continuous_spec(dat, stabilize = lm(A ~ x1, data = dat))
+
+  expect_identical(spec$numerator, "model")
+  expect_root_seeded(spec)
+})
+
 test_that("build_ipw_psi is root-seeded at init for continuous stabilized logistic MSM", {
   expect_root_seeded(continuous_spec(
     sim_continuous(),
@@ -1174,6 +1283,41 @@ test_that("build_ipw_psi is root-seeded for a robust fit tuned by its scale", {
     sim_continuous(),
     ps_type = "rlm",
     rlm_args = list(k2 = 2)
+  ))
+})
+
+test_that("build_ipw_psi is root-seeded for a bisquare propensity model", {
+  skip_if_not_installed("MASS")
+
+  # A redescending psi has more than one root, so the seed is what decides which
+  # of them the solve is asked about. It is the fit's own coefficients, and this
+  # is the check that they are a root of the equation stacked for them: a
+  # constant translated onto the wrong scale would leave the seed off it, and
+  # the solve would move to a root the user never fit.
+  expect_root_seeded(continuous_spec(sim_continuous(), ps_type = "rlm_tukey"))
+})
+
+test_that("build_ipw_psi is root-seeded for a Hampel propensity model", {
+  skip_if_not_installed("MASS")
+  expect_root_seeded(continuous_spec(sim_continuous(), ps_type = "rlm_hampel"))
+})
+
+test_that("build_ipw_psi is root-seeded for a retuned redescending psi", {
+  skip_if_not_installed("MASS")
+
+  # Each psi names its constants differently, and `rlm` records a caller's
+  # choice by rewriting the formals of the psi it was given. A translation that
+  # read the wrong formal, or that read Huber's `k` for every psi, would seed
+  # away from the root here.
+  expect_root_seeded(continuous_spec(
+    sim_continuous(),
+    ps_type = "rlm_tukey",
+    rlm_args = list(c = 3)
+  ))
+  expect_root_seeded(continuous_spec(
+    sim_continuous(),
+    ps_type = "rlm_hampel",
+    rlm_args = list(a = 1.5, b = 3, c = 6)
   ))
 })
 
@@ -1346,8 +1490,8 @@ test_that("the continuous ps block for a robust fit is deli's Huber score", {
       X = spec$ps$X,
       y = spec$exposure,
       model = "linear",
-      k = spec$ps$huber_k,
-      loss = "huber"
+      k = spec$ps$psi_k,
+      loss = spec$ps$psi_loss
     ),
     matrix((spec$exposure - mu)^2 - sigma2_d, nrow = 1)
   )
@@ -1380,8 +1524,8 @@ test_that("the robust ps block reads the psi's threshold, not the scale constant
         X = spec$ps$X,
         y = spec$exposure,
         model = "linear",
-        k = spec$ps$huber_k,
-        loss = "huber"
+        k = spec$ps$psi_k,
+        loss = spec$ps$psi_loss
       ),
       matrix((spec$exposure - mu)^2 - sigma2_d, nrow = 1)
     )
@@ -1415,4 +1559,76 @@ test_that("the robust ps block reads the psi's threshold, not the scale constant
     ps_type = "rlm",
     rlm_args = list(k2 = 2)
   ))
+})
+
+test_that("the continuous ps block writes each rlm psi as its own deli loss", {
+  skip_if_not_installed("MASS")
+
+  # The three psi functions `rlm` is fit with here have losses of their own in
+  # deli, and the translation is a pair: which loss writes the score, and the
+  # constants that loss clips the raw residual at. Both halves are pinned
+  # against deli directly, so a block that wrote a redescending fit as the Huber
+  # score, or that clipped a Hampel fit at one constant rather than three, is
+  # caught here rather than at the fourth decimal place of a standard error.
+  dat <- sim_continuous()
+
+  cases <- list(
+    list(ps_type = "rlm_tukey", loss = "tukey", args = list()),
+    list(ps_type = "rlm_tukey", loss = "tukey", args = list(c = 3)),
+    list(ps_type = "rlm_hampel", loss = "hampel", args = list()),
+    list(
+      ps_type = "rlm_hampel",
+      loss = "hampel",
+      args = list(a = 1.5, b = 3, c = 6)
+    )
+  )
+
+  for (case in cases) {
+    spec <- continuous_spec(
+      dat,
+      ps_type = case$ps_type,
+      rlm_args = case$args
+    )
+    expect_identical(spec$ps$psi_loss, case$loss)
+
+    layout <- ipw_theta_layout(spec)
+    theta <- layout$init
+    rows <- build_ipw_psi(spec, layout)(theta)[layout$idx$ps, , drop = FALSE]
+
+    n_alpha <- ncol(spec$ps$X)
+    alpha <- theta[layout$idx$ps][seq_len(n_alpha)]
+    sigma2_d <- theta[layout$idx$ps][[n_alpha + 1]]
+    mu <- as.vector(spec$ps$X %*% alpha)
+    expected <- rbind(
+      deli::ee_robust_regression(
+        alpha,
+        X = spec$ps$X,
+        y = spec$exposure,
+        model = "linear",
+        k = spec$ps$psi_k,
+        loss = case$loss
+      ),
+      matrix((spec$exposure - mu)^2 - sigma2_d, nrow = 1)
+    )
+
+    expect_equal(unname(rows), unname(expected), label = case$loss)
+  }
+})
+
+test_that("a degenerate maximum likelihood scale is refused in the caller's name", {
+  # The seed of the variance parameter is the scale the weights were built at,
+  # so the estimator that refuses residuals it has no maximum for refuses here
+  # too, and the user reads the refusal against the function they called rather
+  # than against the seed.
+  cnd <- rlang::catch_cnd(
+    ipw_continuous_sigma2_seed(
+      list(kind = "mle"),
+      c(rep(0, 9), 1),
+      dens_t(4, sigma_method = "mle"),
+      call = rlang::call2("ipw")
+    ),
+    classes = "propensity_density_error"
+  )
+
+  expect_identical(conditionCall(cnd), quote(ipw()))
 })

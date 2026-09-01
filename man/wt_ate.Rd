@@ -216,9 +216,16 @@ wt_cens(
 \item A \strong{numeric vector} of predicted probabilities (binary/continuous).
 \item A \strong{data frame} or \strong{matrix} with one column per exposure level. Both
 shapes are read the same way, for categorical exposures and for binary
-ones alike, including the default choice of column described under
+ones alike, including the choice of column described under
 \code{.propensity_col}. That argument is itself a formal of the data frame
 methods only, so selecting a column by name means passing a data frame.
+A frame of probabilities predicted from a fitted tidymodels
+classification model has its columns named \verb{.pred_<level>}, and the
+level a column holds is read from the part of the name after that
+prefix. A frame holding a \code{.pred_class} column, which the same models
+return when no prediction type is named, carries predicted levels rather
+than probabilities and is refused with an error of class
+\code{propensity_df_class_column_error}.
 \item A fitted \strong{propensity score model} -- fitted values are extracted
 automatically. For a binary exposure that is a \code{\link[=glm]{glm()}} fit with
 \code{\link[=binomial]{binomial()}} or \code{quasibinomial()}. For a continuous exposure it is a
@@ -244,10 +251,17 @@ derive it from the fitted values, which give the probability of the
 response's second level, and subtract them from one when the resolved
 focal level is the first level instead. A data frame or matrix reduces to
 a single column, read on the same scale; see \code{.propensity_col} for how
-that column is chosen. A matrix reduces by those same defaults, but
+that column is chosen. A matrix reduces by those same rules, but
 \code{.propensity_col} belongs to the data frame methods alone, so a matrix
 whose column you want to name has to be converted with \code{as.data.frame()}
-first.}
+first.
+
+For a continuous exposure, \code{.propensity} is the conditional mean of the
+exposure. A data frame of a single column is read as that mean; a data
+frame of several columns is refused with an error of class
+\code{propensity_df_ambiguous_column_error} unless \code{.propensity_col} names the
+column to read, since a continuous exposure has no levels the columns
+could be matched against.}
 
 \item{.exposure}{The exposure (treatment) variable. For binary exposures, a
 numeric 0/1 vector, logical, or two-level factor. For categorical
@@ -275,7 +289,10 @@ exposures} in Details.
 Must be numeric, and applies only to continuous exposures. \code{.sigma} sits in
 the third position, which is where a value meant for \code{exposure_type}
 arrives when it is supplied without a name, so anything else is refused
-with an error of class \code{propensity_sigma_error}.}
+with an error of class \code{propensity_sigma_error}. A spread you supply and a
+density built with \code{sigma_method = "mle"}, which estimates one from the
+residuals, are two instructions about the same quantity and are refused
+together with an error of class \code{propensity_density_error}.}
 
 \item{exposure_type}{Type of exposure: \code{"auto"} (default), \code{"binary"},
 \code{"categorical"}, or \code{"continuous"}. \code{"auto"} detects the type from
@@ -302,13 +319,50 @@ level the exposure never takes is an error. Automatically detected if not
 supplied.}
 
 \item{stabilize}{Whether to multiply the weights by an estimate of the
-marginal treatment probability (binary) or density (continuous). \code{NULL},
-the default, reads the answer from the exposure type: a continuous
-exposure is stabilized, and a binary or categorical exposure is not.
-\code{TRUE} and \code{FALSE} ask for one or the other outright, and an unstabilized
-continuous exposure reports that its weights are not the recommended ones.
-Only supported by \code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in
-Details.}
+marginal treatment probability (binary) or density (continuous), and what
+that estimate is. It takes one of three forms:
+\itemize{
+\item A logical. \code{TRUE} and \code{FALSE} ask for stabilization or its absence
+outright, and an unstabilized continuous exposure reports that its
+weights are not the recommended ones. \code{NULL}, the default, reads the
+answer from the exposure type: a continuous exposure is stabilized, and a
+binary or categorical exposure is not.
+\item A fitted model of the exposure, for a binary or continuous exposure,
+which stabilizes the weights on what that model estimates rather than on
+the marginal probability or density of the exposure.
+
+For a binary exposure the model is a \code{\link[=binomial]{binomial()}} fit and the numerator
+is its fitted probability of the level each unit took, so the weights
+are \eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)} for the variables
+\eqn{V} the numerator model reads. For a continuous exposure the
+numerator is the family \code{.density} names, read at the model's fitted mean
+and the root mean square of its residuals, so the weights are
+\eqn{f(A \mid V) / f(A \mid X)}.
+
+The model is recorded on the result, where \code{\link[=numerator_model]{numerator_model()}} reads it
+back, and \code{\link[=ipw]{ipw()}} estimates it alongside everything else so that the
+standard errors account for it having been fitted. Conditioning the
+numerator on \eqn{V} changes what is estimated unless the model the
+estimates are read from also reads \eqn{V}; see \strong{Stabilization} in
+Details.
+
+Any \code{\link[=lm]{lm()}}, or anything built on one, is read this way. The family is
+held to the exposure: a fit whose spread changes with its fitted values,
+or a model of a conditional mean where a probability is needed, is
+refused with \code{propensity_model_family_error}, which is also what a model
+of a dose handed to a binary exposure and a \code{\link[=binomial]{binomial()}} model handed to
+a dose are refused with. A categorical exposure takes no fitted
+numerator, and neither does a model supplied together with
+\code{stabilization_score} or \code{numerator = "integrated"}; those are
+\code{propensity_numerator_error}. So is a model fit with case \code{weights},
+which estimates the numerator in a reweighted sample rather than in the
+one the weights are being built for. A model with a fitted value for some
+other set of observations is \code{propensity_length_error}.
+}
+
+Anything else is refused with an error of class
+\code{propensity_stabilize_error}. Stabilization is only supported by
+\code{wt_ate()} and \code{wt_cens()}. See \strong{Stabilization} in Details.}
 
 \item{stabilization_score}{Optional stabilization multiplier to use instead
 of the default described under \strong{Stabilization}: the marginal mean of
@@ -371,18 +425,28 @@ back with \code{\link[=density_meta]{density_meta()}}.}
 \item{.untreated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.reference_level} instead.}
 
 \item{.propensity_col}{Column to use when \code{.propensity} is a data frame
-with a binary exposure. Accepts a column name (quoted or unquoted) or
-numeric index. Whichever column is selected is read as the probability of
-the resolved focal level.
+with a binary or continuous exposure. Accepts a column name (quoted or
+unquoted) or numeric index. For a binary exposure the selected column is
+read as the probability of the resolved focal level; for a continuous one
+it is read as the conditional mean of the exposure.
 
-With no column named, the exposure's levels drive the choice. When the
-data frame has a column named for every level of \code{.exposure}, the column
-named for the resolved focal level is used, wherever it sits in the frame.
-Otherwise the second column is used, or the only column when the frame has
-just one. Falling back to position after \code{.focal_level} or
-\code{.reference_level} was supplied warns and reports the column used, since
-the named level could not be matched to a column; the fallback is silent
-when no level was named and when the frame has a single column.
+With no column named and a binary exposure, the exposure's levels drive
+the choice. When the data frame has a column named for every level of
+\code{.exposure}, the column named for the resolved focal level is used,
+wherever it sits in the frame. Columns named \verb{.pred_<level>}, the shape a
+fitted tidymodels classification model predicts probabilities in, are
+matched by the level after the prefix. Otherwise the second column is
+used, or the only column when the frame has just one. Falling back to
+position after \code{.focal_level} or \code{.reference_level} was supplied warns and
+reports the column used, since the named level could not be matched to a
+column; the fallback is silent when no level was named and when the frame
+has a single column.
+
+With no column named and a continuous exposure, a frame of a single column
+is read as the conditional mean, and a frame of several columns is refused
+with an error of class \code{propensity_df_ambiguous_column_error}. There are no
+levels to read the names against, so nothing distinguishes one column of
+conditional means from another and there is no position worth trusting.
 
 Ignored for categorical exposures, where all columns are used.}
 }
@@ -466,7 +530,8 @@ unless \code{stabilize = FALSE} asks otherwise.
 \subsection{Stabilization}{
 
 Stabilization multiplies the base weight by an estimate of P(A) (binary) or
-f_A(A) (continuous), reducing variance. When no \code{stabilization_score} is
+f_A(A) (continuous), or by an estimate of either conditional on variables a
+model of the exposure reads, reducing variance. When no \code{stabilization_score} is
 supplied, that estimate is the marginal mean of \code{.exposure} for a binary or
 categorical exposure, and for a continuous exposure the marginal density of
 the family \code{.density} names, evaluated at the population mean and standard
@@ -530,6 +595,48 @@ the probability of the exposure an untreated unit took, so the untreated
 weights would carry the wrong numerator. Whether a numerator may condition on
 \code{V} at all is a question about the reported model rather than about the
 weights; see \strong{Effect modification} in \code{\link[=ipw]{ipw()}}.
+
+There is a third way of writing the same thing: pass the fitted numerator
+model to \code{stabilize} itself, and what it estimates becomes the numerator.
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{num <- glm(A ~ V, data = dat, family = binomial())
+wt_ate(ps_mod, stabilize = num)
+
+num <- lm(A ~ V, data = dat)
+wt_ate(dose_mod, stabilize = num)
+}\if{html}{\out{</div>}}
+
+For a binary exposure the weights are then
+\eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)}: the model's fitted probability
+read at the level each unit actually took, which is \eqn{p_i} for a unit
+with \eqn{A_i = 1} and \eqn{1 - p_i} for a unit with \eqn{A_i = 0}, over
+the same denominator the unstabilized weights divide by. Writing it as the
+model rather than as the numbers is what keeps the untreated units from
+carrying \eqn{P(A = 1 \mid V)}, which is the mistake the
+\code{stabilization_score} form has to be written around by hand.
+
+For a continuous exposure they are \eqn{f(A \mid V) / f(A \mid X)}: the
+family \code{.density} names, read at the numerator model's fitted mean and the
+root mean square of its residuals, over the same family read at the
+propensity score model's.
+
+The same caveat governs both. A numerator conditioning on \code{V} targets the
+effect in a pseudo-population where \code{V} still predicts the exposure, so the
+estimand is the effect conditional on \code{V} being balanced rather than the
+marginal one, and it answers the question you meant only when the model the
+estimates are read from also reads \code{V}.
+
+Handing the model over rather than the numbers it evaluates to is what lets
+\code{\link[=ipw]{ipw()}} estimate it: the model's own estimating equations join the stacked
+system, so the standard errors account for the numerator having been fitted,
+where a \code{stabilization_score} is carried as a known constant. That accounting
+has something to say only where the reported model is not saturated in the
+variables the numerator reads. A numerator of a binary exposure on an effect
+modifier is constant within each cell of the modifier and the exposure, so a
+model saturated in those cells fits the same coefficients with the numerator
+and without it, and the standard errors do not move either.
+
+\code{\link[=numerator_model]{numerator_model()}} reads the model back off the weights.
 }
 
 \subsection{Handling extreme weights}{
@@ -574,11 +681,19 @@ before \code{\link[=ipw]{ipw()}} can be reached, so the refusal here is the one 
 \code{\link[nnet:multinom]{nnet::multinom()}} reaches the endpoints readily. Under separation the
 softmax puts the probability at a unit's assigned level at exactly 1 in
 double precision, and the columns for the other levels can underflow to
-exactly 0. Trimming is no way around the refusal: \code{\link[=ps_trim]{ps_trim()}} and
-\code{\link[=ps_trunc]{ps_trunc()}} validate a categorical matrix under the same open interval and
-refuse it before either reaches a threshold. Bound the fitted probabilities
-away from 0 and 1 yourself, renormalizing each row to sum to 1, or refit the
-propensity score model so that it does not separate.
+exactly 0. \code{\link[=ps_trunc]{ps_trunc()}} is the repair for such a matrix: its categorical
+matrix method reads the closed interval \eqn{[0, 1]}, so it accepts a cell of
+exactly 0 or 1, pins every score below its threshold up to it, and
+renormalizes each row to sum to 1. What it returns lies strictly inside
+(0, 1) and weights like any other truncated matrix. That relaxation belongs
+to the categorical matrix method alone: \code{\link[=ps_trim]{ps_trim()}} sets extreme scores to
+missing and gains nothing from an endpoint, so it holds the open interval,
+and so does the binary vector path of \code{\link[=ps_trunc]{ps_trunc()}}. If the bounds a
+truncation computes for itself leave a score at an endpoint anyway, which
+\code{method = "pctl"} can do when the lower quantile of the scores is itself
+zero, the call is refused and names the bound it computed; supply \code{lower} and
+\code{upper} explicitly instead. Refitting the propensity score model so that it
+does not separate remains the alternative.
 }
 
 \subsection{Weight formulas}{
@@ -654,7 +769,11 @@ them. \code{wt_ate()} and \code{wt_cens()} take a fitted \code{\link[=lm]{lm()}}
 and a \code{\link[MASS:rlm]{MASS::rlm()}}, and read the exposure from the model's response when
 \code{.exposure} is not supplied. Each of these reports its conditional mean on
 the scale of the exposure, so a log, inverse, or square root link never has
-to be undone.
+to be undone. Any other subclass of \code{\link[=lm]{lm()}} is read as an \code{lm}, because the
+fitted conditional means are all the weights ask of a model. \code{\link[=ipw]{ipw()}} names
+the classes it supports instead of accepting a subclass on those terms: it
+stacks each model's own estimating equations, which it can only write for a
+score it knows.
 
 A family whose spread changes with its fitted values, such as \code{\link[=poisson]{poisson()}} or
 \code{quasi(variance = "mu")}, describes a different density for every unit, which
@@ -669,9 +788,11 @@ on, a linear probability model included.
 \eqn{\sigma} is the pooled residual spread
 \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies a single
 standard deviation, or one for each unit, which the model methods do not do
-on their own. The marginal density is spread by \eqn{s_A} whatever \code{.sigma}
-says, the spread of the exposure itself being no business of the conditional
-model's.
+on their own. \code{\link[=dens_t]{dens_t()}} offers a second estimator, the maximum likelihood
+scale of the t itself, through \code{sigma_method = "mle"}; see \strong{The spread of a
+t density} in its documentation. The marginal density is spread by
+\eqn{s_A} whatever the conditional spread was arrived at, the spread of the
+exposure itself being no business of the conditional model's.
 
 Every model class is spread that same way, \code{\link[MASS:rlm]{MASS::rlm()}} included. \code{rlm}
 reports a robust scale estimate of its own in \code{fit$s}, which resists the
@@ -683,8 +804,10 @@ is meant to spread over, so the ratio can concentrate on a handful of units.
 constant, and reads \code{.sigma = fit$s} as a fixed spread in the same way,
 propagating the uncertainty of neither.
 
-\code{\link[=ipw]{ipw()}} models the conditional density with a single pooled residual
-variance, estimated jointly with the rest of the parameter vector. A single
+\code{\link[=ipw]{ipw()}} models the conditional density with a single conditional variance,
+estimated jointly with the rest of the parameter vector, by the moment the
+pooled spread is the root of or, for a density built with
+\code{sigma_method = "mle"}, by the score of the t. A single
 \code{.sigma} is taken instead as a known constant: the weights are rebuilt at the
 number that was supplied, and the stacked system carries none of that
 number's uncertainty. An observation-level \code{.sigma} is a different function
@@ -692,6 +815,31 @@ of the data with no counterpart in that estimating equation, and is refused
 before anything is solved, with an error of class
 \code{propensity_ipw_sigma_error}. Build weights with the pooled default, or with
 one number, when the outcome model is headed for \code{\link[=ipw]{ipw()}}.
+
+A conditional density of exactly zero at a unit's own exposure is the
+continuous counterpart of a propensity score of exactly 0 or 1: the weight it
+leaves is infinite, and every estimate built from it is undefined. It is
+refused with an error of class \code{propensity_density_error} naming the
+observations it happened at. A light-tailed family at an outlying residual
+and a kernel read past the range it was fit on both reach it, so the remedy
+is a family with heavier tails, such as \code{\link[=dens_t]{dens_t()}} or \code{\link[=dens_kernel]{dens_kernel()}}. A zero
+in the numerator is not refused: a marginal density of zero is a weight of
+zero, which is a weight like any other.
+
+Stabilized weights from the normal family have a finite second moment only
+while the marginal variance of the exposure stays below twice the variance of
+the conditional density, \eqn{\mathrm{Var}(A) < 2\sigma^2}. Past that
+boundary the weights have no finite variance, and estimates built from them
+are erratic however large the sample is. Reaching it is reported with a
+message of class \code{propensity_density_variance_message}; the weights are
+still returned, and the report is informational because a well-fitting
+model reaches the boundary in ordinary use. Explaining more of the exposure
+lowers \eqn{\sigma^2} while the marginal variance is fixed by the data, so
+a better fit tightens the boundary rather than escaping it; a
+heavier-tailed family sits at a different one, and an unstabilized weight
+has no boundary at all. The boundary is a property of the normal family read
+against the exposure's own marginal density, so nothing is reported for an
+unstabilized weight, a supplied \code{stabilization_score}, \code{numerator = "integrated"}, another family, or an observation-level \code{.sigma}.
 }
 
 \subsection{Categorical exposures}{
@@ -768,6 +916,12 @@ w_int <- wt_ate(
   .density = dens_t(df = 4),
   numerator = "integrated"
 )
+
+# It can also be the conditional density a second model estimates, which is
+# worth having when the model the estimates are read from also reads the
+# variables that model conditions on
+num_model <- lm(dose ~ x1)
+w_cond <- wt_ate(dose_model, stabilize = num_model)
 
 # What each set of weights records about the ratio it is
 density_meta(w_dose)

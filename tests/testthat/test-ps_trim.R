@@ -2602,3 +2602,443 @@ test_that("ps_trim refuses a call argument on the binary route", {
     "ps_trim"
   )
 })
+
+# ---- fitted-model methods ---------------------------------------------------
+
+# `ps_trim()` reads a fitted propensity score model the way the weight functions
+# read one: the scores come off the fit, and the exposure comes off it too for
+# the methods that need one, unless the caller names an exposure of their own.
+# Each test below holds the model route to the route the same scores take when
+# they are extracted by hand, which is the contract the weight functions are
+# held to in tests/testthat/test-categorical-models.R.
+
+trim_model_data <- local({
+  set.seed(20250930)
+
+  n <- 300
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+
+  odds_b <- exp(0.9 * x1 - 0.5 * x2)
+  odds_c <- exp(-0.7 * x1 + 0.8 * x2)
+  total <- 1 + odds_b + odds_c
+  p_b <- odds_b / total
+  p_c <- odds_c / total
+  u <- runif(n)
+
+  data.frame(
+    x1 = x1,
+    x2 = x2,
+    trt = factor(ifelse(u < p_b, "b", ifelse(u < p_b + p_c, "c", "a"))),
+    z = rbinom(n, 1, plogis(1.6 * x1 - 0.9 * x2)),
+    a2 = factor(ifelse(
+      runif(n) < plogis(1.2 * x1 - 0.6 * x2),
+      "control",
+      "treated"
+    ))
+  )
+})
+
+# The formulas are written out rather than passed in, because `ps_refit()`
+# re-evaluates the fitting call and a formula held in a helper's argument is not
+# in scope where that re-evaluation happens.
+trim_binary_fit <- function() {
+  glm(z ~ x1 + x2, data = trim_model_data, family = binomial())
+}
+
+trim_categorical_fit <- function() {
+  nnet::multinom(trt ~ x1 + x2, data = trim_model_data, trace = FALSE)
+}
+
+trim_two_level_fit <- function() {
+  nnet::multinom(a2 ~ x1 + x2, data = trim_model_data, trace = FALSE)
+}
+
+# Values, shape, class, and record together: a model route that agreed on the
+# scores but described the trimming differently would still be a different
+# trimming, and the record is what the rest of the package reads.
+expect_same_trim <- function(from_model, oracle) {
+  testthat::expect_equal(
+    as.numeric(from_model),
+    as.numeric(oracle),
+    tolerance = 1e-12
+  )
+  testthat::expect_identical(dim(from_model), dim(oracle))
+  testthat::expect_identical(dimnames(from_model), dimnames(oracle))
+  testthat::expect_identical(class(from_model), class(oracle))
+  testthat::expect_identical(ps_trim_meta(from_model), ps_trim_meta(oracle))
+}
+
+test_that("ps_trim() trims the scores a binomial fit reports", {
+  fit <- trim_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_same_trim(ps_trim(fit, method = "ps"), ps_trim(scores, method = "ps"))
+  expect_same_trim(
+    ps_trim(fit, method = "adaptive"),
+    ps_trim(scores, method = "adaptive")
+  )
+  expect_same_trim(
+    ps_trim(fit, method = "pctl"),
+    ps_trim(scores, method = "pctl")
+  )
+})
+
+test_that("ps_trim() reads the exposure off a fit for the methods that need one", {
+  fit <- trim_binary_fit()
+  scores <- predict(fit, type = "response")
+
+  expect_same_trim(
+    ps_trim(fit, method = "pref"),
+    ps_trim(scores, method = "pref", .exposure = trim_model_data$z)
+  )
+  expect_same_trim(
+    ps_trim(fit, method = "cr"),
+    ps_trim(scores, method = "cr", .exposure = trim_model_data$z)
+  )
+})
+
+test_that("an explicit .exposure wins over the one a fit carries in ps_trim()", {
+  fit <- trim_binary_fit()
+  scores <- predict(fit, type = "response")
+  flipped <- 1 - trim_model_data$z
+
+  expect_same_trim(
+    ps_trim(fit, method = "pref", .exposure = flipped),
+    ps_trim(scores, method = "pref", .exposure = flipped)
+  )
+  expect_false(identical(
+    ps_trim_meta(ps_trim(fit, method = "pref", .exposure = flipped))$keep_idx,
+    ps_trim_meta(ps_trim(fit, method = "pref"))$keep_idx
+  ))
+})
+
+test_that("ps_trim() trims the probabilities a multinomial fit reports", {
+  skip_if_not_installed("nnet")
+
+  fit <- trim_categorical_fit()
+  probs <- fitted(fit)
+  trt <- trim_model_data$trt
+
+  expect_same_trim(
+    ps_trim(fit, method = "ps"),
+    ps_trim(probs, method = "ps", .exposure = trt)
+  )
+  expect_same_trim(
+    ps_trim(fit, method = "optimal"),
+    ps_trim(probs, method = "optimal", .exposure = trt)
+  )
+})
+
+test_that("ps_trim() matches a multinomial fit's columns to the exposure given", {
+  skip_if_not_installed("nnet")
+
+  fit <- trim_categorical_fit()
+  reordered <- relevel(trim_model_data$trt, "c")
+  expect_false(identical(levels(reordered), fit$lev))
+
+  expect_same_trim(
+    ps_trim(fit, method = "ps", .exposure = reordered),
+    ps_trim(fitted(fit), method = "ps", .exposure = reordered)
+  )
+  expect_identical(
+    colnames(ps_trim(fit, method = "ps", .exposure = reordered)),
+    levels(reordered)
+  )
+})
+
+test_that("ps_trim() reads a two-level multinomial fit on the binary path", {
+  skip_if_not_installed("nnet")
+
+  fit <- trim_two_level_fit()
+  scores <- as.numeric(fitted(fit))
+
+  expect_same_trim(ps_trim(fit, method = "ps"), ps_trim(scores, method = "ps"))
+  expect_same_trim(
+    ps_trim(fit, method = "pref"),
+    ps_trim(scores, method = "pref", .exposure = trim_model_data$a2)
+  )
+})
+
+test_that("ps_trim() refuses a fit it cannot read propensity scores from", {
+  linear <- lm(z ~ x1 + x2, data = trim_model_data)
+
+  expect_error(
+    ps_trim(linear, method = "ps"),
+    class = "propensity_method_error"
+  )
+  expect_error(
+    ps_trim(structure(list(), class = "not_a_model"), method = "ps"),
+    class = "propensity_method_error"
+  )
+})
+
+test_that("ps_refit() refits a binomial fit trimmed through the model route", {
+  fit <- trim_binary_fit()
+  refitted <- ps_refit(
+    ps_trim(fit, method = "ps"),
+    fit,
+    .data = trim_model_data
+  )
+
+  expect_s3_class(refitted, "ps_trim")
+  expect_true(ps_trim_meta(refitted)$refit)
+  expect_same_trim(
+    refitted,
+    ps_refit(
+      ps_trim(predict(fit, type = "response"), method = "ps"),
+      fit,
+      .data = trim_model_data
+    )
+  )
+})
+
+test_that("ps_refit() refits a multinomial fit trimmed through the model route", {
+  skip_if_not_installed("nnet")
+
+  fit <- trim_categorical_fit()
+  refitted <- ps_refit(
+    ps_trim(fit, method = "ps"),
+    fit,
+    .data = trim_model_data
+  )
+
+  expect_s3_class(refitted, "ps_trim")
+  expect_true(ps_trim_meta(refitted)$refit)
+  expect_same_trim(
+    refitted,
+    ps_refit(
+      ps_trim(fitted(fit), method = "ps", .exposure = trim_model_data$trt),
+      fit,
+      .data = trim_model_data
+    )
+  )
+})
+
+test_that("ps_trim() names the class of a fit it has no reading for", {
+  expect_propensity_error(
+    ps_trim(lm(z ~ x1 + x2, data = trim_model_data), method = "ps")
+  )
+})
+
+# The exposure is announced when it is read and not otherwise, so the message
+# reports a reading that happened. Trimming to a fixed threshold reads no
+# exposure; the preference scale and the common range do, and so does every
+# trimming of a matrix of scores, which holds its columns against the levels.
+test_that("ps_trim() announces the exposure it reads off a fit", {
+  withr::local_options(propensity.quiet = FALSE)
+  fit <- trim_binary_fit()
+
+  expect_no_message(ps_trim(fit, method = "ps"))
+  expect_message(ps_trim(fit, method = "pref"), "\"z\"")
+  expect_message(ps_trim(fit, method = "cr"), "\"z\"")
+})
+
+test_that("ps_trim() announces the exposure it reads off a multinomial fit", {
+  skip_if_not_installed("nnet")
+
+  withr::local_options(propensity.quiet = FALSE)
+  fit <- trim_categorical_fit()
+
+  expect_message(ps_trim(fit, method = "ps"), "\"trt\"")
+  expect_message(ps_trim(fit, method = "optimal"), "\"trt\"")
+})
+
+# A fit reports the probability of the level the response's default coding
+# treats as focal, so naming the other level means trimming the complement of
+# what the fit reports.
+#
+# The bounds are asymmetric on purpose. Naming the other level turns each
+# preference score into its complement, and a symmetric window keeps the same
+# units either way, so it would report nothing about whether the scores were
+# inverted at all.
+trim_pref <- function(.propensity, ...) {
+  ps_trim(.propensity, method = "pref", lower = 0.2, upper = 0.6, ...)
+}
+
+test_that("ps_trim() inverts a fit's scores for a named focal level", {
+  fit <- trim_binary_fit()
+  inverted <- 1 - predict(fit, type = "response")
+
+  expect_same_trim(
+    trim_pref(fit, .focal_level = 0),
+    trim_pref(inverted, .exposure = trim_model_data$z, .focal_level = 0)
+  )
+  expect_false(identical(
+    ps_trim_meta(trim_pref(fit, .focal_level = 0))$keep_idx,
+    ps_trim_meta(trim_pref(fit))$keep_idx
+  ))
+})
+
+test_that("ps_trim() inverts a two-level multinomial fit for a named level", {
+  skip_if_not_installed("nnet")
+
+  fit <- trim_two_level_fit()
+  inverted <- 1 - as.numeric(fitted(fit))
+
+  expect_same_trim(
+    trim_pref(fit, .focal_level = "control"),
+    trim_pref(
+      inverted,
+      .exposure = trim_model_data$a2,
+      .focal_level = "control"
+    )
+  )
+  expect_false(identical(
+    ps_trim_meta(trim_pref(fit, .focal_level = "control"))$keep_idx,
+    ps_trim_meta(trim_pref(fit))$keep_idx
+  ))
+})
+
+# The model route maps the deprecated spelling itself, before the scores reach
+# the method that would map it again, so the reader is told about it once and
+# under the name of the function they called.
+test_that("the deprecated .treated on a fit is attributed to ps_trim()", {
+  messages <- deprecation_warnings_from_user(
+    quote(ps_trim(fit, method = "pref", .treated = 0)),
+    list(fit = trim_binary_fit())
+  )
+
+  expect_length(messages, 1)
+  expect_match(messages[[1]], "ps_trim()", fixed = TRUE)
+  expect_false(deprecation_misattributed(messages))
+})
+
+# ---- arguments the trimming never reads -------------------------------------
+
+test_that("ps_trim() refuses an argument it does not read", {
+  ps <- c(0.05, 0.2, 0.4, 0.6, 0.8, 0.95)
+
+  # A misspelled threshold is an argument the trimming has no use for, and
+  # accepting it silently trims at the default the caller believed they had
+  # replaced.
+  expect_error(ps_trim(ps, lowr = 0.2), class = "rlib_error_dots_nonempty")
+
+  # The model route forwards its dots to the route that reads them, so the
+  # refusal reaches a fit as well as a vector.
+  expect_error(
+    ps_trim(trim_binary_fit(), lowr = 0.2),
+    class = "rlib_error_dots_nonempty"
+  )
+})
+
+test_that("ps_trim() trims a calibrated propensity score", {
+  set.seed(2026)
+  n <- 200
+  x <- rnorm(n)
+  exposure <- rbinom(n, 1, plogis(0.8 * x))
+  ps <- plogis(0.5 * x)
+  calibrated <- ps_calibrate(ps, exposure, smooth = FALSE)
+
+  # A calibrated score is a propensity score, and the weight functions take one
+  # by reading the scores it holds and recording that they were calibrated.
+  # Trimming reads them the same way rather than refusing a vector of numbers
+  # for the class attached to it.
+  trimmed <- ps_trim(calibrated, method = "ps", lower = 0.1, upper = 0.9)
+
+  expect_s3_class(trimmed, "ps_trim")
+  expect_false(inherits(trimmed, "ps_calib"))
+  expect_equal(
+    as.numeric(trimmed),
+    as.numeric(ps_trim(
+      as.numeric(calibrated),
+      method = "ps",
+      lower = 0.1,
+      upper = 0.9
+    ))
+  )
+
+  # What the class recorded is kept as metadata, so a score that was calibrated
+  # before it was trimmed still says so.
+  meta <- ps_trim_meta(trimmed)
+  expect_true(isTRUE(meta$calibrated))
+  expect_identical(
+    meta$keep_idx,
+    ps_trim_meta(ps_trim(
+      as.numeric(calibrated),
+      method = "ps",
+      lower = 0.1,
+      upper = 0.9
+    ))$keep_idx
+  )
+
+  # A score that was never calibrated records nothing that says it was.
+  expect_false(isTRUE(
+    ps_trim_meta(ps_trim(
+      ps,
+      method = "ps",
+      lower = 0.1,
+      upper = 0.9
+    ))$calibrated
+  ))
+})
+
+test_that("ps_refit() drops the calibration the trimming recorded", {
+  set.seed(2026)
+  n <- 200
+  x <- rnorm(n)
+  exposure <- rbinom(n, 1, plogis(0.8 * x))
+  fit <- glm(exposure ~ x, family = binomial)
+  calibrated <- ps_calibrate(
+    predict(fit, type = "response"),
+    exposure,
+    smooth = FALSE
+  )
+
+  trimmed <- ps_trim(calibrated, method = "ps", lower = 0.1, upper = 0.9)
+  expect_true(is_ps_calibrated(trimmed))
+
+  # Refitting replaces every retained score with a prediction from the model
+  # fit on the retained rows, and nothing calibrates those predictions, so a
+  # record carried through would describe scores it was never about.
+  refit <- ps_refit(trimmed, fit)
+  expect_false(isTRUE(ps_trim_meta(refit)$calibrated))
+  expect_false(is_ps_calibrated(refit))
+
+  # The weights built from the refit scores say the same.
+  wts <- wt_ate(refit, exposure)
+  expect_false(is_ps_calibrated(wts))
+  expect_identical(estimand(wts), "ate; trimmed")
+})
+
+test_that("ps_trim() refuses scores that are not numbers", {
+  # A character vector is coerced on its way to the range check, which reports
+  # values it read as missing rather than an argument of the wrong type, and
+  # what the caller passed is never named.
+  expect_error(ps_trim(c(0.2, "a")), class = "propensity_type_error")
+
+  # The refusal names the type that arrived and what a score is, which is the
+  # half of it the class does not carry.
+  expect_propensity_error(ps_trim(c(0.2, "a")))
+})
+
+# The methods take a `call` so that a condition names the function the caller
+# wrote rather than the method that answered it. Exposure-type detection raises
+# none of its own for an ordinary exposure, so the frame it would report against
+# is only visible from inside detection, which is what the mock is here to read.
+test_that("ps_trim() hands its own call to exposure-type detection", {
+  detection_call <- NULL
+  local_mocked_bindings(
+    detect_exposure_type = function(
+      .exposure,
+      arg = ".exposure",
+      announce = TRUE,
+      call = rlang::caller_env()
+    ) {
+      detection_call <<- call
+      "binary"
+    },
+    .package = "causalgenerics"
+  )
+
+  # The data frame method is where the detection call is made, and the routes
+  # that reach a method by a call rather than by dispatch hand it a frame of
+  # their own, so the test hands it one too.
+  ps_trim.data.frame(
+    data.frame(ps = c(0.2, 0.4, 0.6, 0.8)),
+    .exposure = c(0, 1, 0, 1),
+    call = quote(outer_caller())
+  )
+
+  expect_identical(detection_call, quote(outer_caller()))
+})

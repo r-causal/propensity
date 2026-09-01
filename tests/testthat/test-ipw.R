@@ -722,7 +722,6 @@ estimand_fixture <- function() {
 }
 
 test_that("an unknown estimand is rejected when the weights record one", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   err <- expect_error(
@@ -739,7 +738,6 @@ test_that("an unknown estimand is rejected when the weights record one", {
 })
 
 test_that("an unknown estimand is rejected when the weights record none", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   for (se in c("mestimation", "linearization")) {
@@ -760,7 +758,6 @@ test_that("an unknown estimand is rejected when the weights record none", {
 })
 
 test_that("weights recording an unknown estimand are rejected on both paths", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   for (se in c("mestimation", "linearization")) {
@@ -781,7 +778,6 @@ test_that("weights recording an unknown estimand are rejected on both paths", {
 })
 
 test_that("the unknown-estimand report names the weights as the source", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   expect_snapshot(
@@ -800,7 +796,6 @@ test_that("the unknown-estimand report names the weights as the source", {
 # asked for or was reported as a weights mismatch.
 
 test_that("an estimand argument of the wrong type is rejected on both paths", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
   wrong_type <- list(list("ate"), factor("att"), factor("ate"))
 
@@ -824,7 +819,6 @@ test_that("an estimand argument of the wrong type is rejected on both paths", {
 })
 
 test_that("an estimand argument of the wrong type leaks no base conditions", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   # `factor("ate")` spells an estimand that exists, so it passed membership and
@@ -852,7 +846,6 @@ test_that("an estimand argument of the wrong type leaks no base conditions", {
 })
 
 test_that("weights recording an estimand of the wrong type are rejected", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
   # `psw()` rejects this at construction, so the attribute is set past it: the
   # weights-side check is what stands between a psw built some other way and the
@@ -886,7 +879,6 @@ sim_continuous_estimand <- function() {
 }
 
 test_that("an unknown estimand is rejected on the continuous path", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_estimand()
   ps_mod <- lm(A ~ x1, data = dat)
   wts <- withr::with_options(
@@ -907,7 +899,6 @@ test_that("an unknown estimand is rejected on the continuous path", {
 })
 
 test_that("the continuous path reports an unknown estimand as unknown", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_estimand()
   ps_mod <- lm(A ~ x1, data = dat)
   wts <- withr::with_options(
@@ -944,7 +935,6 @@ test_that("the continuous path reports an unknown estimand as unknown", {
 })
 
 test_that("weights recording an unknown estimand are rejected on the continuous path", {
-  skip_if_not_installed("deli")
   dat <- sim_continuous_estimand()
   ps_mod <- lm(A ~ x1, data = dat)
   wts <- withr::with_options(
@@ -971,7 +961,6 @@ test_that("weights recording an unknown estimand are rejected on the continuous 
 })
 
 test_that("a known estimand that disagrees with the weights still redirects", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   err <- expect_error(
@@ -984,7 +973,6 @@ test_that("a known estimand that disagrees with the weights still redirects", {
 })
 
 test_that("the undeterminable estimand error carries the estimand class", {
-  skip_if_not_installed("deli")
   fx <- estimand_fixture()
 
   expect_error(
@@ -1026,6 +1014,31 @@ three_value_exposure_fixture <- function() {
   list(dat = dat, ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
 }
 
+# A binary exposure whose levels are declared against alphabetical order, so
+# that the order the levels sort into is the order they were declared in rather
+# than the one a character vector would take.
+non_alphabetical_exposure_fixture <- function() {
+  set.seed(11)
+  n <- 400
+  x1 <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.4 * x1))
+  trt <- factor(
+    ifelse(z == 1, "active", "placebo"),
+    levels = c("placebo", "active")
+  )
+  y <- rbinom(n, 1, plogis(-0.5 + 1.2 * z + 0.6 * x1))
+  dat <- data.frame(x1, trt, y)
+  ps_mod <- glm(trt ~ x1, data = dat, family = binomial())
+  wts <- wt_ate(ps_mod, dat$trt)
+  outcome_mod <- glm(
+    y ~ trt,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+  list(dat = dat, ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
 test_that("the mestimation binary-exposure guard carries the exposure class", {
   fx <- three_value_exposure_fixture()
 
@@ -1056,6 +1069,63 @@ test_that("the linearization binary-exposure guard carries the exposure class", 
     class = "propensity_ipw_exposure_error"
   )
   expect_match(conditionMessage(err), "binary exposures", fixed = TRUE)
+})
+
+test_that("estimate_marginal_means() reports the levels its means are keyed to", {
+  fx <- non_alphabetical_exposure_fixture()
+
+  means <- estimate_marginal_means(
+    outcome_mod = fx$outcome_mod,
+    wts = fx$wts,
+    exposure = fx$dat$trt,
+    exposure_name = "trt",
+    .data = fx$dat
+  )
+
+  # The levels the means are ordered by belong to the means: `mu0` is the mean
+  # at the first level and `mu1` the mean at the second, and the estimates
+  # table is keyed by that pair. Reporting them here is what lets the caller
+  # read the pair off the means rather than sorting the exposure a second time
+  # and taking on trust that the two sorts agree.
+  #
+  # A factor sorts into the order its levels were declared in rather than into
+  # alphabetical order, so a fixture whose levels are declared the other way
+  # round is the one that would show a second sort disagreeing.
+  expect_identical(means$levels, sort(unique(fx$dat$trt)))
+  expect_identical(as.character(means$levels), c("placebo", "active"))
+})
+
+test_that("ipw() keys its rows to the levels the means are ordered by", {
+  fx <- non_alphabetical_exposure_fixture()
+
+  result <- ipw(fx$ps_mod, fx$outcome_mod, se_method = "linearization")
+  table <- as.data.frame(result)
+
+  # The characterization the refactor has to preserve: the mean rows lead the
+  # table in level order, the contrast rows name the pair in that order, and
+  # each mean is the counterfactual mean the marginal means report at its own
+  # level.
+  expect_identical(
+    table$contrast,
+    c("placebo", "active", rep("active vs placebo", 3L))
+  )
+  expect_identical(table$term, c("mean", "mean", "rd", "log(rr)", "log(or)"))
+
+  means <- estimate_marginal_means(
+    outcome_mod = fx$outcome_mod,
+    wts = fx$wts,
+    exposure = fx$dat$trt,
+    exposure_name = "trt",
+    .data = fx$dat
+  )
+
+  expect_equal(table$estimate[[1]], means$mu0, tolerance = 1e-12)
+  expect_equal(table$estimate[[2]], means$mu1, tolerance = 1e-12)
+  expect_equal(
+    table$estimate[[3]],
+    means$mu1 - means$mu0,
+    tolerance = 1e-12
+  )
 })
 
 test_that("the exposure and outcome length guard carries the length class", {

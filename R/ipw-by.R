@@ -21,22 +21,23 @@ ipw_by_absent <- function(.by) {
 
 # ---- refusals that do not need the modifier ---------------------------------
 
-# Refuse `.by` on the linearization path. The stratum means and the contrasts
-# built from them are parameters of the stacked system, which is how their
-# standard errors come out of the same sandwich as everything else; the
+# Refuse `.by` on every path but M-estimation. The stratum means and the
+# contrasts built from them are parameters of the stacked system, which is how
+# their standard errors come out of the same sandwich as everything else; the
 # linearization path solves no such system and its influence functions are
-# derived for the whole-sample Hajek means alone.
+# derived for the whole-sample Hajek means alone, and the robust diagnostic is
+# that path with the correction for having estimated the weights dropped.
 check_ipw_by_method <- function(.by, se_method, call = rlang::caller_env()) {
-  if (ipw_by_absent(.by) || !identical(se_method, "linearization")) {
+  if (ipw_by_absent(.by) || identical(se_method, "mestimation")) {
     return(invisible(TRUE))
   }
 
   abort(
     c(
-      "{.fun ipw} does not support {.arg .by} with {.val linearization} \\
+      "{.fun ipw} does not support {.arg .by} with {.val {se_method}} \\
       standard errors.",
       x = "The stratum effects and their contrasts are parameters of the \\
-      stacked estimating equations, and the linearization path solves no such \\
+      stacked estimating equations, and the {se_method} path solves no such \\
       system.",
       i = "Use {.code se_method = \"mestimation\"} to report effects by \\
       {.arg .by}."
@@ -95,6 +96,7 @@ ipw_resolve_by <- function(
   exposure_name,
   outcome_mod,
   contrasts,
+  wts = NULL,
   call = rlang::caller_env()
 ) {
   if (ipw_by_absent(.by)) {
@@ -134,6 +136,7 @@ ipw_resolve_by <- function(
     call = call
   )
   check_ipw_by_interaction(outcome_mod, exposure_name, name, call = call)
+  check_ipw_by_stabilizer(wts, name, call = call)
 
   list(
     name = name,
@@ -167,13 +170,24 @@ ipw_by_column <- function(.by, data, call = rlang::caller_env()) {
   )
 
   if (!identical(length(loc), 1L)) {
+    # The two ways to miss one column want different advice. A selection that
+    # reached several columns has variables to cross into one; a selection that
+    # reached none has nothing to cross, and crossing is the wrong thing to
+    # reach for.
+    remedy <- if (length(loc) == 0L) {
+      "The selection matched no column of the outcome model's data. Name one \\
+      column of it, or leave {.arg .by} unset for the ungrouped fit."
+    } else {
+      "Effects are reported within the levels of a single variable. Cross two \\
+      variables into one column, with {.fun interaction}, and name that column \\
+      instead."
+    }
+
     abort(
       c(
         "{.arg .by} must name exactly one modifier.",
         x = "It names {length(loc)} column{?s}.",
-        i = "Effects are reported within the levels of a single variable. \\
-        Cross two variables into one column, with {.fun interaction}, and name \\
-        that column instead."
+        i = remedy
       ),
       error_class = "propensity_ipw_by_arg_error",
       call = call
@@ -340,6 +354,130 @@ check_ipw_by_interaction <- function(
   )
 
   invisible(FALSE)
+}
+
+# The stabilizer a `.by` request was given. The default one is the marginal
+# probability of the exposure, which conditions on nothing: it is a constant
+# within each exposure arm, so it tightens the weights by the little the whole
+# sample explains and by nothing the modifier explains. A fit reporting effects
+# within the strata of a modifier is the case where a numerator conditioning on
+# that modifier is worth having, so the fit reports what it was given rather
+# than leaving the reader to notice.
+#
+# It is a warning rather than an error, for the reason the missing interaction
+# term is one: a numerator that conditions on nothing leaves the estimator
+# consistent for the same stratum effects, and the fit still returns.
+#
+# Unstabilized weights carry no numerator to report on, and a score the caller
+# supplied is one this check has nothing to say about: which variables it
+# conditions on is a statement about the reported model that a vector of numbers
+# does not carry.
+#
+# A fitted model does carry it. Its terms say which variables the numerator
+# varies with, so a numerator model that never reads the modifier conditions on
+# nothing the modifier explains, which is exactly what the default stabilizer
+# does and exactly what this reports. A model that reads the modifier, whether
+# on its own or through a transformation of it, is the numerator this would ask
+# for and is silent.
+check_ipw_by_stabilizer <- function(wts, name, call = rlang::caller_env()) {
+  if (is.null(wts) || !is_stabilized(wts)) {
+    return(invisible(TRUE))
+  }
+
+  model <- numerator_model(wts)
+
+  if (!is.null(model)) {
+    return(check_ipw_by_numerator_model(model, name, call = call))
+  }
+
+  if (!is.null(stabilization_score(wts))) {
+    return(invisible(TRUE))
+  }
+
+  warn(
+    c(
+      "The weights {.arg outcome_mod} was fit with are stabilized on a \\
+      numerator that conditions on nothing.",
+      i = "The default stabilizer is the marginal probability of the exposure, \\
+      which is constant within each exposure arm, so it tightens the weights \\
+      by nothing {.val {name}} explains.",
+      i = "A numerator conditioning on {.val {name}} leaves the estimator \\
+      consistent for the same stratum effects and tightens the weights \\
+      further. Build one with {.fun wt_ate}'s {.arg stabilize}, given a model \\
+      of the exposure on {.val {name}}, or with its \\
+      {.arg stabilization_score}, evaluated at the exposure each unit took; \\
+      see {.strong Stabilization} in {.fun wt_ate}."
+    ),
+    warning_class = "propensity_ipw_by_stabilizer_warning",
+    call = call
+  )
+
+  invisible(FALSE)
+}
+
+# The same report, made of a numerator the caller fit rather than of the default
+# one. What separates them is that a model names the variables it read, so the
+# report can say which numerator was built instead of the one asked for, and can
+# stay silent where the modifier is among them.
+check_ipw_by_numerator_model <- function(
+  model,
+  name,
+  call = rlang::caller_env()
+) {
+  variables <- numerator_model_variables(model)
+
+  # A model that will not report its terms says nothing either way, and a report
+  # asserting that the modifier is absent from terms nothing could read would be
+  # a statement about the model rather than about what it conditions on.
+  if (is.null(variables) || name %in% variables) {
+    return(invisible(TRUE))
+  }
+
+  # An intercept-only model reports terms and reads none: it is the marginal
+  # numerator fit as a model, and the report says so rather than interpolating
+  # an empty vector into a sentence built for names.
+  model_bullet <- if (length(variables) == 0) {
+    "{.arg stabilize} was given a model of the exposure on an intercept \\
+    alone, the marginal numerator fit as a model, so the numerator does not \\
+    vary with {.val {name}} and tightens the weights by nothing it explains."
+  } else {
+    "{.arg stabilize} was given a model of the exposure on \\
+    {.val {variables}}, so the numerator does not vary with {.val {name}} \\
+    and tightens the weights by nothing it explains."
+  }
+
+  warn(
+    c(
+      "The weights {.arg outcome_mod} was fit with are stabilized on a \\
+      numerator that does not read {.val {name}}.",
+      i = model_bullet,
+      i = "A numerator conditioning on {.val {name}} as well leaves the \\
+      estimator consistent for the same stratum effects and tightens the \\
+      weights further. Refit the model supplied to {.arg stabilize} with \\
+      {.val {name}} among its terms; see {.strong Stabilization} in \\
+      {.fun wt_ate}."
+    ),
+    warning_class = "propensity_ipw_by_stabilizer_warning",
+    call = call
+  )
+
+  invisible(FALSE)
+}
+
+# The variables a fitted numerator model reads, or NULL for a fit that reports
+# no terms. They are read off the terms object rather than off the formula, so
+# that a model written with a dot is asked about the variables the dot stood for
+# rather than about the dot. A variable entering through a transformation is
+# among them, `all.vars()` reaching past the call to the names inside it, which
+# is the question being asked: a numerator built on a spline of the modifier
+# varies with the modifier.
+numerator_model_variables <- function(model) {
+  model_terms <- tryCatch(stats::terms(model), error = function(e) NULL)
+  if (is.null(model_terms)) {
+    return(NULL)
+  }
+
+  all.vars(stats::delete.response(model_terms))
 }
 
 # ---- the rows a resolved `.by` contributes ----------------------------------

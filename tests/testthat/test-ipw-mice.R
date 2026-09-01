@@ -123,7 +123,6 @@ fit_mice_continuous <- function(imp) {
 
 test_that("mice::pool() combines binary mestimation ipw results", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_binary_data(), seed = 1)
   fits <- fit_mice_binary(imp)
 
@@ -173,7 +172,6 @@ test_that("mice::pool() combines binary mestimation ipw results", {
 test_that("mice::pool() groups categorical ipw results by term and contrast", {
   skip_if_not_installed("mice", "3.18.0")
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_categorical_data(), seed = 2)
   fits <- fit_mice_categorical(imp)
 
@@ -219,7 +217,6 @@ test_that("mice::pool() groups categorical ipw results by term and contrast", {
 
 test_that("mice::pool() combines continuous ipw results", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_continuous_data(), seed = 3)
   fits <- fit_mice_continuous(imp)
 
@@ -247,7 +244,6 @@ test_that("mice::pool() combines continuous ipw results", {
 
 test_that("mice::pool() combines linearization estimates but reports no df", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_binary_data(), seed = 1)
   fits <- fit_mice_binary(imp, se_method = "linearization")
 
@@ -279,11 +275,42 @@ test_that("mice::pool() combines linearization estimates but reports no df", {
   expect_equal(repaired$estimate, summarized$estimate)
 })
 
+# ---- robust: the diagnostic route pools as the linearization route does -----
+
+test_that("robust results pool like linearization ones and keep the method name", {
+  skip_if_not_installed("mice", "3.18.0")
+  imp <- mice_impute(mice_binary_data(), seed = 1)
+  fits <- fit_mice_binary(imp, se_method = "robust")
+
+  # The diagnostic route solves no system, so it records no residual degrees of
+  # freedom, exactly as the linearization route records none.
+  expect_identical(df.residual(fits$analyses[[1]]), NA_integer_)
+
+  summarized <- summary(mice::pool(fits))
+  expect_identical(nrow(summarized), 5L)
+  expect_true(all(is.finite(summarized$estimate)))
+  expect_true(all(is.finite(summarized$std.error)))
+  expect_true(all(is.na(summarized$df)))
+
+  # `pool_ipw()` reads the results themselves, so it falls back to the outcome
+  # models for the degrees of freedom the fits lack, and it carries the method
+  # the pooled results were fit with. The pooled object is a summary of results
+  # rather than a result, so the mark the fits print is not on it: the method it
+  # records is what says the pooled standard errors are the diagnostic ones.
+  pooled <- pool_ipw(fits)
+  expect_identical(pooled$se_method, "robust")
+
+  tidied <- tidy(pooled)
+  expect_identical(nrow(tidied), 5L)
+  expect_true(all(is.finite(tidied$estimate)))
+  expect_true(all(is.finite(tidied$std.error)))
+  expect_true(all(is.finite(tidied$df)))
+})
+
 # ---- the conditional reading ------------------------------------------------
 
 test_that("mice::pool() combines a conditional reading by coefficient", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_binary_data(), seed = 1)
   fits <- with(imp, {
     ps <- glm(z ~ x1 + x2, family = binomial())
@@ -318,7 +345,6 @@ test_that("mice::pool() combines a conditional reading by coefficient", {
 
 test_that("pool_ipw() combines ipw results fitted to imputed data", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_binary_data(), seed = 1)
   fits <- fit_mice_binary(imp)
 
@@ -347,7 +373,6 @@ test_that("pool_ipw() combines ipw results fitted to imputed data", {
 test_that("pool_ipw() keeps the contrast labels of a categorical result", {
   skip_if_not_installed("mice", "3.18.0")
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_categorical_data(), seed = 2)
   fits <- fit_mice_categorical(imp)
 
@@ -370,7 +395,6 @@ test_that("pool_ipw() keeps the contrast labels of a categorical result", {
 
 test_that("pool_ipw() reports degrees of freedom a linearization fit lacks", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_binary_data(), seed = 1)
   fits <- fit_mice_binary(imp, se_method = "linearization")
 
@@ -396,7 +420,6 @@ test_that("pool_ipw() reports degrees of freedom a linearization fit lacks", {
 
 test_that("pool_ipw() carries both readings of an mestimation workflow", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_binary_data(), seed = 1)
   fits <- fit_mice_binary(imp)
 
@@ -420,7 +443,6 @@ test_that("pool_ipw() carries both readings of an mestimation workflow", {
 
 test_that("pool_ipw() records the reading a linearization workflow lacks", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_binary_data(), seed = 1)
   fits <- fit_mice_binary(imp, se_method = "linearization")
 
@@ -562,7 +584,6 @@ mice_completed <- function(imp) {
 
 test_that("pool_ipw() keys grouped binary results by effect and subgroup", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_by_data(), seed = 11)
   fits <- fit_mice_by(imp)
 
@@ -638,7 +659,6 @@ test_that("pool_ipw() keys grouped binary results by effect and subgroup", {
 
 test_that("pool_ipw() applies Rubin's rules within each subgroup", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_by_data(), seed = 11)
   fits <- fit_mice_by(imp)
   pooled <- pool_ipw(fits)
@@ -736,7 +756,6 @@ test_that("pool_ipw() applies Rubin's rules within each subgroup", {
 test_that("pool_ipw() keys grouped categorical results by effect, contrast, and subgroup", {
   skip_if_not_installed("mice", "3.18.0")
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_by_categorical_data(), seed = 12)
   fits <- fit_mice_by_categorical(imp)
   pooled <- pool_ipw(fits)
@@ -773,7 +792,6 @@ test_that("pool_ipw() keys grouped categorical results by effect, contrast, and 
 
 test_that("pool_ipw() refuses results whose subgroups disagree", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_by_data(), seed = 11)
   completed <- mice_completed(imp)
 
@@ -837,7 +855,6 @@ test_that("pool_ipw() refuses results whose subgroups disagree", {
 
 test_that("the tidiers of a pooled grouped result carry the subgroup column", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_by_data(), seed = 11)
   pooled <- pool_ipw(fit_mice_by(imp))
 
@@ -875,7 +892,6 @@ test_that("the tidiers of a pooled grouped result carry the subgroup column", {
 
 test_that("pooling grouped results leaves the conditional reading ungrouped", {
   skip_if_not_installed("mice", "3.18.0")
-  skip_if_not_installed("deli")
   imp <- mice_impute(mice_by_data(), seed = 11)
   completed <- mice_completed(imp)
 

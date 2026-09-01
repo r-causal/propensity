@@ -18,6 +18,7 @@ Estimands
 Faries
 Gerke
 Greifer
+HC
 Hajage
 Hajek
 Hernán
@@ -95,6 +96,7 @@ quasibinomial
 quasipoisson
 rebuilder
 recentering
+redescend
 redescending
 relevel
 renormalize
@@ -103,11 +105,13 @@ renormalizes
 renormalizing
 reparameterization
 restack
+retuned
 softmax
 spline's
 subassignment
 subclassification
 tibble
+tidymodels
 uncalibrated
 unclassed
 unexamined

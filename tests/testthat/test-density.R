@@ -74,12 +74,33 @@ test_that("dens_t() records its degrees of freedom", {
   spec <- dens_t(df = 4)
 
   expect_s3_class(spec, "propensity_density")
-  expect_named(spec, c("family", "params", "fn"))
+  expect_named(spec, c("family", "params", "fn", "sigma_method"))
   expect_identical(spec$family, "t")
   expect_named(spec$params, "df")
   expect_equal(spec$params$df, 4)
   expect_equal(spec$fn(z), stats::dt(z, df = 4))
   expect_equal(dens_t(df = 12)$fn(z), stats::dt(z, df = 12))
+})
+
+test_that("dens_t() records how its scale is estimated", {
+  # The scale of the standardized residuals is estimated by the root mean square
+  # that spreads every other family, or by maximum likelihood under the t
+  # itself. It is not a parameter of the density: `t(df = 4)` is the same
+  # density however its scale was arrived at, so the choice sits beside the
+  # parameters rather than among them, and the printed density is what it was.
+  expect_identical(dens_t(df = 4)$sigma_method, "rms")
+  expect_identical(dens_t(df = 4, sigma_method = "rms")$sigma_method, "rms")
+  expect_identical(dens_t(df = 4, sigma_method = "mle")$sigma_method, "mle")
+
+  expect_identical(dens_t(df = 4, sigma_method = "mle")$params, list(df = 4))
+  expect_identical(format(dens_t(df = 4, sigma_method = "mle")), "t(df = 4)")
+})
+
+test_that("dens_t() refuses a scale estimator it does not have", {
+  expect_error(
+    dens_t(df = 4, sigma_method = "median"),
+    class = "rlang_error"
+  )
 })
 
 test_that("dens_kernel() records its stats::density() controls", {
@@ -517,6 +538,91 @@ test_that("density_eval() refuses a kernel it cannot fit", {
   )
 })
 
+test_that("density_eval() refuses an infinite standardized residual", {
+  z <- density_z(n = 10)
+
+  # An infinite residual leaves the estimate an infinite end to be fit to,
+  # which `stats::density()` reaches as an error about its own arguments.
+  expect_error(
+    density_eval(dens_kernel(), c(z, Inf)),
+    class = "propensity_density_error"
+  )
+
+  # An infinite residual in `fit_on` alone never reaches the ends of the
+  # estimate, so the kernel is fit over a range the residuals overflow and the
+  # density it estimates integrates to less than one, with nothing said.
+  expect_error(
+    density_eval(dens_kernel(), z, fit_on = c(z, Inf), range = range(z)),
+    class = "propensity_density_error"
+  )
+})
+
+test_that("density_eval() refuses an empty kernel fit before reading a range", {
+  # The range a kernel is fit over defaults to the range of the residuals, and
+  # `base::range()` of nothing is a pair of warnings about missing arguments
+  # before it is a pair of infinities. The sample size is refused first.
+  expect_no_warning(
+    expect_error(
+      density_eval(dens_kernel(), numeric(0)),
+      class = "propensity_density_error"
+    )
+  )
+})
+
+test_that("density_eval() tells a reversed range from a range of no width", {
+  z <- density_z(n = 10)
+
+  # A range whose ends are the wrong way round is a range the caller wrote
+  # backwards, not residuals that do not vary.
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(2, -2)),
+    class = "propensity_density_error",
+    regexp = "reversed"
+  )
+
+  constant <- expect_error(
+    density_eval(dens_kernel(), z, range = c(2, 2)),
+    class = "propensity_density_error"
+  )
+
+  expect_false(grepl("reversed", conditionMessage(constant)))
+})
+
+test_that("density_eval() refuses a range that is not two finite ends", {
+  z <- density_z(n = 10)
+
+  # The guard reads the ends of the range it was handed, so it has to hold that
+  # there are two of them and that each is a number a kernel can be fit to. An
+  # infinite end passed the missingness test and reached `stats::density()` as
+  # an error about its own `from` and `to`; a range of the wrong length was
+  # indexed for an end it does not have.
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(-Inf, 2)),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(-2, Inf)),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    density_eval(dens_kernel(), z, range = 2),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(-2, 0, 2)),
+    class = "propensity_density_error"
+  )
+
+  # A missing end is still refused as the missing end it is.
+  expect_error(
+    density_eval(dens_kernel(), z, range = c(NA_real_, 2)),
+    class = "propensity_density_error"
+  )
+
+  expect_propensity_error(density_eval(dens_kernel(), z, range = c(-Inf, 2)))
+  expect_propensity_error(density_eval(dens_kernel(), z, range = 2))
+})
+
 test_that("density_eval() drops the shape of a matrix result", {
   z <- density_z(n = 10)
 
@@ -621,6 +727,8 @@ test_that("a kernel that cannot be fit says why", {
   expect_propensity_error(density_eval(dens_kernel(), 0.5))
   expect_propensity_error(density_eval(dens_kernel(), c(z[-1], NA)))
   expect_propensity_error(density_eval(dens_kernel(), c(z, NA), fit_on = z))
+  expect_propensity_error(density_eval(dens_kernel(), c(z, Inf)))
+  expect_propensity_error(density_eval(dens_kernel(), z, range = c(2, -2)))
 })
 
 test_that("as_density_spec() says what it refuses more than one of", {

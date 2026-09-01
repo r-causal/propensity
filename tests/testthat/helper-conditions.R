@@ -46,3 +46,19 @@ count_record_drops <- function(expr) {
 
   list(value = value, drops = drops)
 }
+
+# Runs `expr` with the finite-variance report muffled. Stabilized normal weights
+# have no finite second moment once the marginal variance of the exposure
+# reaches twice the conditional one, and a fixture whose fitted means track the
+# exposure closely, or whose `.sigma` is a small number chosen to exercise the
+# record, sits past that boundary. The report is true of those fixtures and
+# beside the point of the tests written over them, so it is muffled where it is
+# not the thing being asserted.
+muffle_variance_warning <- function(expr) {
+  withCallingHandlers(
+    expr,
+    propensity_density_variance_message = function(cnd) {
+      invokeRestart("muffleMessage")
+    }
+  )
+}

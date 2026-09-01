@@ -42,24 +42,29 @@ continuous_model_data <- local({
 # The weights a model route is asked for, and the weights the numeric route
 # gives for the same call when it is handed the model's fitted values rather
 # than the model. Every model method has to agree with the second.
+# Several of these fits explain more than half the variance of the exposure they
+# are fit to, which puts the stabilized normal weights past the finite-variance
+# boundary and raises the report that says so. These tests are written about
+# which fitted values and which spread a model route reads, so the report is
+# muffled on both sides of the comparison.
 continuous_model_wt <- function(fit, exposure, ..., .weight_fn = wt_ate) {
-  .weight_fn(
+  muffle_variance_warning(.weight_fn(
     fit,
     exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
     ...
-  )
+  ))
 }
 
 continuous_model_oracle <- function(fit, exposure, ..., .weight_fn = wt_ate) {
-  .weight_fn(
+  muffle_variance_warning(.weight_fn(
     as.numeric(stats::fitted(fit)),
     exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
     ...
-  )
+  ))
 }
 
 # ---- linear models ----------------------------------------------------------
@@ -582,4 +587,98 @@ test_that("a model of the wrong kind is refused by what it was fit with", {
       stabilize = TRUE
     )
   )
+
+  # A family with a link and no name is described by what it is missing, rather
+  # than by a pair of parentheses with nothing in front of them.
+  expect_propensity_error(
+    check_binary_model_family(
+      structure(
+        list(family = list(link = "logit")),
+        class = "unnamed_family_fit"
+      )
+    )
+  )
+})
+
+test_that("a family named with an empty string is described as unnamed", {
+  # A name of no characters is no name: written into the message it leaves a
+  # pair of backticks with nothing between them, which describes the family to
+  # nobody. Such a family is described the way one carrying no name at all is.
+  empty <- structure(
+    list(family = list(family = "", link = "logit")),
+    class = "empty_family_fit"
+  )
+
+  err <- expect_error(
+    check_binary_model_family(empty),
+    class = "propensity_model_family_error"
+  )
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "unnamed family", fixed = TRUE)
+  expect_no_match(message, "``", fixed = TRUE)
+
+  expect_identical(model_family_label(list(family = "")), "an unnamed family")
+
+  expect_propensity_error(check_binary_model_family(empty))
+})
+
+test_that("a family element that is not a family object is refused", {
+  # `$` on an atomic vector is an error of base R's rather than one of this
+  # package's, so a fit whose family element is a bare string reached the
+  # family test and raised there instead of being refused by it. Neither check
+  # can read such an element as a family, and both say so in their own terms.
+  atomic_binary <- structure(
+    list(family = "binomial"),
+    class = "atomic_family_fit"
+  )
+  atomic_continuous <- structure(
+    list(family = "gaussian"),
+    class = "atomic_family_fit"
+  )
+
+  expect_error(
+    check_binary_model_family(atomic_binary),
+    class = "propensity_model_family_error"
+  )
+  expect_error(
+    check_continuous_model_family(atomic_continuous),
+    class = "propensity_model_family_error"
+  )
+
+  expect_propensity_error(check_binary_model_family(atomic_binary))
+  expect_propensity_error(check_continuous_model_family(atomic_continuous))
+})
+
+test_that("model_family_label() writes a family the way it is called", {
+  expect_identical(model_family_label(list(family = "gaussian")), "gaussian()")
+  expect_identical(
+    model_family_label(list(family = "quasi", varfun = "constant")),
+    "quasi(variance = \"constant\")"
+  )
+
+  # An extended family names itself with the parameters it was fit at, so the
+  # name is already a call and adding a pair of parentheses to it writes one
+  # that could not be run.
+  expect_identical(
+    model_family_label(list(family = "Scaled t(Inf,1.012)")),
+    "Scaled t(Inf,1.012)"
+  )
+})
+
+test_that("a scaled t additive model is refused by the family it prints", {
+  skip_if_not_installed("mgcv")
+
+  fit <- mgcv::gam(
+    dose ~ s(x),
+    data = continuous_model_data,
+    family = mgcv::scat()
+  )
+
+  expect_error(
+    continuous_model_wt(fit, continuous_model_data$dose),
+    class = "propensity_model_family_error"
+  )
+
+  expect_identical(model_family_label(fit$family), fit$family$family)
 })

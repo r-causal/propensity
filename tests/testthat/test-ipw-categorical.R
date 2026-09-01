@@ -266,7 +266,6 @@ cat_estimates_columns <- c(
 
 test_that("ipw() runs categorical ate end to end and auto-detects the estimand", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -282,7 +281,6 @@ test_that("ipw() runs categorical ate end to end and auto-detects the estimand",
 
 test_that("ipw() categorical estimates table adds a contrast column", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
 
   mods <- fit_categorical_models(dat, "ate")
@@ -321,7 +319,6 @@ test_that("ipw() categorical estimates table adds a contrast column", {
 
 test_that("ipw() categorical point estimates match the plug-in g-computation", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   for (family in c("binomial", "gaussian")) {
     dat <- sim_categorical()
     mods <- fit_categorical_models(dat, "ate", outcome_family = family)
@@ -342,7 +339,6 @@ test_that("ipw() categorical point estimates match the plug-in g-computation", {
 # compared at 1e-4 and standard errors at 5 percent relative.
 test_that("ipw() categorical risk differences match PSweight for ate and ato", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   skip_if_not_installed("PSweight")
 
   dat <- sim_categorical()
@@ -388,7 +384,6 @@ test_that("ipw() categorical risk differences match PSweight for ate and ato", {
 
 test_that("ipw() categorical att detects the focal level from the psw attribute", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   # att weights carry the focal level as the psw focal_category attribute
   mods <- fit_categorical_models(dat, "att", focal_level = "b")
@@ -414,7 +409,6 @@ test_that("ipw() categorical att detects the focal level from the psw attribute"
 
 test_that("ipw() categorical atu accepts an explicit focal level argument", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "atu", focal_level = "c")
 
@@ -435,7 +429,6 @@ test_that("ipw() categorical atu accepts an explicit focal level argument", {
 
 test_that("ipw() categorical att errors when the focal level is unavailable", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   # weights created with a focal level, then stripped to plain numeric so the
   # focal_category attribute is gone; with estimand = "att" supplied explicitly
@@ -457,7 +450,6 @@ test_that("ipw() categorical att errors when the focal level is unavailable", {
 
 test_that("ipw() categorical atm and entropy return finite, ordered intervals", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   for (estimand in c("atm", "entropy")) {
     dat <- sim_categorical()
     mods <- fit_categorical_models(dat, estimand)
@@ -481,7 +473,6 @@ test_that("ipw() categorical atm and entropy return finite, ordered intervals", 
 
 test_that("ipw() categorical atm and entropy marginal means are the tilt-standardized predictions", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   for (estimand in c("atm", "entropy")) {
     dat <- sim_categorical()
     mods <- fit_categorical_models(dat, estimand)
@@ -524,7 +515,6 @@ test_that("ipw() categorical atm and entropy marginal means are the tilt-standar
 
 test_that("ipw() categorical atm and entropy point estimates match the tilt-standardized plug-in", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   for (estimand in c("atm", "entropy")) {
     dat <- sim_categorical()
     mods <- fit_categorical_models(dat, estimand)
@@ -545,7 +535,6 @@ test_that("ipw() categorical atm and entropy point estimates match the tilt-stan
 
 test_that("ipw() categorical atm and entropy match the tilt-standardized plug-in for a gaussian outcome", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The gaussian companion, which reports a single difference per contrast
   # rather than the three binomial effects. The outcome model carries an
   # exposure-by-covariate interaction, and that is what makes this arm sensitive
@@ -580,7 +569,6 @@ test_that("ipw() categorical atm and entropy match the tilt-standardized plug-in
 
 test_that("ipw() runs stabilized categorical ate and matches the plug-in", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate", stabilize = TRUE)
 
@@ -596,7 +584,6 @@ test_that("ipw() runs stabilized categorical ate and matches the plug-in", {
 
 test_that("ipw() rejects linearization for a categorical exposure", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -606,11 +593,32 @@ test_that("ipw() rejects linearization for a categorical exposure", {
   )
 })
 
+test_that("ipw() rejects robust standard errors for a categorical exposure", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # The diagnostic sandwich is the one a weighted outcome model of a binary
+  # exposure computes for itself, read off its two fitted cells. A categorical
+  # result reports parameters of the stacked system instead, so there is no
+  # such sandwich to report in their place. The refusal names the method that
+  # was asked for.
+  expect_error(
+    ipw(mods$ps_mod, mods$outcome_mod, se_method = "robust"),
+    class = "propensity_method_error",
+    regexp = "robust"
+  )
+  expect_propensity_error(ipw(
+    mods$ps_mod,
+    mods$outcome_mod,
+    se_method = "robust"
+  ))
+})
+
 # ---- print and as.data.frame ------------------------------------------------
 
 test_that("ipw() categorical print output is stable", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -625,7 +633,6 @@ test_that("ipw() categorical print output is stable", {
 
 test_that("as.data.frame(exponentiate = TRUE) relabels ratios per contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -678,7 +685,6 @@ test_that("as.data.frame(exponentiate = TRUE) relabels ratios per contrast", {
 
 test_that("a transformed exposure with .data matches the untransformed equivalent", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   ctrl <- glm.control(epsilon = 1e-14, maxit = 200)
@@ -725,7 +731,6 @@ test_that("a transformed exposure with .data matches the untransformed equivalen
 
 test_that("a transformed exposure without .data errors and asks for it", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The other half of the contract. The exposure is present in the formula, so
   # the guard requiring it is satisfied; what fails is that the model frame
   # holds only the transformed terms, which nothing on this route recomputes.
@@ -763,7 +768,6 @@ test_that("a transformed exposure without .data errors and asks for it", {
 
 test_that("ipw() categorical rejects a matrix-response outcome model", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   dat$y1 <- rbinom(nrow(dat), 5, 0.4)
   dat$y0 <- 5 - dat$y1
@@ -809,7 +813,6 @@ test_that("ipw() categorical rejects a matrix-response outcome model", {
 
 test_that("ipw() categorical rejects a .data whose covariate types skew the design", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -835,7 +838,6 @@ test_that("ipw() categorical rejects a .data whose covariate types skew the desi
 
 test_that("the skewed-design error names the column and both types", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   dat_skew <- dat
@@ -852,7 +854,6 @@ test_that("the skewed-design error names the column and both types", {
 
 test_that("ipw() categorical reports a .data missing a model covariate", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The column check once covered only the exposure and the outcome, so a
   # covariate missing from .data reached model.matrix and raised a raw
   # object-not-found naming the variable but nothing else.
@@ -872,7 +873,6 @@ test_that("ipw() categorical reports a .data missing a model covariate", {
 
 test_that("ipw() categorical rejects a .data covariate recoded to the same width", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The design keeps its width here, so nothing about its shape can decide the
   # case. The two-level factor gives one dummy column of zeros and ones, which
   # reproduces the fitted numbers only because this fixture's x2 is itself coded
@@ -905,7 +905,6 @@ test_that("ipw() categorical rejects a .data covariate recoded to the same width
 
 test_that("a log-transformed categorical outcome response through .data matches the model-frame route", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The categorical companion to the binary pins in test-ipw-se-method.R. The
   # response is read out of `.data` by the shared extraction, so a transformation
   # of a column has to be computed rather than looked up under the name of the
@@ -935,7 +934,6 @@ test_that("a log-transformed categorical outcome response through .data matches 
 
 test_that("ipw() categorical rejects a .data with too few rows", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -952,7 +950,6 @@ test_that("ipw() categorical rejects a .data with too few rows", {
 
 test_that("ipw() categorical uses .data when the ps model frame is gone", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
 
   # nnet::multinom stores no model frame, so its design must be rebuilt from the
@@ -1003,7 +1000,6 @@ test_that("ipw() categorical uses .data when the ps model frame is gone", {
 
 test_that("ipw() rejects a multinom fit with case weights", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   ps_mod_wtd <- nnet::multinom(
     a ~ x1 + x2,
@@ -1019,11 +1015,77 @@ test_that("ipw() rejects a multinom fit with case weights", {
   )
 })
 
+# ---- guard against a two-level multinom -------------------------------------
+
+test_that("ipw() rejects a two-level multinom propensity score model", {
+  skip_if_not_installed("nnet")
+
+  dat <- sim_categorical()
+  dat$a2 <- factor(ifelse(dat$a == "a", "control", "treated"))
+
+  # A two-level `multinom` fits a single probability, which is a binary
+  # propensity score rather than a categorical one: the weight functions read
+  # such a fit on the binary path, and the categorical stacked system has no
+  # multinomial coefficient block to build from it.
+  ps_mod <- nnet::multinom(a2 ~ x1 + x2, data = dat, trace = FALSE)
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_mod, dat$a2)
+  )
+  outcome_mod <- glm(
+    y ~ a2,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts
+  )
+
+  # Without the guard the refusal comes from deli, about a `y` of two columns
+  # and an `ee_glm()` the user never wrote.
+  expect_error(
+    ipw(ps_mod, outcome_mod),
+    class = "propensity_model_family_error"
+  )
+
+  expect_propensity_error(ipw(ps_mod, outcome_mod))
+})
+
+test_that("ipw() rejects a multinom fit to a matrix response", {
+  skip_if_not_installed("nnet")
+
+  dat <- sim_categorical()
+  counts <- with(
+    dat,
+    cbind(
+      a = as.integer(a == "a"),
+      b = as.integer(a == "b"),
+      c = as.integer(a == "c")
+    )
+  )
+
+  # A matrix response is read as counts rather than as a factor, so the fit
+  # records no levels and its fitted columns name none. The weight path refuses
+  # such a fit, and the estimator has to refuse it in the same terms: without
+  # the guard the exposure is read as the deparsed response and the user is
+  # asked to put a column named "counts" in the outcome model.
+  ps_mod <- nnet::multinom(counts ~ x1 + x2, data = dat, trace = FALSE)
+  expect_length(ps_mod$lev, 0L)
+
+  mods <- fit_categorical_models(dat, "ate")
+
+  err <- expect_error(
+    ipw(ps_mod, mods$outcome_mod),
+    class = "propensity_model_family_error"
+  )
+  msg <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(msg, "matrix response", fixed = TRUE)
+
+  expect_propensity_error(ipw(ps_mod, mods$outcome_mod))
+})
+
 # ---- guard against an invalid focal level -----------------------------------
 
 test_that("ipw() rejects a focal level that is not an exposure level", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "att", focal_level = "b")
 
@@ -1037,7 +1099,6 @@ test_that("ipw() rejects a focal level that is not an exposure level", {
 
 test_that("ipw() rejects weights recording an estimand it does not know", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   # `psw()` records the estimand it is given, so weights built by hand reach the
@@ -1083,7 +1144,6 @@ test_that("ipw_spec_categorical rejects an unsupported outcome family", {
 
 test_that("categorical mestimation matches a factor outcome response to the numeric fit", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   dat$yf <- factor(ifelse(dat$y == 1, "yes", "no"), levels = c("no", "yes"))
   ps_mod <- fit_ps_multinom(dat)
@@ -1116,7 +1176,6 @@ test_that("categorical mestimation matches a factor outcome response to the nume
 
 test_that("ipw() categorical errors informatively on a length-2 .focal_level", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "att", focal_level = "b")
 
@@ -1136,7 +1195,6 @@ test_that("ipw() categorical errors informatively on a length-2 .focal_level", {
 
 test_that("ipw() categorical rejects a non-NULL ps_link", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -1155,7 +1213,6 @@ test_that("ipw() categorical rejects a non-NULL ps_link", {
 
 test_that("ipw() categorical rejects an outcome model with an offset term", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   dat$off <- 0.3 * dat$x1
   mods <- fit_categorical_models(dat, "ate")
@@ -1196,7 +1253,6 @@ test_that("ipw() categorical rejects an outcome model with an offset term", {
 
 test_that("ipw() categorical rejects an outcome model that omits the exposure when .data is supplied", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   no_exposure <- glm(
@@ -1215,7 +1271,6 @@ test_that("ipw() categorical rejects an outcome model that omits the exposure wh
 
 test_that("ipw() categorical accepts an outcome model containing the exposure when .data is supplied", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The guard must not fire on the ordinary case: the same call with the
   # exposure on the right-hand side runs through to an ipw object.
   dat <- sim_categorical()
@@ -1252,7 +1307,6 @@ sim_categorical_nonalpha <- function(...) {
 
 test_that("ipw() categorical resolves a character .data exposure against the fitted levels", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical_nonalpha()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -1277,7 +1331,6 @@ test_that("ipw() categorical resolves a character .data exposure against the fit
 
 test_that("ipw() categorical ignores a releveled .data exposure ordering", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical_nonalpha()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -1301,7 +1354,6 @@ test_that("ipw() categorical ignores a releveled .data exposure ordering", {
 
 test_that("ipw() categorical rejects a .data exposure value the model never saw", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical_nonalpha()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -1333,7 +1385,6 @@ test_that("ipw() categorical rejects a .data exposure value the model never saw"
 
 test_that("ipw() categorical accepts models fit on a character exposure column", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   dat_chr <- dat
   dat_chr$a <- as.character(dat$a)
@@ -1367,7 +1418,6 @@ test_that("ipw() categorical accepts models fit on a character exposure column",
 
 test_that("the categorical weight-consistency error omits the binary focal convention", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   spec <- ipw_spec_categorical(mods$ps_mod, mods$outcome_mod)
@@ -1408,7 +1458,6 @@ test_that("the categorical weight-consistency error omits the binary focal conve
 
 test_that("ipw() categorical rejects an outcome model whose counterfactual design is identically zero", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   # The transformed term is unreadable from the model frame, so this coding
@@ -1435,7 +1484,6 @@ test_that("ipw() categorical rejects an outcome model whose counterfactual desig
 
 test_that("the categorical degenerate-design error names the pinned levels", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   collapsed <- glm(
@@ -1454,7 +1502,6 @@ test_that("the categorical degenerate-design error names the pinned levels", {
 
 test_that("ipw() categorical accepts a saturated no-intercept outcome model", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # y ~ a - 1 is a reparameterization of y ~ a, not a model without a baseline:
   # its counterfactual designs are the level indicators, which are never zero.
   # It must give the same answer as the with-intercept fit.
@@ -1503,7 +1550,6 @@ test_that("ipw() categorical accepts a saturated no-intercept outcome model", {
 
 test_that("ipw() categorical accepts a no-intercept outcome model adjusted for a covariate", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The covariate is what keeps this model out of both guards, which is why the
   # exposure is coded as numeric indicators rather than as the factor. Dropping
   # an intercept does not cost a factor its baseline: R answers y ~ a + x1 - 1
@@ -1560,7 +1606,6 @@ test_that("ipw() categorical accepts a no-intercept outcome model adjusted for a
 
 test_that("ipw() categorical rejects an outcome model whose counterfactual designs are pairwise identical", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   # The covariate keeps every design nonzero, so the zero-design guard has
@@ -1589,7 +1634,6 @@ test_that("ipw() categorical rejects an outcome model whose counterfactual desig
 
 test_that("the categorical indistinguishable-design error names the pinned levels", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   indistinguishable <- glm(
@@ -1608,7 +1652,6 @@ test_that("the categorical indistinguishable-design error names the pinned level
 
 test_that("ipw() categorical rejects pairwise-identical counterfactual designs under an intercept", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # Adding the intercept back changes nothing about the defect: the "a" and "b"
   # designs still agree in every column, they are just no longer zero anywhere.
   # The same error must fire, which is what shows the guard keys on pairwise
@@ -1691,7 +1734,6 @@ fit_numeric_categorical_models <- function(dat, double = FALSE) {
 
 test_that("ipw() categorical rejects an outcome model holding the exposure as a numeric term", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_numeric_categorical()
   mods <- fit_numeric_categorical_models(dat)
 
@@ -1711,7 +1753,6 @@ test_that("ipw() categorical rejects an outcome model holding the exposure as a 
 
 test_that("the categorical numeric-exposure error names the exposure and the remedy", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_numeric_categorical()
   mods <- fit_numeric_categorical_models(dat)
 
@@ -1723,7 +1764,6 @@ test_that("the categorical numeric-exposure error names the exposure and the rem
 
 test_that("ipw() categorical rejects a numeric-term exposure when .data is supplied", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # Supplying .data changes how the exposure column is recovered but not how the
   # outcome model codes it, so the same error must fire on this route too.
   dat <- sim_numeric_categorical()
@@ -1740,7 +1780,6 @@ test_that("ipw() categorical rejects a numeric-term exposure when .data is suppl
 
 test_that("ipw() categorical rejects a double-coded exposure in the outcome model", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # The defect is the numeric coding, not the storage type. A double column
   # reaches the model frame as the same single term an integer column does, so
   # it must be rejected the same way.
@@ -1782,7 +1821,6 @@ test_that("ipw() categorical rejects a double-coded exposure in the outcome mode
 
 test_that("ipw() categorical rejects an outcome model fit on a releveled exposure", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -1814,7 +1852,6 @@ test_that("ipw() categorical rejects an outcome model fit on a releveled exposur
 
 test_that("the categorical level-order error names both orders", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   dat_relevel <- dat
@@ -1835,7 +1872,6 @@ test_that("the categorical level-order error names both orders", {
 
 test_that("ipw() categorical rejects a releveled outcome exposure when .data is supplied", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # Supplying .data changes how the exposure column is recovered, not how the
   # outcome model's coefficients are ordered, so this route is equally wrong and
   # must be rejected too.
@@ -1862,7 +1898,6 @@ test_that("ipw() categorical rejects a releveled outcome exposure when .data is 
 
 test_that("ipw() categorical rejects a character outcome exposure ordered against the fitted levels", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # Nobody relevels anything here. The propensity score model is fit on a factor
   # ordered low, mid, high; the outcome model is fit on the same column stored as
   # character, which model.frame sorts to high, low, mid. The orders disagree and
@@ -1894,7 +1929,6 @@ test_that("ipw() categorical rejects a character outcome exposure ordered agains
 
 test_that("the level-order guard passes a formula-transformed exposure through", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # y ~ factor(a) + x1 records its levels under the term label rather than under
   # the exposure name, so the guard has nothing to compare and must stay out of
   # the way. What this path does instead is owned elsewhere and deliberately not
@@ -1941,7 +1975,6 @@ test_that("the level-order guard passes a formula-transformed exposure through",
 
 test_that("ipw() categorical is unchanged by a sum-coded exposure", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   dat_sum <- dat
   contrasts(dat_sum$a) <- contr.sum(3)
@@ -1979,7 +2012,6 @@ test_that("ipw() categorical is unchanged by a sum-coded exposure", {
 
 test_that("ipw() categorical is unchanged by an ordered-factor exposure", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   # An ordered factor carries polynomial contrasts by default, so this reaches
   # the same defect without anyone setting a contrasts attribute. multinom takes
   # an ordered exposure and records the same levels in the same order, the
@@ -2011,7 +2043,6 @@ test_that("ipw() categorical is unchanged by an ordered-factor exposure", {
 
 test_that("ipw() multinom rejects arguments that fall into the dots", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
 
@@ -2037,7 +2068,6 @@ test_that("ipw() multinom rejects arguments that fall into the dots", {
 
 test_that("ipw() multinom accepts every argument supplied by name", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "att", focal_level = "b")
 
@@ -2081,7 +2111,6 @@ cat_effect_labels <- c(
 
 test_that("ipw() categorical stores its level pairs in a contrast column", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   est <- ipw(mods$ps_mod, mods$outcome_mod)$estimates
@@ -2107,7 +2136,6 @@ test_that("ipw() categorical stores its level pairs in a contrast column", {
 
 test_that("a categorical fit keys its stored covariance by effect and contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   est <- ipw(mods$ps_mod, mods$outcome_mod)$estimates
@@ -2132,7 +2160,6 @@ test_that("a categorical fit keys its stored covariance by effect and contrast",
 
 test_that("a categorical fit names its coefficients by effect and contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -2148,7 +2175,6 @@ test_that("a categorical fit names its coefficients by effect and contrast", {
 
 test_that("the categorical output surfaces name the contrast column contrast", {
   skip_if_not_installed("nnet")
-  skip_if_not_installed("deli")
   dat <- sim_categorical()
   mods <- fit_categorical_models(dat, "ate")
   res <- ipw(mods$ps_mod, mods$outcome_mod)
@@ -2169,4 +2195,141 @@ test_that("the categorical output surfaces name the contrast column contrast", {
   expect_identical(names(tidied)[seq(1, 2)], c("term", "contrast"))
   expect_false("comparison" %in% names(tidied))
   expect_identical(tidied$contrast, df$contrast)
+})
+
+# ---- recovering the data behind a multinom fit ------------------------------
+#
+# `nnet::multinom()` stores no model frame, so everything `ipw()` needs from the
+# fitting data is recovered by re-evaluating the fitting call. These tests pin
+# what that recovery owes the caller: the same estimates and standard errors the
+# `.data` route gives, one rebuild of the frame rather than one per thing read
+# off it, and the standing request for `.data` when the call can no longer be
+# evaluated at all.
+
+test_that("ipw() reads a multinom fit without .data", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  recovered <- ipw(mods$ps_mod, mods$outcome_mod)
+  supplied <- ipw(mods$ps_mod, mods$outcome_mod, .data = dat)
+
+  expect_equal(
+    recovered$estimates$estimate,
+    supplied$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    recovered$estimates$std.err,
+    supplied$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ipw() rebuilds the frame behind a multinom fit once", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+
+  # The fitting data is reached through an active binding, so every evaluation
+  # of the fitting call is counted. The exposure is recoverable from the fit
+  # itself and the design is not, so one rebuild is what the route needs.
+  reads <- 0L
+  fit_env <- new.env(parent = environment())
+  makeActiveBinding(
+    "counted_dat",
+    function() {
+      reads <<- reads + 1L
+      dat
+    },
+    fit_env
+  )
+  fmla <- a ~ x1 + x2
+  environment(fmla) <- fit_env
+  ps_mod <- eval(
+    quote(nnet::multinom(
+      fmla,
+      data = counted_dat,
+      trace = FALSE,
+      reltol = 1e-14,
+      maxit = 2000
+    )),
+    fit_env
+  )
+
+  ps_named <- ps_matrix_named(ps_mod)
+  wts <- categorical_weights(ps_named, dat$a, "ate")
+  outcome_mod <- fit_outcome(dat, wts)
+
+  reads <- 0L
+  ipw(ps_mod, outcome_mod)
+
+  expect_identical(reads, 1L)
+})
+
+test_that("ipw() still asks for .data when the multinom call cannot be evaluated", {
+  skip_if_not_installed("nnet")
+  dat <- sim_categorical()
+  mods <- fit_categorical_models(dat, "ate")
+
+  # The formula is written here, so its environment is this frame, and the
+  # fitting call names a variable that lives only inside the function below.
+  # Nothing can rebuild the frame once that function has returned, though the
+  # exposure is still readable off the fit.
+  fmla <- a ~ x1 + x2
+  fit_in_function <- function(fitting_data) {
+    nnet::multinom(fmla, data = fitting_data, trace = FALSE)
+  }
+  gone <- fit_in_function(dat)
+
+  expect_error(model.frame(gone))
+
+  err <- expect_error(
+    ipw(gone, mods$outcome_mod),
+    class = "propensity_ipw_data_error"
+  )
+  expect_match(conditionMessage(err), ".data", fixed = TRUE)
+})
+
+# ---- non-default contrasts on the multinomial design -------------------------
+
+test_that("ipw() reads a multinom fit under contr.sum the same way with and without .data", {
+  skip_if_not_installed("nnet")
+
+  # The propensity score design must be built with the contrasts the fit used,
+  # since the stacked system multiplies it by the fit's own coefficients. A
+  # factor covariate under `contr.sum` makes that visible: a design rebuilt
+  # under the default `contr.treatment` has the same dimensions and so raises
+  # nothing, it just holds different numbers. Supplying `.data` rebuilds the
+  # design from the model terms, so the two routes agreeing pins that the route
+  # reading the fit carries the contrasts across.
+  dat <- sim_categorical()
+  dat$g <- factor(c("g1", "g2", "g3")[1 + (seq_len(nrow(dat)) %% 3)])
+
+  ps_mod <- nnet::multinom(
+    a ~ x1 + g,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000,
+    contrasts = list(g = "contr.sum")
+  )
+  expect_identical(ps_mod$contrasts$g, "contr.sum")
+
+  ps_named <- ps_matrix_named(ps_mod)
+  wts <- categorical_weights(ps_named, dat$a, "ate")
+  outcome_mod <- glm(
+    y ~ a + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  from_fit <- ipw(ps_mod, outcome_mod)
+  from_data <- ipw(ps_mod, outcome_mod, .data = dat)
+
+  expect_equal(
+    as.data.frame(from_fit$estimates),
+    as.data.frame(from_data$estimates)
+  )
 })
