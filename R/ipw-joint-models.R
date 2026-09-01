@@ -1165,6 +1165,12 @@ ipw_joint_models_stab_components <- function(
   # what by, so the marginal proportion stands in for a score of the caller's
   # there and nowhere else.
   keeps_scores <- joint_wt_records_scores(meta)
+  # Whether a component's score was dropped by an operation that changed the
+  # length of the weights. The slot such a drop leaves is the slot a component
+  # stabilized on the marginal proportion has, so without the mark the marginal
+  # proportion stands in for a score of the caller's silently, and a mismatch
+  # names no component.
+  dropped_scores <- joint_wt_dropped_scores(meta)
 
   lapply(seq_along(types), function(i) {
     if (identical(i, dose_idx)) {
@@ -1218,9 +1224,10 @@ ipw_joint_models_stab_components <- function(
         score = NULL,
         width = 1L,
         # A record that keeps scores says the marginal proportion is what
-        # stabilized this component, and one written before it kept them says
-        # only that something did.
-        stand_in = !keeps_scores
+        # stabilized this component, unless it also records that the component's
+        # score was dropped. One written before it kept them says only that
+        # something did.
+        stand_in = !keeps_scores || isTRUE(dropped_scores[[i]])
       ))
     }
 

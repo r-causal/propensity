@@ -161,9 +161,10 @@ joint_wt_response <- function(model) {
 #'
 #' `is_joint_wt()` returns a single logical.
 #'
-#' `joint_wt_meta()` returns the record as a list of five elements, each one
-#' per component and in the order the components were given, or `NULL` for
-#' weights that are not a product:
+#' `joint_wt_meta()` returns the record as a list of five elements, with a
+#' sixth on a record that has dropped a stabilization score, each one per
+#' component and in the order the components were given, or `NULL` for weights
+#' that are not a product:
 #' \describe{
 #'   \item{`exposure_type`}{The two components' exposure types, in order.}
 #'   \item{`stabilized`}{Whether each component was stabilized, in order.}
@@ -183,6 +184,14 @@ joint_wt_response <- function(model) {
 #'     anything other than a score the caller supplied is `NULL`. A record
 #'     written before this element existed holds none at all, which says the
 #'     same thing as a record whose components each record no score.}
+#'   \item{`score_dropped`}{Whether each component's stabilization score was
+#'     dropped by an operation that changed the length of the weights, in
+#'     order. A drop empties the component's `stabilization_score` slot, which
+#'     is the slot a component stabilized on anything else has, so a component
+#'     marked `TRUE` here was stabilized on a score that is gone rather than on
+#'     a numerator an estimator can rebuild. A record holding no such element,
+#'     which is what a product nothing has shortened carries, says no
+#'     component's score was dropped.}
 #' }
 #'
 #' The record names the components rather than the observations, so it survives
@@ -190,9 +199,12 @@ joint_wt_response <- function(model) {
 #' stabilization score is the exception: it holds one value per observation, so
 #' a score that no longer describes the observations the result holds is dropped
 #' the way the score on the weights themselves is, and a score of one value is
-#' carried at any length. Arithmetic that leaves the result unstabilized reduces
-#' the record's numerator side, as described under **What the product
-#' records**.
+#' carried at any length. Such a drop is recorded in `score_dropped`, so a
+#' component stabilized on a score that is gone stays distinguishable from one
+#' stabilized on the marginal numerator, and [ipw()] names it rather than
+#' standing a numerator in for it silently. Arithmetic that leaves the result
+#' unstabilized reduces the record's numerator side, as described under **What
+#' the product records**.
 #'
 #' @seealso [joint_wt_models()] for the container recording the two treatment
 #'   models, and [wt_ate()] for building the components. These are used by
@@ -398,6 +410,27 @@ joint_wt_stabilization_scores <- function(meta) {
 # estimator that could not rebuild a numerator has anything to say about why.
 joint_wt_records_scores <- function(meta) {
   !is.null(meta$stabilization_score)
+}
+
+# Which components held a score that a length change took away, one logical per
+# component and in the components' own order. A component that never held one
+# and a component whose score was dropped leave the same empty slot, and they do
+# not say the same thing: the first names the marginal numerator an estimator
+# rebuilds for itself, and the second names a vector that existed and is now
+# beyond recovery. The mark is the difference, so it is written where the drop
+# happens and read wherever the slot alone would mislead.
+#
+# A record carrying no mark says no component's score was dropped, which is what
+# a record written before the mark existed says and what a product nothing has
+# shortened says.
+joint_wt_dropped_scores <- function(meta) {
+  dropped <- meta$score_dropped
+
+  if (is.null(dropped)) {
+    return(rep(FALSE, length(meta$exposure_type)))
+  }
+
+  dropped
 }
 
 # A joint weight is a product over two treatments, and each of them is weighted

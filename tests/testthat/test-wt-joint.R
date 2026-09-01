@@ -396,8 +396,8 @@ test_that("a length-changing operation drops a per-observation joint score", {
 
   expect_identical(joint_wt_meta(joint)$stabilization_score[[1]], score_a)
 
-  subset <- expect_warning(
-    joint[1:10],
+  expect_warning(
+    subset <- joint[1:10],
     class = "propensity_stabilization_score_warning"
   )
   expect_null(joint_wt_meta(subset)$stabilization_score[[1]])
@@ -410,6 +410,116 @@ test_that("a length-changing operation drops a per-observation joint score", {
   )
   short <- expect_silent(wt_joint(one, fx$w$e)[1:10])
   expect_identical(joint_wt_meta(short)$stabilization_score[[1]], 0.4)
+})
+
+test_that("a dropped joint score is marked apart from one never supplied", {
+  fx <- joint_wt_fixture()
+
+  # Nulling a component's score leaves the record saying what a component the
+  # caller never stabilized by hand says, and the two are not the same claim:
+  # one numerator is the marginal proportion an estimator can rebuild, and the
+  # other is a vector that existed and is now gone. The mark is what keeps them
+  # apart, so a numerator stood in for is a numerator that can be named.
+  score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
+  )
+  joint <- wt_joint(w_a, fx$w$e)
+
+  # A product nothing has shortened records no drop, and a record holding no
+  # mark says of every component what a mark of `FALSE` says.
+  expect_null(joint_wt_meta(joint)$score_dropped)
+  expect_identical(
+    joint_wt_dropped_scores(joint_wt_meta(joint)),
+    c(FALSE, FALSE)
+  )
+
+  reported <- list()
+  subset <- withCallingHandlers(
+    joint[1:10],
+    propensity_stabilization_score_warning = function(cnd) {
+      reported <<- c(reported, list(cnd))
+      rlang::cnd_muffle(cnd)
+    }
+  )
+
+  # Every score a set of weights carries describes the same observations, so
+  # one operation reports the drop once however many homes it emptied.
+  expect_length(reported, 1L)
+  expect_null(joint_wt_meta(subset)$stabilization_score[[1]])
+  expect_identical(joint_wt_meta(subset)$score_dropped, c(TRUE, FALSE))
+
+  # A second subset has nothing left to drop and so nothing to say, and the
+  # mark the first one left still describes the component.
+  again <- expect_silent(subset[1:5])
+  expect_identical(joint_wt_meta(again)$score_dropped, c(TRUE, FALSE))
+
+  # Two records marked the same way describe the same product, so a combine
+  # carries the mark the way it carries the rest of the record.
+  combined <- vctrs::vec_c(subset, again)
+  expect_identical(joint_wt_meta(combined)$score_dropped, c(TRUE, FALSE))
+
+  # A single value scales every weight at any length, so a subset drops nothing
+  # and marks nothing.
+  one <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = 0.4)
+  )
+  short <- expect_silent(wt_joint(one, fx$w$e)[1:10])
+  expect_null(joint_wt_meta(short)$score_dropped)
+})
+
+test_that("a dropped score and a score never supplied are different records", {
+  fx <- joint_wt_fixture()
+
+  # The mark is part of what the record says about the product, so a record
+  # carrying it and one that never held a score describe two different
+  # products and a combine reports them as the disagreement they are.
+  score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
+  )
+  expect_warning(
+    marked <- wt_joint(w_a, fx$w$e)[1:10],
+    class = "propensity_stabilization_score_warning"
+  )
+
+  bare <- marked
+  bare_meta <- joint_wt_meta(bare)
+  bare_meta$score_dropped <- NULL
+  attr(bare, "joint_wt_meta") <- bare_meta
+
+  expect_warning(
+    combined <- vctrs::vec_c(marked, bare),
+    class = "propensity_metadata_conflict_warning"
+  )
+  expect_null(joint_wt_meta(combined))
+})
+
+test_that("an unstabilized product keeps no mark of a dropped score", {
+  fx <- joint_wt_fixture()
+
+  # A reduced record claims no numerator for any component, so there is nothing
+  # left for a mark to qualify: a component whose score was dropped and one
+  # that never had a score are the same unstabilized component afterwards.
+  score_a <- seq(0.3, 0.5, length.out = nrow(fx$dat))
+  w_a <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(fx$mods$a, stabilize = TRUE, stabilization_score = score_a)
+  )
+  expect_warning(
+    marked <- wt_joint(w_a, fx$w$e)[1:10],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_identical(joint_wt_meta(marked)$score_dropped, c(TRUE, FALSE))
+
+  out <- expect_silent(marked * psw(rep(1.5, 10), estimand = "ate"))
+
+  expect_false(is_stabilized(out))
+  expect_null(joint_wt_meta(out)$score_dropped)
+  expect_identical(joint_wt_meta(out)$stabilization_score, list(NULL, NULL))
 })
 
 test_that("wt_joint() marks the product stabilized when any component is", {

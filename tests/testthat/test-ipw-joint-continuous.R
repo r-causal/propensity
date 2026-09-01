@@ -1933,6 +1933,47 @@ test_that("the joint route rebuilds a binary component stabilized on a score", {
   expect_false(any(grepl("^stab_a_", names(theta))))
 })
 
+test_that("the weights mismatch names a component whose score was dropped", {
+  dat <- sim_joint_continuous()
+
+  # A score holds one value per observation, so an operation that changes the
+  # length of the weights drops it. What is left is a component the record says
+  # was stabilized and holds no vector for, which is what a component
+  # stabilized on the marginal proportion looks like: the system stands the
+  # marginal proportion in, reaches a different product, and the preflight is
+  # where the caller finds out. The refusal has to name the component whose
+  # numerator went missing, since the comparison sees the product alone.
+  score <- 0.3 + 0.4 * plogis(dat$x2)
+  fx <- fit_joint_continuous(dat, a_stabilize = TRUE, a_score = score)
+
+  half <- seq_len(floor(nrow(dat) / 2))
+  expect_warning(
+    first <- fx$wts[half],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_warning(
+    second <- fx$wts[-half],
+    class = "propensity_stabilization_score_warning"
+  )
+
+  # The halves hold every observation between them and each of them dropped the
+  # same component's score, so the combined weights are the product the outcome
+  # model was fit with, carrying a record that says the score is gone.
+  wts <- vctrs::vec_c(first, second)
+
+  expect_identical(joint_wt_meta(wts)$score_dropped, c(TRUE, FALSE))
+  expect_equal(as.numeric(wts), as.numeric(fx$wts), tolerance = 1e-12)
+
+  outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
+
+  cnd <- expect_error(
+    ipw(fx$models, outcome_mod),
+    class = "propensity_ipw_weights_mismatch_error"
+  )
+  expect_match(conditionMessage(cnd), "stabilization_score")
+  expect_match(conditionMessage(cnd), "`a`", fixed = TRUE)
+})
+
 test_that("a record that keeps no score is read as one that records none", {
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, a_stabilize = TRUE)

@@ -535,6 +535,11 @@ unstabilized_joint_wt_meta <- function(meta) {
     meta$stabilization_score <- vector("list", length(meta$exposure_type))
   }
 
+  # A mark says which component's numerator is a score no longer to be found,
+  # and a reduced record claims no numerator for any component, so there is
+  # nothing left for it to qualify. It goes with the scores it describes.
+  meta$score_dropped <- NULL
+
   meta
 }
 
@@ -1138,7 +1143,20 @@ aligned_joint_wt_meta <- function(meta, n) {
     logical(1),
     n = n
   )
+
+  if (all(aligned)) {
+    return(meta)
+  }
+
   meta$stabilization_score[!aligned] <- list(NULL)
+  # The emptied slot is the slot a component the caller never stabilized on a
+  # score has, so the drop is recorded rather than left to be read off an
+  # absence. A component whose score is gone was stabilized on a numerator
+  # nothing can rebuild, and an estimator that stands its own numerator in has
+  # something to say about which component it did that for. A record already
+  # carrying a mark keeps it: a later operation drops nothing a first one
+  # already took, and what it took is still gone.
+  meta$score_dropped <- joint_wt_dropped_scores(meta) | !aligned
 
   meta
 }
@@ -1444,6 +1462,13 @@ joint_wt_meta_agrees <- function(x, y) {
       joint_wt_stabilization_scores(y)
     )
   ) {
+    return(FALSE)
+  }
+
+  # A component whose score was dropped and one that never held a score leave
+  # the same empty slot and describe different products, so the mark telling
+  # them apart is compared the way the rest of the record is.
+  if (!identical(joint_wt_dropped_scores(x), joint_wt_dropped_scores(y))) {
     return(FALSE)
   }
 

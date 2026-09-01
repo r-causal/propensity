@@ -35,9 +35,10 @@ types are named.}
 
 \code{is_joint_wt()} returns a single logical.
 
-\code{joint_wt_meta()} returns the record as a list of five elements, each one
-per component and in the order the components were given, or \code{NULL} for
-weights that are not a product:
+\code{joint_wt_meta()} returns the record as a list of five elements, with a
+sixth on a record that has dropped a stabilization score, each one per
+component and in the order the components were given, or \code{NULL} for weights
+that are not a product:
 \describe{
 \item{\code{exposure_type}}{The two components' exposure types, in order.}
 \item{\code{stabilized}}{Whether each component was stabilized, in order.}
@@ -57,6 +58,14 @@ record no model.}
 anything other than a score the caller supplied is \code{NULL}. A record
 written before this element existed holds none at all, which says the
 same thing as a record whose components each record no score.}
+\item{\code{score_dropped}}{Whether each component's stabilization score was
+dropped by an operation that changed the length of the weights, in
+order. A drop empties the component's \code{stabilization_score} slot, which
+is the slot a component stabilized on anything else has, so a component
+marked \code{TRUE} here was stabilized on a score that is gone rather than on
+a numerator an estimator can rebuild. A record holding no such element,
+which is what a product nothing has shortened carries, says no
+component's score was dropped.}
 }
 
 The record names the components rather than the observations, so it survives
@@ -64,9 +73,12 @@ subsetting and every other operation that keeps the vector a \code{\link[=psw]{p
 stabilization score is the exception: it holds one value per observation, so
 a score that no longer describes the observations the result holds is dropped
 the way the score on the weights themselves is, and a score of one value is
-carried at any length. Arithmetic that leaves the result unstabilized reduces
-the record's numerator side, as described under \strong{What the product
-records}.
+carried at any length. Such a drop is recorded in \code{score_dropped}, so a
+component stabilized on a score that is gone stays distinguishable from one
+stabilized on the marginal numerator, and \code{\link[=ipw]{ipw()}} names it rather than
+standing a numerator in for it silently. Arithmetic that leaves the result
+unstabilized reduces the record's numerator side, as described under \strong{What
+the product records}.
 }
 \description{
 \code{wt_joint()} builds the weight for a joint intervention on two treatments by

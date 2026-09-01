@@ -37,6 +37,17 @@
   built by an earlier version of this package or assembled by hand, and says
   so.
 
+* A joint product now records which component's stabilization score an
+  operation dropped. A score holds one value per observation, so a subset or
+  any other length change drops it, which leaves the component the empty slot
+  that a component stabilized on the marginal numerator has. `ipw()` read that
+  slot as the marginal numerator, stood one in, and reported the resulting
+  weight-consistency mismatch without naming the component the caller's own
+  numerator went missing from. The record now marks the drop, so the mismatch
+  names a discrete component whose score was subset away the way it already
+  named a dose, and the record says which numerator a reader is looking at
+  rather than describing a score it no longer holds.
+
 * Arithmetic on two sets of weights now drops the numerator that a result the
   merge leaves unstabilized was never divided by. Multiplying stabilized
   weights by unstabilized ones already dropped the stabilization status and the
