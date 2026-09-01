@@ -3482,3 +3482,42 @@ test_that("the integrated numerator ipw() rebuilds is the one the weights carry"
   supplied <- as.double(fits$wts)[kept]
   expect_gt(max(abs(as.double(wts_kept) - supplied) / abs(supplied)), 0.01)
 })
+
+# The other side of that reading: a propensity score model whose own rows cannot
+# be read back. `.data` rebuilds every other design in the stack, and it is not
+# a remedy here, because it carries the rows about to be weighted rather than
+# the rows the numerator was averaged over. An `lm` fit with `model = FALSE`
+# inside a wrapper whose frame is gone leaves nothing to read, and the refusal
+# says which model and why `.data` does not answer for it.
+continuous_ps_frame_gone <- function(dat) {
+  fmla <- A ~ x1
+  fit_in_function <- function(fitting_data) {
+    lm(fmla, data = fitting_data, model = FALSE)
+  }
+
+  fit_in_function(dat)
+}
+
+test_that("an integrated numerator over an unreadable ps fit is refused", {
+  dat <- sim_continuous_seed_gap()
+  gone <- continuous_ps_frame_gone(dat)
+
+  expect_error(model.matrix(gone))
+
+  wts <- continuous_weights(
+    as.double(fitted(gone)),
+    dat$A,
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+  outcome_mod <- lm(yc ~ A + w, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(gone, outcome_mod, .data = dat),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, "integrated", fixed = TRUE)
+  expect_match(message, "ps_mod", fixed = TRUE)
+})

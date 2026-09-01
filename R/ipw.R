@@ -694,8 +694,13 @@
 #' and the stacked system rebuilds the dose factor from that record, so what is
 #' differentiated is the weight the outcome model was fit with. An integrated
 #' numerator is built from the dose block and the data alone, so it adds no
-#' stabilization parameters; a fixed scalar `.sigma` is a known constant, so the
-#' dose block is its coefficients alone and none of that number's uncertainty is
+#' stabilization parameters; it is the conditional density averaged over the
+#' units the dose model was fit to and read at points spanning their dose, so it
+#' is rebuilt over those rows the way a single dose's is, and a dose model that
+#' keeps no model frame and whose fitting call can no longer be evaluated errors
+#' with class `propensity_ipw_data_error` under it, `.data` or no `.data`. A
+#' fixed scalar `.sigma` is a known constant, so the dose block is its
+#' coefficients alone and none of that number's uncertainty is
 #' carried. A spread supplied for each observation has no counterpart in the
 #' system and errors with class `propensity_ipw_sigma_error`.
 #'
@@ -945,9 +950,17 @@
 #' it differentiates are the weights the outcome model was fit with. A marginal
 #' numerator contributes the exposure's two marginal moments to the parameter
 #' vector; an integrated one is built from the propensity score block and the
-#' data alone and contributes none. Weights carrying no such record, including
-#' any written with [psw()] by hand, are read as the normal ratio the package
-#' built before the record existed.
+#' data alone and contributes none. That numerator is the conditional density
+#' averaged over the units the propensity score model was fit to, read at points
+#' spanning their exposure, so it is rebuilt over those rows even where `.data`
+#' leaves the rest of the system standing on fewer of them. Rebuilding it needs
+#' the design those rows enter through, which `.data` cannot stand in for: a
+#' propensity score model that keeps no model frame, made inside a function whose
+#' frame is gone, errors with class `propensity_ipw_data_error` under
+#' `numerator = "integrated"`, and the remedy is to refit it where its data is
+#' available. Weights carrying no such record, including any written with [psw()]
+#' by hand, are read as the normal ratio the package built before the record
+#' existed.
 #'
 #' A numerator estimated by a model the caller passed to [wt_ate()]'s
 #' `stabilize` contributes that model: one parameter per coefficient, named with
@@ -3787,6 +3800,37 @@ abort_ipw_numerator_frame_gone <- function(
       {.fun ipw} needs the design its coefficients were fit over rather than \\
       the {evaluates_to} they evaluate to.",
       i = "Supply {.arg .data} with the exposure, outcome, and covariates."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# Report a model whose own rows cannot be read back under an integrated
+# numerator. That numerator is the conditional density averaged over the units
+# the model was fit to and interpolated from a grid spanning their exposure, so
+# rebuilding it needs the design those units enter through rather than the one
+# `.data` describes.
+#
+# `.data` is the remedy every other design here offers and it is not one here,
+# which is the reason this report is its own: it carries the rows about to be
+# weighted, and averaging over those is the reading the weights are not.
+abort_ipw_integrated_frame_gone <- function(
+  cause,
+  label,
+  call = rlang::caller_env()
+) {
+  abort(
+    c(
+      "Can't reconstruct the data behind {.arg {label}}.",
+      x = "{cause}",
+      i = "{.arg numerator} = {.val integrated} averages the conditional \\
+      density over the rows the model was fit to, so {.fun ipw} needs the \\
+      design those rows enter through.",
+      i = "{.arg .data} cannot stand in here: it describes the rows about to \\
+      be weighted, which need not be the rows the numerator was read over.",
+      i = "Refit {.arg {label}} where its data is available, or fit it with \\
+      {.code model = TRUE} so the model frame is kept."
     ),
     error_class = "propensity_ipw_data_error",
     call = call

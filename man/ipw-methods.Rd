@@ -947,7 +947,12 @@ the caller fixed. \code{\link[=wt_joint]{wt_joint()}} records each component's r
 and the stacked system rebuilds the dose factor from that record, so what is
 differentiated is the weight the outcome model was fit with. An integrated
 numerator is built from the dose block and the data alone, so it adds no
-stabilization parameters; a fixed scalar \code{.sigma} is a known constant, so the
+stabilization parameters; it is the conditional density averaged over the
+units the dose model was fit to and read at points spanning their dose, so it
+is rebuilt over those rows the way a single dose's is, and a dose model that
+keeps no model frame and whose fitting call can no longer be evaluated errors
+with class \code{propensity_ipw_data_error} under it, \code{.data} or no \code{.data}. A
+fixed scalar \code{.sigma} is a known constant, so the
 dose block is its coefficients alone and none of that number's uncertainty is
 carried. A spread supplied for each observation has no counterpart in the
 system and errors with class \code{propensity_ipw_sigma_error}.
@@ -1202,9 +1207,17 @@ rebuilds the same ratio at each value of the parameter vector, so the weights
 it differentiates are the weights the outcome model was fit with. A marginal
 numerator contributes the exposure's two marginal moments to the parameter
 vector; an integrated one is built from the propensity score block and the
-data alone and contributes none. Weights carrying no such record, including
-any written with \code{\link[=psw]{psw()}} by hand, are read as the normal ratio the package
-built before the record existed.
+data alone and contributes none. That numerator is the conditional density
+averaged over the units the propensity score model was fit to, read at points
+spanning their exposure, so it is rebuilt over those rows even where \code{.data}
+leaves the rest of the system standing on fewer of them. Rebuilding it needs
+the design those rows enter through, which \code{.data} cannot stand in for: a
+propensity score model that keeps no model frame, made inside a function whose
+frame is gone, errors with class \code{propensity_ipw_data_error} under
+\code{numerator = "integrated"}, and the remedy is to refit it where its data is
+available. Weights carrying no such record, including any written with \code{\link[=psw]{psw()}}
+by hand, are read as the normal ratio the package built before the record
+existed.
 
 A numerator estimated by a model the caller passed to \code{\link[=wt_ate]{wt_ate()}}'s
 \code{stabilize} contributes that model: one parameter per coefficient, named with

@@ -2185,6 +2185,17 @@ ipw_spec_continuous <- function(
     call = call
   )
 
+  # An integrated numerator is the conditional density averaged over the units
+  # the propensity score model was fit to, so the average has to be rebuilt over
+  # that model's rows rather than over the rows `.data` restricted the design
+  # above to. Where the caller supplied no frame the two designs are one design
+  # and nothing extra is read.
+  ps_fit_X <- if (
+    stacked && !is.null(.data) && identical(ratio$numerator, "integrated")
+  ) {
+    ipw_integrated_fit_design(ps_mod, ps_model, "ps_mod", call = call)
+  }
+
   # A numerator model joins the stack the way the propensity score model does,
   # so it goes through the same registry and is refused on the same terms. A
   # route that only refits the models asks nothing of its score and takes it as
@@ -2286,6 +2297,7 @@ ipw_spec_continuous <- function(
       coefs = stats::coef(ps_mod),
       fit_exposure = ps_fit_exposure,
       fit_residuals = ps_fit_residuals,
+      fit_X = ps_fit_X,
       k = NULL
     ),
     stab = list(

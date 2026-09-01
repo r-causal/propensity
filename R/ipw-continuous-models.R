@@ -1067,6 +1067,41 @@ ipw_numerator_model_design <- function(
   recovered
 }
 
+# The design a model's own rows enter through, which is what an integrated
+# numerator's average has to be read over: that numerator is the conditional
+# density averaged over the units the model was fit to, and a `.data` the caller
+# supplied can leave the rest of the stack standing on fewer of them. An
+# additive fit's entry has already evaluated its smooth basis over those rows,
+# and every other fit is asked for its own model matrix.
+#
+# An `lm` or a `glm` fit with `model = FALSE` keeps no model frame and rebuilds
+# one by re-evaluating its fitting call, which a fit made inside a function whose
+# frame is gone cannot do. Unlike every other design here, `.data` cannot stand
+# in for it, because `.data` describes the rows about to be weighted rather than
+# the rows the numerator was read over.
+ipw_integrated_fit_design <- function(
+  mod,
+  entry,
+  label,
+  call = rlang::caller_env()
+) {
+  if (!is.null(entry$design)) {
+    return(entry$design)
+  }
+
+  recovered <- tryCatch(stats::model.matrix(mod), error = function(e) e)
+
+  if (inherits(recovered, "error")) {
+    abort_ipw_integrated_frame_gone(
+      conditionMessage(recovered),
+      label,
+      call = call
+    )
+  }
+
+  recovered
+}
+
 # The numerator model's prior case weights, refused for the reason the
 # propensity score routes refuse their own: the block written here is the
 # model's unweighted score, so a fit made under weights is not at that block's

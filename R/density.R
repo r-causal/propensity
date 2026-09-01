@@ -830,9 +830,11 @@ check_sigma_method <- function(.sigma, density, call = rlang::caller_env()) {
 # marginalized over the units, the conditional density a second model estimates,
 # a stabilization score the caller supplied, or nothing at all. `grid` is the
 # evaluation grid an integrated numerator averages the conditional density over,
-# and is built from the exposure when it is not supplied. `mu_n` and `sigma_n`
-# are the conditional mean and the residual spread of the numerator model, which
-# stand where `mu_a` and `sigma_a` stand for the marginal density.
+# and is built from the exposure when it is not supplied; `mu_avg` are the
+# conditional means it averages the density of, and are the weighted units' own
+# when they are not supplied. `mu_n` and `sigma_n` are the conditional mean and
+# the residual spread of the numerator model, which stand where `mu_a` and
+# `sigma_a` stand for the marginal density.
 continuous_density_ratio <- function(
   exposure,
   mu,
@@ -845,6 +847,7 @@ continuous_density_ratio <- function(
   sigma_n = NULL,
   score = NULL,
   grid = NULL,
+  mu_avg = NULL,
   call = rlang::caller_env()
 ) {
   numerator <- rlang::arg_match(numerator, error_call = call)
@@ -856,6 +859,7 @@ continuous_density_ratio <- function(
       sigma = sigma,
       density = density,
       grid = grid,
+      mu_avg = mu_avg,
       call = call
     ))
   }
@@ -929,12 +933,20 @@ is_constant <- function(x, scale) {
 # A unit whose exposure or fitted mean is missing has no standardized residual,
 # so it is not read by the average, its exposure does not reach the ends of the
 # grid, and its weight is missing, exactly as it is under any other numerator.
+#
+# Which units the average runs over and where the grid begins and ends are both
+# properties of a set of rows rather than of the ratio, so both are arguments a
+# caller weighting one set of rows with a numerator read over another can set:
+# `mu_avg` are the conditional means averaged at each grid point, and `grid` the
+# points themselves. Left alone, both are the weighted units' own, which is the
+# reading `wt_ate()` takes.
 continuous_integrated_ratio <- function(
   exposure,
   mu,
   sigma,
   density,
   grid = NULL,
+  mu_avg = NULL,
   call = rlang::caller_env()
 ) {
   z <- (exposure - mu) / sigma
@@ -943,6 +955,8 @@ continuous_integrated_ratio <- function(
   exposure <- exposure[present]
   mu <- mu[present]
   z <- z[present]
+
+  mu_avg <- if (is.null(mu_avg)) mu else mu_avg[!is.na(mu_avg)]
 
   wt <- rep(NA_real_, length(present))
 
@@ -959,7 +973,12 @@ continuous_integrated_ratio <- function(
   # way; this returns the ones the model means. How little that is depends on
   # the units the exposure is measured in, so the spread of the fitted means is
   # read against the spread of the residuals rather than against one.
-  if (length(mu) == 0 || is_constant(mu, scale = sigma)) {
+  #
+  # The means asked about are the ones the average runs over, since they are the
+  # ones the numerator is a density of. They cover the weighted units' own
+  # wherever the two differ, so means constant over them are constant over those
+  # units too and the ratio is one there for the reason above.
+  if (length(mu) == 0 || is_constant(mu_avg, scale = sigma)) {
     wt[present] <- 1
     return(wt)
   }
@@ -994,7 +1013,7 @@ continuous_integrated_ratio <- function(
   # standardized scale the family is written on. The spread is a single number
   # here, which is why an integrated numerator refuses a `.sigma` of one per
   # observation.
-  standardized <- outer(grid, mu, "-") / sigma
+  standardized <- outer(grid, mu_avg, "-") / sigma
 
   # A kernel is one estimate answering for both densities, so it is fit on the
   # standardized residuals over a range that covers them and the whole

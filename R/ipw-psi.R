@@ -191,7 +191,8 @@ ipw_categorical_weight_fn <- function(estimand) {
 # sigma2_d, the density the ratio is taken in, the numerator that stabilized it,
 # the marginal moments mu_a and sigma2_a, the numerator model's own mean mu_n
 # and spread sigma_n, the evaluation grid an integrated numerator marginalizes
-# over, the fixed stabilization score, and the stabilized flag.
+# over together with the conditional means it marginalizes, the fixed
+# stabilization score, and the stabilized flag.
 #
 # The ratio itself is `continuous_density_ratio()`, the same function
 # `ate_continuous()` builds the weights with, so the weights rebuilt at a value
@@ -227,6 +228,7 @@ ipw_continuous_weight_fn <- function(estimand, call = rlang::caller_env()) {
       sigma_n = extras$sigma_n,
       score = extras$score,
       grid = extras$grid,
+      mu_avg = extras$mu_avg,
       # The frame the user entered `ipw()` on. A conditional density that comes
       # out at zero part way through the solve is refused by the ratio, and
       # without this the refusal would name the frame the registry rebuilds the
@@ -697,6 +699,18 @@ ipw_continuous_fit_exposure <- function(spec) {
   }
 
   spec$exposure
+}
+
+# The design the propensity score fit's own rows enter through, which an
+# integrated numerator needs to read its average over those rows at a value of
+# theta the fit never sat at. It is carried only where `.data` put the analyzed
+# design over other rows; without that record the two are the same design.
+ipw_continuous_fit_design <- function(spec) {
+  if (!is.null(spec$ps$fit_X)) {
+    return(spec$ps$fit_X)
+  }
+
+  spec$ps$X
 }
 
 # The same reading for a numerator model, whose block carries the spread its own
@@ -1305,9 +1319,20 @@ ipw_continuous_inputs <- function(
     sigma_n <- sqrt(th_stab[[p_n + 1L]])
   }
 
+  # The conditional means an integrated numerator averages the density of, read
+  # over the propensity score fit's own rows at this value of theta. The average
+  # and the grid are halves of one reading, and the weights the caller carries
+  # are the fit's reading of both, so the rows the average runs over are the
+  # fit's wherever `.data` left the analyzed design over fewer of them. Every
+  # other numerator averages nothing and computes none of this.
+  ps_fns <- ipw_continuous_spec_fns(spec)
+  mu_avg <- if (identical(spec$numerator, "integrated")) {
+    ps_fns$mean(ipw_continuous_fit_design(spec), alpha)
+  }
+
   list(
     alpha = alpha,
-    mu = ipw_continuous_spec_fns(spec)$mean(spec$ps$X, alpha),
+    mu = ps_fns$mean(spec$ps$X, alpha),
     extras = list(
       sigma2_d = sigma2_d,
       mu_a = if (length(th_stab) && !numerator_model) th_stab[[1]],
@@ -1318,7 +1343,8 @@ ipw_continuous_inputs <- function(
       stabilized = spec$stab$stabilized,
       density = spec$density,
       numerator = spec$numerator,
-      grid = grid
+      grid = grid,
+      mu_avg = mu_avg
     )
   )
 }
@@ -1327,8 +1353,13 @@ ipw_continuous_inputs <- function(
 # which `wt_ate()` builds from the exposure of the units it weights. The grid is
 # a function of the data alone, so holding it fixed across the solve is what
 # makes the weights the sandwich differentiates the weights the user was given.
+#
+# The exposure it spans is the propensity score fit's own, for the reason the
+# average runs over that fit's units: the weights the caller carries were read
+# over the rows the model was fit to, and a grid spanning the rows `.data` left
+# would interpolate a different function.
 ipw_continuous_grid <- function(spec) {
-  ipw_numerator_grid(spec$exposure, spec$numerator)
+  ipw_numerator_grid(ipw_continuous_fit_exposure(spec), spec$numerator)
 }
 
 # The same grid built from an exposure vector, which the joint route holds one

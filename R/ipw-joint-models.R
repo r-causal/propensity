@@ -386,6 +386,21 @@ ipw_spec_joint_models <- function(
     numerator <- "marginal"
   }
 
+  # An integrated dose numerator is the conditional density averaged over the
+  # units the dose model was fit to, so the average has to be rebuilt over that
+  # model's rows rather than over the rows `.data` restricted the designs above
+  # to. It is the one component that reads such a design, and where the caller
+  # supplied no frame the two designs are one design and nothing extra is read.
+  fit_designs <- rep(list(NULL), length(fits))
+  if (!is.null(.data) && identical(numerator, "integrated")) {
+    fit_designs[[dose_idx]] <- ipw_integrated_fit_design(
+      fits[[dose_idx]],
+      dose_model,
+      names[[dose_idx]],
+      call = call
+    )
+  }
+
   # Each component's stabilizing numerator is estimated in a block of its own,
   # the way the single-treatment routes estimate the one numerator they carry,
   # so a component stabilized on a fitted model is stacked rather than refused.
@@ -523,6 +538,10 @@ ipw_spec_joint_models <- function(
       # analyzed here, which is what the stabilization seeds are read from.
       fit_exposure = lapply(fit_moments, `[[`, "exposure"),
       fit_residuals = lapply(fit_moments, `[[`, "residuals"),
+      # The design those same rows enter through, which an integrated dose
+      # numerator reads its average over. Only a component that carries one has
+      # a slot filled here.
+      fit_X = fit_designs,
       k = 2L
     ),
     # `wt_joint()` requires a continuous component to be stabilized, so a dose
@@ -543,8 +562,13 @@ ipw_spec_joint_models <- function(
     sigma = if (dose) ratio$sigma,
     # The points an integrated numerator averages the conditional density over,
     # which are a function of the exposure alone and so are fixed across the
-    # solve, as they were when `wt_joint()`'s dose component was built.
-    grid = if (dose) ipw_numerator_grid(exposures[[dose_idx]], numerator),
+    # solve, as they were when `wt_joint()`'s dose component was built. The dose
+    # they span is the fit's own, for the reason the average runs over that
+    # fit's units: a grid spanning the rows `.data` left interpolates a
+    # different function from the one the weights carry.
+    grid = if (dose) {
+      ipw_numerator_grid(fit_moments[[dose_idx]]$exposure, numerator)
+    },
     outcome = list(
       X = model.matrix(outcome_mod),
       y = ipw_outcome_numeric(fmla_extract_left_vctr(outcome_mod)),
@@ -1685,10 +1709,28 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
         # assume every dose was.
         density = spec$density,
         numerator = spec$numerator,
-        grid = spec$grid
+        grid = spec$grid,
+        # The conditional means an integrated numerator averages the density of,
+        # read over the dose fit's own rows at this value of theta. The average
+        # and the grid are halves of one reading, and the weights the caller
+        # carries are the fit's reading of both.
+        mu_avg = if (identical(spec$numerator, "integrated")) {
+          ps_fns$mean(ipw_joint_models_fit_design(spec, i), alpha)
+        }
       )
     )
   })
+}
+
+# The design a component's own rows enter through, carried only where `.data`
+# put the analyzed design over other rows; without that record the two are the
+# same design.
+ipw_joint_models_fit_design <- function(spec, i) {
+  if (!is.null(spec$ps$fit_X) && !is.null(spec$ps$fit_X[[i]])) {
+    return(spec$ps$fit_X[[i]])
+  }
+
+  spec$ps$X[[i]]
 }
 
 # The mean and the score the dose model contributes, read off the spec's record
