@@ -1043,34 +1043,25 @@ test_that("ipw() rebuilds a discrete component stabilized on a fixed score", {
 #
 # A numerator model's coefficients are estimated in the stacked system, so the
 # design they were fit over is what the route needs rather than the
-# probabilities they evaluate to. This route builds every such design from the
-# fit itself, `.data` being read for the counterfactual frame alone, so a fit
-# that cannot produce one has to be refused here and refused with a remedy this
-# route can honor.
+# probabilities they evaluate to. A `glm` usually keeps its model frame, so that
+# design is usually there to be read. One fit with `model = FALSE` keeps none
+# and rebuilds it by re-evaluating the fitting call, which a fit made inside a
+# wrapper whose frame is gone cannot do. What that owes the caller is the
+# request every other route makes of a design it cannot recover: name the model
+# that cannot be rebuilt and ask for `.data`, which rebuilds it.
 
-test_that("a joint component's numerator model whose data is gone is refused", {
-  dat <- sim_joint_models()
-
+# The pair of fits this section weights, with the second component's numerator
+# left to the caller so the same product can be built from a fit that kept its
+# frame and from one that did not.
+joint_models_numerator_gone_fits <- function(dat, numerator) {
   ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
   ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
-
-  # A `glm` fit with `model = FALSE` keeps no model frame and rebuilds one by
-  # re-evaluating its fitting call, which a fit made inside a function whose
-  # frame is gone cannot do. Its fitted probabilities are still readable, and
-  # the weights were built from them.
-  fmla <- e ~ x1
-  fit_in_function <- function(fitting_data) {
-    glm(fmla, data = fitting_data, family = binomial(), model = FALSE)
-  }
-  gone <- fit_in_function(dat)
-
-  expect_error(model.matrix(gone))
 
   wts <- withr::with_options(
     list(propensity.quiet = TRUE),
     wt_joint(
       wt_ate(ps_a, stabilize = TRUE),
-      wt_ate(ps_e, stabilize = gone),
+      wt_ate(ps_e, stabilize = numerator),
       exposure_type = c("binary", "binary")
     )
   )
@@ -1081,22 +1072,70 @@ test_that("a joint component's numerator model whose data is gone is refused", {
     weights = wts,
     control = glm.control(epsilon = 1e-14, maxit = 200)
   )
-  models <- joint_wt_models(a = ps_a, e = ps_e)
 
-  # Both calls reach the same refusal, which is what the remedy has to account
-  # for: a `.data` the caller supplies is read for the counterfactual frame and
-  # never for a numerator's design, so asking for one here would send the
-  # caller back to the refusal they started from.
-  for (supplied in list(NULL, dat)) {
-    cnd <- tryCatch(
-      ipw(models, outcome_mod, .data = supplied),
-      error = function(e) e
-    )
-    expect_s3_class(cnd, "propensity_ipw_data_error")
+  list(models = joint_wt_models(a = ps_a, e = ps_e), outcome_mod = outcome_mod)
+}
 
-    message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
-    expect_match(message, "stabilize", fixed = TRUE)
-    expect_match(message, "model frame", fixed = TRUE)
-    expect_no_match(message, "Supply `.data`", fixed = TRUE)
+# The formula is written in the calling frame and the fitting call names a
+# variable that lives only inside the wrapper, so nothing can rebuild the
+# numerator's design once the wrapper has returned. Its fitted probabilities are
+# still readable, and the weights were built from them.
+joint_models_numerator_frame_gone <- function(dat) {
+  fmla <- e ~ x1
+  fit_in_function <- function(fitting_data) {
+    glm(fmla, data = fitting_data, family = binomial(), model = FALSE)
   }
+
+  fit_in_function(dat)
+}
+
+test_that("a joint component's numerator model whose data is gone asks for .data", {
+  dat <- sim_joint_models()
+  gone <- joint_models_numerator_frame_gone(dat)
+
+  expect_error(model.matrix(gone))
+
+  fits <- joint_models_numerator_gone_fits(dat, gone)
+
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod),
+    error = function(e) e
+  )
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  # Both treatment models here are rebuildable, so a message naming one of them
+  # would send the caller to the wrong fit.
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "stabilize", fixed = TRUE)
+  expect_match(message, "Supply `.data`", fixed = TRUE)
+})
+
+test_that("a joint component's numerator model whose data is gone is rebuilt from .data", {
+  dat <- sim_joint_models()
+  gone <- joint_models_numerator_frame_gone(dat)
+
+  # The other half of the contract: the `.data` the refusal above asks for
+  # rebuilds the numerator's design from the fit's own terms and contrasts, and
+  # what comes back is what the same numerator reports when its frame was never
+  # lost.
+  kept <- glm(e ~ x1, data = dat, family = binomial())
+  expect_equal(unname(coef(gone)), unname(coef(kept)), tolerance = 1e-10)
+
+  gone_fits <- joint_models_numerator_gone_fits(dat, gone)
+  kept_fits <- joint_models_numerator_gone_fits(dat, kept)
+
+  res_data <- ipw(gone_fits$models, gone_fits$outcome_mod, .data = dat)
+  res_recovered <- ipw(kept_fits$models, kept_fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_recovered$estimates$estimate,
+    tolerance = 1e-6
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_recovered$estimates$std.err,
+    tolerance = 1e-6
+  )
 })

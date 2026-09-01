@@ -2089,3 +2089,224 @@ test_that("the joint dose weights refusal comes before the estimates do", {
 
   expect_propensity_error(ipw(joint_wt_models(a = ps_a, e = ps_e), outcome_mod))
 })
+
+# ---- a component's numerator design rebuilt from `.data` --------------------
+#
+# A numerator model's design is one of the designs `ipw()` rebuilds when the
+# caller supplies `.data`, and a component's numerator is no different from the
+# single-treatment routes' one: it is rebuilt over the rows every model read,
+# under the coding the fit recorded, and out of `.data` rather than out of a
+# frame the fit may no longer keep. Read off the fit's own frame instead, it is
+# a design over other rows than everything it is stacked with, and a column
+# `.data` supplies as another type never reaches it at all.
+#
+# Both block builders are exercised here, since a product carries one numerator
+# per component and the two are built by the routes their own exposures use.
+
+# Whitespace in a cli-formatted message wraps where the console is narrow, so
+# the message is flattened before anything is matched in it.
+joint_numerator_ipw_message <- function(cnd) {
+  gsub("[[:space:]]+", " ", conditionMessage(cnd))
+}
+
+# A crossing shaped like the one `sim_joint_continuous()` simulates, with two
+# more baseline covariates: one only the binary component's numerator reads and
+# one only the dose's does. `sim_joint_continuous()` has no column of either
+# kind, and they are the columns every test below asks `.data` for.
+sim_joint_continuous_numerator <- function(seed = 8811, n = 700) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  vb <- rnorm(n)
+  vd <- rnorm(n)
+  a <- rbinom(n, 1, plogis(0.3 * x1 - 0.4 * x2 + 0.3 * vb))
+  e <- 0.4 + 0.5 * x1 - 0.3 * x2 - 0.8 * a + 0.4 * vd + rnorm(n)
+  y <- 1 + 0.7 * a + 0.5 * e + 0.6 * a * e + rnorm(n)
+
+  data.frame(x1, x2, vb, vd, a, e, y)
+}
+
+# The fixture above with a covariate only the outcome model reads, one of whose
+# values is missing. The five fits then read one frame and keep different rows
+# of it: the outcome model drops the incomplete row and the two treatment models
+# and the two numerator models, which never read the column, keep it. A `.data`
+# holding the frame all five were given therefore has a row to drop before any
+# design is built over it.
+sim_joint_continuous_numerator_gap <- function(seed = 8811, n = 700) {
+  dat <- sim_joint_continuous_numerator(seed = seed, n = n)
+  dat$w <- rev(dat$x1)
+  dat$w[[11]] <- NA
+
+  dat
+}
+
+# The product both of whose components carry a numerator model, with the
+# numerator models handed back alongside the fits the route reads.
+joint_numerator_data_fits <- function(dat, outcome_rhs = "a * e") {
+  num_a <- glm(a ~ vb, data = dat, family = binomial())
+  num_e <- lm(e ~ vd, data = dat)
+  fits <- fit_joint_continuous(
+    dat,
+    outcome_rhs = outcome_rhs,
+    a_stabilize = num_a,
+    dose_stabilize = num_e
+  )
+
+  c(fits, list(num_a = num_a, num_e = num_e))
+}
+
+test_that("a component's numerator design is restricted to the rows .data keeps", {
+  dat <- sim_joint_continuous_numerator_gap()
+  fits <- joint_numerator_data_fits(dat, outcome_rhs = "a * e + w")
+  kept <- !is.na(dat$w)
+
+  # Supplying the frame the fits were given and supplying the rows `ipw()`
+  # restricts it to are the same request, so they report the same thing. Each
+  # component's numerator design is one of the designs that restriction is for.
+  res_given <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$models, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res_given, "ipw")
+  expect_equal(
+    res_given$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_given$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res_given$estimates$std.err)))
+})
+
+test_that("the stacked numerator blocks solve over the rows .data keeps", {
+  dat <- sim_joint_continuous_numerator_gap()
+  fits <- joint_numerator_data_fits(dat, outcome_rhs = "a * e + w")
+  kept <- !is.na(dat$w)
+
+  # Each component's numerator contributes a block that reads no parameter from
+  # anywhere else in the stack: the binary one is its own binomial score, which
+  # is exactly identified, and the dose's is its least-squares score together
+  # with the second moment of its residuals, whose root is the normal equations
+  # of the design the block carries followed by the mean square of the residuals
+  # those coefficients leave. Both roots are unique, so the rows each design
+  # carries are the rows its solved block is the fit over. The numerators
+  # arrived fit to the whole frame and the system reads them over the rows the
+  # outcome model kept, so what they solve to are the refits on those rows
+  # rather than the coefficients they came with. Both differ by more than the
+  # tolerance, which is what makes the pins say anything.
+  res <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  refit_a <- glm(a ~ vb, data = dat[kept, ], family = binomial())
+  refit_e <- lm(e ~ vd, data = dat[kept, ])
+
+  theta <- coef(res$fit)
+  names_a <- paste0("stab_a_", names(coef(refit_a)))
+  names_e <- paste0("stab_e_", names(coef(refit_e)))
+
+  expect_true(all(c(names_a, names_e, "stab_e_sigma2") %in% names(theta)))
+  expect_equal(unname(theta[names_a]), unname(coef(refit_a)), tolerance = 1e-6)
+  expect_equal(unname(theta[names_e]), unname(coef(refit_e)), tolerance = 1e-6)
+  expect_equal(
+    unname(theta[["stab_e_sigma2"]]),
+    mean(residuals(refit_e)^2),
+    tolerance = 1e-6
+  )
+
+  expect_false(isTRUE(all.equal(
+    unname(coef(refit_a)),
+    unname(coef(fits$num_a)),
+    tolerance = 1e-6
+  )))
+  expect_false(isTRUE(all.equal(
+    unname(coef(refit_e)),
+    unname(coef(fits$num_e)),
+    tolerance = 1e-6
+  )))
+})
+
+# ---- a numerator covariate `.data` supplies as another type -----------------
+#
+# A numerator model is rebuilt from `.data` the way the other models are, so a
+# column it alone reads is a column the rebuild can be given as the wrong type,
+# or not given at all. Which fit a refusal names is this route's own vocabulary,
+# where the models arrive under names the caller gave them, so what is pinned
+# here is the column and the argument the frame arrived in.
+
+# A three-level factor over the same rows, which nothing models. It is what a
+# numeric numerator covariate is supplied as below.
+joint_numerator_grouping <- function(dat) {
+  factor(c("a", "b", "c")[1 + (rank(dat$x1) %% 3)], levels = c("a", "b", "c"))
+}
+
+test_that("a binary component's numerator covariate supplied as a factor is refused", {
+  dat <- sim_joint_continuous_numerator()
+  fits <- joint_numerator_data_fits(dat)
+
+  # The type sweep compares the class the fit recorded for the column with the
+  # class `.data` supplies and refuses the pair before any design is rebuilt.
+  # What it heads off is a factor of three levels taking two design columns
+  # where the number it stands in for took one.
+  supplied <- dat
+  supplied$vb <- joint_numerator_grouping(dat)
+
+  err <- expect_error(
+    ipw(fits$models, fits$outcome_mod, .data = supplied),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- joint_numerator_ipw_message(err)
+  expect_match(message, "vb", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+})
+
+test_that("a dose component's numerator covariate supplied as a factor is refused", {
+  dat <- sim_joint_continuous_numerator()
+  fits <- joint_numerator_data_fits(dat)
+
+  supplied <- dat
+  supplied$vd <- joint_numerator_grouping(dat)
+
+  err <- expect_error(
+    ipw(fits$models, fits$outcome_mod, .data = supplied),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- joint_numerator_ipw_message(err)
+  expect_match(message, "vd", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+})
+
+test_that("a binary component's numerator covariate absent from .data is refused", {
+  dat <- sim_joint_continuous_numerator()
+  fits <- joint_numerator_data_fits(dat)
+
+  # The columns the rebuilds read are asked for before any of them runs, and a
+  # numerator model's covariates are among them. Left out of the set, a column
+  # only a numerator reads reaches `model.matrix()` as an object that is not
+  # there.
+  supplied <- dat
+  supplied$vb <- NULL
+
+  err <- expect_error(
+    ipw(fits$models, fits$outcome_mod, .data = supplied),
+    class = "propensity_columns_exist_error"
+  )
+
+  expect_match(joint_numerator_ipw_message(err), "vb", fixed = TRUE)
+})
+
+test_that("a dose component's numerator covariate absent from .data is refused", {
+  dat <- sim_joint_continuous_numerator()
+  fits <- joint_numerator_data_fits(dat)
+
+  supplied <- dat
+  supplied$vd <- NULL
+
+  err <- expect_error(
+    ipw(fits$models, fits$outcome_mod, .data = supplied),
+    class = "propensity_columns_exist_error"
+  )
+
+  expect_match(joint_numerator_ipw_message(err), "vd", fixed = TRUE)
+})

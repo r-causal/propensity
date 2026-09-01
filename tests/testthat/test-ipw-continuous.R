@@ -2605,3 +2605,299 @@ test_that("ipw() refuses a numerator model with a dropped coefficient", {
   )
   expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
 })
+
+# ---- a continuous numerator design rebuilt from `.data` ---------------------
+#
+# A dose numerator model's design is one of the designs `ipw()` rebuilds when
+# the caller supplies `.data`, on the terms the binary route's numerator design
+# is rebuilt on: over the rows every model read, under the coding the fit
+# recorded, and out of `.data` rather than out of a frame the fit may no longer
+# keep. Read off the fit's own frame instead, it is a design over other rows
+# than everything it is stacked with, and a column `.data` supplies as another
+# type never reaches it at all.
+
+# Whitespace in a cli-formatted message wraps where the console is narrow, so
+# the message is flattened before anything is matched in it.
+continuous_numerator_ipw_message <- function(cnd) {
+  gsub("[[:space:]]+", " ", conditionMessage(cnd))
+}
+
+# A dose, an outcome, one confounder the propensity score model reads, and one
+# baseline covariate only the numerator model reads. `sim_continuous()` has no
+# column of that last kind, and it is the column every test below asks `.data`
+# for.
+sim_continuous_numerator <- function(seed = 7731, n = 600) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  v <- rnorm(n)
+  A <- 0.5 + 0.8 * x1 - 0.4 * v + rnorm(n)
+  yc <- 1 + 0.6 * A + 0.5 * x1 + rnorm(n)
+
+  data.frame(x1, v, A, yc)
+}
+
+# The fixture above with a covariate only the marginal structural model reads,
+# one of whose values is missing. The three fits then read one frame and keep
+# different rows of it: the outcome model drops the incomplete row and the
+# propensity score and numerator models, which never read the column, keep it.
+# A `.data` holding the frame all three were given therefore has a row to drop
+# before any design is built over it.
+sim_continuous_numerator_gap <- function(seed = 7731, n = 600) {
+  dat <- sim_continuous_numerator(seed = seed, n = n)
+  dat$w <- rev(dat$x1)
+  dat$w[[7]] <- NA
+
+  dat
+}
+
+# The three fits, with the numerator model's right-hand side and the marginal
+# structural model's left to the caller. Every term the outcome model carries
+# besides the dose reads a covariate and not the dose, which is what the
+# marginal structural model guard asks of it.
+continuous_numerator_data_fits <- function(
+  dat,
+  num_rhs = "v",
+  msm_rhs = "A"
+) {
+  ps_mod <- lm(A ~ x1, data = dat)
+  num_mod <- lm(stats::reformulate(num_rhs, response = "A"), data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = num_mod
+  )
+  outcome_mod <- lm(
+    stats::reformulate(msm_rhs, response = "yc"),
+    data = dat,
+    weights = wts
+  )
+
+  list(ps_mod = ps_mod, num_mod = num_mod, outcome_mod = outcome_mod)
+}
+
+test_that("a continuous numerator design is restricted to the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  fits <- continuous_numerator_data_fits(dat, msm_rhs = c("A", "w"))
+  kept <- !is.na(dat$w)
+
+  # Supplying the frame the fits were given and supplying the rows `ipw()`
+  # restricts it to are the same request, so they report the same thing. The
+  # numerator's design is one of the designs that restriction is for.
+  res_given <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res_given, "ipw")
+  expect_equal(
+    res_given$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_given$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res_given$estimates$std.err)))
+})
+
+test_that("a stacked continuous numerator block solves over the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  fits <- continuous_numerator_data_fits(dat, msm_rhs = c("A", "w"))
+  kept <- !is.na(dat$w)
+
+  # The block the numerator contributes is its own least-squares score together
+  # with the second moment of its residuals, and those equations read no
+  # parameter from anywhere else in the stack: the score is linear in the
+  # coefficients and is solved by the normal equations of the design the block
+  # carries, and the moment row is then solved by the mean square of the
+  # residuals those coefficients leave. Both are unique, so the rows the design
+  # carries are the rows the solved block is the fit over. The numerator arrived
+  # fit to the whole frame and the system reads it over the rows the outcome
+  # model kept, so what it solves to is the refit on those rows rather than the
+  # coefficients it came with. The two differ by more than the tolerance, which
+  # is what makes the pin say anything.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  refit <- lm(A ~ v, data = dat[kept, ])
+
+  stab_names <- paste0("stab_", names(coef(refit)))
+  theta <- coef(res$fit)
+
+  expect_true(all(c(stab_names, "sigma2_n") %in% names(theta)))
+  expect_equal(
+    unname(theta[stab_names]),
+    unname(coef(refit)),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    unname(theta[["sigma2_n"]]),
+    mean(residuals(refit)^2),
+    tolerance = 1e-6
+  )
+  expect_false(isTRUE(all.equal(
+    unname(coef(refit)),
+    unname(coef(fits$num_mod)),
+    tolerance = 1e-6
+  )))
+})
+
+# ---- a dose numerator covariate `.data` supplies as another type ------------
+#
+# A numerator model is rebuilt from `.data` the way the other models are, so a
+# column it alone reads is a column the rebuild can be given as the wrong type,
+# or not given at all. The guards the other models meet report the column, the
+# argument the model arrived in, and both types.
+
+# A three-level factor over the same rows, which nothing models. It is what a
+# numeric numerator covariate is supplied as below, and what one is fit on when
+# the mistake runs the other way.
+continuous_numerator_grouping <- function(dat) {
+  factor(c("a", "b", "c")[1 + (rank(dat$x1) %% 3)], levels = c("a", "b", "c"))
+}
+
+test_that("a continuous numerator covariate supplied as a factor where the fit read a number is refused", {
+  dat <- sim_continuous_numerator()
+  fits <- continuous_numerator_data_fits(dat)
+
+  # The type sweep compares the class the fit recorded for the column with the
+  # class `.data` supplies and refuses the pair before any design is rebuilt.
+  # What it heads off is a factor of three levels taking two design columns
+  # where the number it stands in for took one.
+  supplied <- dat
+  supplied$v <- continuous_numerator_grouping(dat)
+
+  err <- expect_error(
+    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, "v", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a continuous numerator covariate supplied as a number where the fit read a factor is refused", {
+  dat <- sim_continuous_numerator()
+  dat$v <- continuous_numerator_grouping(dat)
+
+  fits <- continuous_numerator_data_fits(dat)
+
+  # The other direction, which never reaches a width to compare: the rebuild
+  # asks for the fit's contrast coding of a column that arrives with no levels
+  # to code.
+  supplied <- dat
+  supplied$v <- as.numeric(dat$v)
+
+  err <- expect_error(
+    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, "v", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a continuous numerator covariate absent from .data is refused", {
+  dat <- sim_continuous_numerator()
+  fits <- continuous_numerator_data_fits(dat)
+
+  # The columns the rebuilds read are asked for before any of them runs, and a
+  # numerator model's covariates are among them. Left out of the set, a column
+  # only the numerator reads reaches `model.matrix()` as an object that is not
+  # there.
+  supplied <- dat
+  supplied$v <- NULL
+
+  err <- expect_error(
+    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    class = "propensity_columns_exist_error"
+  )
+
+  expect_match(continuous_numerator_ipw_message(err), "v", fixed = TRUE)
+})
+
+# ---- recovering the data behind a dose numerator model ----------------------
+#
+# An `lm` keeps its model frame, so its design is usually there to be read. One
+# fit with `model = FALSE` keeps none, and the design is recovered by
+# re-evaluating the fitting call; a fit made inside a wrapper whose frame is
+# gone cannot be re-evaluated. What that owes the caller is the request the
+# denominator's recovery already makes: name the model that cannot be rebuilt
+# and ask for `.data`.
+
+# The formula is written in the calling frame and the fitting call names a
+# variable that lives only inside the wrapper, so nothing can rebuild the
+# numerator's design once the wrapper has returned. Its fitted values and
+# residuals are still readable, and the weights were built from them.
+continuous_numerator_frame_gone <- function(dat) {
+  fmla <- A ~ v
+  fit_in_function <- function(fitting_data) {
+    lm(fmla, data = fitting_data, model = FALSE)
+  }
+
+  fit_in_function(dat)
+}
+
+continuous_numerator_gone_fits <- function(dat, numerator) {
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = numerator
+  )
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod)
+}
+
+test_that("a continuous numerator model whose data is gone asks for .data", {
+  dat <- sim_continuous_numerator()
+  gone <- continuous_numerator_frame_gone(dat)
+
+  expect_error(model.matrix(gone))
+
+  fits <- continuous_numerator_gone_fits(dat, gone)
+
+  err <- expect_error(
+    ipw(fits$ps_mod, fits$outcome_mod),
+    class = "propensity_ipw_data_error"
+  )
+
+  # The propensity score model here is rebuildable, so a message naming it would
+  # send the caller to the wrong fit.
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a continuous numerator model whose data is gone is rebuilt from .data", {
+  dat <- sim_continuous_numerator()
+  gone <- continuous_numerator_frame_gone(dat)
+
+  # The other half of the contract: the `.data` the refusal above asks for
+  # rebuilds the numerator's design from the fit's own terms and contrasts, and
+  # what comes back is what the same numerator reports when its frame was never
+  # lost.
+  kept <- lm(A ~ v, data = dat)
+  expect_equal(unname(coef(gone)), unname(coef(kept)), tolerance = 1e-10)
+
+  gone_fits <- continuous_numerator_gone_fits(dat, gone)
+  kept_fits <- continuous_numerator_gone_fits(dat, kept)
+
+  res_data <- ipw(gone_fits$ps_mod, gone_fits$outcome_mod, .data = dat)
+  res_recovered <- ipw(kept_fits$ps_mod, kept_fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_recovered$estimates$estimate,
+    tolerance = 1e-6
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_recovered$estimates$std.err,
+    tolerance = 1e-6
+  )
+})
