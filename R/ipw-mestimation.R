@@ -676,6 +676,10 @@ check_ipw_categorical_numerator_levels <- function(
 # `numerator_mod` is the model the weights were stabilized on, where there is
 # one. Its design is rebuilt from `.data` alongside the others, so the columns
 # it reads join the ones the rebuilds ask for before any of them goes looking.
+#
+# `integrated` says whether the weights record an integrated numerator, which
+# only changes what a frame-gone propensity model is told to do about it. Every
+# other design here takes `.data` as its remedy; that one does not.
 ipw_extract_ps_design <- function(
   ps_mod,
   outcome_mod,
@@ -686,6 +690,7 @@ ipw_extract_ps_design <- function(
   ps_design = TRUE,
   ps_X = NULL,
   numerator_mod = NULL,
+  integrated = FALSE,
   call = rlang::caller_env()
 ) {
   # First, and independent of `.data`: the propensity model has to have a
@@ -712,11 +717,33 @@ ipw_extract_ps_design <- function(
     )
     if (inherits(ps_extract, "error")) {
       cause <- conditionMessage(ps_extract)
+
+      # `.data` rebuilds this design and is the remedy for every numerator but
+      # one. An integrated numerator is the conditional density averaged over
+      # the rows this model was fit to, so it is read off the fit's own design
+      # whatever `.data` says; a caller who supplied one would be refused again
+      # by `ipw_integrated_fit_design()` and no closer to an answer. The remedy
+      # that works there is the fit itself, so it is the one offered here.
+      remedy <- if (integrated) {
+        c(
+          i = "{.arg numerator} = {.val integrated} averages the conditional \\
+          density over the rows {.arg wt_mod} was fit to, so {.arg .data} \\
+          cannot stand in for its design: it describes the rows about to be \\
+          weighted, which need not be those rows.",
+          i = "Refit {.arg wt_mod} where its data is available, or fit it with \\
+          {.code model = TRUE} so the model frame is kept."
+        )
+      } else {
+        c(
+          i = "Supply {.arg .data} with the exposure, outcome, and covariates."
+        )
+      }
+
       abort(
         c(
           "Can't reconstruct the data behind {.arg wt_mod}.",
           x = "{cause}",
-          i = "Supply {.arg .data} with the exposure, outcome, and covariates."
+          remedy
         ),
         error_class = "propensity_ipw_data_error",
         call = call
@@ -2147,6 +2174,13 @@ ipw_spec_continuous <- function(
   wts <- extract_weights(outcome_mod)
   numerator_mod <- if (stacked) numerator_model(wts)
 
+  # Read from the record rather than from the ratio built below, which is not
+  # built until the design work above it has said how many rows it is about to
+  # be read over. All this decides is which remedy a frame-gone propensity model
+  # is offered, and only the stacked route reads a design off that fit.
+  integrated <- stacked &&
+    identical(density_meta(wts)$numerator, "integrated")
+
   extracted <- ipw_extract_ps_design(
     ps_mod,
     outcome_mod,
@@ -2156,6 +2190,7 @@ ipw_spec_continuous <- function(
     ps_design = stacked,
     ps_X = ps_model$design,
     numerator_mod = numerator_mod,
+    integrated = integrated,
     call = call
   )
   exposure <- as.double(extracted$exposure)

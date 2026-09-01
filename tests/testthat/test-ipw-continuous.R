@@ -3548,4 +3548,53 @@ test_that("an integrated numerator over an unreadable ps fit is refused", {
   expect_match(message, "ps_mod", fixed = TRUE)
 })
 
-PLACEHOLDER_ITEM_FOUR
+test_that("an unreadable ps fit under an integrated numerator is pointed past .data", {
+  dat <- sim_continuous_seed_gap()
+  gone <- continuous_ps_frame_gone(dat)
+
+  wts <- continuous_weights(
+    as.double(fitted(gone)),
+    dat$A,
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+  outcome_mod <- lm(yc ~ A + w, data = dat, weights = wts)
+
+  # Called without a frame, the fit is unreadable one step earlier, where the
+  # refusal every frame-gone design raises offers `.data`. The block above is
+  # where taking that offer lands, so it is not the remedy here: this one names
+  # the fit instead, and the caller is one step from an answer rather than two.
+  err <- expect_error(
+    ipw(gone, outcome_mod),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, "wt_mod", fixed = TRUE)
+  expect_match(message, "cannot stand in", fixed = TRUE)
+  expect_match(message, "model = TRUE", fixed = TRUE)
+  expect_no_match(message, "Supply `.data`", fixed = TRUE)
+})
+
+test_that("an unreadable ps fit under a marginal numerator keeps the .data remedy", {
+  dat <- sim_continuous_seed_gap()
+  gone <- continuous_ps_frame_gone(dat)
+
+  wts <- continuous_weights(as.double(fitted(gone)), dat$A, stabilize = TRUE)
+  outcome_mod <- lm(yc ~ A + w, data = dat, weights = wts)
+
+  # The boundary the branch above draws. A marginal numerator is the normal
+  # density of moments the rebuild reads over whatever rows it is given, so
+  # `.data` does stand in for the design behind it and is still what is asked
+  # for here.
+  err <- expect_error(
+    ipw(gone, outcome_mod),
+    class = "propensity_ipw_data_error"
+  )
+
+  expect_match(
+    continuous_numerator_ipw_message(err),
+    "Supply `.data`",
+    fixed = TRUE
+  )
+})
