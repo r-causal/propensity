@@ -1214,7 +1214,14 @@ ipw_joint_models_stab_components <- function(
       ))
     }
 
-    model <- ipw_binary_numerator_block(binary_models[[i]], call = call)
+    # Every design this route builds comes from the fits themselves, so a
+    # numerator whose frame cannot be recovered is asked for a fit that kept
+    # one rather than for a `.data` this route would not read.
+    model <- ipw_binary_numerator_block(
+      binary_models[[i]],
+      data_rebuild = FALSE,
+      call = call
+    )
 
     if (is.null(model)) {
       return(list(

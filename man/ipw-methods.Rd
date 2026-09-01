@@ -888,7 +888,12 @@ fit at a logit, probit, or cloglog link, and a dose's goes through the
 registry under \strong{Continuous propensity score models}. A model of a response
 other than the treatment it stabilizes, or one fit to a different set of
 observations, errors with class \code{propensity_ipw_numerator_error}; one fit
-with case weights errors with class \code{propensity_ipw_ps_weights_error}.
+with case weights errors with class \code{propensity_ipw_ps_weights_error}. Every
+numerator design here is built from the fit itself, a \code{.data} the caller
+supplies being read for the frame the counterfactual designs are rebuilt
+from, so a numerator that keeps no model frame and whose fitting call can no
+longer be evaluated errors with class \code{propensity_ipw_data_error}, asking for
+a fit that keeps one.
 
 What a numerator may condition on is a statement about the reported model
 rather than a free choice, and it is the same statement here as for a single
@@ -1029,6 +1034,18 @@ the inference rather than rescuing it. Neither result isolates the
 numerator's own contribution, and Kostouraki et al.'s tutorial is written for
 a binary exposure, so what they give is the direction of the correction
 rather than a bound on its size.
+
+A numerator model's design is one of the designs \code{ipw()} rebuilds when
+\code{.data} is supplied: it is rebuilt over the rows every model read and under
+the coding the fit recorded, so a column only the numerator reads is asked of
+\code{.data} and is held to the type the fit recorded for it. A \code{.data} missing
+such a column errors with class \code{propensity_columns_exist_error}, and one
+supplying it as another type with class \code{propensity_ipw_data_error}. Without
+\code{.data} the design is read off the fit itself, and a fit that keeps no model
+frame rebuilds one by re-evaluating its fitting call. A \code{\link[stats:glm]{stats::glm()}} fit
+with \code{model = FALSE} is such a fit, so one made inside a function whose frame
+is gone errors with class \code{propensity_ipw_data_error}, and the remedy is to
+supply \code{.data}.
 
 A multinomial numerator model is held to the propensity score model's levels
 in the propensity score model's own order. Everything its block contributes

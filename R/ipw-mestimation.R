@@ -238,12 +238,20 @@ ipw_spec_binary <- function(
 
   check_ipw_outcome_exposure(outcome_mod, exposure_name, call = call)
 
+  # Read before the designs are built rather than with the rest of what the
+  # weights record: a numerator model's design is rebuilt from `.data` alongside
+  # them, so the columns it reads have to be among the ones the rebuild asks for
+  # before it goes looking for them.
+  wts <- extract_weights(outcome_mod)
+  numerator_mod <- numerator_model(wts)
+
   extracted <- ipw_extract_ps_design(
     ps_mod,
     outcome_mod,
     .data = .data,
     exposure_name = exposure_name,
     check_exposure_levels = TRUE,
+    numerator_mod = numerator_mod,
     call = call
   )
   exposure <- extracted$exposure
@@ -289,13 +297,17 @@ ipw_spec_binary <- function(
     )
   }
 
-  wts <- extract_weights(outcome_mod)
   estimand <- check_estimand(wts, estimand, call = call)
 
   # A numerator model joins the stack the way the propensity score model does,
-  # so it goes through the same guards and is refused on the same terms.
-  numerator_mod <- numerator_model(wts)
-  numerator_block <- ipw_binary_numerator_block(numerator_mod, call = call)
+  # so it goes through the same guards and is refused on the same terms. Its
+  # design is rebuilt from `.data` where the caller supplied one, over the rows
+  # every other design here is built over.
+  numerator_block <- ipw_binary_numerator_block(
+    numerator_mod,
+    .data = if (!is.null(.data)) mm_data,
+    call = call
+  )
   if (!is.null(numerator_block)) {
     check_ipw_numerator_model(
       numerator_mod,
@@ -431,9 +443,19 @@ ipw_spec_binary <- function(
 # Every guard here is the guard the binary propensity score model meets, read
 # for the argument the numerator model arrived in: the same family, the same
 # three links, the same refusal of a penalized fit, the same refusal of case
-# weights, and the same rank requirement.
+# weights, the same rank requirement, and the same recovery of a design from a
+# fit that keeps no model frame.
+#
+# `data_rebuild` says whether the calling route rebuilds this design from a
+# `.data` the caller supplied. The single-exposure route does, so a fit whose
+# frame cannot be recovered is asked for one. The joint route builds every
+# numerator design from the fit itself, so asking it for `.data` there would be
+# a remedy that reaches the same refusal; what it asks for instead is a
+# numerator that kept its frame.
 ipw_binary_numerator_block <- function(
   numerator_model,
+  .data = NULL,
+  data_rebuild = TRUE,
   call = rlang::caller_env()
 ) {
   if (is.null(numerator_model)) {
@@ -471,8 +493,51 @@ ipw_binary_numerator_block <- function(
     )
   }
 
+  numerator_design <- if (is.null(.data)) {
+    # A `glm` usually keeps its model frame, but one fit with `model = FALSE`
+    # keeps none and rebuilds it by re-evaluating the fitting call, which a fit
+    # made inside a function whose frame is gone cannot do. That is the
+    # denominator's recovery and the failure it can meet, so it is reported the
+    # way the denominator's is, named for the argument this model arrived in.
+    recovered <- tryCatch(
+      stats::model.matrix(numerator_model),
+      error = function(e) e
+    )
+    if (inherits(recovered, "error")) {
+      cause <- conditionMessage(recovered)
+      remedy <- if (data_rebuild) {
+        "Supply {.arg .data} with the exposure, outcome, and covariates."
+      } else {
+        "Refit {.arg stabilize} so that it keeps its own model frame, by \\
+        leaving {.arg model} at its default, and rebuild the weights from it."
+      }
+      abort(
+        c(
+          "Can't reconstruct the data behind {.arg stabilize}.",
+          x = "{cause}",
+          i = "The numerator model is estimated alongside everything else, so \\
+          {.fun ipw} needs the design its coefficients were fit over rather \\
+          than the probabilities they evaluate to.",
+          i = remedy
+        ),
+        error_class = "propensity_ipw_data_error",
+        call = call
+      )
+    }
+    recovered
+  } else {
+    rebuilt <- ipw_rebuild_design(
+      numerator_model,
+      stats::delete.response(stats::terms(numerator_model)),
+      .data,
+      call = call
+    )
+    check_ipw_design_width(rebuilt, numerator_model, "stabilize", call = call)
+    rebuilt
+  }
+
   list(
-    X = stats::model.matrix(numerator_model),
+    X = numerator_design,
     link = link,
     coefs = stats::coef(numerator_model)
   )

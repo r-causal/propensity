@@ -410,9 +410,10 @@ test_that("a binary numerator covariate supplied as a factor where the fit read 
 
   fits <- binary_numerator_x2_fits(dat)
 
-  # A factor of three levels takes two design columns where the number it stands
-  # in for took one, so the rebuilt design is wider than the coefficients it
-  # would be multiplied against.
+  # The type sweep compares the class the fit recorded for the column with the
+  # class `.data` supplies and refuses the pair before any design is rebuilt.
+  # What it heads off is a factor of three levels taking two design columns
+  # where the number it stands in for took one.
   supplied <- dat
   supplied$x2 <- dat$g
 

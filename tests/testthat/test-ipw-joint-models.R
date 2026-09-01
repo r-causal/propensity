@@ -1038,3 +1038,65 @@ test_that("ipw() rebuilds a discrete component stabilized on a fixed score", {
   # taken one parameter.
   expect_false(any(grepl("^stab_", names(coef(res$fit)))))
 })
+
+# ---- a component's numerator model whose data is gone -----------------------
+#
+# A numerator model's coefficients are estimated in the stacked system, so the
+# design they were fit over is what the route needs rather than the
+# probabilities they evaluate to. This route builds every such design from the
+# fit itself, `.data` being read for the counterfactual frame alone, so a fit
+# that cannot produce one has to be refused here and refused with a remedy this
+# route can honor.
+
+test_that("a joint component's numerator model whose data is gone is refused", {
+  dat <- sim_joint_models()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  # A `glm` fit with `model = FALSE` keeps no model frame and rebuilds one by
+  # re-evaluating its fitting call, which a fit made inside a function whose
+  # frame is gone cannot do. Its fitted probabilities are still readable, and
+  # the weights were built from them.
+  fmla <- e ~ x1
+  fit_in_function <- function(fitting_data) {
+    glm(fmla, data = fitting_data, family = binomial(), model = FALSE)
+  }
+  gone <- fit_in_function(dat)
+
+  expect_error(model.matrix(gone))
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a, stabilize = TRUE),
+      wt_ate(ps_e, stabilize = gone),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  models <- joint_wt_models(a = ps_a, e = ps_e)
+
+  # Both calls reach the same refusal, which is what the remedy has to account
+  # for: a `.data` the caller supplies is read for the counterfactual frame and
+  # never for a numerator's design, so asking for one here would send the
+  # caller back to the refusal they started from.
+  for (supplied in list(NULL, dat)) {
+    cnd <- tryCatch(
+      ipw(models, outcome_mod, .data = supplied),
+      error = function(e) e
+    )
+    expect_s3_class(cnd, "propensity_ipw_data_error")
+
+    message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+    expect_match(message, "stabilize", fixed = TRUE)
+    expect_match(message, "model frame", fixed = TRUE)
+    expect_no_match(message, "Supply `.data`", fixed = TRUE)
+  }
+})
