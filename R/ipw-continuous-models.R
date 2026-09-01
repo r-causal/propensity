@@ -879,7 +879,13 @@ check_ipw_stabilization_score <- function(
     return(invisible(TRUE))
   }
 
-  if (!is.null(score) && stabilization_score_aligns(score, n)) {
+  # A score with no values in it is refused alongside a missing one.
+  # `stabilization_score_aligns()` passes a zero-length score, because it is
+  # written for the prototypes and empty subsets a `psw` restore passes through,
+  # where a score lines up with observations that have not arrived yet. Here the
+  # observations have arrived and the record names a score as their numerator,
+  # so a score holding nothing is a numerator with nothing to read.
+  if (length(score) > 0 && stabilization_score_aligns(score, n)) {
     return(invisible(TRUE))
   }
 

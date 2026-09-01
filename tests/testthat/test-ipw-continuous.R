@@ -3383,6 +3383,32 @@ test_that("a scalar stabilization score survives the subset the score cannot", {
   )
 })
 
+# The guard reads what the record says and what the score in hand holds, and
+# those two can disagree in a third way as well: a record naming a score paired
+# with a score holding nothing. `stabilization_score_aligns()` passes that pair,
+# since it is written for the prototypes and empty subsets a `psw` restore
+# passes through, so the guard has to refuse it itself rather than hand a
+# zero-length numerator to the ratio. No supported construction pairs the two,
+# which is why the guard is called here rather than reached through `ipw()`.
+test_that("a zero-length stabilization score is refused with the missing one", {
+  cnd <- tryCatch(
+    check_ipw_stabilization_score("score", numeric(0), n = 10),
+    error = function(e) e
+  )
+
+  expect_s3_class(cnd, "propensity_ipw_stabilization_score_error")
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(cnd)),
+    "hold 0 of them",
+    fixed = TRUE
+  )
+
+  # The lengths the guard accepts are the ones it always accepted: one value for
+  # every unit, and the scalar that survives any restriction.
+  expect_true(check_ipw_stabilization_score("score", rep(0.5, 10), n = 10))
+  expect_true(check_ipw_stabilization_score("score", 0.5, n = 10))
+})
+
 # ---- an integrated numerator read over the fit's own rows -------------------
 #
 # The integrated numerator is the conditional density averaged over the units,
@@ -3521,3 +3547,5 @@ test_that("an integrated numerator over an unreadable ps fit is refused", {
   expect_match(message, "integrated", fixed = TRUE)
   expect_match(message, "ps_mod", fixed = TRUE)
 })
+
+PLACEHOLDER_ITEM_FOUR
