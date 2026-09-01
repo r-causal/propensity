@@ -3409,11 +3409,15 @@ calculate_categorical_weights <- function(
       # marginals sum to less than 1 whenever the exposure is missing.
       p_marginal <- table(.exposure) / sum(!missing_exposure)
 
-      # Create stabilization weights based on marginal probabilities
-      stab_wts <- rep(NA_real_, n)
-      for (j in 1:k) {
-        stab_wts[.exposure == levels_exp[j]] <- p_marginal[j]
-      }
+      # Each unit's stabilizer is the marginal for the level it took, gathered
+      # by name in one pass the way the fitted numerator above is. A unit with
+      # no observed level names no marginal and so keeps the missing weight the
+      # denominator gather has already given it. The marginals are dropped to a
+      # bare numeric first so that the gather returns a vector rather than a
+      # one-dimensional table whose dimnames would travel on into the weights.
+      stab_wts <- as.numeric(p_marginal)[
+        match(as.character(.exposure), names(p_marginal))
+      ]
 
       weights <- weights * stab_wts
     }
