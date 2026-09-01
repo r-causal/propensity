@@ -81,8 +81,8 @@ records_long_numerator_model <- function() {
   stats::lm(
     exposure ~
       baseline_covariate_measured_at_enrollment +
-        baseline_covariate_measured_at_randomization +
-        baseline_covariate_measured_at_the_first_visit,
+      baseline_covariate_measured_at_randomization +
+      baseline_covariate_measured_at_the_first_visit,
     data = frame
   )
 }

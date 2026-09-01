@@ -421,8 +421,11 @@ continuous_spec <- function(
         list(
           X = model.matrix(num_mod),
           kind = if (inherits(num_mod, "glm")) "glm" else "lm",
-          link = if (inherits(num_mod, "glm")) num_mod$family$link else
-            "identity",
+          link = if (inherits(num_mod, "glm")) {
+            num_mod$family$link
+          } else {
+            "identity"
+          },
           coefs = coef(num_mod)
         )
       }
