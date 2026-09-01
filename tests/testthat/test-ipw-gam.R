@@ -670,7 +670,14 @@ test_that("the registry refuses a gam holding a smoothing floor", {
     min.sp = c(5, 5),
     method = "REML"
   )
-  expect_equal(unname(ps_mod$full.sp), unname(ps_mod$sp))
+  # Which shape the omission takes depends on the mgcv version: a newer fit
+  # reports `full.sp` equal to `sp`, an older one reports no `full.sp` at all.
+  # Under neither is the floor's contribution recorded, which is the fact the
+  # refusal below rests on.
+  expect_true(
+    is.null(ps_mod$full.sp) ||
+      isTRUE(all.equal(unname(ps_mod$full.sp), unname(ps_mod$sp)))
+  )
 
   expect_false(ipw_continuous_model(ps_mod)$stackable)
 
