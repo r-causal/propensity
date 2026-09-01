@@ -2901,3 +2901,293 @@ test_that("a continuous numerator model whose data is gone is rebuilt from .data
     tolerance = 1e-6
   )
 })
+
+# ---- the moments the continuous seeds are read at ---------------------------
+#
+# Every parameter of the stacked system is seeded at the value the fits already
+# hold it at, so that the weights the system rebuilds before it solves anything
+# are the weights the caller was given. Four of those parameters are moments:
+# the spread the conditional density is read at, the spread a numerator model's
+# density is read at, and the mean and variance a marginal numerator is the
+# normal density of. The fits computed all four over their own rows, and the
+# weights were built at what the fits came to. Read again over the rows `.data`
+# leaves, they are different numbers, the rebuilt weights are different weights,
+# and the preflight refuses a call whose weights were exactly right.
+
+# The fits `continuous_numerator_data_fits()` makes with the stabilizing
+# numerator left to the caller, so the marginal, score, and model routes are
+# built the same way and differ only in what stabilized the weights.
+continuous_seed_fits <- function(
+  dat,
+  stabilize = TRUE,
+  stab_score = NULL,
+  msm_rhs = c("A", "w")
+) {
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = stabilize,
+    stab_score = stab_score
+  )
+  outcome_mod <- lm(
+    stats::reformulate(msm_rhs, response = "yc"),
+    data = dat,
+    weights = wts
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+# A numerator the caller fixed rather than one anything estimates, which is the
+# third thing a set of continuous weights can be stabilized on. The score is the
+# single value that scales every weight rather than one value per observation:
+# an outcome model that drops a row subsets the weights, and a per-observation
+# score is dropped when it does, so only a scalar reaches `ipw()` intact from a
+# frame with a gap in it.
+continuous_seed_score <- 0.4
+
+# `sim_continuous_numerator_gap()` drops a single row, and the exposure moments
+# over the rows it leaves sit within a few parts in 1e5 of the moments over
+# every row: a pin written against either would pass against the other. This
+# variant withholds the covariate at the ten largest doses instead, which moves
+# both marginal moments by percents rather than by rounding, so a seed at the
+# fits' moments and a solution over the analyzed rows are told apart well beyond
+# any tolerance below.
+sim_continuous_seed_gap <- function(seed = 7731, n = 600) {
+  dat <- sim_continuous_numerator(seed = seed, n = n)
+  dat$w <- rev(dat$x1)
+  dat$w[order(dat$A, decreasing = TRUE)[seq_len(10)]] <- NA
+
+  dat
+}
+
+test_that("a marginal numerator passes the preflight over the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  fits <- continuous_seed_fits(dat)
+
+  # The weights are the ones the outcome model was fit with, so the slope the
+  # estimator reports is the slope that model already holds. Nothing here asks
+  # for a numerator model: the marginal moments alone are enough to move the
+  # rebuilt weights off the supplied ones once they are read over other rows.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fits$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("a fixed stabilization score passes the preflight over the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  fits <- continuous_seed_fits(dat, stab_score = continuous_seed_score)
+
+  # A score the caller fixed leaves no stabilization block at all, so the only
+  # moment this route seeds is the conditional spread. That one is enough on its
+  # own: the numerator is a constant the weights carry, and a denominator read
+  # at another spread divides it by a different density.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fits$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("a numerator model passes the preflight over the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  num_mod <- lm(A ~ v, data = dat)
+  fits <- continuous_seed_fits(dat, stabilize = num_mod)
+
+  # Both spreads move on this route, the denominator's and the numerator's, and
+  # they move in the same direction, so neither cancels the other.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fits$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("the continuous seeds are the fits' moments where every model read the same rows", {
+  dat <- sim_continuous_numerator()
+  num_mod <- lm(A ~ v, data = dat)
+  model_fits <- continuous_seed_fits(dat, stabilize = num_mod, msm_rhs = "A")
+  marginal_fits <- continuous_seed_fits(dat, msm_rhs = "A")
+
+  # Nothing is missing here, so the rows the spec analyzes are the rows every
+  # fit was made over and the two readings of each moment are the same number.
+  # What this says is which of the two the seed is; the row-restricted case
+  # below is what separates them.
+  model_layout <- ipw_theta_layout(ipw_spec_continuous(
+    model_fits$ps_mod,
+    model_fits$outcome_mod,
+    .data = dat
+  ))
+  expect_equal(
+    model_layout$init[["sigma2_d"]],
+    mean(residuals(model_fits$ps_mod)^2)
+  )
+  expect_equal(model_layout$init[["sigma2_n"]], mean(residuals(num_mod)^2))
+
+  # The marginal moments are moments of the exposure rather than of a residual,
+  # and the exposure they are moments of is the one the propensity score model
+  # was fit against, read off its own frame.
+  marginal_layout <- ipw_theta_layout(ipw_spec_continuous(
+    marginal_fits$ps_mod,
+    marginal_fits$outcome_mod,
+    .data = dat
+  ))
+  a_ps <- as.double(stats::model.response(stats::model.frame(
+    marginal_fits$ps_mod
+  )))
+  expect_equal(marginal_layout$init[["mu_a"]], mean(a_ps))
+  expect_equal(marginal_layout$init[["sigma2_a"]], mean((a_ps - mean(a_ps))^2))
+})
+
+test_that("the continuous seeds stay at the fits' moments where .data drops rows", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  num_mod <- lm(A ~ v, data = dat)
+  model_fits <- continuous_seed_fits(dat, stabilize = num_mod)
+  marginal_fits <- continuous_seed_fits(dat)
+
+  model_layout <- ipw_theta_layout(ipw_spec_continuous(
+    model_fits$ps_mod,
+    model_fits$outcome_mod,
+    .data = dat
+  ))
+  expect_equal(
+    model_layout$init[["sigma2_d"]],
+    mean(residuals(model_fits$ps_mod)^2)
+  )
+  expect_equal(model_layout$init[["sigma2_n"]], mean(residuals(num_mod)^2))
+
+  marginal_layout <- ipw_theta_layout(ipw_spec_continuous(
+    marginal_fits$ps_mod,
+    marginal_fits$outcome_mod,
+    .data = dat
+  ))
+  a_ps <- as.double(stats::model.response(stats::model.frame(
+    marginal_fits$ps_mod
+  )))
+  expect_equal(marginal_layout$init[["mu_a"]], mean(a_ps))
+  expect_equal(marginal_layout$init[["sigma2_a"]], mean((a_ps - mean(a_ps))^2))
+
+  # The same four moments taken over the rows the spec analyzes, which is the
+  # other reading the seeds could have. They differ from the fits' own by far
+  # more than the comparisons above tolerate, which is what makes those
+  # comparisons say which reading the seed is rather than passing on either.
+  a_kept <- dat$A[kept]
+  ps_resid_kept <- a_kept - fitted(model_fits$ps_mod)[kept]
+  num_resid_kept <- a_kept - fitted(num_mod)[kept]
+  expect_false(isTRUE(all.equal(
+    mean(residuals(model_fits$ps_mod)^2),
+    mean(ps_resid_kept^2)
+  )))
+  expect_false(isTRUE(all.equal(
+    mean(residuals(num_mod)^2),
+    mean(num_resid_kept^2)
+  )))
+  expect_false(isTRUE(all.equal(mean(a_ps), mean(a_kept))))
+  expect_false(isTRUE(all.equal(
+    mean((a_ps - mean(a_ps))^2),
+    mean((a_kept - mean(a_kept))^2)
+  )))
+})
+
+test_that("the solved continuous moments are the moments of the rows analyzed", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  fits <- continuous_seed_fits(dat)
+
+  # Seeding at the fits' moments is a starting value rather than an answer. The
+  # marginal moments have two equations of their own, written over the rows the
+  # spec analyzes, and the pair is solved by the mean and the mean square of the
+  # exposure over exactly those rows. A seed held in place through the solve
+  # would report the fits' moments here instead.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  theta <- coef(res$fit)
+  a_kept <- dat$A[kept]
+  a_ps <- as.double(stats::model.response(stats::model.frame(fits$ps_mod)))
+
+  expect_equal(unname(theta[["mu_a"]]), mean(a_kept), tolerance = 1e-8)
+  expect_equal(
+    unname(theta[["sigma2_a"]]),
+    mean((a_kept - mean(a_kept))^2),
+    tolerance = 1e-8
+  )
+  expect_false(isTRUE(all.equal(
+    mean(a_kept),
+    mean(a_ps),
+    tolerance = 1e-6
+  )))
+})
+
+# ---- an additive numerator model rebuilt from `.data` -----------------------
+
+test_that("a gam numerator model rebuilt from .data reads its own smooth basis", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_continuous_numerator()
+  num_mod <- mgcv::gam(A ~ s(v), data = dat, method = "REML")
+  fits <- continuous_seed_fits(dat, stabilize = num_mod, msm_rhs = "A")
+
+  # An additive fit's design is a smooth basis rather than the columns its
+  # formula names, so a `.data` rebuild has to ask the fit for the basis at the
+  # rows it was handed rather than re-evaluating the formula. Nothing is missing
+  # here, so both routes read every row and are the same fit; a rebuild that
+  # re-evaluated `s(v)` would be a different basis and move the estimate by
+  # orders more than this tolerance.
+  res_data <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_fit <- ipw(fits$ps_mod, fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_fit$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_fit$estimates$std.err,
+    tolerance = 1e-8
+  )
+})
+
+test_that("a gam numerator model is seeded at its own residual moment", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_continuous_seed_gap()
+  num_mod <- mgcv::gam(A ~ s(v), data = dat, method = "REML")
+  fits <- continuous_seed_fits(dat, stabilize = num_mod)
+
+  # The spread an additive numerator's density is read at is the moment of its
+  # own residuals, the same as a least-squares numerator's, and the rows it is a
+  # moment over are the fit's rather than the ones `.data` leaves.
+  layout <- ipw_theta_layout(ipw_spec_continuous(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  expect_equal(layout$init[["sigma2_n"]], mean(residuals(num_mod)^2))
+
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    unname(coef(fits$outcome_mod)[["A"]]),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
