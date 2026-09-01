@@ -3227,3 +3227,113 @@ test_that("a gam numerator model is seeded at its own residual moment", {
   )
   expect_true(all(is.finite(res$estimates$std.err)))
 })
+
+# ---- weights whose per-observation stabilization score was dropped ----------
+#
+# A `stabilization_score` the caller wrote per observation is one value per unit,
+# so an operation that changes the length of the weights cannot re-index it and
+# drops it. That drop is reported where it happens: a marginal structural model
+# fit over a frame with a gap in it subsets the weights while it builds its own
+# model frame, and the weights that come back out of that frame carry no score
+# aligned with them.
+#
+# What the record still says is that a score is what stabilized them, because
+# the density record describes how the weights were built rather than what
+# survived. `ipw()` reads the record, goes looking for the score it names, and
+# has nothing that describes the rows it is about to weight. Building the ratio
+# anyway divides by a numerator of the wrong length, which is arithmetic the
+# caller never wrote and cannot act on. The refusal owed here names the score
+# that was dropped and the two ways back: rebuild the weights on the rows that
+# remain, or stabilize on a scalar, which survives any subset.
+
+# The marginal density of the exposure, evaluated at the dose each unit took.
+# This is the numerator `stabilize = TRUE` would build for itself, written out
+# by the caller so that it arrives as a score rather than as the default.
+continuous_seed_score_vector <- function(dat) {
+  dnorm(dat$A, mean(dat$A), stats::sd(dat$A))
+}
+
+test_that("ipw() refuses weights whose per-observation score was dropped", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+
+  # The drop happens where the marginal structural model subsets the weights,
+  # and is asserted here so that the only condition left for the call below is
+  # the one being pinned.
+  expect_warning(
+    fits <- continuous_seed_fits(
+      dat,
+      stab_score = continuous_seed_score_vector(dat)
+    ),
+    class = "propensity_stabilization_score_warning"
+  )
+
+  # What this block pins is the refusal itself. Whether anything is raised on
+  # the way to it is the subject of the block below, which owns that assertion.
+  cnd <- suppressWarnings(tryCatch(
+    ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ]),
+    error = function(e) e
+  ))
+
+  expect_s3_class(cnd, "propensity_ipw_stabilization_score_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "stabilization_score", fixed = TRUE)
+})
+
+test_that("weights whose per-observation score was dropped raise nothing raw", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+
+  expect_warning(
+    fits <- continuous_seed_fits(
+      dat,
+      stab_score = continuous_seed_score_vector(dat)
+    ),
+    class = "propensity_stabilization_score_warning"
+  )
+
+  # The refusal has to come before the ratio is built. A score of the length the
+  # weights were recorded at, divided into a density read over the rows that
+  # remain, recycles, and base R's report of that recycling names nothing the
+  # caller wrote and precedes whatever `ipw()` says next.
+  seen <- character()
+  withCallingHandlers(
+    tryCatch(
+      ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ]),
+      error = function(e) e
+    ),
+    warning = function(w) {
+      seen <<- c(seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(seen, character())
+})
+
+test_that("a scalar stabilization score survives the subset the score cannot", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+
+  # The boundary the refusal above draws. A scalar is one number rather than one
+  # per unit, so nothing re-indexes it and nothing drops it: the same frame with
+  # the same gap in it reaches the same estimates it always did, and the two
+  # ways of asking for the restricted rows agree.
+  fits <- continuous_seed_fits(dat, stab_score = continuous_seed_score)
+
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res_kept, "ipw")
+  expect_equal(
+    res_kept$estimates$estimate,
+    res$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_kept$estimates$std.err,
+    res$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
