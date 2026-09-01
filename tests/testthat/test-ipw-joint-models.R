@@ -1429,3 +1429,123 @@ test_that("a joint treatment model that levels its own response is refused by na
   expect_match(message, "\"a\"", fixed = TRUE)
   expect_match(message, "levels", fixed = TRUE)
 })
+
+# The other side of the same boundary: a column that carries no order of its own
+# is not the fault, so one whose values imply exactly the order its model was
+# fit under is read the way it always was. Only the disagreement is refused.
+sim_joint_models_alphabetical <- function(...) {
+  dat <- sim_joint_models(...)
+  dat$af <- factor(ifelse(dat$a == 1L, "t", "c"))
+
+  dat
+}
+
+test_that("a joint treatment fit on the order its values imply is accepted", {
+  # The pair reads `af` whatever order the column declares, so the fits this
+  # section weights are the ones the re-levelled frame is weighted by.
+  dat <- sim_joint_models_alphabetical()
+  fits <- joint_models_relevelled_fits(dat)
+
+  as_character <- dat
+  as_character$af <- as.character(dat$af)
+
+  res_data <- ipw(fits$models, fits$outcome_mod, .data = as_character)
+  res_frames <- ipw(fits$models, fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_frames$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_frames$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+# A rename is not a re-ordering. `factor(a, labels = c("ctl", "trt"))` over a
+# 0/1 column assigns its labels in sorted-value order, so a fit written that way
+# codes the treatment exactly as the raw column implies and differs from it only
+# in what the two groups are called. The label sets share nothing, which is
+# precisely why the order comparison has nothing to say: the fitted labels are
+# evidence of an order only when the column carries the same two labels. Where
+# they do not, the weight-consistency preflight is the check that matters,
+# because it compares the weights the rebuilt column produces rather than the
+# names it produces them under.
+joint_models_relabelled_fits <- function(dat, ps_a) {
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(a = ps_a, e = ps_e),
+    outcome_mod = outcome_mod
+  )
+}
+
+test_that("a joint treatment model that relabels its response agrees with the fitted frames", {
+  dat <- sim_joint_models()
+  ps_a <- glm(
+    factor(a, labels = c("ctl", "trt")) ~ x1 + x2,
+    data = dat,
+    family = binomial()
+  )
+  fits <- joint_models_relabelled_fits(dat, ps_a)
+
+  # `.data` here is the frame every model was fit to. The labels the response
+  # transform assigned are the ones the column's sorted values carry, so the
+  # route reads the coding the fit was made under and the two routes are the
+  # same computation.
+  res_data <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  res_frames <- ipw(fits$models, fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_frames$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_frames$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a joint treatment model that relabels its response the other way round is caught by the weights", {
+  dat <- sim_joint_models()
+  # The same two labels assigned to the values the other way round, which does
+  # invert the indicator the fit was made under.
+  ps_a <- glm(
+    factor(a, levels = c(1, 0), labels = c("trt", "ctl")) ~ x1 + x2,
+    data = dat,
+    family = binomial()
+  )
+  fits <- joint_models_relabelled_fits(dat, ps_a)
+
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod, .data = dat),
+    error = function(e) e
+  )
+
+  # Nothing about the labels distinguishes this from the agreeing relabel, so
+  # the refusal comes from the weights the inverted coding rebuilds rather than
+  # from the level comparison.
+  expect_s3_class(cnd, "propensity_ipw_weights_mismatch_error")
+})

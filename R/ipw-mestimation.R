@@ -1658,9 +1658,13 @@ check_ipw_response_levels <- function(
 # The exposure is the propensity model's response, so `xlevels` never records
 # it and the fitted frame is the only place its levels are kept; a model that
 # cannot rebuild that frame leaves nothing to compare and is passed. A supplied
-# column that is not a factor carries no order of its own: a numeric one is
+# column that is not a factor declares no order in levels of its own, so it is
+# left to the route that reads it: on the binary path a numeric column is
 # rejected by check_ipw_data_types() and a character one by
-# check_ipw_binary_exposure_coding().
+# check_ipw_binary_exposure_coding(), while the joint route, which writes no
+# counterfactual exposure column and so can rebuild from either coding, compares
+# the order such a column's values imply in
+# check_ipw_joint_models_treatment_levels().
 #
 # The categorical path has no counterpart. It resolves the supplied column
 # against `ps_mod$lev` before anything reads it, so the order it declares says

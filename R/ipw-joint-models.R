@@ -313,11 +313,10 @@ ipw_spec_joint_models <- function(
     treatments <- lapply(names, function(name) mm_data[[name]])
 
     for (i in seq_along(fits)) {
-      check_ipw_exposure_levels(
+      check_ipw_joint_models_treatment_levels(
         treatments[[i]],
         fits[[i]],
         names[[i]],
-        arg = names[[i]],
         call = call
       )
     }
@@ -635,6 +634,94 @@ check_ipw_joint_model_weights <- function(
       i = "Refit {.arg {label}} without {.arg weights}."
     ),
     error_class = "propensity_ipw_ps_weights_error",
+    call = call
+  )
+}
+
+# Require a treatment read out of `.data` to code the way the model fit to it
+# codes it. Both halves ask the same thing of the column and differ only in
+# where the order it declares comes from: a factor declares it in its levels,
+# which `check_ipw_exposure_levels()` compares, and a column that carries no
+# levels of its own declares it in its values, since everything here levels such
+# a column by `sort(unique())` and reads the second level as the exposed group.
+#
+# The non-factor half is this route's alone. The single-treatment route refuses
+# a non-factor exposure outright, because the counterfactual rebuild there sets
+# the outcome design's exposure column to one value at a time and a column that
+# carries no levels cannot hold the rest; this route writes no such column, so a
+# character treatment is a coding it can rebuild and only a coding that
+# disagrees with the fit is a fault.
+#
+# What the fit codes by is its own response, which `xlevels` never records and
+# which a model that transforms it in place does not name after the column
+# either, so the fitted frame is the only place to read it. A fit whose frame
+# cannot be rebuilt leaves nothing to compare and is passed, and the
+# weight-consistency preflight is what reports it there.
+#
+# Only a definite inversion is refused: the same two labels in the other order.
+# Label sets that do not match at all say nothing about order, since a fit is
+# free to rename its response as it codes it, and a rename that agrees with the
+# column (`factor(a, labels = c("ctl", "trt"))` over a 0/1 column, where
+# `labels` assigns in sorted-value order) is the coding this route reads. A
+# rename that disagrees carries no evidence here either, and is left to the
+# weight-consistency preflight, which compares the weights the rebuilt column
+# produces against the ones the outcome model was fit under and so reads the
+# coding rather than the names. A column holding only one of the fitted values
+# is a third thing again, neither an order nor a rename, and it passes here so
+# that the crossing downstream can refuse it for what it is: a treatment
+# observed at one level, which no crossing can vary.
+check_ipw_joint_models_treatment_levels <- function(
+  exposure,
+  ps_mod,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  check_ipw_exposure_levels(
+    exposure,
+    ps_mod,
+    exposure_name,
+    arg = exposure_name,
+    call = call
+  )
+
+  # Read off the fitted frame, which a fit made with `model = FALSE` rebuilds
+  # from the call rather than keeps. That rebuild can read a changed `data`, so
+  # what comes back is advisory: it is enough to name an inversion it does see
+  # and never the only thing standing between a mis-coded column and the
+  # answer, which is what the preflight is for.
+  fit_levels <- ipw_fitted_response_levels(ps_mod)
+
+  if (is.null(fit_levels) || is.factor(exposure)) {
+    return(invisible(TRUE))
+  }
+
+  implied <- as.character(sort(unique(exposure)))
+
+  if (!setequal(implied, fit_levels) || identical(implied, fit_levels)) {
+    return(invisible(TRUE))
+  }
+
+  supplied_class <- stats::.MFclass(exposure)
+  supplied_article <- if (supplied_class %in% names(ipw_class_articles)) {
+    ipw_class_articles[[supplied_class]]
+  } else {
+    paste("a", class(exposure)[[1]], "vector")
+  }
+
+  abort(
+    c(
+      "{.arg .data} must supply {.val {exposure_name}} on the levels \\
+      {.arg {exposure_name}} was fit with, in that order.",
+      x = "{.arg .data} has {.val {exposure_name}} as {supplied_article}, \\
+      whose values level as {.val {implied}}; {.arg {exposure_name}} was fit \\
+      on {.val {fit_levels}}.",
+      x = "{.fun ipw} treats the second level of a binary treatment as the \\
+      exposed group, so a different order contrasts the levels the other way \\
+      round.",
+      i = "Supply {.val {exposure_name}} as a factor with the levels \\
+      {.arg {exposure_name}} was fit with."
+    ),
+    error_class = "propensity_ipw_data_error",
     call = call
   )
 }
