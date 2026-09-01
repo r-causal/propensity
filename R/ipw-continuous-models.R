@@ -877,17 +877,9 @@ ipw_continuous_ratio_meta <- function(
 # `.data` is the frame every other design in the stack is rebuilt from, over the
 # rows every model read, and this design is rebuilt from it alongside them.
 # Without one the design is read off the fit itself.
-#
-# `data_rebuild` says whether the calling route rebuilds this design from a
-# `.data` the caller supplied. The single-dose route does, so a fit whose frame
-# cannot be recovered is asked for one. The joint route builds every numerator
-# design from the fit itself, so asking it for `.data` there would be a remedy
-# that reaches the same refusal; what it asks for instead is a numerator that
-# kept its frame.
 ipw_numerator_model_block <- function(
   numerator_model,
   .data = NULL,
-  data_rebuild = TRUE,
   call = rlang::caller_env()
 ) {
   if (is.null(numerator_model)) {
@@ -914,7 +906,6 @@ ipw_numerator_model_block <- function(
     numerator_model,
     entry,
     .data = .data,
-    data_rebuild = data_rebuild,
     call = call
   )
 
@@ -957,7 +948,6 @@ ipw_numerator_model_design <- function(
   numerator_model,
   entry,
   .data = NULL,
-  data_rebuild = TRUE,
   call = rlang::caller_env()
 ) {
   if (!is.null(.data)) {
@@ -982,23 +972,9 @@ ipw_numerator_model_design <- function(
   )
 
   if (inherits(recovered, "error")) {
-    cause <- conditionMessage(recovered)
-    remedy <- if (data_rebuild) {
-      "Supply {.arg .data} with the exposure, outcome, and covariates."
-    } else {
-      "Refit {.arg stabilize} so that it keeps its own model frame, by \\
-      leaving {.arg model} at its default, and rebuild the weights from it."
-    }
-    abort(
-      c(
-        "Can't reconstruct the data behind {.arg stabilize}.",
-        x = "{cause}",
-        i = "The numerator model is estimated alongside everything else, so \\
-        {.fun ipw} needs the design its coefficients were fit over rather than \\
-        the numerator they evaluate to.",
-        i = remedy
-      ),
-      error_class = "propensity_ipw_data_error",
+    abort_ipw_numerator_frame_gone(
+      conditionMessage(recovered),
+      evaluates_to = "numerator",
       call = call
     )
   }

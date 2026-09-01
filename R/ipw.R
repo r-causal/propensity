@@ -600,9 +600,20 @@
 #' the covariates, which is what the declared crossing does instead.
 #'
 #' Unlike the single-treatment route, this one needs no `.data` for a basis
-#' marginal structural model. Each treatment is read off its own treatment
-#' model, so the outcome model frame is never asked for a column it does not
-#' hold.
+#' marginal structural model. Without one, each treatment and each treatment
+#' design is read off the model that owns it, so the outcome model frame is
+#' never asked for a column it does not hold.
+#'
+#' A `.data` the caller does supply is the frame every design here is rebuilt
+#' from, on the terms the single-treatment routes rebuild theirs: both treatment
+#' columns, both treatment designs, each component's numerator design, and the
+#' counterfactual designs are built over the rows every model read and under the
+#' coding each fit recorded. A column one of those fits reads that is missing
+#' from `.data` errors with class `propensity_columns_exist_error`, and one
+#' supplied as another type errors with class `propensity_ipw_data_error`,
+#' naming the fits that recorded it, a treatment model by the treatment it fits.
+#' A set of fits made under `na.action = na.exclude` is reconciled with the
+#' frame they were given by restricting `.data` to the rows they analyzed.
 #'
 #' The dose model contributes its coefficients and the conditional variance its
 #' density ratio divides by, all as parameters of the same stacked system. Each
@@ -637,11 +648,11 @@
 #' other than the treatment it stabilizes, or one fit to a different set of
 #' observations, errors with class `propensity_ipw_numerator_error`; one fit
 #' with case weights errors with class `propensity_ipw_ps_weights_error`. Every
-#' numerator design here is built from the fit itself, a `.data` the caller
-#' supplies being read for the frame the counterfactual designs are rebuilt
-#' from, so a numerator that keeps no model frame and whose fitting call can no
-#' longer be evaluated errors with class `propensity_ipw_data_error`, asking for
-#' a fit that keeps one.
+#' numerator design here is one of the designs a `.data` the caller supplies
+#' rebuilds, on the terms the single-treatment routes rebuild theirs, so a
+#' numerator that keeps no model frame and whose fitting call can no longer be
+#' evaluated errors with class `propensity_ipw_data_error` without one, and is
+#' rebuilt from `.data` with one.
 #'
 #' What a numerator may condition on is a statement about the reported model
 #' rather than a free choice, and it is the same statement here as for a single
@@ -3728,6 +3739,38 @@ abort_outcome_frame_gone <- function(cause, call = rlang::caller_env()) {
       with {.code model = TRUE} so the model frame is kept.",
       i = "{.arg .data} cannot stand in here: the weights are read from \\
       {.arg outcome_mod}'s own model frame."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# Report a numerator model whose design cannot be recovered from the fit, the
+# counterpart of the guard above for the model the weights were stabilized on.
+# An `lm`, a `glm`, or an `nnet::multinom()` fit that keeps no model frame
+# rebuilds one by re-evaluating its fitting call, which a fit made inside a
+# function whose frame is gone cannot do. Every numerator route meets that
+# failure and every one of them rebuilds the design from `.data` instead, so the
+# report is written once and the remedy is the same one the propensity score
+# model's recovery offers.
+#
+# `evaluates_to` names what the coefficients would give if the numerator were
+# read off the fit rather than estimated: probabilities for a discrete exposure,
+# and the numerator itself for a dose, whose density is a value rather than a
+# probability.
+abort_ipw_numerator_frame_gone <- function(
+  cause,
+  evaluates_to = "probabilities",
+  call = rlang::caller_env()
+) {
+  abort(
+    c(
+      "Can't reconstruct the data behind {.arg stabilize}.",
+      x = "{cause}",
+      i = "The numerator model is estimated alongside everything else, so \\
+      {.fun ipw} needs the design its coefficients were fit over rather than \\
+      the {evaluates_to} they evaluate to.",
+      i = "Supply {.arg .data} with the exposure, outcome, and covariates."
     ),
     error_class = "propensity_ipw_data_error",
     call = call

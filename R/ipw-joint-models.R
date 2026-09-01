@@ -257,37 +257,81 @@ ipw_spec_joint_models <- function(
     check_ipw_outcome_exposure(outcome_mod, name, call = call)
   }
 
-  # An additive dose fit's entry has already evaluated the smooth basis its
-  # score was checked at, and that basis is the design this route multiplies the
-  # dose block by, so it travels from the entry rather than being built a second
-  # time. Every fit of another kind carries no design on its entry, and a fit
-  # whose design could not be read at all carries none either, so both are built
-  # and refused here as before.
-  ps_X <- lapply(seq_along(fits), function(i) {
-    if (identical(i, dose_idx) && !is.null(dose_model$design)) {
-      dose_model$design
-    } else {
-      ipw_joint_models_design(fits[[i]], call = call)
-    }
-  })
-  treatments <- lapply(fits, ipw_joint_models_treatment, call = call)
   coefs <- lapply(fits, stats::coef)
 
   for (i in seq_along(fits)) {
     check_ipw_model_rank(coefs[[i]], names[[i]], call = call)
   }
 
+  # Read before the designs are built rather than with the rest of what the
+  # weights record: each component's numerator model has its design rebuilt from
+  # `.data` alongside them, so the columns those models read have to be among
+  # the ones the rebuild asks for before it goes looking for them.
+  wts <- extract_weights(outcome_mod)
+  numerator_mods <- ipw_joint_models_numerator_models(wts, dose_idx)
+
   mm_data <- ipw_joint_models_frame(
     outcome_mod,
     .data,
     fits = fits,
     treatment_names = names,
+    numerator_mods = numerator_mods,
     call = call
   )
   n <- nrow(mm_data)
+
+  # With a `.data` the caller supplied, every design and every treatment column
+  # is built from that frame, over the rows every model read. Without one they
+  # are read off the fits, where an additive dose fit's entry has already
+  # evaluated the smooth basis its score was checked at; a fit of another kind
+  # carries no design on its entry, and one whose design could not be read at
+  # all carries none either, so both are built and refused there.
+  if (is.null(.data)) {
+    ps_X <- lapply(seq_along(fits), function(i) {
+      if (identical(i, dose_idx) && !is.null(dose_model$design)) {
+        dose_model$design
+      } else {
+        ipw_joint_models_design(fits[[i]], call = call)
+      }
+    })
+    treatments <- lapply(fits, ipw_joint_models_treatment, call = call)
+  } else {
+    ps_X <- lapply(seq_along(fits), function(i) {
+      design <- ipw_rebuild_design(
+        fits[[i]],
+        stats::delete.response(stats::terms(fits[[i]])),
+        mm_data,
+        call = call
+      )
+      check_ipw_design_width(design, fits[[i]], names[[i]], call = call)
+
+      design
+    })
+    # Each treatment is its own model's response and is named for it, which is
+    # what `joint_wt_models()` requires of the pair, so the column of `.data` to
+    # read is the one the component is named after.
+    treatments <- lapply(names, function(name) mm_data[[name]])
+
+    for (i in seq_along(fits)) {
+      check_ipw_exposure_levels(
+        treatments[[i]],
+        fits[[i]],
+        names[[i]],
+        arg = names[[i]],
+        call = call
+      )
+    }
+  }
+
   ipw_joint_models_check_lengths(treatments, ps_X, names, n, call = call)
 
-  wts <- extract_weights(outcome_mod)
+  # The response each treatment model was fit against and the residuals it left,
+  # both over that model's own rows. The moments the weights were built at were
+  # read from exactly these, and `.data` can leave fewer rows than a fit was
+  # made over, so they are carried on the spec rather than recomputed where the
+  # seeds are written.
+  fit_moments <- lapply(fits, ipw_joint_models_fit_moments)
+
   estimand <- check_estimand(wts, estimand, call = call)
 
   # What ratio of densities the dose's weights are, which is what the stacked
@@ -326,7 +370,9 @@ ipw_spec_joint_models <- function(
   # the way the single-treatment routes estimate the one numerator they carry,
   # so a component stabilized on a fitted model is stacked rather than refused.
   # The blocks are built here, where the numerator models each go through the
-  # guards their own route puts them through.
+  # guards their own route puts them through, and their designs are rebuilt from
+  # `.data` where the caller supplied one, over the rows every other design here
+  # is built over.
   stab_components <- ipw_joint_models_stab_components(
     wts,
     types = types,
@@ -337,6 +383,7 @@ ipw_spec_joint_models <- function(
     numerator_model = ratio$numerator_model,
     scores = scores,
     dose_idx = dose_idx,
+    .data = if (!is.null(.data)) mm_data,
     call = call
   )
 
@@ -452,6 +499,10 @@ ipw_spec_joint_models <- function(
       psi_loss = dose_model$psi_loss,
       psi_k = dose_model$psi_k,
       penalty = dose_model$penalty,
+      # Per component, and over each fit's own rows rather than over the rows
+      # analyzed here, which is what the stabilization seeds are read from.
+      fit_exposure = lapply(fit_moments, `[[`, "exposure"),
+      fit_residuals = lapply(fit_moments, `[[`, "residuals"),
       k = 2L
     ),
     # `wt_joint()` requires a continuous component to be stabilized, so a dose
@@ -959,14 +1010,22 @@ ipw_joint_models_treatment <- function(fit, call = rlang::caller_env()) {
   values
 }
 
-# The frame the counterfactual designs are rebuilt from: `.data` when the caller
-# supplied one and the outcome model's own frame otherwise, which is where both
-# treatment columns already sit.
+# The frame every design this route builds is rebuilt from: `.data` when the
+# caller supplied one and the outcome model's own frame otherwise, which is
+# where both treatment columns already sit.
+#
+# Every guard the single-treatment routes run over a supplied `.data` runs here,
+# read for the models this route holds: the columns the rebuilds need have to be
+# there before any of them goes looking, the frame has to describe the rows the
+# fits analyzed, the columns have to arrive under the coding the fits recorded,
+# and none of them may be missing a value, which `model.frame()` would drop a
+# row for while the weights kept it.
 ipw_joint_models_frame <- function(
   outcome_mod,
   .data,
   fits,
   treatment_names,
+  numerator_mods = NULL,
   call = rlang::caller_env()
 ) {
   if (is.null(.data)) {
@@ -977,6 +1036,19 @@ ipw_joint_models_frame <- function(
     return(frame)
   }
 
+  models <- ipw_joint_models_fit_args(
+    fits,
+    treatment_names,
+    outcome_mod,
+    numerator_mods
+  )
+  required <- ipw_joint_models_required_columns(
+    outcome_mod,
+    treatment_names,
+    models
+  )
+  assert_columns_exist(.data, required, call = call)
+
   n_fitted <- nrow(stats::model.frame(outcome_mod))
 
   # A set of fits made under `na.exclude` analyzed the rows complete over the
@@ -985,12 +1057,6 @@ ipw_joint_models_frame <- function(
   # what the single-model routes do with the same helper; a frame that is
   # longer for any other reason has no such restriction to make and keeps the
   # report below.
-  required <- unique(c(
-    treatment_names,
-    fmla_extract_left_vars(outcome_mod),
-    unlist(lapply(fits, ipw_model_covariates)),
-    ipw_model_covariates(outcome_mod)
-  ))
   .data <- restrict_ipw_data(.data, required, n_fitted)
 
   if (!identical(nrow(.data), n_fitted)) {
@@ -1007,7 +1073,96 @@ ipw_joint_models_frame <- function(
     )
   }
 
+  check_ipw_data_types(.data, models, outcome_mod, call = call)
+  check_ipw_data_complete(.data, required, call = call)
+
   .data
+}
+
+# The fits a `.data` guard reads on this route, keyed by the name the caller
+# would have to look at. A treatment model arrived under the name of the
+# treatment it fits, so that is what names it; a numerator model arrived under
+# the `stabilize` argument of the component's own weights, and the components
+# name it together, since a column two numerators read is one recoding either
+# way.
+ipw_joint_models_fit_args <- function(
+  fits,
+  treatment_names,
+  outcome_mod,
+  numerator_mods = NULL
+) {
+  numerators <- numerator_mods[!vapply(numerator_mods, is.null, logical(1))]
+
+  c(
+    stats::setNames(fits, treatment_names),
+    list(outcome_mod = outcome_mod),
+    stats::setNames(numerators, rep("stabilize", length(numerators)))
+  )
+}
+
+# The columns of `.data` the rebuilds read: both treatments, whatever the
+# outcome model's response is computed from, and every covariate any of the fits
+# reads, a numerator model's among them.
+ipw_joint_models_required_columns <- function(
+  outcome_mod,
+  treatment_names,
+  models
+) {
+  unique(c(
+    treatment_names,
+    fmla_extract_left_vars(outcome_mod),
+    unlist(lapply(models, ipw_model_covariates))
+  ))
+}
+
+# The numerator models the components' stabilization blocks are estimated from,
+# one entry per component and NULL where a component's numerator is not a fitted
+# model. A discrete component's model is recorded on the product itself and a
+# dose's on its density record, and the accessor spans both.
+#
+# What decides whether a component's model is read at all is what the record
+# says stabilized that component: a score is the numerator itself, an
+# unstabilized component has none, and a dose is read for the model only where
+# its density record says a model is what its numerator was.
+ipw_joint_models_numerator_models <- function(wts, dose_idx) {
+  meta <- joint_wt_meta(wts)
+  models <- joint_wt_numerator_models(meta)
+  stabilized <- meta$stabilized
+  scores <- joint_wt_stabilization_scores(meta)
+
+  lapply(seq_along(models), function(i) {
+    if (identical(i, dose_idx)) {
+      density <- joint_wt_dose_density(wts, dose_idx)
+
+      return(if (identical(density$numerator, "model")) models[[i]])
+    }
+
+    if (isTRUE(stabilized[[i]]) && is.null(scores[[i]])) {
+      models[[i]]
+    }
+  })
+}
+
+# The response a treatment model was fit against and the residuals it left, both
+# over the model's own rows. The moments the component's stabilization was built
+# at were computed from exactly these, and the rows `.data` leaves need not be
+# the rows the fit was made over, so the seeds read them from here rather than
+# recomputing them over the rows the system goes on to solve over.
+#
+# Both are read off the fit rather than out of its model frame, which a fit made
+# with `model = FALSE` in a function whose frame is gone has none of: the
+# response is the conditional mean plus the residual around it, and both are
+# kept whatever the frame is. Reading them on the response scale is what puts
+# their sum on the treatment's own scale under a link, and it is the 0/1 coding
+# for a discrete treatment, whose binomial fit takes its first level as zero.
+# A fit made under `na.exclude` pads both out to the length of the frame it was
+# given rather than to the rows it analyzed, so the padding is dropped.
+ipw_joint_models_fit_moments <- function(fit) {
+  residuals <- as.double(stats::residuals(fit, type = "response"))
+  response <- as.double(stats::fitted(fit)) + residuals
+  kept <- !is.na(residuals)
+
+  list(exposure = response[kept], residuals = residuals[kept])
 }
 
 # Everything the stack multiplies is sized to the outcome model's observations,
@@ -1155,6 +1310,7 @@ ipw_joint_models_stab_components <- function(
   numerator_model,
   scores,
   dose_idx,
+  .data = NULL,
   call = rlang::caller_env()
 ) {
   meta <- joint_wt_meta(wts)
@@ -1181,6 +1337,7 @@ ipw_joint_models_stab_components <- function(
         scores[[i]],
         names[[i]],
         n,
+        .data = .data,
         call = call
       ))
     }
@@ -1214,12 +1371,9 @@ ipw_joint_models_stab_components <- function(
       ))
     }
 
-    # Every design this route builds comes from the fits themselves, so a
-    # numerator whose frame cannot be recovered is asked for a fit that kept
-    # one rather than for a `.data` this route would not read.
     model <- ipw_binary_numerator_block(
       binary_models[[i]],
-      data_rebuild = FALSE,
+      .data = .data,
       call = call
     )
 
@@ -1268,6 +1422,7 @@ ipw_joint_models_dose_stab <- function(
   score,
   name,
   n,
+  .data = NULL,
   call = rlang::caller_env()
 ) {
   if (identical(numerator, "marginal")) {
@@ -1308,12 +1463,9 @@ ipw_joint_models_dose_stab <- function(
     ))
   }
 
-  # Every design this route builds comes from the fits themselves, so a
-  # numerator whose frame cannot be recovered is asked for a fit that kept one
-  # rather than for a `.data` this route would not read.
   model <- ipw_numerator_model_block(
     numerator_model,
-    data_rebuild = FALSE,
+    .data = .data,
     call = call
   )
   check_ipw_numerator_model(numerator_model, model, name, n, call = call)
@@ -1547,11 +1699,41 @@ ipw_joint_models_dose <- function(spec) {
   if (length(dose)) dose[[1]] else NULL
 }
 
+# The response a component's treatment model was fit against and the residuals
+# it left, over that model's own rows, which is where the moments the weights
+# were built at were read. `ipw_spec_joint_models()` carries both, because the
+# rows `.data` leaves need not be the rows a fit was made over. A spec assembled
+# without that record is one whose rows are the fits', so the rows it holds
+# answer the same question.
+ipw_joint_models_fit_exposure <- function(spec, i) {
+  recorded <- spec$ps$fit_exposure
+
+  if (!is.null(recorded)) {
+    return(recorded[[i]])
+  }
+
+  spec$exposure[[i]]
+}
+
+ipw_joint_models_fit_residuals <- function(spec, i, ps_fns) {
+  recorded <- spec$ps$fit_residuals
+
+  if (!is.null(recorded)) {
+    return(recorded[[i]])
+  }
+
+  spec$exposure[[i]] - ps_fns$mean(spec$ps$X[[i]], spec$ps$coefs[[i]])
+}
+
 # The treatment blocks' seed: each model's coefficients, and for a dose whose
 # spread the system estimates, the conditional variance of its density, read
-# against that model's own conditional mean and the exact root of the row that
-# estimates it. A dose whose spread the caller fixed seeds its coefficients
-# alone, since a constant is in no block.
+# from that model's own residuals and the exact root of the row that estimates
+# it. A dose whose spread the caller fixed seeds its coefficients alone, since a
+# constant is in no block.
+#
+# Those residuals are the fit's own rather than the ones the analyzed rows
+# leave. The weights were built at the fit's moment, and a seed at any other
+# moment rebuilds weights the caller was never given.
 ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
   dose <- ipw_joint_models_dose(spec)
   ps_fns <- if (!is.null(dose)) ipw_joint_models_dose_fns(spec)
@@ -1567,7 +1749,7 @@ ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
       return(alpha)
     }
 
-    resid <- spec$exposure[[i]] - ps_fns$mean(spec$ps$X[[i]], alpha)
+    resid <- ipw_joint_models_fit_residuals(spec, i, ps_fns)
     c(
       alpha,
       stats::setNames(
@@ -1591,6 +1773,11 @@ ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
 # carries two components and a name saying only which role a parameter plays
 # would not say whose. This is where that convention is written; every other
 # reader of the stabilization block slices it by the widths the spec records.
+#
+# Every block is seeded at moments the fit it belongs to came to, taken over
+# that fit's rows, since those are the moments the weights were built at. The
+# rows the spec analyzes are what the equations solve the moments over, which is
+# the answer rather than the starting value.
 ipw_init_joint_models_stab <- function(spec) {
   blocks <- lapply(seq_along(spec$stab$components), function(i) {
     stab <- spec$stab$components[[i]]
@@ -1599,20 +1786,21 @@ ipw_init_joint_models_stab <- function(spec) {
       return(numeric(0))
     }
 
-    a <- spec$exposure[[i]]
     prefix <- paste0("stab_", spec$names[[i]], "_")
 
     if (identical(stab$numerator, "marginal")) {
+      a_fit <- ipw_joint_models_fit_exposure(spec, i)
+
       if (identical(stab$type, "continuous")) {
-        mu_a <- mean(a)
+        mu_a <- mean(a_fit)
         return(stats::setNames(
-          c(mu_a, mean((a - mu_a)^2)),
+          c(mu_a, mean((a_fit - mu_a)^2)),
           paste0(prefix, c("mu", "sigma2"))
         ))
       }
 
       return(stats::setNames(
-        ipw_default_stab_seed(a),
+        ipw_default_stab_seed(a_fit),
         paste0(prefix, "pi")
       ))
     }
@@ -1624,11 +1812,12 @@ ipw_init_joint_models_stab <- function(spec) {
       return(coefs)
     }
 
-    fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, model$coefs)
-
     c(
       coefs,
-      stats::setNames(mean((a - fitted_n)^2), paste0(prefix, "sigma2"))
+      stats::setNames(
+        ipw_numerator_fit_sigma2(model, spec$exposure[[i]]),
+        paste0(prefix, "sigma2")
+      )
     )
   })
 

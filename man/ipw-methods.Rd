@@ -851,9 +851,20 @@ row could name the effect it stands for. Nothing here is standardized over
 the covariates, which is what the declared crossing does instead.
 
 Unlike the single-treatment route, this one needs no \code{.data} for a basis
-marginal structural model. Each treatment is read off its own treatment
-model, so the outcome model frame is never asked for a column it does not
-hold.
+marginal structural model. Without one, each treatment and each treatment
+design is read off the model that owns it, so the outcome model frame is
+never asked for a column it does not hold.
+
+A \code{.data} the caller does supply is the frame every design here is rebuilt
+from, on the terms the single-treatment routes rebuild theirs: both treatment
+columns, both treatment designs, each component's numerator design, and the
+counterfactual designs are built over the rows every model read and under the
+coding each fit recorded. A column one of those fits reads that is missing
+from \code{.data} errors with class \code{propensity_columns_exist_error}, and one
+supplied as another type errors with class \code{propensity_ipw_data_error},
+naming the fits that recorded it, a treatment model by the treatment it fits.
+A set of fits made under \code{na.action = na.exclude} is reconciled with the
+frame they were given by restricting \code{.data} to the rows they analyzed.
 
 The dose model contributes its coefficients and the conditional variance its
 density ratio divides by, all as parameters of the same stacked system. Each
@@ -889,11 +900,11 @@ registry under \strong{Continuous propensity score models}. A model of a respons
 other than the treatment it stabilizes, or one fit to a different set of
 observations, errors with class \code{propensity_ipw_numerator_error}; one fit
 with case weights errors with class \code{propensity_ipw_ps_weights_error}. Every
-numerator design here is built from the fit itself, a \code{.data} the caller
-supplies being read for the frame the counterfactual designs are rebuilt
-from, so a numerator that keeps no model frame and whose fitting call can no
-longer be evaluated errors with class \code{propensity_ipw_data_error}, asking for
-a fit that keeps one.
+numerator design here is one of the designs a \code{.data} the caller supplies
+rebuilds, on the terms the single-treatment routes rebuild theirs, so a
+numerator that keeps no model frame and whose fitting call can no longer be
+evaluated errors with class \code{propensity_ipw_data_error} without one, and is
+rebuilt from \code{.data} with one.
 
 What a numerator may condition on is a statement about the reported model
 rather than a free choice, and it is the same statement here as for a single

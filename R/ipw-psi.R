@@ -443,6 +443,11 @@ ipw_init_contrasts <- function(contrasts, mu_hi, mu_lo, suffix = NULL) {
 # weights it would not, while `effective_stabilizer()` would move only the
 # standard errors. `exposure` is the 0/1 recode everywhere but `ate_binary()`,
 # which passes the same recode under its own name.
+#
+# Which rows that recode covers is the fit's own, wherever the two can differ.
+# `ate_binary()` scales the weights over the rows the propensity score model was
+# fit to, so a route that seeds this over the rows a `.data` leaves would seed a
+# probability the weights were never built at.
 ipw_default_stab_seed <- function(exposure) {
   mean(exposure, na.rm = TRUE)
 }
@@ -695,15 +700,17 @@ ipw_continuous_fit_exposure <- function(spec) {
 }
 
 # The same reading for a numerator model, whose block carries the spread its own
-# fit's residuals came to.
-ipw_numerator_fit_sigma2 <- function(spec, model) {
+# fit's residuals came to. A block assembled without that record is one whose
+# design is its own fit's, so the dose it is stacked against, passed here as
+# `exposure`, answers the same question.
+ipw_numerator_fit_sigma2 <- function(model, exposure) {
   if (!is.null(model$sigma2_fit)) {
     return(model$sigma2_fit)
   }
 
   fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, model$coefs)
 
-  mean((spec$exposure - fitted_n)^2)
+  mean((exposure - fitted_n)^2)
 }
 
 ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
@@ -753,7 +760,7 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
     coefs <- model$coefs
     stab_block <- c(
       stats::setNames(coefs, paste0("stab_", colnames(model$X))),
-      sigma2_n = ipw_numerator_fit_sigma2(spec, model)
+      sigma2_n = ipw_numerator_fit_sigma2(model, spec$exposure)
     )
   } else if (identical(spec$numerator, "marginal")) {
     a_fit <- ipw_continuous_fit_exposure(spec)

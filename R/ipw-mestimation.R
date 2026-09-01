@@ -446,16 +446,12 @@ ipw_spec_binary <- function(
 # weights, the same rank requirement, and the same recovery of a design from a
 # fit that keeps no model frame.
 #
-# `data_rebuild` says whether the calling route rebuilds this design from a
-# `.data` the caller supplied. The single-exposure route does, so a fit whose
-# frame cannot be recovered is asked for one. The joint route builds every
-# numerator design from the fit itself, so asking it for `.data` there would be
-# a remedy that reaches the same refusal; what it asks for instead is a
-# numerator that kept its frame.
+# `.data` is the frame every other design in the stack is rebuilt from, over the
+# rows every model read, and this design is rebuilt from it alongside them.
+# Without one the design is read off the fit itself.
 ipw_binary_numerator_block <- function(
   numerator_model,
   .data = NULL,
-  data_rebuild = TRUE,
   call = rlang::caller_env()
 ) {
   if (is.null(numerator_model)) {
@@ -504,25 +500,7 @@ ipw_binary_numerator_block <- function(
       error = function(e) e
     )
     if (inherits(recovered, "error")) {
-      cause <- conditionMessage(recovered)
-      remedy <- if (data_rebuild) {
-        "Supply {.arg .data} with the exposure, outcome, and covariates."
-      } else {
-        "Refit {.arg stabilize} so that it keeps its own model frame, by \\
-        leaving {.arg model} at its default, and rebuild the weights from it."
-      }
-      abort(
-        c(
-          "Can't reconstruct the data behind {.arg stabilize}.",
-          x = "{cause}",
-          i = "The numerator model is estimated alongside everything else, so \\
-          {.fun ipw} needs the design its coefficients were fit over rather \\
-          than the probabilities they evaluate to.",
-          i = remedy
-        ),
-        error_class = "propensity_ipw_data_error",
-        call = call
-      )
+      abort_ipw_numerator_frame_gone(conditionMessage(recovered), call = call)
     }
     recovered
   } else {
@@ -584,19 +562,7 @@ ipw_categorical_numerator_block <- function(
       error = function(e) e
     )
     if (inherits(recovered, "error")) {
-      cause <- conditionMessage(recovered)
-      abort(
-        c(
-          "Can't reconstruct the data behind {.arg stabilize}.",
-          x = "{cause}",
-          i = "The numerator model is estimated alongside everything else, so \\
-          {.fun ipw} needs the design its coefficients were fit over rather \\
-          than the probabilities they evaluate to.",
-          i = "Supply {.arg .data} with the exposure, outcome, and covariates."
-        ),
-        error_class = "propensity_ipw_data_error",
-        call = call
-      )
+      abort_ipw_numerator_frame_gone(conditionMessage(recovered), call = call)
     }
     recovered$ps_X
   } else {
@@ -847,10 +813,12 @@ ipw_extract_ps_design <- function(
 
     check_ipw_data_types(
       .data,
-      ps_mod,
+      ipw_fit_args(
+        wt_mod = ps_mod,
+        outcome_mod = outcome_mod,
+        stabilize = numerator_mod
+      ),
       outcome_mod,
-      exposure_name,
-      numerator_mod = numerator_mod,
       call = call
     )
 
@@ -1221,15 +1189,19 @@ check_ipw_design_width <- function(
 #
 # Only the first offending column is reported: the fix is a recoding of that
 # column, after which the guard runs again over the rest.
+# `models` is every fit whose design is rebuilt from `.data`, keyed by the
+# argument each arrived in, which is what a report of a column names. The
+# single-treatment routes name one propensity score model and one numerator
+# model; the joint route names each treatment model by the treatment it fits,
+# since a reader told to look at `wt_mod` there would be told to look at the
+# container the models arrived in.
 check_ipw_data_types <- function(
   .data,
-  ps_mod,
+  models,
   outcome_mod,
-  exposure_name,
-  numerator_mod = NULL,
   call = rlang::caller_env()
 ) {
-  fitted <- ipw_fitted_classes(ps_mod, outcome_mod, numerator_mod)
+  fitted <- ipw_fitted_classes(models)
   fitted <- fitted[names(fitted) %in% names(.data)]
   response <- fmla_extract_left_chr(outcome_mod)
 
@@ -1257,9 +1229,7 @@ check_ipw_data_types <- function(
         fit_class = fit_class,
         supplied = .data[[column]],
         supplied_class = supplied,
-        ps_mod = ps_mod,
-        outcome_mod = outcome_mod,
-        numerator_mod = numerator_mod,
+        models = models,
         response = identical(column, response),
         call = call
       )
@@ -1269,23 +1239,48 @@ check_ipw_data_types <- function(
   invisible(TRUE)
 }
 
+# The fits a `.data` guard reads, keyed by the argument each arrived in and with
+# the arguments that carry no model dropped. Order is the order the guards read
+# them in, so it is the order a report of a column several fits read names them
+# in.
+ipw_fit_args <- function(...) {
+  models <- list(...)
+
+  models[!vapply(models, is.null, logical(1))]
+}
+
 # The class each model recorded for every variable it reads, keyed by variable
-# name. The propensity model is taken first so the exposure, which is its
-# response, is described by the fit that owns it, and a numerator model last, so
-# that it contributes the columns it alone reads and describes no column another
-# model already accounts for. Classes a design has no coding for are dropped
-# rather than compared.
-ipw_fitted_classes <- function(ps_mod, outcome_mod, numerator_mod = NULL) {
-  classes <- c(
-    attr(stats::terms(ps_mod), "dataClasses"),
-    attr(stats::terms(outcome_mod), "dataClasses"),
-    if (!is.null(numerator_mod)) {
-      attr(stats::terms(numerator_mod), "dataClasses")
-    }
+# name. The models arrive in the order the guard reads them, the propensity
+# score models first so the exposure, which is one model's response, is
+# described by the fit that owns it, and the numerator models last, so that they
+# contribute the columns they alone read and describe no column another model
+# already accounts for. Classes a design has no coding for are dropped rather
+# than compared.
+ipw_fitted_classes <- function(models) {
+  classes <- do.call(
+    c,
+    unname(lapply(models, function(mod) {
+      attr(stats::terms(mod), "dataClasses")
+    }))
   )
   classes <- classes[!duplicated(names(classes))]
 
   classes[classes %in% names(ipw_class_nouns)]
+}
+
+# The levels a fit recorded for one variable, read across the fits in the order
+# the guard reads them. A variable no fit recorded levels for has none, which is
+# every numeric column and every column recorded under a call.
+ipw_fitted_levels <- function(models, column) {
+  for (mod in models) {
+    levels <- mod$xlevels[[column]]
+
+    if (!is.null(levels)) {
+      return(levels)
+    }
+  }
+
+  NULL
 }
 
 # Whether a `.data` column of class `supplied` rebuilds the design the fit
@@ -1365,9 +1360,7 @@ abort_ipw_type_mismatch <- function(
   fit_class,
   supplied,
   supplied_class,
-  ps_mod,
-  outcome_mod,
-  numerator_mod = NULL,
+  models,
   response,
   call = rlang::caller_env()
 ) {
@@ -1401,26 +1394,20 @@ abort_ipw_type_mismatch <- function(
     )
   }
 
-  fit_args <- c(
-    if (column %in% names(attr(stats::terms(ps_mod), "dataClasses"))) "wt_mod",
-    if (column %in% names(attr(stats::terms(outcome_mod), "dataClasses"))) {
-      "outcome_mod"
+  # The arguments the fits that read this column arrived in, so that a column
+  # only one of them reads names the fit the caller would have to change rather
+  # than the ones that never saw it. A route naming two models under one
+  # argument, as the joint route's components name `stabilize`, reports that
+  # argument once.
+  reads_column <- vapply(
+    models,
+    function(mod) {
+      column %in% names(attr(stats::terms(mod), "dataClasses"))
     },
-    # The argument the numerator model arrived in, so that a column only it
-    # reads names the fit the caller would have to change rather than the two
-    # that never saw it.
-    if (
-      !is.null(numerator_mod) &&
-        column %in% names(attr(stats::terms(numerator_mod), "dataClasses"))
-    ) {
-      "stabilize"
-    }
+    logical(1)
   )
-  fit_levels <- c(
-    ps_mod$xlevels,
-    outcome_mod$xlevels,
-    numerator_mod$xlevels
-  )[[column]]
+  fit_args <- unique(names(models)[reads_column])
+  fit_levels <- ipw_fitted_levels(models, column)
 
   recorded <- if (is.null(fit_levels)) {
     "{.arg {fit_args}} recorded {.val {column}} as {fit_article}, and the \\
@@ -1678,10 +1665,16 @@ check_ipw_response_levels <- function(
 # The categorical path has no counterpart. It resolves the supplied column
 # against `ps_mod$lev` before anything reads it, so the order it declares says
 # nothing there.
+#
+# `arg` is the argument the model arrived in. The joint route names each
+# component by the treatment it fits, since `wt_mod` there is the container the
+# two treatment models arrived in and a reader sent to it would be sent to the
+# wrong thing.
 check_ipw_exposure_levels <- function(
   exposure,
   ps_mod,
   exposure_name,
+  arg = "wt_mod",
   call = rlang::caller_env()
 ) {
   fit_levels <- ipw_fitted_response_levels(ps_mod)
@@ -1699,13 +1692,13 @@ check_ipw_exposure_levels <- function(
   abort(
     c(
       "{.arg .data} must supply {.val {exposure_name}} on the levels \\
-      {.arg wt_mod} was fit with, in that order.",
-      x = "{.arg .data} declares {.val {supplied}}; {.arg wt_mod} was fit on \\
+      {.arg {arg}} was fit with, in that order.",
+      x = "{.arg .data} declares {.val {supplied}}; {.arg {arg}} was fit on \\
       {.val {fit_levels}}.",
       x = "{.fun ipw} treats the second level of a binary exposure as the \\
       exposed group, so a different order contrasts the levels the other way \\
       round.",
-      i = "Re-level {.val {exposure_name}} to the order {.arg wt_mod} was fit \\
+      i = "Re-level {.val {exposure_name}} to the order {.arg {arg}} was fit \\
       with, or supply the data the models were fit to."
     ),
     error_class = "propensity_ipw_data_error",
