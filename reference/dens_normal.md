@@ -22,7 +22,9 @@ argument, which is wrapped with `dens_fn()`.
   2\\, which puts more mass in the tails than the normal.
 
 - `dens_t()` is Student's t density with `df` degrees of freedom,
-  heavier tailed still, and heavier the smaller `df` is.
+  heavier tailed still, and heavier the smaller `df` is. Its scale is
+  estimated by the root mean square of the residuals, as every other
+  family's spread is, or by maximum likelihood under the t itself.
 
 - `dens_kernel()` is a kernel density estimate of the standardized
   residuals, fit with
@@ -44,7 +46,7 @@ dens_normal()
 
 dens_laplace()
 
-dens_t(df)
+dens_t(df, sigma_method = c("rms", "mle"))
 
 dens_kernel(bw = "nrd0", adjust = 1, kernel = "gaussian", n = 512)
 
@@ -56,6 +58,12 @@ dens_fn(f)
 - df:
 
   Degrees of freedom for Student's t, a single positive, finite number.
+
+- sigma_method:
+
+  How the spread of the conditional density is estimated from the
+  residuals of the propensity score model, either `"rms"` or `"mle"`.
+  See the section below.
 
 - bw:
 
@@ -90,8 +98,45 @@ dens_fn(f)
 ## Value
 
 An object of class `propensity_density`: a list with the elements
-`family`, `params`, and `fn`. `fn` is the function that evaluates the
-density, and is `NULL` for `dens_kernel()`.
+`family`, the name of the family; `params`, the parameters that identify
+it, which is an empty list for a family that takes none; and `fn`, the
+function that evaluates the density, which is `NULL` for
+`dens_kernel()`. `dens_t()` carries a fourth element, `sigma_method`,
+the name of the estimator its scale is read with.
+
+## The spread of a t density
+
+Both densities are evaluated on a residual standardized by a spread, and
+for the conditional density that spread is estimated from the residuals
+of the propensity score model. Every family takes the root mean square
+of those residuals, which is `sigma_method = "rms"`, the default, and is
+the maximum likelihood estimator of the spread of a normal density.
+
+It is not the maximum likelihood estimator of the scale of a t. The
+scale of a t is smaller than its standard deviation by a factor that
+depends on `df`, and the root mean square is pulled outward by the large
+residuals a heavy tail produces, which is what the family was chosen to
+accommodate. `sigma_method = "mle"` estimates the scale under the t
+itself, as the root of \\\sum_i \left\[(\nu + 1) r_i^2 / (\nu \sigma^2 +
+r_i^2)\right\] = n\\, where \\r_i\\ is the residual and \\\nu\\ is `df`.
+Each residual enters that sum through a bounded term, so a residual far
+out in the tail moves the estimate by less than it moves the root mean
+square. Prefer it when the residuals are heavy tailed, which is the case
+the t family is for; the two estimators answer the same question, and
+answer it alike, as `df` grows and the t approaches the normal.
+
+The choice describes the conditional density alone. The marginal density
+that stabilizes the weights is the exposure's own, read at the
+exposure's mean and root mean square, whatever the conditional spread
+was estimated by. A scale estimated by maximum likelihood is recorded by
+[`density_meta()`](https://r-causal.github.io/propensity/reference/exposure_type.md)
+as `sigma = "mle"`, and
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+estimates it alongside the propensity score model's coefficients,
+solving the equation above as part of its stacked system so that the
+standard errors account for it. Supplying a `.sigma` says the spread is
+a number of your own rather than one estimated from the residuals, so
+the two cannot be given together.
 
 ## Examples
 
@@ -100,6 +145,9 @@ dens_normal()
 #> <density: normal>
 
 dens_t(df = 4)
+#> <density: t(df = 4)>
+
+dens_t(df = 4, sigma_method = "mle")
 #> <density: t(df = 4)>
 
 dens_kernel(adjust = 1.5)

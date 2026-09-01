@@ -65,7 +65,13 @@ ps_refit(trimmed_ps, model, .data = NULL, ...)
 A `ps_trim` object with re-estimated propensity scores for retained
 observations and `NA` for trimmed observations. Use
 [`is_refit()`](https://r-causal.github.io/propensity/reference/is_refit.md)
-to confirm refitting was applied.
+to confirm refitting was applied. Refitting replaces the values a
+calibrated score held with predictions from the refit model, so a score
+trimmed after
+[`ps_calibrate()`](https://r-causal.github.io/propensity/reference/ps_calibrate.md)
+is no longer calibrated and
+[`is_ps_calibrated()`](https://r-causal.github.io/propensity/reference/is_ps_calibrated.md)
+answers `FALSE` for the result.
 
 ## Details
 

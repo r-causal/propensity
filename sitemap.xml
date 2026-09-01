@@ -22,6 +22,8 @@
 <url><loc>https://r-causal.github.io/propensity/reference/is_unit_trimmed.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/is_unit_truncated.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/joint_wt_models.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/numerator_model.html</loc></url>
+<url><loc>https://r-causal.github.io/propensity/reference/print.ipw_diagnostic_se.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/propensity-package.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_calibrate.html</loc></url>
 <url><loc>https://r-causal.github.io/propensity/reference/ps_refit.html</loc></url>

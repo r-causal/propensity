@@ -38,9 +38,17 @@ ps_trim(
   The column taken is announced; `options(propensity.quiet = TRUE)`
   silences the announcement. A matrix is held to the same open interval
   as a vector, so a score of exactly 0 or 1 in any cell is refused and a
-  separated multinomial fit cannot be repaired by trimming it; see
-  **Propensity scores at 0 and 1** in
+  separated multinomial fit cannot be repaired by trimming it: setting
+  an extreme score to missing gains nothing from a score already at an
+  endpoint.
+  [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
+  reads the closed interval for a categorical matrix and is the repair;
+  see **Propensity scores at 0 and 1** in
   [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md).
+  A data frame holding a `.pred_class` column, which a fitted tidymodels
+  classification model returns when no prediction type is named, carries
+  predicted levels rather than probabilities and is refused with an
+  error of class `propensity_df_class_column_error`.
 
 - method:
 
@@ -212,6 +220,26 @@ would otherwise receive extreme weights and destabilize estimates.
 4.  Compute weights with
     [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
     or another weight function
+
+### Fitted models
+
+`.propensity` can be the fitted propensity score model instead of the
+scores it reports. A binomial
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html) and a two-level
+[`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) are
+read as one score per unit; a
+[`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) of
+three or more levels is read as one column per level. Those are the
+shapes `predict(fit, type = "response")` and `fitted(fit)` give, and
+trimming a fit trims exactly what trimming those values would.
+
+The methods that read an exposure (`"pref"`, `"cr"`, and every method on
+the categorical route) take it from the model when `.exposure` is not
+supplied, announcing the variable they read;
+`options(propensity.quiet = TRUE)` silences the announcement. An
+`.exposure` you supply is used instead, and a categorical model's
+columns are matched to its levels by name, so an exposure whose levels
+are ordered differently is still trimmed against the right column.
 
 ### Object behavior
 
@@ -665,4 +693,115 @@ wt_ate(refitted, .exposure = z)
 #> [281]       NA 1.587922 1.265073 1.337953 1.242313 1.161201 1.303341 1.753889
 #> [289] 1.256446 2.503704 1.179438 2.572282 2.194293 1.557123 1.203649 1.477989
 #> [297] 1.787285       NA 1.132171 1.314740
+
+# Trim the scores a fitted model reports, reading the exposure off the model
+ps_trim(fit, method = "cr")
+#> ℹ Using exposure variable "z" from the propensity score model
+#> <ps_trim; trimmed 27 of 300[300]>
+#>          1          2          3          4          5          6          7 
+#> 0.17801124 0.49344831 0.87258189 0.13535765 0.40258554 0.47524889 0.66839132 
+#>          8          9         10         11         12         13         14 
+#> 0.35061504         NA 0.38318089 0.57380442 0.74677823 0.30385529 0.15080370 
+#>         15         16         17         18         19         20         21 
+#>         NA         NA 0.71872070 0.44191837 0.75485924 0.57876473         NA 
+#>         22         23         24         25         26         27         28 
+#> 0.12443658 0.87285871         NA 0.43136394         NA 0.59392536 0.24742762 
+#>         29         30         31         32         33         34         35 
+#> 0.69381700 0.52982663 0.67786695 0.53996676 0.77078278 0.33667732 0.20379449 
+#>         36         37         38         39         40         41         42 
+#> 0.24766004 0.06402613 0.17686094 0.25726004 0.34846140 0.30654026 0.04714018 
+#>         43         44         45         46         47         48         49 
+#> 0.18951912         NA 0.64155648         NA 0.33008953 0.39904946 0.36838768 
+#>         50         51         52         53         54         55         56 
+#> 0.12461207 0.19024995         NA 0.25641497 0.81609573 0.14940217 0.04671897 
+#>         57         58         59         60         61         62         63 
+#> 0.32473671 0.73452714 0.78590206 0.88497697 0.05903129         NA 0.22088166 
+#>         64         65         66         67         68         69         70 
+#> 0.48418025 0.60360857 0.19419787 0.04471987 0.27900998 0.45856017 0.17830185 
+#>         71         72         73         74         75         76         77 
+#> 0.17311028 0.54393115 0.38223719 0.57963968 0.41148556 0.17594694 0.82182398 
+#>         78         79         80         81         82         83         84 
+#> 0.68775620 0.76492590 0.09594356 0.75050082 0.06658957 0.26414219 0.10059488 
+#>         85         86         87         88         89         90         91 
+#>         NA         NA 0.23301201 0.33651483 0.30554734 0.56324964 0.87450818 
+#>         92         93         94         95         96         97         98 
+#> 0.88631941 0.12692921 0.10234530 0.08426251 0.11660386         NA 0.43228752 
+#>         99        100        101        102        103        104        105 
+#> 0.18932487 0.24623842 0.77036380 0.51976065 0.32739386 0.20996243 0.18518227 
+#>        106        107        108        109        110        111        112 
+#>         NA 0.73562548         NA 0.29548965 0.31630208 0.15300421 0.34719807 
+#>        113        114        115        116        117        118        119 
+#> 0.59212123 0.83282741 0.62270671 0.58677974 0.80657336 0.78774559 0.46630644 
+#>        120        121        122        123        124        125        126 
+#> 0.20230064 0.80878565 0.47748117 0.89038286 0.29281504 0.14999367 0.61398482 
+#>        127        128        129        130        131        132        133 
+#> 0.22901364 0.64675362 0.06419209 0.06266942 0.66277576 0.54410827 0.71659793 
+#>        134        135        136        137        138        139        140 
+#> 0.04369801 0.80255741 0.79988215 0.75977424 0.69210372         NA 0.09079429 
+#>        141        142        143        144        145        146        147 
+#> 0.25092645 0.57110768 0.19704419 0.45903320 0.68008008 0.23294255 0.65254331 
+#>        148        149        150        151        152        153        154 
+#> 0.61803876 0.19709968 0.15848705 0.74523426 0.37316715 0.67276290 0.18894043 
+#>        155        156        157        158        159        160        161 
+#> 0.81642474 0.10432180 0.68582789 0.58954824 0.52232604 0.65581895 0.56727085 
+#>        162        163        164        165        166        167        168 
+#> 0.23684003 0.34180113 0.55405967 0.10831585 0.18065940         NA         NA 
+#>        169        170        171        172        173        174        175 
+#> 0.11871049 0.74905308 0.77383752 0.70770386 0.44914706 0.54166428 0.17643958 
+#>        176        177        178        179        180        181        182 
+#> 0.23331263 0.34344738 0.17046280 0.70230062 0.07304003 0.15246043 0.11534630 
+#>        183        184        185        186        187        188        189 
+#> 0.56512587 0.13518488 0.61614535 0.79451459 0.43829517 0.60656419 0.23283410 
+#>        190        191        192        193        194        195        196 
+#> 0.60274592 0.11390882 0.40374970 0.10403526 0.34223762 0.77357008 0.66611156 
+#>        197        198        199        200        201        202        203 
+#> 0.28933909 0.20113598 0.18632231 0.21070377 0.53271587 0.15441973         NA 
+#>        204        205        206        207        208        209        210 
+#> 0.50521454 0.16428559 0.56227253 0.38874517 0.31638831 0.63416193 0.50957963 
+#>        211        212        213        214        215        216        217 
+#> 0.75829404 0.26656013         NA 0.09307013 0.47742144 0.58525674 0.80304044 
+#>        218        219        220        221        222        223        224 
+#> 0.10676633 0.13385955 0.88554593 0.56716130 0.67071770 0.20009381         NA 
+#>        225        226        227        228        229        230        231 
+#> 0.45382217 0.59125501 0.39938022 0.72306882 0.30946625         NA 0.87028588 
+#>        232        233        234        235        236        237        238 
+#> 0.04743962 0.24158271 0.41951127 0.06438704 0.14836574 0.25419100 0.59576019 
+#>        239        240        241        242        243        244        245 
+#> 0.46261588 0.24969111 0.40207472         NA 0.79365463 0.61795146 0.68993549 
+#>        246        247        248        249        250        251        252 
+#> 0.25565132 0.46504618 0.52701568 0.28037136 0.28500140 0.60204716 0.30021180 
+#>        253        254        255        256        257        258        259 
+#> 0.37058188 0.32578201 0.70873738 0.59607558 0.33064721 0.33638608 0.74643214 
+#>        260        261        262        263        264        265        266 
+#> 0.37255079 0.82972242 0.39654734 0.32503416 0.04998908 0.23459370 0.09722939 
+#>        267        268        269        270        271        272        273 
+#>         NA 0.58866324 0.61063867 0.41723032         NA 0.41370803 0.43129530 
+#>        274        275        276        277        278        279        280 
+#> 0.12064385 0.51640377 0.87523995 0.41762629 0.75910122 0.30169925 0.45272098 
+#>        281        282        283        284        285        286        287 
+#>         NA 0.65014831 0.81685306 0.23932916 0.83115493 0.88511432 0.79363282 
+#>        288        289        290        291        292        293        294 
+#> 0.43178717 0.82223069 0.39833546 0.13562237 0.63024555 0.46028071 0.35274910 
+#>        295        296        297        298        299        300 
+#> 0.85629892 0.31532329 0.57414353         NA 0.10082012 0.22538288 
+
+if (rlang::is_installed("nnet")) {
+  trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+  multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
+  ps_trim(multinomial_fit, method = "optimal")
+}
+#> ℹ Using exposure variable "trt" from the propensity score model
+#> <ps_trim_matrix[300 x 3]; trimmed 0 of 300; method=optimal>
+#>            a         b         c
+#> 1  0.3419308 0.2889253 0.3691439
+#> 2  0.3627668 0.2982545 0.3389787
+#> 3  0.3893586 0.3089523 0.3016890
+#> 4  0.3374106 0.2867949 0.3757945
+#> 5  0.3576814 0.2960527 0.3462659
+#> 6  0.3617623 0.2978235 0.3404142
+#> 7  0.3727507 0.3024332 0.3248162
+#> 8  0.3546154 0.2947017 0.3506829
+#> 9  0.3967551 0.3116776 0.2915673
+#> 10 0.3565564 0.2955590 0.3478846
+#> # ... with 290 more rows
 ```

@@ -37,11 +37,19 @@ ps_trunc(
   two column data frame, which is the probability of the second level in
   the layout model predictions come in, and the first column otherwise.
   The column taken is announced; `options(propensity.quiet = TRUE)`
-  silences the announcement. A matrix is held to the same open interval
-  as a vector, so a score of exactly 0 or 1 in any cell is refused and a
-  separated multinomial fit cannot be repaired by truncating it; see
-  **Propensity scores at 0 and 1** in
+  silences the announcement. A vector is held to the open interval, so a
+  score of exactly 0 or 1 is refused. A matrix is held to the closed
+  interval instead: a cell of exactly 0 or 1 is bounded rather than
+  refused, which is how a separated multinomial fit is repaired, and
+  what comes back lies strictly inside (0, 1). Anything outside \\\[0,
+  1\]\\ is refused either way, and so is a truncation whose own computed
+  bounds leave a score at an endpoint; see **Propensity scores at 0 and
+  1** in
   [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md).
+  A data frame holding a `.pred_class` column, which a fitted tidymodels
+  classification model returns when no prediction type is named, carries
+  predicted levels rather than probabilities and is refused with an
+  error of class `propensity_df_class_column_error`.
 
 - method:
 
@@ -168,6 +176,26 @@ return plain numeric vectors. Once propensity scores are transformed
 [`c()`](https://rdrr.io/r/base/c.html) requires matching truncation
 parameters. Mismatched parameters produce a warning and return a plain
 numeric vector.
+
+### Fitted models
+
+`.propensity` can be the fitted propensity score model instead of the
+scores it reports. A binomial
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html) and a two-level
+[`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) are
+read as one score per unit; a
+[`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) of
+three or more levels is read as one column per level. Those are the
+shapes `predict(fit, type = "response")` and `fitted(fit)` give, and
+truncating a fit bounds exactly what bounding those values would.
+
+The methods that read an exposure (`"cr"`, and every method on the
+categorical route) take it from the model when `.exposure` is not
+supplied, announcing the variable they read;
+`options(propensity.quiet = TRUE)` silences the announcement. An
+`.exposure` you supply is used instead, and a categorical model's
+columns are matched to its levels by name, so an exposure whose levels
+are ordered differently is still bounded against the right column.
 
 ### Missing values
 
@@ -442,4 +470,79 @@ is_unit_truncated(ps_t)
 #> [169] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
 #> [181] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
 #> [193] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+
+# Bound the scores a fitted model reports, reading the exposure off the model
+ps_trunc(fit, method = "cr")
+#> ℹ Using exposure variable "z" from the propensity score model
+#> <ps_trunc{[0.135,0.813], method=cr}[200]>
+#>         1         2         3         4         5         6         7         8 
+#> 0.2913095 0.5707511 0.8131267 0.2418820 0.4993060 0.5567591 0.7011122 0.4561604 
+#>         9        10        11        12        13        14        15        16 
+#> 0.8131267 0.4834312 0.6312438 0.7594616 0.4153613 0.2603881 0.8131267 0.1351329 
+#>        17        18        19        20        21        22        23        24 
+#> 0.7384237 0.5307543 0.7655683 0.6349278 0.8131267 0.2283122 0.8131267 0.8131267 
+#>        25        26        27        28        29        30        31        32 
+#> 0.5224033 0.1351329 0.6461643 0.3628349 0.7199125 0.5983593 0.7081103 0.6059826 
+#>        33        34        35        36        37        38        39        40 
+#> 0.7776782 0.4442186 0.3189618 0.3630602 0.1432262 0.2900408 0.3722937 0.4543264 
+#>        41        42        43        44        45        46        47        48 
+#> 0.4177638 0.1351329 0.3038315 0.8131267 0.6813225 0.8131267 0.4385124 0.4964323 
+#>        49        50        51        52        53        54        55        56 
+#> 0.4711469 0.2285337 0.3046166 0.8131267 0.3714863 0.8128663 0.2587396 0.1351329 
+#>        57        58        59        60        61        62        63        64 
+#> 0.4338453 0.7502468 0.7892860 0.8131267 0.1351329 0.8131267 0.3365403 0.5636424 
+#>        65        66        67        68        69        70        71        72 
+#> 0.6533256 0.3088378 0.1351329 0.3927369 0.5438044 0.2916295 0.2858818 0.6089556 
+#>        73        74        75        76        77        78        79        80 
+#> 0.4826524 0.6355772 0.5065031 0.2890305 0.8131267 0.7154239 0.7732114 0.1906359 
+#>        81        82        83        84        85        86        87        88 
+#> 0.7622717 0.1472971 0.3788316 0.1970403 0.1351329 0.8131267 0.3486998 0.4440783 
+#>        89        90        91        92        93        94        95        96 
+#> 0.4168763 0.6233901 0.8131267 0.8131267 0.2314475 0.1994226 0.1740398 0.2183041 
+#>        97        98        99       100       101       102       103       104 
+#> 0.8131267 0.5231365 0.3036226 0.3616811 0.7773582 0.5907629 0.4361655 0.3253709 
+#>       105       106       107       108       109       110       111       112 
+#> 0.2991480 0.8131267 0.7510710 0.8131267 0.4078242 0.4264336 0.2629645 0.4532487 
+#>       113       114       115       116       117       118       119       120 
+#> 0.6448288 0.8131267 0.6674247 0.6408723 0.8053646 0.7907095 0.5498332 0.3173982 
+#>       121       122       123       124       125       126       127       128 
+#> 0.8071017 0.5584826 0.8131267 0.4053976 0.2594361 0.6609892 0.3447196 0.6851535 
+#>       129       130       131       132       133       134       135       136 
+#> 0.1434914 0.1410494 0.6969682 0.6090883 0.7368408 0.1351329 0.8022199 0.8001309 
+#>       137       138       139       140       141       142       143       144 
+#> 0.7692948 0.7186431 0.8131267 0.1834141 0.3662171 0.6292392 0.3118604 0.5441734 
+#>       145       146       147       148       149       150       151       152 
+#> 0.7097460 0.3486308 0.6894218 0.6639810 0.3119192 0.2693231 0.7582975 0.4751339 
+#>       153       154       155       156       157       158       159       160 
+#> 0.7043397 0.3032090 0.8131267 0.2020948 0.7139969 0.6429234 0.5927018 0.6918371 
+#>       161       162       163       164       165       166       167       168 
+#> 0.6263848 0.3524856 0.4486289 0.6165339 0.2074392 0.2942181 0.8131267 0.1351329 
+#>       169       170       171       172       173       174       175       176 
+#> 0.2210197 0.7611782 0.7800143 0.7302196 0.5364399 0.6072561 0.2895753 0.3489979 
+#>       177       178       179       180       181       182       183       184 
+#> 0.4500408 0.2829251 0.7262051 0.1573127 0.2623292 0.2166743 0.6247878 0.2416706 
+#>       185       186       187       188       189       190       191       192 
+#> 0.6625838 0.7959533 0.5278943 0.6555095 0.3485232 0.6526880 0.2148033 0.5002503 
+#>       193       194       195       196       197       198       199       200 
+#> 0.2017086 0.4490035 0.7798096 0.6994296 0.4022315 0.3161761 0.3003833 0.3261363 
+
+if (rlang::is_installed("nnet")) {
+  trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+  multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
+  ps_trunc(multinomial_fit, method = "ps")
+}
+#> ℹ Using exposure variable "trt" from the propensity score model
+#> <ps_trunc_matrix[200 x 3]; truncated 0 of 200; method=ps[0.0100,Inf]>
+#>            a         b         c
+#> 1  0.3368013 0.3782680 0.2849307
+#> 2  0.3285505 0.3863809 0.2850686
+#> 3  0.3179718 0.3969403 0.2850880
+#> 4  0.3385922 0.3765210 0.2848868
+#> 5  0.3305651 0.3843902 0.2850447
+#> 6  0.3289485 0.3859871 0.2850644
+#> 7  0.3245896 0.3903135 0.2850969
+#> 8  0.3317791 0.3831936 0.2850273
+#> 9  0.3150074 0.3999317 0.2850609
+#> 10 0.3310106 0.3839508 0.2850386
+#> # ... with 190 more rows
 ```

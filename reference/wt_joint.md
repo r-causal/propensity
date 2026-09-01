@@ -54,9 +54,10 @@ of the elementwise product, carrying a `joint_wt_meta` record.
 
 `is_joint_wt()` returns a single logical.
 
-`joint_wt_meta()` returns the record as a list of three elements, each
-one per component and in the order the components were given, or `NULL`
-for weights that are not a product:
+`joint_wt_meta()` returns the record as a list of five elements, with a
+sixth on a record that has dropped a stabilization score, each one per
+component and in the order the components were given, or `NULL` for
+weights that are not a product:
 
 - `exposure_type`:
 
@@ -73,9 +74,52 @@ for weights that are not a product:
   returns it, in order. A component weighting a discrete exposure is
   `NULL`, since its weights are no ratio of densities.
 
+- `numerator_model`:
+
+  Each component's numerator model, as
+  [`numerator_model()`](https://r-causal.github.io/propensity/reference/numerator_model.md)
+  returns it, in order, for the components that have nowhere else to
+  keep one. A component weighting a continuous exposure keeps its model
+  inside its own `density` record, so this element is `NULL` for it, and
+  so it is for a component stabilized on anything other than a fitted
+  model. A record written before this element existed holds none at all,
+  which says the same thing as a record whose components each record no
+  model.
+
+- `stabilization_score`:
+
+  Each component's stabilization score, as
+  [`stabilization_score()`](https://r-causal.github.io/propensity/reference/psw.md)
+  returns it, in order. A component stabilized on anything other than a
+  score the caller supplied is `NULL`. A record written before this
+  element existed holds none at all, which says the same thing as a
+  record whose components each record no score.
+
+- `score_dropped`:
+
+  Whether each component's stabilization score was dropped by an
+  operation that changed the length of the weights, in order. A drop
+  empties the component's `stabilization_score` slot, which is the slot
+  a component stabilized on anything else has, so a component marked
+  `TRUE` here was stabilized on a score that is gone rather than on a
+  numerator an estimator can rebuild. A record holding no such element,
+  which is what a product nothing has shortened carries, says no
+  component's score was dropped.
+
 The record names the components rather than the observations, so it
 survives subsetting and every other operation that keeps the vector a
-[`psw()`](https://r-causal.github.io/propensity/reference/psw.md).
+[`psw()`](https://r-causal.github.io/propensity/reference/psw.md). A
+stabilization score is the exception: it holds one value per
+observation, so a score that no longer describes the observations the
+result holds is dropped the way the score on the weights themselves is,
+and a score of one value is carried at any length. Such a drop is
+recorded in `score_dropped`, so a component stabilized on a score that
+is gone stays distinguishable from one stabilized on the marginal
+numerator, and
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+names it rather than standing a numerator in for it silently. Arithmetic
+that leaves the result unstabilized reduces the record's numerator side,
+as described under **What the product records**.
 
 ## The factorization
 
@@ -127,6 +171,15 @@ of the propensity scores the components were built from. Those records
 name the observations of one component, and the product is not that
 component.
 
+Arithmetic that leaves a result unstabilized, such as multiplying the
+product by unstabilized weights, reduces the numerator side of the
+record it carries: the components read as unstabilized, their numerator
+models and stabilization scores are dropped, and each density record's
+numerator fields read as the record of no numerator. Such a result was
+divided by no numerator, so a record naming one would describe a
+different vector. What each component's weights divide by stays, and so
+does the component structure.
+
 ## See also
 
 [`joint_wt_models()`](https://r-causal.github.io/propensity/reference/joint_wt_models.md)
@@ -177,6 +230,22 @@ joint_wt_meta(w)
 #> NULL
 #> 
 #> 
+#> $numerator_model
+#> $numerator_model[[1]]
+#> NULL
+#> 
+#> $numerator_model[[2]]
+#> NULL
+#> 
+#> 
+#> $stabilization_score
+#> $stabilization_score[[1]]
+#> NULL
+#> 
+#> $stabilization_score[[2]]
+#> NULL
+#> 
+#> 
 
 # A continuous component must be stabilized, which it is by default
 d <- 0.5 + 0.6 * x1 - 0.7 * a + rnorm(n)
@@ -203,6 +272,22 @@ joint_wt_meta(wt_joint(wt_ate(mod_a), w_d))
 #> density:   normal
 #> numerator: marginal
 #> sigma:     pooled
+#> 
+#> 
+#> $numerator_model
+#> $numerator_model[[1]]
+#> NULL
+#> 
+#> $numerator_model[[2]]
+#> NULL
+#> 
+#> 
+#> $stabilization_score
+#> $stabilization_score[[1]]
+#> NULL
+#> 
+#> $stabilization_score[[2]]
+#> NULL
 #> 
 #> 
 ```

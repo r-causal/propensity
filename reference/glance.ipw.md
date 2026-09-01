@@ -14,9 +14,9 @@ which hold the propensity score model, the outcome model, and the effect
 measures at once. Its residual degrees of freedom are the observations
 it was solved on less the parameters it solves for, so a multinomial
 propensity score model leaves fewer of them than a binary one does on
-the same data. Linearization stacks nothing and records no parameter
-count, so the observations are the outcome model's and there is no count
-to subtract from them.
+the same data. Linearization and the robust diagnostic stack nothing and
+record no parameter count, so the observations are the outcome model's
+and there is no count to subtract from them.
 
 The columns and their types are the same on every route
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)

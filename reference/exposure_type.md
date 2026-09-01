@@ -46,12 +46,13 @@ print(x, ...)
 - `exposure_type()`: a single string, or `NULL`.
 
 - `density_meta()`: a list of class `propensity_density_meta` with the
-  elements `density`, `numerator`, `sigma`, and `sigma_value`, or
-  `NULL`.
+  elements `density`, `numerator`, `sigma`, `sigma_value`, and
+  `numerator_model`, or `NULL`.
 
 - [`print()`](https://rdrr.io/r/base/print.html) and
   [`format()`](https://rdrr.io/r/base/format.html): the record,
-  invisibly, and a character vector of one line per element.
+  invisibly, and a character vector of one line per choice the record
+  describes.
 
 ## Details
 
@@ -72,21 +73,42 @@ of weights for a binary or categorical exposure:
 
 - `numerator`, what stabilized the weights: `"marginal"` for the
   marginal density of the exposure, `"integrated"` for the conditional
-  density marginalized over the units, `"score"` for a
-  `stabilization_score` the caller supplied, and `"none"` for weights
-  that were not stabilized.
+  density marginalized over the units, `"model"` for the conditional
+  density a fitted model supplied to `stabilize` estimates, `"score"`
+  for a `stabilization_score` the caller supplied, and `"none"` for
+  weights that were not stabilized.
+
+- `numerator_model`, that fitted model itself, and `NULL` under every
+  other numerator. The model is kept whole rather than the numerator it
+  evaluates to, since
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  rebuilds that numerator at every value of its parameter vector, which
+  takes the model's design and its coefficients. Two sets of weights
+  stabilized on models that read different terms, or that were fit to
+  different values of the same terms, record different numerators and
+  are combined the way any other disagreeing records are.
 
 - `sigma`, where the residual spread of the conditional density came
-  from: `"pooled"` for the pooled residual standard deviation, and
+  from: `"pooled"` for the pooled residual root mean square, `"mle"` for
+  the scale a
+  [`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+  built with `sigma_method = "mle"` estimates under the t itself, and
   `"supplied"` for a `.sigma` the caller gave.
 
 - `sigma_value`, the single spread the caller supplied, and `NULL` for a
-  pooled spread and for one supplied per observation. A spread that is
-  one number is a constant the weights can be rebuilt from, which is
-  what
+  spread estimated from the residuals, by either estimator, and for one
+  supplied per observation. A spread that is one number is a constant
+  the weights can be rebuilt from, which is what
   [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
   needs of it; a spread that changes with the observation is not, so the
   record holds where it came from and nothing more.
+
+Weights that carry a density record print it under their values, as the
+lines [`format()`](https://rdrr.io/r/base/format.html) renders: the
+density family, the numerator, and the spread, followed by the formula
+of the model supplied to `stabilize` when a model estimated the
+numerator. Weights that carry none, which is every set of weights for a
+binary or categorical exposure, print exactly as they always have.
 
 ## See also
 

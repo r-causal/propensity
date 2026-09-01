@@ -253,10 +253,16 @@ wt_cens(
 
   - A **data frame** or **matrix** with one column per exposure level.
     Both shapes are read the same way, for categorical exposures and for
-    binary ones alike, including the default choice of column described
-    under `.propensity_col`. That argument is itself a formal of the
-    data frame methods only, so selecting a column by name means passing
-    a data frame.
+    binary ones alike, including the choice of column described under
+    `.propensity_col`. That argument is itself a formal of the data
+    frame methods only, so selecting a column by name means passing a
+    data frame. A frame of probabilities predicted from a fitted
+    tidymodels classification model has its columns named
+    `.pred_<level>`, and the level a column holds is read from the part
+    of the name after that prefix. A frame holding a `.pred_class`
+    column, which the same models return when no prediction type is
+    named, carries predicted levels rather than probabilities and is
+    refused with an error of class `propensity_df_class_column_error`.
 
   - A fitted **propensity score model** – fitted values are extracted
     automatically. For a binary exposure that is a
@@ -297,10 +303,17 @@ wt_cens(
   resolved focal level is the first level instead. A data frame or
   matrix reduces to a single column, read on the same scale; see
   `.propensity_col` for how that column is chosen. A matrix reduces by
-  those same defaults, but `.propensity_col` belongs to the data frame
+  those same rules, but `.propensity_col` belongs to the data frame
   methods alone, so a matrix whose column you want to name has to be
   converted with
   [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html) first.
+
+  For a continuous exposure, `.propensity` is the conditional mean of
+  the exposure. A data frame of a single column is read as that mean; a
+  data frame of several columns is refused with an error of class
+  `propensity_df_ambiguous_column_error` unless `.propensity_col` names
+  the column to read, since a continuous exposure has no levels the
+  columns could be matched against.
 
 - .exposure:
 
@@ -336,7 +349,10 @@ wt_cens(
   sits in the third position, which is where a value meant for
   `exposure_type` arrives when it is supplied without a name, so
   anything else is refused with an error of class
-  `propensity_sigma_error`.
+  `propensity_sigma_error`. A spread you supply and a density built with
+  `sigma_method = "mle"`, which estimates one from the residuals, are
+  two instructions about the same quantity and are refused together with
+  an error of class `propensity_density_error`.
 
 - exposure_type:
 
@@ -372,13 +388,55 @@ wt_cens(
 - stabilize:
 
   Whether to multiply the weights by an estimate of the marginal
-  treatment probability (binary) or density (continuous). `NULL`, the
-  default, reads the answer from the exposure type: a continuous
-  exposure is stabilized, and a binary or categorical exposure is not.
-  `TRUE` and `FALSE` ask for one or the other outright, and an
-  unstabilized continuous exposure reports that its weights are not the
-  recommended ones. Only supported by `wt_ate()` and `wt_cens()`. See
-  **Stabilization** in Details.
+  treatment probability (binary) or density (continuous), and what that
+  estimate is. It takes one of three forms:
+
+  - A logical. `TRUE` and `FALSE` ask for stabilization or its absence
+    outright, and an unstabilized continuous exposure reports that its
+    weights are not the recommended ones. `NULL`, the default, reads the
+    answer from the exposure type: a continuous exposure is stabilized,
+    and a binary or categorical exposure is not.
+
+  - A fitted model of the exposure, for a binary or continuous exposure,
+    which stabilizes the weights on what that model estimates rather
+    than on the marginal probability or density of the exposure.
+
+    For a binary exposure the model is a
+    [`binomial()`](https://rdrr.io/r/stats/family.html) fit and the
+    numerator is its fitted probability of the level each unit took, so
+    the weights are \\P(A = a_i \mid V_i) / f(a_i \mid X_i)\\ for the
+    variables \\V\\ the numerator model reads. For a continuous exposure
+    the numerator is the family `.density` names, read at the model's
+    fitted mean and the root mean square of its residuals, so the
+    weights are \\f(A \mid V) / f(A \mid X)\\.
+
+    The model is recorded on the result, where
+    [`numerator_model()`](https://r-causal.github.io/propensity/reference/numerator_model.md)
+    reads it back, and
+    [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+    estimates it alongside everything else so that the standard errors
+    account for it having been fitted. Conditioning the numerator on
+    \\V\\ changes what is estimated unless the model the estimates are
+    read from also reads \\V\\; see **Stabilization** in Details.
+
+    Any [`lm()`](https://rdrr.io/r/stats/lm.html), or anything built on
+    one, is read this way. The family is held to the exposure: a fit
+    whose spread changes with its fitted values, or a model of a
+    conditional mean where a probability is needed, is refused with
+    `propensity_model_family_error`, which is also what a model of a
+    dose handed to a binary exposure and a
+    [`binomial()`](https://rdrr.io/r/stats/family.html) model handed to
+    a dose are refused with. A categorical exposure takes no fitted
+    numerator, and neither does a model supplied together with
+    `stabilization_score` or `numerator = "integrated"`; those are
+    `propensity_numerator_error`. So is a model fit with case `weights`,
+    which estimates the numerator in a reweighted sample rather than in
+    the one the weights are being built for. A model with a fitted value
+    for some other set of observations is `propensity_length_error`.
+
+  Anything else is refused with an error of class
+  `propensity_stabilize_error`. Stabilization is only supported by
+  `wt_ate()` and `wt_cens()`. See **Stabilization** in Details.
 
 - stabilization_score:
 
@@ -463,20 +521,31 @@ wt_cens(
 
 - .propensity_col:
 
-  Column to use when `.propensity` is a data frame with a binary
-  exposure. Accepts a column name (quoted or unquoted) or numeric index.
-  Whichever column is selected is read as the probability of the
-  resolved focal level.
+  Column to use when `.propensity` is a data frame with a binary or
+  continuous exposure. Accepts a column name (quoted or unquoted) or
+  numeric index. For a binary exposure the selected column is read as
+  the probability of the resolved focal level; for a continuous one it
+  is read as the conditional mean of the exposure.
 
-  With no column named, the exposure's levels drive the choice. When the
-  data frame has a column named for every level of `.exposure`, the
-  column named for the resolved focal level is used, wherever it sits in
-  the frame. Otherwise the second column is used, or the only column
-  when the frame has just one. Falling back to position after
-  `.focal_level` or `.reference_level` was supplied warns and reports
-  the column used, since the named level could not be matched to a
-  column; the fallback is silent when no level was named and when the
-  frame has a single column.
+  With no column named and a binary exposure, the exposure's levels
+  drive the choice. When the data frame has a column named for every
+  level of `.exposure`, the column named for the resolved focal level is
+  used, wherever it sits in the frame. Columns named `.pred_<level>`,
+  the shape a fitted tidymodels classification model predicts
+  probabilities in, are matched by the level after the prefix. Otherwise
+  the second column is used, or the only column when the frame has just
+  one. Falling back to position after `.focal_level` or
+  `.reference_level` was supplied warns and reports the column used,
+  since the named level could not be matched to a column; the fallback
+  is silent when no level was named and when the frame has a single
+  column.
+
+  With no column named and a continuous exposure, a frame of a single
+  column is read as the conditional mean, and a frame of several columns
+  is refused with an error of class
+  `propensity_df_ambiguous_column_error`. There are no levels to read
+  the names against, so nothing distinguishes one column of conditional
+  means from another and there is no position worth trusting.
 
   Ignored for categorical exposures, where all columns are used.
 
@@ -542,13 +611,14 @@ error of class `causalgenerics_unsupported_exposure_type`.
 ### Stabilization
 
 Stabilization multiplies the base weight by an estimate of P(A) (binary)
-or f_A(A) (continuous), reducing variance. When no `stabilization_score`
-is supplied, that estimate is the marginal mean of `.exposure` for a
-binary or categorical exposure, and for a continuous exposure the
-marginal density of the family `.density` names, evaluated at the
-population mean and standard deviation of `.exposure`. Stabilization is
-supported for ATE and censoring weights (`wt_ate()` and `wt_cens()`)
-alone.
+or f_A(A) (continuous), or by an estimate of either conditional on
+variables a model of the exposure reads, reducing variance. When no
+`stabilization_score` is supplied, that estimate is the marginal mean of
+`.exposure` for a binary or categorical exposure, and for a continuous
+exposure the marginal density of the family `.density` names, evaluated
+at the population mean and standard deviation of `.exposure`.
+Stabilization is supported for ATE and censoring weights (`wt_ate()` and
+`wt_cens()`) alone.
 
 Whether it is applied is read from the exposure type unless `stabilize`
 says so outright. A continuous exposure is stabilized, since the
@@ -610,6 +680,52 @@ may condition on `V` at all is a question about the reported model
 rather than about the weights; see **Effect modification** in
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
 
+There is a third way of writing the same thing: pass the fitted
+numerator model to `stabilize` itself, and what it estimates becomes the
+numerator.
+
+    num <- glm(A ~ V, data = dat, family = binomial())
+    wt_ate(ps_mod, stabilize = num)
+
+    num <- lm(A ~ V, data = dat)
+    wt_ate(dose_mod, stabilize = num)
+
+For a binary exposure the weights are then \\P(A = a_i \mid V_i) / f(a_i
+\mid X_i)\\: the model's fitted probability read at the level each unit
+actually took, which is \\p_i\\ for a unit with \\A_i = 1\\ and \\1 -
+p_i\\ for a unit with \\A_i = 0\\, over the same denominator the
+unstabilized weights divide by. Writing it as the model rather than as
+the numbers is what keeps the untreated units from carrying \\P(A = 1
+\mid V)\\, which is the mistake the `stabilization_score` form has to be
+written around by hand.
+
+For a continuous exposure they are \\f(A \mid V) / f(A \mid X)\\: the
+family `.density` names, read at the numerator model's fitted mean and
+the root mean square of its residuals, over the same family read at the
+propensity score model's.
+
+The same caveat governs both. A numerator conditioning on `V` targets
+the effect in a pseudo-population where `V` still predicts the exposure,
+so the estimand is the effect conditional on `V` being balanced rather
+than the marginal one, and it answers the question you meant only when
+the model the estimates are read from also reads `V`.
+
+Handing the model over rather than the numbers it evaluates to is what
+lets
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+estimate it: the model's own estimating equations join the stacked
+system, so the standard errors account for the numerator having been
+fitted, where a `stabilization_score` is carried as a known constant.
+That accounting has something to say only where the reported model is
+not saturated in the variables the numerator reads. A numerator of a
+binary exposure on an effect modifier is constant within each cell of
+the modifier and the exposure, so a model saturated in those cells fits
+the same coefficients with the numerator and without it, and the
+standard errors do not move either.
+
+[`numerator_model()`](https://r-causal.github.io/propensity/reference/numerator_model.md)
+reads the model back off the weights.
+
 ### Handling extreme weights
 
 Extreme weights signal positivity violations, poor model fit, or limited
@@ -664,15 +780,24 @@ can be reached, so the refusal here is the one to resolve.
 [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) reaches
 the endpoints readily. Under separation the softmax puts the probability
 at a unit's assigned level at exactly 1 in double precision, and the
-columns for the other levels can underflow to exactly 0. Trimming is no
-way around the refusal:
-[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
-and
+columns for the other levels can underflow to exactly 0.
 [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
-validate a categorical matrix under the same open interval and refuse it
-before either reaches a threshold. Bound the fitted probabilities away
-from 0 and 1 yourself, renormalizing each row to sum to 1, or refit the
-propensity score model so that it does not separate.
+is the repair for such a matrix: its categorical matrix method reads the
+closed interval \\\[0, 1\]\\, so it accepts a cell of exactly 0 or 1,
+pins every score below its threshold up to it, and renormalizes each row
+to sum to 1. What it returns lies strictly inside (0, 1) and weights
+like any other truncated matrix. That relaxation belongs to the
+categorical matrix method alone:
+[`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+sets extreme scores to missing and gains nothing from an endpoint, so it
+holds the open interval, and so does the binary vector path of
+[`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md).
+If the bounds a truncation computes for itself leave a score at an
+endpoint anyway, which `method = "pctl"` can do when the lower quantile
+of the scores is itself zero, the call is refused and names the bound it
+computed; supply `lower` and `upper` explicitly instead. Refitting the
+propensity score model so that it does not separate remains the
+alternative.
 
 ### Weight formulas
 
@@ -762,7 +887,14 @@ with [`gaussian()`](https://rdrr.io/r/stats/family.html), and a
 [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html), and read the
 exposure from the model's response when `.exposure` is not supplied.
 Each of these reports its conditional mean on the scale of the exposure,
-so a log, inverse, or square root link never has to be undone.
+so a log, inverse, or square root link never has to be undone. Any other
+subclass of [`lm()`](https://rdrr.io/r/stats/lm.html) is read as an
+`lm`, because the fitted conditional means are all the weights ask of a
+model.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+names the classes it supports instead of accepting a subclass on those
+terms: it stacks each model's own estimating equations, which it can
+only write for a score it knows.
 
 A family whose spread changes with its fitted values, such as
 [`poisson()`](https://rdrr.io/r/stats/family.html) or
@@ -779,9 +911,13 @@ probability model included.
 
 \\\sigma\\ is the pooled residual spread \\\sqrt{\mathrm{mean}((A -
 \hat{A})^2)}\\ unless `.sigma` supplies a single standard deviation, or
-one for each unit, which the model methods do not do on their own. The
-marginal density is spread by \\s_A\\ whatever `.sigma` says, the spread
-of the exposure itself being no business of the conditional model's.
+one for each unit, which the model methods do not do on their own.
+[`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+offers a second estimator, the maximum likelihood scale of the t itself,
+through `sigma_method = "mle"`; see **The spread of a t density** in its
+documentation. The marginal density is spread by \\s_A\\ whatever the
+conditional spread was arrived at, the spread of the exposure itself
+being no business of the conditional model's.
 
 Every model class is spread that same way,
 [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) included. `rlm`
@@ -797,16 +933,49 @@ constant, and reads `.sigma = fit$s` as a fixed spread in the same way,
 propagating the uncertainty of neither.
 
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
-models the conditional density with a single pooled residual variance,
-estimated jointly with the rest of the parameter vector. A single
-`.sigma` is taken instead as a known constant: the weights are rebuilt
-at the number that was supplied, and the stacked system carries none of
-that number's uncertainty. An observation-level `.sigma` is a different
-function of the data with no counterpart in that estimating equation,
-and is refused before anything is solved, with an error of class
+models the conditional density with a single conditional variance,
+estimated jointly with the rest of the parameter vector, by the moment
+the pooled spread is the root of or, for a density built with
+`sigma_method = "mle"`, by the score of the t. A single `.sigma` is
+taken instead as a known constant: the weights are rebuilt at the number
+that was supplied, and the stacked system carries none of that number's
+uncertainty. An observation-level `.sigma` is a different function of
+the data with no counterpart in that estimating equation, and is refused
+before anything is solved, with an error of class
 `propensity_ipw_sigma_error`. Build weights with the pooled default, or
 with one number, when the outcome model is headed for
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
+
+A conditional density of exactly zero at a unit's own exposure is the
+continuous counterpart of a propensity score of exactly 0 or 1: the
+weight it leaves is infinite, and every estimate built from it is
+undefined. It is refused with an error of class
+`propensity_density_error` naming the observations it happened at. A
+light-tailed family at an outlying residual and a kernel read past the
+range it was fit on both reach it, so the remedy is a family with
+heavier tails, such as
+[`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+or
+[`dens_kernel()`](https://r-causal.github.io/propensity/reference/dens_normal.md).
+A zero in the numerator is not refused: a marginal density of zero is a
+weight of zero, which is a weight like any other.
+
+Stabilized weights from the normal family have a finite second moment
+only while the marginal variance of the exposure stays below twice the
+variance of the conditional density, \\\mathrm{Var}(A) \< 2\sigma^2\\.
+Past that boundary the weights have no finite variance, and estimates
+built from them are erratic however large the sample is. Reaching it is
+reported with a message of class `propensity_density_variance_message`;
+the weights are still returned, and the report is informational because
+a well-fitting model reaches the boundary in ordinary use. Explaining
+more of the exposure lowers \\\sigma^2\\ while the marginal variance is
+fixed by the data, so a better fit tightens the boundary rather than
+escaping it; a heavier-tailed family sits at a different one, and an
+unstabilized weight has no boundary at all. The boundary is a property
+of the normal family read against the exposure's own marginal density,
+so nothing is reported for an unstabilized weight, a supplied
+`stabilization_score`, `numerator = "integrated"`, another family, or an
+observation-level `.sigma`.
 
 #### Categorical exposures
 
@@ -1100,6 +1269,9 @@ wt_ate(dose_model, .density = dens_t(df = 4))
 #>  [85] 0.8473410 0.9312568 0.5513774 1.4042470 2.4415982 1.3000206 0.8634111
 #>  [92] 1.0266033 1.0473099 0.8128075 0.3222650 0.4487284 0.9522881 1.0692692
 #>  [99] 0.9326978 0.3828823
+#> density:   t(df = 4)
+#> numerator: marginal
+#> sigma:     pooled
 
 # The stabilizing numerator can marginalize the conditional density over the
 # units instead of reading the same family at the exposure's own moments
@@ -1108,6 +1280,14 @@ w_int <- wt_ate(
   .density = dens_t(df = 4),
   numerator = "integrated"
 )
+#> ℹ Using exposure variable "dose" from the propensity score model
+#> ℹ Treating `.exposure` as continuous
+
+# It can also be the conditional density a second model estimates, which is
+# worth having when the model the estimates are read from also reads the
+# variables that model conditions on
+num_model <- lm(dose ~ x1)
+w_cond <- wt_ate(dose_model, stabilize = num_model)
 #> ℹ Using exposure variable "dose" from the propensity score model
 #> ℹ Treating `.exposure` as continuous
 

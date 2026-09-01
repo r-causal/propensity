@@ -15,6 +15,7 @@ ps_calibrate(
   smooth = TRUE,
   .focal_level = NULL,
   .reference_level = NULL,
+  ...,
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated()
@@ -32,6 +33,18 @@ ps_calibrate(
   them back inside the interval; isotonic calibration can return a score
   at an endpoint when its pooled block is pure, and such scores are
   rejected by the weight functions. Must not already be calibrated.
+
+  A data frame of predicted probabilities, one column per exposure
+  level, is reduced to a single column the way
+  [`ps_trim()`](https://r-causal.github.io/propensity/reference/ps_trim.md)
+  and
+  [`ps_trunc()`](https://r-causal.github.io/propensity/reference/ps_trunc.md)
+  reduce one: the second column of a pair, or the only column of a frame
+  that has one. The column read is announced. A frame holding a
+  `.pred_class` column, which a fitted tidymodels classification model
+  returns when no prediction type is named, carries predicted levels
+  rather than probabilities and is refused with an error of class
+  `propensity_df_class_column_error`.
 
 - .exposure:
 
@@ -91,6 +104,10 @@ ps_calibrate(
   with the same consequence for `.propensity`, and a level the exposure
   never takes is an error. Automatically detected if not supplied.
 
+- ...:
+
+  Additional arguments passed to methods.
+
 - .treated:
 
   **\[deprecated\]** Use `.focal_level` instead.
@@ -132,6 +149,20 @@ reshapes the entire distribution of scores.
 - Use `"isoreg"` when you suspect a non-smooth or irregular relationship
   between estimated and true probabilities and have a sufficiently large
   sample.
+
+**Fitted models:** `.propensity` can be the fitted propensity score
+model instead of the scores it reports, and the exposure is then read
+off the model as well unless `.exposure` is supplied. The variable read
+is announced; `options(propensity.quiet = TRUE)` silences the
+announcement. A binomial
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html) and a two-level
+[`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) report
+the one score per unit calibration reads. A
+[`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) of
+three or more levels reports one column per level and no single score to
+calibrate, so it is refused with an error of class
+`propensity_model_family_error`; calibrate the columns one at a time
+against the exposure indicator each of them belongs to.
 
 **Missing values:** A unit with a missing exposure tells the calibration
 model nothing, so it is dropped from the fit. What happens to that unit
@@ -228,4 +259,26 @@ if (rlang::is_installed("mgcv")) {
   # Logistic calibration with spline smoothing (default)
   cal_smooth <- ps_calibrate(ps, exposure)
 }
+
+# Calibrate the scores a fitted model reports, reading the exposure off it
+x <- rnorm(200)
+fit <- glm(exposure ~ x, family = binomial())
+ps_calibrate(fit, smooth = FALSE)
+#> ℹ Using exposure variable "exposure" from the propensity score model
+#> <ps_calib[200]; method=logistic>
+#>  [1] 0.3881439 0.5543928 0.6121031 0.6669862 0.4307405 0.4467616 0.4788966
+#>  [8] 0.4536952 0.4832731 0.5168800
+#> # ... with 190 more values
+
+if (rlang::is_installed("nnet")) {
+  exposure_factor <- factor(exposure)
+  multinomial_fit <- nnet::multinom(exposure_factor ~ x, trace = FALSE)
+  ps_calibrate(multinomial_fit, smooth = FALSE)
+}
+#> ℹ Using exposure variable "exposure_factor" from the propensity score model
+#> ℹ Setting focal level to "1"
+#> <ps_calib[200]; method=logistic>
+#>  [1] 0.3881435 0.5543928 0.6121031 0.6669864 0.4307405 0.4467616 0.4788967
+#>  [8] 0.4536952 0.4832732 0.5168800
+#> # ... with 190 more values
 ```

@@ -134,10 +134,10 @@ tidy(
   estimating equations attaches to the outcome model it stores:
   `se_method = "mestimation"` for a binary exposure, the categorical and
   joint routes, which run on M-estimation alone, and the continuous
-  route under that method. A linearization fit stacks no system and
-  records no covariance of either kind, so its conditional reading
-  errors rather than reporting the covariance the outcome model computed
-  for itself, which treats the estimated weights as fixed.
+  route under that method. A linearization or robust fit stacks no
+  system and records no covariance of either kind, so its conditional
+  reading errors rather than reporting the covariance the outcome model
+  computed for itself, which treats the estimated weights as fixed.
 
 - parametric:
 
