@@ -927,7 +927,16 @@ ipw_numerator_model_block <- function(
     psi_loss = entry$psi_loss,
     psi_k = entry$psi_k,
     penalty = entry$penalty,
-    coefs = stats::coef(numerator_model)
+    coefs = stats::coef(numerator_model),
+    # The spread the numerator's density was read at, taken the way
+    # `numerator_model_moments()` takes it: the mean square of the fit's own
+    # response-scale residuals, over the fit's own rows. The design above is
+    # rebuilt over the rows `.data` leaves, and the same moment read over those
+    # rows is a different spread from the one the weights carry.
+    sigma2_fit = mean(
+      as.numeric(stats::residuals(numerator_model, type = "response"))^2,
+      na.rm = TRUE
+    )
   )
 }
 

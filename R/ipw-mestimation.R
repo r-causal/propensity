@@ -2119,6 +2119,28 @@ ipw_spec_continuous <- function(
 
   exposure_name <- fmla_extract_left_chr(ps_mod)
 
+  # The exposure the propensity score model was fit against and the residuals it
+  # left, both over the model's own rows. The spread the conditional density was
+  # read at and the moments a marginal numerator is the normal density of were
+  # computed from exactly these when the weights were built, and `.data` can
+  # leave fewer rows than the fit was made over. Read again over the rows that
+  # remain they are different numbers, so they are carried from here rather than
+  # recomputed where the seeds are written.
+  #
+  # Both are read off the fit rather than out of its model frame, which a fit
+  # made with `model = FALSE` in a function whose frame is gone has none of: the
+  # exposure is the conditional mean plus the residual around it, and both are
+  # kept whatever the frame is. Reading them on the response scale is what puts
+  # their sum on the exposure's own scale under a link. A fit made under
+  # `na.exclude` pads both out to the length of the frame it was given rather
+  # than to the rows it analyzed, so the padding is dropped the way
+  # `continuous_sigma()` drops it.
+  ps_fit_residuals <- as.double(stats::residuals(ps_mod, type = "response"))
+  ps_fit_exposure <- as.double(stats::fitted(ps_mod)) + ps_fit_residuals
+  ps_fit_kept <- !is.na(ps_fit_residuals)
+  ps_fit_residuals <- ps_fit_residuals[ps_fit_kept]
+  ps_fit_exposure <- ps_fit_exposure[ps_fit_kept]
+
   # Read before the designs are built rather than with the rest of what the
   # weights record: a numerator model's design is rebuilt from `.data` alongside
   # them, so the columns it reads have to be among the ones the rebuild asks for
@@ -2260,6 +2282,8 @@ ipw_spec_continuous <- function(
       psi_k = ps_model$psi_k,
       penalty = ps_model$penalty,
       coefs = stats::coef(ps_mod),
+      fit_exposure = ps_fit_exposure,
+      fit_residuals = ps_fit_residuals,
       k = NULL
     ),
     stab = list(

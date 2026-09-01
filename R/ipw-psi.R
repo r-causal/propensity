@@ -671,13 +671,52 @@ ipw_categorical_seed_tilt <- function(spec, levs) {
   ps_tilt_categorical(ps_fit, spec$estimand, focal_idx)
 }
 
+# The residuals the conditional density's spread was estimated from and the
+# exposure a marginal numerator is the normal density of, both as the propensity
+# score fit came to them over its own rows. `ipw_spec_continuous()` reads them
+# off the model and carries them, because the rows `.data` leaves need not be
+# the rows the fit was made over and the weights were built at the fit's
+# reading. A spec assembled without that record is one whose rows are the fit's,
+# so the rows it holds answer the same question.
+ipw_continuous_fit_residuals <- function(spec) {
+  if (!is.null(spec$ps$fit_residuals)) {
+    return(spec$ps$fit_residuals)
+  }
+
+  spec$exposure - ipw_continuous_spec_fns(spec)$mean(spec$ps$X, spec$ps$coefs)
+}
+
+ipw_continuous_fit_exposure <- function(spec) {
+  if (!is.null(spec$ps$fit_exposure)) {
+    return(spec$ps$fit_exposure)
+  }
+
+  spec$exposure
+}
+
+# The same reading for a numerator model, whose block carries the spread its own
+# fit's residuals came to.
+ipw_numerator_fit_sigma2 <- function(spec, model) {
+  if (!is.null(model$sigma2_fit)) {
+    return(model$sigma2_fit)
+  }
+
+  fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, model$coefs)
+
+  mean((spec$exposure - fitted_n)^2)
+}
+
 ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   alpha <- spec$ps$coefs
-  fitted_ps <- ipw_continuous_spec_fns(spec)$mean(spec$ps$X, alpha)
 
   # A spread the caller fixed is a constant the weights were built with rather
   # than a quantity the data estimate, so the block is the coefficients alone
   # and nothing in the stacked system carries its uncertainty.
+  #
+  # The residuals the spread is read from are the propensity score fit's own,
+  # carried on the spec, rather than the ones the analyzed rows leave. The
+  # weights were built at the fit's moment, and a seed at any other moment
+  # rebuilds weights the caller was never given.
   ps_block <- if (identical(spec$sigma$kind, "fixed")) {
     alpha
   } else {
@@ -685,7 +724,7 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
       alpha,
       sigma2_d = ipw_continuous_sigma2_seed(
         spec$sigma,
-        spec$exposure - fitted_ps,
+        ipw_continuous_fit_residuals(spec),
         spec$density,
         call = call
       )
@@ -704,17 +743,22 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   # of its residuals. Both seeds are the exact root of the row that estimates
   # them, which is what makes the stacked system carry the uncertainty of having
   # fit the model rather than move away from it.
+  #
+  # Both blocks are seeded at moments their own fit came to, taken over that
+  # fit's rows, since those are the moments the weights were built at. The rows
+  # the spec analyzes are what the equations below solve the moments over, which
+  # is the answer rather than the starting value.
   if (identical(spec$numerator, "model")) {
     model <- spec$stab$model
     coefs <- model$coefs
-    fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, coefs)
     stab_block <- c(
       stats::setNames(coefs, paste0("stab_", colnames(model$X))),
-      sigma2_n = mean((spec$exposure - fitted_n)^2)
+      sigma2_n = ipw_numerator_fit_sigma2(spec, model)
     )
   } else if (identical(spec$numerator, "marginal")) {
-    mu_a <- mean(spec$exposure)
-    sigma2_a <- mean((spec$exposure - mu_a)^2)
+    a_fit <- ipw_continuous_fit_exposure(spec)
+    mu_a <- mean(a_fit)
+    sigma2_a <- mean((a_fit - mu_a)^2)
     stab_block <- c(mu_a = mu_a, sigma2_a = sigma2_a)
   } else {
     stab_block <- numeric(0)
@@ -1314,7 +1358,10 @@ ipw_continuous_sigma_row <- function(sigma, residuals, sigma2_d, density) {
 
 # The seed for that parameter: the exact root of whichever row estimates it, so
 # that the weights the system rebuilds at its starting value are the weights the
-# user was given.
+# user was given. That holds only where `residuals` are the ones the spread was
+# estimated from, which are the fitted model's own over the rows it was fit
+# over; the rows the system goes on to solve over are a separate question the
+# row itself answers.
 ipw_continuous_sigma2_seed <- function(
   sigma,
   residuals,

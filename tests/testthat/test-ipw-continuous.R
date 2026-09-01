@@ -2964,19 +2964,33 @@ sim_continuous_seed_gap <- function(seed = 7731, n = 600) {
 
 test_that("a marginal numerator passes the preflight over the rows .data keeps", {
   dat <- sim_continuous_numerator_gap()
+  kept <- !is.na(dat$w)
   fits <- continuous_seed_fits(dat)
 
-  # The weights are the ones the outcome model was fit with, so the slope the
-  # estimator reports is the slope that model already holds. Nothing here asks
-  # for a numerator model: the marginal moments alone are enough to move the
-  # rebuilt weights off the supplied ones once they are read over other rows.
+  # Nothing here asks for a numerator model: the marginal moments alone are
+  # enough to move the rebuilt weights off the supplied ones once they are read
+  # over other rows, which is the refusal this block is here to see lifted.
+  #
+  # What the call reports is not the outcome model's own slope. `.data` leaves
+  # fewer rows than the fits were made over, so the system solves its blocks
+  # over the rows that remain and reweights slightly away from the weights that
+  # model was fit with. What holds instead is that supplying the frame the fits
+  # were given and supplying the rows `ipw()` restricts it to are the same
+  # request, so the two forms report the same thing. That agreement is the
+  # invariant this block and the three below pin.
   res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
 
   expect_s3_class(res, "ipw")
   expect_equal(
     res$estimates$estimate,
-    unname(coef(fits$outcome_mod)[["A"]]),
-    tolerance = 1e-8
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
   )
   expect_true(all(is.finite(res$estimates$std.err)))
   expect_gt(res$estimates$std.err, 0)
@@ -2984,6 +2998,7 @@ test_that("a marginal numerator passes the preflight over the rows .data keeps",
 
 test_that("a fixed stabilization score passes the preflight over the rows .data keeps", {
   dat <- sim_continuous_numerator_gap()
+  kept <- !is.na(dat$w)
   fits <- continuous_seed_fits(dat, stab_score = continuous_seed_score)
 
   # A score the caller fixed leaves no stabilization block at all, so the only
@@ -2991,12 +3006,18 @@ test_that("a fixed stabilization score passes the preflight over the rows .data 
   # own: the numerator is a constant the weights carry, and a denominator read
   # at another spread divides it by a different density.
   res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
 
   expect_s3_class(res, "ipw")
   expect_equal(
     res$estimates$estimate,
-    unname(coef(fits$outcome_mod)[["A"]]),
-    tolerance = 1e-8
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
   )
   expect_true(all(is.finite(res$estimates$std.err)))
   expect_gt(res$estimates$std.err, 0)
@@ -3004,18 +3025,25 @@ test_that("a fixed stabilization score passes the preflight over the rows .data 
 
 test_that("a numerator model passes the preflight over the rows .data keeps", {
   dat <- sim_continuous_numerator_gap()
+  kept <- !is.na(dat$w)
   num_mod <- lm(A ~ v, data = dat)
   fits <- continuous_seed_fits(dat, stabilize = num_mod)
 
   # Both spreads move on this route, the denominator's and the numerator's, and
   # they move in the same direction, so neither cancels the other.
   res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
 
   expect_s3_class(res, "ipw")
   expect_equal(
     res$estimates$estimate,
-    unname(coef(fits$outcome_mod)[["A"]]),
-    tolerance = 1e-8
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
   )
   expect_true(all(is.finite(res$estimates$std.err)))
   expect_gt(res$estimates$std.err, 0)
@@ -3169,6 +3197,7 @@ test_that("a gam numerator model rebuilt from .data reads its own smooth basis",
 test_that("a gam numerator model is seeded at its own residual moment", {
   skip_if_not_installed("mgcv")
   dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
   num_mod <- mgcv::gam(A ~ s(v), data = dat, method = "REML")
   fits <- continuous_seed_fits(dat, stabilize = num_mod)
 
@@ -3183,11 +3212,18 @@ test_that("a gam numerator model is seeded at its own residual moment", {
   expect_equal(layout$init[["sigma2_n"]], mean(residuals(num_mod)^2))
 
   res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+
   expect_s3_class(res, "ipw")
   expect_equal(
     res$estimates$estimate,
-    unname(coef(fits$outcome_mod)[["A"]]),
-    tolerance = 1e-8
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
   )
   expect_true(all(is.finite(res$estimates$std.err)))
 })
