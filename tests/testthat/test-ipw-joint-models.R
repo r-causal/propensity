@@ -1139,3 +1139,118 @@ test_that("a joint component's numerator model whose data is gone is rebuilt fro
     tolerance = 1e-6
   )
 })
+
+# ---- a treatment model whose data is gone -----------------------------------
+#
+# A treatment model's coefficients are estimated in the stacked system, so the
+# design they were fit over is what the route needs. A `glm` usually keeps its
+# model frame, and one fit with `model = FALSE` rebuilds the design by
+# re-evaluating its fitting call, which a fit made inside a wrapper whose frame
+# is gone cannot do. Off the fit alone there is nothing left to read, and the
+# route says so. With a `.data` the caller supplied there is: every design and
+# every treatment column on this route is rebuilt from that frame rather than
+# read off the fits, so the frame the caller still holds stands in for the one
+# the fit lost, and the same product is reported either way.
+
+# The fit nothing can rebuild. The formula is written in the wrapper's frame and
+# the fitting call names a variable that lives only inside it, so re-evaluating
+# the call once the wrapper has returned finds nothing. Its coefficients and
+# fitted values are still readable.
+joint_models_treatment_frame_gone <- function(dat) {
+  fmla <- a ~ x1 + x2
+  fit_in_function <- function(fitting_data) {
+    glm(fmla, data = fitting_data, family = binomial(), model = FALSE)
+  }
+
+  fit_in_function(dat)
+}
+
+# The pair this section weights, with the first component's treatment model left
+# to the caller so the same product can be built from a fit that kept its frame
+# and from one that did not. `wt_ate()` reads a fit's exposure out of its model
+# frame, so the weights a frame-gone fit implies are built through `weight_mod`,
+# an intact fit holding the same coefficients, rather than through the fit
+# handed to `joint_wt_models()`.
+joint_models_treatment_gone_fits <- function(
+  dat,
+  treatment_mod,
+  weight_mod = treatment_mod
+) {
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(weight_mod),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(a = treatment_mod, e = ps_e),
+    outcome_mod = outcome_mod
+  )
+}
+
+test_that("a joint treatment model whose data is gone is rebuilt from .data", {
+  dat <- sim_joint_models()
+  gone <- joint_models_treatment_frame_gone(dat)
+  kept <- glm(a ~ x1 + x2, data = dat, family = binomial())
+
+  expect_error(model.matrix(gone))
+  expect_equal(unname(coef(gone)), unname(coef(kept)), tolerance = 1e-10)
+
+  gone_fits <- joint_models_treatment_gone_fits(dat, gone, weight_mod = kept)
+  kept_fits <- joint_models_treatment_gone_fits(dat, kept)
+
+  # The two calls weight the same product from the same coefficients and differ
+  # only in where the first component's design comes from, so the frame the
+  # caller supplied has to reach the design the lost frame held.
+  res_data <- ipw(gone_fits$models, gone_fits$outcome_mod, .data = dat)
+  res_recovered <- ipw(kept_fits$models, kept_fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_recovered$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_recovered$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a joint treatment model whose data is gone asks to be refit", {
+  dat <- sim_joint_models()
+  gone <- joint_models_treatment_frame_gone(dat)
+  kept <- glm(a ~ x1 + x2, data = dat, family = binomial())
+
+  gone_fits <- joint_models_treatment_gone_fits(dat, gone, weight_mod = kept)
+
+  # Without `.data` there is no frame to rebuild the design from, and the only
+  # remedy left is the fit itself, so the refusal asks for that rather than for
+  # an argument that is not there.
+  cnd <- tryCatch(
+    ipw(gone_fits$models, gone_fits$outcome_mod),
+    error = function(e) e
+  )
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "data behind a treatment model", fixed = TRUE)
+  expect_match(
+    message,
+    "Refit the treatment models where the data they were fit to is still available.",
+    fixed = TRUE
+  )
+})
