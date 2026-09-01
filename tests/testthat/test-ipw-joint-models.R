@@ -1254,3 +1254,178 @@ test_that("a joint treatment model whose data is gone asks to be refit", {
     fixed = TRUE
   )
 })
+
+# ---- a treatment column .data carries under the wrong order -----------------
+#
+# With a `.data` the caller supplied, every treatment on this route is read out
+# of that frame by the name its component is registered under. A column that
+# carries its own level order is compared against the order its model was fit
+# with, so a re-levelled factor supplied the other way round is refused by name.
+# A column that carries no order of its own is not compared at all: it is
+# levelled alphabetically wherever it is read, and when the fit's order is not
+# alphabetical the indicator the route rebuilds is the fit's indicator inverted.
+#
+# Nothing about that is silent, but every refusal it reaches is about something
+# else. The weights recomputed under the inverted indicator no longer match the
+# ones that fit the outcome model, so the weights-at-init preflight refuses and
+# blames the weights; where the counterfactual designs collapse first the
+# refusal blames the outcome model's contrast coding. Neither sends the reader
+# to the column that is actually miscoded, which is what the two sections below
+# ask for, on the class the sibling guards already refuse a miscoded `.data`
+# exposure with.
+
+# `sim_joint_models()` with the first treatment re-expressed as a factor whose
+# levels run "t" then "c". The fit therefore holds "t" as its reference and "c"
+# as its exposed level, which is the reverse of what levelling the same values
+# alphabetically would say.
+sim_joint_models_relevelled <- function(...) {
+  dat <- sim_joint_models(...)
+  dat$af <- factor(ifelse(dat$a == 1L, "t", "c"), levels = c("t", "c"))
+
+  dat
+}
+
+# The pair this section weights. Both treatment models, the weights and the
+# outcome model read `af` under the order the frame declares, so the fit is
+# internally consistent and only a `.data` that declares a different order can
+# move it.
+joint_models_relevelled_fits <- function(dat) {
+  ps_af <- glm(af ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ af * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_af),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ af * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(af = ps_af, e = ps_e),
+    outcome_mod = outcome_mod
+  )
+}
+
+test_that("a re-levelled joint treatment supplied as that factor is accepted", {
+  dat <- sim_joint_models_relevelled()
+  fits <- joint_models_relevelled_fits(dat)
+
+  # The boundary the two refusals below sit against: a `.data` whose treatment
+  # column declares exactly the order the fit holds is the frame the fits kept,
+  # and the route reports the surface it reports without one.
+  res_data <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  res_frames <- ipw(fits$models, fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_frames$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_frames$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a joint treatment supplied as a character column is refused by name", {
+  dat <- sim_joint_models_relevelled()
+  fits <- joint_models_relevelled_fits(dat)
+
+  # The same values, stripped of the order that told the route which level the
+  # fit treats as exposed.
+  as_character <- dat
+  as_character$af <- as.character(dat$af)
+
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod, .data = as_character),
+    error = function(e) e
+  )
+
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  # The two refusals this reaches instead, each of which names something the
+  # caller has no reason to change.
+  expect_false(inherits(cnd, "propensity_ipw_weights_mismatch_error"))
+  expect_false(inherits(cnd, "propensity_ipw_msm_error"))
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "\"af\"", fixed = TRUE)
+  expect_match(message, "levels", fixed = TRUE)
+})
+
+# The same fault reached through a model that transforms its response in place.
+# `joint_wt_models()` names a component by `all.vars()` of its response, so a
+# fit written as `factor(a, levels = c("t", "c")) ~ .` registers as the
+# component named "a" and passes the name check the pair is built under. What
+# the `.data` rebuild then reads is the raw column `a`, which carries the two
+# strings and no order, so the route levels it alphabetically and inverts the
+# indicator the fit was made under.
+sim_joint_models_transformed <- function(...) {
+  dat <- sim_joint_models(...)
+  dat$a <- ifelse(dat$a == 1L, "t", "c")
+
+  dat
+}
+
+joint_models_transformed_fits <- function(dat) {
+  ps_a <- glm(
+    factor(a, levels = c("t", "c")) ~ x1 + x2,
+    data = dat,
+    family = binomial()
+  )
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(a = ps_a, e = ps_e),
+    outcome_mod = outcome_mod
+  )
+}
+
+test_that("a joint treatment model that levels its own response is refused by name", {
+  dat <- sim_joint_models_transformed()
+  fits <- joint_models_transformed_fits(dat)
+
+  # `.data` here is the frame every model was fit to, so nothing about the rows
+  # or the values differs. What differs is the order the raw column implies
+  # against the order the response transform declared.
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod, .data = dat),
+    error = function(e) e
+  )
+
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  expect_false(inherits(cnd, "propensity_ipw_weights_mismatch_error"))
+  expect_false(inherits(cnd, "propensity_ipw_msm_error"))
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "\"a\"", fixed = TRUE)
+  expect_match(message, "levels", fixed = TRUE)
+})
