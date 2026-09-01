@@ -685,7 +685,8 @@
 #' sandwich treats it as a known constant here exactly as it does for a single
 #' treatment, so it adds no stabilization parameters and none of its
 #' uncertainty is carried. A product built by a version of this package that
-#' recorded no score, or one assembled by hand, says a component was stabilized
+#' recorded no score, one assembled by hand, or one subset after it was built,
+#' which drops a score held per observation, says a component was stabilized
 #' without saying what by: the system stands that component's own marginal
 #' numerator in, and the weight-consistency check reports the difference,
 #' naming the components whose numerator was stood in for. Rebuild such weights
