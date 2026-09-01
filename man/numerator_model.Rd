@@ -19,9 +19,12 @@ numerator was not estimated by one.
 }
 \details{
 A model supplied to \code{\link[=wt_ate]{wt_ate()}}'s \code{stabilize} argument estimates the
-numerator of the weights: the conditional density of a dose, or the
-conditional probability of the level each unit took when the exposure has
-levels rather than a dose.
+numerator of the weights, and what it estimates follows the exposure. A
+\code{\link[=binomial]{binomial()}} fit of a binary exposure reports the probability of the level
+each unit took; an \code{\link[nnet:multinom]{nnet::multinom()}} fit of a categorical exposure reports
+one probability per level, and the numerator is the column named for the
+level each unit took; a model of a dose reports the conditional mean the
+density family is read at, and the numerator is that density.
 The model itself is recorded rather than the numerator it evaluates to,
 because \code{\link[=ipw]{ipw()}} rebuilds that numerator at every value of its parameter
 vector, which takes the model's design and its coefficients.

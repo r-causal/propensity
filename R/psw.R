@@ -405,9 +405,12 @@ density_meta <- function(wt) {
 #'
 #' @details
 #' A model supplied to [wt_ate()]'s `stabilize` argument estimates the
-#' numerator of the weights: the conditional density of a dose, or the
-#' conditional probability of the level each unit took when the exposure has
-#' levels rather than a dose.
+#' numerator of the weights, and what it estimates follows the exposure. A
+#' [binomial()] fit of a binary exposure reports the probability of the level
+#' each unit took; an [nnet::multinom()] fit of a categorical exposure reports
+#' one probability per level, and the numerator is the column named for the
+#' level each unit took; a model of a dose reports the conditional mean the
+#' density family is read at, and the numerator is that density.
 #' The model itself is recorded rather than the numerator it evaluates to,
 #' because [ipw()] rebuilds that numerator at every value of its parameter
 #' vector, which takes the model's design and its coefficients.

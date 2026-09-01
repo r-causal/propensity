@@ -404,8 +404,10 @@
 #' about the model rather than a free choice. A numerator conditioning on a
 #' variable the outcome model does not read changes the estimand rather than the
 #' precision, because the pseudo-population it builds is one in which that
-#' variable still predicts the exposure. Condition the numerator on the modifier
-#' and on nothing the model does not hold. The same rule governs an
+#' variable still predicts the exposure, and confounding by it remains (Robins
+#' et al. 2000; Cole and Hernán 2008; Hernán and Robins 2020, Chapter 12).
+#' Condition the numerator on the modifier and on nothing the model does not
+#' hold. The same rule governs an
 #' exposure-by-modifier interaction reported without `.by`, since what matters
 #' is what the reported model reads and not which argument asked for the rows.
 #'
@@ -415,12 +417,13 @@
 #' standard errors do not account for the numerator model having been fitted.
 #' The default stabilizer is estimated in the stacked system instead, which is
 #' one parameter wider as a result. There is a third way: pass the fitted
-#' numerator model to `stabilize` itself, and its own equations join the stack,
-#' which is what a supplied score has none of. That accounting has something to
-#' say only where the reported model is not saturated in the variables the
-#' numerator reads; a binary exposure's numerator on a modifier the reported
-#' model interacts with fully divides out of every cell, so the estimates and
-#' the standard errors are the ones the unstabilized weights give.
+#' numerator model to `stabilize` itself, a [stats::glm()] of a binary exposure
+#' or an [nnet::multinom()] of a categorical one, and its own equations join the
+#' stack, which is what a supplied score has none of. That accounting has
+#' something to say only where the reported model is not saturated in the
+#' variables the numerator reads; a numerator on a modifier the reported model
+#' interacts with fully divides out of every cell, so the estimates and the
+#' standard errors are the ones the unstabilized weights give.
 #'
 #' A stabilized fit reporting effects within the strata of a modifier, and
 #' carrying the default numerator, warns with class
@@ -743,6 +746,56 @@
 #' from the stacked estimating-equation machinery rather than any single term,
 #' and for very large samples you can expect long, garbage-collection-heavy
 #' fits. This is expected behavior.
+#'
+#' ## Stabilizing numerators for a discrete exposure
+#'
+#' A numerator estimated by a model the caller passed to [wt_ate()]'s
+#' `stabilize` is estimated here as well, whichever type the exposure is. A
+#' binary exposure's numerator model contributes one parameter per coefficient,
+#' named `stab_<term>`, and a categorical exposure's contributes one per
+#' coefficient of its [nnet::multinom()] fit, named `stab_<level>:<term>`, so
+#' that the level a coefficient belongs to is read off the name. The multinomial
+#' numerator's own score is stacked alongside the propensity score model's,
+#' written as the same multinomial estimating equation, so the standard errors
+#' account for the numerator having been fitted rather than reading it as a
+#' constant. The default stabilizer contributes what it estimates instead: the
+#' single marginal proportion `stab_pi` for a binary exposure, and the K - 1
+#' free marginal proportions `stab_<level>` for a categorical one. A
+#' `stabilization_score` contributes nothing at all, being a number the caller
+#' fixed. What a dose's numerator contributes is described under **Continuous
+#' propensity score models**.
+#'
+#' Reading an estimated numerator as known would be conservative for these
+#' weights rather than wrong, since stabilization is offered for the `ate`
+#' estimand alone (Lunceford and Davidian 2004; Kostouraki et al. 2024), and
+#' Shu et al. (2020) stack the numerator and the denominator of stabilized
+#' weights for that reason. Stacking the multinomial score therefore tightens
+#' the inference rather than rescuing it. Neither result isolates the
+#' numerator's own contribution, and Kostouraki et al.'s tutorial is written for
+#' a binary exposure, so what they give is the direction of the correction
+#' rather than a bound on its size.
+#'
+#' A multinomial numerator model is held to the propensity score model's levels
+#' in the propensity score model's own order. Everything its block contributes
+#' is positional: the coefficients are stacked level-major, and the softmax the
+#' numerator is rebuilt from reads the first level as the reference the others
+#' are contrasted with, so a fit made under another order is a different
+#' parameterization rather than a permutation of this one. Such a fit is refused
+#' with an error of class `propensity_ipw_numerator_error`, which is also what a
+#' model of a response other than the exposure, or one fit to a different number
+#' of observations, errors with. One fit with case weights errors with class
+#' `propensity_ipw_ps_weights_error`, for the reason a weighted propensity score
+#' model does. [nnet::multinom()] keeps no model frame, so the design its
+#' coefficients were fit over is recovered by re-evaluating the fitting call; a
+#' fit whose call can no longer be evaluated, such as one made inside a function
+#' whose frame is gone, errors with class `propensity_ipw_data_error`, and the
+#' remedy is to supply `.data`, which the numerator's design is rebuilt from.
+#'
+#' A categorical exposure reports M-estimation standard errors alone, so a
+#' multinomial numerator model meets neither of the other two methods. The
+#' linearization's refusal of a fitted numerator model, below, and the robust
+#' diagnostic's reading of every weight as a known constant are both matters for
+#' a binary exposure.
 #'
 #' ## Continuous propensity score models
 #'
@@ -1168,6 +1221,24 @@
 #' inverse probability-of-treatment weighting estimator: A tutorial for
 #' different types of propensity score weights. *Statistics in Medicine*.
 #' 2024;43(13):2672--2694. \doi{10.1002/sim.10078}
+#'
+#' Lunceford JK, Davidian M. Stratification and weighting via the propensity
+#' score in estimation of causal treatment effects: a comparative study.
+#' *Statistics in Medicine*. 2004;23(19):2937--2960. \doi{10.1002/sim.1903}
+#'
+#' Shu D, Young JG, Toh S, Wang R. Variance estimation in inverse probability
+#' weighted Cox models. *Biometrics*. 2020. \doi{10.1111/biom.13332}
+#'
+#' Robins JM, Hernán MA, Brumback B. Marginal structural models and causal
+#' inference in epidemiology. *Epidemiology*. 2000;11(5):550--560.
+#' \doi{10.1097/00001648-200009000-00011}
+#'
+#' Cole SR, Hernán MA. Constructing inverse probability weights for marginal
+#' structural models. *American Journal of Epidemiology*.
+#' 2008;168(6):656--664.
+#'
+#' Hernán MA, Robins JM. *Causal Inference: What If*. Boca Raton: Chapman &
+#' Hall/CRC; 2020.
 #'
 #' Leyrat C, Seaman SR, White IR, et al. Propensity score analysis with partially
 #' observed covariates: How should multiple imputation be used? *Statistical
