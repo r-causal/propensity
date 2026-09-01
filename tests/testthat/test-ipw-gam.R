@@ -278,17 +278,21 @@ test_that("the gam route reports the estimates and errors it reports today", {
   skip_if_not_installed("mgcv")
   dat <- sim_gam_dose()
 
-  # The values below are what each of the three additive shapes reports now.
-  # How often the design is built is arithmetic the answer must not see, so a
-  # route that builds it once has to reproduce these to the digit; the shapes
-  # are pinned together because they read the design in different places.
+  # The values below are what each of the three additive shapes reports on the
+  # platform they were recorded on. How often the design is built is arithmetic
+  # the answer must not see, so a route that builds it once has to reproduce
+  # them; the shapes are pinned together because they read the design in
+  # different places. The tolerance is looser than the recording because REML
+  # fits drift in their last digits across BLAS implementations, while a design
+  # built differently moves these values by orders more than the tolerance or
+  # not at all.
   identity_mods <- fit_gam_models(
     dat,
     mgcv::gam(A ~ s(x1) + s(x2), data = dat, method = "REML")
   )
   identity_res <- ipw(identity_mods$ps_mod, identity_mods$outcome_mod)
-  expect_equal(identity_res$estimates$estimate, 1.0735436968, tolerance = 1e-6)
-  expect_equal(identity_res$estimates$std.err, 0.0534830856, tolerance = 1e-6)
+  expect_equal(identity_res$estimates$estimate, 1.0735436968, tolerance = 1e-4)
+  expect_equal(identity_res$estimates$std.err, 0.0534830856, tolerance = 1e-4)
 
   log_mods <- fit_gam_models(
     dat,
@@ -301,8 +305,8 @@ test_that("the gam route reports the estimates and errors it reports today", {
     exposure = "Apos"
   )
   log_res <- ipw(log_mods$ps_mod, log_mods$outcome_mod)
-  expect_equal(log_res$estimates$estimate, 1.0722820530, tolerance = 1e-6)
-  expect_equal(log_res$estimates$std.err, 0.0528567734, tolerance = 1e-6)
+  expect_equal(log_res$estimates$estimate, 1.0722820530, tolerance = 1e-4)
+  expect_equal(log_res$estimates$std.err, 0.0528567734, tolerance = 1e-4)
 
   ps_mod <- mgcv::gam(A ~ s(x1) + s(x2), data = dat, method = "REML")
   num_mod <- mgcv::gam(A ~ s(x1), data = dat, method = "REML")
@@ -316,8 +320,8 @@ test_that("the gam route reports the estimates and errors it reports today", {
     )
   )
   num_res <- ipw(ps_mod, lm(yc ~ A, data = dat, weights = num_wts))
-  expect_equal(num_res$estimates$estimate, 1.1204143741, tolerance = 1e-6)
-  expect_equal(num_res$estimates$std.err, 0.0570892981, tolerance = 1e-6)
+  expect_equal(num_res$estimates$estimate, 1.1204143741, tolerance = 1e-4)
+  expect_equal(num_res$estimates$std.err, 0.0570892981, tolerance = 1e-4)
 })
 
 # ---- the least squares route, read as a gam ---------------------------------
