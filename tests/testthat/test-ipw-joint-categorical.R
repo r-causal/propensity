@@ -1876,3 +1876,791 @@ test_that("the joint preflight counts a categorical component's separation at th
     0L
   )
 })
+
+# ---- the stabilization slot -------------------------------------------------
+#
+# A categorical component needs no stabilization, and the sections above are
+# written without it. A caller may still ask for it, and the three numerators a
+# categorical component can carry are the three the single-treatment categorical
+# route carries: the marginal probability of each level, a score the caller
+# computed, and a fitted multinomial model of the treatment. What each is worth
+# in the stacked system is what these tests pin.
+#
+# The arrangement is the binary component's, read for a treatment with more than
+# two levels. A marginal numerator is k - 1 free proportions where a binary one
+# is the single proportion `pi`; a score is a known multiplier and widens the
+# system by nothing at all; and a fitted model contributes its own coefficients,
+# which for a multinomial is one run of terms per non-reference level rather
+# than one run in all. The names those parameters take compose the two
+# conventions that already exist: the joint route's `stab_<component>_`, which
+# says whose numerator a parameter belongs to, and the categorical block's
+# `<level>:<term>`, which says which level's equation it sits in.
+#
+# The numerator here reads `x2`, which the propensity score model also reads and
+# which the marginal structural model is given so the fixtures are silent about
+# coverage. The one test that is about coverage takes it away again.
+
+# The names a categorical component's numerator model fills its slice with. The
+# joint convention's prefix composed with the categorical block's own layout:
+# level-major and term-minor, which is the order `as.vector(t(coef()))` puts the
+# coefficients in and the order the denominator's block is named in.
+joint_categorical_stab_names <- function(component, model) {
+  coefs <- stats::coef(model)
+  terms <- colnames(coefs)
+
+  as.vector(vapply(
+    rownames(coefs),
+    function(level) paste0("stab_", component, "_", level, ":", terms),
+    character(length(terms))
+  ))
+}
+
+# The two-model route with the categorical component stabilized. Only the
+# numerator moves between the three fixtures: the binary component is left
+# unstabilized throughout and the two propensity score models are the ones the
+# sections above fit, so a difference between any two of these fits is a
+# difference between numerators rather than between routes.
+#
+# The numerator model is fit inline against the frame this function holds, for
+# the reason every multinomial in this file is: the design behind it is
+# recovered by re-evaluating the fitting call rather than read off a model frame
+# it does not keep.
+fit_joint_categorical_stab_route <- function(
+  dat,
+  numerator = c("marginal", "score", "model"),
+  outcome_rhs = "a * z + x1 + x2"
+) {
+  numerator <- match.arg(numerator)
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  # A proper subset of the propensity score model's design, which is what keeps
+  # the block the numerator contributes from being the denominator's block under
+  # another name.
+  num_z <- nnet::multinom(
+    z ~ x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  probabilities <- unname(stats::predict(ps_z, type = "probs"))
+  colnames(probabilities) <- ps_z$lev
+  taken <- cbind(
+    seq_len(nrow(dat)),
+    match(as.character(dat$z), ps_z$lev)
+  )
+
+  fitted_numerator <- stats::fitted(num_z)
+  score <- fitted_numerator[cbind(
+    seq_len(nrow(dat)),
+    match(as.character(dat$z), colnames(fitted_numerator))
+  )]
+
+  w_a <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_a))
+  w_z <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      probabilities,
+      dat$z,
+      exposure_type = "categorical",
+      stabilize = if (identical(numerator, "model")) num_z else TRUE,
+      stabilization_score = if (identical(numerator, "score")) score
+    )
+  )
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(w_a, w_z, exposure_type = c("binary", "categorical"))
+  )
+  outcome_mod <- glm(
+    stats::reformulate(outcome_rhs, response = "y"),
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(a = ps_a, z = ps_z),
+    ps_a = ps_a,
+    ps_z = ps_z,
+    num_z = num_z,
+    w_a = w_a,
+    # The probability the component's own model gives the level each unit took,
+    # which is the denominator of its factor of the product.
+    denominator = probabilities[taken],
+    score = score,
+    outcome_mod = outcome_mod,
+    wts = wts
+  )
+}
+
+# The marginal probability of the level each unit took, which is what the
+# default stabilizer's numerator evaluates to.
+joint_categorical_marginal_numerator <- function(exposure) {
+  proportions <- as.numeric(prop.table(table(exposure)))
+
+  proportions[match(as.character(exposure), levels(exposure))]
+}
+
+test_that("ipw() estimates a categorical component stabilized on the marginal proportions", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+  fx <- fit_joint_categorical_stab_route(dat, numerator = "marginal")
+
+  # The product written out, so the rebuild below is held to the arithmetic
+  # rather than to the preflight's own tolerance.
+  expect_equal(
+    as.double(fx$wts),
+    as.double(fx$w_a) *
+      (joint_categorical_marginal_numerator(dat$z) / fx$denominator),
+    tolerance = 1e-12
+  )
+
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+
+  # A binary component's marginal numerator is one proportion and a categorical
+  # one's is k - 1 of them, the reference level's completing the set, so the
+  # slice the component takes is as wide as its treatment has non-reference
+  # levels. The unstabilized binary component takes none.
+  expect_identical(spec$stab$widths, c(0L, 2L))
+
+  # The block is seeded at the level proportions of the fit's own rows, which is
+  # where the weights were built, and it is named for the component and the
+  # level rather than for the role alone: two components mean a name saying only
+  # that a parameter is a proportion would not say whose.
+  indicator <- ipw_joint_models_fit_exposure(spec, 2L)
+  expect_identical(dim(indicator), c(nrow(dat), 3L))
+
+  seed <- ipw_init_joint_models_stab(spec)
+  expect_identical(names(seed), c("stab_z_mid", "stab_z_hi"))
+  expect_equal(
+    unname(seed),
+    unname(colMeans(indicator)[-1]),
+    tolerance = 1e-12
+  )
+
+  # The seed rebuilds the weights the outcome model was fit under, and every
+  # equation sits at its root there, which is what makes the solve report the
+  # numerator the weights were built from rather than one the solver reached.
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fx$wts),
+    tolerance = 1e-10
+  )
+  mat <- build_ipw_psi(spec, layout)(layout$init)
+  expect_false(anyNA(mat))
+  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-8))
+
+  res <- ipw(fx$models, fx$outcome_mod)
+  theta <- coef(res$fit)
+
+  expect_s3_class(res, "ipw")
+  expect_identical(
+    names(theta)[grepl("^stab_", names(theta))],
+    c("stab_z_mid", "stab_z_hi")
+  )
+
+  # The solved proportions are the proportions of the rows the system analyzes,
+  # which is what the equations written for them say: one row per non-reference
+  # level, the indicator of that level less the parameter.
+  expect_equal(
+    unname(theta[c("stab_z_mid", "stab_z_hi")]),
+    c(mean(dat$z == "mid"), mean(dat$z == "hi")),
+    tolerance = 1e-8
+  )
+
+  # Two parameters more than the unstabilized pair carries over the same
+  # models: three coefficients for `a ~ x1 + x2`, ten for `z ~ a * x1 + x2`, two
+  # marginal proportions, eight for the outcome model, six cell means, and
+  # eighteen contrast rows.
+  expect_identical(as.integer(res$fit@n_params), 47L)
+
+  # Every reported quantity is g-computation on the weighted outcome model, as
+  # it is without a numerator: stabilization changes the weights and so the fit,
+  # and changes nothing about what the surface reports off it.
+  expect_identical(nrow(res$estimates), 24L)
+  expect_equal(
+    res$estimates$estimate,
+    joint_categorical_expected_estimates(
+      joint_categorical_cell_means(fx$outcome_mod, dat)
+    ),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
+test_that("ipw() rebuilds a categorical component stabilized on a fixed score", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+  fx <- fit_joint_categorical_stab_route(dat, numerator = "score")
+
+  # The product written out: the score multiplies the component's factor as it
+  # stands, so the weights are the unstabilized ones times a vector the caller
+  # computed.
+  expect_equal(
+    as.double(fx$wts),
+    as.double(fx$w_a) * (fx$score / fx$denominator),
+    tolerance = 1e-12
+  )
+
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+
+  # A score is the numerator itself rather than a description of one, so the
+  # system multiplies by it and estimates nothing, exactly as a binary
+  # component's score is treated: no block, no parameters, no width.
+  expect_identical(spec$stab$widths, c(0L, 0L))
+  expect_identical(ipw_init_joint_models_stab(spec), numeric(0))
+
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fx$wts),
+    tolerance = 1e-12
+  )
+  mat <- build_ipw_psi(spec, layout)(layout$init)
+  expect_false(anyNA(mat))
+  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-8))
+
+  res <- ipw(fx$models, fx$outcome_mod)
+
+  expect_s3_class(res, "ipw")
+  expect_false(any(grepl("^stab_", names(coef(res$fit)))))
+  expect_identical(as.integer(res$fit@n_params), 45L)
+
+  expect_identical(nrow(res$estimates), 24L)
+  expect_equal(
+    res$estimates$estimate,
+    joint_categorical_expected_estimates(
+      joint_categorical_cell_means(fx$outcome_mod, dat)
+    ),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
+test_that("ipw() stacks a categorical component's numerator model", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+  fx <- fit_joint_categorical_stab_route(dat, numerator = "model")
+
+  # A model and the probabilities it evaluates to build one and the same set of
+  # weights, which is what makes everything below a statement about the block
+  # rather than about the fixture.
+  expect_equal(
+    as.double(fx$wts),
+    as.double(fx$w_a) * (fx$score / fx$denominator),
+    tolerance = 1e-12
+  )
+
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+
+  # A multinomial numerator contributes one parameter per term per
+  # non-reference level, so the slice is p times k - 1 rather than p: two terms
+  # for `z ~ x2` over two non-reference levels.
+  expect_identical(spec$stab$widths, c(0L, 4L))
+
+  stab_names <- joint_categorical_stab_names("z", fx$num_z)
+  expect_identical(
+    stab_names,
+    c(
+      "stab_z_mid:(Intercept)",
+      "stab_z_mid:x2",
+      "stab_z_hi:(Intercept)",
+      "stab_z_hi:x2"
+    )
+  )
+
+  seed <- ipw_init_joint_models_stab(spec)
+  expect_identical(names(seed), stab_names)
+  expect_equal(
+    unname(seed),
+    as.vector(t(coef(fx$num_z))),
+    tolerance = 1e-12
+  )
+
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fx$wts),
+    tolerance = 1e-10
+  )
+  mat <- build_ipw_psi(spec, layout)(layout$init)
+  expect_false(anyNA(mat))
+  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-8))
+
+  res <- ipw(fx$models, fx$outcome_mod)
+  theta <- coef(res$fit)
+
+  expect_s3_class(res, "ipw")
+  expect_identical(names(theta)[grepl("^stab_", names(theta))], stab_names)
+
+  # The block is solved at the model the caller fit rather than carried at
+  # whatever it was seeded with, which is what makes the reported standard
+  # errors account for having estimated it. The layout is the denominator's:
+  # one run of terms per non-reference level, in the fit's own level order.
+  expect_equal(
+    unname(theta[stab_names]),
+    as.vector(t(coef(fx$num_z))),
+    tolerance = 1e-6
+  )
+
+  expect_identical(nrow(res$estimates), 24L)
+  expect_equal(
+    res$estimates$estimate,
+    joint_categorical_expected_estimates(
+      joint_categorical_cell_means(fx$outcome_mod, dat)
+    ),
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
+test_that("a categorical component's numerator model reports the score's estimates and other standard errors", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+  model <- fit_joint_categorical_stab_route(dat, numerator = "model")
+  score <- fit_joint_categorical_stab_route(dat, numerator = "score")
+
+  # The two fixtures weight the units identically, which is what makes the
+  # standard errors comparable at all.
+  expect_equal(
+    as.double(model$wts),
+    as.double(score$wts),
+    tolerance = 1e-12
+  )
+
+  res_model <- ipw(model$models, model$outcome_mod)
+  res_score <- ipw(score$models, score$outcome_mod)
+
+  expect_equal(
+    res_model$estimates$estimate,
+    res_score$estimates$estimate,
+    tolerance = 1e-8
+  )
+
+  # A supplied score is a constant of the stacked system and a supplied model is
+  # not, so the difference between the two is the numerator having been
+  # estimated rather than known. The marginal structural model reads `z`, `x2`,
+  # and `x1` without the interaction of the first two, so it is not saturated in
+  # the numerator's cells and the reading reaches the reported rows.
+  expect_true(all(is.finite(res_model$estimates$std.err)))
+  expect_false(isTRUE(all.equal(
+    res_model$estimates$std.err,
+    res_score$estimates$std.err,
+    tolerance = 1e-6
+  )))
+})
+
+test_that("a categorical component's numerator model is asked about coverage", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+
+  # A numerator conditioning on a variable the marginal structural model does
+  # not read leaves that variable predicting the treatment in the weighted
+  # sample, so the fit reports the effect within its levels rather than the
+  # marginal one. The report is type-agnostic and a categorical component's
+  # numerator model is a numerator model, so it is asked the same question.
+  omitted <- fit_joint_categorical_stab_route(
+    dat,
+    numerator = "model",
+    outcome_rhs = "a * z + x1"
+  )
+  cnd <- expect_warning(
+    res <- ipw(omitted$models, omitted$outcome_mod),
+    class = "propensity_ipw_stabilizer_coverage_warning"
+  )
+  expect_match(gsub("[[:space:]]+", " ", conditionMessage(cnd)), "x2")
+  expect_s3_class(res, "ipw")
+  expect_true(all(is.finite(res$estimates$estimate)))
+
+  # The same numerator beside a marginal structural model that reads `x2` has
+  # nothing to be missing, which is the fixture every other test here uses.
+  covered <- fit_joint_categorical_stab_route(dat, numerator = "model")
+  expect_no_warning(
+    ipw(covered$models, covered$outcome_mod),
+    class = "propensity_ipw_stabilizer_coverage_warning"
+  )
+})
+
+test_that("the joint record keeps a categorical component's numerator model", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+  fx <- fit_joint_categorical_stab_route(dat, numerator = "model")
+  meta <- joint_wt_meta(fx$wts)
+
+  # The estimator reads the model off the product rather than being handed it,
+  # so what the product records is what it stacks. A component whose numerator
+  # is the marginal proportion records no model, and the slot is per component
+  # rather than one slot the pair shares.
+  expect_identical(meta$stabilized, c(FALSE, TRUE))
+  models <- joint_wt_numerator_models(meta)
+  expect_length(models, 2L)
+  expect_null(models[[1]])
+  expect_identical(models[[2]], fx$num_z)
+
+  marginal <- fit_joint_categorical_stab_route(dat, numerator = "marginal")
+  expect_identical(
+    joint_wt_numerator_models(joint_wt_meta(marginal$wts)),
+    list(NULL, NULL)
+  )
+})
+
+test_that("a stabilized categorical component is no longer refused by kind", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+
+  # The three numerators a categorical component can carry are the three a
+  # binary one carries, and the stacked system now writes a block for each: the
+  # k - 1 free proportions, the score it multiplies by and estimates nothing
+  # for, and the multinomial coefficients of a model the caller fit. None of
+  # them is refused, so nothing about a stabilized categorical component is left
+  # unsupported.
+  for (numerator in c("marginal", "score", "model")) {
+    fx <- fit_joint_categorical_stab_route(dat, numerator = numerator)
+    res <- tryCatch(ipw(fx$models, fx$outcome_mod), error = identity)
+
+    expect_false(
+      inherits(res, "propensity_ipw_joint_models_stabilize_error"),
+      label = numerator
+    )
+    expect_s3_class(res, "ipw")
+  }
+})
+
+# ---- what a stacked categorical numerator model has to be -------------------
+
+test_that("a categorical component's numerator fit to the levels in another order is refused", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  # Everything the block does is positional: the coefficients are flattened in
+  # the fit's level order, the indicator matrix the score reads is laid out in
+  # the component's own, and the softmax the numerator is rebuilt from takes the
+  # first level as the reference. A numerator fit to the same levels in another
+  # order is a different parameterization rather than a permutation of this one,
+  # and reordering its columns cannot repair it. The weight side gathers by name
+  # and takes such a fit, so the refusal is the estimator's to make.
+  relevelled <- dat
+  relevelled$z <- factor(as.character(dat$z), levels = c("hi", "lo", "mid"))
+  num_z <- nnet::multinom(
+    z ~ x2,
+    data = relevelled,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  expect_identical(num_z$lev, c("hi", "lo", "mid"))
+  expect_identical(ps_z$lev, c("lo", "mid", "hi"))
+
+  probabilities <- unname(stats::predict(ps_z, type = "probs"))
+  colnames(probabilities) <- ps_z$lev
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(
+        probabilities,
+        dat$z,
+        exposure_type = "categorical",
+        stabilize = num_z
+      ),
+      exposure_type = c("binary", "categorical")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * z + x1 + x2,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  # The refusal is the single-treatment categorical route's, read for a
+  # component: the same class and the same cause, since what is wrong with the
+  # fit does not depend on how many treatments were intervened on.
+  cnd <- tryCatch(
+    ipw(joint_wt_models(a = ps_a, z = ps_z), outcome_mod),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_numerator_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "level order", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a categorical component's numerator model of another response is refused", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+
+  # A second three-level factor over the same levels the treatment carries.
+  # Nothing models it and it is not a treatment, so it is what a numerator of
+  # the wrong response is fit to.
+  dat$g <- factor(
+    c("lo", "mid", "hi")[1 + (rank(dat$x1) %% 3)],
+    levels = c("lo", "mid", "hi")
+  )
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  num_g <- nnet::multinom(
+    g ~ x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  # The block's equations are the score of a model of the component's own
+  # treatment, so a model of something else sits away from the root of the rows
+  # seeded for it and the solve would move it, reporting a numerator nobody fit.
+  # The levels agree, so the weight side gathers a probability for every unit
+  # and has nothing to object to; what is wrong is which variable those
+  # probabilities describe.
+  probabilities <- unname(stats::predict(ps_z, type = "probs"))
+  colnames(probabilities) <- ps_z$lev
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(
+        probabilities,
+        dat$z,
+        exposure_type = "categorical",
+        stabilize = num_g
+      ),
+      exposure_type = c("binary", "categorical")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * z + x1 + x2,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  cnd <- tryCatch(
+    ipw(joint_wt_models(a = ps_a, z = ps_z), outcome_mod),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_numerator_error")
+
+  # Both responses are named, so the message says which fit was handed over and
+  # which treatment the component it was handed for models.
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "\"g\"", fixed = TRUE)
+  expect_match(message, "\"z\"", fixed = TRUE)
+})
+
+# ---- a stabilized two-level multinomial component ---------------------------
+#
+# A `nnet::multinom()` fit to two levels is a logistic regression solved by a
+# different optimizer, and the route stacks it as one. What that resolution owes
+# the stabilization slot is the binary numerator rather than the multinomial
+# one: the marginal proportion where a caller asks for the default, and a
+# binomial coefficient block where a caller fits a model. Both are measured
+# against the pair the same treatment model fit with `stats::glm()` reports.
+
+# The same pair of fits stabilized, once for each optimizer that solves the
+# second treatment's model. `wt_joint()` is left to read each component's own
+# recorded type, which is `"binary"` on both sides, and the numerator is the
+# binary one either way.
+joint_categorical_two_level_stabilized_pair <- function(
+  numerator = c("marginal", "model")
+) {
+  numerator <- match.arg(numerator)
+  dat <- sim_joint_categorical_two_level()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e_multinom <- nnet::multinom(
+    e ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps_e_glm <- glm(
+    e ~ a * x1 + x2,
+    data = dat,
+    family = binomial(),
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  # A covariate the marginal structural model reads, which is what a numerator
+  # may condition on without changing what the fit reports.
+  stabilize <- if (identical(numerator, "marginal")) {
+    TRUE
+  } else {
+    glm(
+      e ~ x1,
+      data = dat,
+      family = binomial(),
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+  }
+
+  fit_one <- function(ps_e) {
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_joint(wt_ate(ps_a), wt_ate(ps_e, stabilize = stabilize))
+    )
+    outcome_mod <- glm(
+      y ~ a * e + x1,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+
+    ipw(joint_wt_models(a = ps_a, e = ps_e), outcome_mod)
+  }
+
+  list(multinom = fit_one(ps_e_multinom), glm = fit_one(ps_e_glm))
+}
+
+test_that("a stabilized two-level multinomial component agrees with its glm twin", {
+  skip_if_not_installed("nnet")
+
+  for (numerator in c("marginal", "model")) {
+    fits <- joint_categorical_two_level_stabilized_pair(numerator)
+
+    # The same fourteen-row crossing under the same labels, the same block for
+    # the numerator, and the same numbers: the two fits are one model solved by
+    # two optimizers, and the stacked system re-solves each component's score
+    # from the coefficients it was seeded at, so what the pair reports does not
+    # inherit the seed's own precision. The tolerances are the ones the
+    # unstabilized pair above is held to, the standard errors being read from a
+    # numerically differentiated bread rather than solved for.
+    expect_identical(nrow(fits$multinom$estimates), 14L, label = numerator)
+    expect_identical(
+      fits$multinom$estimates[c("effect", "contrast", "group")],
+      fits$glm$estimates[c("effect", "contrast", "group")],
+      label = numerator
+    )
+    expect_identical(
+      names(stats::coef(fits$multinom$fit)),
+      names(stats::coef(fits$glm$fit)),
+      label = numerator
+    )
+    expect_equal(
+      fits$multinom$estimates$estimate,
+      fits$glm$estimates$estimate,
+      tolerance = 1e-8,
+      label = numerator
+    )
+    expect_equal(
+      fits$multinom$estimates$std.err,
+      fits$glm$estimates$std.err,
+      tolerance = 1e-5,
+      label = numerator
+    )
+  }
+})
+
+# ---- a two-level multinomial component beside a dose ------------------------
+
+# The two-level fixture with a dose added, so the factor can be the first
+# component of a factorization whose second is continuous. The dose depends on
+# it, which is what the container requires of a second model, and the outcome is
+# continuous, which is what the dose surface's coefficient rows are read off.
+sim_joint_two_level_dose <- function(seed = 7307, n = 1200) {
+  dat <- sim_joint_categorical_two_level(seed = seed, n = n)
+  withr::local_seed(seed + 1L)
+
+  e_num <- as.numeric(dat$e == "1")
+  dat$d <- 0.4 + 0.5 * dat$x1 - 0.3 * dat$x2 - 0.8 * e_num + rnorm(n)
+  dat$yd <- 1 + 0.7 * e_num + 0.5 * dat$d + 0.6 * e_num * dat$d + rnorm(n)
+
+  dat
+}
+
+test_that("a two-level multinomial component sits in the first slot beside a dose", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_two_level_dose()
+
+  ps_e_multinom <- nnet::multinom(
+    e ~ x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps_e_glm <- glm(
+    e ~ x1 + x2,
+    data = dat,
+    family = binomial(),
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  ps_d <- lm(d ~ e + x1 + x2, data = dat)
+
+  fit_one <- function(ps_e) {
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_joint(
+        wt_ate(ps_e),
+        wt_ate(
+          as.double(stats::fitted(ps_d)),
+          dat$d,
+          exposure_type = "continuous",
+          stabilize = TRUE
+        ),
+        exposure_type = c("binary", "continuous")
+      )
+    )
+    outcome_mod <- lm(yd ~ e * d, data = dat, weights = wts)
+
+    ipw(joint_wt_models(e = ps_e, d = ps_d), outcome_mod)
+  }
+
+  res_multinom <- fit_one(ps_e_multinom)
+  res_glm <- fit_one(ps_e_glm)
+
+  # A dose is reported beside a first treatment with two levels, and a
+  # multinomial fit to two levels is such a treatment's model: the pair takes
+  # the dose's own coefficient surface rather than the cells a discrete pair
+  # reports, and takes it whichever optimizer fit the first component.
+  expect_identical(nrow(res_multinom$estimates), 3L)
+  expect_identical(
+    res_multinom$estimates[c("effect", "contrast", "group")],
+    res_glm$estimates[c("effect", "contrast", "group")]
+  )
+  expect_identical(res_multinom$estimates$effect, c("diff", "slope", "diff"))
+
+  expect_equal(
+    res_multinom$estimates$estimate,
+    res_glm$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_multinom$estimates$std.err,
+    res_glm$estimates$std.err,
+    tolerance = 1e-5
+  )
+})
