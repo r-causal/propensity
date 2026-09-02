@@ -1293,9 +1293,13 @@ ipw_joint_dose_indicator <- function(treatment, level_values, level) {
 # extra column is a column no row names, and every reported column after it is a
 # claim about the level to its left. Refitting the treatment as an unordered
 # factor would change nothing there, so this is told apart from a coding and
-# given the remedy that does change it: the formula. The two are independent
-# faults, and a model carrying both is told both, since a caller who fixed the
-# coding alone would meet this refusal next.
+# given the remedy that does change it: the formula.
+#
+# The three are independent faults, and a model carrying more than one is told
+# all of them, on the line naming the causes and in the bullets alike, since a
+# caller who fixed one alone would meet the rest next. They are told in the
+# order a caller works through them: the coding, then a dose no rewriting of the
+# formula would make the weights right for, then the formula itself.
 check_ipw_joint_dose_coding <- function(
   out_X,
   columns,
@@ -1327,25 +1331,24 @@ check_ipw_joint_dose_coding <- function(
   focal <- level_labels[[2]]
   non_reference <- level_labels[-1]
 
-  # Which of the three causes to describe. The dose is decided by the variable,
-  # above, and takes precedence over the rest: a caller whose outcome model
-  # holds a dose the weights were not built for has nothing to gain from a
-  # rewritten formula, since no writing of one would make those weights right.
-  # A treatment coded some other way moves the columns reading the treatment,
-  # and every interaction column with those, so a mismatched column reading no
-  # dose is what says the coding is a cause, and a model whose dose and whose
-  # treatment both moved says both.
+  # Which of the three causes to describe. Each is decided on its own terms, and
+  # a model carrying more than one is told all of them: they are independent
+  # faults, and a caller who fixed one alone would meet the rest next.
+  #
+  # The dose is decided by the variable, above. A treatment coded some other way
+  # moves the columns reading the treatment, and every interaction column with
+  # those, so a mismatched column reading no dose is what says the coding is a
+  # cause. Where neither holds, the columns that disagree are the crossing's,
+  # and the expansion below is what put them there.
   #
   # The expansion is read off the design rather than off what disagrees: the
   # crossing contributes a column for every level rather than for the
   # non-reference levels alone, and the model carries no column reading the dose
   # by itself, which is the shape a dose with no term of its own leaves. That
-  # shape is forced whatever contrasts the treatment carries, so it is a fault
-  # beside a coding rather than an alternative to one, and a model whose
-  # treatment column moved as well is told both.
+  # shape is what the formula is, so it holds whatever the treatment's contrasts
+  # are and whether or not the dose is the one the treatment models hold.
   crossed <- reads_dose & reads_treatment
-  expanded <- !dose_moved &&
-    !any(reads_dose & !reads_treatment) &&
+  expanded <- !any(reads_dose & !reads_treatment) &&
     sum(crossed) == length(level_labels)
   coding_moved <- (!dose_moved && !expanded) || any(mismatched & !reads_dose)
 
@@ -1446,20 +1449,23 @@ check_ipw_joint_dose_coding <- function(
     marginal structural model whose treatment columns are the treatments \\
     themselves."
 
-  # The line a reader sees first names the terms and one of the causes the
-  # bullets go on to describe. A model carrying more than one is named for the
-  # coding ahead of the expansion and for either ahead of a moved dose, which
-  # is the order the bullets themselves stand in.
-  cause <- if (coding_moved) {
-    "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} a \\
-    column coded some other way."
-  } else if (expanded) {
-    "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} one \\
-    column per level of {.val {first}}."
-  } else {
-    "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} a \\
-    column built from a dose the treatment models were not fit to."
-  }
+  # The line a reader sees first names the terms and every cause the bullets go
+  # on to describe, run together in the order the bullets themselves stand in,
+  # so that the line and the bullets under it describe the same model. Each
+  # phrase is written once and composed here rather than once per pairing.
+  faults <- c(
+    if (coding_moved) "a column coded some other way",
+    if (dose_moved) {
+      "a column built from a dose the treatment models were not fit to"
+    },
+    if (expanded) "one column per level of {.val {first}}"
+  )
+
+  cause <- paste0(
+    "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} ",
+    cli::ansi_collapse(faults),
+    "."
+  )
 
   abort(
     c(
@@ -1467,8 +1473,8 @@ check_ipw_joint_dose_coding <- function(
       x = cause,
       reading_bullets,
       coding_bullets,
-      expansion_bullets,
-      dose_bullets
+      dose_bullets,
+      expansion_bullets
     ),
     error_class = "propensity_ipw_msm_error",
     call = call

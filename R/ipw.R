@@ -643,11 +643,12 @@
 #' column it multiplies, claiming nothing about a coding.
 #'
 #' An interaction of the treatment with the dose written where the dose has no
-#' term of its own, as `y ~ a + a:e`, is refused here too. R codes a factor in
-#' such an interaction with one indicator per level rather than with the
-#' contrasts it carries, so the design gains a reference-level column no row
-#' names and each column after it holds the level before it. Write the crossing
-#' as `y ~ a * e`, which reports these same rows.
+#' term of its own, as `y ~ a + a:e`, is refused here too, as is a crossing
+#' carrying no treatment term either, `y ~ a:e`. R codes a factor in such an
+#' interaction with one indicator per level rather than with the contrasts it
+#' carries, so the design gains a reference-level column no row names and each
+#' column after it holds the level before it. Write the crossing as `y ~ a * e`,
+#' which gives the dose a term of its own and reports on this vocabulary.
 #'
 #' The dose column is read the same way, against the dose the treatment models
 #' were fit to. A dose transformed in the outcome model's own formula, as

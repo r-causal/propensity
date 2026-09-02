@@ -161,10 +161,25 @@
     Condition <propensity_ipw_msm_error>
       Error in `ipw()`:
       ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
-      x `a` and `a:e` in `outcome_mod` contribute a column coded some other way.
+      x `a` and `a:e` in `outcome_mod` contribute a column coded some other way and one column per level of "a".
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
       i Refit `outcome_mod` with "a" as an unordered factor under treatment contrasts. A treatment with two levels also has a numeric coding whose bare term contributes that column, 0 for "no" and 1 for "yes".
+      i A factor crossed with the dose is coded with one indicator per level, rather than with the contrasts it carries, wherever the dose has no term of its own. "e" has no term of its own in `outcome_mod`, so the design gains a column for "no" that no reported row names and each column after it holds the level before it.
+      i Cross the two in `outcome_mod`, as `a * e`, which gives "e" a term of its own and reports on this vocabulary. A model written in bare terms with an intercept has no other surface to report, so the formula is what changes here.
+
+# a moved dose and an expansion together render both remedies
+
+    Code
+      expr
+    Condition <propensity_ipw_msm_error>
+      Error in `ipw()`:
+      ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
+      x `a:e` in `outcome_mod` contributes a column built from a dose the treatment models were not fit to and one column per level of "a".
+      i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
+      i The "e" column of `outcome_mod` has to hold the same values the treatment models were fit to. `ipw()` reads the dose from those models, or from `.data` where one is supplied.
+      i A dose rescaled or recentered in the data after those models were fit leaves them and `outcome_mod` describing different variables, and the weights `outcome_mod` carries were built for the dose the treatment models hold.
+      i Working on a rescaled dose is supported. Rescale it before fitting every model, the treatment models, any numerator model, and `outcome_mod`, or write the transformation into the formula of `outcome_mod`, as `I(e / 10)` or `scale(e)`, which reports the coefficient surface.
       i A factor crossed with the dose is coded with one indicator per level, rather than with the contrasts it carries, wherever the dose has no term of its own. "e" has no term of its own in `outcome_mod`, so the design gains a column for "no" that no reported row names and each column after it holds the level before it.
       i Cross the two in `outcome_mod`, as `a * e`, which gives "e" a term of its own and reports on this vocabulary. A model written in bare terms with an intercept has no other surface to report, so the formula is what changes here.
 
