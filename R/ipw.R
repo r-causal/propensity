@@ -631,22 +631,37 @@
 #' The columns are read as well as the formula: a factor treatment under a
 #' coding other than treatment contrasts leaves the terms bare while rescaling
 #' or recentering the column, so its coefficients are no longer the effects
-#' these rows name, and such a fit is refused rather than reported on either
-#' surface. Refit the outcome model with the treatment as an unordered factor
+#' these rows name, and such a fit is refused rather than reported in this
+#' vocabulary. Refit the outcome model with the treatment as an unordered factor
 #' under treatment contrasts. A treatment with two levels also has a numeric
 #' coding whose bare term contributes that column, 0 for the reference level and
 #' 1 for the other; a treatment with more than two levels has none, so there it
-#' is the unordered factor alone.
+#' is the unordered factor alone. The refusal belongs to this surface rather
+#' than to the fit. A model the vocabulary has no reading for reports the
+#' coefficient surface instead, and a model written without an intercept is one
+#' such, so an ordered factor there contributes an `a.L:e` row named after the
+#' column it multiplies, claiming nothing about a coding.
+#'
+#' An interaction of the treatment with the dose written where the dose has no
+#' term of its own, as `y ~ a + a:e`, is refused here too. R codes a factor in
+#' such an interaction with one indicator per level rather than with the
+#' contrasts it carries, so the design gains a reference-level column no row
+#' names and each column after it holds the level before it. Write the crossing
+#' as `y ~ a * e`, which reports these same rows.
 #'
 #' The dose column is read the same way, against the dose the treatment models
 #' were fit to. A dose transformed in the outcome model's own formula, as
 #' `I(e / 10)` or `scale(e)`, leaves that column alone and is no longer a bare
 #' term, so the fit reports the coefficient surface. A dose rescaled or
-#' recentered in the data after the treatment models were fit is refused
-#' instead: the models have to agree on what the variable is, and the weights
-#' the outcome model carries were built for the dose those models hold. Working
-#' on a rescaled dose is supported either by rescaling it before every model is
-#' fit or by writing the transformation into the outcome formula.
+#' recentered in the data after the treatment models were fit is refused on this
+#' surface instead: the models have to agree on what the variable is, and the
+#' weights the outcome model carries were built for the dose those models hold.
+#' Working on a rescaled dose is supported either by rescaling it before every
+#' model is fit or by writing the transformation into the outcome formula.
+#' Neither refusal reaches the coefficient surface, which reports whatever
+#' columns the model holds and names each row after its own column: a bare-term
+#' model on a rescaled dose fit without an intercept, `y ~ a * e - 1`, reports
+#' the coefficients and standard errors that reparameterization leaves.
 #'
 #' ### The coefficient surface
 #'
