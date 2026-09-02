@@ -75,8 +75,11 @@
 #'
 #' For a continuous exposure, `numerator` chooses how that marginal density is
 #' arrived at. `"marginal"`, the default, reads the family `.density` names at
-#' the population mean and standard deviation of `.exposure`. Those two moments
-#' are parameters of the weights, and [ipw()] estimates them alongside the rest
+#' the mean and standard deviation of `.exposure` over the rows the propensity
+#' model kept, which are the rows the weights describe: a model that dropped
+#' rows leaves `.propensity` missing at them, and those rows carry no weight.
+#' Those two moments are parameters of the weights, and [ipw()] estimates them
+#' alongside the rest
 #' of its parameter vector, so the standard errors account for the numerator
 #' having been estimated. `"integrated"` marginalizes the conditional density
 #' numerically instead: it averages \eqn{f_{A|X}(t \mid X_i)} over the units at
@@ -292,7 +295,10 @@
 #' \eqn{\hat{A}_i} is the fitted conditional mean in `.propensity` and
 #' \eqn{\sigma} is the residual spread; the marginal density is evaluated at
 #' \eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} and \eqn{s_A} are
-#' the population mean and standard deviation of `.exposure`. Each density is
+#' the mean and standard deviation of `.exposure` over the rows the propensity
+#' model kept. Both moments are read over the same rows the residual spread is
+#' pooled over, so the two halves of the ratio describe one set of units. Each
+#' density is
 #' then divided by the spread that standardized it, the Jacobian of that change
 #' of variable, which returns both to the exposure's own units so that each
 #' integrates to one:
@@ -526,8 +532,9 @@
 #' @param numerator How the marginal density that stabilizes a continuous
 #'   exposure's weights is obtained, described under **Stabilization** in
 #'   Details. Either `"marginal"`, the default, which reads the family
-#'   `.density` names at the population mean and standard deviation of
-#'   `.exposure`, or `"integrated"`, which averages the conditional density
+#'   `.density` names at the mean and standard deviation of `.exposure` over
+#'   the rows the propensity model kept, or `"integrated"`, which averages the
+#'   conditional density
 #'   over the units on a grid spanning `.exposure` and interpolates the result
 #'   back to each observed exposure.
 #'
@@ -1362,13 +1369,20 @@ ate_continuous <- function(
     sigma_n <- moments$sigma
   }
 
-  # The marginal density f_A(A_i) is read at the exposure's population moments,
-  # which no other numerator needs and a constant exposure has no spread for.
+  # The marginal density f_A(A_i) is read at the exposure's moments over the
+  # rows the propensity model kept, which no other numerator needs and a
+  # constant exposure has no spread for. A model that dropped rows leaves no
+  # fitted mean at them, so those rows carry no weight and belong to no
+  # population the weights describe. Reading the marginal moments over them
+  # while the conditional spread above is pooled over the rows that remain would
+  # leave the two halves of the ratio describing different sets of units.
   mu_a <- NULL
   sigma_a <- NULL
   if (identical(numerator, "marginal")) {
-    mu_a <- mean(.exposure, na.rm = TRUE)
-    sigma_a <- sqrt(mean((.exposure - mu_a)^2, na.rm = TRUE))
+    kept <- !is.na(.exposure) & !is.na(.propensity)
+    exposure_kept <- .exposure[kept]
+    mu_a <- mean(exposure_kept)
+    sigma_a <- sqrt(mean((exposure_kept - mu_a)^2))
   }
 
   # Whether the weights this call is about to build have a finite second moment.

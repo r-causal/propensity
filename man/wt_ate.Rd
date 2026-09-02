@@ -418,8 +418,9 @@ the weights were built from is recorded on the result and read back with
 \item{numerator}{How the marginal density that stabilizes a continuous
 exposure's weights is obtained, described under \strong{Stabilization} in
 Details. Either \code{"marginal"}, the default, which reads the family
-\code{.density} names at the population mean and standard deviation of
-\code{.exposure}, or \code{"integrated"}, which averages the conditional density
+\code{.density} names at the mean and standard deviation of \code{.exposure} over
+the rows the propensity model kept, or \code{"integrated"}, which averages the
+conditional density
 over the units on a grid spanning \code{.exposure} and interpolates the result
 back to each observed exposure.
 
@@ -562,8 +563,11 @@ and \code{stabilize = TRUE} asks for it there.
 
 For a continuous exposure, \code{numerator} chooses how that marginal density is
 arrived at. \code{"marginal"}, the default, reads the family \code{.density} names at
-the population mean and standard deviation of \code{.exposure}. Those two moments
-are parameters of the weights, and \code{\link[=ipw]{ipw()}} estimates them alongside the rest
+the mean and standard deviation of \code{.exposure} over the rows the propensity
+model kept, which are the rows the weights describe: a model that dropped
+rows leaves \code{.propensity} missing at them, and those rows carry no weight.
+Those two moments are parameters of the weights, and \code{\link[=ipw]{ipw()}} estimates them
+alongside the rest
 of its parameter vector, so the standard errors account for the numerator
 having been estimated. \code{"integrated"} marginalizes the conditional density
 numerically instead: it averages \eqn{f_{A|X}(t \mid X_i)} over the units at
@@ -782,7 +786,10 @@ is evaluated at \eqn{z_i = (A_i - \hat{A}_i) / \sigma}, where
 \eqn{\hat{A}_i} is the fitted conditional mean in \code{.propensity} and
 \eqn{\sigma} is the residual spread; the marginal density is evaluated at
 \eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} and \eqn{s_A} are
-the population mean and standard deviation of \code{.exposure}. Each density is
+the mean and standard deviation of \code{.exposure} over the rows the propensity
+model kept. Both moments are read over the same rows the residual spread is
+pooled over, so the two halves of the ratio describe one set of units. Each
+density is
 then divided by the spread that standardized it, the Jacobian of that change
 of variable, which returns both to the exposure's own units so that each
 integrates to one:

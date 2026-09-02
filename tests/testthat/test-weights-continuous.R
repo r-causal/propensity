@@ -1046,8 +1046,8 @@ test_that("a trimmed propensity score leaves the units it set aside missing", {
   present <- setdiff(seq_len(n), missing_at)
   sigma <- sqrt(mean((exposure[present] - mu[present])^2))
   z <- (exposure[present] - mu[present]) / sigma
-  mu_a <- mean(exposure)
-  sd_a <- sqrt(mean((exposure - mu_a)^2))
+  mu_a <- mean(exposure[present])
+  sd_a <- sqrt(mean((exposure[present] - mu_a)^2))
   z_a <- (exposure - mu_a) / sd_a
 
   families <- list(
