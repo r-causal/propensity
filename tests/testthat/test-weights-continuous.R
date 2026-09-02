@@ -3231,3 +3231,28 @@ test_that("a fit with nothing dropped reads its numerator over every row", {
     tolerance = 1e-12
   )
 })
+
+test_that("a gappy fit's censoring weights read the numerator the same rows", {
+  # `wt_cens()` builds its weights with the ATE formula, so the rows the
+  # marginal numerator is read over are the rows `wt_ate()` reads it over. The
+  # delegation is what makes that true, and this is what says so.
+  kept <- continuous_gappy_data$kept
+
+  weights <- wt_cens(
+    continuous_gappy_data$mu,
+    continuous_gappy_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+
+  expect_identical(estimand(weights), "uncensored")
+  expect_equal(
+    which(is.na(as.numeric(weights))),
+    continuous_gappy_data$dropped
+  )
+  expect_equal(
+    as.numeric(weights)[kept],
+    continuous_gappy_oracle(continuous_gappy_data$mu, kept)[kept],
+    tolerance = 1e-12
+  )
+})

@@ -296,9 +296,9 @@
 #' \eqn{\sigma} is the residual spread; the marginal density is evaluated at
 #' \eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} and \eqn{s_A} are
 #' the mean and standard deviation of `.exposure` over the rows the propensity
-#' model kept. Both moments are read over the same rows the residual spread is
-#' pooled over, so the two halves of the ratio describe one set of units. Each
-#' density is
+#' model kept. Both moments are read over those rows whether the spread was
+#' pooled from the model's own residuals or supplied through `.sigma`, so the
+#' two halves of the ratio describe one set of units. Each density is
 #' then divided by the spread that standardized it, the Jacobian of that change
 #' of variable, which returns both to the exposure's own units so that each
 #' integrates to one:
