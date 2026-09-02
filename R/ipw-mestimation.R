@@ -1201,9 +1201,12 @@ check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
 #
 # A column whose type differs between the fitting data and `.data` is rejected
 # before this by check_ipw_data_types(), which names the column and both types
-# and is the more specific diagnosis. What is left for a count to catch is a term
-# recorded under a call rather than a variable, which the type check has no
-# column to compare and which can still rebuild to a different width.
+# and is the more specific diagnosis, and a factor supplied at levels the fit
+# never saw is refused where it is re-leveled. What is left for a count to catch
+# is a matrix-valued column, which the type sweep has no coding to compare and
+# which carries no levels to be re-leveled against, so a frame holding one of
+# another width reaches here as a design wider than the coefficients it
+# multiplies.
 #
 # `arg` is the argument the model arrived in, the propensity score model and a
 # numerator model reaching the same failure and needing the same report of it,

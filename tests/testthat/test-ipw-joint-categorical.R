@@ -1705,24 +1705,10 @@ test_that("a two-level multinomial component agrees with its glm twin", {
 
 # ---- refusals ---------------------------------------------------------------
 
-test_that("a dose is refused beside a categorical first treatment", {
-  # The rows a dose reports are the marginal structural model's own coefficients
-  # written for the two levels of a binary first treatment, so a categorical one
-  # beside it has nowhere to be reported. Admitting a categorical treatment into
-  # the first slot is what makes this pair reachable and the refusal necessary,
-  # and the refusal says which of the two positions the dose may take.
-  cnd <- tryCatch(
-    check_ipw_joint_models_types(c(z = "categorical", d = "continuous")),
-    error = identity
-  )
-  expect_s3_class(cnd, "propensity_ipw_exposure_error")
-  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
-  expect_match(message, "`d`", fixed = TRUE)
-  expect_match(message, "second", fixed = TRUE)
-  expect_match(message, "only beside a binary first one", fixed = TRUE)
-
-  # The other direction, which the dose has always been refused in: the first
-  # factor of the factorization carries no density.
+test_that("a dose is refused in the first slot beside a categorical treatment", {
+  # The position is what the dose is refused in rather than the company it
+  # keeps: the first factor of the factorization carries no density, whichever
+  # discrete treatment the second one would be.
   cnd_first <- tryCatch(
     check_ipw_joint_models_types(c(d = "continuous", z = "categorical")),
     error = identity

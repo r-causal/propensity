@@ -15,10 +15,12 @@
 # read off a declaration, which is what makes the two routes agree about which
 # cells exist and what they are called without either of them owning the answer.
 #
-# The second treatment may instead be a dose. A dose has no cells, so there is
-# no crossing to construct and nothing to set every unit to: the surface is
-# coefficient-shaped rather than cell-shaped, reporting the marginal structural
-# model's own causal coefficients under labels written in the same vocabulary.
+# The second treatment may instead be a dose, beside a first treatment of
+# either discrete type. A dose has no cells, so there is no crossing to
+# construct and nothing to set every unit to: the surface is coefficient-shaped
+# rather than cell-shaped, reporting the marginal structural model's own causal
+# coefficients under labels written in the same vocabulary, one level contrast
+# per non-reference level of the first treatment.
 # Its treatment block is the score its own model solves, read through the same
 # registry the single-dose route reads, carrying the conditional variance of the
 # density its weight divides by.
@@ -53,8 +55,10 @@
 #' component may be stabilized like any other, its numerator estimated in a
 #' block of its own; see **Joint exposures**.
 #'
-#' The second treatment may be a dose, in which case the surface is the marginal
-#' structural model's own coefficients rather than the cells of a crossing. The
+#' The second treatment may be a dose, whatever the first one is, in which case
+#' the surface is the marginal structural model's own coefficients rather than
+#' the cells of a crossing, with one level contrast per non-reference level of
+#' the first treatment and one dose slope at its reference level. The
 #' dose model is read through the same registry the single-treatment route
 #' reads, so an [stats::lm()], a gaussian [stats::glm()] at an identity or a log
 #' link, and a [MASS::rlm()] fit with one of the psi functions MASS supplies are
@@ -680,12 +684,14 @@ ipw_spec_joint_models <- function(
 }
 
 # The pairs of treatment types this route estimates: two discrete treatments,
-# each of them binary or categorical, or a binary treatment and a dose. The
+# each of them binary or categorical, or a discrete treatment and a dose. The
 # position matters for the dose, which is supported as the second treatment, the
 # one whose model conditions on the first: a dose is what the second factor of
 # the factorization may be, and nothing here carries the density of a first
 # factor that is one. A categorical treatment reads no order into the pair, its
-# score being the multinomial one whichever position it sits in.
+# score being the multinomial one whichever position it sits in, and the
+# vocabulary a dose is reported in names one level contrast per non-reference
+# level of the first treatment, so it has rows for however many it has.
 ipw_joint_models_supported <- list(
   first = c("binary", "categorical"),
   second = c("binary", "categorical", "continuous")
@@ -724,19 +730,6 @@ check_ipw_joint_models_types <- function(
     !exposure_type[[2]] %in% ipw_joint_models_supported$second
   )
 
-  # A dose is admitted beside a binary first treatment alone. The surface a dose
-  # reports is the marginal structural model's own coefficients, written in a
-  # vocabulary that names the first treatment's two levels and reads its single
-  # indicator column, so a first treatment with more of them has no rows there.
-  # The dose is what the pair cannot carry, so the dose is what is named.
-  if (
-    !any(unsupported) &&
-      identical(exposure_type[[2]], "continuous") &&
-      !identical(exposure_type[[1]], "binary")
-  ) {
-    unsupported[[2]] <- TRUE
-  }
-
   if (!any(unsupported)) {
     return(invisible(TRUE))
   }
@@ -748,17 +741,17 @@ check_ipw_joint_models_types <- function(
   abort(
     c(
       "{.fun ipw} currently supports a joint intervention on two discrete \\
-      treatments, each of them binary or categorical, or on a binary treatment \\
-      and a dose.",
+      treatments, each of them binary or categorical, or on a discrete \\
+      treatment and a dose.",
       x = "The model named {.arg {bad}} fits a {.val {bad_type}} treatment as \\
       the {position} of the two.",
       i = "The stacked system carries a binomial score for a binary treatment, \\
       a multinomial score for a categorical one, and a linear score with a \\
       conditional variance for a dose. A dose is carried as the second \\
-      treatment, and only beside a binary first one, whose two levels its \\
-      reported rows are written for.",
+      treatment, the one whose model conditions on the first, and nothing here \\
+      carries the density of a first factor that is one.",
       i = "Cross two discrete treatments, weight a dose as the second of a \\
-      binary first, or report the two treatments separately."
+      discrete first, or report the two treatments separately."
     ),
     error_class = "propensity_ipw_exposure_error",
     call = call
@@ -980,16 +973,19 @@ ipw_joint_dose_rows <- function(
 # The vocabulary surface, which a model linear in each treatment reports. Each
 # row is named the way the declared route names its rows: `contrast` names the
 # treatment being varied and how, and `group` says where in the other
-# treatment's range the row is evaluated. The binary treatment's coefficient is
-# its effect at a dose of zero, the dose's is its slope at the binary
-# treatment's reference level, and the interaction row keeps the discrete
-# route's idiom of a group comparing the other treatment's levels, which for a
-# dose is a one-unit step. An additive model evaluates neither row anywhere in
-# particular, so both are reported as overall.
+# treatment's range the row is evaluated. A first treatment's coefficient is the
+# effect of one of its level contrasts at a dose of zero, the dose's is its
+# slope at that treatment's reference level, and the interaction row keeps the
+# discrete route's idiom of a group comparing the other treatment's levels,
+# which for a dose is a one-unit step. An additive model evaluates neither
+# reading anywhere in particular, so all of them are reported as overall.
 #
-# A bare term of a binary treatment or of a dose contributes exactly one column,
-# so the columns and the terms they belong to are in step here and each row is
-# one coefficient.
+# A bare term of the first treatment contributes one column per non-reference
+# level, so a term is not what a row reports and the level a row names is read
+# off the column's position within its own term. A binary treatment is the one
+# non-reference level of that rule rather than a case of its own, which is what
+# makes the three rows a binary crossing reports the degenerate shape of this
+# surface rather than a separate one.
 ipw_joint_dose_vocabulary_rows <- function(
   out_X,
   columns,
@@ -1001,7 +997,12 @@ ipw_joint_dose_vocabulary_rows <- function(
   link,
   call = rlang::caller_env()
 ) {
-  level_labels <- as.character(ipw_joint_models_level_values(treatments[[1]]))
+  level_values <- ipw_joint_models_level_values(treatments[[1]])
+  level_labels <- as.character(level_values)
+  column_levels <- ipw_joint_dose_column_levels(
+    column_terms,
+    length(level_labels)
+  )
 
   # A bare term says which variables a column is built from and nothing about
   # how it is coded, so the columns themselves are read here. Each reported row
@@ -1010,7 +1011,13 @@ ipw_joint_dose_vocabulary_rows <- function(
   check_ipw_joint_dose_coding(
     out_X,
     columns,
-    ipw_joint_dose_columns(reads, column_terms, treatments),
+    ipw_joint_dose_columns(
+      reads,
+      column_terms,
+      column_levels,
+      treatments,
+      level_values
+    ),
     term_labels[column_terms],
     names,
     level_labels,
@@ -1018,12 +1025,18 @@ ipw_joint_dose_vocabulary_rows <- function(
   )
 
   interacted <- any(reads[[1]] & reads[[2]])
-  level_contrast <- ipw_joint_contrast_label(names[[1]], level_labels, 2L)
   level_effect <- ipw_effect_label(link, "diff", call = call)
   dose_contrast <- paste0(names[[2]], ": per unit")
   dose_effect <- ipw_effect_label(link, "slope", call = call)
 
-  named <- lapply(column_terms, function(term) {
+  named <- lapply(seq_along(column_terms), function(i) {
+    term <- column_terms[[i]]
+    level_contrast <- ipw_joint_contrast_label(
+      names[[1]],
+      level_labels,
+      column_levels[[i]]
+    )
+
     if (reads[[1]][[term]] && reads[[2]][[term]]) {
       return(c(
         level_effect,
@@ -1138,26 +1151,75 @@ check_ipw_joint_dose_terms <- function(
   )
 }
 
-# The column each reported term has to contribute for the row it lands in to be
-# true: the indicator of the first treatment's non-reference level, the dose
-# itself, or their product. The indicator is built with the recode the weight
-# machinery uses, so what is compared is the coding the estimator assumes
-# against the coding the outcome model was fit under.
-ipw_joint_dose_columns <- function(reads, column_terms, treatments) {
-  indicator <- ipw_recode_binary_exposure(treatments[[1]])
+# Which of the first treatment's levels each reported column is a claim about.
+# Under treatment contrasts a bare term of that treatment contributes one column
+# per non-reference level, in the order the levels are in, so a column's
+# position within its own term counts off the levels from the reference: the
+# term's first column is the second level. A term reading the dose alone
+# contributes one column and lands on the second level too, which no row of it
+# ever reads.
+#
+# A term contributing more columns than there are non-reference levels is coded
+# some other way, a model with no intercept being the reachable case, and the
+# index is held at the last level so that the column comparison is what reports
+# it rather than an out-of-range subscript.
+ipw_joint_dose_column_levels <- function(column_terms, n_levels) {
+  within <- stats::ave(
+    seq_along(column_terms),
+    column_terms,
+    FUN = seq_along
+  )
+
+  pmin(as.integer(within) + 1L, n_levels)
+}
+
+# The column each reported column has to be for the row it lands in to be true:
+# the indicator of the first treatment level that row names, the dose itself, or
+# their product. The indicator is the one the multinomial score and the
+# categorical weight are both written over, which at two levels is the 0/1
+# recode the binary weight machinery makes, so what is compared is the coding
+# the estimator assumes against the coding the outcome model was fit under.
+ipw_joint_dose_columns <- function(
+  reads,
+  column_terms,
+  column_levels,
+  treatments,
+  level_values
+) {
   dose <- as.double(treatments[[2]])
 
-  lapply(column_terms, function(term) {
-    if (reads[[1]][[term]] && reads[[2]][[term]]) {
+  lapply(seq_along(column_terms), function(i) {
+    term <- column_terms[[i]]
+
+    if (!reads[[1]][[term]]) {
+      return(dose)
+    }
+
+    indicator <- ipw_joint_dose_indicator(
+      treatments[[1]],
+      level_values,
+      column_levels[[i]]
+    )
+
+    if (reads[[2]][[term]]) {
       return(indicator * dose)
     }
 
-    if (reads[[1]][[term]]) {
-      return(as.double(indicator))
-    }
-
-    dose
+    indicator
   })
+}
+
+# The 0/1 indicator of one of the first treatment's levels. A factor reads its
+# indicator off the reference-first matrix the categorical block is written
+# over, and a treatment of any other type is compared against the level value
+# itself, which for the two values a binary treatment takes is the recode
+# `ipw_recode_binary_exposure()` makes of it.
+ipw_joint_dose_indicator <- function(treatment, level_values, level) {
+  if (is.factor(treatment)) {
+    return(as.double(ipw_categorical_indicator(treatment)[, level]))
+  }
+
+  as.double(treatment == level_values[[level]])
 }
 
 # Refuse an outcome model whose treatment columns are coded some other way.
@@ -1174,11 +1236,12 @@ ipw_joint_dose_columns <- function(reads, column_terms, treatments) {
 #
 # Reading the columns rather than the contrast attributes is what makes this
 # hold for codings not considered here, including one a user writes by hand and
-# attaches to the factor. The comparison is exact: an indicator is an exact 0/1
-# double and an interaction column is one multiplication of the same two
-# vectors, so a column that is the one the row describes agrees to the last bit
-# and anything else is a different quantity rather than a rounding of the same
-# one.
+# attaches to the factor, and at more than two levels, where a polynomial coding
+# rescales every column the term contributes rather than the one. The comparison
+# is exact: an indicator is an exact 0/1 double and an interaction column is one
+# multiplication of the same two vectors, so a column that is the one the row
+# describes agrees to the last bit and anything else is a different quantity
+# rather than a rounding of the same one.
 check_ipw_joint_dose_coding <- function(
   out_X,
   columns,
@@ -1205,6 +1268,48 @@ check_ipw_joint_dose_coding <- function(
   second <- names[[2]]
   reference <- level_labels[[1]]
   focal <- level_labels[[2]]
+  non_reference <- level_labels[-1]
+
+  # Two levels leave one indicator and one numeric coding of it, and more than
+  # two leave one indicator per non-reference level and no numeric coding at
+  # all, since no single column carries what the several of them say. The
+  # difference is in what the columns are and in what a caller can do about
+  # them, so it is in the wording rather than in the comparison above.
+  binary <- length(level_labels) == 2L
+
+  coding <- if (binary) {
+    "The reported rows name the coefficients of a model in which \\
+    {.val {first}} enters as 0 for {.val {reference}} and 1 for \\
+    {.val {focal}}, {.val {second}} enters as itself, and their interaction \\
+    is the product of the two."
+  } else {
+    "The reported rows name the coefficients of a model in which \\
+    {.val {first}} enters as one 0/1 indicator per non-reference level, \\
+    {.val {non_reference}} in that order and each against \\
+    {.val {reference}}, {.val {second}} enters as itself, and each \\
+    interaction column is the product of one indicator with it."
+  }
+
+  intercept <- if (binary) {
+    "A model with no intercept, written {.code - 1} or {.code + 0}, expands a \\
+    factor treatment to an indicator for every level, so its first column is \\
+    the reference-level indicator rather than the 0/1 indicator the rows \\
+    describe. Keep the intercept, or code {.val {first}} as a 0/1 numeric."
+  } else {
+    "A model with no intercept, written {.code - 1} or {.code + 0}, expands a \\
+    factor treatment to an indicator for every level rather than for the \\
+    non-reference levels alone, so its columns are shifted by one against the \\
+    indicators the rows describe. Keep the intercept."
+  }
+
+  remedy <- if (binary) {
+    "Refit {.arg outcome_mod} with {.val {first}} as a 0/1 numeric, or as an \\
+    unordered factor under treatment contrasts."
+  } else {
+    "Refit {.arg outcome_mod} with {.val {first}} as an unordered factor \\
+    under treatment contrasts. A treatment with more than two levels has no \\
+    numeric coding whose bare term contributes those columns."
+  }
 
   abort(
     c(
@@ -1212,22 +1317,14 @@ check_ipw_joint_dose_coding <- function(
       structural model whose treatment columns are the treatments themselves.",
       x = "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} \\
       a column coded some other way.",
-      i = "The reported rows name the coefficients of a model in which \\
-      {.val {first}} enters as 0 for {.val {reference}} and 1 for \\
-      {.val {focal}}, {.val {second}} enters as itself, and their interaction \\
-      is the product of the two.",
+      i = coding,
       i = "A contrast coding other than treatment contrasts rescales or \\
       recenters those columns without changing what the formula says. An \\
       ordered factor carries polynomial contrasts, and \\
       {.code options(contrasts = )} sets a coding for every factor in the \\
       session.",
-      i = "A model with no intercept, written {.code - 1} or {.code + 0}, \\
-      expands a factor treatment to an indicator for every level, so its first \\
-      column is the reference-level indicator rather than the 0/1 indicator \\
-      the rows describe. Keep the intercept, or code {.val {first}} as a 0/1 \\
-      numeric.",
-      i = "Refit {.arg outcome_mod} with {.val {first}} as a 0/1 numeric, or as \\
-      an unordered factor under treatment contrasts."
+      i = intercept,
+      i = remedy
     ),
     error_class = "propensity_ipw_msm_error",
     call = call

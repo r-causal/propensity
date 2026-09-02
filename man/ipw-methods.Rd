@@ -299,8 +299,10 @@ solves and the surface reports the whole crossing its levels make. Such a
 component may be stabilized like any other, its numerator estimated in a
 block of its own; see \strong{Joint exposures}.
 
-The second treatment may be a dose, in which case the surface is the marginal
-structural model's own coefficients rather than the cells of a crossing. The
+The second treatment may be a dose, whatever the first one is, in which case
+the surface is the marginal structural model's own coefficients rather than
+the cells of a crossing, with one level contrast per non-reference level of
+the first treatment and one dose slope at its reference level. The
 dose model is read through the same registry the single-treatment route
 reads, so an \code{\link[stats:lm]{stats::lm()}}, a gaussian \code{\link[stats:glm]{stats::glm()}} at an identity or a log
 link, and a \code{\link[MASS:rlm]{MASS::rlm()}} fit with one of the psi functions MASS supplies are
@@ -777,8 +779,8 @@ of the second. A categorical component needs no stabilization, and a caller
 who asks for it anyway is answered: the marginal proportions of its levels,
 a \code{stabilization_score}, and a fitted \code{\link[nnet:multinom]{nnet::multinom()}} numerator each get
 the block described under \strong{Stabilizing numerators, one per component}. A
-categorical treatment cannot be paired with a dose, whose surface is written
-for a first treatment with two levels.
+categorical treatment may also be paired with a dose, whose vocabulary names
+one level contrast per non-reference level; see the dose section below.
 
 A \code{\link[nnet:multinom]{nnet::multinom()}} fit to two levels is a logistic regression solved by a
 different optimizer, and it is stacked as one. \code{\link[=joint_wt_models]{joint_wt_models()}} records
@@ -814,6 +816,13 @@ there is no crossing to report counterfactual risks over: the surface is the
 marginal structural model's own coefficients, which for an identity-link
 model are exactly the weighted fit's coefficients.
 
+The first treatment may be binary or categorical. What the position settles
+is the dose: it is the second factor of the factorization, the treatment
+whose model conditions on the other, and nothing here carries the density of
+a first factor that is one, so a dose in the first slot and a pair of doses
+are both refused by type with an error of class
+\code{propensity_ipw_exposure_error}.
+
 Which of two surfaces a fit reports is decided by the marginal structural
 model alone. A model written in bare treatment terms reports the vocabulary
 surface below, whose rows name the treatment each one varies and where it is
@@ -842,14 +851,36 @@ forces one effect for the binary treatment at every dose and one slope at
 either of its levels, so it reports two rows under the group \code{"overall"} and
 no interaction.
 
+A categorical first treatment reports those same three readings with the
+level contrasts run out over the levels it has: one contrast row per
+non-reference level at a dose of zero, one slope row at the reference level,
+and one interaction row per non-reference level. For \code{y ~ z * e} with \code{z}
+taking \code{"lo"}, \code{"mid"}, and \code{"hi"}, that is five rows, in the outcome
+design's column order:
+\itemize{
+\item \code{"z: mid vs lo"} at \code{"e = 0"} and \code{"z: hi vs lo"} at \code{"e = 0"};
+\item \code{"e: per unit"} at \code{"z = lo"};
+\item \code{"z: mid vs lo"} and \code{"z: hi vs lo"}, each at \code{"e + 1 vs e"}.
+}
+
+A binary treatment is the one non-reference level of that rule rather than a
+case of its own, so the three rows above are this surface at two levels. An
+additive model reports the level contrasts and the slope under the group
+\code{"overall"} and no interaction, K rows for K levels. Every row is one
+coefficient of the weighted fit, so the surface grows by a row per level
+rather than by a table of contrasts, and per-arm dose slopes, which are not
+coefficients of this model, are built downstream from \code{coef()} and \code{vcov()}.
+
 Those three readings hold of a model that is linear in each treatment and of
 no other, which is why such a model reports this surface and no other model
 does. The columns are read as well as the formula: a factor treatment under a
 coding other than treatment contrasts leaves the terms bare while rescaling
 or recentering the column, so its coefficients are no longer the effects
 these rows name, and such a fit is refused rather than reported on either
-surface. Refit the outcome model with the treatment as a 0/1 numeric or as an
-unordered factor under treatment contrasts.
+surface. Refit the outcome model with a binary treatment as a 0/1 numeric or
+as an unordered factor under treatment contrasts. A treatment with more than
+two levels has no numeric coding whose bare term contributes the indicators
+the rows name, so there it is the unordered factor alone.
 }
 
 \subsection{The coefficient surface}{
@@ -861,7 +892,18 @@ coefficient. The \code{contrast} column carries the coefficient name exactly as
 the fit writes it, and there is no \code{group} column at all: the surface makes
 no claim about where a row is evaluated, because for a curve there is no one
 place. Build an interpretable dose response downstream from \code{coef()} and
-\code{vcov()}, whose covariance between the rows is what that takes.
+\code{vcov()}, whose covariance between the rows is what that takes. Marginalizing
+the curve over the observed doses is a separate estimand that this package
+does not compute, here as on the single-treatment route: use the
+\pkg{marginaleffects} package on the result, \code{avg_slopes()} for slopes,
+\code{avg_comparisons()} for contrasts, and \code{avg_predictions()} for causal
+dose-response functions.
+
+Unlike the single-treatment route, this one announces nothing and refuses
+nothing for such a fit. There the surface a basis exposure leaves is the only
+reading the result has, so the reading is declared; here both readings are
+computed whatever the marginal structural model is, and \code{effects} is answered
+either way.
 
 The \code{effect} label follows the outcome link, \code{coef} at an identity link and
 the same \code{log(or)} and \code{log(rr)} as everywhere else. \code{coef} is a word of its

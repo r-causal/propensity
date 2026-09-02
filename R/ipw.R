@@ -523,8 +523,8 @@
 #' who asks for it anyway is answered: the marginal proportions of its levels,
 #' a `stabilization_score`, and a fitted [nnet::multinom()] numerator each get
 #' the block described under **Stabilizing numerators, one per component**. A
-#' categorical treatment cannot be paired with a dose, whose surface is written
-#' for a first treatment with two levels.
+#' categorical treatment may also be paired with a dose, whose vocabulary names
+#' one level contrast per non-reference level; see the dose section below.
 #'
 #' A [nnet::multinom()] fit to two levels is a logistic regression solved by a
 #' different optimizer, and it is stacked as one. [joint_wt_models()] records
@@ -559,6 +559,13 @@
 #' marginal structural model's own coefficients, which for an identity-link
 #' model are exactly the weighted fit's coefficients.
 #'
+#' The first treatment may be binary or categorical. What the position settles
+#' is the dose: it is the second factor of the factorization, the treatment
+#' whose model conditions on the other, and nothing here carries the density of
+#' a first factor that is one, so a dose in the first slot and a pair of doses
+#' are both refused by type with an error of class
+#' `propensity_ipw_exposure_error`.
+#'
 #' Which of two surfaces a fit reports is decided by the marginal structural
 #' model alone. A model written in bare treatment terms reports the vocabulary
 #' surface below, whose rows name the treatment each one varies and where it is
@@ -587,14 +594,35 @@
 #' either of its levels, so it reports two rows under the group `"overall"` and
 #' no interaction.
 #'
+#' A categorical first treatment reports those same three readings with the
+#' level contrasts run out over the levels it has: one contrast row per
+#' non-reference level at a dose of zero, one slope row at the reference level,
+#' and one interaction row per non-reference level. For `y ~ z * e` with `z`
+#' taking `"lo"`, `"mid"`, and `"hi"`, that is five rows, in the outcome
+#' design's column order:
+#'
+#' - `"z: mid vs lo"` at `"e = 0"` and `"z: hi vs lo"` at `"e = 0"`;
+#' - `"e: per unit"` at `"z = lo"`;
+#' - `"z: mid vs lo"` and `"z: hi vs lo"`, each at `"e + 1 vs e"`.
+#'
+#' A binary treatment is the one non-reference level of that rule rather than a
+#' case of its own, so the three rows above are this surface at two levels. An
+#' additive model reports the level contrasts and the slope under the group
+#' `"overall"` and no interaction, K rows for K levels. Every row is one
+#' coefficient of the weighted fit, so the surface grows by a row per level
+#' rather than by a table of contrasts, and per-arm dose slopes, which are not
+#' coefficients of this model, are built downstream from `coef()` and `vcov()`.
+#'
 #' Those three readings hold of a model that is linear in each treatment and of
 #' no other, which is why such a model reports this surface and no other model
 #' does. The columns are read as well as the formula: a factor treatment under a
 #' coding other than treatment contrasts leaves the terms bare while rescaling
 #' or recentering the column, so its coefficients are no longer the effects
 #' these rows name, and such a fit is refused rather than reported on either
-#' surface. Refit the outcome model with the treatment as a 0/1 numeric or as an
-#' unordered factor under treatment contrasts.
+#' surface. Refit the outcome model with a binary treatment as a 0/1 numeric or
+#' as an unordered factor under treatment contrasts. A treatment with more than
+#' two levels has no numeric coding whose bare term contributes the indicators
+#' the rows name, so there it is the unordered factor alone.
 #'
 #' ### The coefficient surface
 #'
@@ -605,7 +633,18 @@
 #' the fit writes it, and there is no `group` column at all: the surface makes
 #' no claim about where a row is evaluated, because for a curve there is no one
 #' place. Build an interpretable dose response downstream from `coef()` and
-#' `vcov()`, whose covariance between the rows is what that takes.
+#' `vcov()`, whose covariance between the rows is what that takes. Marginalizing
+#' the curve over the observed doses is a separate estimand that this package
+#' does not compute, here as on the single-treatment route: use the
+#' \pkg{marginaleffects} package on the result, `avg_slopes()` for slopes,
+#' `avg_comparisons()` for contrasts, and `avg_predictions()` for causal
+#' dose-response functions.
+#'
+#' Unlike the single-treatment route, this one announces nothing and refuses
+#' nothing for such a fit. There the surface a basis exposure leaves is the only
+#' reading the result has, so the reading is declared; here both readings are
+#' computed whatever the marginal structural model is, and `effects` is answered
+#' either way.
 #'
 #' The `effect` label follows the outcome link, `coef` at an identity link and
 #' the same `log(or)` and `log(rr)` as everywhere else. `coef` is a word of its
