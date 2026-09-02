@@ -73,17 +73,21 @@ numerator was not estimated by one.</p>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>A model supplied to <code><a href="wt_ate.html">wt_ate()</a></code>'s <code>stabilize</code> argument estimates the
-numerator of the weights: the conditional density of a dose, or the
-conditional probability of a binary exposure at the level each unit took.
+numerator of the weights, and what it estimates follows the exposure. A
+<code><a href="https://rdrr.io/r/stats/family.html" class="external-link">binomial()</a></code> fit of a binary exposure reports the probability of the level
+each unit took; an <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> fit of a categorical exposure reports
+one probability per level, and the numerator is the column named for the
+level each unit took; a model of a dose reports the conditional mean the
+density family is read at, and the numerator is that density.
 The model itself is recorded rather than the numerator it evaluates to,
 because <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> rebuilds that numerator at every value of its parameter
 vector, which takes the model's design and its coefficients.</p>
 <p>Where the record is kept differs by exposure type, and this accessor is the
 one place to read it either way. Weights for a continuous exposure are a
 ratio of densities and keep the model inside the density record
-<code><a href="exposure_type.html">density_meta()</a></code> returns; weights for a binary exposure are a ratio of
-probabilities, leave no density record, and keep the model on its own. Both
-come back here.</p>
+<code><a href="exposure_type.html">density_meta()</a></code> returns; weights for a binary or categorical exposure are a
+ratio of probabilities, leave no density record, and keep the model on its
+own. Both come back here.</p>
 <p>The record describes the numerator rather than the units, so it holds no
 length of its own and survives subsetting, arithmetic, and anything else that
 changes the number of weights. Two sets of weights record the same numerator

@@ -14,8 +14,15 @@ system, and the cell means and every contrast built from them are parameters
 of one.
 The only supported estimand is &quot;ate&quot;, which is what the product weights
 wt_joint() builds target.
-The second treatment may be a dose, in which case the surface is the marginal
-structural model's own coefficients rather than the cells of a crossing. The
+Either treatment may be categorical rather than binary, fit with
+nnet::multinom(), in which case its block is the multinomial score that fit
+solves and the surface reports the whole crossing its levels make. Such a
+component may be stabilized like any other, its numerator estimated in a
+block of its own; see Joint exposures.
+The second treatment may be a dose, whatever the first one is, in which case
+the surface is the marginal structural model's own coefficients rather than
+the cells of a crossing, with one level contrast per non-reference level of
+the first treatment and one dose slope at its reference level. The
 dose model is read through the same registry the single-treatment route
 reads, so an stats::lm(), a gaussian stats::glm() at an identity or a log
 link, and a MASS::rlm() fit with one of the psi functions MASS supplies are
@@ -144,8 +151,15 @@ system, and the cell means and every contrast built from them are parameters
 of one.
 The only supported estimand is &quot;ate&quot;, which is what the product weights
 wt_joint() builds target.
-The second treatment may be a dose, in which case the surface is the marginal
-structural model's own coefficients rather than the cells of a crossing. The
+Either treatment may be categorical rather than binary, fit with
+nnet::multinom(), in which case its block is the multinomial score that fit
+solves and the surface reports the whole crossing its levels make. Such a
+component may be stabilized like any other, its numerator estimated in a
+block of its own; see Joint exposures.
+The second treatment may be a dose, whatever the first one is, in which case
+the surface is the marginal structural model's own coefficients rather than
+the cells of a crossing, with one level contrast per non-reference level of
+the first treatment and one dose slope at its reference level. The
 dose model is read through the same registry the single-treatment route
 reads, so an stats::lm(), a gaussian stats::glm() at an identity or a log
 link, and a MASS::rlm() fit with one of the psi functions MASS supplies are
@@ -313,8 +327,15 @@ system, and the cell means and every contrast built from them are parameters
 of one.</p>
 <p>The only supported estimand is <code>"ate"</code>, which is what the product weights
 <code><a href="wt_joint.html">wt_joint()</a></code> builds target.</p>
-<p>The second treatment may be a dose, in which case the surface is the marginal
-structural model's own coefficients rather than the cells of a crossing. The
+<p>Either treatment may be categorical rather than binary, fit with
+<code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code>, in which case its block is the multinomial score that fit
+solves and the surface reports the whole crossing its levels make. Such a
+component may be stabilized like any other, its numerator estimated in a
+block of its own; see <strong>Joint exposures</strong>.</p>
+<p>The second treatment may be a dose, whatever the first one is, in which case
+the surface is the marginal structural model's own coefficients rather than
+the cells of a crossing, with one level contrast per non-reference level of
+the first treatment and one dose slope at its reference level. The
 dose model is read through the same registry the single-treatment route
 reads, so an <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">stats::lm()</a></code>, a gaussian <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> at an identity or a log
 link, and a <code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code> fit with one of the psi functions MASS supplies are
@@ -919,8 +940,10 @@ tightens them.</p>
 about the model rather than a free choice. A numerator conditioning on a
 variable the outcome model does not read changes the estimand rather than the
 precision, because the pseudo-population it builds is one in which that
-variable still predicts the exposure. Condition the numerator on the modifier
-and on nothing the model does not hold. The same rule governs an
+variable still predicts the exposure, and confounding by it remains (Robins
+et al. 2000; Cole and Hernán 2008; Hernán and Robins 2020, Chapter 12).
+Condition the numerator on the modifier and on nothing the model does not
+hold. The same rule governs an
 exposure-by-modifier interaction reported without <code>.by</code>, since what matters
 is what the reported model reads and not which argument asked for the rows.</p>
 <p>Build the numerator with <code><a href="wt_ate.html">wt_ate()</a></code>'s <code>stabilization_score</code>, evaluated at the
@@ -929,12 +952,13 @@ recipe. The sandwich treats a supplied score as a known constant, so the
 standard errors do not account for the numerator model having been fitted.
 The default stabilizer is estimated in the stacked system instead, which is
 one parameter wider as a result. There is a third way: pass the fitted
-numerator model to <code>stabilize</code> itself, and its own equations join the stack,
-which is what a supplied score has none of. That accounting has something to
-say only where the reported model is not saturated in the variables the
-numerator reads; a binary exposure's numerator on a modifier the reported
-model interacts with fully divides out of every cell, so the estimates and
-the standard errors are the ones the unstabilized weights give.</p>
+numerator model to <code>stabilize</code> itself, a <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> of a binary exposure
+or an <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> of a categorical one, and its own equations join the
+stack, which is what a supplied score has none of. That accounting has
+something to say only where the reported model is not saturated in the
+variables the numerator reads; a numerator on a modifier the reported model
+interacts with fully divides out of every cell, so the estimates and the
+standard errors are the ones the unstabilized weights give.</p>
 <p>A stabilized fit reporting effects within the strata of a modifier, and
 carrying the default numerator, warns with class
 <code>propensity_ipw_by_stabilizer_warning</code> and returns: the default numerator
@@ -1012,6 +1036,27 @@ same cell means, simple effects, and interaction, under the same
 estimand through different models of the same propensity score, so they agree
 as estimators rather than to the last bit, and they coincide when the two
 parameterizations are saturated in the same covariates.</p>
+<p>Either treatment may have more than two levels, fit with <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code>
+and weighted with categorical <code><a href="wt_ate.html">wt_ate()</a></code> weights. Such a component is stacked
+under the multinomial score its own fit solves, which reads no order into the
+pair, so a categorical treatment sits in either position. The surface grows
+with the crossing rather than changing shape: a 2-by-3 crossing reports
+twenty-four rows for a binary outcome and fifteen for a continuous one, being
+the six cell means, each treatment's simple effects within each level of the
+other, and the first treatment's interaction against each non-reference level
+of the second. A categorical component needs no stabilization, and a caller
+who asks for it anyway is answered: the marginal proportions of its levels,
+a <code>stabilization_score</code>, and a fitted <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> numerator each get
+the block described under <strong>Stabilizing numerators, one per component</strong>. A
+categorical treatment may also be paired with a dose, whose vocabulary names
+one level contrast per non-reference level; see the dose section below.</p>
+<p>A <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> fit to two levels is a logistic regression solved by a
+different optimizer, and it is stacked as one. <code><a href="joint_wt_models.html">joint_wt_models()</a></code> records
+such a component as <code>"categorical"</code>, after the model's class, but the block
+written for it is the binomial score, the weight factor is the binary one
+<code><a href="wt_ate.html">wt_ate()</a></code> already builds from such a fit, and the pair reports the same
+fourteen-row two-by-two surface a pair of binomial <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> fits
+reports.</p>
 <p>Prefer the two-model route when the two treatments call for different
 adjustment sets, or when the dependence of the second treatment on the first
 is what you want to model directly, since each treatment then gets its own
@@ -1038,11 +1083,18 @@ conditional density from, and weighted with a stabilized density ratio, which
 there is no crossing to report counterfactual risks over: the surface is the
 marginal structural model's own coefficients, which for an identity-link
 model are exactly the weighted fit's coefficients.</p>
+<p>The first treatment may be binary or categorical. What the position settles
+is the dose: it is the second factor of the factorization, the treatment
+whose model conditions on the other, and nothing here carries the density of
+a first factor that is one, so a dose in the first slot and a pair of doses
+are both refused by type with an error of class
+<code>propensity_ipw_exposure_error</code>.</p>
 <p>Which of two surfaces a fit reports is decided by the marginal structural
-model alone. A model written in bare treatment terms reports the vocabulary
-surface below, whose rows name the treatment each one varies and where it is
-evaluated. Every other treatment-reading model reports the coefficient
-surface, whose rows are named after the coefficients they report.</p><div class="section">
+model alone. A model written in bare treatment terms and fit with an
+intercept reports the vocabulary surface below, whose rows name the treatment
+each one varies and where it is evaluated. Every other treatment-reading
+model reports the coefficient surface, whose rows are named after the
+coefficients they report.</p><div class="section">
 <h4 id="the-vocabulary-surface">The vocabulary surface<a class="anchor" aria-label="anchor" href="#the-vocabulary-surface"></a></h4>
 
 
@@ -1062,14 +1114,67 @@ logit link and <code>log(rr)</code> under a log link. An additive model, <code>y
 forces one effect for the binary treatment at every dose and one slope at
 either of its levels, so it reports two rows under the group <code>"overall"</code> and
 no interaction.</p>
-<p>Those three readings hold of a model that is linear in each treatment and of
-no other, which is why such a model reports this surface and no other model
-does. The columns are read as well as the formula: a factor treatment under a
+<p>A categorical first treatment reports those same three readings with the
+level contrasts run out over the levels it has: one contrast row per
+non-reference level at a dose of zero, one slope row at the reference level,
+and one interaction row per non-reference level. For <code>y ~ z * e</code> with <code>z</code>
+taking <code>"lo"</code>, <code>"mid"</code>, and <code>"hi"</code>, that is five rows, in the outcome
+design's column order:</p><ul><li><p><code>"z: mid vs lo"</code> at <code>"e = 0"</code> and <code>"z: hi vs lo"</code> at <code>"e = 0"</code>;</p></li>
+<li><p><code>"e: per unit"</code> at <code>"z = lo"</code>;</p></li>
+<li><p><code>"z: mid vs lo"</code> and <code>"z: hi vs lo"</code>, each at <code>"e + 1 vs e"</code>.</p></li>
+</ul><p>A binary treatment is the one non-reference level of that rule rather than a
+case of its own, so the three rows above are this surface at two levels. An
+additive model reports the level contrasts and the slope under the group
+<code>"overall"</code> and no interaction, K rows for K levels. Every row is one
+coefficient of the weighted fit, so the surface grows by a row per level
+rather than by a table of contrasts, and per-arm dose slopes, which are not
+coefficients of this model, are built downstream from <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code> and <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">vcov()</a></code>.
+No guard here reads how thin an arm is: a level the dose model rarely sees
+has its conditional density read far from any data, and the product weight
+carries that as a heavy tail. Check the weights' effective sample size and
+their spread within each level, as for any joint weight, before reading the
+rows.</p>
+<p>Those three readings hold of a model that is linear in each treatment and
+carries an intercept, and of no other, which is why such a model reports this
+surface and no other model does. A model fit without one, written <code>- 1</code> or
+<code>+ 0</code>, reports the coefficient surface: dropping the intercept expands a
+factor treatment to an indicator for every level rather than for the
+non-reference levels alone, and where the columns survive it, as a 0/1
+numeric treatment's do, the forced zero moves what the coefficients mean
+instead, so no row of this vocabulary would be true of the fit either way.</p>
+<p>The columns are read as well as the formula: a factor treatment under a
 coding other than treatment contrasts leaves the terms bare while rescaling
 or recentering the column, so its coefficients are no longer the effects
-these rows name, and such a fit is refused rather than reported on either
-surface. Refit the outcome model with the treatment as a 0/1 numeric or as an
-unordered factor under treatment contrasts.</p>
+these rows name, and such a fit is refused rather than reported in this
+vocabulary. Refit the outcome model with the treatment as an unordered factor
+under treatment contrasts. A treatment with two levels also has a numeric
+coding whose bare term contributes that column, 0 for the reference level and
+1 for the other; a treatment with more than two levels has none, so there it
+is the unordered factor alone. The refusal belongs to this surface rather
+than to the fit. A model the vocabulary has no reading for reports the
+coefficient surface instead, and a model written without an intercept is one
+such, so an ordered factor there contributes an <code>a.L:e</code> row named after the
+column it multiplies, claiming nothing about a coding.</p>
+<p>An interaction of the treatment with the dose written where the dose has no
+term of its own, as <code>y ~ a + a:e</code>, is refused here too, as is a crossing
+carrying no treatment term either, <code>y ~ a:e</code>. R codes a factor in such an
+interaction with one indicator per level rather than with the contrasts it
+carries, so the design gains a reference-level column no row names and each
+column after it holds the level before it. Write the crossing as <code>y ~ a * e</code>,
+which gives the dose a term of its own and reports on this vocabulary.</p>
+<p>The dose column is read the same way, against the dose the treatment models
+were fit to. A dose transformed in the outcome model's own formula, as
+<code>I(e / 10)</code> or <code>scale(e)</code>, leaves that column alone and is no longer a bare
+term, so the fit reports the coefficient surface. A dose rescaled or
+recentered in the data after the treatment models were fit is refused on this
+surface instead: the models have to agree on what the variable is, and the
+weights the outcome model carries were built for the dose those models hold.
+Working on a rescaled dose is supported either by rescaling it before every
+model is fit or by writing the transformation into the outcome formula.
+Neither refusal reaches the coefficient surface, which reports whatever
+columns the model holds and names each row after its own column: a bare-term
+model on a rescaled dose fit without an intercept, <code>y ~ a * e - 1</code>, reports
+the coefficients and standard errors that reparameterization leaves.</p>
 </div>
 
 <div class="section">
@@ -1083,7 +1188,17 @@ coefficient. The <code>contrast</code> column carries the coefficient name exact
 the fit writes it, and there is no <code>group</code> column at all: the surface makes
 no claim about where a row is evaluated, because for a curve there is no one
 place. Build an interpretable dose response downstream from <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code> and
-<code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">vcov()</a></code>, whose covariance between the rows is what that takes.</p>
+<code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">vcov()</a></code>, whose covariance between the rows is what that takes. Marginalizing
+the curve over the observed doses is a separate estimand that this package
+does not compute, here as on the single-treatment route: use the
+<span class="pkg">marginaleffects</span> package on the result, <code>avg_slopes()</code> for slopes,
+<code>avg_comparisons()</code> for contrasts, and <code>avg_predictions()</code> for causal
+dose-response functions.</p>
+<p>Unlike the single-treatment route, this one announces nothing and refuses
+nothing for such a fit. There the surface a basis exposure leaves is the only
+reading the result has, so the reading is declared; here both readings are
+computed whatever the marginal structural model is, and <code>effects</code> is answered
+either way.</p>
 <p>The <code>effect</code> label follows the outcome link, <code>coef</code> at an identity link and
 the same <code>log(or)</code> and <code>log(rr)</code> as everywhere else. <code>coef</code> is a word of its
 own rather than <code>diff</code> or <code>slope</code>, both of which carry an evaluated-at claim
@@ -1102,9 +1217,19 @@ its coefficient is a change in an effect per unit of that covariate and no
 row could name the effect it stands for. Nothing here is standardized over
 the covariates, which is what the declared crossing does instead.</p>
 <p>Unlike the single-treatment route, this one needs no <code>.data</code> for a basis
-marginal structural model. Each treatment is read off its own treatment
-model, so the outcome model frame is never asked for a column it does not
-hold.</p>
+marginal structural model. Without one, each treatment and each treatment
+design is read off the model that owns it, so the outcome model frame is
+never asked for a column it does not hold.</p>
+<p>A <code>.data</code> the caller does supply is the frame every design here is rebuilt
+from, on the terms the single-treatment routes rebuild theirs: both treatment
+columns, both treatment designs, each component's numerator design, and the
+counterfactual designs are built over the rows every model read and under the
+coding each fit recorded. A column one of those fits reads that is missing
+from <code>.data</code> errors with class <code>propensity_columns_exist_error</code>, and one
+supplied as another type errors with class <code>propensity_ipw_data_error</code>,
+naming the fits that recorded it, a treatment model by the treatment it fits.
+A set of fits made under <code>na.action = na.exclude</code> is reconciled with the
+frame they were given by restricting <code>.data</code> to the rows they analyzed.</p>
 <p>The dose model contributes its coefficients and the conditional variance its
 density ratio divides by, all as parameters of the same stacked system. Each
 component's stabilizing numerator is estimated in a block of its own; see
@@ -1119,26 +1244,48 @@ component's stabilizing numerator is estimated in a block of its own; see
 estimated in its own block of the stacked system, so the standard errors
 account for that numerator having been fitted rather than reading it as a
 constant. What the block holds follows what the component's weights record.
-A discrete component stabilized by the default numerator contributes the one
-marginal proportion that numerator is, and a dose stabilized by the default
-numerator contributes the exposure's two marginal moments. A component
-stabilized on a fitted model passed to <code><a href="wt_ate.html">wt_ate()</a></code>'s <code>stabilize</code> contributes
-that model instead: one parameter per coefficient for a discrete component,
-and for a dose one per coefficient plus one for the spread its density is
-read at. A dose stabilized with <code>numerator = "integrated"</code> is built from the
-dose block and the data alone and contributes nothing, and an unstabilized
-discrete component contributes nothing either.</p>
+A binary component stabilized by the default numerator contributes the one
+marginal proportion that numerator is, a categorical one the \(k - 1\) free
+proportions its levels leave, and a dose stabilized by the default numerator
+the exposure's two marginal moments. A component stabilized on a fitted model
+passed to <code><a href="wt_ate.html">wt_ate()</a></code>'s <code>stabilize</code> contributes that model instead: one
+parameter per coefficient for a binary component, one run of them per
+non-reference level for a categorical one, and for a dose one per coefficient
+plus one for the spread its density is read at. A dose stabilized with
+<code>numerator = "integrated"</code> is built from the dose block and the data alone and
+contributes nothing, and an unstabilized discrete component contributes
+nothing either.</p>
 <p>Those parameters are named <code>stab_&lt;component&gt;_&lt;parameter&gt;</code>, where
 <code>&lt;component&gt;</code> is the name the component was recorded under in
 <code><a href="joint_wt_models.html">joint_wt_models()</a></code>: a joint system carries two components, and a name
-saying only which role a parameter plays would not say whose.</p>
+saying only which role a parameter plays would not say whose. A categorical
+component composes that prefix with the multinomial layout its own block
+takes, <code>&lt;level&gt;:&lt;term&gt;</code> for a fitted numerator and the level alone for a
+marginal one, so a treatment <code>z</code> with levels <code>lo</code>, <code>mid</code>, and <code>hi</code> reports
+<code>stab_z_mid</code> and <code>stab_z_hi</code> for the marginal proportions and
+<code>stab_z_mid:(Intercept)</code>, <code>stab_z_mid:v</code>, <code>stab_z_hi:(Intercept)</code>, and
+<code>stab_z_hi:v</code> for a numerator of <code>v</code>.</p>
 <p>A numerator model is read through the guards its own single-treatment route
-reads it through. A discrete component's is read as an unpenalized binomial
-fit at a logit, probit, or cloglog link, and a dose's goes through the
-registry under <strong>Continuous propensity score models</strong>. A model of a response
-other than the treatment it stabilizes, or one fit to a different set of
-observations, errors with class <code>propensity_ipw_numerator_error</code>; one fit
-with case weights errors with class <code>propensity_ipw_ps_weights_error</code>.</p>
+reads it through. A binary component's is read as an unpenalized binomial
+fit at a logit, probit, or cloglog link; a categorical component's as an
+<code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> fit that declares the treatment's levels in the order the
+component's own model declares them; and a dose's goes through the registry
+under <strong>Continuous propensity score models</strong>. A multinomial numerator fit
+under another level order, a model of a response other than the treatment it
+stabilizes, or one fit to a different set of observations errors with class
+<code>propensity_ipw_numerator_error</code>; one fit with case weights errors with class
+<code>propensity_ipw_ps_weights_error</code>. Every
+numerator design here is one of the designs a <code>.data</code> the caller supplies
+rebuilds, on the terms the single-treatment routes rebuild theirs, so a
+numerator that keeps no model frame and whose fitting call can no longer be
+evaluated errors with class <code>propensity_ipw_data_error</code> without one, and is
+rebuilt from <code>.data</code> with one.</p>
+<p>Both components' numerators arrive in the same argument, one <code>stabilize</code> per
+component, so every refusal about one names the component it was built for
+beside that argument, <code>stabilize</code> for <code>z</code>. <code>wt_mod</code> here is the container the
+two treatment models arrived in rather than a model anyone could refit, so a
+refusal reading a numerator against its treatment model names that component
+too.</p>
 <p>What a numerator may condition on is a statement about the reported model
 rather than a free choice, and it is the same statement here as for a single
 treatment. A numerator may condition on any variable the marginal structural
@@ -1180,8 +1327,13 @@ the caller fixed. <code><a href="wt_joint.html">wt_joint()</a></code> records ea
 and the stacked system rebuilds the dose factor from that record, so what is
 differentiated is the weight the outcome model was fit with. An integrated
 numerator is built from the dose block and the data alone, so it adds no
-stabilization parameters; a fixed scalar <code>.sigma</code> is a known constant, so the
-dose block is its coefficients alone and none of that number's uncertainty is
+stabilization parameters; it is the conditional density averaged over the
+units the dose model was fit to and read at points spanning their dose, so it
+is rebuilt over those rows the way a single dose's is, and a dose model that
+keeps no model frame and whose fitting call can no longer be evaluated errors
+with class <code>propensity_ipw_data_error</code> under it, <code>.data</code> or no <code>.data</code>. A
+fixed scalar <code>.sigma</code> is a known constant, so the dose block is its
+coefficients alone and none of that number's uncertainty is
 carried. A spread supplied for each observation has no counterpart in the
 system and errors with class <code>propensity_ipw_sigma_error</code>.</p>
 <p>A component built with a <code>stabilization_score</code> is rebuilt from the score
@@ -1194,7 +1346,12 @@ which drops a score held per observation, says a component was stabilized
 without saying what by: the system stands that component's own marginal
 numerator in, and the weight-consistency check reports the difference,
 naming the components whose numerator was stood in for. Rebuild such weights
-with <code><a href="wt_joint.html">wt_joint()</a></code> to have the score read back.</p>
+with <code><a href="wt_joint.html">wt_joint()</a></code> to have the score read back. A record left whole over
+fewer rows is refused instead: a model frame that drops incomplete rows
+re-attaches the record as it was, leaving a component's score at the length
+the product was built at, and a score that describes other observations than
+the ones being weighted errors with class
+<code>propensity_ipw_stabilization_score_error</code>.</p>
 <p>Dose weights built with a <code>"kernel"</code> density are refused with class
 <code>propensity_ipw_se_method_unavailable_error</code>. The bandwidth is not a function
 of the parameters that the sandwich could differentiate, and the package has
@@ -1248,6 +1405,67 @@ observations allocates on the order of hundreds of megabytes. The cost comes
 from the stacked estimating-equation machinery rather than any single term,
 and for very large samples you can expect long, garbage-collection-heavy
 fits. This is expected behavior.</p><div class="section">
+<h3 id="stabilizing-numerators-for-a-discrete-exposure">Stabilizing numerators for a discrete exposure<a class="anchor" aria-label="anchor" href="#stabilizing-numerators-for-a-discrete-exposure"></a></h3>
+
+
+<p>A numerator estimated by a model the caller passed to <code><a href="wt_ate.html">wt_ate()</a></code>'s
+<code>stabilize</code> is estimated here as well, whichever type the exposure is. A
+binary exposure's numerator model contributes one parameter per coefficient,
+named <code>stab_&lt;term&gt;</code>, and a categorical exposure's contributes one per
+coefficient of its <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> fit, named <code>stab_&lt;level&gt;:&lt;term&gt;</code>, so
+that the level a coefficient belongs to is read off the name. The multinomial
+numerator's own score is stacked alongside the propensity score model's,
+written as the same multinomial estimating equation, so the standard errors
+account for the numerator having been fitted rather than reading it as a
+constant. The default stabilizer contributes what it estimates instead: the
+single marginal proportion <code>stab_pi</code> for a binary exposure, and the K - 1
+free marginal proportions <code>stab_&lt;level&gt;</code> for a categorical one. A
+<code>stabilization_score</code> contributes nothing at all, being a number the caller
+fixed. What a dose's numerator contributes is described under <strong>Continuous
+propensity score models</strong>.</p>
+<p>Reading an estimated numerator as known would be conservative for these
+weights rather than wrong, since stabilization is offered for the <code>ate</code>
+estimand alone (Lunceford and Davidian 2004; Kostouraki et al. 2024), and
+Shu et al. (2020) stack the numerator and the denominator of stabilized
+weights for that reason. Stacking the multinomial score therefore tightens
+the inference rather than rescuing it. Neither result isolates the
+numerator's own contribution, and Kostouraki et al.'s tutorial is written for
+a binary exposure, so what they give is the direction of the correction
+rather than a bound on its size.</p>
+<p>A numerator model's design is one of the designs <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> rebuilds when
+<code>.data</code> is supplied: it is rebuilt over the rows every model read and under
+the coding the fit recorded, so a column only the numerator reads is asked of
+<code>.data</code> and is held to the type the fit recorded for it. A <code>.data</code> missing
+such a column errors with class <code>propensity_columns_exist_error</code>, and one
+supplying it as another type with class <code>propensity_ipw_data_error</code>. Without
+<code>.data</code> the design is read off the fit itself, and a fit that keeps no model
+frame rebuilds one by re-evaluating its fitting call. A <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> fit
+with <code>model = FALSE</code> is such a fit, so one made inside a function whose frame
+is gone errors with class <code>propensity_ipw_data_error</code>, and the remedy is to
+supply <code>.data</code>.</p>
+<p>A multinomial numerator model is held to the propensity score model's levels
+in the propensity score model's own order. Everything its block contributes
+is positional: the coefficients are stacked level-major, and the softmax the
+numerator is rebuilt from reads the first level as the reference the others
+are contrasted with, so a fit made under another order is a different
+parameterization rather than a permutation of this one. Such a fit is refused
+with an error of class <code>propensity_ipw_numerator_error</code>, which is also what a
+model of a response other than the exposure, or one fit to a different number
+of observations, errors with. One fit with case weights errors with class
+<code>propensity_ipw_ps_weights_error</code>, for the reason a weighted propensity score
+model does. <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> keeps no model frame, so the design its
+coefficients were fit over is recovered by re-evaluating the fitting call; a
+fit whose call can no longer be evaluated, such as one made inside a function
+whose frame is gone, errors with class <code>propensity_ipw_data_error</code>, and the
+remedy is to supply <code>.data</code>, which the numerator's design is rebuilt from.</p>
+<p>A categorical exposure reports M-estimation standard errors alone, so a
+multinomial numerator model meets neither of the other two methods. The
+linearization's refusal of a fitted numerator model, below, and the robust
+diagnostic's reading of every weight as a known constant are both matters for
+a binary exposure.</p>
+</div>
+
+<div class="section">
 <h3 id="continuous-propensity-score-models">Continuous propensity score models<a class="anchor" aria-label="anchor" href="#continuous-propensity-score-models"></a></h3>
 
 
@@ -1355,9 +1573,17 @@ rebuilds the same ratio at each value of the parameter vector, so the weights
 it differentiates are the weights the outcome model was fit with. A marginal
 numerator contributes the exposure's two marginal moments to the parameter
 vector; an integrated one is built from the propensity score block and the
-data alone and contributes none. Weights carrying no such record, including
-any written with <code><a href="psw.html">psw()</a></code> by hand, are read as the normal ratio the package
-built before the record existed.</p>
+data alone and contributes none. That numerator is the conditional density
+averaged over the units the propensity score model was fit to, read at points
+spanning their exposure, so it is rebuilt over those rows even where <code>.data</code>
+leaves the rest of the system standing on fewer of them. Rebuilding it needs
+the design those rows enter through, which <code>.data</code> cannot stand in for: a
+propensity score model that keeps no model frame, made inside a function whose
+frame is gone, errors with class <code>propensity_ipw_data_error</code> under
+<code>numerator = "integrated"</code>, and the remedy is to refit it where its data is
+available. Weights carrying no such record, including any written with <code><a href="psw.html">psw()</a></code>
+by hand, are read as the normal ratio the package built before the record
+existed.</p>
 <p>A numerator estimated by a model the caller passed to <code><a href="wt_ate.html">wt_ate()</a></code>'s
 <code>stabilize</code> contributes that model: one parameter per coefficient, named with
 a <code>stab_</code> prefix so the terms it shares with the propensity score model stay
@@ -1375,6 +1601,17 @@ class <code>propensity_ipw_numerator_error</code>. One fit with case weights err
 class <code>propensity_ipw_ps_weights_error</code>, for the reason a weighted propensity
 score model does: the block written for it is its unweighted score, and its
 coefficients are not at the root of that.</p>
+<p>A dose numerator model's design is one of the designs <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> rebuilds when
+<code>.data</code> is supplied, on the terms a discrete exposure's is: it is rebuilt
+over the rows every model read and under the coding the fit recorded, so a
+column only the numerator reads is asked of <code>.data</code> and is held to the type
+the fit recorded for it. A <code>.data</code> missing such a column errors with class
+<code>propensity_columns_exist_error</code>, and one supplying it as another type with
+class <code>propensity_ipw_data_error</code>. Without <code>.data</code> the design is read off the
+fit itself, and a fit that keeps no model frame rebuilds one by re-evaluating
+its fitting call. A <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">stats::lm()</a></code> or <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> fit with <code>model = FALSE</code>
+is such a fit, so one made inside a function whose frame is gone errors with
+class <code>propensity_ipw_data_error</code>, and the remedy is to supply <code>.data</code>.</p>
 <p>One choice is refused for the standard error rather than for the model. A
 <code>"kernel"</code> density chooses its bandwidth from the residuals of the propensity
 score model, which is not a function of the parameters that the sandwich
@@ -1605,6 +1842,38 @@ function of the data with no counterpart in the stacked system, and are
 refused before anything is solved, with an error of class
 <code>propensity_ipw_sigma_error</code>. Rebuild the weights with the pooled default or
 with one number to use <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code>.</p>
+<p>It bears on a <code>stabilization_score</code> in the same way. A score written per
+observation is one value per unit, so it does not survive the rows being
+restricted: subsetting the weights drops it, and a model frame that drops
+incomplete rows leaves it at the length the weights were built at. Either way
+the record still names a score as the numerator and the score in hand no
+longer describes the observations being weighted, so <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> refuses before
+anything is solved, with an error of class
+<code>propensity_ipw_stabilization_score_error</code>. Rebuild the weights on the rows
+being analyzed, or stabilize on a single <code>stabilization_score</code>, which scales
+every weight and survives any restriction.</p>
+<p>Weights stabilized on a fitted numerator model carry a further requirement,
+on <code>outcome_mod</code> rather than on the weights. A numerator fit on a covariate
+divides every weight by a quantity that varies with it, so the
+pseudo-population the weights build is one in which that covariate still
+predicts the exposure. Confounding by it remains there, and what the weighted
+fit identifies is the effect within its levels rather than the marginal one,
+which only a marginal structural model carrying it reports (Robins et al.
+2000; Cole and Hernán 2008). <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> compares the two: the variables on the
+right-hand side of the numerator model's formula against the variables
+<code>outcome_mod</code>'s formula reads anywhere, and any the second does not read are
+reported once for the call, in a warning of class
+<code>propensity_ipw_stabilizer_coverage_warning</code> naming each of them. The
+comparison is of variables rather than of terms, so a model reading
+<code>factor(v)</code>, <code>poly(v, 2)</code>, or <code>splines::ns(v, 3)</code> reads <code>v</code>; a marginal
+structural model conditional on a transformation of a covariate is
+conditional on the covariate. The joint route asks the same question of each
+component's numerator and reports the answers together. The estimates are the
+ones the fit gives either way, so this is a warning and not a refusal: add
+the variables to <code>outcome_mod</code>, or refit the model given to <code>stabilize</code>
+without them. The default stabilizer, an intercept-only numerator model, and
+a <code>stabilization_score</code> all condition on nothing this can name and say
+nothing.</p>
 <p>The propensity score model must not separate the exposure. A model whose
 covariates predict the exposure without error has no finite maximum likelihood
 estimate, and the propensity scores its coefficients imply reach exactly zero
@@ -1649,6 +1918,19 @@ Statistician</em>. 2002;56(1):29–38. <a href="https://doi.org/10.1198/00031300
 inverse probability-of-treatment weighting estimator: A tutorial for
 different types of propensity score weights. <em>Statistics in Medicine</em>.
 2024;43(13):2672–2694. <a href="https://doi.org/10.1002/sim.10078" class="external-link">doi:10.1002/sim.10078</a></p>
+<p>Lunceford JK, Davidian M. Stratification and weighting via the propensity
+score in estimation of causal treatment effects: a comparative study.
+<em>Statistics in Medicine</em>. 2004;23(19):2937–2960. <a href="https://doi.org/10.1002/sim.1903" class="external-link">doi:10.1002/sim.1903</a></p>
+<p>Shu D, Young JG, Toh S, Wang R. Variance estimation in inverse probability
+weighted Cox models. <em>Biometrics</em>. 2020. <a href="https://doi.org/10.1111/biom.13332" class="external-link">doi:10.1111/biom.13332</a></p>
+<p>Robins JM, Hernán MA, Brumback B. Marginal structural models and causal
+inference in epidemiology. <em>Epidemiology</em>. 2000;11(5):550–560.
+<a href="https://doi.org/10.1097/00001648-200009000-00011" class="external-link">doi:10.1097/00001648-200009000-00011</a></p>
+<p>Cole SR, Hernán MA. Constructing inverse probability weights for marginal
+structural models. <em>American Journal of Epidemiology</em>.
+2008;168(6):656–664. <a href="https://doi.org/10.1093/aje/kwn164" class="external-link">doi:10.1093/aje/kwn164</a></p>
+<p>Hernán MA, Robins JM. <em>Causal Inference: What If</em>. Boca Raton: Chapman &amp;
+Hall/CRC; 2020.</p>
 <p>Leyrat C, Seaman SR, White IR, et al. Propensity score analysis with partially
 observed covariates: How should multiple imputation be used? <em>Statistical
 Methods in Medical Research</em>. 2019;28(1):3–19.

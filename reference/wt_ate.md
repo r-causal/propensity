@@ -388,8 +388,9 @@ wt_cens(
 - stabilize:
 
   Whether to multiply the weights by an estimate of the marginal
-  treatment probability (binary) or density (continuous), and what that
-  estimate is. It takes one of three forms:
+  probability of the exposure a unit took (binary or categorical) or of
+  its density (continuous), and what that estimate is. It takes one of
+  three forms:
 
   - A logical. `TRUE` and `FALSE` ask for stabilization or its absence
     outright, and an unstabilized continuous exposure reports that its
@@ -397,9 +398,9 @@ wt_cens(
     answer from the exposure type: a continuous exposure is stabilized,
     and a binary or categorical exposure is not.
 
-  - A fitted model of the exposure, for a binary or continuous exposure,
-    which stabilizes the weights on what that model estimates rather
-    than on the marginal probability or density of the exposure.
+  - A fitted model of the exposure, which stabilizes the weights on what
+    that model estimates rather than on the marginal probability or
+    density of the exposure.
 
     For a binary exposure the model is a
     [`binomial()`](https://rdrr.io/r/stats/family.html) fit and the
@@ -408,35 +409,53 @@ wt_cens(
     variables \\V\\ the numerator model reads. For a continuous exposure
     the numerator is the family `.density` names, read at the model's
     fitted mean and the root mean square of its residuals, so the
-    weights are \\f(A \mid V) / f(A \mid X)\\.
+    weights are \\f(A \mid V) / f(A \mid X)\\. For a categorical
+    exposure the model is an
+    [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) fit
+    and the numerator is its fitted probability of the level each unit
+    took, read from the column named for that level, so the weights are
+    \\P(Z = z_i \mid V_i) / f(z_i \mid X_i)\\. The multinomial fit has
+    to report a probability for every level the exposure has, matched by
+    name rather than by position.
 
     The model is recorded on the result, where
     [`numerator_model()`](https://r-causal.github.io/propensity/reference/numerator_model.md)
     reads it back, and
     [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
     estimates it alongside everything else so that the standard errors
-    account for it having been fitted. Conditioning the numerator on
+    account for it having been fitted, whichever type the exposure is: a
+    categorical exposure's multinomial score is stacked there the way a
+    binary exposure's binomial one is. Conditioning the numerator on
     \\V\\ changes what is estimated unless the model the estimates are
     read from also reads \\V\\; see **Stabilization** in Details.
 
     Any [`lm()`](https://rdrr.io/r/stats/lm.html), or anything built on
-    one, is read this way. The family is held to the exposure: a fit
-    whose spread changes with its fitted values, or a model of a
-    conditional mean where a probability is needed, is refused with
+    one, is read this way, as is an
+    [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html).
+    The model is held to the exposure: a fit whose spread changes with
+    its fitted values, or a model of a conditional mean where a
+    probability is needed, is refused with
     `propensity_model_family_error`, which is also what a model of a
-    dose handed to a binary exposure and a
+    dose handed to a binary exposure, a
     [`binomial()`](https://rdrr.io/r/stats/family.html) model handed to
-    a dose are refused with. A categorical exposure takes no fitted
-    numerator, and neither does a model supplied together with
-    `stabilization_score` or `numerator = "integrated"`; those are
-    `propensity_numerator_error`. So is a model fit with case `weights`,
-    which estimates the numerator in a reweighted sample rather than in
-    the one the weights are being built for. A model with a fitted value
-    for some other set of observations is `propensity_length_error`.
+    a dose, a multinomial fit handed either of them, and a fit reporting
+    some other set of levels than the exposure's are refused with. A
+    model supplied together with `stabilization_score` or
+    `numerator = "integrated"` is `propensity_numerator_error`. So is a
+    model fit with case `weights`, which estimates the numerator in a
+    reweighted sample rather than in the one the weights are being built
+    for. A model with a fitted value for some other set of observations
+    is `propensity_length_error`. That check counts the fitted values
+    rather than reading which rows they came from, so a model fit to
+    another dataset of the same length passes it: fit the numerator
+    model on the data the weights are being built for.
 
   Anything else is refused with an error of class
   `propensity_stabilize_error`. Stabilization is only supported by
-  `wt_ate()` and `wt_cens()`. See **Stabilization** in Details.
+  `wt_ate()` and `wt_cens()`, since the other estimands' weights already
+  carry a tilting function where the numerator would go and stabilizing
+  them would move the population they target rather than their variance.
+  See **Stabilization** in Details.
 
 - stabilization_score:
 
@@ -494,10 +513,10 @@ wt_cens(
   How the marginal density that stabilizes a continuous exposure's
   weights is obtained, described under **Stabilization** in Details.
   Either `"marginal"`, the default, which reads the family `.density`
-  names at the population mean and standard deviation of `.exposure`, or
-  `"integrated"`, which averages the conditional density over the units
-  on a grid spanning `.exposure` and interpolates the result back to
-  each observed exposure.
+  names at the mean and standard deviation of `.exposure` over the rows
+  the propensity model kept, or `"integrated"`, which averages the
+  conditional density over the units on a grid spanning `.exposure` and
+  interpolates the result back to each observed exposure.
 
   `"integrated"` describes a continuous exposure alone, and needs a
   conditional density to marginalize: it is refused with an error of
@@ -599,7 +618,10 @@ error of class `causalgenerics_unsupported_exposure_type`.
   [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) and
   reads those columns off its fitted values, matching them to the levels
   of `.exposure` by name. A multinomial fit of only two levels reports a
-  single probability and is read as a model of a binary exposure.
+  single probability and is read as a model of a binary exposure. Those
+  per-level probabilities are the generalized propensity score of a
+  multi-valued exposure (Imbens, 2000), and weighting by them is the
+  multi-arm inverse probability estimator (Feng et al., 2012).
 
 - **Continuous**: `.exposure` is a numeric vector. `.propensity` is a
   vector of conditional means (fitted values). Weights are a ratio of
@@ -628,8 +650,11 @@ left unstabilized, and `stabilize = TRUE` asks for it there.
 
 For a continuous exposure, `numerator` chooses how that marginal density
 is arrived at. `"marginal"`, the default, reads the family `.density`
-names at the population mean and standard deviation of `.exposure`.
-Those two moments are parameters of the weights, and
+names at the mean and standard deviation of `.exposure` over the rows
+the propensity model kept, which are the rows the weights describe: a
+model that dropped rows leaves `.propensity` missing at them, and those
+rows carry no weight. Those two moments are parameters of the weights,
+and
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
 estimates them alongside the rest of its parameter vector, so the
 standard errors account for the numerator having been estimated.
@@ -690,6 +715,9 @@ numerator.
     num <- lm(A ~ V, data = dat)
     wt_ate(dose_mod, stabilize = num)
 
+    num <- nnet::multinom(Z ~ V, data = dat, trace = FALSE)
+    wt_ate(ps_mat, Z, exposure_type = "categorical", stabilize = num)
+
 For a binary exposure the weights are then \\P(A = a_i \mid V_i) / f(a_i
 \mid X_i)\\: the model's fitted probability read at the level each unit
 actually took, which is \\p_i\\ for a unit with \\A_i = 1\\ and \\1 -
@@ -704,11 +732,33 @@ family `.density` names, read at the numerator model's fitted mean and
 the root mean square of its residuals, over the same family read at the
 propensity score model's.
 
-The same caveat governs both. A numerator conditioning on `V` targets
-the effect in a pseudo-population where `V` still predicts the exposure,
-so the estimand is the effect conditional on `V` being balanced rather
-than the marginal one, and it answers the question you meant only when
-the model the estimates are read from also reads `V`.
+For a categorical exposure they are \\P(Z = z_i \mid V_i) / f(z_i \mid
+X_i)\\: the multinomial model's fitted probability of the level each
+unit took, gathered from the column named for that level, over the same
+denominator again. The fit has to report a probability for every level
+the exposure takes, and its columns are read by name rather than by
+position, so a fit that declares those levels in another order builds
+the same weights here.
+[`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+asks for the propensity score model's own level order in addition, since
+the block it stacks reads the coefficients positionally. Fitting a
+multinomial model of the exposure on the stabilization terms is what the
+ipw package (van der Wal & Geskus, 2011) does for a multi-valued
+exposure as well.
+
+The same contract governs all three, and it is a statement about the
+model the estimates will be read from rather than about the weights. A
+numerator conditioning on `V` builds a pseudo-population in which `V`
+still predicts the exposure, so confounding by `V` remains there and
+what is estimated is the effect conditional on `V` rather than the
+marginal one. The outcome model, or the marginal structural model, must
+therefore include `V` (Robins et al., 2000; Cole & Hernán, 2008; Hernán
+& Robins, 2020, Chapter 12). The limiting case says it from the other
+end: with `V` the whole set of confounders the numerator is the
+denominator, the weights collapse toward 1, and the weighting has
+nothing left to do that the model is not already doing. The case that
+pays is a numerator conditioning on an effect modifier the reported
+model reads anyway.
 
 Handing the model over rather than the numbers it evaluates to is what
 lets
@@ -718,10 +768,24 @@ system, so the standard errors account for the numerator having been
 fitted, where a `stabilization_score` is carried as a known constant.
 That accounting has something to say only where the reported model is
 not saturated in the variables the numerator reads. A numerator of a
-binary exposure on an effect modifier is constant within each cell of
-the modifier and the exposure, so a model saturated in those cells fits
-the same coefficients with the numerator and without it, and the
-standard errors do not move either.
+binary or categorical exposure on an effect modifier is constant within
+each cell of the modifier and the exposure, so a model saturated in
+those cells fits the same coefficients with the numerator and without
+it, and the standard errors do not move either.
+
+What a numerator model is held to is its shape rather than its
+provenance: its class and family, the levels it declares for a
+categorical exposure, and one fitted value per observation. A fit to a
+different dataset of the same length passes every one of those and
+multiplies in a numerator belonging to other rows, without a word, so
+fit the numerator model on the data the weights are being built for.
+
+Only `wt_ate()` and `wt_cens()` stabilize at all, which follows from
+what the other estimands are rather than from anything missing here. An
+`att`, `atu`, `atm`, `ato`, or entropy weight already carries a tilting
+function where a numerator would go, so an estimate of \\P(A)\\ or \\P(A
+\mid V)\\ put there would move the population the weights target rather
+than how variable they are. Asking for it is an error.
 
 [`numerator_model()`](https://r-causal.github.io/propensity/reference/numerator_model.md)
 reads the model back off the weights.
@@ -838,7 +902,10 @@ density is evaluated at \\z_i = (A_i - \hat{A}\_i) / \sigma\\, where
 \\\hat{A}\_i\\ is the fitted conditional mean in `.propensity` and
 \\\sigma\\ is the residual spread; the marginal density is evaluated at
 \\z^A_i = (A_i - \bar{A}) / s_A\\, where \\\bar{A}\\ and \\s_A\\ are the
-population mean and standard deviation of `.exposure`. Each density is
+mean and standard deviation of `.exposure` over the rows the propensity
+model kept. Both moments are read over those rows whether the spread was
+pooled from the model's own residuals or supplied through `.sigma`, so
+the two halves of the ratio describe one set of units. Each density is
 then divided by the spread that standardized it, the Jacobian of that
 change of variable, which returns both to the exposure's own units so
 that each integrates to one:
@@ -1023,7 +1090,28 @@ Incomplete-Data Perspectives* (pp. 73–84).
 
 Robins, J. M., Hernán, M. A., & Brumback, B. (2000). Marginal structural
 models and causal inference in epidemiology. *Epidemiology*, 11(5),
-550–560.
+550–560. (Stabilized weights and the conditional numerator)
+
+Cole, S. R., & Hernán, M. A. (2008). Constructing inverse probability
+weights for marginal structural models. *American Journal of
+Epidemiology*, 168(6), 656–664. (Numerator covariates in the weighted
+model)
+
+Hernán, M. A., & Robins, J. M. (2020). *Causal Inference: What If*.
+Chapman & Hall/CRC. (Chapter 12, stabilized weights and the conditional
+numerator)
+
+Imbens, G. W. (2000). The role of the propensity score in estimating
+dose-response functions. *Biometrika*, 87(3), 706–710. (Generalized
+propensity score of a multi-valued exposure)
+
+Feng, P., Zhou, X.-H., Zou, Q.-M., Fan, M.-Y., & Li, X.-S. (2012).
+Generalized propensity score for estimating the average treatment effect
+of multiple treatments. *Statistics in Medicine*, 31(7), 681–697.
+
+van der Wal, W. M., & Geskus, R. B. (2011). ipw: An R package for
+inverse probability weighting. *Journal of Statistical Software*,
+43(13), 1–23. (Multinomial numerator model for a multi-valued exposure)
 
 Naimi, A. I., Moodie, E. E. M., Auger, N., & Kaufman, J. S. (2014).
 Constructing inverse probability weights for continuous exposures: a
@@ -1377,4 +1465,23 @@ wt_ate(ps_mat, dose_level, exposure_type = "categorical")
 #>  [81] 3.409654 3.072290 3.493442 3.048336 3.440244 3.224773 2.532538 2.657285
 #>  [89] 3.061122 3.174848 2.783302 3.165692 2.909956 2.780810 2.813005 2.731683
 #>  [97] 3.129433 3.179659 3.297815 3.317412
+
+# A multinomial model of the exposure on a modifier stabilizes the weights on
+# the probability of the level each unit took given that modifier
+v <- rbinom(100, 1, 0.5)
+cat_num_model <- nnet::multinom(dose_level ~ v, trace = FALSE)
+w_cat <- wt_ate(cat_model, stabilize = cat_num_model)
+#> ℹ Using exposure variable "dose_level" from the propensity score model
+#> ℹ Treating `.exposure` as categorical
+numerator_model(w_cat)
+#> Call:
+#> nnet::multinom(formula = dose_level ~ v, trace = FALSE)
+#> 
+#> Coefficients:
+#>     (Intercept)          v
+#> low   0.3022743 -0.4357960
+#> mid  -0.6359876  0.9079251
+#> 
+#> Residual Deviance: 211.8462 
+#> AIC: 219.8462 
 ```

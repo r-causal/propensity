@@ -55,7 +55,13 @@ list with three fields:
 - `exposure_type`:
 
   Each model's exposure type, named for its treatment: `"binary"`,
-  `"categorical"`, or `"continuous"`.
+  `"categorical"`, or `"continuous"`. The type follows the model's
+  class, so a
+  [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) is
+  recorded as `"categorical"` whatever its level count. One fit to two
+  levels is a binary treatment model, and
+  [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
+  stacks it as one.
 
 `is_joint_wt_models()` returns a single logical.
 

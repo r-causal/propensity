@@ -101,7 +101,10 @@ with three fields:</p><dl><dt><code>names</code></dt>
 
 <dt><code>exposure_type</code></dt>
 <dd><p>Each model's exposure type, named for its treatment:
-<code>"binary"</code>, <code>"categorical"</code>, or <code>"continuous"</code>.</p></dd>
+<code>"binary"</code>, <code>"categorical"</code>, or <code>"continuous"</code>. The type follows the
+model's class, so a <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> is recorded as <code>"categorical"</code>
+whatever its level count. One fit to two levels is a binary treatment
+model, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> stacks it as one.</p></dd>
 
 
 </dl><p><code>is_joint_wt_models()</code> returns a single logical.</p>
