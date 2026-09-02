@@ -151,8 +151,34 @@
       ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
       x `a:e` in `outcome_mod` contributes one column per level of "a".
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
-      i A factor in an interaction is coded with one indicator per level, rather than with the contrasts it carries, wherever the terms that interaction is built from are not all in the model. An interaction of "a" with "e" written where "e" has no term of its own is such a model, so the design gains a column for "no" that no reported row names and each column after it holds the level before it.
-      i Cross the two in `outcome_mod`, as `a * e`, which gives "e" a term of its own and reports these same rows. A model written in bare terms reports this vocabulary and no other, so the formula is what changes here.
+      i A factor crossed with the dose is coded with one indicator per level, rather than with the contrasts it carries, wherever the dose has no term of its own. "e" has no term of its own in `outcome_mod`, so the design gains a column for "no" that no reported row names and each column after it holds the level before it.
+      i Cross the two in `outcome_mod`, as `a * e`, which gives "e" a term of its own and reports on this vocabulary. A model written in bare terms with an intercept has no other surface to report, so the formula is what changes here.
+
+# a coding and an expansion together render both remedies
+
+    Code
+      expr
+    Condition <propensity_ipw_msm_error>
+      Error in `ipw()`:
+      ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
+      x `a` and `a:e` in `outcome_mod` contribute a column coded some other way.
+      i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
+      i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i Refit `outcome_mod` with "a" as an unordered factor under treatment contrasts. A treatment with two levels also has a numeric coding whose bare term contributes that column, 0 for "no" and 1 for "yes".
+      i A factor crossed with the dose is coded with one indicator per level, rather than with the contrasts it carries, wherever the dose has no term of its own. "e" has no term of its own in `outcome_mod`, so the design gains a column for "no" that no reported row names and each column after it holds the level before it.
+      i Cross the two in `outcome_mod`, as `a * e`, which gives "e" a term of its own and reports on this vocabulary. A model written in bare terms with an intercept has no other surface to report, so the formula is what changes here.
+
+# an interaction-only crossing names the expansion
+
+    Code
+      expr
+    Condition <propensity_ipw_msm_error>
+      Error in `ipw()`:
+      ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
+      x `a:e` in `outcome_mod` contributes one column per level of "a".
+      i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
+      i A factor crossed with the dose is coded with one indicator per level, rather than with the contrasts it carries, wherever the dose has no term of its own. "e" has no term of its own in `outcome_mod`, so the design gains a column for "no" that no reported row names and each column after it holds the level before it.
+      i Cross the two in `outcome_mod`, as `a * e`, which gives "e" a term of its own and reports on this vocabulary. A model written in bare terms with an intercept has no other surface to report, so the formula is what changes here.
 
 # ipw() refuses .by on a joint continuous fit
 

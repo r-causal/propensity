@@ -1287,14 +1287,15 @@ ipw_joint_dose_indicator <- function(treatment, level_values, level) {
 # rather than a column, since a model may hold the dose in an interaction and
 # carry no column of it to read.
 #
-# The third thing is the formula's own doing rather than the caller's coding. An
-# interaction written where the dose has no term of its own is not built from
-# terms that are all in the model, and a factor in such an interaction is coded
+# The third thing is the formula's own doing rather than the caller's coding. A
+# factor crossed with the dose where the dose has no term of its own is coded
 # with one indicator per level rather than with the contrasts it carries. The
 # extra column is a column no row names, and every reported column after it is a
 # claim about the level to its left. Refitting the treatment as an unordered
-# factor would change nothing there, so that case is told apart and given the
-# remedy that does: the formula.
+# factor would change nothing there, so this is told apart from a coding and
+# given the remedy that does change it: the formula. The two are independent
+# faults, and a model carrying both is told both, since a caller who fixed the
+# coding alone would meet this refusal next.
 check_ipw_joint_dose_coding <- function(
   out_X,
   columns,
@@ -1335,20 +1336,17 @@ check_ipw_joint_dose_coding <- function(
   # dose is what says the coding is a cause, and a model whose dose and whose
   # treatment both moved says both.
   #
-  # What is left is a model whose dose is the one the treatment models hold and
-  # whose treatment columns are the ones the rows name, with the interaction
-  # term contributing a column for every level rather than for the non-reference
-  # levels alone. That is the expansion a missing dose term forces, and it
-  # forces the full set of indicators whatever contrasts the treatment carries,
-  # so the columns are read here rather than the coding: what disagrees is which
-  # column each row lands on. An interaction column that mismatches for any
-  # other reason is a column the caller wrote, and the coding advice stands
-  # there as the one that describes it.
+  # The expansion is read off the design rather than off what disagrees: the
+  # crossing contributes a column for every level rather than for the
+  # non-reference levels alone, and the model carries no column reading the dose
+  # by itself, which is the shape a dose with no term of its own leaves. That
+  # shape is forced whatever contrasts the treatment carries, so it is a fault
+  # beside a coding rather than an alternative to one, and a model whose
+  # treatment column moved as well is told both.
   crossed <- reads_dose & reads_treatment
   expanded <- !dose_moved &&
     !any(reads_dose & !reads_treatment) &&
-    sum(crossed) == length(level_labels) &&
-    !any(mismatched & !crossed)
+    sum(crossed) == length(level_labels)
   coding_moved <- (!dose_moved && !expanded) || any(mismatched & !reads_dose)
 
   # Two levels leave one indicator and one numeric coding of it, and more than
@@ -1388,9 +1386,15 @@ check_ipw_joint_dose_coding <- function(
     numeric coding whose bare term contributes those columns."
   }
 
+  # What the reported rows are is context the coding and the expansion are both
+  # read against rather than part of either, so it is said once ahead of them
+  # and a model carrying both faults does not say it twice.
+  reading_bullets <- if (coding_moved || expanded) {
+    c(i = coding)
+  }
+
   coding_bullets <- if (coding_moved) {
     c(
-      i = coding,
       i = "A contrast coding other than treatment contrasts rescales or \\
       recenters those columns without changing what the formula says. An \\
       ordered factor carries polynomial contrasts, and \\
@@ -1400,25 +1404,24 @@ check_ipw_joint_dose_coding <- function(
     )
   }
 
-  # The remedy an expansion takes is the formula rather than the coding, and it
-  # is the only remedy there is: the other way out of a refusal on this surface
-  # is a model the vocabulary has no reading for, which reports its coefficients
-  # instead, and every model written in bare terms with an intercept is read
-  # here. So the bullet says plainly what to write.
+  # The remedy an expansion takes is the formula, and no coding fixes it: the
+  # other way out of a refusal on this surface is a model the vocabulary has no
+  # reading for, which reports its coefficients instead, and every model written
+  # in bare terms with an intercept is read here. So the bullet says plainly
+  # what to write.
   expansion_bullets <- if (expanded) {
     c(
-      i = coding,
-      i = "A factor in an interaction is coded with one indicator per level, \\
-      rather than with the contrasts it carries, wherever the terms that \\
-      interaction is built from are not all in the model. An interaction of \\
-      {.val {first}} with {.val {second}} written where {.val {second}} has no \\
-      term of its own is such a model, so the design gains a column for \\
-      {.val {reference}} that no reported row names and each column after it \\
-      holds the level before it.",
+      i = "A factor crossed with the dose is coded with one indicator per \\
+      level, rather than with the contrasts it carries, wherever the dose has \\
+      no term of its own. {.val {second}} has no term of its own in \\
+      {.arg outcome_mod}, so the design gains a column for {.val {reference}} \\
+      that no reported row names and each column after it holds the level \\
+      before it.",
       i = "Cross the two in {.arg outcome_mod}, as \\
       {.code {first} * {second}}, which gives {.val {second}} a term of its \\
-      own and reports these same rows. A model written in bare terms reports \\
-      this vocabulary and no other, so the formula is what changes here."
+      own and reports on this vocabulary. A model written in bare terms with \\
+      an intercept has no other surface to report, so the formula is what \\
+      changes here."
     )
   }
 
@@ -1443,9 +1446,10 @@ check_ipw_joint_dose_coding <- function(
     marginal structural model whose treatment columns are the treatments \\
     themselves."
 
-  # The line a reader sees first names the terms and the cause the bullets go
-  # on to describe, so a dose that moved is said to be a dose rather than a
-  # coding, and an expanded interaction is said to be one rather than either.
+  # The line a reader sees first names the terms and one of the causes the
+  # bullets go on to describe. A model carrying more than one is named for the
+  # coding ahead of the expansion and for either ahead of a moved dose, which
+  # is the order the bullets themselves stand in.
   cause <- if (coding_moved) {
     "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} a \\
     column coded some other way."
@@ -1458,7 +1462,14 @@ check_ipw_joint_dose_coding <- function(
   }
 
   abort(
-    c(header, x = cause, coding_bullets, expansion_bullets, dose_bullets),
+    c(
+      header,
+      x = cause,
+      reading_bullets,
+      coding_bullets,
+      expansion_bullets,
+      dose_bullets
+    ),
     error_class = "propensity_ipw_msm_error",
     call = call
   )
