@@ -1800,6 +1800,150 @@ test_that("an interaction without the dose's own term names the expansion", {
   expect_propensity_error(ipw(factored$models, outcome_mod))
 })
 
+test_that("a coding and an expansion together render both remedies", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+
+  # Two faults at once. The treatment's own column is coded some other way, and
+  # the crossing is written where the dose has no term of its own, which expands
+  # the factor in it to a column per level whatever contrasts that factor
+  # carries. A caller told only about the coding refits under treatment
+  # contrasts and meets the expansion refusal next, so the one message carries
+  # both remedies, as a coding paired with a moved dose already does.
+  summed <- withr::with_options(
+    list(contrasts = c("contr.sum", "contr.poly")),
+    lm(y ~ a + a:e, data = factor_dat, weights = factored$wts)
+  )
+  expect_identical(
+    colnames(model.matrix(summed)),
+    c("(Intercept)", "a1", "ano:e", "ayes:e")
+  )
+
+  cnd <- tryCatch(ipw(factored$models, summed), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "unordered factor", fixed = TRUE)
+  expect_match(message, "one indicator per level", fixed = TRUE)
+  expect_match(message, "`a * e`", fixed = TRUE)
+
+  # The dose is the one the treatment models hold, so neither fault here is a
+  # dose the models disagree on.
+  expect_no_match(message, "same values", fixed = TRUE)
+
+  # The sentence naming what the reported rows are is context both remedies
+  # read against rather than part of either, so it is said once.
+  said <- gregexpr("The reported rows name", message, fixed = TRUE)[[1]]
+  expect_true(all(said > 0L))
+  expect_length(said, 1L)
+
+  # The same pair of faults reached through the vector rather than through the
+  # session option. An ordered factor carries polynomial contrasts on its own
+  # column and is expanded in the interaction all the same.
+  ordered_dat <- factor_dat
+  ordered_dat$a <- factor(ordered_dat$a, ordered = TRUE)
+  ordered_mod <- lm(y ~ a + a:e, data = ordered_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(ordered_mod)),
+    c("(Intercept)", "a.L", "ano:e", "ayes:e")
+  )
+
+  ordered_cnd <- tryCatch(
+    ipw(factored$models, ordered_mod),
+    error = identity
+  )
+  expect_s3_class(ordered_cnd, "propensity_ipw_msm_error")
+  ordered_message <- gsub(
+    "[[:space:]]+",
+    " ",
+    conditionMessage(ordered_cnd)
+  )
+
+  expect_match(ordered_message, "unordered factor", fixed = TRUE)
+  expect_match(ordered_message, "one indicator per level", fixed = TRUE)
+  expect_match(ordered_message, "`a * e`", fixed = TRUE)
+
+  expect_propensity_error(ipw(factored$models, summed))
+})
+
+test_that("an interaction-only crossing names the expansion", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+
+  # A crossing carrying neither treatment's own term is written in bare terms
+  # and expands the same way, so the diagnosis is the expansion here too.
+  outcome_mod <- lm(y ~ a:e, data = factor_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "ano:e", "ayes:e")
+  )
+
+  cnd <- tryCatch(ipw(factored$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "one column per level", fixed = TRUE)
+  expect_match(message, "`a * e`", fixed = TRUE)
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "same values", fixed = TRUE)
+
+  # The remedy is the same formula for either shape, and what it promises has to
+  # be true of both. This model carries two columns and `a * e` carries three,
+  # so a remedy claiming the same rows would be claiming a table this fit never
+  # had. What it says instead is what `a * e` gives: the dose a term of its own,
+  # and a report on this vocabulary.
+  expect_no_match(message, "these same rows", fixed = TRUE)
+
+  expect_propensity_error(ipw(factored$models, outcome_mod))
+})
+
+test_that("a crossing keeping the dose's own term is reported", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+
+  # The expansion is what a missing dose term does rather than what a missing
+  # term of any kind does: a crossing written where the dose carries a term of
+  # its own codes the factor with the contrasts it carries, whether or not the
+  # treatment carries a term too. That is the boundary the expansion bullet
+  # states, and it is pinned as a fit that runs rather than one that is refused.
+  outcome_mod <- lm(y ~ e + a:e, data = factor_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "e", "e:ayes")
+  )
+
+  res <- ipw(factored$models, outcome_mod)
+  est <- res$estimates
+
+  # The vocabulary surface, with no row for a treatment term the model does not
+  # carry: the dose's slope at the reference level and the level contrast per
+  # unit of the dose.
+  expect_identical(nrow(est), 2L)
+  expect_identical(est$effect, c("slope", "diff"))
+  expect_identical(est$contrast, c("e: per unit", "a: yes vs no"))
+  expect_identical(est$group, c("a = no", "e + 1 vs e"))
+  expect_equal(
+    est$estimate,
+    unname(coef(outcome_mod)[c("e", "e:ayes")]),
+    tolerance = 1e-8
+  )
+})
+
 test_that("ipw() refuses .by on a joint continuous fit", {
   dat <- sim_joint_continuous()
   dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))
