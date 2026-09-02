@@ -89,8 +89,7 @@
       x `a` and `a:e` in `outcome_mod` contribute a column coded some other way.
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
-      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
-      i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
+      i Refit `outcome_mod` with "a" as an unordered factor under treatment contrasts. A treatment with two levels also has a numeric coding whose bare term contributes that column, 0 for "no" and 1 for "yes".
 
 ---
 
@@ -102,8 +101,7 @@
       x `a` and `a:e` in `outcome_mod` contribute a column coded some other way.
       i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
       i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
-      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
-      i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
+      i Refit `outcome_mod` with "a" as an unordered factor under treatment contrasts. A treatment with two levels also has a numeric coding whose bare term contributes that column, 0 for "no" and 1 for "yes".
 
 # the weights mismatch names a score the record does not keep
 
@@ -127,11 +125,10 @@
     Condition <propensity_ipw_msm_error>
       Error in `ipw()`:
       ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
-      x `e` and `a:e` in `outcome_mod` contribute a column coded some other way.
-      i The reported rows name the coefficients of a model in which "a" enters as 0 for "0" and 1 for "1", "e" enters as itself, and their interaction is the product of the two.
-      i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
-      i A model with no intercept, written `- 1` or `+ 0`, expands a factor treatment to an indicator for every level, so its first column is the reference-level indicator rather than the 0/1 indicator the rows describe. Keep the intercept, or code "a" as a 0/1 numeric.
-      i Refit `outcome_mod` with "a" as a 0/1 numeric, or as an unordered factor under treatment contrasts.
+      x `e` and `a:e` in `outcome_mod` contribute a column built from a dose the treatment models were not fit to.
+      i The "e" column of `outcome_mod` has to hold the same values the treatment models were fit to. `ipw()` reads the dose from those models, or from `.data` where one is supplied.
+      i A dose rescaled or recentered in the data after those models were fit leaves them and `outcome_mod` describing different variables, and the weights `outcome_mod` carries were built for the dose the treatment models hold.
+      i Working on a rescaled dose is supported. Rescale it before fitting every model, the treatment models, any numerator model, and `outcome_mod`, or write the transformation into the formula of `outcome_mod`, as `I(e / 10)` or `scale(e)`, which reports the coefficient surface.
 
 # ipw() refuses .by on a joint continuous fit
 

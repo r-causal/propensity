@@ -567,10 +567,11 @@
 #' `propensity_ipw_exposure_error`.
 #'
 #' Which of two surfaces a fit reports is decided by the marginal structural
-#' model alone. A model written in bare treatment terms reports the vocabulary
-#' surface below, whose rows name the treatment each one varies and where it is
-#' evaluated. Every other treatment-reading model reports the coefficient
-#' surface, whose rows are named after the coefficients they report.
+#' model alone. A model written in bare treatment terms and fit with an
+#' intercept reports the vocabulary surface below, whose rows name the treatment
+#' each one varies and where it is evaluated. Every other treatment-reading
+#' model reports the coefficient surface, whose rows are named after the
+#' coefficients they report.
 #'
 #' ### The vocabulary surface
 #'
@@ -618,16 +619,34 @@
 #' their spread within each level, as for any joint weight, before reading the
 #' rows.
 #'
-#' Those three readings hold of a model that is linear in each treatment and of
-#' no other, which is why such a model reports this surface and no other model
-#' does. The columns are read as well as the formula: a factor treatment under a
+#' Those three readings hold of a model that is linear in each treatment and
+#' carries an intercept, and of no other, which is why such a model reports this
+#' surface and no other model does. A model fit without one, written `- 1` or
+#' `+ 0`, reports the coefficient surface: dropping the intercept expands a
+#' factor treatment to an indicator for every level rather than for the
+#' non-reference levels alone, and where the columns survive it, as a 0/1
+#' numeric treatment's do, the forced zero moves what the coefficients mean
+#' instead, so no row of this vocabulary would be true of the fit either way.
+#'
+#' The columns are read as well as the formula: a factor treatment under a
 #' coding other than treatment contrasts leaves the terms bare while rescaling
 #' or recentering the column, so its coefficients are no longer the effects
 #' these rows name, and such a fit is refused rather than reported on either
-#' surface. Refit the outcome model with a binary treatment as a 0/1 numeric or
-#' as an unordered factor under treatment contrasts. A treatment with more than
-#' two levels has no numeric coding whose bare term contributes the indicators
-#' the rows name, so there it is the unordered factor alone.
+#' surface. Refit the outcome model with the treatment as an unordered factor
+#' under treatment contrasts. A treatment with two levels also has a numeric
+#' coding whose bare term contributes that column, 0 for the reference level and
+#' 1 for the other; a treatment with more than two levels has none, so there it
+#' is the unordered factor alone.
+#'
+#' The dose column is read the same way, against the dose the treatment models
+#' were fit to. A dose transformed in the outcome model's own formula, as
+#' `I(e / 10)` or `scale(e)`, leaves that column alone and is no longer a bare
+#' term, so the fit reports the coefficient surface. A dose rescaled or
+#' recentered in the data after the treatment models were fit is refused
+#' instead: the models have to agree on what the variable is, and the weights
+#' the outcome model carries were built for the dose those models hold. Working
+#' on a rescaled dose is supported either by rescaling it before every model is
+#' fit or by writing the transformation into the outcome formula.
 #'
 #' ### The coefficient surface
 #'

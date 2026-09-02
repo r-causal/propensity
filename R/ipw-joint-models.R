@@ -947,13 +947,26 @@ ipw_joint_dose_rows <- function(
   columns <- which(term_of_column %in% which(reads_treatment))
   column_terms <- term_of_column[columns]
 
-  # A model in bare treatment terms is one the vocabulary describes, and it is
-  # reported in that vocabulary. Every other model reaches the coefficient
-  # surface. Nothing else decides this: a fit reports the surface its own
-  # marginal structural model has a reading for.
+  # A model in bare treatment terms, fit with an intercept, is one the
+  # vocabulary describes, and it is reported in that vocabulary. Every other
+  # model reaches the coefficient surface. Nothing else decides this: a fit
+  # reports the surface its own marginal structural model has a reading for.
+  #
+  # The intercept is part of the reading rather than a separate guard. Dropping
+  # it expands a factor treatment to an indicator for every level rather than
+  # for the non-reference levels alone, and where the columns survive that, as
+  # a 0/1 numeric treatment's do, the forced zero moves what the coefficients
+  # mean instead: the treatment's own coefficient becomes a mean at a dose of
+  # zero rather than a difference between its levels there. Either way no row
+  # the vocabulary writes would be true of the fit, and the coefficient surface
+  # names each row after the column it multiplies and so claims neither.
   bare <- ipw_joint_dose_bare_terms(names)
+  intercept <- identical(
+    as.integer(attr(stats::terms(outcome_mod), "intercept")),
+    1L
+  )
 
-  if (all(term_labels[reads_treatment] %in% bare$admitted)) {
+  if (intercept && all(term_labels[reads_treatment] %in% bare$admitted)) {
     return(ipw_joint_dose_vocabulary_rows(
       out_X,
       columns,
@@ -1021,6 +1034,10 @@ ipw_joint_dose_vocabulary_rows <- function(
     term_labels[column_terms],
     names,
     level_labels,
+    # Which reported column reads what, so that a mismatch can be told apart by
+    # the column that carries it rather than by the variables its term names.
+    reads_dose = reads[[2]][column_terms],
+    dose_alone = !reads[[1]][column_terms] & reads[[2]][column_terms],
     call = call
   )
 
@@ -1160,9 +1177,8 @@ check_ipw_joint_dose_terms <- function(
 # ever reads.
 #
 # A term contributing more columns than there are non-reference levels is coded
-# some other way, a model with no intercept being the reachable case, and the
-# index is held at the last level so that the column comparison is what reports
-# it rather than an out-of-range subscript.
+# some other way, and the index is held at the last level so that the column
+# comparison is what reports it rather than an out-of-range subscript.
 ipw_joint_dose_column_levels <- function(column_terms, n_levels) {
   within <- stats::ave(
     seq_along(column_terms),
@@ -1222,7 +1238,8 @@ ipw_joint_dose_indicator <- function(treatment, level_values, level) {
   as.double(treatment == level_values[[level]])
 }
 
-# Refuse an outcome model whose treatment columns are coded some other way.
+# Refuse an outcome model whose treatment columns are not the ones the reported
+# rows describe, and say which of the two things a caller did made them so.
 #
 # The bare-term boundary reads term labels, which say which variables a column
 # is built from and nothing about how the column is built. A factor treatment
@@ -1242,6 +1259,14 @@ ipw_joint_dose_indicator <- function(treatment, level_values, level) {
 # multiplication of the same two vectors, so a column that is the one the row
 # describes agrees to the last bit and anything else is a different quantity
 # rather than a rounding of the same one.
+#
+# The same comparison catches a second thing, which is a dose the outcome model
+# was fit on values of that the treatment models never saw: the estimator holds
+# the dose those models were fit to, so a marginal structural model fit on a
+# rescaled copy of that column is a model of a different variable, and its
+# weights were built for the original. That is a mismatch between models rather
+# than a coding, and what a caller can do about it is different, so the advice
+# is chosen below from which column disagrees.
 check_ipw_joint_dose_coding <- function(
   out_X,
   columns,
@@ -1249,6 +1274,8 @@ check_ipw_joint_dose_coding <- function(
   term_labels,
   names,
   level_labels,
+  reads_dose,
+  dose_alone,
   call = rlang::caller_env()
 ) {
   mismatched <- !vapply(
@@ -1270,6 +1297,18 @@ check_ipw_joint_dose_coding <- function(
   focal <- level_labels[[2]]
   non_reference <- level_labels[-1]
 
+  # Which of the two causes to describe, read off the columns that disagree. A
+  # rescaled dose moves the column reading the dose alone, and every interaction
+  # column with it; a treatment coded some other way moves the columns reading
+  # the treatment, and every interaction column with those. So the bare dose
+  # column is what says the dose is the cause, and a mismatched column reading
+  # no dose is what says the coding is, and a model whose dose and whose
+  # treatment both moved says both. An interaction column mismatching on its own
+  # names neither, and the coding advice stands there as the one that describes
+  # a column the caller wrote.
+  dose_moved <- any(mismatched & dose_alone)
+  coding_moved <- !dose_moved || any(mismatched & !reads_dose)
+
   # Two levels leave one indicator and one numeric coding of it, and more than
   # two leave one indicator per non-reference level and no numeric coding at
   # all, since no single column carries what the several of them say. The
@@ -1290,42 +1329,69 @@ check_ipw_joint_dose_coding <- function(
     interaction column is the product of one indicator with it."
   }
 
-  intercept <- if (binary) {
-    "A model with no intercept, written {.code - 1} or {.code + 0}, expands a \\
-    factor treatment to an indicator for every level, so its first column is \\
-    the reference-level indicator rather than the 0/1 indicator the rows \\
-    describe. Keep the intercept, or code {.val {first}} as a 0/1 numeric."
-  } else {
-    "A model with no intercept, written {.code - 1} or {.code + 0}, expands a \\
-    factor treatment to an indicator for every level rather than for the \\
-    non-reference levels alone, so its columns are shifted by one against the \\
-    indicators the rows describe. Keep the intercept."
-  }
-
+  # A treatment with two levels has a numeric coding that contributes the same
+  # column its factor coding does, and one with more than two has none, so the
+  # sentence after the remedy says which and the remedy itself names the factor
+  # coding either way. The model reaching here was fit with an intercept, since
+  # a model without one reports the coefficient surface and never arrives, so
+  # no reading of these columns turns on one.
   remedy <- if (binary) {
-    "Refit {.arg outcome_mod} with {.val {first}} as a 0/1 numeric, or as an \\
-    unordered factor under treatment contrasts."
+    "Refit {.arg outcome_mod} with {.val {first}} as an unordered factor \\
+    under treatment contrasts. A treatment with two levels also has a numeric \\
+    coding whose bare term contributes that column, 0 for {.val {reference}} \\
+    and 1 for {.val {focal}}."
   } else {
     "Refit {.arg outcome_mod} with {.val {first}} as an unordered factor \\
     under treatment contrasts. A treatment with more than two levels has no \\
     numeric coding whose bare term contributes those columns."
   }
 
-  abort(
+  coding_bullets <- if (coding_moved) {
     c(
-      "{.fun ipw} reports a joint intervention with a dose from a marginal \\
-      structural model whose treatment columns are the treatments themselves.",
-      x = "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} \\
-      a column coded some other way.",
       i = coding,
       i = "A contrast coding other than treatment contrasts rescales or \\
       recenters those columns without changing what the formula says. An \\
       ordered factor carries polynomial contrasts, and \\
       {.code options(contrasts = )} sets a coding for every factor in the \\
       session.",
-      i = intercept,
       i = remedy
-    ),
+    )
+  }
+
+  dose_bullets <- if (dose_moved) {
+    c(
+      i = "The {.val {second}} column of {.arg outcome_mod} has to hold the \\
+      same values the treatment models were fit to. {.fun ipw} reads the dose \\
+      from those models, or from {.arg .data} where one is supplied.",
+      i = "A dose rescaled or recentered in the data after those models were \\
+      fit leaves them and {.arg outcome_mod} describing different variables, \\
+      and the weights {.arg outcome_mod} carries were built for the dose the \\
+      treatment models hold.",
+      i = "Working on a rescaled dose is supported. Rescale it before fitting \\
+      every model, the treatment models, any numerator model, and \\
+      {.arg outcome_mod}, or write the transformation into the formula of \\
+      {.arg outcome_mod}, as {.code I({second} / 10)} or \\
+      {.code scale({second})}, which reports the coefficient surface."
+    )
+  }
+
+  header <- "{.fun ipw} reports a joint intervention with a dose from a \\
+    marginal structural model whose treatment columns are the treatments \\
+    themselves."
+
+  # The line a reader sees first names the terms and the cause the bullets go
+  # on to describe, so a dose that moved on its own is said to be a dose rather
+  # than a coding.
+  cause <- if (coding_moved) {
+    "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} a \\
+    column coded some other way."
+  } else {
+    "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} a \\
+    column built from a dose the treatment models were not fit to."
+  }
+
+  abort(
+    c(header, x = cause, coding_bullets, dose_bullets),
     error_class = "propensity_ipw_msm_error",
     call = call
   )
