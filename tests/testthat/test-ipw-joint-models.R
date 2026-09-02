@@ -1168,6 +1168,131 @@ test_that("a binary component's numerator on an unsupported link names the compo
   expect_match(message, "`stabilize` for `e`", fixed = TRUE)
 })
 
+# ---- the refusals a numerator shares with the other stacked models ----------
+#
+# A numerator model meets the guards every model this route stacks meets: the
+# refusal of case weights, the requirement of a coefficient per design column,
+# the recovery of a design from a fit that keeps no model frame, the width a
+# `.data` rebuild has to come back at, and the refusal of a penalized fit. Each
+# of those names the model by the argument it arrived in, which on this route is
+# one `stabilize` per component, so each names the component beside it.
+
+test_that("a numerator fit with case weights names the component", {
+  dat <- sim_joint_models()
+  dat$case_wt <- rep(c(1, 2), length.out = nrow(dat))
+  weighted <- glm(e ~ x1, data = dat, family = binomial(), weights = case_wt)
+
+  # `wt_ate()` refuses such a model where it arrives, so weights recording one
+  # were assembled by hand or by a version that took it. The record is written
+  # here rather than built, which is what those weights are, and the estimator
+  # reads it the same way either way.
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a, stabilize = TRUE),
+      wt_ate(ps_e, stabilize = glm(e ~ x1, data = dat, family = binomial())),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  meta <- joint_wt_meta(wts)
+  meta$numerator_model[[2]] <- weighted
+  attr(wts, "joint_wt_meta") <- meta
+
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  cnd <- tryCatch(
+    ipw(joint_wt_models(a = ps_a, e = ps_e), outcome_mod),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_ps_weights_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+  expect_no_match(message, "wt_mod", fixed = TRUE)
+})
+
+test_that("a numerator missing a coefficient names the component", {
+  dat <- sim_joint_models()
+
+  # A duplicated column leaves the fit without a coefficient for it, which is
+  # the state the block cannot multiply its design by.
+  duplicated <- dat
+  duplicated$x1_again <- duplicated$x1
+  num_e <- glm(e ~ x1 + x1_again, data = duplicated, family = binomial())
+  fits <- joint_models_numerator_gone_fits(duplicated, num_e)
+
+  cnd <- tryCatch(
+    muffle_coverage_warning(ipw(fits$models, fits$outcome_mod)),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_rank_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+  expect_match(message, "x1_again", fixed = TRUE)
+})
+
+test_that("a numerator whose data is gone names the component", {
+  dat <- sim_joint_models()
+  gone <- joint_models_numerator_frame_gone(dat)
+  fits <- joint_models_numerator_gone_fits(dat, gone)
+
+  cnd <- tryCatch(ipw(fits$models, fits$outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+})
+
+test_that("a numerator design rebuilt to another width names the component", {
+  dat <- sim_joint_models()
+
+  # A matrix column is the shape the guards before the width count pass over,
+  # so a frame holding one of another width reaches the count itself.
+  dat$vm <- stats::model.matrix(~ factor(x2), data = dat)[, -1, drop = FALSE]
+  num_e <- glm(e ~ vm, data = dat, family = binomial())
+  fits <- joint_models_numerator_gone_fits(dat, num_e)
+
+  supplied <- dat
+  supplied$vm <- cbind(dat$vm, s = as.double(dat$x1 > 0))
+
+  cnd <- tryCatch(
+    muffle_coverage_warning(
+      ipw(fits$models, fits$outcome_mod, .data = supplied)
+    ),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+})
+
+test_that("a numerator fit as an additive model names the component", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_models()
+
+  # An additive fit's coefficients are the root of a penalized score, which is
+  # not the score the block stacks, so the fit is refused rather than stacked.
+  num_e <- mgcv::gam(e ~ s(x1), data = dat, family = binomial())
+  fits <- joint_models_numerator_gone_fits(dat, num_e)
+
+  cnd <- tryCatch(ipw(fits$models, fits$outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_se_method_unavailable_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+})
+
 # ---- a treatment model whose data is gone -----------------------------------
 #
 # A treatment model's coefficients are estimated in the stacked system, so the

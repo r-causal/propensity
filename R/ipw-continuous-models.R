@@ -968,9 +968,14 @@ ipw_continuous_ratio_meta <- function(
 # `.data` is the frame every other design in the stack is rebuilt from, over the
 # rows every model read, and this design is rebuilt from it alongside them.
 # Without one the design is read off the fit itself.
+#
+# `component` names the component whose weights the numerator was built for on
+# the joint route, where naming the argument alone would leave a caller with two
+# stabilized components unable to tell which fit is refused.
 ipw_numerator_model_block <- function(
   numerator_model,
   .data = NULL,
+  component = NULL,
   call = rlang::caller_env()
 ) {
   if (is.null(numerator_model)) {
@@ -984,19 +989,29 @@ ipw_numerator_model_block <- function(
     call = call
   )
   check_ipw_continuous_model(entry, call = call)
-  check_ipw_numerator_model_weights(numerator_model, call = call)
+  check_ipw_numerator_model_weights(
+    numerator_model,
+    component = component,
+    call = call
+  )
 
   # The block below multiplies the fitted coefficients against the design
   # positionally, as the propensity score block does, so the model needs a
   # coefficient for every column of its design. Without this the numerator comes
   # back missing at every value of theta, and the first report of it is the
   # weights the system rebuilds failing to match the ones the caller built.
-  check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
+  check_ipw_model_rank(
+    stats::coef(numerator_model),
+    "stabilize",
+    component = component,
+    call = call
+  )
 
   numerator_design <- ipw_numerator_model_design(
     numerator_model,
     entry,
     .data = .data,
+    component = component,
     call = call
   )
 
@@ -1034,11 +1049,13 @@ ipw_numerator_model_block <- function(
 # `model = FALSE` keeps none and rebuilds it by re-evaluating the fitting call,
 # which a fit made inside a function whose frame is gone cannot do. That is the
 # denominator's recovery and the failure it can meet, so it is reported the way
-# the denominator's is, named for the argument this model arrived in.
+# the denominator's is, named for the argument this model arrived in and, on the
+# joint route, for the component it was built for.
 ipw_numerator_model_design <- function(
   numerator_model,
   entry,
   .data = NULL,
+  component = NULL,
   call = rlang::caller_env()
 ) {
   if (!is.null(.data)) {
@@ -1048,7 +1065,13 @@ ipw_numerator_model_design <- function(
       .data,
       call = call
     )
-    check_ipw_design_width(rebuilt, numerator_model, "stabilize", call = call)
+    check_ipw_design_width(
+      rebuilt,
+      numerator_model,
+      "stabilize",
+      component = component,
+      call = call
+    )
 
     return(rebuilt)
   }
@@ -1066,6 +1089,7 @@ ipw_numerator_model_design <- function(
     abort_ipw_numerator_frame_gone(
       conditionMessage(recovered),
       evaluates_to = "numerator",
+      component = component,
       call = call
     )
   }
@@ -1115,8 +1139,13 @@ ipw_integrated_fit_design <- function(
 # refusal names `stabilize`, since that is the argument the model arrived in
 # and a reader told to refit the propensity score model would be told to refit
 # the wrong thing.
+#
+# `component` names the component the numerator was built for where there is
+# one to name, which is what the joint route has and the single-treatment routes
+# do not.
 check_ipw_numerator_model_weights <- function(
   numerator_model,
+  component = NULL,
   call = rlang::caller_env()
 ) {
   weights <- ipw_model_prior_weights(numerator_model)
@@ -1125,12 +1154,17 @@ check_ipw_numerator_model_weights <- function(
     return(invisible(TRUE))
   }
 
+  labels <- ipw_numerator_labels(component)
+
   abort(
     c(
       "{.fun ipw} does not support a numerator model fit with case weights.",
-      x = "{.arg stabilize} was fit with non-unit {.arg weights}, so its \\
-      coefficients are not the root of the unweighted score stacked for it.",
-      i = "Refit {.arg stabilize} without {.arg weights}."
+      x = paste0(
+        labels$numerator,
+        " was fit with non-unit {.arg weights}, so its coefficients are not \\
+        the root of the unweighted score stacked for it."
+      ),
+      i = paste0("Refit ", labels$numerator, " without {.arg weights}.")
     ),
     error_class = "propensity_ipw_ps_weights_error",
     call = call

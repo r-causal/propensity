@@ -727,6 +727,13 @@
 #' evaluated errors with class `propensity_ipw_data_error` without one, and is
 #' rebuilt from `.data` with one.
 #'
+#' Both components' numerators arrive in the same argument, one `stabilize` per
+#' component, so every refusal about one names the component it was built for
+#' beside that argument, `stabilize` for `z`. `wt_mod` here is the container the
+#' two treatment models arrived in rather than a model anyone could refit, so a
+#' refusal reading a numerator against its treatment model names that component
+#' too.
+#'
 #' What a numerator may condition on is a statement about the reported model
 #' rather than a free choice, and it is the same statement here as for a single
 #' treatment. A numerator may condition on any variable the marginal structural
@@ -2055,21 +2062,31 @@ check_ipw_binary_gam <- function(
   wt_mod,
   arg = "wt_mod",
   what = "a binary propensity score model",
+  component = NULL,
   call = rlang::caller_env()
 ) {
   if (!inherits(wt_mod, "gam")) {
     return(invisible(TRUE))
   }
 
+  label <- ipw_model_arg_label(arg, component)
+
   abort(
     c(
       "{.fun ipw} stacks {what} at the unpenalized \\
       score of a {.fun stats::glm}.",
-      x = "{.arg {arg}} has class {.cls {class(wt_mod)}}, whose coefficients \\
-      are the root of a penalized score instead, so every standard error \\
-      here would describe a model that was not fit.",
-      i = "Refit {.arg {arg}} as a {.fun stats::glm}, writing the shape each \\
-      smooth term carries out as columns of the formula.",
+      x = paste0(
+        label,
+        " has class {.cls {class(wt_mod)}}, whose coefficients are the root \\
+        of a penalized score instead, so every standard error here would \\
+        describe a model that was not fit."
+      ),
+      i = paste0(
+        "Refit ",
+        label,
+        " as a {.fun stats::glm}, writing the shape each smooth term carries \\
+        out as columns of the formula."
+      ),
       i = ipw_continuous_resample_hint()
     ),
     error_class = c(
@@ -3994,6 +4011,20 @@ ipw_numerator_labels <- function(component = NULL) {
   )
 }
 
+# The same split for the refusals a numerator model shares with the other models
+# this route stacks, which name the model by the argument it arrived in rather
+# than by a word of their own. A route reading one model per argument is named
+# by the argument alone, and the joint route, which reads a numerator per
+# component, names the component beside it, so one guard raised for two
+# components says which of them it is about.
+ipw_model_arg_label <- function(arg, component = NULL) {
+  if (is.null(component)) {
+    return("{.arg {arg}}")
+  }
+
+  "{.arg {arg}} for {.arg {component}}"
+}
+
 # Report a numerator model whose design cannot be recovered from the fit, the
 # counterpart of the guard above for the model the weights were stabilized on.
 # An `lm`, a `glm`, or an `nnet::multinom()` fit that keeps no model frame
@@ -4001,7 +4032,8 @@ ipw_numerator_labels <- function(component = NULL) {
 # function whose frame is gone cannot do. Every numerator route meets that
 # failure and every one of them rebuilds the design from `.data` instead, so the
 # report is written once and the remedy is the same one the propensity score
-# model's recovery offers.
+# model's recovery offers. `component` names the component the numerator was
+# built for where a route reads one per component.
 #
 # `evaluates_to` names what the coefficients would give if the numerator were
 # read off the fit rather than estimated: probabilities for a discrete exposure,
@@ -4010,11 +4042,14 @@ ipw_numerator_labels <- function(component = NULL) {
 abort_ipw_numerator_frame_gone <- function(
   cause,
   evaluates_to = "probabilities",
+  component = NULL,
   call = rlang::caller_env()
 ) {
+  labels <- ipw_numerator_labels(component)
+
   abort(
     c(
-      "Can't reconstruct the data behind {.arg stabilize}.",
+      paste0("Can't reconstruct the data behind ", labels$numerator, "."),
       x = "{cause}",
       i = "The numerator model is estimated alongside everything else, so \\
       {.fun ipw} needs the design its coefficients were fit over rather than \\

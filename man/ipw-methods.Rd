@@ -988,6 +988,13 @@ numerator that keeps no model frame and whose fitting call can no longer be
 evaluated errors with class \code{propensity_ipw_data_error} without one, and is
 rebuilt from \code{.data} with one.
 
+Both components' numerators arrive in the same argument, one \code{stabilize} per
+component, so every refusal about one names the component it was built for
+beside that argument, \code{stabilize} for \code{z}. \code{wt_mod} here is the container the
+two treatment models arrived in rather than a model anyone could refit, so a
+refusal reading a numerator against its treatment model names that component
+too.
+
 What a numerator may condition on is a statement about the reported model
 rather than a free choice, and it is the same statement here as for a single
 treatment. A numerator may condition on any variable the marginal structural

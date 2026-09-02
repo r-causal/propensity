@@ -469,16 +469,26 @@ ipw_binary_numerator_block <- function(
     numerator_model,
     arg = "stabilize",
     what = "a binary numerator model",
+    component = component,
     call = call
   )
-  check_ipw_numerator_model_weights(numerator_model, call = call)
+  check_ipw_numerator_model_weights(
+    numerator_model,
+    component = component,
+    call = call
+  )
 
   # The block below multiplies the fitted coefficients against the design
   # positionally, as the propensity score block does, so the model needs a
   # coefficient for every column of its design. Without this the numerator comes
   # back missing at every value of theta, and the first report of it is the
   # weights the system rebuilds failing to match the ones the caller built.
-  check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
+  check_ipw_model_rank(
+    stats::coef(numerator_model),
+    "stabilize",
+    component = component,
+    call = call
+  )
 
   link <- numerator_model[["family"]]$link
   supported <- c("logit", "probit", "cloglog")
@@ -510,7 +520,11 @@ ipw_binary_numerator_block <- function(
       error = function(e) e
     )
     if (inherits(recovered, "error")) {
-      abort_ipw_numerator_frame_gone(conditionMessage(recovered), call = call)
+      abort_ipw_numerator_frame_gone(
+        conditionMessage(recovered),
+        component = component,
+        call = call
+      )
     }
     recovered
   } else {
@@ -520,7 +534,13 @@ ipw_binary_numerator_block <- function(
       .data,
       call = call
     )
-    check_ipw_design_width(rebuilt, numerator_model, "stabilize", call = call)
+    check_ipw_design_width(
+      rebuilt,
+      numerator_model,
+      "stabilize",
+      component = component,
+      call = call
+    )
     rebuilt
   }
 
@@ -558,7 +578,11 @@ ipw_categorical_numerator_block <- function(
     return(NULL)
   }
 
-  check_ipw_numerator_model_weights(numerator_model, call = call)
+  check_ipw_numerator_model_weights(
+    numerator_model,
+    component = component,
+    call = call
+  )
   check_ipw_categorical_numerator_levels(
     numerator_model,
     ps_mod,
@@ -571,7 +595,12 @@ ipw_categorical_numerator_block <- function(
   # coefficient for every column of its design. Without this the numerator comes
   # back missing at every value of theta, and the first report of it is the
   # weights the system rebuilds failing to match the ones the caller built.
-  check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
+  check_ipw_model_rank(
+    stats::coef(numerator_model),
+    "stabilize",
+    component = component,
+    call = call
+  )
 
   numerator_design <- if (is.null(.data)) {
     # `nnet::multinom()` keeps no model frame, so the design is recovered by
@@ -582,7 +611,11 @@ ipw_categorical_numerator_block <- function(
       error = function(e) e
     )
     if (inherits(recovered, "error")) {
-      abort_ipw_numerator_frame_gone(conditionMessage(recovered), call = call)
+      abort_ipw_numerator_frame_gone(
+        conditionMessage(recovered),
+        component = component,
+        call = call
+      )
     }
     recovered$ps_X
   } else {
@@ -592,7 +625,13 @@ ipw_categorical_numerator_block <- function(
       .data,
       call = call
     )
-    check_ipw_design_width(rebuilt, numerator_model, "stabilize", call = call)
+    check_ipw_design_width(
+      rebuilt,
+      numerator_model,
+      "stabilize",
+      component = component,
+      call = call
+    )
     rebuilt
   }
 
@@ -1149,7 +1188,16 @@ check_ipw_data_complete <- function(
 #
 # The coefficients are taken rather than the model, because the outcome model's
 # are already read into the spec by the time this runs on that side.
-check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
+#
+# `arg` is the argument the model arrived in and `component`, where a route has
+# one, is the component it was read for: two stabilized components both arrive
+# in `stabilize`, so the argument alone would not say which fit is refused.
+check_ipw_model_rank <- function(
+  coefs,
+  arg,
+  component = NULL,
+  call = rlang::caller_env()
+) {
   if (is.matrix(coefs)) {
     dropped <- colnames(coefs)[apply(!is.finite(coefs), 2, any)]
   } else {
@@ -1159,6 +1207,8 @@ check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
   if (length(dropped) == 0) {
     return(invisible(TRUE))
   }
+
+  label <- ipw_model_arg_label(arg, component)
 
   consequence <- if (identical(arg, "wt_mod")) {
     "{.fun ipw} rebuilds the propensity scores by multiplying the fitted \\
@@ -1176,15 +1226,22 @@ check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
 
   abort(
     c(
-      "{.arg {arg}} must have a coefficient for every column of its design.",
-      x = "{.arg {arg}} has no fitted coefficient for {.val {dropped}}.",
+      paste0(
+        label,
+        " must have a coefficient for every column of its design."
+      ),
+      x = paste0(label, " has no fitted coefficient for {.val {dropped}}."),
       i = "A model reports that for a column its design cannot separate from \\
       the others: the column is a linear combination of them, exactly or to \\
       within the tolerance the fit pivots at, so the fit has no unique \\
       solution for it and drops it.",
       i = consequence,
-      i = "Refit {.arg {arg}} without the redundant column{?s}, or combine \\
-      {?it/them} with the column{?s} {?it duplicates/they duplicate}."
+      i = paste0(
+        "Refit ",
+        label,
+        " without the redundant column{?s}, or combine {?it/them} with the \\
+        column{?s} {?it duplicates/they duplicate}."
+      )
     ),
     error_class = "propensity_ipw_rank_error",
     call = call
@@ -1210,23 +1267,34 @@ check_ipw_model_rank <- function(coefs, arg, call = rlang::caller_env()) {
 #
 # `arg` is the argument the model arrived in, the propensity score model and a
 # numerator model reaching the same failure and needing the same report of it,
-# each naming the fit the caller would have to look at.
+# each naming the fit the caller would have to look at. `component` names the
+# component that fit was read for, which the joint route has and the
+# single-treatment routes do not.
 check_ipw_design_width <- function(
   design,
   mod,
   arg = "wt_mod",
+  component = NULL,
   call = rlang::caller_env()
 ) {
   n_fitted <- ipw_ps_terms_per_equation(mod)
 
   if (!identical(ncol(design), n_fitted)) {
+    label <- ipw_model_arg_label(arg, component)
+
     abort(
       c(
-        "{.arg .data} must rebuild the design {.arg {arg}} was fit to.",
+        paste0(
+          "{.arg .data} must rebuild the design ",
+          label,
+          " was fit to."
+        ),
         x = "The design rebuilt from {.arg .data} has {ncol(design)} \\
         column{?s}.",
-        x = "{.arg {arg}} was fit with {n_fitted} coefficient{?s} per \\
-        equation.",
+        x = paste0(
+          label,
+          " was fit with {n_fitted} coefficient{?s} per equation."
+        ),
         i = "A column whose type differs from the fitting data is the usual \\
         cause: a factor expands to one column per non-reference level where a \\
         numeric takes one."

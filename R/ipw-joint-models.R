@@ -1928,6 +1928,7 @@ ipw_joint_models_dose_stab <- function(
   model <- ipw_numerator_model_block(
     numerator_model,
     .data = .data,
+    component = name,
     call = call
   )
   check_ipw_numerator_model(
