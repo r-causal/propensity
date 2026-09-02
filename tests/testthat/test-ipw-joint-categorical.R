@@ -2610,3 +2610,606 @@ test_that("a two-level multinomial component sits in the first slot beside a dos
     tolerance = 1e-5
   )
 })
+
+# ---- the categorical joint route over the rows `.data` keeps ----------------
+#
+# `.data` is where the designs this route rebuilds come from, and the rows that
+# frame leaves need not be the rows the treatment models were fit over: an
+# outcome model reading a covariate with a hole in it analyzes fewer rows than
+# the models beside it did, and the stacked system solves over those. What a
+# categorical component owes that restriction is what the single-treatment
+# routes owe it. Its denominator design, its counterfactual designs, and its
+# numerator model's design are rebuilt from the frame rather than read off fits
+# that kept other rows; its stabilization block is seeded at the moments the
+# weights were built at, which are the fit's, and solved at the moments of the
+# rows analyzed, which are not; and the columns those rebuilds read are asked
+# for, typed, and levelled before any of them runs.
+#
+# Two readings of the same request run through every test here: supplying the
+# frame the fits were given and supplying the rows `ipw()` restricts it to are
+# the same request, so the two forms report the same thing.
+
+# The three-level fixture with two more columns. `v` is read by nothing but a
+# numerator model, so it is the column the guards below take away or supply as
+# something else. `w` is read by nothing but the outcome model and is withheld
+# at a hundred and twenty of the rows that took the `hi` level, so the rows the
+# outcome model analyzes are fewer than the rows the treatment models were fit
+# over, and the level proportions over the two row sets differ by percents
+# rather than by rounding. Withholding it at random would move them by parts in
+# a thousand, and a pin written against either reading would then pass against
+# the other.
+sim_joint_categorical_gap <- function(seed = 7311, n = 1500) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  v <- rnorm(n)
+  a <- rbinom(n, 1, plogis(0.3 * x1 - 0.4 * x2))
+
+  eta_mid <- -0.1 + 0.5 * x1 + 0.3 * x2 - 0.7 * a + 0.5 * a * x1 + 0.4 * v
+  eta_hi <- -0.3 + 0.3 * x1 - 0.4 * x2 + 0.6 * a - 0.4 * a * x1 - 0.3 * v
+  denom <- 1 + exp(eta_mid) + exp(eta_hi)
+  z <- draw_categorical(
+    cbind(1, exp(eta_mid), exp(eta_hi)) / denom,
+    c("lo", "mid", "hi")
+  )
+
+  z_mid <- as.integer(z == "mid")
+  z_hi <- as.integer(z == "hi")
+  y <- rbinom(
+    n,
+    1,
+    plogis(
+      -0.4 +
+        0.7 * a +
+        0.5 * z_mid +
+        0.3 * z_hi +
+        0.6 * x1 -
+        0.3 * x2 +
+        0.8 * a * z_mid -
+        0.5 * a * z_hi
+    )
+  )
+
+  dat <- data.frame(x1, x2, v, a, z, y)
+  dat$w <- rev(dat$x1)
+  dat$w[which(dat$z == "hi")[seq_len(120)]] <- NA
+
+  dat
+}
+
+# The two-model route over the gapped frame, the categorical component
+# stabilized and the outcome model reading the gapped covariate so that it
+# analyzes fewer rows than either treatment model was fit over.
+#
+# The numerator model reads `v`, which no other model here does, and it is not
+# saturated in what it reads. A numerator saturated in a binary covariate leaves
+# the equations of the levels the gap does not touch at the same root over both
+# row sets, since their proportions within each cell of that covariate are what
+# solves them and the gap does not move those; half the pins below would then
+# pass whichever rows the block had been solved over.
+fit_joint_categorical_gap_route <- function(
+  dat,
+  numerator = c("marginal", "model"),
+  outcome_rhs = "a * z + x1 + x2 + w"
+) {
+  numerator <- match.arg(numerator)
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  num_z <- nnet::multinom(
+    z ~ v + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  probabilities <- unname(stats::predict(ps_z, type = "probs"))
+  colnames(probabilities) <- ps_z$lev
+
+  w_a <- withr::with_options(list(propensity.quiet = TRUE), wt_ate(ps_a))
+  w_z <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      probabilities,
+      dat$z,
+      exposure_type = "categorical",
+      stabilize = if (identical(numerator, "model")) num_z else TRUE
+    )
+  )
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(w_a, w_z, exposure_type = c("binary", "categorical"))
+  )
+  outcome_mod <- glm(
+    stats::reformulate(outcome_rhs, response = "y"),
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(a = ps_a, z = ps_z),
+    ps_a = ps_a,
+    ps_z = ps_z,
+    num_z = num_z,
+    outcome_mod = outcome_mod,
+    wts = wts
+  )
+}
+
+# The proportion of each non-reference level over a set of rows, which is what
+# both readings of a categorical component's marginal numerator are and what
+# tells the seed from the solution.
+joint_categorical_level_shares <- function(exposure) {
+  vapply(
+    levels(exposure)[-1],
+    function(level) mean(exposure == level),
+    numeric(1)
+  )
+}
+
+test_that("a categorical component's marginal numerator is seeded at the fit's proportions and solved at the analyzed rows'", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_gap()
+  kept <- !is.na(dat$w)
+  fx <- fit_joint_categorical_gap_route(dat, numerator = "marginal")
+
+  # The two readings the block could take, and the gap between them. Everything
+  # below is a statement about which of the two a seed is and which a solution
+  # is, so the fixture has to separate them by more than any tolerance here
+  # tolerates.
+  fitted_shares <- joint_categorical_level_shares(dat$z)
+  analyzed_shares <- joint_categorical_level_shares(dat$z[kept])
+  expect_gt(min(abs(analyzed_shares - fitted_shares)), 0.02)
+
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod, .data = dat)
+  layout <- ipw_theta_layout(spec)
+
+  expect_identical(spec$n, sum(kept))
+  expect_identical(spec$stab$widths, c(0L, 2L))
+
+  # The exposure moment the seed reads is the fit's own indicator matrix, which
+  # is as long as the frame the fit was given rather than as the rows the system
+  # goes on to solve over.
+  indicator <- ipw_joint_models_fit_exposure(spec, 2L)
+  expect_identical(dim(indicator), c(nrow(dat), 3L))
+
+  seed <- ipw_init_joint_models_stab(spec)
+  expect_identical(names(seed), c("stab_z_mid", "stab_z_hi"))
+  expect_equal(unname(seed), unname(fitted_shares), tolerance = 1e-12)
+
+  # Those are the moments the weights were built at, so the seed rebuilds the
+  # weights the outcome model was fit under over exactly the rows it kept. A
+  # seed already at the analyzed rows' proportions would rebuild weights the
+  # caller was never given, and this is where that would be reported.
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fx$wts)[kept],
+    tolerance = 1e-10
+  )
+
+  # The rows written for the proportions are not at their root there, and what
+  # they are off by is exactly the gap between the two readings: the seed is
+  # where the weights were built and the solve is what moves it to the rows
+  # analyzed.
+  mat <- build_ipw_psi(spec, layout)(layout$init)
+  expect_false(anyNA(mat))
+  stab_rows <- match(c("stab_z_mid", "stab_z_hi"), names(layout$init))
+  expect_equal(
+    unname(rowMeans(mat)[stab_rows]),
+    unname(analyzed_shares - fitted_shares),
+    tolerance = 1e-10
+  )
+
+  res <- ipw(fx$models, fx$outcome_mod, .data = dat)
+  theta <- coef(res$fit)
+
+  expect_s3_class(res, "ipw")
+  expect_identical(
+    names(theta)[grepl("^stab_", names(theta))],
+    c("stab_z_mid", "stab_z_hi")
+  )
+
+  # One row per non-reference level, the indicator of that level less the
+  # parameter, written over the rows the spec analyzes and so solved by their
+  # proportions rather than by the fit's.
+  expect_equal(
+    unname(theta[c("stab_z_mid", "stab_z_hi")]),
+    unname(analyzed_shares),
+    tolerance = 1e-8
+  )
+
+  # Supplying the frame the fits were given and supplying the rows `ipw()`
+  # restricts it to are the same request.
+  res_kept <- ipw(fx$models, fx$outcome_mod, .data = dat[kept, ])
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_identical(nrow(res$estimates), 24L)
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
+test_that("a categorical component's numerator model is seeded at its own coefficients and solved at the analyzed rows' refit", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_gap()
+  kept <- !is.na(dat$w)
+  fx <- fit_joint_categorical_gap_route(dat, numerator = "model")
+
+  # The block's rows are the multinomial score of the numerator's own design,
+  # whose root over a set of rows is the refit on them. The numerator arrived
+  # fit to the whole frame and the system reads it over the rows the outcome
+  # model kept, so the two readings are the fit and the refit, and they differ
+  # in every equation rather than in the one the gap sits in.
+  refit <- nnet::multinom(
+    z ~ v + x2,
+    data = dat[kept, ],
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  fitted_coefs <- as.vector(t(coef(fx$num_z)))
+  refit_coefs <- as.vector(t(coef(refit)))
+  expect_false(isTRUE(all.equal(fitted_coefs, refit_coefs, tolerance = 1e-3)))
+
+  spec <- ipw_spec_joint_models(fx$models, fx$outcome_mod, .data = dat)
+  layout <- ipw_theta_layout(spec)
+
+  expect_identical(spec$n, sum(kept))
+  # Three terms over two non-reference levels, the design rebuilt from the
+  # frame rather than recovered by re-evaluating the fitting call.
+  expect_identical(spec$stab$widths, c(0L, 6L))
+  expect_identical(
+    dim(spec$stab$components[[2]]$model$X),
+    c(sum(kept), 3L)
+  )
+
+  stab_names <- joint_categorical_stab_names("z", fx$num_z)
+  seed <- ipw_init_joint_models_stab(spec)
+  expect_identical(names(seed), stab_names)
+  expect_equal(unname(seed), fitted_coefs, tolerance = 1e-12)
+
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fx$wts)[kept],
+    tolerance = 1e-10
+  )
+  expect_false(anyNA(build_ipw_psi(spec, layout)(layout$init)))
+
+  res <- muffle_coverage_warning(ipw(fx$models, fx$outcome_mod, .data = dat))
+  theta <- coef(res$fit)
+
+  expect_s3_class(res, "ipw")
+  expect_identical(names(theta)[grepl("^stab_", names(theta))], stab_names)
+  expect_equal(unname(theta[stab_names]), refit_coefs, tolerance = 1e-6)
+  expect_false(isTRUE(all.equal(
+    unname(theta[stab_names]),
+    fitted_coefs,
+    tolerance = 1e-3
+  )))
+
+  res_kept <- muffle_coverage_warning(ipw(
+    fx$models,
+    fx$outcome_mod,
+    .data = dat[kept, ]
+  ))
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_identical(nrow(res$estimates), 24L)
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
+test_that("a categorical joint fit reports the same thing whether or not .data is supplied", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+
+  # The frame every model was fit to, with nothing to restrict: the designs
+  # rebuilt from it are the designs read off the fits, so the two calls are two
+  # ways of asking for one thing. Measured on this fixture the four routes agree
+  # to the last bit, which is what a rebuild that reproduces the fits' own
+  # designs gives; the pins leave room for a platform whose model matrices are
+  # assembled in another order.
+  unstabilized <- fit_joint_categorical_route(dat)
+  res <- ipw(unstabilized$models, unstabilized$outcome_mod)
+  res_data <- ipw(
+    unstabilized$models,
+    unstabilized$outcome_mod,
+    .data = dat
+  )
+
+  expect_identical(
+    res_data$estimates[c("effect", "contrast", "group")],
+    res$estimates[c("effect", "contrast", "group")]
+  )
+  expect_equal(
+    res_data$estimates$estimate,
+    res$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res$estimates$std.err,
+    tolerance = 1e-8
+  )
+
+  # And with each numerator a categorical component can carry, since each adds
+  # a block of its own to the system and the model numerator adds a design to
+  # rebuild alongside the treatments'.
+  for (numerator in c("marginal", "score", "model")) {
+    fx <- fit_joint_categorical_stab_route(dat, numerator = numerator)
+    fit <- ipw(fx$models, fx$outcome_mod)
+    fit_data <- ipw(fx$models, fx$outcome_mod, .data = dat)
+
+    expect_identical(
+      names(coef(fit_data$fit)),
+      names(coef(fit$fit)),
+      label = numerator
+    )
+    expect_equal(
+      fit_data$estimates$estimate,
+      fit$estimates$estimate,
+      tolerance = 1e-10,
+      label = numerator
+    )
+    expect_equal(
+      fit_data$estimates$std.err,
+      fit$estimates$std.err,
+      tolerance = 1e-8,
+      label = numerator
+    )
+  }
+})
+
+# ---- what `.data` has to supply a categorical component ---------------------
+
+test_that("a categorical component's numerator covariate absent from .data is refused", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_gap()
+  fx <- fit_joint_categorical_gap_route(dat, numerator = "model")
+
+  # The columns every rebuild reads are asked for before any of them runs, and
+  # a categorical component's numerator model joins that sweep like the other
+  # models: `v` is read by nothing else here, so leaving it out is a column the
+  # numerator's design alone would have gone looking for.
+  supplied <- dat
+  supplied$v <- NULL
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fx$models,
+      fx$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_columns_exist_error"
+  )
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(err)),
+    "v",
+    fixed = TRUE
+  )
+})
+
+test_that("a categorical component's numerator covariate supplied as a factor is refused", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_gap()
+  fx <- fit_joint_categorical_gap_route(dat, numerator = "model")
+
+  # The type sweep compares the class the fit recorded for a column with the
+  # class `.data` supplies and refuses the pair before any design is rebuilt.
+  # What it heads off is a factor of three levels taking two design columns
+  # where the number it stands in for took one, which the multinomial
+  # coefficients would then be multiplied against positionally.
+  supplied <- dat
+  supplied$v <- factor(
+    c("a", "b", "c")[1 + (rank(dat$x1) %% 3)],
+    levels = c("a", "b", "c")
+  )
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fx$models,
+      fx$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "v", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a categorical treatment `.data` levels another way is resolved rather than refused", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_gap()
+  fx <- fit_joint_categorical_gap_route(dat, numerator = "marginal")
+
+  # A binary component's treatment column is read positionally, so the order it
+  # declares is a fault the route names. A categorical one is not: the column is
+  # levelled against the fit's own `lev` before anything reads it, so the order
+  # it arrives in says nothing and a column carrying the same labels in another
+  # order is the same treatment written down differently. Both codings a factor
+  # and a character column give are resolved that way, and all three report the
+  # same thing.
+  relevelled <- dat
+  relevelled$z <- factor(as.character(dat$z), levels = c("hi", "lo", "mid"))
+  as_character <- dat
+  as_character$z <- as.character(dat$z)
+
+  res <- ipw(fx$models, fx$outcome_mod, .data = dat)
+  res_relevelled <- ipw(fx$models, fx$outcome_mod, .data = relevelled)
+  res_character <- ipw(fx$models, fx$outcome_mod, .data = as_character)
+
+  for (other in list(res_relevelled, res_character)) {
+    expect_identical(
+      other$estimates[c("effect", "contrast", "group")],
+      res$estimates[c("effect", "contrast", "group")]
+    )
+    expect_equal(
+      other$estimates$estimate,
+      res$estimates$estimate,
+      tolerance = 1e-10
+    )
+    expect_equal(
+      other$estimates$std.err,
+      res$estimates$std.err,
+      tolerance = 1e-10
+    )
+  }
+})
+
+test_that("a categorical treatment `.data` holds a level the model never saw is refused", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_gap()
+  fx <- fit_joint_categorical_gap_route(dat, numerator = "marginal")
+
+  # The other half of that resolution: a label the fit was never given has no
+  # column of coefficients to be read against, so it is refused where the
+  # resolution happens rather than reaching the softmax as a level the
+  # denominator cannot score.
+  #
+  # The label is written into a row the outcome model kept. `.data` is
+  # restricted to those rows before any column is read, so a value on a row the
+  # restriction drops is a value nothing goes on to score and there is nothing
+  # there to refuse.
+  supplied <- dat
+  supplied$z <- as.character(dat$z)
+  supplied$z[[which(!is.na(dat$w))[[1]]]] <- "elsewhere"
+
+  err <- expect_error(
+    ipw(fx$models, fx$outcome_mod, .data = supplied),
+    class = "propensity_ipw_exposure_error"
+  )
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "elsewhere", fixed = TRUE)
+  expect_match(message, "z", fixed = TRUE)
+})
+
+test_that("a categorical component's numerator model whose data is gone asks for .data", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_gap()
+  dat <- dat[!is.na(dat$w), ]
+
+  # A multinomial keeps no model frame and a `glm` fit with `model = FALSE`
+  # keeps none either, so both rebuild one by re-evaluating their fitting call,
+  # which a fit made inside a function whose frame is gone cannot do. Both
+  # components meet that failure through one report, so both are refused in the
+  # same terms: the class is the one that names `.data` as the remedy rather
+  # than the numerator class the level-order and wrong-response guards raise.
+  # Those two are about the fit being the wrong fit, which no data supplies a
+  # way out of; this one is about the data behind a fit that is right, which is
+  # exactly what `.data` carries. Pinning the pair together is what keeps a
+  # categorical component's answer from drifting from its binary sibling's.
+  categorical_fmla <- z ~ v
+  binary_fmla <- a ~ v
+  fit_categorical_in_function <- function(fitting_data) {
+    nnet::multinom(
+      categorical_fmla,
+      data = fitting_data,
+      trace = FALSE,
+      reltol = 1e-14,
+      maxit = 2000
+    )
+  }
+  fit_binary_in_function <- function(fitting_data) {
+    glm(
+      binary_fmla,
+      data = fitting_data,
+      family = binomial(),
+      model = FALSE
+    )
+  }
+  gone_z <- fit_categorical_in_function(dat)
+  gone_a <- fit_binary_in_function(dat)
+
+  expect_error(model.frame(gone_z))
+  expect_error(model.frame(gone_a))
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  probabilities <- unname(stats::predict(ps_z, type = "probs"))
+  colnames(probabilities) <- ps_z$lev
+
+  fit_one <- function(a_stabilize, z_stabilize) {
+    wts <- withr::with_options(
+      list(propensity.quiet = TRUE),
+      wt_joint(
+        wt_ate(ps_a, stabilize = a_stabilize),
+        wt_ate(
+          probabilities,
+          dat$z,
+          exposure_type = "categorical",
+          stabilize = z_stabilize
+        ),
+        exposure_type = c("binary", "categorical")
+      )
+    )
+
+    glm(
+      y ~ a * z + x1 + x2,
+      data = dat,
+      family = quasibinomial(),
+      weights = wts,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+  }
+
+  outcome_z <- fit_one(FALSE, gone_z)
+  outcome_a <- fit_one(gone_a, FALSE)
+  models <- joint_wt_models(a = ps_a, z = ps_z)
+
+  cnd_z <- tryCatch(
+    muffle_coverage_warning(ipw(models, outcome_z)),
+    error = identity
+  )
+  cnd_a <- tryCatch(
+    muffle_coverage_warning(ipw(models, outcome_a)),
+    error = identity
+  )
+
+  expect_s3_class(cnd_z, "propensity_ipw_data_error")
+  expect_identical(class(cnd_z), class(cnd_a))
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd_z))
+  expect_match(message, "stabilize", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+
+  # And the remedy it names is one: the frame rebuilds the numerator's design
+  # from the fit's own terms, and the fit runs.
+  res <- muffle_coverage_warning(ipw(models, outcome_z, .data = dat))
+  expect_s3_class(res, "ipw")
+  expect_identical(nrow(res$estimates), 24L)
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
