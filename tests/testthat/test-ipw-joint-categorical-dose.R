@@ -712,10 +712,10 @@ test_that("an interaction-only model on a rescaled dose says the dose at three l
   # The interaction without the dose's own term expands the treatment to one
   # column per level, so this design carries neither a column reading the dose
   # alone nor the columns the vocabulary's rows are claims about. Two things are
-  # wrong with it and only one of them is the caller's: the dose the outcome
-  # model was fit on is not the dose the treatment models hold, and no rewriting
-  # of the formula would make the weights right for it. The refusal names the
-  # dose.
+  # wrong with it, and the refusal names both: the dose the outcome model was
+  # fit on is not the dose the treatment models hold, which no rewriting of the
+  # formula would fix, and the crossing is expanded, which `z * e` would. The
+  # dose comes first because it is what the caller has to fix first.
   rescaled <- dat
   rescaled$e <- rescaled$e / 10
   outcome_mod <- lm(y ~ z + z:e, data = rescaled, weights = fx$wts)
