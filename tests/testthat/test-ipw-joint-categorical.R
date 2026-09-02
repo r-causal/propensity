@@ -3153,6 +3153,121 @@ test_that("a categorical component's numerator covariate supplied as a factor is
   expect_match(message, "stabilize", fixed = TRUE)
 })
 
+# The gapped frame with the numerator's covariate written two more ways: as a
+# factor of three labels, which is what a level guard compares, and as a matrix
+# of the indicators those labels imply, which is what no guard before the width
+# count can compare. Both are read by the numerator model alone, so what happens
+# to either is a statement about the fit that reads it.
+joint_categorical_numerator_covariates <- function(dat) {
+  dat$vf <- factor(
+    c("p", "q", "r")[1 + (rank(dat$v) %% 3)],
+    levels = c("p", "q", "r")
+  )
+  dat$vm <- stats::model.matrix(~vf, data = dat)[, -1, drop = FALSE]
+
+  dat
+}
+
+# The two-model route over that frame, the categorical component stabilized on a
+# numerator model reading whichever spelling of the covariate a test hands it.
+fit_joint_categorical_numerator_covariate <- function(dat, covariate) {
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  num_z <- nnet::multinom(
+    stats::reformulate(c(covariate, "x2"), response = "z"),
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  probabilities <- unname(stats::predict(ps_z, type = "probs"))
+  colnames(probabilities) <- ps_z$lev
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(
+        probabilities,
+        dat$z,
+        exposure_type = "categorical",
+        stabilize = num_z
+      ),
+      exposure_type = c("binary", "categorical")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * z + x1 + x2 + w,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(models = joint_wt_models(a = ps_a, z = ps_z), outcome_mod = outcome_mod)
+}
+
+test_that("a categorical component's numerator covariate `.data` levels beyond the fit is refused", {
+  skip_if_not_installed("nnet")
+  dat <- joint_categorical_numerator_covariates(sim_joint_categorical_gap())
+  fx <- fit_joint_categorical_numerator_covariate(dat, "vf")
+
+  # A factor column the numerator alone reads is re-leveled against the levels
+  # that fit recorded before its design is rebuilt, so a fourth label is refused
+  # where the re-leveling happens rather than reaching the width count as a
+  # design one column wider than the coefficients it multiplies.
+  supplied <- dat
+  supplied$vf <- factor(
+    c("p", "q", "r", "s")[1 + (rank(dat$x1) %% 4)],
+    levels = c("p", "q", "r", "s")
+  )
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(fx$models, fx$outcome_mod, .data = supplied)),
+    class = "propensity_ipw_data_error"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "vf", fixed = TRUE)
+  expect_match(message, "s", fixed = TRUE)
+})
+
+test_that("a categorical component's numerator design rebuilt to another width is refused", {
+  skip_if_not_installed("nnet")
+  dat <- joint_categorical_numerator_covariates(sim_joint_categorical_gap())
+  fx <- fit_joint_categorical_numerator_covariate(dat, "vm")
+
+  # A matrix column is the shape both earlier guards pass over: the type sweep
+  # compares the codings a class implies and has no noun for a matrix, and a
+  # matrix carries no levels to be re-leveled against. What is left to notice
+  # that `.data` rebuilt a wider design than the numerator was fit to is the
+  # count of its columns, and the refusal names the argument the fit arrived in
+  # so that a caller with two stabilized components knows which one to look at.
+  supplied <- dat
+  supplied$vm <- cbind(dat$vm, s = as.double(dat$x1 > 0))
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(fx$models, fx$outcome_mod, .data = supplied)),
+    class = "propensity_ipw_data_error"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(err))
+  expect_match(message, "stabilize", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "5 columns", fixed = TRUE)
+  expect_match(message, "4 coefficients per equation", fixed = TRUE)
+
+  # The same frame with the column it was fit to rebuilds the design and the fit
+  # runs, so the refusal is about the width rather than about the shape.
+  res <- muffle_coverage_warning(ipw(fx$models, fx$outcome_mod, .data = dat))
+  expect_s3_class(res, "ipw")
+})
+
 test_that("a categorical treatment `.data` levels another way is resolved rather than refused", {
   skip_if_not_installed("nnet")
   dat <- sim_joint_categorical_gap()
