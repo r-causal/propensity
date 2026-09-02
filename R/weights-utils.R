@@ -1141,10 +1141,9 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
   row_sums <- rowSums(ps_matrix, na.rm = FALSE)
   ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
 
-  # `min()` and `max()` skip the missing sums without copying them, but they
-  # have no extreme to report when every sum is missing and no rows to read at
-  # all when the matrix is empty, so both cases are answered before they run.
-  if (length(row_sums) == 0 || (anyNA(row_sums) && all(is.na(row_sums)))) {
+  # `min()` and `max()` have no extreme to report for a matrix with no rows in
+  # it, so that case is answered before any of them run.
+  if (length(row_sums) == 0) {
     return(invisible(TRUE))
   }
 
@@ -1159,6 +1158,34 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
   # of those bounds is a double exactly one tolerance from 1, so a sum landing
   # on one of them is admitted or refused by which way the bound rounded rather
   # than by how far the sum is from 1.
+  #
+  # The extremes are taken plainly first. A missing sum propagates through both
+  # of them, so this reading accepts only a matrix that holds no missing sum
+  # and no sum outside the tolerance, which is strictly less than the reading
+  # below accepts; everything else falls through to that one unchanged. Taking
+  # them this way spares the usual matrix, the one with nothing missing in it,
+  # a separate `anyNA()` pass whose only job was to decide whether the
+  # reductions after it needed `na.rm`, which costs them nothing.
+  lowest <- min(row_sums)
+  highest <- max(row_sums)
+
+  if (
+    !is.na(lowest) &&
+      !is.na(highest) &&
+      abs(lowest - 1) <= ROW_SUM_TOLERANCE &&
+      abs(highest - 1) <= ROW_SUM_TOLERANCE
+  ) {
+    return(invisible(TRUE))
+  }
+
+  # From here a sum is missing, or one is out of tolerance, or both. `min()`
+  # and `max()` skip the missing sums without copying them, but they have no
+  # extreme to report when every sum is missing, so that case is answered
+  # before they run again.
+  if (anyNA(row_sums) && all(is.na(row_sums))) {
+    return(invisible(TRUE))
+  }
+
   lowest <- min(row_sums, na.rm = TRUE)
   highest <- max(row_sums, na.rm = TRUE)
 
@@ -1214,10 +1241,40 @@ check_ps_matrix_range <- function(
   }
 
   # Missing values are not scores, so they neither decide the bounds nor are
-  # refused. `min()` and `max()` skip them without copying the matrix, but they
-  # have no bounds to report when there is nothing left to read, so that case is
-  # answered first.
-  if (length(ps_matrix) == 0 || (anyNA(ps_matrix) && all(is.na(ps_matrix)))) {
+  # refused. `min()` and `max()` have no bounds to report for a matrix with
+  # nothing in it, so that case is answered before any of them run.
+  if (length(ps_matrix) == 0) {
+    return(invisible(TRUE))
+  }
+
+  # The bounds are read plainly first. A missing score propagates through both
+  # reductions, so this reading accepts only a matrix that holds no missing
+  # score and no score outside the interval, which is strictly less than the
+  # reading below accepts; everything else falls through to that one unchanged.
+  # Taking them this way spares the usual matrix, the one with nothing missing
+  # in it, a separate `anyNA()` pass over all of its cells, whose only job was
+  # to decide whether the reductions after it needed `na.rm`, which costs them
+  # nothing.
+  lower <- min(ps_matrix)
+  upper <- max(ps_matrix)
+
+  if (!is.na(lower) && !is.na(upper)) {
+    in_bounds <- if (closed) {
+      lower >= 0 && upper <= 1
+    } else {
+      lower > 0 && upper < 1
+    }
+
+    if (in_bounds) {
+      return(invisible(TRUE))
+    }
+  }
+
+  # From here a score is missing, or one is out of bounds, or both. `min()` and
+  # `max()` skip the missing scores without copying the matrix, but they have
+  # no bounds to report when every score is missing, so that case is answered
+  # before they run again.
+  if (anyNA(ps_matrix) && all(is.na(ps_matrix))) {
     return(invisible(TRUE))
   }
 
