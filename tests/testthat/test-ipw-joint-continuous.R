@@ -1871,6 +1871,95 @@ test_that("a coding and an expansion together render both remedies", {
   expect_propensity_error(ipw(factored$models, summed))
 })
 
+test_that("a moved dose and an expansion together render both remedies", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+  factor_dat$e <- factor_dat$e / 10
+
+  # Two faults at once again, and neither of them a coding. The dose the
+  # marginal structural model was fit on is not the dose the treatment models
+  # hold, and the crossing is written where the dose has no term of its own,
+  # which expands the factor in it to a column per level. Whether the dose moved
+  # says nothing about that shape, so a caller who rescaled every model and
+  # refit would meet the expansion refusal next and is told both now. The dose
+  # comes first, since it is the fault a rewritten formula would not lift.
+  outcome_mod <- lm(y ~ a + a:e, data = factor_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "ayes", "ano:e", "ayes:e")
+  )
+
+  cnd <- tryCatch(ipw(factored$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(message, "treatment models|propensity")
+  expect_match(message, "one indicator per level", fixed = TRUE)
+  expect_match(message, "`a * e`", fixed = TRUE)
+
+  # The caller coded no factor, so the contrast remedy describes nothing they
+  # did and neither does the sentence about a numeric coding beside it.
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+
+  # The line a reader sees first names both faults rather than the one the
+  # bullets happen to open with.
+  expect_match(
+    message,
+    "not fit to and one column per level of \"a\"",
+    fixed = TRUE
+  )
+
+  # The sentence naming what the reported rows are is context the expansion is
+  # read against rather than part of it, so it is said once.
+  said <- gregexpr("The reported rows name", message, fixed = TRUE)[[1]]
+  expect_true(all(said > 0L))
+  expect_length(said, 1L)
+
+  expect_propensity_error(ipw(factored$models, outcome_mod))
+})
+
+test_that("a coding and a moved dose together name both causes", {
+  dat <- sim_joint_continuous()
+  ordered <- fit_joint_factor(dat, ordered = TRUE)
+  ordered_dat <- dat
+  ordered_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes"),
+    ordered = TRUE
+  )
+  ordered_dat$e <- ordered_dat$e / 10
+
+  # The pairing that already rendered both remedies. What it has to do besides
+  # is name both faults on the line a reader sees first, so that the line and
+  # the bullets under it describe the same model.
+  outcome_mod <- lm(y ~ a * e, data = ordered_dat, weights = ordered$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "a.L", "e", "a.L:e")
+  )
+
+  cnd <- tryCatch(ipw(ordered$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "unordered factor", fixed = TRUE)
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(
+    message,
+    paste(
+      "coded some other way and a column built from a dose the treatment",
+      "models were not fit to"
+    ),
+    fixed = TRUE
+  )
+})
+
 test_that("an interaction-only crossing names the expansion", {
   dat <- sim_joint_continuous()
   factored <- fit_joint_factor(dat)
