@@ -1263,7 +1263,7 @@ check_ipw_joint_dose_coding <- function(
     return(invisible(TRUE))
   }
 
-  bad_terms <- term_labels[mismatched]
+  bad_terms <- unique(term_labels[mismatched])
   first <- names[[1]]
   second <- names[[2]]
   reference <- level_labels[[1]]

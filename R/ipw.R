@@ -612,6 +612,11 @@
 #' coefficient of the weighted fit, so the surface grows by a row per level
 #' rather than by a table of contrasts, and per-arm dose slopes, which are not
 #' coefficients of this model, are built downstream from `coef()` and `vcov()`.
+#' No guard here reads how thin an arm is: a level the dose model rarely sees
+#' has its conditional density read far from any data, and the product weight
+#' carries that as a heavy tail. Check the weights' effective sample size and
+#' their spread within each level, as for any joint weight, before reading the
+#' rows.
 #'
 #' Those three readings hold of a model that is linear in each treatment and of
 #' no other, which is why such a model reports this surface and no other model

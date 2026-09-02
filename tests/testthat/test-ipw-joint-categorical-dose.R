@@ -596,3 +596,32 @@ test_that("both components' numerator models are blocks of the same system", {
     tolerance = 1e-6
   )
 })
+
+# ---- the wording of the three-level coding refusal --------------------------
+
+# A three-level treatment's bare term contributes one column per non-reference
+# level, so the refusal's term list must be read across columns: the formula
+# holds one `z`, and the message names it once.
+test_that("the three-level coding refusal names each term once", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_dose()
+  ordered_dat <- dat
+  ordered_dat$z <- factor(
+    as.character(dat$z),
+    levels = c("lo", "mid", "hi"),
+    ordered = TRUE
+  )
+  fx <- fit_joint_categorical_dose(dat)
+  bad <- lm(y ~ z * e, data = ordered_dat, weights = fx$wts)
+
+  expect_propensity_error(ipw(fx$models, bad))
+})
+
+test_that("a three-level model with no intercept is refused, not errored", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_dose()
+  fx <- fit_joint_categorical_dose(dat)
+  bad <- lm(y ~ z * e - 1, data = dat, weights = fx$wts)
+
+  expect_propensity_error(ipw(fx$models, bad))
+})
