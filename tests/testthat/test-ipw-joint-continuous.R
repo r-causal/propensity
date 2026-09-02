@@ -1726,6 +1726,80 @@ test_that("a contrast-coded treatment keeps the contrast advice", {
   expect_no_match(message, "same values", fixed = TRUE)
 })
 
+test_that("an interaction-only model on a rescaled dose still says the dose", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat)
+
+  # An outcome model may carry the interaction without the dose's own term, and
+  # such a model is written in bare terms and reports this vocabulary. What it
+  # has no column of is the dose alone, so a rescaled dose moves no column that
+  # reads the dose by itself and every column it does move reads the treatment
+  # too. The cause is the dose all the same: which variable moved is a fact
+  # about the variable rather than about which of the design's columns happened
+  # to be built from it alone.
+  rescaled <- dat
+  rescaled$e <- rescaled$e / 10
+  outcome_mod <- lm(y ~ a + a:e, data = rescaled, weights = fx$wts)
+
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "a", "a:e")
+  )
+
+  cnd <- tryCatch(ipw(fx$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(message, "treatment models|propensity")
+
+  # The caller coded no factor and dropped no intercept, so every sentence of
+  # the contrast advice describes something they did not do and none of them
+  # would lift the refusal.
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "coded some other way", fixed = TRUE)
+
+  expect_propensity_error(ipw(fx$models, outcome_mod))
+})
+
+test_that("an interaction without the dose's own term names the expansion", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+
+  # An interaction whose dose term is absent is not marginal to anything, so R
+  # codes the factor in it with one indicator per level rather than with the
+  # contrasts the factor carries. The design gains a reference-level column the
+  # vocabulary has no row for, and every reported column after it is a claim
+  # about the level to its left.
+  outcome_mod <- lm(y ~ a + a:e, data = factor_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "ayes", "ano:e", "ayes:e")
+  )
+
+  cnd <- tryCatch(ipw(factored$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  # The refusal has to name that expansion. This factor is already an unordered
+  # one under treatment contrasts, so advice to refit it as one describes a
+  # model the caller already has and leaves the refusal exactly where it was.
+  expect_match(message, "one column per level", fixed = TRUE)
+  expect_match(message, "`a * e`", fixed = TRUE)
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+
+  # The dose is the one the treatment models were fit to, so nothing here is
+  # about a dose the models disagree on.
+  expect_no_match(message, "same values", fixed = TRUE)
+
+  expect_propensity_error(ipw(factored$models, outcome_mod))
+})
+
 test_that("ipw() refuses .by on a joint continuous fit", {
   dat <- sim_joint_continuous()
   dat$grp <- factor(ifelse(dat$x1 > 0, "hi", "lo"), levels = c("lo", "hi"))

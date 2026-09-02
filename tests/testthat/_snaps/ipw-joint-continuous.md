@@ -130,6 +130,30 @@
       i A dose rescaled or recentered in the data after those models were fit leaves them and `outcome_mod` describing different variables, and the weights `outcome_mod` carries were built for the dose the treatment models hold.
       i Working on a rescaled dose is supported. Rescale it before fitting every model, the treatment models, any numerator model, and `outcome_mod`, or write the transformation into the formula of `outcome_mod`, as `I(e / 10)` or `scale(e)`, which reports the coefficient surface.
 
+# an interaction-only model on a rescaled dose still says the dose
+
+    Code
+      expr
+    Condition <propensity_ipw_msm_error>
+      Error in `ipw()`:
+      ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
+      x `a:e` in `outcome_mod` contributes a column coded some other way.
+      i The reported rows name the coefficients of a model in which "a" enters as 0 for "0" and 1 for "1", "e" enters as itself, and their interaction is the product of the two.
+      i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i Refit `outcome_mod` with "a" as an unordered factor under treatment contrasts. A treatment with two levels also has a numeric coding whose bare term contributes that column, 0 for "0" and 1 for "1".
+
+# an interaction without the dose's own term names the expansion
+
+    Code
+      expr
+    Condition <propensity_ipw_msm_error>
+      Error in `ipw()`:
+      ! `ipw()` reports a joint intervention with a dose from a marginal structural model whose treatment columns are the treatments themselves.
+      x `a:e` in `outcome_mod` contributes a column coded some other way.
+      i The reported rows name the coefficients of a model in which "a" enters as 0 for "no" and 1 for "yes", "e" enters as itself, and their interaction is the product of the two.
+      i A contrast coding other than treatment contrasts rescales or recenters those columns without changing what the formula says. An ordered factor carries polynomial contrasts, and `options(contrasts = )` sets a coding for every factor in the session.
+      i Refit `outcome_mod` with "a" as an unordered factor under treatment contrasts. A treatment with two levels also has a numeric coding whose bare term contributes that column, 0 for "no" and 1 for "yes".
+
 # ipw() refuses .by on a joint continuous fit
 
     Code

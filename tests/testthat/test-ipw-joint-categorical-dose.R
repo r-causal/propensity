@@ -703,3 +703,40 @@ test_that("a dose column rescaled after the treatment models are fit says so", {
 
   expect_propensity_error(ipw(fx$models, outcome_mod))
 })
+
+test_that("an interaction-only model on a rescaled dose says the dose at three levels", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_dose()
+  fx <- fit_joint_categorical_dose(dat)
+
+  # The interaction without the dose's own term expands the treatment to one
+  # column per level, so this design carries neither a column reading the dose
+  # alone nor the columns the vocabulary's rows are claims about. Two things are
+  # wrong with it and only one of them is the caller's: the dose the outcome
+  # model was fit on is not the dose the treatment models hold, and no rewriting
+  # of the formula would make the weights right for it. The refusal names the
+  # dose.
+  rescaled <- dat
+  rescaled$e <- rescaled$e / 10
+  outcome_mod <- lm(y ~ z + z:e, data = rescaled, weights = fx$wts)
+
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "zmid", "zhi", "zlo:e", "zmid:e", "zhi:e")
+  )
+
+  cnd <- tryCatch(ipw(fx$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(message, "treatment models|propensity")
+
+  # The treatment is an unordered factor under treatment contrasts already, and
+  # at three levels the contrast advice ends by telling the caller their
+  # treatment has no numeric coding, which describes nothing they did.
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "coded some other way", fixed = TRUE)
+
+  expect_propensity_error(ipw(fx$models, outcome_mod))
+})
