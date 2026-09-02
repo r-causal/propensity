@@ -511,6 +511,20 @@
 #' as estimators rather than to the last bit, and they coincide when the two
 #' parameterizations are saturated in the same covariates.
 #'
+#' Either treatment may have more than two levels, fit with [nnet::multinom()]
+#' and weighted with categorical [wt_ate()] weights. Such a component is stacked
+#' under the multinomial score its own fit solves, which reads no order into the
+#' pair, so a categorical treatment sits in either position. The surface grows
+#' with the crossing rather than changing shape: a 2-by-3 crossing reports
+#' twenty-four rows for a binary outcome and fifteen for a continuous one, being
+#' the six cell means, each treatment's simple effects within each level of the
+#' other, and the first treatment's interaction against each non-reference level
+#' of the second. A categorical component must be unstabilized, which is all
+#' such a component needs; a stabilized one is refused rather than weighted by a
+#' numerator the stacked system does not yet estimate. A categorical treatment
+#' cannot be paired with a dose, whose surface is written for a first treatment
+#' with two levels.
+#'
 #' Prefer the two-model route when the two treatments call for different
 #' adjustment sets, or when the dependence of the second treatment on the first
 #' is what you want to model directly, since each treatment then gets its own

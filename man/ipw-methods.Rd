@@ -293,6 +293,11 @@ of one.
 The only supported estimand is \code{"ate"}, which is what the product weights
 \code{\link[=wt_joint]{wt_joint()}} builds target.
 
+Either treatment may be categorical rather than binary, fit with
+\code{\link[nnet:multinom]{nnet::multinom()}}, in which case its block is the multinomial score that fit
+solves and the surface reports the whole crossing its levels make. Such a
+component must be unstabilized; see \strong{Joint exposures}.
+
 The second treatment may be a dose, in which case the surface is the marginal
 structural model's own coefficients rather than the cells of a crossing. The
 dose model is read through the same registry the single-treatment route
@@ -758,6 +763,20 @@ same cell means, simple effects, and interaction, under the same
 estimand through different models of the same propensity score, so they agree
 as estimators rather than to the last bit, and they coincide when the two
 parameterizations are saturated in the same covariates.
+
+Either treatment may have more than two levels, fit with \code{\link[nnet:multinom]{nnet::multinom()}}
+and weighted with categorical \code{\link[=wt_ate]{wt_ate()}} weights. Such a component is stacked
+under the multinomial score its own fit solves, which reads no order into the
+pair, so a categorical treatment sits in either position. The surface grows
+with the crossing rather than changing shape: a 2-by-3 crossing reports
+twenty-four rows for a binary outcome and fifteen for a continuous one, being
+the six cell means, each treatment's simple effects within each level of the
+other, and the first treatment's interaction against each non-reference level
+of the second. A categorical component must be unstabilized, which is all
+such a component needs; a stabilized one is refused rather than weighted by a
+numerator the stacked system does not yet estimate. A categorical treatment
+cannot be paired with a dose, whose surface is written for a first treatment
+with two levels.
 
 Prefer the two-model route when the two treatments call for different
 adjustment sets, or when the dependence of the second treatment on the first

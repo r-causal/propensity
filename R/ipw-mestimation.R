@@ -1788,6 +1788,44 @@ ipw_categorical_exposure_factor <- function(
   factor(values, levels = lev)
 }
 
+# The reference-first indicator matrix a multinomial score reads, one column per
+# level in the factor's own order, which is the order the fit laid its
+# coefficient rows out in. `deli::ee_mlogit()` reads the reference level from the
+# first column, and the categorical weight reads each unit's denominator off the
+# column belonging to the level it took, so both are written against this one
+# coding rather than each building its own.
+ipw_categorical_indicator <- function(exposure) {
+  levs <- levels(exposure)
+
+  vapply(
+    levs,
+    function(l) as.integer(exposure == l),
+    integer(length(exposure))
+  )
+}
+
+# The coefficients of a fitted multinomial, flattened the way the stacked system
+# carries them: level-major and term-minor, under `<level>:<term>` names. That is
+# the layout of `as.vector(t(coef()))` and the order `nnet::multinom()` names its
+# own covariance in. At two levels the fit returns its single row as a bare
+# vector, which carries the terms but not the level it belongs to, so the level
+# is read off the fit.
+ipw_multinom_coefs <- function(fit) {
+  coefs <- stats::coef(fit)
+
+  if (is.matrix(coefs)) {
+    levs <- rownames(coefs)
+    term_names <- colnames(coefs)
+    values <- as.vector(t(coefs))
+  } else {
+    levs <- fit$lev[-1]
+    term_names <- names(coefs)
+    values <- unname(coefs)
+  }
+
+  stats::setNames(values, ipw_name_categorical_coefs(levs, term_names))
+}
+
 ipw_spec_categorical <- function(
   ps_mod,
   outcome_mod,
@@ -1899,11 +1937,7 @@ ipw_spec_categorical <- function(
 
   # Reference-first indicator matrix in factor-level order, matching the column
   # order deli::ee_mlogit expects (reference level in the first column).
-  z_ind <- vapply(
-    levs,
-    function(l) as.integer(exposure == l),
-    integer(length(exposure))
-  )
+  z_ind <- ipw_categorical_indicator(exposure)
 
   ps_coefs <- as.vector(t(stats::coef(ps_mod)))
 
@@ -2577,15 +2611,24 @@ ipw_weights_at_init <- function(spec, layout, call = rlang::caller_env()) {
       # Only a discrete component has a probability to saturate. A dose divides
       # by a normal density, which is small at a badly fitted observation rather
       # than zero, and the weight it gives is finite wherever the density is.
+      #
+      # A categorical component is counted on the assigned-level rule the
+      # single-treatment categorical route counts on, for the reason it does:
+      # only the probability of the level a unit took reaches its denominator,
+      # and a softmax reaching an exact 0 in a column for a level the unit did
+      # not take says nothing about the weight.
       check_ipw_ps_separation(
         sum(vapply(
-          blocks,
-          function(block) {
-            if (identical(block$type, "continuous")) {
-              0L
-            } else {
+          seq_along(blocks),
+          function(i) {
+            block <- blocks[[i]]
+
+            switch(
+              block$type,
+              continuous = 0L,
+              categorical = sum(rowSums(spec$exposure[[i]] * block$ps) == 0),
               sum(block$ps == 0 | block$ps == 1)
-            }
+            )
           },
           integer(1)
         )),
