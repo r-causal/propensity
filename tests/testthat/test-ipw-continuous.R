@@ -3598,3 +3598,50 @@ test_that("an unreadable ps fit under a marginal numerator keeps the .data remed
     fixed = TRUE
   )
 })
+
+# ---- a propensity score model fit with a gap in its covariate ---------------
+#
+# A fit made under `na.action = na.exclude` pads its fitted means back to the
+# length of the frame it was given, missing at the rows it dropped. Weights
+# built from those means and the exposure the caller holds in full are missing
+# at the same rows, and the marginal density they are stabilized on belongs to
+# the rows the fit kept, which are the rows the outcome model is then fit over.
+# `.data` may be either the frame the fits were given or the rows that survive
+# them, and the two are the same request.
+
+sim_continuous_na_exclude <- function(seed = 7731, n = 600) {
+  dat <- sim_continuous_numerator(seed = seed, n = n)
+  # The covariate the propensity score model reads is withheld at the ten
+  # largest doses, so the marginal moments over the rows the fit keeps sit
+  # percents away from the moments over every row rather than a rounding away.
+  dat$x1[order(dat$A, decreasing = TRUE)[seq_len(10)]] <- NA
+
+  dat
+}
+
+test_that("a na.exclude propensity score model passes the preflight", {
+  dat <- sim_continuous_na_exclude()
+  kept <- !is.na(dat$x1)
+
+  ps_mod <- lm(A ~ x1, data = dat, na.action = stats::na.exclude)
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  outcome_mod <- lm(yc ~ A + v, data = dat, weights = wts)
+
+  expect_equal(which(is.na(as.double(wts))), which(!kept))
+  expect_equal(nobs(outcome_mod), sum(kept))
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat)
+  res_kept <- ipw(ps_mod, outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+})

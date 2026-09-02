@@ -3132,3 +3132,102 @@ test_that("censoring weights reach the numerator model route too", {
   expect_identical(density_meta(weights)$numerator, "model")
   expect_identical(density_meta(weights)$numerator_model, fit)
 })
+
+# ---- the rows a gappy fit's numerator is read over --------------------------
+#
+# A propensity score model fit with `na.action = na.exclude` reports its fitted
+# means back at the length of the data it was given, missing at the rows it
+# dropped. A caller who hands those means to `wt_ate()` alongside the exposure
+# they hold in full is describing one population, so both halves of the density
+# ratio have to be read over one set of rows: the conditional density is spread
+# by the residuals the fit left, and the marginal density the weights are
+# stabilized on is read at the moments of the rows the fit kept.
+
+continuous_gappy_data <- local({
+  set.seed(20260901)
+
+  n <- 200
+  x <- rnorm(n)
+  exposure <- 1 + 0.6 * x + rnorm(n)
+
+  # The covariate is withheld at the largest doses, so the moments over the rows
+  # the fit keeps sit percents away from the moments over every row and an
+  # oracle written against one is nowhere near the other.
+  dropped <- sort(order(exposure, decreasing = TRUE)[seq_len(12)])
+  x_gappy <- x
+  x_gappy[dropped] <- NA_real_
+
+  list(
+    n = n,
+    exposure = exposure,
+    dropped = dropped,
+    kept = !seq_len(n) %in% dropped,
+    mu = as.numeric(stats::fitted(stats::lm(
+      exposure ~ x_gappy,
+      na.action = stats::na.exclude
+    ))),
+    mu_complete = as.numeric(stats::fitted(stats::lm(
+      exposure ~ x,
+      na.action = stats::na.exclude
+    )))
+  )
+})
+
+# The normal density ratio the stabilized weights are, with the conditional
+# spread read over the residuals `mu` leaves and the marginal moments read over
+# the rows `rows` names.
+continuous_gappy_oracle <- function(mu, rows) {
+  exposure <- continuous_gappy_data$exposure
+
+  sigma_i <- sqrt(mean((exposure - mu)^2, na.rm = TRUE))
+  mu_a <- mean(exposure[rows])
+  sigma_a <- sqrt(mean((exposure[rows] - mu_a)^2))
+
+  stats::dnorm(exposure, mu_a, sigma_a) / stats::dnorm(exposure, mu, sigma_i)
+}
+
+test_that("a gappy fit's marginal numerator is read over the rows it kept", {
+  kept <- continuous_gappy_data$kept
+
+  weights <- wt_ate(
+    continuous_gappy_data$mu,
+    continuous_gappy_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+
+  # The rows the fit dropped have no fitted mean to divide by, so they carry no
+  # weight either.
+  expect_length(weights, continuous_gappy_data$n)
+  expect_equal(
+    which(is.na(as.numeric(weights))),
+    continuous_gappy_data$dropped
+  )
+
+  expect_equal(
+    as.numeric(weights)[kept],
+    continuous_gappy_oracle(continuous_gappy_data$mu, kept)[kept],
+    tolerance = 1e-12
+  )
+})
+
+test_that("a fit with nothing dropped reads its numerator over every row", {
+  # The boundary the block above draws. Where the fit kept every row, the rows
+  # it kept are every row, and the marginal moments are the population moments
+  # they always were.
+  weights <- wt_ate(
+    continuous_gappy_data$mu_complete,
+    continuous_gappy_data$exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE
+  )
+
+  every_row <- rep(TRUE, continuous_gappy_data$n)
+
+  expect_false(anyNA(as.numeric(weights)))
+  expect_equal(
+    as.numeric(weights),
+    continuous_gappy_oracle(continuous_gappy_data$mu_complete, every_row),
+    tolerance = 1e-12
+  )
+})
