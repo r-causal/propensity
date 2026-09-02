@@ -77,6 +77,7 @@ ipw.multinom <- function(
   # before any estimand parsing that would otherwise fail obliquely.
   wts <- extract_weights(outcome_mod)
   check_ipw_weights(wts)
+  check_ipw_stabilizer_coverage(wts, outcome_mod)
 
   spec <- ipw_spec_categorical(
     wt_mod,

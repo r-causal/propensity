@@ -1503,6 +1503,29 @@ anything is solved, with an error of class
 being analyzed, or stabilize on a single \code{stabilization_score}, which scales
 every weight and survives any restriction.
 
+Weights stabilized on a fitted numerator model carry a further requirement,
+on \code{outcome_mod} rather than on the weights. A numerator fit on a covariate
+divides every weight by a quantity that varies with it, so the
+pseudo-population the weights build is one in which that covariate still
+predicts the exposure. Confounding by it remains there, and what the weighted
+fit identifies is the effect within its levels rather than the marginal one,
+which only a marginal structural model carrying it reports (Robins et al.
+2000; Cole and Hernán 2008). \code{ipw()} compares the two: the variables on the
+right-hand side of the numerator model's formula against the variables
+\code{outcome_mod}'s formula reads anywhere, and any the second does not read are
+reported once for the call, in a warning of class
+\code{propensity_ipw_stabilizer_coverage_warning} naming each of them. The
+comparison is of variables rather than of terms, so a model reading
+\code{factor(v)}, \code{poly(v, 2)}, or \code{splines::ns(v, 3)} reads \code{v}; a marginal
+structural model conditional on a transformation of a covariate is
+conditional on the covariate. The joint route asks the same question of each
+component's numerator and reports the answers together. The estimates are the
+ones the fit gives either way, so this is a warning and not a refusal: add
+the variables to \code{outcome_mod}, or refit the model given to \code{stabilize}
+without them. The default stabilizer, an intercept-only numerator model, and
+a \code{stabilization_score} all condition on nothing this can name and say
+nothing.
+
 The propensity score model must not separate the exposure. A model whose
 covariates predict the exposure without error has no finite maximum likelihood
 estimate, and the propensity scores its coefficients imply reach exactly zero

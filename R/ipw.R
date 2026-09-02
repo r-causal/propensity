@@ -1244,6 +1244,29 @@
 #' being analyzed, or stabilize on a single `stabilization_score`, which scales
 #' every weight and survives any restriction.
 #'
+#' Weights stabilized on a fitted numerator model carry a further requirement,
+#' on `outcome_mod` rather than on the weights. A numerator fit on a covariate
+#' divides every weight by a quantity that varies with it, so the
+#' pseudo-population the weights build is one in which that covariate still
+#' predicts the exposure. Confounding by it remains there, and what the weighted
+#' fit identifies is the effect within its levels rather than the marginal one,
+#' which only a marginal structural model carrying it reports (Robins et al.
+#' 2000; Cole and Hernán 2008). `ipw()` compares the two: the variables on the
+#' right-hand side of the numerator model's formula against the variables
+#' `outcome_mod`'s formula reads anywhere, and any the second does not read are
+#' reported once for the call, in a warning of class
+#' `propensity_ipw_stabilizer_coverage_warning` naming each of them. The
+#' comparison is of variables rather than of terms, so a model reading
+#' `factor(v)`, `poly(v, 2)`, or `splines::ns(v, 3)` reads `v`; a marginal
+#' structural model conditional on a transformation of a covariate is
+#' conditional on the covariate. The joint route asks the same question of each
+#' component's numerator and reports the answers together. The estimates are the
+#' ones the fit gives either way, so this is a warning and not a refusal: add
+#' the variables to `outcome_mod`, or refit the model given to `stabilize`
+#' without them. The default stabilizer, an intercept-only numerator model, and
+#' a `stabilization_score` all condition on nothing this can name and say
+#' nothing.
+#'
 #' The propensity score model must not separate the exposure. A model whose
 #' covariates predict the exposure without error has no finite maximum likelihood
 #' estimate, and the propensity scores its coefficients imply reach exactly zero
@@ -1557,6 +1580,10 @@ ipw.glm <- function(
   check_ipw_binary_focal(wts, wt_mod, .data = .data, estimand = estimand)
   check_ipw_linearization_numerator(wts, se_method)
 
+  # After the refusal above, so that the one path a fitted numerator cannot be
+  # estimated on is refused rather than warned about and then refused.
+  check_ipw_stabilizer_coverage(wts, outcome_mod)
+
   if (identical(se_method, "mestimation")) {
     spec <- ipw_spec_binary(
       wt_mod,
@@ -1863,6 +1890,7 @@ ipw_continuous_estimate <- function(
   # modified propensity score is detected before any estimand parsing.
   wts <- extract_weights(outcome_mod)
   check_ipw_weights(wts, call = call)
+  check_ipw_stabilizer_coverage(wts, outcome_mod, call = call)
 
   spec <- ipw_spec_continuous(
     wt_mod,
@@ -1977,6 +2005,101 @@ check_ipw_binary_gam <- function(
     ),
     call = call
   )
+}
+
+# Whether the numerator the weights were stabilized on conditions on anything
+# the reported model does not read.
+#
+# A numerator fit on V divides every weight by a quantity that varies with V, so
+# the pseudo-population it builds is one in which V still predicts the exposure.
+# Confounding by V remains there, and what the weighted fit identifies is the
+# effect within levels of V rather than the marginal one (Robins et al. 2000;
+# Cole and Hernán 2008). Only a marginal structural model carrying V reports
+# what those weights were built for, so a reported model that omits V is told
+# about V.
+#
+# The two sides are compared as variables rather than as terms. A model reading
+# `factor(v)`, `poly(v, 2)`, or `splines::ns(v, 3)` is conditional on V whatever
+# shape the term takes, and `all.vars()` reaches past the call to the names
+# inside it, so only a variable that is truly absent is reported.
+#
+# It is a warning rather than a refusal, for the reason the `.by` report is one:
+# the fit is a real weighted estimator of something, the numbers are the
+# caller's to keep, and what changed is which estimand they belong to.
+check_ipw_stabilizer_coverage <- function(
+  wts,
+  outcome_mod,
+  call = rlang::caller_env()
+) {
+  models <- ipw_stabilizer_models(wts)
+
+  if (!length(models)) {
+    return(invisible(TRUE))
+  }
+
+  # One report per call rather than one per model: the joint route carries a
+  # numerator for each component, and a reader told about one of them would add
+  # it, refit, and be told about the other.
+  variables <- unique(unlist(
+    lapply(models, numerator_model_variables),
+    use.names = FALSE
+  ))
+  uncovered <- setdiff(variables, ipw_outcome_model_variables(outcome_mod))
+
+  if (!length(uncovered)) {
+    return(invisible(TRUE))
+  }
+
+  warn(
+    c(
+      "The weights {.arg outcome_mod} was fit with are stabilized on a \\
+      numerator that conditions on {.val {uncovered}}, which \\
+      {.arg outcome_mod} does not read.",
+      i = "Dividing the weights by a quantity that varies with \\
+      {.val {uncovered}} leaves {.val {uncovered}} predicting the exposure in \\
+      the weighted sample, so the fit reports the effect within levels of \\
+      {.val {uncovered}} rather than the marginal one.",
+      i = "Add {.val {uncovered}} to {.arg outcome_mod}, or refit the model \\
+      given to {.arg stabilize} without {.val {uncovered}}; see \\
+      {.strong Stabilization} in {.fun wt_ate}."
+    ),
+    warning_class = "propensity_ipw_stabilizer_coverage_warning",
+    call = call
+  )
+
+  invisible(FALSE)
+}
+
+# The fitted numerator models the weights record, in the order the record holds
+# them. A single exposure's weights hold at most one, in whichever of the two
+# homes the accessor spans; a product's hold one per component, and both homes
+# are read for each. Weights stabilized on the default numerator, on a score the
+# caller supplied, or on nothing at all record no model and yield none.
+ipw_stabilizer_models <- function(wts) {
+  meta <- joint_wt_meta(wts)
+
+  models <- if (is.null(meta)) {
+    list(numerator_model(wts))
+  } else {
+    joint_wt_numerator_models(meta)
+  }
+
+  models[!vapply(models, is.null, logical(1))]
+}
+
+# The variables the reported model reads, anywhere in its formula. Read off the
+# terms so that a model written with a dot is asked about the variables the dot
+# stood for, and read whole rather than off the right-hand side: the response is
+# among them harmlessly, since a numerator is a model of the exposure and never
+# of the outcome.
+ipw_outcome_model_variables <- function(outcome_mod) {
+  model_terms <- tryCatch(stats::terms(outcome_mod), error = function(e) NULL)
+
+  if (is.null(model_terms)) {
+    return(all.vars(stats::formula(outcome_mod)))
+  }
+
+  all.vars(model_terms)
 }
 
 # Weights stabilized on a fitted numerator model, refused for the linearization.

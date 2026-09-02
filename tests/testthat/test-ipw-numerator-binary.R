@@ -418,7 +418,11 @@ test_that("a binary numerator covariate supplied as a factor where the fit read 
   supplied$x2 <- dat$g
 
   err <- expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_ipw_data_error"
   )
 
@@ -442,7 +446,11 @@ test_that("a binary numerator covariate supplied as a number where the fit read 
   supplied$x2 <- as.numeric(dat$g)
 
   err <- expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_ipw_data_error"
   )
 
@@ -466,7 +474,11 @@ test_that("a binary numerator covariate absent from .data is refused", {
   supplied$x2 <- NULL
 
   err <- expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_columns_exist_error"
   )
 

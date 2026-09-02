@@ -325,7 +325,9 @@ test_that("ipw() reports the same estimate from a numerator model and its score"
     tolerance = 1e-12
   )
 
-  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_model <- muffle_coverage_warning(
+    ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  )
   res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
 
   expect_equal(
@@ -344,7 +346,9 @@ test_that("ipw() stacks the numerator model it was given", {
   dat <- sim_continuous()
   fits <- continuous_numerator_fits(dat)
 
-  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_model <- muffle_coverage_warning(
+    ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  )
   res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
 
   # A supplied score is a constant of the stacked system and a supplied model is
@@ -387,7 +391,9 @@ test_that("a stacked numerator model reports a different standard error", {
   dat <- sim_continuous()
   fits <- continuous_numerator_fits(dat)
 
-  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_model <- muffle_coverage_warning(
+    ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  )
   res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
   res_marginal <- ipw(fits$marginal$ps_mod, fits$marginal$outcome_mod)
 
@@ -2515,7 +2521,9 @@ test_that("ipw() refuses a numerator model whose score it cannot write", {
   ))
   fits <- fit_continuous_models(dat, stabilize = num_mod)
 
-  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+  expect_propensity_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod))
+  )
 })
 
 test_that("ipw() refuses a numerator model fit with case weights", {
@@ -2542,10 +2550,12 @@ test_that("ipw() refuses a numerator model fit with case weights", {
   outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
 
   expect_error(
-    ipw(fits$ps_mod, outcome_mod),
+    muffle_coverage_warning(ipw(fits$ps_mod, outcome_mod)),
     class = "propensity_ipw_ps_weights_error"
   )
-  expect_propensity_error(ipw(fits$ps_mod, outcome_mod))
+  expect_propensity_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, outcome_mod))
+  )
 })
 
 test_that("ipw() refuses a numerator model of another response", {
@@ -2557,7 +2567,9 @@ test_that("ipw() refuses a numerator model of another response", {
   num_mod <- lm(yc ~ x1, data = dat)
   fits <- fit_continuous_models(dat, stabilize = num_mod)
 
-  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+  expect_propensity_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod))
+  )
 })
 
 test_that("ipw() refuses a numerator model fit to other observations", {
@@ -2584,7 +2596,7 @@ test_that("ipw() refuses a numerator model fit to other observations", {
     na.action = stats::na.exclude
   )
 
-  expect_propensity_error(ipw(ps_mod, outcome_mod))
+  expect_propensity_error(muffle_coverage_warning(ipw(ps_mod, outcome_mod)))
 })
 
 test_that("ipw() refuses a numerator model with a dropped coefficient", {
@@ -2600,10 +2612,12 @@ test_that("ipw() refuses a numerator model with a dropped coefficient", {
   fits <- fit_continuous_models(dat, stabilize = num_mod)
 
   expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod),
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod)),
     class = "propensity_ipw_rank_error"
   )
-  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+  expect_propensity_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod))
+  )
 })
 
 # ---- a continuous numerator design rebuilt from `.data` ---------------------
@@ -2683,8 +2697,16 @@ test_that("a continuous numerator design is restricted to the rows .data keeps",
   # Supplying the frame the fits were given and supplying the rows `ipw()`
   # restricts it to are the same request, so they report the same thing. The
   # numerator's design is one of the designs that restriction is for.
-  res_given <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
-  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+  res_given <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_kept <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat[kept, ]
+  ))
 
   expect_s3_class(res_given, "ipw")
   expect_equal(
@@ -2716,7 +2738,11 @@ test_that("a stacked continuous numerator block solves over the rows .data keeps
   # model kept, so what it solves to is the refit on those rows rather than the
   # coefficients it came with. The two differ by more than the tolerance, which
   # is what makes the pin say anything.
-  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
   refit <- lm(A ~ v, data = dat[kept, ])
 
   stab_names <- paste0("stab_", names(coef(refit)))
@@ -2766,7 +2792,11 @@ test_that("a continuous numerator covariate supplied as a factor where the fit r
   supplied$v <- continuous_numerator_grouping(dat)
 
   err <- expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_ipw_data_error"
   )
 
@@ -2789,7 +2819,11 @@ test_that("a continuous numerator covariate supplied as a number where the fit r
   supplied$v <- as.numeric(dat$v)
 
   err <- expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_ipw_data_error"
   )
 
@@ -2811,7 +2845,11 @@ test_that("a continuous numerator covariate absent from .data is refused", {
   supplied$v <- NULL
 
   err <- expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_columns_exist_error"
   )
 
@@ -2861,7 +2899,7 @@ test_that("a continuous numerator model whose data is gone asks for .data", {
   fits <- continuous_numerator_gone_fits(dat, gone)
 
   err <- expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod),
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod)),
     class = "propensity_ipw_data_error"
   )
 
@@ -2886,8 +2924,15 @@ test_that("a continuous numerator model whose data is gone is rebuilt from .data
   gone_fits <- continuous_numerator_gone_fits(dat, gone)
   kept_fits <- continuous_numerator_gone_fits(dat, kept)
 
-  res_data <- ipw(gone_fits$ps_mod, gone_fits$outcome_mod, .data = dat)
-  res_recovered <- ipw(kept_fits$ps_mod, kept_fits$outcome_mod)
+  res_data <- muffle_coverage_warning(ipw(
+    gone_fits$ps_mod,
+    gone_fits$outcome_mod,
+    .data = dat
+  ))
+  res_recovered <- muffle_coverage_warning(ipw(
+    kept_fits$ps_mod,
+    kept_fits$outcome_mod
+  ))
 
   expect_s3_class(res_data, "ipw")
   expect_equal(
@@ -3031,8 +3076,16 @@ test_that("a numerator model passes the preflight over the rows .data keeps", {
 
   # Both spreads move on this route, the denominator's and the numerator's, and
   # they move in the same direction, so neither cancels the other.
-  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
-  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+  res <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_kept <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat[kept, ]
+  ))
 
   expect_s3_class(res, "ipw")
   expect_equal(
@@ -3178,8 +3231,12 @@ test_that("a gam numerator model rebuilt from .data reads its own smooth basis",
   # here, so both routes read every row and are the same fit; a rebuild that
   # re-evaluated `s(v)` would be a different basis and move the estimate by
   # orders more than this tolerance.
-  res_data <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
-  res_fit <- ipw(fits$ps_mod, fits$outcome_mod)
+  res_data <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_fit <- muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod))
 
   expect_s3_class(res_data, "ipw")
   expect_equal(
@@ -3211,8 +3268,16 @@ test_that("a gam numerator model is seeded at its own residual moment", {
   ))
   expect_equal(layout$init[["sigma2_n"]], mean(residuals(num_mod)^2))
 
-  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
-  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+  res <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_kept <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat[kept, ]
+  ))
 
   expect_s3_class(res, "ipw")
   expect_equal(

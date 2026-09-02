@@ -867,7 +867,11 @@ test_that("a numerator covariate supplied as a factor where the fit read a numbe
   supplied$x2 <- dat$g
 
   err <- expect_error(
-    ipw(fits$model$ps_mod, fits$model$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$model$ps_mod,
+      fits$model$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_ipw_data_error"
   )
 
@@ -892,7 +896,11 @@ test_that("a numerator covariate supplied as a number where the fit read a facto
   supplied$x2 <- as.numeric(dat$g)
 
   err <- expect_error(
-    ipw(fits$model$ps_mod, fits$model$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$model$ps_mod,
+      fits$model$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_ipw_data_error"
   )
 

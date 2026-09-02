@@ -62,3 +62,20 @@ muffle_variance_warning <- function(expr) {
     }
   )
 }
+
+# Runs `expr` with the stabilizer coverage report muffled. A fixture built to
+# exercise the machinery that rebuilds a numerator inside the stacked system
+# stabilizes on whatever gives that machinery something to rebuild, which is
+# often a covariate the marginal structural model beside it has no reason to
+# carry. The report is true of those fixtures and beside the point of the tests
+# written over them, so it is muffled where it is not the thing being asserted.
+# Only that class is muffled: anything else the call raises still reaches the
+# test run.
+muffle_coverage_warning <- function(expr) {
+  withCallingHandlers(
+    expr,
+    propensity_ipw_stabilizer_coverage_warning = function(cnd) {
+      invokeRestart("muffleWarning")
+    }
+  )
+}

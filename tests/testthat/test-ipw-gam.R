@@ -197,7 +197,7 @@ test_that("a gam numerator model is estimated at its own penalized score", {
 
   layout <- expect_gam_root_seeded(ps_mod, outcome_mod, wts)
 
-  res <- ipw(ps_mod, outcome_mod)
+  res <- muffle_coverage_warning(ipw(ps_mod, outcome_mod))
   theta <- coef(res$fit)
   numerator_block <- theta[layout$idx$stab][seq_along(coef(num_mod))]
   expect_equal(
@@ -261,7 +261,10 @@ test_that("ipw() reads each additive model's design once when two are stacked", 
   # count is one per fit rather than one per call. Reading it off the model it
   # belongs to is also what keeps the two apart: a numerator block multiplied
   # by the propensity score model's design would rebuild a numerator nobody fit.
-  counted <- count_gam_designs(ipw(ps_mod, outcome_mod))
+  counted <- count_gam_designs(muffle_coverage_warning(ipw(
+    ps_mod,
+    outcome_mod
+  )))
 
   expect_identical(counted$builds, 2L)
 
@@ -319,7 +322,10 @@ test_that("the gam route reports the estimates and errors it reports today", {
       stabilize = num_mod
     )
   )
-  num_res <- ipw(ps_mod, lm(yc ~ A, data = dat, weights = num_wts))
+  num_res <- muffle_coverage_warning(ipw(
+    ps_mod,
+    lm(yc ~ A, data = dat, weights = num_wts)
+  ))
   expect_equal(num_res$estimates$estimate, 1.1204143741, tolerance = 1e-4)
   expect_equal(num_res$estimates$std.err, 0.0570892981, tolerance = 1e-4)
 })

@@ -128,6 +128,7 @@ ipw.joint_wt_models <- function(
   wts <- extract_weights(outcome_mod)
   check_ipw_weights(wts)
   check_ipw_joint_models_weights(wts)
+  check_ipw_stabilizer_coverage(wts, outcome_mod)
 
   spec <- ipw_spec_joint_models(
     wt_mod,

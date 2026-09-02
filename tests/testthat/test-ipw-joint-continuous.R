@@ -1744,7 +1744,7 @@ test_that("the joint route stacks a dose stabilized on a numerator model", {
   num_mod <- lm(e ~ x2, data = dat)
   fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
 
-  res <- ipw(fits$models, fits$outcome_mod)
+  res <- muffle_coverage_warning(ipw(fits$models, fits$outcome_mod))
   expect_s3_class(res, "ipw")
 
   # The point estimates are the weighted marginal structural model's own
@@ -1766,7 +1766,7 @@ test_that("the dose's numerator model is a block of the joint system", {
   fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
   marginal <- fit_joint_continuous(dat)
 
-  res <- ipw(fits$models, fits$outcome_mod)
+  res <- muffle_coverage_warning(ipw(fits$models, fits$outcome_mod))
   res_marginal <- ipw(marginal$models, marginal$outcome_mod)
 
   # The default numerator is the dose's own two marginal moments. A fitted one
@@ -1813,7 +1813,7 @@ test_that("the joint route stacks a binary component's numerator model", {
 
   expect_equal(as.numeric(fits$wts), binary_wt * dose_wt, tolerance = 1e-12)
 
-  res <- ipw(fits$models, fits$outcome_mod)
+  res <- muffle_coverage_warning(ipw(fits$models, fits$outcome_mod))
   expect_s3_class(res, "ipw")
   expect_equal(
     res$estimates$estimate,
@@ -2209,8 +2209,16 @@ test_that("a component's numerator design is restricted to the rows .data keeps"
   # Supplying the frame the fits were given and supplying the rows `ipw()`
   # restricts it to are the same request, so they report the same thing. Each
   # component's numerator design is one of the designs that restriction is for.
-  res_given <- ipw(fits$models, fits$outcome_mod, .data = dat)
-  res_kept <- ipw(fits$models, fits$outcome_mod, .data = dat[kept, ])
+  res_given <- muffle_coverage_warning(ipw(
+    fits$models,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_kept <- muffle_coverage_warning(ipw(
+    fits$models,
+    fits$outcome_mod,
+    .data = dat[kept, ]
+  ))
 
   expect_s3_class(res_given, "ipw")
   expect_equal(
@@ -2242,7 +2250,11 @@ test_that("the stacked numerator blocks solve over the rows .data keeps", {
   # outcome model kept, so what they solve to are the refits on those rows
   # rather than the coefficients they came with. Both differ by more than the
   # tolerance, which is what makes the pins say anything.
-  res <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  res <- muffle_coverage_warning(ipw(
+    fits$models,
+    fits$outcome_mod,
+    .data = dat
+  ))
   refit_a <- glm(a ~ vb, data = dat[kept, ], family = binomial())
   refit_e <- lm(e ~ vd, data = dat[kept, ])
 
@@ -2297,7 +2309,11 @@ test_that("a binary component's numerator covariate supplied as a factor is refu
   supplied$vb <- joint_numerator_grouping(dat)
 
   err <- expect_error(
-    ipw(fits$models, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$models,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_ipw_data_error"
   )
 
@@ -2314,7 +2330,11 @@ test_that("a dose component's numerator covariate supplied as a factor is refuse
   supplied$vd <- joint_numerator_grouping(dat)
 
   err <- expect_error(
-    ipw(fits$models, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$models,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_ipw_data_error"
   )
 
@@ -2335,7 +2355,11 @@ test_that("a binary component's numerator covariate absent from .data is refused
   supplied$vb <- NULL
 
   err <- expect_error(
-    ipw(fits$models, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$models,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_columns_exist_error"
   )
 
@@ -2350,7 +2374,11 @@ test_that("a dose component's numerator covariate absent from .data is refused",
   supplied$vd <- NULL
 
   err <- expect_error(
-    ipw(fits$models, fits$outcome_mod, .data = supplied),
+    muffle_coverage_warning(ipw(
+      fits$models,
+      fits$outcome_mod,
+      .data = supplied
+    )),
     class = "propensity_columns_exist_error"
   )
 
