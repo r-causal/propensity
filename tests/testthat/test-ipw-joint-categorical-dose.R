@@ -617,11 +617,89 @@ test_that("the three-level coding refusal names each term once", {
   expect_propensity_error(ipw(fx$models, bad))
 })
 
-test_that("a three-level model with no intercept is refused, not errored", {
+# ---- a model with no intercept ----------------------------------------------
+
+test_that("a three-level model with no intercept reports the coefficient surface", {
   skip_if_not_installed("nnet")
   dat <- sim_joint_categorical_dose()
   fx <- fit_joint_categorical_dose(dat)
-  bad <- lm(y ~ z * e - 1, data = dat, weights = fx$wts)
+  outcome_mod <- lm(y ~ z * e - 1, data = dat, weights = fx$wts)
 
-  expect_propensity_error(ipw(fx$models, bad))
+  # Dropping the intercept expands the treatment into one column per level
+  # rather than per non-reference level, so the columns are shifted by one
+  # against the indicators the vocabulary's rows are claims about and no row of
+  # that vocabulary would be true of this fit. A model the vocabulary has no
+  # reading for is reported on the coefficient surface, which names each row
+  # after the column it multiplies and so holds a reference-level column as
+  # readily as it holds a basis one.
+  columns <- colnames(model.matrix(outcome_mod))
+  expect_identical(
+    columns,
+    c("zlo", "zmid", "zhi", "e", "zmid:e", "zhi:e")
+  )
+
+  res <- ipw(fx$models, outcome_mod)
+  est <- res$estimates
+
+  expect_identical(est$effect, rep("coef", length(columns)))
+  expect_identical(est$contrast, columns)
+  expect_null(est[["group"]])
+  expect_joint_categorical_dose_estimates(res, outcome_mod, columns)
+})
+
+# ---- a dose the treatment models were not fit to ----------------------------
+
+test_that("a dose transformed in the formula is reported beside three levels", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_dose()
+  fx <- fit_joint_categorical_dose(dat, outcome_rhs = "z * I(e / 10)")
+
+  # Writing the transformation into the marginal structural model's own formula
+  # leaves the column the treatment models were fit to alone: the outcome model
+  # reads that column and rescales it on its way into the design. The term is no
+  # longer bare, so the fit reports the coefficient surface, at three levels as
+  # at two.
+  res <- ipw(fx$models, fx$outcome_mod)
+  est <- res$estimates
+  columns <- colnames(model.matrix(fx$outcome_mod))[-1]
+
+  expect_identical(est$effect, rep("coef", length(columns)))
+  expect_identical(est$contrast, columns)
+  expect_null(est[["group"]])
+  expect_joint_categorical_dose_estimates(res, fx$outcome_mod, columns)
+})
+
+test_that("a dose column rescaled after the treatment models are fit says so", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_dose()
+  fx <- fit_joint_categorical_dose(dat)
+
+  # The dose the estimator holds is the one the treatment models were fit to,
+  # and a marginal structural model fit on a rescaled copy of that column is a
+  # model of a different dose. The refusal is right, and what it has to say is
+  # about the dose: a reader who rescaled a column has coded no factor and
+  # dropped no intercept, so advice about contrasts and intercepts describes
+  # nothing they did, and at three levels the contrast advice ends by telling
+  # them their treatment has no numeric coding, which is further still from the
+  # cause.
+  rescaled <- dat
+  rescaled$e <- rescaled$e / 10
+  outcome_mod <- lm(y ~ z * e, data = rescaled, weights = fx$wts)
+
+  cnd <- tryCatch(ipw(fx$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  # Either name for the models the weights came from is admitted, since this
+  # route calls them treatment models elsewhere and they are the propensity
+  # models a caller knows them as.
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(message, "treatment models|propensity")
+
+  # Scaling a dose is supported; only doing it to one model and not the others
+  # is refused.
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "no intercept", fixed = TRUE)
+
+  expect_propensity_error(ipw(fx$models, outcome_mod))
 })

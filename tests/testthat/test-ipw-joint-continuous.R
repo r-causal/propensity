@@ -1581,7 +1581,7 @@ test_that("the weights mismatch names a score the record does not keep", {
   )
 })
 
-test_that("a bare-term model with no intercept is refused, not errored", {
+test_that("a bare-term model with no intercept reports the coefficient surface", {
   dat <- sim_joint_continuous()
   dat$a <- factor(
     ifelse(dat$a == 1, "yes", "no"),
@@ -1590,13 +1590,12 @@ test_that("a bare-term model with no intercept is refused, not errored", {
 
   # Dropping the intercept expands a factor treatment into one column per level,
   # so the first column is the indicator of the reference level rather than of
-  # the focal one. The terms are bare, so the model reaches the vocabulary
-  # surface, and it is the columns that say it cannot be reported there.
-  #
-  # What is pinned is that this arrives as a guided refusal. Reading the columns
-  # is what makes it one: a surface that trusted the terms would have taken the
-  # first column for the indicator and reported a coefficient that is not the
-  # effect the row names.
+  # the focal one and no column of the fit is the 0/1 indicator the vocabulary's
+  # rows are claims about. A model the vocabulary has no reading for is reported
+  # on the coefficient surface rather than refused: the coefficients are the
+  # weighted fit's own either way, and naming each row after the column it
+  # multiplies says exactly what each one is without claiming a level contrast
+  # none of them is.
   ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
   ps_e <- lm(e ~ a + x1 + x2, data = dat)
   wts <- quiet_wt(wt_joint(
@@ -1616,21 +1615,115 @@ test_that("a bare-term model with no intercept is refused, not errored", {
     colnames(model.matrix(outcome_mod)),
     c("ano", "ayes", "e", "ayes:e")
   )
-  expect_error(
-    ipw(models, outcome_mod),
-    class = "propensity_ipw_msm_error"
-  )
 
-  # The remedy has to name the cause a reader of this fit is looking at. The
-  # treatment here is already an unordered factor under treatment contrasts, so
-  # the second half of the remedy describes what was done; only the dropped
-  # intercept explains why that was not enough.
-  expect_error(
-    ipw(models, outcome_mod),
-    regexp = "no intercept"
-  )
+  res <- ipw(models, outcome_mod)
 
-  expect_propensity_error(ipw(models, outcome_mod))
+  expect_joint_coefficient_surface(res, c("ano", "ayes", "e", "ayes:e"))
+  expect_joint_coefficient_estimates(res, outcome_mod)
+  expect_identical(nrow(res$estimates), 4L)
+
+  # One row per treatment-reading column, and four of them where a model with an
+  # intercept contributes three: the reference-level indicator is a column of
+  # this fit and the surface reports it.
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 4L)
+})
+
+test_that("a numeric treatment with no intercept reports the coefficient surface", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat)
+  outcome_mod <- lm(y ~ a * e - 1, data = dat, weights = fx$wts)
+
+  # A 0/1 numeric treatment contributes the same single column whether the
+  # intercept is kept or dropped, so the columns here are the ones the
+  # vocabulary describes and the coding check has nothing to catch. What the
+  # forced zero moves is what the coefficients mean rather than what the columns
+  # hold: the coefficient of `a` is the mean at `a = 1` and a dose of zero
+  # rather than the difference between the treatment's levels there, so the row
+  # the vocabulary would write for it names a contrast the fit does not carry.
+  #
+  # Which surface a fit reports is decided by whether the vocabulary reads it,
+  # and no model without an intercept is one it reads, whatever its columns hold.
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("a", "e", "a:e")
+  )
+  expect_identical(as.integer(attr(terms(outcome_mod), "intercept")), 0L)
+
+  res <- ipw(fx$models, outcome_mod)
+
+  expect_joint_coefficient_surface(res, c("a", "e", "a:e"))
+  expect_joint_coefficient_estimates(res, outcome_mod)
+  expect_identical(nrow(res$estimates), 3L)
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 3L)
+})
+
+test_that("a dose transformed in the formula is reported, not refused", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * I(e / 10)")
+
+  # Writing the transformation into the marginal structural model's own formula
+  # is one of the two ways to work on a rescaled dose, and it is the one that
+  # leaves the column the treatment models were fit to alone: the outcome model
+  # reads that column and rescales it on its way into the design. The term is no
+  # longer bare, so the fit reports the coefficient surface, where each row names
+  # the column it multiplies and claims nothing about a step in the dose itself.
+  res <- ipw(fx$models, fx$outcome_mod)
+
+  expect_joint_coefficient_surface(res, c("a", "I(e/10)", "a:I(e/10)"))
+  expect_joint_coefficient_estimates(res, fx$outcome_mod)
+})
+
+test_that("a dose column rescaled after the treatment models are fit says so", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat)
+
+  # The dose the estimator holds is the one the treatment models were fit to,
+  # and a marginal structural model fit on a rescaled copy of that column is a
+  # model of a different dose: its slope is per ten units of the dose the weights
+  # were built for, and the weights themselves were built for the original. The
+  # refusal is right, and what it has to say is about the dose. A reader who
+  # rescaled a column has coded no factor and dropped no intercept, so advice
+  # about contrasts and intercepts describes nothing they did.
+  rescaled <- dat
+  rescaled$e <- rescaled$e / 10
+  outcome_mod <- lm(y ~ a * e, data = rescaled, weights = fx$wts)
+
+  cnd <- tryCatch(ipw(fx$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  # What the message has to say: the outcome model's dose column holds values
+  # the models the weights came from were not fit to. Either name for those
+  # models is admitted, since this route calls them treatment models elsewhere
+  # and they are the propensity models a caller knows them as.
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(message, "treatment models|propensity")
+
+  # And what it must not say. Scaling a dose is supported; only doing it to one
+  # model and not the others is refused, so a remedy about factor coding is
+  # wrong here, and the intercept is present in this fit besides.
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "no intercept", fixed = TRUE)
+
+  expect_propensity_error(ipw(fx$models, outcome_mod))
+})
+
+test_that("a contrast-coded treatment keeps the contrast advice", {
+  dat <- sim_joint_continuous()
+  ordered <- fit_joint_factor(dat, ordered = TRUE)
+
+  # The dose advice belongs to a dose column that does not hold what the
+  # treatment models were fit to. Here that column is exactly what they were fit
+  # to and only the factor's coding moved, so the remedy stays the one about
+  # contrasts. The interaction is among the mismatched columns and reads the
+  # dose, which is what makes this worth pinning: what decides the advice is
+  # which column disagrees, not which variables its term names.
+  cnd <- tryCatch(ipw(ordered$models, ordered$outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "same values", fixed = TRUE)
 })
 
 test_that("ipw() refuses .by on a joint continuous fit", {
