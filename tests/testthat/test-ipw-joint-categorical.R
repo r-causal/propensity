@@ -973,3 +973,809 @@ test_that("saturated parameterizations make the two routes agree tightly", {
     tolerance = 1e-4
   )
 })
+
+# ---- a categorical treatment in both slots ----------------------------------
+
+# Two three-level treatments sharing confounders, the second depending on the
+# first. Nothing about the stacked system distinguishes the pair from the one
+# above: each component carries a multinomial score, and the crossing is nine
+# cells rather than six. What the fixture is for is the surface, which grows in
+# both level counts at once, and the level counts are kept apart from the
+# outcome model's own so a row read off the wrong axis would not line up.
+sim_joint_categorical_pair <- function(seed = 7311, n = 2400) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+
+  eta_mid <- -0.1 + 0.5 * x1 + 0.3 * x2
+  eta_hi <- -0.3 + 0.3 * x1 - 0.4 * x2
+  denom <- 1 + exp(eta_mid) + exp(eta_hi)
+  z1 <- draw_categorical(
+    cbind(1, exp(eta_mid), exp(eta_hi)) / denom,
+    c("lo", "mid", "hi")
+  )
+  z1_mid <- as.integer(z1 == "mid")
+  z1_hi <- as.integer(z1 == "hi")
+
+  eta_q <- -0.2 +
+    0.4 * x1 +
+    0.2 * x2 -
+    0.6 * z1_mid +
+    0.5 * z1_hi +
+    0.3 * z1_mid * x1
+  eta_r <- -0.3 -
+    0.3 * x1 +
+    0.3 * x2 +
+    0.5 * z1_mid -
+    0.4 * z1_hi -
+    0.3 * z1_hi * x1
+  denom2 <- 1 + exp(eta_q) + exp(eta_r)
+  z2 <- draw_categorical(
+    cbind(1, exp(eta_q), exp(eta_r)) / denom2,
+    c("p", "q", "r")
+  )
+  z2_q <- as.integer(z2 == "q")
+  z2_r <- as.integer(z2 == "r")
+
+  y <- rbinom(
+    n,
+    1,
+    plogis(
+      -0.4 +
+        0.6 * z1_mid +
+        0.3 * z1_hi +
+        0.5 * z2_q +
+        0.2 * z2_r +
+        0.6 * x1 -
+        0.3 * x2 +
+        0.7 * z1_mid * z2_q -
+        0.4 * z1_hi * z2_r
+    )
+  )
+
+  data.frame(x1, x2, z1, z2, y)
+}
+
+# The two-model route over the pair: a multinomial model of each treatment, the
+# second conditioning on the first, and the product of their ate weights.
+fit_joint_categorical_pair_route <- function(dat) {
+  ps_z1 <- nnet::multinom(
+    z1 ~ x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps_z2 <- nnet::multinom(
+    z2 ~ z1 * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      categorical_component_weights(ps_z1, dat$z1),
+      categorical_component_weights(ps_z2, dat$z2),
+      exposure_type = c("categorical", "categorical")
+    )
+  )
+
+  # `y ~ z1 * z2 + x1` spans the nine cells and the covariate, which is what
+  # `y ~ joint + x1` spans on the other route.
+  outcome_mod <- glm(
+    y ~ z1 * z2 + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(z1 = ps_z1, z2 = ps_z2),
+    ps_z1 = ps_z1,
+    ps_z2 = ps_z2,
+    outcome_mod = outcome_mod,
+    wts = wts
+  )
+}
+
+# The declared-exposure route over the same crossing: one multinomial model over
+# the nine cells and an outcome model that reads them as one factor.
+fit_joint_categorical_pair_exposure_route <- function(dat) {
+  dat$joint <- causalgenerics::joint_exposure(z1 = dat$z1, z2 = dat$z2)
+  ps_mod <- nnet::multinom(
+    joint ~ x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    categorical_component_weights(ps_mod, dat$joint)
+  )
+  outcome_mod <- glm(
+    y ~ joint + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts, dat = dat)
+}
+
+# The nine cells, the first treatment varying fastest and the reference cell
+# first, as for any other crossing.
+joint_categorical_pair_cells <- c(
+  "z1 = lo, z2 = p",
+  "z1 = mid, z2 = p",
+  "z1 = hi, z2 = p",
+  "z1 = lo, z2 = q",
+  "z1 = mid, z2 = q",
+  "z1 = hi, z2 = q",
+  "z1 = lo, z2 = r",
+  "z1 = mid, z2 = r",
+  "z1 = hi, z2 = r"
+)
+
+# Twelve simple effects and four interactions. The simple effects vary the first
+# treatment within each level of the second and then the second within each
+# level of the first, held level outer and compared level inner; the four
+# interactions cross each non-reference level of one treatment with each of the
+# other, the second treatment's level outer, and are reported under the first
+# treatment's framing.
+joint_categorical_pair_entries <- list(
+  list(contrast = "z1: mid vs lo", group = "z2 = p", hi = 2L, lo = 1L),
+  list(contrast = "z1: hi vs lo", group = "z2 = p", hi = 3L, lo = 1L),
+  list(contrast = "z1: mid vs lo", group = "z2 = q", hi = 5L, lo = 4L),
+  list(contrast = "z1: hi vs lo", group = "z2 = q", hi = 6L, lo = 4L),
+  list(contrast = "z1: mid vs lo", group = "z2 = r", hi = 8L, lo = 7L),
+  list(contrast = "z1: hi vs lo", group = "z2 = r", hi = 9L, lo = 7L),
+  list(contrast = "z2: q vs p", group = "z1 = lo", hi = 4L, lo = 1L),
+  list(contrast = "z2: r vs p", group = "z1 = lo", hi = 7L, lo = 1L),
+  list(contrast = "z2: q vs p", group = "z1 = mid", hi = 5L, lo = 2L),
+  list(contrast = "z2: r vs p", group = "z1 = mid", hi = 8L, lo = 2L),
+  list(contrast = "z2: q vs p", group = "z1 = hi", hi = 6L, lo = 3L),
+  list(contrast = "z2: r vs p", group = "z1 = hi", hi = 9L, lo = 3L),
+  list(
+    contrast = "z1: mid vs lo",
+    group = "z2 = q vs z2 = p",
+    hi = 3L,
+    lo = 1L
+  ),
+  list(
+    contrast = "z1: hi vs lo",
+    group = "z2 = q vs z2 = p",
+    hi = 4L,
+    lo = 2L
+  ),
+  list(
+    contrast = "z1: mid vs lo",
+    group = "z2 = r vs z2 = p",
+    hi = 5L,
+    lo = 1L
+  ),
+  list(
+    contrast = "z1: hi vs lo",
+    group = "z2 = r vs z2 = p",
+    hi = 6L,
+    lo = 2L
+  )
+)
+
+joint_categorical_pair_simple <- 12L
+
+joint_categorical_pair_expected_rows <- function(forms = c("rd", "log(rr)")) {
+  entries <- joint_categorical_pair_entries
+
+  data.frame(
+    effect = c(
+      rep("mean", length(joint_categorical_pair_cells)),
+      rep(forms, times = length(entries))
+    ),
+    contrast = c(
+      joint_categorical_pair_cells,
+      rep(
+        vapply(entries, function(x) x$contrast, character(1)),
+        each = length(forms)
+      )
+    ),
+    group = c(
+      rep("overall", length(joint_categorical_pair_cells)),
+      rep(
+        vapply(entries, function(x) x$group, character(1)),
+        each = length(forms)
+      )
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# The nine counterfactual risks by g-computation on the weighted outcome model,
+# standardized over the whole sample, with both treatments set together.
+joint_categorical_pair_cell_means <- function(outcome_mod, data) {
+  settings <- expand.grid(
+    z1 = levels(data$z1),
+    z2 = levels(data$z2),
+    stringsAsFactors = FALSE
+  )
+
+  out <- vapply(
+    seq_len(nrow(settings)),
+    function(i) {
+      d <- data
+      d$z1 <- factor(settings$z1[[i]], levels = levels(data$z1))
+      d$z2 <- factor(settings$z2[[i]], levels = levels(data$z2))
+      mean(stats::predict(outcome_mod, newdata = d, type = "response"))
+    },
+    numeric(1)
+  )
+
+  stats::setNames(out, joint_categorical_pair_cells)
+}
+
+joint_categorical_pair_expected_estimates <- function(
+  mu,
+  forms = c("rd", "log(rr)")
+) {
+  entries <- joint_categorical_pair_entries
+  simple <- lapply(
+    entries[seq_len(joint_categorical_pair_simple)],
+    function(entry) {
+      vapply(
+        forms,
+        function(f) {
+          joint_categorical_transform(f, mu[[entry$hi]], mu[[entry$lo]])
+        },
+        numeric(1)
+      )
+    }
+  )
+  interaction <- lapply(
+    entries[-seq_len(joint_categorical_pair_simple)],
+    function(entry) simple[[entry$hi]] - simple[[entry$lo]]
+  )
+
+  unname(c(mu, unlist(simple), unlist(interaction)))
+}
+
+test_that("ipw() over two categorical treatments reports the whole crossing", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_pair()
+  expect_true(all(table(dat$z1, dat$z2) > 0))
+
+  two <- fit_joint_categorical_pair_route(dat)
+  expect_identical(
+    two$models$exposure_type,
+    c(z1 = "categorical", z2 = "categorical")
+  )
+
+  res <- ipw(two$models, two$outcome_mod)
+  est <- res$estimates
+
+  # Nine cell means, twelve simple effects on two scales, four interactions on
+  # two scales. The surface grows in both level counts at once and the identity
+  # columns are what index it, so the rows are written out rather than counted.
+  expected <- joint_categorical_pair_expected_rows()
+  expect_identical(nrow(est), 41L)
+  expect_identical(est$effect, expected$effect)
+  expect_identical(est$contrast, expected$contrast)
+  expect_identical(est$group, expected$group)
+  expect_false(any(est$effect == "log(or)"))
+
+  labels <- joint_categorical_labels(est)
+  expect_identical(anyDuplicated(labels), 0L)
+  expect_identical(names(coef(res)), labels)
+
+  # Every reported quantity is g-computation on the weighted outcome model, the
+  # interactions differencing two simple effects on their own scale.
+  mu <- joint_categorical_pair_cell_means(two$outcome_mod, dat)
+  expect_equal(
+    est$estimate,
+    joint_categorical_pair_expected_estimates(mu),
+    tolerance = 1e-8
+  )
+
+  # Six coefficients for `z1 ~ x1 + x2` over two non-reference levels, fourteen
+  # for `z2 ~ z1 * x1 + x2` over two more, ten for the outcome model, nine cell
+  # means, and thirty-two contrast rows.
+  expect_identical(as.integer(res$fit@n_params), 71L)
+  expect_true(all(is.finite(est$std.err)))
+  expect_true(all(est$std.err > 0))
+})
+
+test_that("the two routes agree on a three by three crossing", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_pair()
+
+  two <- fit_joint_categorical_pair_route(dat)
+  joint <- fit_joint_categorical_pair_exposure_route(dat)
+  res_two <- ipw(two$models, two$outcome_mod)
+  res_joint <- ipw(joint$ps_mod, joint$outcome_mod)
+
+  # The whole surface, row for row and label for label: two multinomial models
+  # of the two treatments and one over the nine cells report the same crossing
+  # under the same names.
+  expect_identical(nrow(res_joint$estimates), 41L)
+  expect_identical(res_two$estimates$effect, res_joint$estimates$effect)
+  expect_identical(res_two$estimates$contrast, res_joint$estimates$contrast)
+  expect_identical(res_two$estimates$group, res_joint$estimates$group)
+  expect_identical(
+    joint_categorical_labels(res_two$estimates),
+    joint_categorical_labels(res_joint$estimates)
+  )
+
+  # Two parameterizations of the same propensity score, so what separates them
+  # is the difference between the models rather than solver noise. Measured on
+  # this fixture the reported rows differ by at most 2.3e-2 in absolute terms,
+  # on cell risks of 0.34 to 0.84 and contrasts up to 0.51, while the weights
+  # behind them differ by up to 32 percent. The bounds are set from those
+  # measurements with room.
+  expect_lt(
+    max(abs(res_two$estimates$estimate - res_joint$estimates$estimate)),
+    0.06
+  )
+
+  # The cell risks are probabilities and carry a tighter bound; measured 8.3e-3.
+  means <- res_two$estimates$effect == "mean"
+  expect_lt(
+    max(abs(
+      res_two$estimates$estimate[means] - res_joint$estimates$estimate[means]
+    )),
+    0.03
+  )
+})
+
+# ---- the categorical treatment in the first slot ----------------------------
+
+test_that("the categorical-first surface is the declared route's label for label", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_first()
+
+  ps_z <- nnet::multinom(
+    z ~ x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps_a <- glm(a ~ z * x1 + x2, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      categorical_component_weights(ps_z, dat$z),
+      wt_ate(ps_a),
+      exposure_type = c("categorical", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * z + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  res_two <- ipw(joint_wt_models(z = ps_z, a = ps_a), outcome_mod)
+
+  dat$joint <- causalgenerics::joint_exposure(z = dat$z, a = dat$a)
+  ps_joint <- nnet::multinom(
+    joint ~ x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  wts_joint <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    categorical_component_weights(ps_joint, dat$joint)
+  )
+  outcome_joint <- glm(
+    y ~ joint + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts_joint,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  res_joint <- ipw(ps_joint, outcome_joint)
+
+  # Which treatment is declared first decides which one the cells vary fastest
+  # and which one the interaction rows are framed under. Both routes read the
+  # crossing the same way round, so the surface is the same labels in the same
+  # order rather than the same shape: the cells vary `z`, the simple effects run
+  # `z` within each level of `a` before `a` within each level of `z`, and the
+  # interactions are `z`'s contrasts against `a = 1 vs a = 0`.
+  expected <- data.frame(
+    effect = c(
+      rep("mean", 6),
+      rep(c("rd", "log(rr)"), times = 9)
+    ),
+    contrast = c(
+      "z = lo, a = 0",
+      "z = mid, a = 0",
+      "z = hi, a = 0",
+      "z = lo, a = 1",
+      "z = mid, a = 1",
+      "z = hi, a = 1",
+      rep(
+        c(
+          "z: mid vs lo",
+          "z: hi vs lo",
+          "z: mid vs lo",
+          "z: hi vs lo",
+          "a: 1 vs 0",
+          "a: 1 vs 0",
+          "a: 1 vs 0",
+          "z: mid vs lo",
+          "z: hi vs lo"
+        ),
+        each = 2
+      )
+    ),
+    group = c(
+      rep("overall", 6),
+      rep(
+        c(
+          "a = 0",
+          "a = 0",
+          "a = 1",
+          "a = 1",
+          "z = lo",
+          "z = mid",
+          "z = hi",
+          "a = 1 vs a = 0",
+          "a = 1 vs a = 0"
+        ),
+        each = 2
+      )
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  expect_identical(nrow(res_two$estimates), 24L)
+  expect_identical(res_two$estimates$effect, expected$effect)
+  expect_identical(res_two$estimates$contrast, expected$contrast)
+  expect_identical(res_two$estimates$group, expected$group)
+  expect_identical(
+    joint_categorical_labels(res_two$estimates),
+    joint_categorical_labels(res_joint$estimates)
+  )
+
+  # Measured on this fixture the rows differ by at most 1.1e-2, on cell risks of
+  # 0.38 to 0.81 and contrasts up to 0.46, against weights differing by up to 18
+  # percent; the cell risks alone by 2.9e-3.
+  expect_lt(
+    max(abs(res_two$estimates$estimate - res_joint$estimates$estimate)),
+    0.05
+  )
+  means <- res_two$estimates$effect == "mean"
+  expect_lt(
+    max(abs(
+      res_two$estimates$estimate[means] - res_joint$estimates$estimate[means]
+    )),
+    0.03
+  )
+})
+
+# ---- a two-level categorical component --------------------------------------
+
+# A binary treatment whose second treatment is a two-level factor, so the pair
+# can be fit either way: `nnet::multinom()` types the second component
+# categorical and `stats::glm()` types it binary, and the two fits are of the
+# same model.
+sim_joint_categorical_two_level <- function(seed = 7305, n = 1200) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  a <- rbinom(n, 1, plogis(0.3 * x1 - 0.4 * x2))
+  e <- rbinom(
+    n,
+    1,
+    plogis(-0.2 + 0.5 * x1 + 0.3 * x2 - 0.8 * a + 0.6 * a * x1)
+  )
+  y <- rbinom(
+    n,
+    1,
+    plogis(-0.5 + 0.7 * a + 0.5 * e + 0.6 * x1 - 0.3 * x2 + 0.9 * a * e)
+  )
+
+  data.frame(x1, x2, a, e = factor(e, levels = c(0, 1)), y)
+}
+
+test_that("the flattened coefficients of a two-level multinomial keep the level's name", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_two_level()
+  fit <- nnet::multinom(
+    e ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  # At two levels `coef()` on a multinomial fit gives a bare vector rather than
+  # the one-row matrix the rest of its level counts give, so the level the
+  # coefficients belong to is nowhere in the object the flattening reads. The
+  # name has to come from the fit's own levels instead, which is the branch
+  # every route taking a categorical component from a fit shares.
+  expect_false(is.matrix(stats::coef(fit)))
+  expect_identical(
+    names(ipw_multinom_coefs(fit)),
+    c("1:(Intercept)", "1:a", "1:x1", "1:x2", "1:a:x1")
+  )
+  expect_equal(
+    unname(ipw_multinom_coefs(fit)),
+    unname(stats::coef(fit)),
+    tolerance = 1e-12
+  )
+})
+
+test_that("a two-level multinomial component is carried or refused in the package's own terms", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical_two_level()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e_multinom <- nnet::multinom(
+    e ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps_e_glm <- glm(
+    e ~ a * x1 + x2,
+    data = dat,
+    family = binomial(),
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  # The premise: the two fits are the same model solved by two optimizers, and
+  # they land on the same coefficients to 6.7e-8 and the same weights to 1.3e-6.
+  # Whatever the route does with the multinomial fit, it is not being handed a
+  # different propensity score.
+  expect_equal(
+    unname(stats::coef(ps_e_multinom)),
+    unname(stats::coef(ps_e_glm)),
+    tolerance = 1e-6
+  )
+  weights_multinom <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_e_multinom)
+  )
+  weights_glm <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(ps_e_glm)
+  )
+  expect_equal(
+    as.double(weights_multinom),
+    as.double(weights_glm),
+    tolerance = 1e-5
+  )
+
+  # The single-treatment route meets the same fit with a refusal that names what
+  # is wrong and what to fit instead, so the pair below is measured against a
+  # route that already has an answer for a two-level multinomial.
+  outcome_alone <- glm(
+    y ~ e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = weights_multinom,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  expect_error(
+    ipw(ps_e_multinom, outcome_alone),
+    class = "propensity_model_family_error"
+  )
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      weights_multinom,
+      exposure_type = c("binary", "categorical")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  models <- joint_wt_models(a = ps_a, e = ps_e_multinom)
+  expect_identical(models$exposure_type, c(a = "binary", e = "categorical"))
+
+  # Two resolutions are open here and either would be legitimate: the pair takes
+  # the multinomial block and reports the fourteen-row crossing the equivalent
+  # `glm` pair reports, or the route refuses it toward `glm` the way the
+  # single-treatment route above does. What is not legitimate is the third
+  # thing: a multinomial score is the block the route hands a categorical
+  # component, and a two-level component has no rows for it, so the pair reaches
+  # the estimating equation and fails inside it. The error the user meets then
+  # is about a `y` with too few categories and about fitting an outcome, neither
+  # of which is a treatment model they wrote.
+  cnd <- tryCatch(ipw(models, outcome_mod), error = identity)
+  if (inherits(cnd, "error")) {
+    expect_s3_class(cnd, "propensity_error")
+  } else {
+    expect_identical(nrow(cnd$estimates), 14L)
+  }
+})
+
+# ---- refusals ---------------------------------------------------------------
+
+test_that("a stabilized categorical component is refused toward an unstabilized one", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  probabilities <- unname(stats::predict(ps_z, type = "probs"))
+  colnames(probabilities) <- ps_z$lev
+  stabilized <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_ate(
+      probabilities,
+      dat$z,
+      exposure_type = "categorical",
+      stabilize = TRUE
+    )
+  )
+  expect_true(is_stabilized(stabilized))
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      stabilized,
+      exposure_type = c("binary", "categorical")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * z + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+  models <- joint_wt_models(a = ps_a, z = ps_z)
+
+  # The denominator of a categorical component is carried and its numerator is
+  # not, so a component whose weights record one is refused rather than weighted
+  # by a numerator the stack cannot differentiate. The refusal names the
+  # component and the argument that rebuilds it.
+  cnd <- tryCatch(ipw(models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_joint_models_stabilize_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`z`", fixed = TRUE)
+  expect_match(message, "stabilize = FALSE", fixed = TRUE)
+
+  # The refusal is raised before anything is estimated, so it cannot be reached
+  # through a fixture that also reports on its stabilizer's coverage.
+  expect_no_warning(tryCatch(ipw(models, outcome_mod), error = function(e) {
+    NULL
+  }))
+})
+
+test_that("a dose is refused beside a categorical first treatment", {
+  # The rows a dose reports are the marginal structural model's own coefficients
+  # written for the two levels of a binary first treatment, so a categorical one
+  # beside it has nowhere to be reported. Admitting a categorical treatment into
+  # the first slot is what makes this pair reachable and the refusal necessary,
+  # and the refusal says which of the two positions the dose may take.
+  cnd <- tryCatch(
+    check_ipw_joint_models_types(c(z = "categorical", d = "continuous")),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_exposure_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`d`", fixed = TRUE)
+  expect_match(message, "second", fixed = TRUE)
+  expect_match(message, "only beside a binary first one", fixed = TRUE)
+
+  # The other direction, which the dose has always been refused in: the first
+  # factor of the factorization carries no density.
+  cnd_first <- tryCatch(
+    check_ipw_joint_models_types(c(d = "continuous", z = "categorical")),
+    error = identity
+  )
+  expect_s3_class(cnd_first, "propensity_ipw_exposure_error")
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(cnd_first)),
+    "first",
+    fixed = TRUE
+  )
+
+  # Two categorical treatments are the pair this refusal is not about.
+  expect_silent(
+    check_ipw_joint_models_types(c(z1 = "categorical", z2 = "categorical"))
+  )
+})
+
+# ---- separation -------------------------------------------------------------
+
+test_that("the joint preflight counts a categorical component's separation at the assigned level", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+  two <- fit_joint_categorical_route(dat)
+
+  spec <- ipw_spec_joint_models(two$models, two$outcome_mod)
+  layout <- ipw_theta_layout(spec)
+
+  # A fitted multinomial cannot reach the state this guard is for. Separation
+  # drives the probability of the level a unit took toward one, not toward zero:
+  # the covariate pattern that predicts a level without error predicts it for
+  # the units that took it, and the columns that underflow belong to levels
+  # those units did not take. Measured on a quasi-separated fit whose separating
+  # coefficient reaches 19, the smallest assigned-level probability is 0.26 and
+  # no entry of the softmax is an exact zero or one. What can reach the corner
+  # is a theta the solver visits on its way, so the guard is evaluated where the
+  # solver would evaluate it: at an init whose categorical block is scaled up
+  # until the assigned level underflows.
+  n_a <- length(coef(two$ps_a))
+  categorical_block <- layout$idx$ps[n_a + seq_len(10)]
+
+  # Scaled by two hundred, 1069 entries of the softmax are an exact zero or one
+  # and not one of them is at a level its unit took. The binary rule would
+  # refuse this fit; the assigned-level rule is what makes it pass.
+  near <- layout
+  near$init[categorical_block] <- layout$init[categorical_block] * 200
+  blocks <- ipw_joint_models_blocks(
+    spec,
+    near$init[layout$idx$ps],
+    near$init[layout$idx$stab]
+  )
+  saturated <- blocks[[2]]$ps
+  expect_gt(sum(saturated == 0 | saturated == 1), 1000)
+  expect_identical(sum(rowSums(spec$exposure[[2]] * saturated) == 0), 0L)
+  expect_no_error(ipw_weights_at_init(spec, near))
+
+  # Scaled by a thousand, 159 units have an exact zero at the level they took,
+  # and those are the units whose weight has no denominator.
+  over <- layout
+  over$init[categorical_block] <- layout$init[categorical_block] * 1000
+  blocks_over <- ipw_joint_models_blocks(
+    spec,
+    over$init[layout$idx$ps],
+    over$init[layout$idx$stab]
+  )
+  assigned_zero <- sum(
+    rowSums(spec$exposure[[2]] * blocks_over[[2]]$ps) == 0
+  )
+  expect_identical(assigned_zero, 159L)
+
+  cnd <- tryCatch(ipw_weights_at_init(spec, over), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_separation_error")
+
+  # The count the refusal reports is the assigned-level count rather than every
+  # saturated entry of the softmax, which is the whole of the difference between
+  # the rule this branch applies and the one a binary component takes.
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(
+    message,
+    paste("for", assigned_zero, "observations"),
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    as.character(sum(
+      blocks_over[[2]]$ps == 0 | blocks_over[[2]]$ps == 1
+    )),
+    message,
+    fixed = TRUE
+  ))
+
+  # The binary component is left at its own seed throughout, so nothing it
+  # carries is what fires.
+  expect_identical(
+    sum(blocks_over[[1]]$ps == 0 | blocks_over[[1]]$ps == 1),
+    0L
+  )
+})
