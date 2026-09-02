@@ -2228,7 +2228,7 @@ ipw_spec_continuous <- function(
   ps_fit_X <- if (
     stacked && !is.null(.data) && identical(ratio$numerator, "integrated")
   ) {
-    ipw_integrated_fit_design(ps_mod, ps_model, "ps_mod", call = call)
+    ipw_integrated_fit_design(ps_mod, ps_model, "wt_mod", call = call)
   }
 
   # A numerator model joins the stack the way the propensity score model does,

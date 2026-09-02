@@ -3545,7 +3545,7 @@ test_that("an integrated numerator over an unreadable ps fit is refused", {
 
   message <- continuous_numerator_ipw_message(err)
   expect_match(message, "integrated", fixed = TRUE)
-  expect_match(message, "ps_mod", fixed = TRUE)
+  expect_match(message, "wt_mod", fixed = TRUE)
 })
 
 test_that("an unreadable ps fit under an integrated numerator is pointed past .data", {
