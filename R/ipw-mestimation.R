@@ -449,14 +449,21 @@ ipw_spec_binary <- function(
 # `.data` is the frame every other design in the stack is rebuilt from, over the
 # rows every model read, and this design is rebuilt from it alongside them.
 # Without one the design is read off the fit itself.
+#
+# `component` names the component whose weights the numerator was built for on
+# the joint route, where naming the argument alone would leave a caller with two
+# stabilized components unable to tell which fit is refused.
 ipw_binary_numerator_block <- function(
   numerator_model,
   .data = NULL,
+  component = NULL,
   call = rlang::caller_env()
 ) {
   if (is.null(numerator_model)) {
     return(NULL)
   }
+
+  labels <- ipw_numerator_labels(component)
 
   check_ipw_binary_gam(
     numerator_model,
@@ -481,8 +488,11 @@ ipw_binary_numerator_block <- function(
         "{.fun ipw} does not support the {.val {link}} link for a binary \\
         numerator model.",
         i = "Supported links: {.val {supported}}.",
-        i = "Refit {.arg stabilize} with a supported link and rebuild the \\
-        weights from it."
+        i = paste0(
+          "Refit ",
+          labels$numerator,
+          " with a supported link and rebuild the weights from it."
+        )
       ),
       error_class = "propensity_ipw_link_error",
       call = call
@@ -533,10 +543,15 @@ ipw_binary_numerator_block <- function(
 # weights, the same rank requirement, and the same recovery of a design from a
 # fit that keeps no model frame. The level guard has no counterpart there,
 # because the propensity score model's levels have nothing to agree with.
+#
+# `component` names the component whose weights the numerator was built for on
+# the joint route, where naming the argument alone would leave a caller with two
+# stabilized components unable to tell which fit is refused.
 ipw_categorical_numerator_block <- function(
   numerator_model,
   ps_mod,
   .data = NULL,
+  component = NULL,
   call = rlang::caller_env()
 ) {
   if (is.null(numerator_model)) {
@@ -544,7 +559,12 @@ ipw_categorical_numerator_block <- function(
   }
 
   check_ipw_numerator_model_weights(numerator_model, call = call)
-  check_ipw_categorical_numerator_levels(numerator_model, ps_mod, call = call)
+  check_ipw_categorical_numerator_levels(
+    numerator_model,
+    ps_mod,
+    component = component,
+    call = call
+  )
 
   # The block below multiplies the fitted coefficients against the design
   # positionally, as the propensity score block does, so the model needs a
@@ -595,11 +615,18 @@ ipw_categorical_numerator_block <- function(
 # why the refusal is made here, and why it names the order rather than leaving
 # the mismatch to surface as the weight-consistency refusal, which is about how
 # the weights were built.
+#
+# `component` names the component the numerator was built for where there is one
+# to name, which is what the joint route has and the single-treatment route does
+# not.
 check_ipw_categorical_numerator_levels <- function(
   numerator_model,
   ps_mod,
+  component = NULL,
   call = rlang::caller_env()
 ) {
+  labels <- ipw_numerator_labels(component)
+
   numerator_levels <- as.character(numerator_model$lev)
   ps_levels <- as.character(ps_mod$lev)
 
@@ -615,14 +642,26 @@ check_ipw_categorical_numerator_levels <- function(
     numerator_class <- class(numerator_model)[[1]]
     abort(
       c(
-        "The model supplied to {.arg stabilize} must be an \\
-        {.fun nnet::multinom} fit of a categorical exposure.",
-        x = "{.arg stabilize} is {.cls {numerator_class}}, which declares no \\
-        exposure levels.",
-        i = "The stacked numerator is the multinomial score of a fit over the \\
-        levels {.arg wt_mod} was fit to, {.val {ps_levels}}.",
-        i = "Refit {.arg stabilize} with {.fun nnet::multinom}, and rebuild \\
-        the weights from it."
+        paste0(
+          "The model supplied to ",
+          labels$numerator,
+          " must be an {.fun nnet::multinom} fit of a categorical exposure."
+        ),
+        x = paste0(
+          labels$numerator,
+          " is {.cls {numerator_class}}, which declares no exposure levels."
+        ),
+        i = paste0(
+          "The stacked numerator is the multinomial score of a fit over the ",
+          "levels ",
+          labels$model,
+          " was fit to, {.val {ps_levels}}."
+        ),
+        i = paste0(
+          "Refit ",
+          labels$numerator,
+          " with {.fun nnet::multinom}, and rebuild the weights from it."
+        )
       ),
       error_class = "propensity_ipw_numerator_error",
       call = call
@@ -631,16 +670,29 @@ check_ipw_categorical_numerator_levels <- function(
 
   abort(
     c(
-      "The model supplied to {.arg stabilize} must declare the exposure's \\
-      levels in the level order {.arg wt_mod} declares them in.",
-      x = "{.arg stabilize} was fit to {.val {numerator_levels}} and \\
-      {.arg wt_mod} to {.val {ps_levels}}.",
+      paste0(
+        "The model supplied to ",
+        labels$numerator,
+        " must declare the exposure's levels in the level order ",
+        labels$model,
+        " declares them in."
+      ),
+      x = paste0(
+        labels$numerator,
+        " was fit to {.val {numerator_levels}} and ",
+        labels$model,
+        " to {.val {ps_levels}}."
+      ),
       i = "A multinomial fit's coefficients are read against its own level \\
       order, the first level being the reference the others are contrasted \\
       with, so a fit made under another order is a different parameterization \\
       rather than a permutation of this one.",
-      i = "Refit {.arg stabilize} with the exposure factored on \\
-      {.val {ps_levels}}, and rebuild the weights from it."
+      i = paste0(
+        "Refit ",
+        labels$numerator,
+        " with the exposure factored on {.val {ps_levels}}, and rebuild the ",
+        "weights from it."
+      )
     ),
     error_class = "propensity_ipw_numerator_error",
     call = call

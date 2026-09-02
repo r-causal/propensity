@@ -3931,6 +3931,30 @@ abort_outcome_frame_gone <- function(cause, call = rlang::caller_env()) {
   )
 }
 
+# How a refusal about a numerator model names that model and the treatment model
+# it is read against. A single-treatment route reads one numerator, so the
+# argument it arrived in identifies it on its own and the treatment model is
+# `wt_mod`. The joint route reads a numerator per component, each arriving in
+# the `stabilize` of that component's own weights, so a refusal naming only the
+# argument leaves a caller with two stabilized components unable to tell which
+# fit is being refused. There the component is named the way the route's other
+# refusals name one, by the name its treatment model was given, `wt_mod` being
+# the container the pair arrived in rather than a model a reader could refit.
+#
+# Both pieces are cli format strings spliced into the messages before those are
+# formatted, so a route that names no component raises the message it always
+# raised.
+ipw_numerator_labels <- function(component = NULL) {
+  if (is.null(component)) {
+    return(list(numerator = "{.arg stabilize}", model = "{.arg wt_mod}"))
+  }
+
+  list(
+    numerator = "{.arg stabilize} for {.arg {component}}",
+    model = "{.arg {component}}"
+  )
+}
+
 # Report a numerator model whose design cannot be recovered from the fit, the
 # counterpart of the guard above for the model the weights were stabilized on.
 # An `lm`, a `glm`, or an `nnet::multinom()` fit that keeps no model frame

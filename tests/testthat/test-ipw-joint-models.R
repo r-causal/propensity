@@ -1140,6 +1140,34 @@ test_that("a joint component's numerator model whose data is gone is rebuilt fro
   )
 })
 
+# ---- a binary component's numerator fit on an unsupported link ---------------
+#
+# The block written for a binary numerator is the binomial score of a fit on one
+# of the three links deli writes that score for, so a fit on another link is
+# refused rather than stacked. Both components' numerators arrive in the same
+# argument, so the refusal names the component whose weights this one was built
+# for, the way the route's other refusals name a component.
+
+test_that("a binary component's numerator on an unsupported link names the component", {
+  dat <- sim_joint_models()
+
+  # A cauchit fit is a real fit of the treatment whose fitted probabilities the
+  # weight layer takes, so the numerator reaches the estimator recorded on the
+  # product and the refusal is the estimator's to make.
+  num_e <- glm(e ~ x1, data = dat, family = binomial("cauchit"))
+  fits <- joint_models_numerator_gone_fits(dat, num_e)
+
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_link_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "cauchit", fixed = TRUE)
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+})
+
 # ---- a treatment model whose data is gone -----------------------------------
 #
 # A treatment model's coefficients are estimated in the stacked system, so the

@@ -1161,13 +1161,20 @@ ipw_numerator_model_fns <- function(model) {
 # Row identity is what the preflight at initialization covers: weights rebuilt
 # over misaligned rows do not match the ones the caller supplied, and that
 # comparison reports the misalignment.
+#
+# `component` names the component the numerator was built for where there is
+# one to name, which is what the joint route has and the single-treatment routes
+# do not.
 check_ipw_numerator_model <- function(
   numerator_model,
   block,
   exposure_name,
   n,
+  component = NULL,
   call = rlang::caller_env()
 ) {
+  labels <- ipw_numerator_labels(component)
+
   response <- tryCatch(
     fmla_extract_left_chr(numerator_model),
     error = function(e) NA_character_
@@ -1176,9 +1183,16 @@ check_ipw_numerator_model <- function(
   if (!identical(response, exposure_name)) {
     abort(
       c(
-        "The model supplied to {.arg stabilize} must model the exposure.",
-        x = "It models {.val {response}} and {.arg wt_mod} models
-             {.val {exposure_name}}.",
+        paste0(
+          "The model supplied to ",
+          labels$numerator,
+          " must model the exposure."
+        ),
+        x = paste0(
+          "It models {.val {response}} and ",
+          labels$model,
+          " models {.val {exposure_name}}."
+        ),
         i = "The numerator of the weights is what the numerator model reports
              about the exposure given what it reads, so both models describe
              the same response."
@@ -1191,8 +1205,11 @@ check_ipw_numerator_model <- function(
   if (!identical(nrow(block$X), as.integer(n))) {
     abort(
       c(
-        "The model supplied to {.arg stabilize} must be fit to the observations
-         the other models were fit to.",
+        paste0(
+          "The model supplied to ",
+          labels$numerator,
+          " must be fit to the observations the other models were fit to."
+        ),
         x = "It was fit to {nrow(block$X)} observation{?s} and
              {.arg outcome_mod} to {n}.",
         i = "Refit the numerator model on the data the other models were fit

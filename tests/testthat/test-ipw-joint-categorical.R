@@ -2426,6 +2426,115 @@ test_that("a categorical component's numerator model of another response is refu
   expect_match(message, "\"z\"", fixed = TRUE)
 })
 
+# The refusals above, read for what they say about which numerator was refused.
+# Both components' numerators arrive in the same argument, one `stabilize` per
+# component, and `wt_mod` here is the container the two treatment models arrived
+# in rather than a model anyone could refit, so a message naming those two
+# arguments alone leaves a caller with two stabilized components nothing to act
+# on. The route's other refusals name the component by the name its treatment
+# model was given, and these name it the same way.
+#
+# The scenario is the one the refusals above are raised from: the same fits, the
+# same weights, and a numerator of the caller's handed to the categorical
+# component.
+joint_categorical_numerator_refusal <- function(dat, ps_a, ps_z, numerator) {
+  probabilities <- unname(stats::predict(ps_z, type = "probs"))
+  colnames(probabilities) <- ps_z$lev
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(
+        probabilities,
+        dat$z,
+        exposure_type = "categorical",
+        stabilize = numerator
+      ),
+      exposure_type = c("binary", "categorical")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * z + x1 + x2,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  tryCatch(
+    ipw(joint_wt_models(a = ps_a, z = ps_z), outcome_mod),
+    error = identity
+  )
+}
+
+test_that("the level order refusal names the component the numerator was built for", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  relevelled <- dat
+  relevelled$z <- factor(as.character(dat$z), levels = c("hi", "lo", "mid"))
+  num_z <- nnet::multinom(
+    z ~ x2,
+    data = relevelled,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  cnd <- joint_categorical_numerator_refusal(dat, ps_a, ps_z, num_z)
+  expect_s3_class(cnd, "propensity_ipw_numerator_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `z`", fixed = TRUE)
+  # The order the numerator has to declare is the component's own, so the
+  # component names it here too, and `wt_mod` names nothing a reader could act
+  # on.
+  expect_match(message, "the level order `z` declares them in", fixed = TRUE)
+  expect_no_match(message, "wt_mod", fixed = TRUE)
+})
+
+test_that("the wrong-response refusal names the component the numerator was built for", {
+  skip_if_not_installed("nnet")
+  dat <- sim_joint_categorical()
+  dat$g <- factor(
+    c("lo", "mid", "hi")[1 + (rank(dat$x1) %% 3)],
+    levels = c("lo", "mid", "hi")
+  )
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_z <- nnet::multinom(
+    z ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  num_g <- nnet::multinom(
+    g ~ x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+
+  cnd <- joint_categorical_numerator_refusal(dat, ps_a, ps_z, num_g)
+  expect_s3_class(cnd, "propensity_ipw_numerator_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `z`", fixed = TRUE)
+  expect_match(message, "`z` models \"z\"", fixed = TRUE)
+  expect_no_match(message, "wt_mod", fixed = TRUE)
+})
+
 # ---- a stabilized two-level multinomial component ---------------------------
 #
 # A `nnet::multinom()` fit to two levels is a logistic regression solved by a

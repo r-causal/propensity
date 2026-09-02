@@ -1710,18 +1710,26 @@ ipw_joint_models_stab_components <- function(
     # binomial one may take, and for both the refusal of case weights, the rank
     # requirement, and the recovery of a design from a fit that keeps no model
     # frame.
+    #
+    # The block is told which component the numerator was built for, so the
+    # guards that report a fit as the wrong one name that component. Both
+    # components' numerators arrive in the same argument, and a refusal naming
+    # the argument alone leaves a caller with two stabilized components unable
+    # to tell which fit it is about.
     categorical <- identical(types[[i]], "categorical")
     model <- if (categorical) {
       ipw_categorical_numerator_block(
         component_models[[i]],
         fits[[i]],
         .data = .data,
+        component = names[[i]],
         call = call
       )
     } else {
       ipw_binary_numerator_block(
         component_models[[i]],
         .data = .data,
+        component = names[[i]],
         call = call
       )
     }
@@ -1750,6 +1758,7 @@ ipw_joint_models_stab_components <- function(
       model,
       names[[i]],
       n,
+      component = names[[i]],
       call = call
     )
 
@@ -1824,7 +1833,14 @@ ipw_joint_models_dose_stab <- function(
     .data = .data,
     call = call
   )
-  check_ipw_numerator_model(numerator_model, model, name, n, call = call)
+  check_ipw_numerator_model(
+    numerator_model,
+    model,
+    name,
+    n,
+    component = name,
+    call = call
+  )
 
   list(
     type = "continuous",
