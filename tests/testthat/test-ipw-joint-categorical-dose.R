@@ -238,13 +238,18 @@ joint_categorical_dose_coefficients <- c("zmid", "zhi", "e", "zmid:e", "zhi:e")
 
 # Every reported row is one coefficient of the weighted marginal structural
 # model, keyed by the coefficient it names rather than by position.
-expect_joint_categorical_dose_estimates <- function(res, outcome_mod, coefs) {
+expect_joint_categorical_dose_estimates <- function(
+  res,
+  outcome_mod,
+  coefs,
+  tolerance = 1e-8
+) {
   beta <- coef(outcome_mod)
 
   testthat::expect_equal(
     res$estimates$estimate,
     unname(beta[coefs]),
-    tolerance = 1e-8
+    tolerance = tolerance
   )
   testthat::expect_true(all(is.finite(res$estimates$std.err)))
   testthat::expect_true(all(res$estimates$std.err > 0))
@@ -581,9 +586,13 @@ test_that("both components' numerator models are blocks of the same system", {
     unname(coef(fx$num_e)),
     tolerance = 1e-6
   )
+  # The categorical numerator's multinom stops short of its score's root, so
+  # the solved weights sit about 2e-7 from the caller's, the same convergence
+  # floor the stab pin above absorbs at 1e-6.
   expect_joint_categorical_dose_estimates(
     res,
     fx$outcome_mod,
-    joint_categorical_dose_coefficients
+    joint_categorical_dose_coefficients,
+    tolerance = 1e-6
   )
 })
