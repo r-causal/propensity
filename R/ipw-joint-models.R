@@ -50,7 +50,8 @@
 #' Either treatment may be categorical rather than binary, fit with
 #' [nnet::multinom()], in which case its block is the multinomial score that fit
 #' solves and the surface reports the whole crossing its levels make. Such a
-#' component must be unstabilized; see **Joint exposures**.
+#' component may be stabilized like any other, its numerator estimated in a
+#' block of its own; see **Joint exposures**.
 #'
 #' The second treatment may be a dose, in which case the surface is the marginal
 #' structural model's own coefficients rather than the cells of a crossing. The
@@ -477,6 +478,7 @@ ipw_spec_joint_models <- function(
     types = types,
     names = names,
     n = n,
+    fits = fits,
     numerator = numerator,
     recorded = ratio$numerator,
     numerator_model = ratio$numerator_model,
@@ -633,14 +635,15 @@ ipw_spec_joint_models <- function(
       ks = ks
     ),
     # `wt_joint()` requires a continuous component to be stabilized, so a dose
-    # brings a stabilizing numerator with it, and a binary component may bring
+    # brings a stabilizing numerator with it, and a discrete component may bring
     # one of its own. Which numerator a component carries decides what the
     # system estimates for it: a marginal dose numerator is two moments of the
-    # exposure, a marginal binary one is a single proportion, a fitted model is
-    # its own coefficients, and an integrated one is built from the dose block
-    # and the data alone. `widths` says how wide each component's slice of the
-    # stabilization block is, so the block is sliced the way `ps$widths` slices
-    # the treatment blocks rather than by position.
+    # exposure, a marginal binary one is a single proportion, a marginal
+    # categorical one is the k - 1 free proportions of its levels, a fitted
+    # model is its own coefficients, and an integrated one is built from the
+    # dose block and the data alone. `widths` says how wide each component's
+    # slice of the stabilization block is, so the block is sliced the way
+    # `ps$widths` slices the treatment blocks rather than by position.
     stab = list(
       components = stab_components,
       widths = vapply(stab_components, function(x) x$width, integer(1))
@@ -1611,22 +1614,30 @@ ipw_joint_models_weight_fn <- function(
 # The parameters those slices hold are named `stab_<component>_<parameter>`,
 # since a joint system carries two components and a name saying only which role
 # a parameter plays would not say whose. A marginal binary numerator is one
-# proportion, `pi`; a marginal dose numerator is the exposure's two moments,
-# `mu` and `sigma2`; and a fitted numerator is one parameter per column of its
-# own design, followed for a dose by `sigma2`, the spread its density is read
+# proportion, `pi`; a marginal categorical one is the k - 1 free proportions of
+# its own levels; a marginal dose numerator is the exposure's two moments, `mu`
+# and `sigma2`; and a fitted numerator is one parameter per column of its own
+# design, one run of them per non-reference level where that design is a
+# multinomial's, followed for a dose by `sigma2`, the spread its density is read
 # at. `ipw_init_joint_models_stab()` writes those names and is the one place
 # they are written.
 #
-# A binary component's numerator model is recorded on the product itself and a
+# A discrete component's numerator model is recorded on the product itself and a
 # dose's on its density record, so the two are read from the places their own
 # routes read them from and put through the guards their own routes apply. A
 # score is read from the product either way, since a vector the caller computed
 # belongs to no model and to no density.
+#
+# `fits` is the components' own treatment models, which a categorical
+# component's numerator is read against: how many levels its marginal numerator
+# is free over, and whether the fit handed to `stabilize` declares those levels
+# in the order everything the block does is positional in.
 ipw_joint_models_stab_components <- function(
   wts,
   types,
   names,
   n,
+  fits,
   numerator,
   recorded,
   numerator_model,
@@ -1637,7 +1648,7 @@ ipw_joint_models_stab_components <- function(
 ) {
   meta <- joint_wt_meta(wts)
   stabilized <- meta$stabilized
-  binary_models <- joint_wt_numerator_models(meta)
+  component_models <- joint_wt_numerator_models(meta)
   # Whether the record could have kept a score at all. A product written before
   # the slot existed says a discrete component was stabilized without saying
   # what by, so the marginal proportion stands in for a score of the caller's
@@ -1679,8 +1690,6 @@ ipw_joint_models_stab_components <- function(
       ))
     }
 
-    check_ipw_joint_models_categorical_stab(types[[i]], names[[i]], call = call)
-
     # A score is the numerator itself rather than a description of one, so the
     # system multiplies by it and estimates nothing: no block, no parameters,
     # exactly as the single-treatment routes treat a score.
@@ -1695,11 +1704,27 @@ ipw_joint_models_stab_components <- function(
       ))
     }
 
-    model <- ipw_binary_numerator_block(
-      binary_models[[i]],
-      .data = .data,
-      call = call
-    )
+    # Each type's numerator model goes through the block its own
+    # single-treatment route builds, so it meets the guards that route applies:
+    # the level order a multinomial numerator has to declare, the links a
+    # binomial one may take, and for both the refusal of case weights, the rank
+    # requirement, and the recovery of a design from a fit that keeps no model
+    # frame.
+    categorical <- identical(types[[i]], "categorical")
+    model <- if (categorical) {
+      ipw_categorical_numerator_block(
+        component_models[[i]],
+        fits[[i]],
+        .data = .data,
+        call = call
+      )
+    } else {
+      ipw_binary_numerator_block(
+        component_models[[i]],
+        .data = .data,
+        call = call
+      )
+    }
 
     if (is.null(model)) {
       return(list(
@@ -1707,7 +1732,11 @@ ipw_joint_models_stab_components <- function(
         numerator = "marginal",
         model = NULL,
         score = NULL,
-        width = 1L,
+        # A binary component's marginal numerator is the single proportion that
+        # took the non-reference level, and a categorical one's is the k - 1
+        # free proportions its levels leave, the reference level's completing
+        # the set.
+        width = if (categorical) length(fits[[i]]$lev) - 1L else 1L,
         # A record that keeps scores says the marginal proportion is what
         # stabilized this component, unless it also records that the component's
         # score was dropped. One written before it kept them says only that
@@ -1717,7 +1746,7 @@ ipw_joint_models_stab_components <- function(
     }
 
     check_ipw_numerator_model(
-      binary_models[[i]],
+      component_models[[i]],
       model,
       names[[i]],
       n,
@@ -1729,44 +1758,13 @@ ipw_joint_models_stab_components <- function(
       numerator = "model",
       model = model,
       score = NULL,
-      width = ncol(model$X),
+      # A binomial numerator holds one coefficient per column of its design, and
+      # a multinomial one holds a run of them per non-reference level, which the
+      # block has already flattened.
+      width = if (categorical) length(model$coefs) else ncol(model$X),
       stand_in = FALSE
     )
   })
-}
-
-# Refuse a stabilized categorical component. The blocks a stabilizing numerator
-# would take here are the multinomial ones: k - 1 free marginal proportions
-# where the default stabilizer estimated them, and a multinomial score where the
-# caller fit a numerator model. Neither is written yet, and the blocks that are
-# written are the binary ones, which would estimate a single proportion against a
-# softmax and weight the crossing by a numerator nobody asked for. Refusing says
-# so rather than reporting it.
-check_ipw_joint_models_categorical_stab <- function(
-  type,
-  label,
-  call = rlang::caller_env()
-) {
-  if (!identical(type, "categorical")) {
-    return(invisible(TRUE))
-  }
-
-  abort(
-    c(
-      "{.fun ipw} does not support a stabilized categorical treatment in a \\
-      joint intervention.",
-      x = "The weights for {.arg {label}} record a stabilizing numerator.",
-      i = "The stacked system carries the multinomial denominator of a \\
-      categorical component but not yet the multinomial numerator a stabilized \\
-      one would divide into it.",
-      i = "Rebuild {.arg {label}} with {.code stabilize = FALSE}. A categorical \\
-      component needs no stabilization: the product it enters is a ratio of \\
-      probabilities either way, and the second treatment's own model is what \\
-      carries its dependence on the first."
-    ),
-    error_class = "propensity_ipw_joint_models_stabilize_error",
-    call = call
-  )
 }
 
 # The dose component's entry. A marginal numerator is the exposure's own two
@@ -2043,9 +2041,10 @@ ipw_joint_models_score_rows <- function(
 # components' own order, each seeded at the exact root of the equation written
 # for it. A marginal dose numerator is the two moments of the exposure's own
 # density; a marginal binary one is the proportion that took the non-reference
-# level; a fitted one is the score its own class solves, followed for a dose by
-# the moment its spread is the root of. A component the system estimates no
-# numerator for contributes no rows at all.
+# level, and a marginal categorical one is that row read once per non-reference
+# level of its own treatment; a fitted one is the score its own class solves,
+# followed for a dose by the moment its spread is the root of. A component the
+# system estimates no numerator for contributes no rows at all.
 ipw_joint_models_stab_rows <- function(spec, th_stab, exposures) {
   slices <- ipw_joint_models_stab_slices(spec, th_stab)
 
@@ -2064,10 +2063,31 @@ ipw_joint_models_stab_rows <- function(spec, th_stab, exposures) {
         return(deli::ee_mean_variance(th, y = a))
       }
 
+      # A categorical component's exposure is its reference-first indicator
+      # matrix, so each non-reference level's proportion is estimated by the row
+      # its own column leaves, and the reference level's is what the k - 1 of
+      # them leave over.
+      if (identical(stab$type, "categorical")) {
+        return(do.call(
+          rbind,
+          lapply(seq_along(th), function(j) {
+            matrix(a[, j + 1] - th[[j]], nrow = 1)
+          })
+        ))
+      }
+
       return(matrix(a - th[[1]], nrow = 1))
     }
 
     model <- stab$model
+
+    # The numerator model's own score, which is the multinomial score the
+    # component's denominator block solves, written over the numerator's design
+    # and the same reference-first indicator matrix.
+    if (identical(stab$type, "categorical")) {
+      return(deli::ee_mlogit(th, X = model$X, y = a))
+    }
+
     p_n <- ncol(model$X)
 
     if (!identical(stab$type, "continuous")) {
@@ -2175,6 +2195,8 @@ ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
 # carries two components and a name saying only which role a parameter plays
 # would not say whose. This is where that convention is written; every other
 # reader of the stabilization block slices it by the widths the spec records.
+# A categorical component composes it with the categorical block's own
+# `<level>:<term>`, which says which level's equation a parameter sits in.
 #
 # Every block is seeded at moments the fit it belongs to came to, taken over
 # that fit's rows, since those are the moments the weights were built at. The
@@ -2189,6 +2211,10 @@ ipw_init_joint_models_stab <- function(spec) {
     }
 
     prefix <- paste0("stab_", spec$names[[i]], "_")
+    # The levels a categorical component's parameters are named for, read off
+    # the column order its indicator matrix carries, which is the order its
+    # block is laid out in on both sides of the weight.
+    levs <- colnames(spec$exposure[[i]])
 
     if (identical(stab$numerator, "marginal")) {
       a_fit <- ipw_joint_models_fit_exposure(spec, i)
@@ -2201,6 +2227,16 @@ ipw_init_joint_models_stab <- function(spec) {
         ))
       }
 
+      # A categorical component's exposure moment is the fit's own
+      # reference-first indicator matrix, whose column means are the level
+      # proportions the k - 1 free ones are seeded at.
+      if (identical(stab$type, "categorical")) {
+        return(stats::setNames(
+          unname(colMeans(a_fit)[-1]),
+          paste0(prefix, levs[-1])
+        ))
+      }
+
       return(stats::setNames(
         ipw_default_stab_seed(a_fit),
         paste0(prefix, "pi")
@@ -2208,6 +2244,17 @@ ipw_init_joint_models_stab <- function(spec) {
     }
 
     model <- stab$model
+
+    # A multinomial numerator's block is the shape the component's own
+    # denominator block is: level-major and term-minor, under the joint route's
+    # prefix composed with the categorical block's own layout.
+    if (identical(stab$type, "categorical")) {
+      return(stats::setNames(
+        model$coefs,
+        ipw_name_categorical_coefs(levs[-1], colnames(model$X), prefix)
+      ))
+    }
+
     coefs <- stats::setNames(model$coefs, paste0(prefix, colnames(model$X)))
 
     if (!identical(stab$type, "continuous")) {

@@ -296,7 +296,8 @@ The only supported estimand is \code{"ate"}, which is what the product weights
 Either treatment may be categorical rather than binary, fit with
 \code{\link[nnet:multinom]{nnet::multinom()}}, in which case its block is the multinomial score that fit
 solves and the surface reports the whole crossing its levels make. Such a
-component must be unstabilized; see \strong{Joint exposures}.
+component may be stabilized like any other, its numerator estimated in a
+block of its own; see \strong{Joint exposures}.
 
 The second treatment may be a dose, in which case the surface is the marginal
 structural model's own coefficients rather than the cells of a crossing. The
@@ -772,11 +773,12 @@ with the crossing rather than changing shape: a 2-by-3 crossing reports
 twenty-four rows for a binary outcome and fifteen for a continuous one, being
 the six cell means, each treatment's simple effects within each level of the
 other, and the first treatment's interaction against each non-reference level
-of the second. A categorical component must be unstabilized, which is all
-such a component needs; a stabilized one is refused rather than weighted by a
-numerator the stacked system does not yet estimate. A categorical treatment
-cannot be paired with a dose, whose surface is written for a first treatment
-with two levels.
+of the second. A categorical component needs no stabilization, and a caller
+who asks for it anyway is answered: the marginal proportions of its levels,
+a \code{stabilization_score}, and a fitted \code{\link[nnet:multinom]{nnet::multinom()}} numerator each get
+the block described under \strong{Stabilizing numerators, one per component}. A
+categorical treatment cannot be paired with a dose, whose surface is written
+for a first treatment with two levels.
 
 A \code{\link[nnet:multinom]{nnet::multinom()}} fit to two levels is a logistic regression solved by a
 different optimizer, and it is stacked as one. \code{\link[=joint_wt_models]{joint_wt_models()}} records
@@ -905,28 +907,39 @@ Either component may be stabilized, and each component's numerator is
 estimated in its own block of the stacked system, so the standard errors
 account for that numerator having been fitted rather than reading it as a
 constant. What the block holds follows what the component's weights record.
-A discrete component stabilized by the default numerator contributes the one
-marginal proportion that numerator is, and a dose stabilized by the default
-numerator contributes the exposure's two marginal moments. A component
-stabilized on a fitted model passed to \code{\link[=wt_ate]{wt_ate()}}'s \code{stabilize} contributes
-that model instead: one parameter per coefficient for a discrete component,
-and for a dose one per coefficient plus one for the spread its density is
-read at. A dose stabilized with \code{numerator = "integrated"} is built from the
-dose block and the data alone and contributes nothing, and an unstabilized
-discrete component contributes nothing either.
+A binary component stabilized by the default numerator contributes the one
+marginal proportion that numerator is, a categorical one the \eqn{k - 1} free
+proportions its levels leave, and a dose stabilized by the default numerator
+the exposure's two marginal moments. A component stabilized on a fitted model
+passed to \code{\link[=wt_ate]{wt_ate()}}'s \code{stabilize} contributes that model instead: one
+parameter per coefficient for a binary component, one run of them per
+non-reference level for a categorical one, and for a dose one per coefficient
+plus one for the spread its density is read at. A dose stabilized with
+\code{numerator = "integrated"} is built from the dose block and the data alone and
+contributes nothing, and an unstabilized discrete component contributes
+nothing either.
 
 Those parameters are named \verb{stab_<component>_<parameter>}, where
 \verb{<component>} is the name the component was recorded under in
 \code{\link[=joint_wt_models]{joint_wt_models()}}: a joint system carries two components, and a name
-saying only which role a parameter plays would not say whose.
+saying only which role a parameter plays would not say whose. A categorical
+component composes that prefix with the multinomial layout its own block
+takes, \verb{<level>:<term>} for a fitted numerator and the level alone for a
+marginal one, so a treatment \code{z} with levels \code{lo}, \code{mid}, and \code{hi} reports
+\code{stab_z_mid} and \code{stab_z_hi} for the marginal proportions and
+\code{stab_z_mid:(Intercept)}, \code{stab_z_mid:v}, \code{stab_z_hi:(Intercept)}, and
+\code{stab_z_hi:v} for a numerator of \code{v}.
 
 A numerator model is read through the guards its own single-treatment route
-reads it through. A discrete component's is read as an unpenalized binomial
-fit at a logit, probit, or cloglog link, and a dose's goes through the
-registry under \strong{Continuous propensity score models}. A model of a response
-other than the treatment it stabilizes, or one fit to a different set of
-observations, errors with class \code{propensity_ipw_numerator_error}; one fit
-with case weights errors with class \code{propensity_ipw_ps_weights_error}. Every
+reads it through. A binary component's is read as an unpenalized binomial
+fit at a logit, probit, or cloglog link; a categorical component's as an
+\code{\link[nnet:multinom]{nnet::multinom()}} fit that declares the treatment's levels in the order the
+component's own model declares them; and a dose's goes through the registry
+under \strong{Continuous propensity score models}. A multinomial numerator fit
+under another level order, a model of a response other than the treatment it
+stabilizes, or one fit to a different set of observations errors with class
+\code{propensity_ipw_numerator_error}; one fit with case weights errors with class
+\code{propensity_ipw_ps_weights_error}. Every
 numerator design here is one of the designs a \code{.data} the caller supplies
 rebuilds, on the terms the single-treatment routes rebuild theirs, so a
 numerator that keeps no model frame and whose fitting call can no longer be

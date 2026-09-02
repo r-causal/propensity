@@ -24,9 +24,11 @@
 # parameterizations are saturated in the same covariate. Both gaps are measured
 # on these fixtures and the tolerances are set from the measurements.
 #
-# Everything here is unstabilized. A categorical component needs no
-# stabilization, and the numerator blocks a stabilized one would carry are
-# pinned separately.
+# The sections up to the stabilization slot are unstabilized, since a
+# categorical component needs no stabilization to be weighted correctly. What
+# the slot itself pins is the three numerators such a component may still carry:
+# the marginal proportion of each level, a score the caller computed, and a
+# fitted multinomial model, each with its own block of the stacked system.
 
 # ---- data simulators --------------------------------------------------------
 
@@ -1703,65 +1705,6 @@ test_that("a two-level multinomial component agrees with its glm twin", {
 
 # ---- refusals ---------------------------------------------------------------
 
-test_that("a stabilized categorical component is refused toward an unstabilized one", {
-  skip_if_not_installed("nnet")
-  dat <- sim_joint_categorical()
-
-  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
-  ps_z <- nnet::multinom(
-    z ~ a * x1 + x2,
-    data = dat,
-    trace = FALSE,
-    reltol = 1e-14,
-    maxit = 2000
-  )
-  probabilities <- unname(stats::predict(ps_z, type = "probs"))
-  colnames(probabilities) <- ps_z$lev
-  stabilized <- withr::with_options(
-    list(propensity.quiet = TRUE),
-    wt_ate(
-      probabilities,
-      dat$z,
-      exposure_type = "categorical",
-      stabilize = TRUE
-    )
-  )
-  expect_true(is_stabilized(stabilized))
-
-  wts <- withr::with_options(
-    list(propensity.quiet = TRUE),
-    wt_joint(
-      wt_ate(ps_a),
-      stabilized,
-      exposure_type = c("binary", "categorical")
-    )
-  )
-  outcome_mod <- glm(
-    y ~ a * z + x1,
-    data = dat,
-    family = quasibinomial(),
-    weights = wts,
-    control = glm.control(epsilon = 1e-14, maxit = 200)
-  )
-  models <- joint_wt_models(a = ps_a, z = ps_z)
-
-  # The denominator of a categorical component is carried and its numerator is
-  # not, so a component whose weights record one is refused rather than weighted
-  # by a numerator the stack cannot differentiate. The refusal names the
-  # component and the argument that rebuilds it.
-  cnd <- tryCatch(ipw(models, outcome_mod), error = identity)
-  expect_s3_class(cnd, "propensity_ipw_joint_models_stabilize_error")
-  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
-  expect_match(message, "`z`", fixed = TRUE)
-  expect_match(message, "stabilize = FALSE", fixed = TRUE)
-
-  # The refusal is raised before anything is estimated, so it cannot be reached
-  # through a fixture that also reports on its stabilizer's coverage.
-  expect_no_warning(tryCatch(ipw(models, outcome_mod), error = function(e) {
-    NULL
-  }))
-})
-
 test_that("a dose is refused beside a categorical first treatment", {
   # The rows a dose reports are the marginal structural model's own coefficients
   # written for the two levels of a binary first treatment, so a categorical one
@@ -2197,7 +2140,10 @@ test_that("ipw() stacks a categorical component's numerator model", {
   )
   mat <- build_ipw_psi(spec, layout)(layout$init)
   expect_false(anyNA(mat))
-  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-8))
+  # The numerator block is seeded at the multinom fit's own coefficients, and
+  # nnet's optimizer leaves a mean score near 2e-8 there whatever reltol asks
+  # for, so the fit's convergence floor bounds this pin rather than 1e-8.
+  expect_true(all(abs(rowSums(mat)) / spec$n < 1e-7))
 
   res <- ipw(fx$models, fx$outcome_mod)
   theta <- coef(res$fit)
