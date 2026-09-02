@@ -1604,6 +1604,103 @@ test_that("a two-level multinomial component is carried or refused in the packag
   }
 })
 
+# The pair of fits the two tests below both build: the same second treatment
+# model written twice, once for each optimizer that solves it, beside one first
+# treatment model they share. `wt_joint()` is left to read each component's own
+# recorded type, which is what a caller who names none gets, and which is
+# `"binary"` on both sides: `wt_ate()` records the type of the weight it built,
+# and the weight it builds from a two-level multinomial is the binary one.
+joint_categorical_two_level_pair <- function() {
+  dat <- sim_joint_categorical_two_level()
+
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e_multinom <- nnet::multinom(
+    e ~ a * x1 + x2,
+    data = dat,
+    trace = FALSE,
+    reltol = 1e-14,
+    maxit = 2000
+  )
+  ps_e_glm <- glm(
+    e ~ a * x1 + x2,
+    data = dat,
+    family = binomial(),
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  outcome_mod <- function(w) {
+    glm(
+      y ~ a * e + x1,
+      data = dat,
+      family = quasibinomial(),
+      weights = w,
+      control = glm.control(epsilon = 1e-14, maxit = 200)
+    )
+  }
+
+  withr::with_options(list(propensity.quiet = TRUE), {
+    w_a <- wt_ate(ps_a)
+
+    list(
+      multinom = ipw(
+        joint_wt_models(a = ps_a, e = ps_e_multinom),
+        outcome_mod(wt_joint(w_a, wt_ate(ps_e_multinom)))
+      ),
+      glm = ipw(
+        joint_wt_models(a = ps_a, e = ps_e_glm),
+        outcome_mod(wt_joint(w_a, wt_ate(ps_e_glm)))
+      )
+    )
+  })
+}
+
+test_that("a two-level multinomial component crosses into the same surface a binary one does", {
+  skip_if_not_installed("nnet")
+  fits <- joint_categorical_two_level_pair()
+
+  # Four cells and ten contrasts over them, which is the surface a pair of
+  # binary treatments reports. A treatment observed at two levels has that
+  # surface whichever function fit it, so the crossing is the same crossing:
+  # same cells, same reference, same contrasts, and the labels that name them.
+  expect_identical(nrow(fits$multinom$estimates), 14L)
+  expect_identical(
+    fits$multinom$estimates[c("effect", "contrast", "group")],
+    fits$glm$estimates[c("effect", "contrast", "group")]
+  )
+
+  # The block the system wrote for the component, read where the layout is
+  # visible. A multinomial block names its parameters for the level they belong
+  # to, so a component stacked as the multinomial it is classed as would carry
+  # `1:(Intercept)` where the binary block carries `(Intercept)`.
+  expect_identical(
+    names(stats::coef(fits$multinom$fit)),
+    names(stats::coef(fits$glm$fit))
+  )
+})
+
+test_that("a two-level multinomial component agrees with its glm twin", {
+  skip_if_not_installed("nnet")
+  fits <- joint_categorical_two_level_pair()
+
+  # The two fits are one model solved by two optimizers, and the stacked system
+  # re-solves each component's score from the coefficients it was seeded at, so
+  # what the pair reports does not inherit the seed's own precision: the
+  # estimates agree to 1.5e-13 relative, well below the 6.7e-8 the coefficients
+  # themselves differ by. The standard errors are read from a numerically
+  # differentiated bread evaluated at those roots, which is what leaves them
+  # agreeing to 2.4e-7 rather than to the estimates' own precision.
+  expect_equal(
+    fits$multinom$estimates$estimate,
+    fits$glm$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    fits$multinom$estimates$std.err,
+    fits$glm$estimates$std.err,
+    tolerance = 1e-5
+  )
+})
+
 # ---- refusals ---------------------------------------------------------------
 
 test_that("a stabilized categorical component is refused toward an unstabilized one", {

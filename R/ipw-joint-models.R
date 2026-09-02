@@ -218,11 +218,12 @@ ipw_spec_joint_models <- function(
 
   names <- models$names
   fits <- models$models
-  types <- unname(models$exposure_type)
+  component_types <- ipw_joint_models_component_types(models)
+  types <- unname(component_types)
 
   # The container accepts pairs this stack has no block for, a dose as the first
   # factor of the factorization among them.
-  check_ipw_joint_models_types(models$exposure_type, call = call)
+  check_ipw_joint_models_types(component_types, call = call)
 
   # A dose model is read through the registry the single-dose route reads, so
   # which classes, families, and links can be stacked is one answer rather than
@@ -303,12 +304,14 @@ ipw_spec_joint_models <- function(
   # all carries none either, so both are built and refused there.
   if (is.null(.data)) {
     # A multinomial keeps no model frame: both the design and the response
-    # rebuild one by re-evaluating the fitting call, so a categorical component
-    # is read through the recovery that builds the frame once and takes both out
-    # of it, which is what the single-treatment categorical route reads.
-    recovered <- lapply(seq_along(fits), function(i) {
-      if (identical(types[[i]], "categorical")) {
-        ipw_joint_models_recover(fits[[i]], call = call)
+    # rebuild one by re-evaluating the fitting call, so such a component is read
+    # through the recovery that builds the frame once and takes both out of it,
+    # which is what the single-treatment categorical route reads. The class is
+    # what decides, rather than the type resolved above: a two-level fit keeps
+    # no more of a frame than a three-level one does.
+    recovered <- lapply(fits, function(fit) {
+      if (inherits(fit, "multinom")) {
+        ipw_joint_models_recover(fit, call = call)
       }
     })
     ps_X <- lapply(seq_along(fits), function(i) {
@@ -387,7 +390,10 @@ ipw_spec_joint_models <- function(
   # read from exactly these, and `.data` can leave fewer rows than a fit was
   # made over, so they are carried on the spec rather than recomputed where the
   # seeds are written.
-  fit_moments <- lapply(fits, ipw_joint_models_fit_moments)
+  fit_moments <- lapply(
+    seq_along(fits),
+    function(i) ipw_joint_models_fit_moments(fits[[i]], types[[i]])
+  )
 
   estimand <- check_estimand(wts, estimand, call = call)
 
@@ -583,9 +589,11 @@ ipw_spec_joint_models <- function(
     exposure = exposures,
     ps = list(
       X = ps_X,
-      # A multinomial has no family and so no link to record; its block is
-      # rebuilt through the softmax rather than through an inverse link, and
-      # only the binary branch of the blocks reads this.
+      # A multinomial block is rebuilt through the softmax rather than through
+      # an inverse link, so a categorical component records none. A binary one
+      # records its family's, except where the fit carries no family: a
+      # two-level multinomial is a logistic regression whichever optimizer
+      # solved it, and its block reads the logit's inverse like any other.
       link = vapply(
         seq_along(fits),
         function(i) {
@@ -593,7 +601,7 @@ ipw_spec_joint_models <- function(
             types[[i]],
             continuous = dose_model$link,
             categorical = NA_character_,
-            fits[[i]]$family$link
+            ipw_joint_models_link(fits[[i]])
           )
         },
         character(1)
@@ -679,6 +687,30 @@ ipw_joint_models_supported <- list(
   first = c("binary", "categorical"),
   second = c("binary", "categorical", "continuous")
 )
+
+# The exposure type each component's block is written against, which is the type
+# the container recorded except where the model class says more than the fit
+# does. `joint_wt_models()` types a `nnet::multinom()` by its class, and a
+# multinomial fit over two levels is a logistic regression solved by a different
+# optimizer: the single-treatment binary route accepts one, `wt_ate()` on one
+# records `"binary"`, and its coefficients are a bare vector rather than the
+# level-by-term matrix the multinomial score is written over. The multinomial
+# block has no rows to write for it, since a softmax over two levels is the one
+# case `deli::ee_mlogit()` refuses, so what the block, the weight factor, and
+# the psw's own record say about such a fit is settled here, once, in favor of
+# the binary machinery all three of them already agree on.
+ipw_joint_models_component_types <- function(models) {
+  types <- models$exposure_type
+
+  two_level <- vapply(
+    models$models,
+    function(fit) inherits(fit, "multinom") && length(fit$lev) == 2L,
+    logical(1)
+  )
+
+  types[two_level] <- "binary"
+  types
+}
 
 check_ipw_joint_models_types <- function(
   exposure_type,
@@ -1244,6 +1276,18 @@ ipw_joint_models_recover <- function(fit, call = rlang::caller_env()) {
   recovered
 }
 
+# The link a binary component's block is written against. Every class this route
+# stacks a binomial score for records it on its family, except a
+# `nnet::multinom()`, which records no family at all: its own fit maximizes a
+# softmax likelihood, which over two levels is the logistic one.
+ipw_joint_models_link <- function(fit) {
+  if (inherits(fit, "multinom")) {
+    return("logit")
+  }
+
+  fit$family$link
+}
+
 ipw_joint_models_treatment <- function(fit, call = rlang::caller_env()) {
   values <- tryCatch(fmla_extract_left_vctr(fit), error = function(e) e)
 
@@ -1417,10 +1461,15 @@ ipw_joint_models_numerator_models <- function(wts, dose_idx) {
 # it is what the exposure moment carries. It leaves no residual of its own: a
 # multinomial's numerator is estimated from the levels rather than from a
 # residual around a single fitted mean.
-ipw_joint_models_fit_moments <- function(fit) {
+#
+# The type rather than the shape decides which of the two a component gets, since
+# a two-level multinomial reports its single column in matrix form while the
+# block written for it is the binary one, whose numerator is a proportion of a
+# 0/1 response and whose seeds read a residual around one fitted mean.
+ipw_joint_models_fit_moments <- function(fit, type) {
   residuals <- stats::residuals(fit, type = "response")
 
-  if (is.matrix(residuals)) {
+  if (is.matrix(residuals) && identical(type, "categorical")) {
     indicator <- stats::fitted(fit) + residuals
     kept <- rowSums(is.na(residuals)) == 0
 

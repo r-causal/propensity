@@ -525,6 +525,14 @@
 #' cannot be paired with a dose, whose surface is written for a first treatment
 #' with two levels.
 #'
+#' A [nnet::multinom()] fit to two levels is a logistic regression solved by a
+#' different optimizer, and it is stacked as one. [joint_wt_models()] records
+#' such a component as `"categorical"`, after the model's class, but the block
+#' written for it is the binomial score, the weight factor is the binary one
+#' [wt_ate()] already builds from such a fit, and the pair reports the same
+#' fourteen-row two-by-two surface a pair of binomial [stats::glm()] fits
+#' reports.
+#'
 #' Prefer the two-model route when the two treatments call for different
 #' adjustment sets, or when the dependence of the second treatment on the first
 #' is what you want to model directly, since each treatment then gets its own
