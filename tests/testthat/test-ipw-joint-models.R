@@ -1038,3 +1038,667 @@ test_that("ipw() rebuilds a discrete component stabilized on a fixed score", {
   # taken one parameter.
   expect_false(any(grepl("^stab_", names(coef(res$fit)))))
 })
+
+# ---- a component's numerator model whose data is gone -----------------------
+#
+# A numerator model's coefficients are estimated in the stacked system, so the
+# design they were fit over is what the route needs rather than the
+# probabilities they evaluate to. A `glm` usually keeps its model frame, so that
+# design is usually there to be read. One fit with `model = FALSE` keeps none
+# and rebuilds it by re-evaluating the fitting call, which a fit made inside a
+# wrapper whose frame is gone cannot do. What that owes the caller is the
+# request every other route makes of a design it cannot recover: name the model
+# that cannot be rebuilt and ask for `.data`, which rebuilds it.
+
+# The pair of fits this section weights, with the second component's numerator
+# left to the caller so the same product can be built from a fit that kept its
+# frame and from one that did not.
+joint_models_numerator_gone_fits <- function(dat, numerator) {
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a, stabilize = TRUE),
+      wt_ate(ps_e, stabilize = numerator),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(models = joint_wt_models(a = ps_a, e = ps_e), outcome_mod = outcome_mod)
+}
+
+# The formula is written in the calling frame and the fitting call names a
+# variable that lives only inside the wrapper, so nothing can rebuild the
+# numerator's design once the wrapper has returned. Its fitted probabilities are
+# still readable, and the weights were built from them.
+joint_models_numerator_frame_gone <- function(dat) {
+  fmla <- e ~ x1
+  fit_in_function <- function(fitting_data) {
+    glm(fmla, data = fitting_data, family = binomial(), model = FALSE)
+  }
+
+  fit_in_function(dat)
+}
+
+test_that("a joint component's numerator model whose data is gone asks for .data", {
+  dat <- sim_joint_models()
+  gone <- joint_models_numerator_frame_gone(dat)
+
+  expect_error(model.matrix(gone))
+
+  fits <- joint_models_numerator_gone_fits(dat, gone)
+
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod),
+    error = function(e) e
+  )
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  # Both treatment models here are rebuildable, so a message naming one of them
+  # would send the caller to the wrong fit.
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "stabilize", fixed = TRUE)
+  expect_match(message, "Supply `.data`", fixed = TRUE)
+})
+
+test_that("a joint component's numerator model whose data is gone is rebuilt from .data", {
+  dat <- sim_joint_models()
+  gone <- joint_models_numerator_frame_gone(dat)
+
+  # The other half of the contract: the `.data` the refusal above asks for
+  # rebuilds the numerator's design from the fit's own terms and contrasts, and
+  # what comes back is what the same numerator reports when its frame was never
+  # lost.
+  kept <- glm(e ~ x1, data = dat, family = binomial())
+  expect_equal(unname(coef(gone)), unname(coef(kept)), tolerance = 1e-10)
+
+  gone_fits <- joint_models_numerator_gone_fits(dat, gone)
+  kept_fits <- joint_models_numerator_gone_fits(dat, kept)
+
+  res_data <- ipw(gone_fits$models, gone_fits$outcome_mod, .data = dat)
+  res_recovered <- ipw(kept_fits$models, kept_fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_recovered$estimates$estimate,
+    tolerance = 1e-6
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_recovered$estimates$std.err,
+    tolerance = 1e-6
+  )
+})
+
+# ---- a binary component's numerator fit on an unsupported link ---------------
+#
+# The block written for a binary numerator is the binomial score of a fit on one
+# of the three links deli writes that score for, so a fit on another link is
+# refused rather than stacked. Both components' numerators arrive in the same
+# argument, so the refusal names the component whose weights this one was built
+# for, the way the route's other refusals name a component.
+
+test_that("a binary component's numerator on an unsupported link names the component", {
+  dat <- sim_joint_models()
+
+  # A cauchit fit is a real fit of the treatment whose fitted probabilities the
+  # weight layer takes, so the numerator reaches the estimator recorded on the
+  # product and the refusal is the estimator's to make.
+  num_e <- glm(e ~ x1, data = dat, family = binomial("cauchit"))
+  fits <- joint_models_numerator_gone_fits(dat, num_e)
+
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_link_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "cauchit", fixed = TRUE)
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+})
+
+# ---- the refusals a numerator shares with the other stacked models ----------
+#
+# A numerator model meets the guards every model this route stacks meets: the
+# refusal of case weights, the requirement of a coefficient per design column,
+# the recovery of a design from a fit that keeps no model frame, the width a
+# `.data` rebuild has to come back at, and the refusal of a penalized fit. Each
+# of those names the model by the argument it arrived in, which on this route is
+# one `stabilize` per component, so each names the component beside it.
+
+test_that("a numerator fit with case weights names the component", {
+  dat <- sim_joint_models()
+  dat$case_wt <- rep(c(1, 2), length.out = nrow(dat))
+  weighted <- glm(e ~ x1, data = dat, family = binomial(), weights = case_wt)
+
+  # `wt_ate()` refuses such a model where it arrives, so weights recording one
+  # were assembled by hand or by a version that took it. The record is written
+  # here rather than built, which is what those weights are, and the estimator
+  # reads it the same way either way.
+  ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a, stabilize = TRUE),
+      wt_ate(ps_e, stabilize = glm(e ~ x1, data = dat, family = binomial())),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  meta <- joint_wt_meta(wts)
+  meta$numerator_model[[2]] <- weighted
+  attr(wts, "joint_wt_meta") <- meta
+
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  cnd <- tryCatch(
+    ipw(joint_wt_models(a = ps_a, e = ps_e), outcome_mod),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_ps_weights_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+  expect_no_match(message, "wt_mod", fixed = TRUE)
+})
+
+test_that("a numerator missing a coefficient names the component", {
+  dat <- sim_joint_models()
+
+  # A duplicated column leaves the fit without a coefficient for it, which is
+  # the state the block cannot multiply its design by.
+  duplicated <- dat
+  duplicated$x1_again <- duplicated$x1
+  num_e <- glm(e ~ x1 + x1_again, data = duplicated, family = binomial())
+  fits <- joint_models_numerator_gone_fits(duplicated, num_e)
+
+  cnd <- tryCatch(
+    muffle_coverage_warning(ipw(fits$models, fits$outcome_mod)),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_rank_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+  expect_match(message, "x1_again", fixed = TRUE)
+})
+
+test_that("a numerator whose data is gone names the component", {
+  dat <- sim_joint_models()
+  gone <- joint_models_numerator_frame_gone(dat)
+  fits <- joint_models_numerator_gone_fits(dat, gone)
+
+  cnd <- tryCatch(ipw(fits$models, fits$outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+})
+
+test_that("a numerator design rebuilt to another width names the component", {
+  dat <- sim_joint_models()
+
+  # A matrix column is the shape the guards before the width count pass over,
+  # so a frame holding one of another width reaches the count itself.
+  dat$vm <- stats::model.matrix(~ factor(x2), data = dat)[, -1, drop = FALSE]
+  num_e <- glm(e ~ vm, data = dat, family = binomial())
+  fits <- joint_models_numerator_gone_fits(dat, num_e)
+
+  supplied <- dat
+  supplied$vm <- cbind(dat$vm, s = as.double(dat$x1 > 0))
+
+  cnd <- tryCatch(
+    muffle_coverage_warning(
+      ipw(fits$models, fits$outcome_mod, .data = supplied)
+    ),
+    error = identity
+  )
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+})
+
+test_that("a numerator fit as an additive model names the component", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_joint_models()
+
+  # An additive fit's coefficients are the root of a penalized score, which is
+  # not the score the block stacks, so the fit is refused rather than stacked.
+  num_e <- mgcv::gam(e ~ s(x1), data = dat, family = binomial())
+  fits <- joint_models_numerator_gone_fits(dat, num_e)
+
+  cnd <- tryCatch(ipw(fits$models, fits$outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_se_method_unavailable_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "`stabilize` for `e`", fixed = TRUE)
+})
+
+# ---- a treatment model whose data is gone -----------------------------------
+#
+# A treatment model's coefficients are estimated in the stacked system, so the
+# design they were fit over is what the route needs. A `glm` usually keeps its
+# model frame, and one fit with `model = FALSE` rebuilds the design by
+# re-evaluating its fitting call, which a fit made inside a wrapper whose frame
+# is gone cannot do. Off the fit alone there is nothing left to read, and the
+# route says so. With a `.data` the caller supplied there is: every design and
+# every treatment column on this route is rebuilt from that frame rather than
+# read off the fits, so the frame the caller still holds stands in for the one
+# the fit lost, and the same product is reported either way.
+
+# The fit nothing can rebuild. The formula is written in the wrapper's frame and
+# the fitting call names a variable that lives only inside it, so re-evaluating
+# the call once the wrapper has returned finds nothing. Its coefficients and
+# fitted values are still readable.
+joint_models_treatment_frame_gone <- function(dat) {
+  fmla <- a ~ x1 + x2
+  fit_in_function <- function(fitting_data) {
+    glm(fmla, data = fitting_data, family = binomial(), model = FALSE)
+  }
+
+  fit_in_function(dat)
+}
+
+# The pair this section weights, with the first component's treatment model left
+# to the caller so the same product can be built from a fit that kept its frame
+# and from one that did not. `wt_ate()` reads a fit's exposure out of its model
+# frame, so the weights a frame-gone fit implies are built through `weight_mod`,
+# an intact fit holding the same coefficients, rather than through the fit
+# handed to `joint_wt_models()`.
+joint_models_treatment_gone_fits <- function(
+  dat,
+  treatment_mod,
+  weight_mod = treatment_mod
+) {
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(weight_mod),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(a = treatment_mod, e = ps_e),
+    outcome_mod = outcome_mod
+  )
+}
+
+test_that("a joint treatment model whose data is gone is rebuilt from .data", {
+  dat <- sim_joint_models()
+  gone <- joint_models_treatment_frame_gone(dat)
+  kept <- glm(a ~ x1 + x2, data = dat, family = binomial())
+
+  expect_error(model.matrix(gone))
+  expect_equal(unname(coef(gone)), unname(coef(kept)), tolerance = 1e-10)
+
+  gone_fits <- joint_models_treatment_gone_fits(dat, gone, weight_mod = kept)
+  kept_fits <- joint_models_treatment_gone_fits(dat, kept)
+
+  # The two calls weight the same product from the same coefficients and differ
+  # only in where the first component's design comes from, so the frame the
+  # caller supplied has to reach the design the lost frame held.
+  res_data <- ipw(gone_fits$models, gone_fits$outcome_mod, .data = dat)
+  res_recovered <- ipw(kept_fits$models, kept_fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_recovered$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_recovered$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a joint treatment model whose data is gone asks to be refit", {
+  dat <- sim_joint_models()
+  gone <- joint_models_treatment_frame_gone(dat)
+  kept <- glm(a ~ x1 + x2, data = dat, family = binomial())
+
+  gone_fits <- joint_models_treatment_gone_fits(dat, gone, weight_mod = kept)
+
+  # Without `.data` there is no frame to rebuild the design from, and the only
+  # remedy left is the fit itself, so the refusal asks for that rather than for
+  # an argument that is not there.
+  cnd <- tryCatch(
+    ipw(gone_fits$models, gone_fits$outcome_mod),
+    error = function(e) e
+  )
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "data behind a treatment model", fixed = TRUE)
+  expect_match(
+    message,
+    "Refit the treatment models where the data they were fit to is still available.",
+    fixed = TRUE
+  )
+})
+
+# ---- a treatment column .data carries under the wrong order -----------------
+#
+# With a `.data` the caller supplied, every treatment on this route is read out
+# of that frame by the name its component is registered under. A column that
+# carries its own level order is compared against the order its model was fit
+# with, so a re-levelled factor supplied the other way round is refused by name.
+# A column that carries no order of its own is not compared at all: it is
+# levelled alphabetically wherever it is read, and when the fit's order is not
+# alphabetical the indicator the route rebuilds is the fit's indicator inverted.
+#
+# Nothing about that is silent, but every refusal it reaches is about something
+# else. The weights recomputed under the inverted indicator no longer match the
+# ones that fit the outcome model, so the weights-at-init preflight refuses and
+# blames the weights; where the counterfactual designs collapse first the
+# refusal blames the outcome model's contrast coding. Neither sends the reader
+# to the column that is actually miscoded, which is what the two sections below
+# ask for, on the class the sibling guards already refuse a miscoded `.data`
+# exposure with.
+
+# `sim_joint_models()` with the first treatment re-expressed as a factor whose
+# levels run "t" then "c". The fit therefore holds "t" as its reference and "c"
+# as its exposed level, which is the reverse of what levelling the same values
+# alphabetically would say.
+sim_joint_models_relevelled <- function(...) {
+  dat <- sim_joint_models(...)
+  dat$af <- factor(ifelse(dat$a == 1L, "t", "c"), levels = c("t", "c"))
+
+  dat
+}
+
+# The pair this section weights. Both treatment models, the weights and the
+# outcome model read `af` under the order the frame declares, so the fit is
+# internally consistent and only a `.data` that declares a different order can
+# move it.
+joint_models_relevelled_fits <- function(dat) {
+  ps_af <- glm(af ~ x1 + x2, data = dat, family = binomial())
+  ps_e <- glm(e ~ af * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_af),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ af * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(af = ps_af, e = ps_e),
+    outcome_mod = outcome_mod
+  )
+}
+
+test_that("a re-levelled joint treatment supplied as that factor is accepted", {
+  dat <- sim_joint_models_relevelled()
+  fits <- joint_models_relevelled_fits(dat)
+
+  # The boundary the two refusals below sit against: a `.data` whose treatment
+  # column declares exactly the order the fit holds is the frame the fits kept,
+  # and the route reports the surface it reports without one.
+  res_data <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  res_frames <- ipw(fits$models, fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_frames$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_frames$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a joint treatment supplied as a character column is refused by name", {
+  dat <- sim_joint_models_relevelled()
+  fits <- joint_models_relevelled_fits(dat)
+
+  # The same values, stripped of the order that told the route which level the
+  # fit treats as exposed.
+  as_character <- dat
+  as_character$af <- as.character(dat$af)
+
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod, .data = as_character),
+    error = function(e) e
+  )
+
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  # The two refusals this reaches instead, each of which names something the
+  # caller has no reason to change.
+  expect_false(inherits(cnd, "propensity_ipw_weights_mismatch_error"))
+  expect_false(inherits(cnd, "propensity_ipw_msm_error"))
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "\"af\"", fixed = TRUE)
+  expect_match(message, "levels", fixed = TRUE)
+})
+
+# The same fault reached through a model that transforms its response in place.
+# `joint_wt_models()` names a component by `all.vars()` of its response, so a
+# fit written as `factor(a, levels = c("t", "c")) ~ .` registers as the
+# component named "a" and passes the name check the pair is built under. What
+# the `.data` rebuild then reads is the raw column `a`, which carries the two
+# strings and no order, so the route levels it alphabetically and inverts the
+# indicator the fit was made under.
+sim_joint_models_transformed <- function(...) {
+  dat <- sim_joint_models(...)
+  dat$a <- ifelse(dat$a == 1L, "t", "c")
+
+  dat
+}
+
+joint_models_transformed_fits <- function(dat) {
+  ps_a <- glm(
+    factor(a, levels = c("t", "c")) ~ x1 + x2,
+    data = dat,
+    family = binomial()
+  )
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(a = ps_a, e = ps_e),
+    outcome_mod = outcome_mod
+  )
+}
+
+test_that("a joint treatment model that levels its own response is refused by name", {
+  dat <- sim_joint_models_transformed()
+  fits <- joint_models_transformed_fits(dat)
+
+  # `.data` here is the frame every model was fit to, so nothing about the rows
+  # or the values differs. What differs is the order the raw column implies
+  # against the order the response transform declared.
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod, .data = dat),
+    error = function(e) e
+  )
+
+  expect_s3_class(cnd, "propensity_ipw_data_error")
+
+  expect_false(inherits(cnd, "propensity_ipw_weights_mismatch_error"))
+  expect_false(inherits(cnd, "propensity_ipw_msm_error"))
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "\"a\"", fixed = TRUE)
+  expect_match(message, "levels", fixed = TRUE)
+})
+
+# The other side of the same boundary: a column that carries no order of its own
+# is not the fault, so one whose values imply exactly the order its model was
+# fit under is read the way it always was. Only the disagreement is refused.
+sim_joint_models_alphabetical <- function(...) {
+  dat <- sim_joint_models(...)
+  dat$af <- factor(ifelse(dat$a == 1L, "t", "c"))
+
+  dat
+}
+
+test_that("a joint treatment fit on the order its values imply is accepted", {
+  # The pair reads `af` whatever order the column declares, so the fits this
+  # section weights are the ones the re-levelled frame is weighted by.
+  dat <- sim_joint_models_alphabetical()
+  fits <- joint_models_relevelled_fits(dat)
+
+  as_character <- dat
+  as_character$af <- as.character(dat$af)
+
+  res_data <- ipw(fits$models, fits$outcome_mod, .data = as_character)
+  res_frames <- ipw(fits$models, fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_frames$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_frames$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+# A rename is not a re-ordering. `factor(a, labels = c("ctl", "trt"))` over a
+# 0/1 column assigns its labels in sorted-value order, so a fit written that way
+# codes the treatment exactly as the raw column implies and differs from it only
+# in what the two groups are called. The label sets share nothing, which is
+# precisely why the order comparison has nothing to say: the fitted labels are
+# evidence of an order only when the column carries the same two labels. Where
+# they do not, the weight-consistency preflight is the check that matters,
+# because it compares the weights the rebuilt column produces rather than the
+# names it produces them under.
+joint_models_relabelled_fits <- function(dat, ps_a) {
+  ps_e <- glm(e ~ a * x1 + x2, data = dat, family = binomial())
+
+  wts <- withr::with_options(
+    list(propensity.quiet = TRUE),
+    wt_joint(
+      wt_ate(ps_a),
+      wt_ate(ps_e),
+      exposure_type = c("binary", "binary")
+    )
+  )
+  outcome_mod <- glm(
+    y ~ a * e + x1,
+    data = dat,
+    family = quasibinomial(),
+    weights = wts,
+    control = glm.control(epsilon = 1e-14, maxit = 200)
+  )
+
+  list(
+    models = joint_wt_models(a = ps_a, e = ps_e),
+    outcome_mod = outcome_mod
+  )
+}
+
+test_that("a joint treatment model that relabels its response agrees with the fitted frames", {
+  dat <- sim_joint_models()
+  ps_a <- glm(
+    factor(a, labels = c("ctl", "trt")) ~ x1 + x2,
+    data = dat,
+    family = binomial()
+  )
+  fits <- joint_models_relabelled_fits(dat, ps_a)
+
+  # `.data` here is the frame every model was fit to. The labels the response
+  # transform assigned are the ones the column's sorted values carry, so the
+  # route reads the coding the fit was made under and the two routes are the
+  # same computation.
+  res_data <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  res_frames <- ipw(fits$models, fits$outcome_mod)
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_frames$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_frames$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+test_that("a joint treatment model that relabels its response the other way round is caught by the weights", {
+  dat <- sim_joint_models()
+  # The same two labels assigned to the values the other way round, which does
+  # invert the indicator the fit was made under.
+  ps_a <- glm(
+    factor(a, levels = c(1, 0), labels = c("trt", "ctl")) ~ x1 + x2,
+    data = dat,
+    family = binomial()
+  )
+  fits <- joint_models_relabelled_fits(dat, ps_a)
+
+  cnd <- tryCatch(
+    ipw(fits$models, fits$outcome_mod, .data = dat),
+    error = function(e) e
+  )
+
+  # Nothing about the labels distinguishes this from the agreeing relabel, so
+  # the refusal comes from the weights the inverted coding rebuilds rather than
+  # from the level comparison.
+  expect_s3_class(cnd, "propensity_ipw_weights_mismatch_error")
+})

@@ -1581,7 +1581,7 @@ test_that("the weights mismatch names a score the record does not keep", {
   )
 })
 
-test_that("a bare-term model with no intercept is refused, not errored", {
+test_that("a bare-term model with no intercept reports the coefficient surface", {
   dat <- sim_joint_continuous()
   dat$a <- factor(
     ifelse(dat$a == 1, "yes", "no"),
@@ -1590,13 +1590,12 @@ test_that("a bare-term model with no intercept is refused, not errored", {
 
   # Dropping the intercept expands a factor treatment into one column per level,
   # so the first column is the indicator of the reference level rather than of
-  # the focal one. The terms are bare, so the model reaches the vocabulary
-  # surface, and it is the columns that say it cannot be reported there.
-  #
-  # What is pinned is that this arrives as a guided refusal. Reading the columns
-  # is what makes it one: a surface that trusted the terms would have taken the
-  # first column for the indicator and reported a coefficient that is not the
-  # effect the row names.
+  # the focal one and no column of the fit is the 0/1 indicator the vocabulary's
+  # rows are claims about. A model the vocabulary has no reading for is reported
+  # on the coefficient surface rather than refused: the coefficients are the
+  # weighted fit's own either way, and naming each row after the column it
+  # multiplies says exactly what each one is without claiming a level contrast
+  # none of them is.
   ps_a <- glm(a ~ x1 + x2, data = dat, family = binomial())
   ps_e <- lm(e ~ a + x1 + x2, data = dat)
   wts <- quiet_wt(wt_joint(
@@ -1616,21 +1615,422 @@ test_that("a bare-term model with no intercept is refused, not errored", {
     colnames(model.matrix(outcome_mod)),
     c("ano", "ayes", "e", "ayes:e")
   )
-  expect_error(
-    ipw(models, outcome_mod),
-    class = "propensity_ipw_msm_error"
+
+  res <- ipw(models, outcome_mod)
+
+  expect_joint_coefficient_surface(res, c("ano", "ayes", "e", "ayes:e"))
+  expect_joint_coefficient_estimates(res, outcome_mod)
+  expect_identical(nrow(res$estimates), 4L)
+
+  # One row per treatment-reading column, and four of them where a model with an
+  # intercept contributes three: the reference-level indicator is a column of
+  # this fit and the surface reports it.
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 4L)
+})
+
+test_that("a numeric treatment with no intercept reports the coefficient surface", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat)
+  outcome_mod <- lm(y ~ a * e - 1, data = dat, weights = fx$wts)
+
+  # A 0/1 numeric treatment contributes the same single column whether the
+  # intercept is kept or dropped, so the columns here are the ones the
+  # vocabulary describes and the coding check has nothing to catch. What the
+  # forced zero moves is what the coefficients mean rather than what the columns
+  # hold: the coefficient of `a` is the mean at `a = 1` and a dose of zero
+  # rather than the difference between the treatment's levels there, so the row
+  # the vocabulary would write for it names a contrast the fit does not carry.
+  #
+  # Which surface a fit reports is decided by whether the vocabulary reads it,
+  # and no model without an intercept is one it reads, whatever its columns hold.
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("a", "e", "a:e")
+  )
+  expect_identical(as.integer(attr(terms(outcome_mod), "intercept")), 0L)
+
+  res <- ipw(fx$models, outcome_mod)
+
+  expect_joint_coefficient_surface(res, c("a", "e", "a:e"))
+  expect_joint_coefficient_estimates(res, outcome_mod)
+  expect_identical(nrow(res$estimates), 3L)
+  expect_identical(as.integer(res$fit@n_params), 3L + 5L + 2L + 3L)
+})
+
+test_that("a dose transformed in the formula is reported, not refused", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat, outcome_rhs = "a * I(e / 10)")
+
+  # Writing the transformation into the marginal structural model's own formula
+  # is one of the two ways to work on a rescaled dose, and it is the one that
+  # leaves the column the treatment models were fit to alone: the outcome model
+  # reads that column and rescales it on its way into the design. The term is no
+  # longer bare, so the fit reports the coefficient surface, where each row names
+  # the column it multiplies and claims nothing about a step in the dose itself.
+  res <- ipw(fx$models, fx$outcome_mod)
+
+  expect_joint_coefficient_surface(res, c("a", "I(e/10)", "a:I(e/10)"))
+  expect_joint_coefficient_estimates(res, fx$outcome_mod)
+})
+
+test_that("a dose column rescaled after the treatment models are fit says so", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat)
+
+  # The dose the estimator holds is the one the treatment models were fit to,
+  # and a marginal structural model fit on a rescaled copy of that column is a
+  # model of a different dose: its slope is per ten units of the dose the weights
+  # were built for, and the weights themselves were built for the original. The
+  # refusal is right, and what it has to say is about the dose. A reader who
+  # rescaled a column has coded no factor and dropped no intercept, so advice
+  # about contrasts and intercepts describes nothing they did.
+  rescaled <- dat
+  rescaled$e <- rescaled$e / 10
+  outcome_mod <- lm(y ~ a * e, data = rescaled, weights = fx$wts)
+
+  cnd <- tryCatch(ipw(fx$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  # What the message has to say: the outcome model's dose column holds values
+  # the models the weights came from were not fit to. Either name for those
+  # models is admitted, since this route calls them treatment models elsewhere
+  # and they are the propensity models a caller knows them as.
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(message, "treatment models|propensity")
+
+  # And what it must not say. Scaling a dose is supported; only doing it to one
+  # model and not the others is refused, so a remedy about factor coding is
+  # wrong here, and the intercept is present in this fit besides.
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "no intercept", fixed = TRUE)
+
+  expect_propensity_error(ipw(fx$models, outcome_mod))
+})
+
+test_that("a contrast-coded treatment keeps the contrast advice", {
+  dat <- sim_joint_continuous()
+  ordered <- fit_joint_factor(dat, ordered = TRUE)
+
+  # The dose advice belongs to a dose column that does not hold what the
+  # treatment models were fit to. Here that column is exactly what they were fit
+  # to and only the factor's coding moved, so the remedy stays the one about
+  # contrasts. The interaction is among the mismatched columns and reads the
+  # dose, which is what makes this worth pinning: what decides the advice is
+  # which column disagrees, not which variables its term names.
+  cnd <- tryCatch(ipw(ordered$models, ordered$outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "same values", fixed = TRUE)
+})
+
+test_that("an interaction-only model on a rescaled dose still says the dose", {
+  dat <- sim_joint_continuous()
+  fx <- fit_joint_continuous(dat)
+
+  # An outcome model may carry the interaction without the dose's own term, and
+  # such a model is written in bare terms and reports this vocabulary. What it
+  # has no column of is the dose alone, so a rescaled dose moves no column that
+  # reads the dose by itself and every column it does move reads the treatment
+  # too. The cause is the dose all the same: which variable moved is a fact
+  # about the variable rather than about which of the design's columns happened
+  # to be built from it alone.
+  rescaled <- dat
+  rescaled$e <- rescaled$e / 10
+  outcome_mod <- lm(y ~ a + a:e, data = rescaled, weights = fx$wts)
+
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "a", "a:e")
   )
 
-  # The remedy has to name the cause a reader of this fit is looking at. The
-  # treatment here is already an unordered factor under treatment contrasts, so
-  # the second half of the remedy describes what was done; only the dropped
-  # intercept explains why that was not enough.
-  expect_error(
-    ipw(models, outcome_mod),
-    regexp = "no intercept"
+  cnd <- tryCatch(ipw(fx$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(message, "treatment models|propensity")
+
+  # The caller coded no factor and dropped no intercept, so every sentence of
+  # the contrast advice describes something they did not do and none of them
+  # would lift the refusal.
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "coded some other way", fixed = TRUE)
+
+  expect_propensity_error(ipw(fx$models, outcome_mod))
+})
+
+test_that("an interaction without the dose's own term names the expansion", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
   )
 
-  expect_propensity_error(ipw(models, outcome_mod))
+  # An interaction whose dose term is absent is not marginal to anything, so R
+  # codes the factor in it with one indicator per level rather than with the
+  # contrasts the factor carries. The design gains a reference-level column the
+  # vocabulary has no row for, and every reported column after it is a claim
+  # about the level to its left.
+  outcome_mod <- lm(y ~ a + a:e, data = factor_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "ayes", "ano:e", "ayes:e")
+  )
+
+  cnd <- tryCatch(ipw(factored$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  # The refusal has to name that expansion. This factor is already an unordered
+  # one under treatment contrasts, so advice to refit it as one describes a
+  # model the caller already has and leaves the refusal exactly where it was.
+  expect_match(message, "one column per level", fixed = TRUE)
+  expect_match(message, "`a * e`", fixed = TRUE)
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+
+  # The dose is the one the treatment models were fit to, so nothing here is
+  # about a dose the models disagree on.
+  expect_no_match(message, "same values", fixed = TRUE)
+
+  expect_propensity_error(ipw(factored$models, outcome_mod))
+})
+
+test_that("a coding and an expansion together render both remedies", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+
+  # Two faults at once. The treatment's own column is coded some other way, and
+  # the crossing is written where the dose has no term of its own, which expands
+  # the factor in it to a column per level whatever contrasts that factor
+  # carries. A caller told only about the coding refits under treatment
+  # contrasts and meets the expansion refusal next, so the one message carries
+  # both remedies, as a coding paired with a moved dose already does.
+  summed <- withr::with_options(
+    list(contrasts = c("contr.sum", "contr.poly")),
+    lm(y ~ a + a:e, data = factor_dat, weights = factored$wts)
+  )
+  expect_identical(
+    colnames(model.matrix(summed)),
+    c("(Intercept)", "a1", "ano:e", "ayes:e")
+  )
+
+  cnd <- tryCatch(ipw(factored$models, summed), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "unordered factor", fixed = TRUE)
+  expect_match(message, "one indicator per level", fixed = TRUE)
+  expect_match(message, "`a * e`", fixed = TRUE)
+
+  # The dose is the one the treatment models hold, so neither fault here is a
+  # dose the models disagree on.
+  expect_no_match(message, "same values", fixed = TRUE)
+
+  # The sentence naming what the reported rows are is context both remedies
+  # read against rather than part of either, so it is said once.
+  said <- gregexpr("The reported rows name", message, fixed = TRUE)[[1]]
+  expect_true(all(said > 0L))
+  expect_length(said, 1L)
+
+  # The same pair of faults reached through the vector rather than through the
+  # session option. An ordered factor carries polynomial contrasts on its own
+  # column and is expanded in the interaction all the same.
+  ordered_dat <- factor_dat
+  ordered_dat$a <- factor(ordered_dat$a, ordered = TRUE)
+  ordered_mod <- lm(y ~ a + a:e, data = ordered_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(ordered_mod)),
+    c("(Intercept)", "a.L", "ano:e", "ayes:e")
+  )
+
+  ordered_cnd <- tryCatch(
+    ipw(factored$models, ordered_mod),
+    error = identity
+  )
+  expect_s3_class(ordered_cnd, "propensity_ipw_msm_error")
+  ordered_message <- gsub(
+    "[[:space:]]+",
+    " ",
+    conditionMessage(ordered_cnd)
+  )
+
+  expect_match(ordered_message, "unordered factor", fixed = TRUE)
+  expect_match(ordered_message, "one indicator per level", fixed = TRUE)
+  expect_match(ordered_message, "`a * e`", fixed = TRUE)
+
+  expect_propensity_error(ipw(factored$models, summed))
+})
+
+test_that("a moved dose and an expansion together render both remedies", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+  factor_dat$e <- factor_dat$e / 10
+
+  # Two faults at once again, and neither of them a coding. The dose the
+  # marginal structural model was fit on is not the dose the treatment models
+  # hold, and the crossing is written where the dose has no term of its own,
+  # which expands the factor in it to a column per level. Whether the dose moved
+  # says nothing about that shape, so a caller who rescaled every model and
+  # refit would meet the expansion refusal next and is told both now. The dose
+  # comes first, since it is the fault a rewritten formula would not lift.
+  outcome_mod <- lm(y ~ a + a:e, data = factor_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "ayes", "ano:e", "ayes:e")
+  )
+
+  cnd <- tryCatch(ipw(factored$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(message, "treatment models|propensity")
+  expect_match(message, "one indicator per level", fixed = TRUE)
+  expect_match(message, "`a * e`", fixed = TRUE)
+
+  # The caller coded no factor, so the contrast remedy describes nothing they
+  # did and neither does the sentence about a numeric coding beside it.
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+
+  # The line a reader sees first names both faults rather than the one the
+  # bullets happen to open with.
+  expect_match(
+    message,
+    "not fit to and one column per level of \"a\"",
+    fixed = TRUE
+  )
+
+  # The sentence naming what the reported rows are is context the expansion is
+  # read against rather than part of it, so it is said once.
+  said <- gregexpr("The reported rows name", message, fixed = TRUE)[[1]]
+  expect_true(all(said > 0L))
+  expect_length(said, 1L)
+
+  expect_propensity_error(ipw(factored$models, outcome_mod))
+})
+
+test_that("a coding and a moved dose together name both causes", {
+  dat <- sim_joint_continuous()
+  ordered <- fit_joint_factor(dat, ordered = TRUE)
+  ordered_dat <- dat
+  ordered_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes"),
+    ordered = TRUE
+  )
+  ordered_dat$e <- ordered_dat$e / 10
+
+  # The pairing that already rendered both remedies. What it has to do besides
+  # is name both faults on the line a reader sees first, so that the line and
+  # the bullets under it describe the same model.
+  outcome_mod <- lm(y ~ a * e, data = ordered_dat, weights = ordered$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "a.L", "e", "a.L:e")
+  )
+
+  cnd <- tryCatch(ipw(ordered$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "unordered factor", fixed = TRUE)
+  expect_match(message, "same values", fixed = TRUE)
+  expect_match(
+    message,
+    paste(
+      "coded some other way and a column built from a dose the treatment",
+      "models were not fit to"
+    ),
+    fixed = TRUE
+  )
+})
+
+test_that("an interaction-only crossing names the expansion", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+
+  # A crossing carrying neither treatment's own term is written in bare terms
+  # and expands the same way, so the diagnosis is the expansion here too.
+  outcome_mod <- lm(y ~ a:e, data = factor_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "ano:e", "ayes:e")
+  )
+
+  cnd <- tryCatch(ipw(factored$models, outcome_mod), error = identity)
+  expect_s3_class(cnd, "propensity_ipw_msm_error")
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+
+  expect_match(message, "one column per level", fixed = TRUE)
+  expect_match(message, "`a * e`", fixed = TRUE)
+  expect_no_match(message, "unordered factor", fixed = TRUE)
+  expect_no_match(message, "same values", fixed = TRUE)
+
+  # The remedy is the same formula for either shape, and what it promises has to
+  # be true of both. This model carries two columns and `a * e` carries three,
+  # so a remedy claiming the same rows would be claiming a table this fit never
+  # had. What it says instead is what `a * e` gives: the dose a term of its own,
+  # and a report on this vocabulary.
+  expect_no_match(message, "these same rows", fixed = TRUE)
+
+  expect_propensity_error(ipw(factored$models, outcome_mod))
+})
+
+test_that("a crossing keeping the dose's own term is reported", {
+  dat <- sim_joint_continuous()
+  factored <- fit_joint_factor(dat)
+  factor_dat <- dat
+  factor_dat$a <- factor(
+    ifelse(dat$a == 1, "yes", "no"),
+    levels = c("no", "yes")
+  )
+
+  # The expansion is what a missing dose term does rather than what a missing
+  # term of any kind does: a crossing written where the dose carries a term of
+  # its own codes the factor with the contrasts it carries, whether or not the
+  # treatment carries a term too. That is the boundary the expansion bullet
+  # states, and it is pinned as a fit that runs rather than one that is refused.
+  outcome_mod <- lm(y ~ e + a:e, data = factor_dat, weights = factored$wts)
+  expect_identical(
+    colnames(model.matrix(outcome_mod)),
+    c("(Intercept)", "e", "e:ayes")
+  )
+
+  res <- ipw(factored$models, outcome_mod)
+  est <- res$estimates
+
+  # The vocabulary surface, with no row for a treatment term the model does not
+  # carry: the dose's slope at the reference level and the level contrast per
+  # unit of the dose.
+  expect_identical(nrow(est), 2L)
+  expect_identical(est$effect, c("slope", "diff"))
+  expect_identical(est$contrast, c("e: per unit", "a: yes vs no"))
+  expect_identical(est$group, c("a = no", "e + 1 vs e"))
+  expect_equal(
+    est$estimate,
+    unname(coef(outcome_mod)[c("e", "e:ayes")]),
+    tolerance = 1e-8
+  )
 })
 
 test_that("ipw() refuses .by on a joint continuous fit", {
@@ -1744,7 +2144,7 @@ test_that("the joint route stacks a dose stabilized on a numerator model", {
   num_mod <- lm(e ~ x2, data = dat)
   fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
 
-  res <- ipw(fits$models, fits$outcome_mod)
+  res <- muffle_coverage_warning(ipw(fits$models, fits$outcome_mod))
   expect_s3_class(res, "ipw")
 
   # The point estimates are the weighted marginal structural model's own
@@ -1766,7 +2166,7 @@ test_that("the dose's numerator model is a block of the joint system", {
   fits <- fit_joint_continuous(dat, dose_stabilize = num_mod)
   marginal <- fit_joint_continuous(dat)
 
-  res <- ipw(fits$models, fits$outcome_mod)
+  res <- muffle_coverage_warning(ipw(fits$models, fits$outcome_mod))
   res_marginal <- ipw(marginal$models, marginal$outcome_mod)
 
   # The default numerator is the dose's own two marginal moments. A fitted one
@@ -1813,7 +2213,7 @@ test_that("the joint route stacks a binary component's numerator model", {
 
   expect_equal(as.numeric(fits$wts), binary_wt * dose_wt, tolerance = 1e-12)
 
-  res <- ipw(fits$models, fits$outcome_mod)
+  res <- muffle_coverage_warning(ipw(fits$models, fits$outcome_mod))
   expect_s3_class(res, "ipw")
   expect_equal(
     res$estimates$estimate,
@@ -1974,6 +2374,52 @@ test_that("the weights mismatch names a component whose score was dropped", {
   expect_match(conditionMessage(cnd), "`a`", fixed = TRUE)
 })
 
+test_that("a component's score left stale by a model frame is refused", {
+  dat <- sim_joint_continuous()
+  dat$w <- rev(dat$x1)
+  dat$w[order(dat$e, decreasing = TRUE)[seq_len(10)]] <- NA
+  kept <- !is.na(dat$w)
+
+  # The other way the same drop arrives. Subsetting the weights empties the
+  # slot and marks it, which the block above pins; a model frame instead drops
+  # the incomplete rows in C and re-attaches the record whole, so the score
+  # reaches `ipw()` at the length the product was built at rather than at the
+  # length of the rows it is about to weight. Multiplying that score into a
+  # density read over the rows that remain recycles, which base R reports in
+  # terms of no argument the caller wrote, so the refusal comes first and names
+  # the component whose score is the wrong length.
+  dose_score <- dnorm(dat$e, mean(dat$e), stats::sd(dat$e))
+
+  # The drop is reported where the outcome model restricts the rows, and is
+  # asserted here so that the only condition left for the call below is the one
+  # being pinned.
+  expect_warning(
+    fx <- fit_joint_continuous(
+      dat,
+      dose_score = dose_score,
+      outcome_rhs = "a * e + w"
+    ),
+    class = "propensity_stabilization_score_warning"
+  )
+
+  seen <- character()
+  cnd <- withCallingHandlers(
+    tryCatch(
+      ipw(fx$models, fx$outcome_mod, .data = dat[kept, ]),
+      error = function(e) e
+    ),
+    warning = function(w) {
+      seen <<- c(seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(seen, character())
+  expect_s3_class(cnd, "propensity_ipw_stabilization_score_error")
+  expect_match(conditionMessage(cnd), "stabilization_score")
+  expect_match(conditionMessage(cnd), "`e`", fixed = TRUE)
+})
+
 test_that("a record that keeps no score is read as one that records none", {
   dat <- sim_joint_continuous()
   fx <- fit_joint_continuous(dat, a_stabilize = TRUE)
@@ -2088,4 +2534,324 @@ test_that("the joint dose weights refusal comes before the estimates do", {
   outcome_mod <- lm(y ~ a * e, data = dat, weights = wts)
 
   expect_propensity_error(ipw(joint_wt_models(a = ps_a, e = ps_e), outcome_mod))
+})
+
+# ---- a component's numerator design rebuilt from `.data` --------------------
+#
+# A numerator model's design is one of the designs `ipw()` rebuilds when the
+# caller supplies `.data`, and a component's numerator is no different from the
+# single-treatment routes' one: it is rebuilt over the rows every model read,
+# under the coding the fit recorded, and out of `.data` rather than out of a
+# frame the fit may no longer keep. Read off the fit's own frame instead, it is
+# a design over other rows than everything it is stacked with, and a column
+# `.data` supplies as another type never reaches it at all.
+#
+# Both block builders are exercised here, since a product carries one numerator
+# per component and the two are built by the routes their own exposures use.
+
+# Whitespace in a cli-formatted message wraps where the console is narrow, so
+# the message is flattened before anything is matched in it.
+joint_numerator_ipw_message <- function(cnd) {
+  gsub("[[:space:]]+", " ", conditionMessage(cnd))
+}
+
+# A crossing shaped like the one `sim_joint_continuous()` simulates, with two
+# more baseline covariates: one only the binary component's numerator reads and
+# one only the dose's does. `sim_joint_continuous()` has no column of either
+# kind, and they are the columns every test below asks `.data` for.
+sim_joint_continuous_numerator <- function(seed = 8811, n = 700) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  x2 <- rbinom(n, 1, 0.5)
+  vb <- rnorm(n)
+  vd <- rnorm(n)
+  a <- rbinom(n, 1, plogis(0.3 * x1 - 0.4 * x2 + 0.3 * vb))
+  e <- 0.4 + 0.5 * x1 - 0.3 * x2 - 0.8 * a + 0.4 * vd + rnorm(n)
+  y <- 1 + 0.7 * a + 0.5 * e + 0.6 * a * e + rnorm(n)
+
+  data.frame(x1, x2, vb, vd, a, e, y)
+}
+
+# The fixture above with a covariate only the outcome model reads, one of whose
+# values is missing. The five fits then read one frame and keep different rows
+# of it: the outcome model drops the incomplete row and the two treatment models
+# and the two numerator models, which never read the column, keep it. A `.data`
+# holding the frame all five were given therefore has a row to drop before any
+# design is built over it.
+sim_joint_continuous_numerator_gap <- function(seed = 8811, n = 700) {
+  dat <- sim_joint_continuous_numerator(seed = seed, n = n)
+  dat$w <- rev(dat$x1)
+  dat$w[[11]] <- NA
+
+  dat
+}
+
+# The product both of whose components carry a numerator model, with the
+# numerator models handed back alongside the fits the route reads.
+joint_numerator_data_fits <- function(dat, outcome_rhs = "a * e") {
+  num_a <- glm(a ~ vb, data = dat, family = binomial())
+  num_e <- lm(e ~ vd, data = dat)
+  fits <- fit_joint_continuous(
+    dat,
+    outcome_rhs = outcome_rhs,
+    a_stabilize = num_a,
+    dose_stabilize = num_e
+  )
+
+  c(fits, list(num_a = num_a, num_e = num_e))
+}
+
+test_that("a component's numerator design is restricted to the rows .data keeps", {
+  dat <- sim_joint_continuous_numerator_gap()
+  fits <- joint_numerator_data_fits(dat, outcome_rhs = "a * e + w")
+  kept <- !is.na(dat$w)
+
+  # Supplying the frame the fits were given and supplying the rows `ipw()`
+  # restricts it to are the same request, so they report the same thing. Each
+  # component's numerator design is one of the designs that restriction is for.
+  res_given <- muffle_coverage_warning(ipw(
+    fits$models,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_kept <- muffle_coverage_warning(ipw(
+    fits$models,
+    fits$outcome_mod,
+    .data = dat[kept, ]
+  ))
+
+  expect_s3_class(res_given, "ipw")
+  expect_equal(
+    res_given$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_given$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res_given$estimates$std.err)))
+})
+
+test_that("the stacked numerator blocks solve over the rows .data keeps", {
+  dat <- sim_joint_continuous_numerator_gap()
+  fits <- joint_numerator_data_fits(dat, outcome_rhs = "a * e + w")
+  kept <- !is.na(dat$w)
+
+  # Each component's numerator contributes a block that reads no parameter from
+  # anywhere else in the stack: the binary one is its own binomial score, which
+  # is exactly identified, and the dose's is its least-squares score together
+  # with the second moment of its residuals, whose root is the normal equations
+  # of the design the block carries followed by the mean square of the residuals
+  # those coefficients leave. Both roots are unique, so the rows each design
+  # carries are the rows its solved block is the fit over. The numerators
+  # arrived fit to the whole frame and the system reads them over the rows the
+  # outcome model kept, so what they solve to are the refits on those rows
+  # rather than the coefficients they came with. Both differ by more than the
+  # tolerance, which is what makes the pins say anything.
+  res <- muffle_coverage_warning(ipw(
+    fits$models,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  refit_a <- glm(a ~ vb, data = dat[kept, ], family = binomial())
+  refit_e <- lm(e ~ vd, data = dat[kept, ])
+
+  theta <- coef(res$fit)
+  names_a <- paste0("stab_a_", names(coef(refit_a)))
+  names_e <- paste0("stab_e_", names(coef(refit_e)))
+
+  expect_true(all(c(names_a, names_e, "stab_e_sigma2") %in% names(theta)))
+  expect_equal(unname(theta[names_a]), unname(coef(refit_a)), tolerance = 1e-6)
+  expect_equal(unname(theta[names_e]), unname(coef(refit_e)), tolerance = 1e-6)
+  expect_equal(
+    unname(theta[["stab_e_sigma2"]]),
+    mean(residuals(refit_e)^2),
+    tolerance = 1e-6
+  )
+
+  expect_false(isTRUE(all.equal(
+    unname(coef(refit_a)),
+    unname(coef(fits$num_a)),
+    tolerance = 1e-6
+  )))
+  expect_false(isTRUE(all.equal(
+    unname(coef(refit_e)),
+    unname(coef(fits$num_e)),
+    tolerance = 1e-6
+  )))
+})
+
+# ---- a numerator covariate `.data` supplies as another type -----------------
+#
+# A numerator model is rebuilt from `.data` the way the other models are, so a
+# column it alone reads is a column the rebuild can be given as the wrong type,
+# or not given at all. Which fit a refusal names is this route's own vocabulary,
+# where the models arrive under names the caller gave them, so what is pinned
+# here is the column and the argument the frame arrived in.
+
+# A three-level factor over the same rows, which nothing models. It is what a
+# numeric numerator covariate is supplied as below.
+joint_numerator_grouping <- function(dat) {
+  factor(c("a", "b", "c")[1 + (rank(dat$x1) %% 3)], levels = c("a", "b", "c"))
+}
+
+test_that("a binary component's numerator covariate supplied as a factor is refused", {
+  dat <- sim_joint_continuous_numerator()
+  fits <- joint_numerator_data_fits(dat)
+
+  # The type sweep compares the class the fit recorded for the column with the
+  # class `.data` supplies and refuses the pair before any design is rebuilt.
+  # What it heads off is a factor of three levels taking two design columns
+  # where the number it stands in for took one.
+  supplied <- dat
+  supplied$vb <- joint_numerator_grouping(dat)
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fits$models,
+      fits$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- joint_numerator_ipw_message(err)
+  expect_match(message, "vb", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+})
+
+test_that("a dose component's numerator covariate supplied as a factor is refused", {
+  dat <- sim_joint_continuous_numerator()
+  fits <- joint_numerator_data_fits(dat)
+
+  supplied <- dat
+  supplied$vd <- joint_numerator_grouping(dat)
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fits$models,
+      fits$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- joint_numerator_ipw_message(err)
+  expect_match(message, "vd", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+})
+
+test_that("a binary component's numerator covariate absent from .data is refused", {
+  dat <- sim_joint_continuous_numerator()
+  fits <- joint_numerator_data_fits(dat)
+
+  # The columns the rebuilds read are asked for before any of them runs, and a
+  # numerator model's covariates are among them. Left out of the set, a column
+  # only a numerator reads reaches `model.matrix()` as an object that is not
+  # there.
+  supplied <- dat
+  supplied$vb <- NULL
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fits$models,
+      fits$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_columns_exist_error"
+  )
+
+  expect_match(joint_numerator_ipw_message(err), "vb", fixed = TRUE)
+})
+
+test_that("a dose component's numerator covariate absent from .data is refused", {
+  dat <- sim_joint_continuous_numerator()
+  fits <- joint_numerator_data_fits(dat)
+
+  supplied <- dat
+  supplied$vd <- NULL
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fits$models,
+      fits$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_columns_exist_error"
+  )
+
+  expect_match(joint_numerator_ipw_message(err), "vd", fixed = TRUE)
+})
+
+# ---- a dose component's integrated numerator read over its fit's rows -------
+#
+# A component's integrated numerator is the same reading the single-dose route
+# takes: the conditional density averaged over the units, interpolated from a
+# grid spanning their dose. The dose model was fit over one set of rows and the
+# weights carry that reading, and a `.data` that leaves fewer rows changes both
+# halves of it at once. The rebuild owes the fit's reading here as it does
+# there, alongside the spreads and the moments the component's blocks are
+# seeded at.
+
+# The crossing `sim_joint_continuous_numerator()` simulates with a covariate
+# only the outcome model reads, withheld at the ten largest doses. Withholding
+# it at one arbitrary row moves the numerator's average without moving the
+# grid; withholding it there moves the grid's upper end as well, so both halves
+# of the reading are exercised.
+sim_joint_continuous_grid_gap <- function(seed = 8811, n = 700) {
+  dat <- sim_joint_continuous_numerator(seed = seed, n = n)
+  dat$w <- rev(dat$x1)
+  dat$w[order(dat$e, decreasing = TRUE)[seq_len(10)]] <- NA
+
+  dat
+}
+
+test_that("a dose component's integrated numerator survives the rows .data drops", {
+  dat <- sim_joint_continuous_grid_gap()
+  kept <- !is.na(dat$w)
+  fits <- fit_joint_continuous(
+    dat,
+    outcome_rhs = "a * e + w",
+    numerator = "integrated"
+  )
+
+  # The grid's upper end moves under the restriction, which is what makes the
+  # agreement below a statement about which rows the numerator was read over.
+  expect_gt(max(dat$e), max(dat$e[kept]))
+
+  res <- ipw(fits$models, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$models, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_true(all(res$estimates$std.err > 0))
+})
+
+test_that("the dose numerator the joint route rebuilds is the one its weights carry", {
+  dat <- sim_joint_continuous_grid_gap()
+  kept <- !is.na(dat$w)
+  fits <- fit_joint_continuous(
+    dat,
+    outcome_rhs = "a * e + w",
+    numerator = "integrated"
+  )
+
+  # An integrated numerator estimates nothing, so the component carries no
+  # stabilization block and the only thing that can move its half of the
+  # product is the reading itself.
+  spec <- ipw_spec_joint_models(fits$models, fits$outcome_mod, .data = dat)
+  layout <- expect_joint_weights_at_init(spec, as.double(fits$wts)[kept])
+  expect_length(layout$idx$stab, 0L)
 })

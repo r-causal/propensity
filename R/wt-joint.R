@@ -649,7 +649,10 @@ check_wt_joint_stabilize <- function(
 #'   \item{`names`}{The two treatment names, in the factorization's order.}
 #'   \item{`models`}{The two fitted models, named for their treatments.}
 #'   \item{`exposure_type`}{Each model's exposure type, named for its treatment:
-#'     `"binary"`, `"categorical"`, or `"continuous"`.}
+#'     `"binary"`, `"categorical"`, or `"continuous"`. The type follows the
+#'     model's class, so a [nnet::multinom()] is recorded as `"categorical"`
+#'     whatever its level count. One fit to two levels is a binary treatment
+#'     model, and [ipw()] stacks it as one.}
 #' }
 #'
 #' `is_joint_wt_models()` returns a single logical.

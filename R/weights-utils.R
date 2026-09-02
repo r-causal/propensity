@@ -571,10 +571,12 @@ resolve_stabilize <- function(
        a fitted model of the exposure.",
       x = "It is {.obj_type_friendly {stabilize}}.",
       i = "A fitted model stabilizes the weights on the numerator it estimates:
-           a conditional density for a dose, and the conditional probability of
-           the level each unit took for a binary exposure. To stabilize on a
-           numerator you computed yourself, set {.code stabilize = TRUE} and
-           pass it as {.arg stabilization_score}."
+           a conditional density for a dose, the conditional probability of
+           the level each unit took for a binary exposure, and that same
+           probability read across every level for a categorical one. To
+           stabilize on a numerator you computed yourself, set
+           {.code stabilize = TRUE} and pass it as
+           {.arg stabilization_score}."
     ),
     error_class = "propensity_stabilize_error",
     call = call
@@ -582,15 +584,18 @@ resolve_stabilize <- function(
 }
 
 # The models a numerator can be fit with: everything [lm()] covers and
-# everything built on it, a [glm()] of any family included. What the weights ask
-# of such a model is its fitted values, and the residuals around them where a
-# density is spread by those, so a subclass is read as an `lm` here, the way
-# `.propensity` is. Which families answer for which exposure is
+# everything built on it, a [glm()] of any family included, and
+# [nnet::multinom()], which is the one fit reporting a probability for every
+# level of an exposure and so the one a categorical numerator is read from. What
+# the weights ask of such a model is its fitted values, and the residuals around
+# them where a density is spread by those, so a subclass is read as an `lm`
+# here, the way `.propensity` is; a `multinom` inherits from neither `lm` nor
+# `glm` and is named on its own. Which class answers for which exposure is
 # `check_numerator_model()`'s question rather than this one's: a model that is
 # not the right one for the exposure is refused there, by the same check the
 # propensity score model of that exposure meets.
 is_numerator_model <- function(x) {
-  inherits(x, "lm")
+  inherits(x, "lm") || inherits(x, "multinom")
 }
 
 # The fitted model a `stabilize` argument names, or NULL for one that names an
@@ -1136,10 +1141,9 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
   row_sums <- rowSums(ps_matrix, na.rm = FALSE)
   ROW_SUM_TOLERANCE <- 1e-6 # Tolerance for floating point comparison
 
-  # `min()` and `max()` skip the missing sums without copying them, but they
-  # have no extreme to report when every sum is missing and no rows to read at
-  # all when the matrix is empty, so both cases are answered before they run.
-  if (length(row_sums) == 0 || (anyNA(row_sums) && all(is.na(row_sums)))) {
+  # `min()` and `max()` have no extreme to report for a matrix with no rows in
+  # it, so that case is answered before any of them run.
+  if (length(row_sums) == 0) {
     return(invisible(TRUE))
   }
 
@@ -1154,6 +1158,34 @@ check_ps_matrix_rowsums <- function(ps_matrix, call = rlang::caller_env()) {
   # of those bounds is a double exactly one tolerance from 1, so a sum landing
   # on one of them is admitted or refused by which way the bound rounded rather
   # than by how far the sum is from 1.
+  #
+  # The extremes are taken plainly first. A missing sum propagates through both
+  # of them, so this reading accepts only a matrix that holds no missing sum
+  # and no sum outside the tolerance, which is strictly less than the reading
+  # below accepts; everything else falls through to that one unchanged. Taking
+  # them this way spares the usual matrix, the one with nothing missing in it,
+  # a separate `anyNA()` pass whose only job was to decide whether the
+  # reductions after it needed `na.rm`, which costs them nothing.
+  lowest <- min(row_sums)
+  highest <- max(row_sums)
+
+  if (
+    !is.na(lowest) &&
+      !is.na(highest) &&
+      abs(lowest - 1) <= ROW_SUM_TOLERANCE &&
+      abs(highest - 1) <= ROW_SUM_TOLERANCE
+  ) {
+    return(invisible(TRUE))
+  }
+
+  # From here a sum is missing, or one is out of tolerance, or both. `min()`
+  # and `max()` skip the missing sums without copying them, but they have no
+  # extreme to report when every sum is missing, so that case is answered
+  # before they run again.
+  if (anyNA(row_sums) && all(is.na(row_sums))) {
+    return(invisible(TRUE))
+  }
+
   lowest <- min(row_sums, na.rm = TRUE)
   highest <- max(row_sums, na.rm = TRUE)
 
@@ -1209,10 +1241,40 @@ check_ps_matrix_range <- function(
   }
 
   # Missing values are not scores, so they neither decide the bounds nor are
-  # refused. `min()` and `max()` skip them without copying the matrix, but they
-  # have no bounds to report when there is nothing left to read, so that case is
-  # answered first.
-  if (length(ps_matrix) == 0 || (anyNA(ps_matrix) && all(is.na(ps_matrix)))) {
+  # refused. `min()` and `max()` have no bounds to report for a matrix with
+  # nothing in it, so that case is answered before any of them run.
+  if (length(ps_matrix) == 0) {
+    return(invisible(TRUE))
+  }
+
+  # The bounds are read plainly first. A missing score propagates through both
+  # reductions, so this reading accepts only a matrix that holds no missing
+  # score and no score outside the interval, which is strictly less than the
+  # reading below accepts; everything else falls through to that one unchanged.
+  # Taking them this way spares the usual matrix, the one with nothing missing
+  # in it, a separate `anyNA()` pass over all of its cells, whose only job was
+  # to decide whether the reductions after it needed `na.rm`, which costs them
+  # nothing.
+  lower <- min(ps_matrix)
+  upper <- max(ps_matrix)
+
+  if (!is.na(lower) && !is.na(upper)) {
+    in_bounds <- if (closed) {
+      lower >= 0 && upper <= 1
+    } else {
+      lower > 0 && upper < 1
+    }
+
+    if (in_bounds) {
+      return(invisible(TRUE))
+    }
+  }
+
+  # From here a score is missing, or one is out of bounds, or both. `min()` and
+  # `max()` skip the missing scores without copying the matrix, but they have
+  # no bounds to report when every score is missing, so that case is answered
+  # before they run again.
+  if (anyNA(ps_matrix) && all(is.na(ps_matrix))) {
     return(invisible(TRUE))
   }
 
@@ -1342,9 +1404,9 @@ calculate_weight_from_modified_ps <- function(
 record_exposure_attrs <- function(psw_obj, wts, exposure_type) {
   attr(psw_obj, "exposure_type") <- exposure_type
   attr(psw_obj, "density_meta") <- attr(wts, "density_meta")
-  # A binary exposure's numerator model is recorded on its own, there being no
-  # density record for it to sit inside. A continuous exposure's sits in the
-  # density record, and `numerator_model()` reads the two back as one.
+  # A binary or categorical exposure's numerator model is recorded on its own,
+  # there being no density record for it to sit inside. A continuous exposure's
+  # sits in the density record, and `numerator_model()` reads them back as one.
   attr(psw_obj, "numerator_model") <- attr(wts, "numerator_model")
 
   psw_obj

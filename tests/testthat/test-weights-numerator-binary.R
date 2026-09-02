@@ -345,32 +345,6 @@ test_that("a numerator model of the wrong exposure type is refused either way", 
   )
 })
 
-test_that("a categorical exposure still refuses a numerator model", {
-  # A categorical exposure's weights are a ratio of probabilities over more than
-  # two levels, and a fitted model of one is not what `stabilize` reads here.
-  exposure <- factor(rep(c("a", "b", "c"), each = 4))
-  categorical_ps <- matrix(
-    rep(c(0.5, 0.3, 0.2), times = 12),
-    ncol = 3,
-    byrow = TRUE,
-    dimnames = list(NULL, c("a", "b", "c"))
-  )
-  fit <- stats::glm(
-    rep(c(0, 1), length.out = 12) ~ seq_len(12),
-    family = stats::binomial()
-  )
-
-  expect_error(
-    wt_ate(
-      categorical_ps,
-      exposure,
-      exposure_type = "categorical",
-      stabilize = fit
-    ),
-    class = "propensity_numerator_error"
-  )
-})
-
 # ---- combining weights that record a numerator model ------------------------
 
 # The weights the combine tests are written about: stabilized on the numerator

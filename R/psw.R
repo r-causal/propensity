@@ -405,8 +405,12 @@ density_meta <- function(wt) {
 #'
 #' @details
 #' A model supplied to [wt_ate()]'s `stabilize` argument estimates the
-#' numerator of the weights: the conditional density of a dose, or the
-#' conditional probability of a binary exposure at the level each unit took.
+#' numerator of the weights, and what it estimates follows the exposure. A
+#' [binomial()] fit of a binary exposure reports the probability of the level
+#' each unit took; an [nnet::multinom()] fit of a categorical exposure reports
+#' one probability per level, and the numerator is the column named for the
+#' level each unit took; a model of a dose reports the conditional mean the
+#' density family is read at, and the numerator is that density.
 #' The model itself is recorded rather than the numerator it evaluates to,
 #' because [ipw()] rebuilds that numerator at every value of its parameter
 #' vector, which takes the model's design and its coefficients.
@@ -414,9 +418,9 @@ density_meta <- function(wt) {
 #' Where the record is kept differs by exposure type, and this accessor is the
 #' one place to read it either way. Weights for a continuous exposure are a
 #' ratio of densities and keep the model inside the density record
-#' [density_meta()] returns; weights for a binary exposure are a ratio of
-#' probabilities, leave no density record, and keep the model on its own. Both
-#' come back here.
+#' [density_meta()] returns; weights for a binary or categorical exposure are a
+#' ratio of probabilities, leave no density record, and keep the model on its
+#' own. Both come back here.
 #'
 #' The record describes the numerator rather than the units, so it holds no
 #' length of its own and survives subsetting, arithmetic, and anything else that

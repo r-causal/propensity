@@ -431,9 +431,16 @@ check_numerator <- function(
 
 # What a fitted numerator model has to be able to be. The model estimates the
 # numerator of the weights given whatever it reads: the conditional density of
-# a dose, or the conditional probability of a binary exposure. The weights it
-# stabilizes are the ratio of that quantity to the one the propensity score
-# model estimates, so every requirement here is a requirement of that ratio.
+# a dose, the conditional probability of a binary exposure, or the probability
+# of the level each unit took when the exposure has more than two of them. The
+# weights it stabilizes are the ratio of that quantity to the one the propensity
+# score model estimates, so every requirement here is a requirement of that
+# ratio.
+#
+# The checks below run in a deliberate order. Two numerators supplied at once is
+# a contradiction about what the weights are being divided by whatever the
+# exposure is, so it is reported before the exposure type decides anything else,
+# and the case weights a fit was made under are read on the same terms.
 check_numerator_model <- function(
   numerator_model,
   exposure_type,
@@ -443,26 +450,6 @@ check_numerator_model <- function(
 ) {
   if (is.null(numerator_model)) {
     return(invisible(NULL))
-  }
-
-  # A categorical exposure is weighted by a ratio over more than two levels,
-  # and one fitted model reports neither side of it. The other two types each
-  # take a model, of the family their own side of the ratio is read in.
-  if (identical(exposure_type, "categorical")) {
-    abort(
-      c(
-        "A model supplied to {.arg stabilize} applies only to binary and
-         continuous exposures.",
-        x = "{.arg .exposure} is being treated as categorical.",
-        i = "A categorical exposure's weights are a ratio of probabilities over
-             every level, which one fitted model does not report. Stabilize
-             them with {.code stabilize = TRUE}, which reads the marginal
-             probability of each level, or with a {.arg stabilization_score} of
-             your own."
-      ),
-      error_class = "propensity_numerator_error",
-      call = call
-    )
   }
 
   if (!is.null(stabilization_score)) {
@@ -481,7 +468,7 @@ check_numerator_model <- function(
     )
   }
 
-  # Prior case weights, refused for both exposure types the model route serves.
+  # Prior case weights, refused for every exposure type the model route serves.
   # The numerator is a quantity in the sample the weights are being built for,
   # and a fit made under case weights reports it for a reweighted one. The
   # weights also record the model rather than the numbers it evaluated to, so
@@ -504,40 +491,64 @@ check_numerator_model <- function(
     )
   }
 
-  # The numerator model is held to the family the propensity score model of the
+  # The numerator model is held to the class the propensity score model of the
   # same exposure is held to, and by the same check, read from the other side
   # of the ratio: a dose's numerator is a density around a conditional mean
-  # with one spread, and a binary exposure's numerator is the probability of
-  # the level each unit took. A model of the wrong exposure's numerator is
-  # therefore reported as the wrong family rather than as a model where none is
-  # taken, which is what it is.
-  if (identical(exposure_type, "binary")) {
-    check_binary_model_family(
+  # with one spread, a binary exposure's numerator is the probability of the
+  # level each unit took, and a categorical exposure's is that probability read
+  # across every level. A model of the wrong exposure's numerator is therefore
+  # reported as the wrong model for the ratio rather than as a model where none
+  # is taken, which is what it is.
+  if (identical(exposure_type, "categorical")) {
+    check_categorical_model_family(
       numerator_model,
       arg = "stabilize",
       remedy = "The numerator is the fitted probability of the level each unit
-                took, so refit it with
-                {.code stats::glm(family = stats::binomial())}.",
+                took, so fit it with {.fun nnet::multinom} of the exposure on
+                the terms you are stabilizing over.",
       call = call
     )
   } else {
-    check_continuous_model_family(
-      numerator_model,
-      arg = "stabilize",
-      remedy = "The numerator is a density read at the model's fitted mean and
-                the spread of its residuals, so refit it with {.fun stats::lm}
-                or {.code stats::glm(family = gaussian())}.",
-      call = call
-    )
+    check_numerator_model_not_multinom(numerator_model, exposure_type, call)
+
+    if (identical(exposure_type, "binary")) {
+      check_binary_model_family(
+        numerator_model,
+        arg = "stabilize",
+        remedy = "The numerator is the fitted probability of the level each
+                  unit took, so refit it with
+                  {.code stats::glm(family = stats::binomial())}.",
+        call = call
+      )
+    } else {
+      check_continuous_model_family(
+        numerator_model,
+        arg = "stabilize",
+        remedy = "The numerator is a density read at the model's fitted mean
+                  and the spread of its residuals, so refit it with
+                  {.fun stats::lm} or
+                  {.code stats::glm(family = gaussian())}.",
+        call = call
+      )
+    }
   }
 
-  fitted <- as.numeric(stats::fitted(numerator_model))
-  if (!identical(length(fitted), as.integer(n))) {
+  # A multinomial fit reports a row of probabilities for each unit and a column
+  # for each level, so what is counted against the observations there is its
+  # rows. Every other numerator model fits one value per unit.
+  fitted <- stats::fitted(numerator_model)
+  n_fitted <- if (identical(exposure_type, "categorical")) {
+    nrow(fitted)
+  } else {
+    length(as.numeric(fitted))
+  }
+
+  if (!identical(as.integer(n_fitted), as.integer(n))) {
     abort(
       c(
         "The model supplied to {.arg stabilize} must have one fitted value for
          each observation.",
-        x = "It has {length(fitted)} fitted value{?s} and {.arg .exposure} has
+        x = "It has {n_fitted} fitted value{?s} and {.arg .exposure} has
              {n} observation{?s}.",
         i = "Fit the numerator model on the data the weights are being built
              for."
@@ -548,6 +559,44 @@ check_numerator_model <- function(
   }
 
   invisible(NULL)
+}
+
+# A `multinom` supplied where a binary or a continuous exposure's numerator
+# goes. It is refused here rather than by the family check each of those types
+# runs, which would read a two-level fit as a binary probability and pass it:
+# what the binary route does with a numerator model afterwards is read off the
+# model's own response and its family link, and what the continuous route does
+# is read off the residuals around a conditional mean, none of which a
+# `multinom` carries.
+check_numerator_model_not_multinom <- function(
+  numerator_model,
+  exposure_type,
+  call = rlang::caller_env()
+) {
+  if (!inherits(numerator_model, "multinom")) {
+    return(invisible(NULL))
+  }
+
+  remedy <- if (identical(exposure_type, "binary")) {
+    "The numerator is the fitted probability of the level each unit took, so
+     refit it with {.code stats::glm(family = stats::binomial())}."
+  } else {
+    "The numerator is a density read at the model's fitted mean and the spread
+     of its residuals, so refit it with {.fun stats::lm}."
+  }
+
+  abort(
+    c(
+      "A model supplied to {.arg stabilize} must estimate the numerator of the
+       exposure being weighted.",
+      x = "{.arg stabilize} is {.cls {class(numerator_model)[[1]]}}, which fits
+           a probability for every level of the exposure it was fit to, and
+           {.arg .exposure} is being treated as {exposure_type}.",
+      i = remedy
+    ),
+    error_class = "propensity_model_family_error",
+    call = call
+  )
 }
 
 # What the numerator model contributes to the ratio: the conditional mean it
@@ -781,9 +830,11 @@ check_sigma_method <- function(.sigma, density, call = rlang::caller_env()) {
 # marginalized over the units, the conditional density a second model estimates,
 # a stabilization score the caller supplied, or nothing at all. `grid` is the
 # evaluation grid an integrated numerator averages the conditional density over,
-# and is built from the exposure when it is not supplied. `mu_n` and `sigma_n`
-# are the conditional mean and the residual spread of the numerator model, which
-# stand where `mu_a` and `sigma_a` stand for the marginal density.
+# and is built from the exposure when it is not supplied; `mu_avg` are the
+# conditional means it averages the density of, and are the weighted units' own
+# when they are not supplied. `mu_n` and `sigma_n` are the conditional mean and
+# the residual spread of the numerator model, which stand where `mu_a` and
+# `sigma_a` stand for the marginal density.
 continuous_density_ratio <- function(
   exposure,
   mu,
@@ -796,6 +847,7 @@ continuous_density_ratio <- function(
   sigma_n = NULL,
   score = NULL,
   grid = NULL,
+  mu_avg = NULL,
   call = rlang::caller_env()
 ) {
   numerator <- rlang::arg_match(numerator, error_call = call)
@@ -807,6 +859,7 @@ continuous_density_ratio <- function(
       sigma = sigma,
       density = density,
       grid = grid,
+      mu_avg = mu_avg,
       call = call
     ))
   }
@@ -880,12 +933,20 @@ is_constant <- function(x, scale) {
 # A unit whose exposure or fitted mean is missing has no standardized residual,
 # so it is not read by the average, its exposure does not reach the ends of the
 # grid, and its weight is missing, exactly as it is under any other numerator.
+#
+# Which units the average runs over and where the grid begins and ends are both
+# properties of a set of rows rather than of the ratio, so both are arguments a
+# caller weighting one set of rows with a numerator read over another can set:
+# `mu_avg` are the conditional means averaged at each grid point, and `grid` the
+# points themselves. Left alone, both are the weighted units' own, which is the
+# reading `wt_ate()` takes.
 continuous_integrated_ratio <- function(
   exposure,
   mu,
   sigma,
   density,
   grid = NULL,
+  mu_avg = NULL,
   call = rlang::caller_env()
 ) {
   z <- (exposure - mu) / sigma
@@ -894,6 +955,8 @@ continuous_integrated_ratio <- function(
   exposure <- exposure[present]
   mu <- mu[present]
   z <- z[present]
+
+  mu_avg <- if (is.null(mu_avg)) mu else mu_avg[!is.na(mu_avg)]
 
   wt <- rep(NA_real_, length(present))
 
@@ -910,7 +973,12 @@ continuous_integrated_ratio <- function(
   # way; this returns the ones the model means. How little that is depends on
   # the units the exposure is measured in, so the spread of the fitted means is
   # read against the spread of the residuals rather than against one.
-  if (length(mu) == 0 || is_constant(mu, scale = sigma)) {
+  #
+  # The means asked about are the ones the average runs over, since they are the
+  # ones the numerator is a density of. They cover the weighted units' own
+  # wherever the two differ, so means constant over them are constant over those
+  # units too and the ratio is one there for the reason above.
+  if (length(mu) == 0 || is_constant(mu_avg, scale = sigma)) {
     wt[present] <- 1
     return(wt)
   }
@@ -945,7 +1013,7 @@ continuous_integrated_ratio <- function(
   # standardized scale the family is written on. The spread is a single number
   # here, which is why an integrated numerator refuses a `.sigma` of one per
   # observation.
-  standardized <- outer(grid, mu, "-") / sigma
+  standardized <- outer(grid, mu_avg, "-") / sigma
 
   # A kernel is one estimate answering for both densities, so it is fit on the
   # standardized residuals over a range that covers them and the whole

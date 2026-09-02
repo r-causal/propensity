@@ -15,10 +15,12 @@
 # read off a declaration, which is what makes the two routes agree about which
 # cells exist and what they are called without either of them owning the answer.
 #
-# The second treatment may instead be a dose. A dose has no cells, so there is
-# no crossing to construct and nothing to set every unit to: the surface is
-# coefficient-shaped rather than cell-shaped, reporting the marginal structural
-# model's own causal coefficients under labels written in the same vocabulary.
+# The second treatment may instead be a dose, beside a first treatment of
+# either discrete type. A dose has no cells, so there is no crossing to
+# construct and nothing to set every unit to: the surface is coefficient-shaped
+# rather than cell-shaped, reporting the marginal structural model's own causal
+# coefficients under labels written in the same vocabulary, one level contrast
+# per non-reference level of the first treatment.
 # Its treatment block is the score its own model solves, read through the same
 # registry the single-dose route reads, carrying the conditional variance of the
 # density its weight divides by.
@@ -47,8 +49,16 @@
 #' The only supported estimand is `"ate"`, which is what the product weights
 #' [wt_joint()] builds target.
 #'
-#' The second treatment may be a dose, in which case the surface is the marginal
-#' structural model's own coefficients rather than the cells of a crossing. The
+#' Either treatment may be categorical rather than binary, fit with
+#' [nnet::multinom()], in which case its block is the multinomial score that fit
+#' solves and the surface reports the whole crossing its levels make. Such a
+#' component may be stabilized like any other, its numerator estimated in a
+#' block of its own; see **Joint exposures**.
+#'
+#' The second treatment may be a dose, whatever the first one is, in which case
+#' the surface is the marginal structural model's own coefficients rather than
+#' the cells of a crossing, with one level contrast per non-reference level of
+#' the first treatment and one dose slope at its reference level. The
 #' dose model is read through the same registry the single-treatment route
 #' reads, so an [stats::lm()], a gaussian [stats::glm()] at an identity or a log
 #' link, and a [MASS::rlm()] fit with one of the psi functions MASS supplies are
@@ -128,6 +138,7 @@ ipw.joint_wt_models <- function(
   wts <- extract_weights(outcome_mod)
   check_ipw_weights(wts)
   check_ipw_joint_models_weights(wts)
+  check_ipw_stabilizer_coverage(wts, outcome_mod)
 
   spec <- ipw_spec_joint_models(
     wt_mod,
@@ -212,12 +223,12 @@ ipw_spec_joint_models <- function(
 
   names <- models$names
   fits <- models$models
-  types <- unname(models$exposure_type)
+  component_types <- ipw_joint_models_component_types(models)
+  types <- unname(component_types)
 
-  # The container accepts a categorical component too, whose score block and
-  # weight are neither the binomial nor the density-ratio ones this stack
-  # carries.
-  check_ipw_joint_models_types(models$exposure_type, call = call)
+  # The container accepts pairs this stack has no block for, a dose as the first
+  # factor of the factorization among them.
+  check_ipw_joint_models_types(component_types, call = call)
 
   # A dose model is read through the registry the single-dose route reads, so
   # which classes, families, and links can be stacked is one answer rather than
@@ -257,37 +268,138 @@ ipw_spec_joint_models <- function(
     check_ipw_outcome_exposure(outcome_mod, name, call = call)
   }
 
-  # An additive dose fit's entry has already evaluated the smooth basis its
-  # score was checked at, and that basis is the design this route multiplies the
-  # dose block by, so it travels from the entry rather than being built a second
-  # time. Every fit of another kind carries no design on its entry, and a fit
-  # whose design could not be read at all carries none either, so both are built
-  # and refused here as before.
-  ps_X <- lapply(seq_along(fits), function(i) {
-    if (identical(i, dose_idx) && !is.null(dose_model$design)) {
-      dose_model$design
-    } else {
-      ipw_joint_models_design(fits[[i]], call = call)
-    }
-  })
-  treatments <- lapply(fits, ipw_joint_models_treatment, call = call)
   coefs <- lapply(fits, stats::coef)
 
   for (i in seq_along(fits)) {
     check_ipw_model_rank(coefs[[i]], names[[i]], call = call)
   }
 
+  # A multinomial fit reports a level-by-term matrix, and everything that reads
+  # a component's coefficients reads a vector: the block's width, its seed, and
+  # the softmax the score is written against all take the level-major flattening
+  # the multinomial score solves, so the matrix is flattened once, here, after
+  # the rank guard has read it in the shape it was fitted in.
+  coefs[types == "categorical"] <- lapply(
+    fits[types == "categorical"],
+    ipw_multinom_coefs
+  )
+
+  # Read before the designs are built rather than with the rest of what the
+  # weights record: each component's numerator model has its design rebuilt from
+  # `.data` alongside them, so the columns those models read have to be among
+  # the ones the rebuild asks for before it goes looking for them.
+  wts <- extract_weights(outcome_mod)
+  numerator_mods <- ipw_joint_models_numerator_models(wts, dose_idx)
+
   mm_data <- ipw_joint_models_frame(
     outcome_mod,
     .data,
     fits = fits,
     treatment_names = names,
+    numerator_mods = numerator_mods,
     call = call
   )
   n <- nrow(mm_data)
+
+  # With a `.data` the caller supplied, every design and every treatment column
+  # is built from that frame, over the rows every model read. Without one they
+  # are read off the fits, where an additive dose fit's entry has already
+  # evaluated the smooth basis its score was checked at; a fit of another kind
+  # carries no design on its entry, and one whose design could not be read at
+  # all carries none either, so both are built and refused there.
+  if (is.null(.data)) {
+    # A multinomial keeps no model frame: both the design and the response
+    # rebuild one by re-evaluating the fitting call, so such a component is read
+    # through the recovery that builds the frame once and takes both out of it,
+    # which is what the single-treatment categorical route reads. The class is
+    # what decides, rather than the type resolved above: a two-level fit keeps
+    # no more of a frame than a three-level one does.
+    recovered <- lapply(fits, function(fit) {
+      if (inherits(fit, "multinom")) {
+        ipw_joint_models_recover(fit, call = call)
+      }
+    })
+    ps_X <- lapply(seq_along(fits), function(i) {
+      if (!is.null(recovered[[i]])) {
+        recovered[[i]]$ps_X
+      } else if (identical(i, dose_idx) && !is.null(dose_model$design)) {
+        dose_model$design
+      } else {
+        ipw_joint_models_design(fits[[i]], call = call)
+      }
+    })
+    treatments <- lapply(seq_along(fits), function(i) {
+      if (!is.null(recovered[[i]])) {
+        return(recovered[[i]]$exposure)
+      }
+
+      ipw_joint_models_treatment(fits[[i]], call = call)
+    })
+  } else {
+    ps_X <- lapply(seq_along(fits), function(i) {
+      design <- ipw_rebuild_design(
+        fits[[i]],
+        stats::delete.response(stats::terms(fits[[i]])),
+        mm_data,
+        call = call
+      )
+      check_ipw_design_width(design, fits[[i]], names[[i]], call = call)
+
+      design
+    })
+    # Each treatment is its own model's response and is named for it, which is
+    # what `joint_wt_models()` requires of the pair, so the column of `.data` to
+    # read is the one the component is named after.
+    treatments <- lapply(names, function(name) mm_data[[name]])
+
+    for (i in seq_along(fits)) {
+      # The guard is binary-shaped: it reads the order a column's values imply
+      # from `sort(unique())`, which is the order the binary recode reads. A
+      # categorical component declares no order that way, since the resolution
+      # below levels its column against the fit's own `lev` before anything
+      # reads it, and refuses a value the fit never saw.
+      if (identical(types[[i]], "categorical")) {
+        next
+      }
+
+      check_ipw_joint_models_treatment_levels(
+        treatments[[i]],
+        fits[[i]],
+        names[[i]],
+        call = call
+      )
+    }
+  }
+
+  # A categorical treatment is levelled the way its own fit levelled it,
+  # whichever coding the column arrived in, so the indicator matrix, the
+  # counterfactual designs, and the crossing's cells all read the levels the
+  # coefficients were laid out over.
+  treatments <- lapply(seq_along(treatments), function(i) {
+    if (!identical(types[[i]], "categorical")) {
+      return(treatments[[i]])
+    }
+
+    ipw_categorical_exposure_factor(
+      treatments[[i]],
+      fits[[i]]$lev,
+      names[[i]],
+      call = call
+    )
+  })
+
   ipw_joint_models_check_lengths(treatments, ps_X, names, n, call = call)
 
-  wts <- extract_weights(outcome_mod)
+  # The response each treatment model was fit against and the residuals it left,
+  # both over that model's own rows. The moments the weights were built at were
+  # read from exactly these, and `.data` can leave fewer rows than a fit was
+  # made over, so they are carried on the spec rather than recomputed where the
+  # seeds are written.
+  fit_moments <- lapply(
+    seq_along(fits),
+    function(i) ipw_joint_models_fit_moments(fits[[i]], types[[i]])
+  )
+
   estimand <- check_estimand(wts, estimand, call = call)
 
   # What ratio of densities the dose's weights are, which is what the stacked
@@ -311,6 +423,27 @@ ipw_spec_joint_models <- function(
   # routes hold theirs.
   scores <- joint_wt_stabilization_scores(joint_wt_meta(wts))
 
+  # A score the record still holds has to describe the rows about to be
+  # weighted. A model frame that drops incomplete rows re-attaches the record
+  # whole, leaving a score at the length the product was built at, which is
+  # multiplied against a density read over fewer rows unless it is caught first.
+  #
+  # An empty slot is not this: it is the drop the record marks, and what stands
+  # in for it and what reports the difference are settled below.
+  for (i in seq_along(scores)) {
+    if (is.null(scores[[i]])) {
+      next
+    }
+
+    check_ipw_stabilization_score(
+      "score",
+      scores[[i]],
+      n,
+      component = names[[i]],
+      call = call
+    )
+  }
+
   # A dose whose weights record a score the record does not keep is the one
   # numerator this route cannot rebuild. A product written before the record
   # kept scores says the numerator was a score and holds no vector, so the
@@ -322,21 +455,40 @@ ipw_spec_joint_models <- function(
     numerator <- "marginal"
   }
 
+  # An integrated dose numerator is the conditional density averaged over the
+  # units the dose model was fit to, so the average has to be rebuilt over that
+  # model's rows rather than over the rows `.data` restricted the designs above
+  # to. It is the one component that reads such a design, and where the caller
+  # supplied no frame the two designs are one design and nothing extra is read.
+  fit_designs <- rep(list(NULL), length(fits))
+  if (!is.null(.data) && identical(numerator, "integrated")) {
+    fit_designs[[dose_idx]] <- ipw_integrated_fit_design(
+      fits[[dose_idx]],
+      dose_model,
+      names[[dose_idx]],
+      call = call
+    )
+  }
+
   # Each component's stabilizing numerator is estimated in a block of its own,
   # the way the single-treatment routes estimate the one numerator they carry,
   # so a component stabilized on a fitted model is stacked rather than refused.
   # The blocks are built here, where the numerator models each go through the
-  # guards their own route puts them through.
+  # guards their own route puts them through, and their designs are rebuilt from
+  # `.data` where the caller supplied one, over the rows every other design here
+  # is built over.
   stab_components <- ipw_joint_models_stab_components(
     wts,
     types = types,
     names = names,
     n = n,
+    fits = fits,
     numerator = numerator,
     recorded = ratio$numerator,
     numerator_model = ratio$numerator_model,
     scores = scores,
     dose_idx = dose_idx,
+    .data = if (!is.null(.data)) mm_data,
     call = call
   )
 
@@ -402,15 +554,17 @@ ipw_spec_joint_models <- function(
     )
   }
 
-  # A discrete treatment enters as the 0/1 indicator of its non-reference level,
-  # which is the coding its own binomial score is written against, and a dose
-  # enters as itself.
+  # A binary treatment enters as the 0/1 indicator of its non-reference level,
+  # which is the coding its own binomial score is written against; a categorical
+  # one as the reference-first indicator matrix its multinomial score is written
+  # against; and a dose as itself.
   exposures <- lapply(seq_along(treatments), function(i) {
-    if (identical(types[[i]], "continuous")) {
-      as.double(treatments[[i]])
-    } else {
+    switch(
+      types[[i]],
+      continuous = as.double(treatments[[i]]),
+      categorical = ipw_categorical_indicator(treatments[[i]]),
       ipw_recode_binary_exposure(treatments[[i]])
-    }
+    )
   })
 
   # A dose model whose spread the system estimates carries the conditional
@@ -422,6 +576,18 @@ ipw_spec_joint_models <- function(
     widths[[dose_idx]] <- widths[[dose_idx]] + 1L
   }
 
+  ks <- vapply(
+    seq_along(fits),
+    function(i) {
+      if (identical(types[[i]], "categorical")) {
+        nlevels(treatments[[i]])
+      } else {
+        2L
+      }
+    },
+    integer(1)
+  )
+
   list(
     exposure_type = "joint_models",
     estimand = estimand,
@@ -429,14 +595,20 @@ ipw_spec_joint_models <- function(
     exposure = exposures,
     ps = list(
       X = ps_X,
+      # A multinomial block is rebuilt through the softmax rather than through
+      # an inverse link, so a categorical component records none. A binary one
+      # records its family's, except where the fit carries no family: a
+      # two-level multinomial is a logistic regression whichever optimizer
+      # solved it, and its block reads the logit's inverse like any other.
       link = vapply(
         seq_along(fits),
         function(i) {
-          if (identical(types[[i]], "continuous")) {
-            dose_model$link
-          } else {
-            fits[[i]]$family$link
-          }
+          switch(
+            types[[i]],
+            continuous = dose_model$link,
+            categorical = NA_character_,
+            ipw_joint_models_link(fits[[i]])
+          )
         },
         character(1)
       ),
@@ -452,17 +624,30 @@ ipw_spec_joint_models <- function(
       psi_loss = dose_model$psi_loss,
       psi_k = dose_model$psi_k,
       penalty = dose_model$penalty,
-      k = 2L
+      # Per component, and over each fit's own rows rather than over the rows
+      # analyzed here, which is what the stabilization seeds are read from.
+      fit_exposure = lapply(fit_moments, `[[`, "exposure"),
+      fit_residuals = lapply(fit_moments, `[[`, "residuals"),
+      # The design those same rows enter through, which an integrated dose
+      # numerator reads its average over. Only a component that carries one has
+      # a slot filled here.
+      fit_X = fit_designs,
+      # How many levels each component's softmax reads its block over, which is
+      # what says where one level's run of coefficients ends and the next
+      # begins. A component that takes no softmax carries the two levels a
+      # discrete treatment has by default.
+      ks = ks
     ),
     # `wt_joint()` requires a continuous component to be stabilized, so a dose
-    # brings a stabilizing numerator with it, and a binary component may bring
+    # brings a stabilizing numerator with it, and a discrete component may bring
     # one of its own. Which numerator a component carries decides what the
     # system estimates for it: a marginal dose numerator is two moments of the
-    # exposure, a marginal binary one is a single proportion, a fitted model is
-    # its own coefficients, and an integrated one is built from the dose block
-    # and the data alone. `widths` says how wide each component's slice of the
-    # stabilization block is, so the block is sliced the way `ps$widths` slices
-    # the treatment blocks rather than by position.
+    # exposure, a marginal binary one is a single proportion, a marginal
+    # categorical one is the k - 1 free proportions of its levels, a fitted
+    # model is its own coefficients, and an integrated one is built from the
+    # dose block and the data alone. `widths` says how wide each component's
+    # slice of the stabilization block is, so the block is sliced the way
+    # `ps$widths` slices the treatment blocks rather than by position.
     stab = list(
       components = stab_components,
       widths = vapply(stab_components, function(x) x$width, integer(1))
@@ -472,8 +657,13 @@ ipw_spec_joint_models <- function(
     sigma = if (dose) ratio$sigma,
     # The points an integrated numerator averages the conditional density over,
     # which are a function of the exposure alone and so are fixed across the
-    # solve, as they were when `wt_joint()`'s dose component was built.
-    grid = if (dose) ipw_numerator_grid(exposures[[dose_idx]], numerator),
+    # solve, as they were when `wt_joint()`'s dose component was built. The dose
+    # they span is the fit's own, for the reason the average runs over that
+    # fit's units: a grid spanning the rows `.data` left interpolates a
+    # different function from the one the weights carry.
+    grid = if (dose) {
+      ipw_numerator_grid(fit_moments[[dose_idx]]$exposure, numerator)
+    },
     outcome = list(
       X = model.matrix(outcome_mod),
       y = ipw_outcome_numeric(fmla_extract_left_vctr(outcome_mod)),
@@ -493,15 +683,43 @@ ipw_spec_joint_models <- function(
   )
 }
 
-# The pairs of treatment types this route estimates: two binary treatments, or a
-# binary treatment and a dose. The position matters for the dose, which is
-# supported as the second treatment, the one whose model conditions on the
-# first: a dose is what the second factor of the factorization may be, and
-# nothing here carries the density of a first factor that is one.
+# The pairs of treatment types this route estimates: two discrete treatments,
+# each of them binary or categorical, or a discrete treatment and a dose. The
+# position matters for the dose, which is supported as the second treatment, the
+# one whose model conditions on the first: a dose is what the second factor of
+# the factorization may be, and nothing here carries the density of a first
+# factor that is one. A categorical treatment reads no order into the pair, its
+# score being the multinomial one whichever position it sits in, and the
+# vocabulary a dose is reported in names one level contrast per non-reference
+# level of the first treatment, so it has rows for however many it has.
 ipw_joint_models_supported <- list(
-  first = "binary",
-  second = c("binary", "continuous")
+  first = c("binary", "categorical"),
+  second = c("binary", "categorical", "continuous")
 )
+
+# The exposure type each component's block is written against, which is the type
+# the container recorded except where the model class says more than the fit
+# does. `joint_wt_models()` types a `nnet::multinom()` by its class, and a
+# multinomial fit over two levels is a logistic regression solved by a different
+# optimizer: the single-treatment binary route accepts one, `wt_ate()` on one
+# records `"binary"`, and its coefficients are a bare vector rather than the
+# level-by-term matrix the multinomial score is written over. The multinomial
+# block has no rows to write for it, since a softmax over two levels is the one
+# case `deli::ee_mlogit()` refuses, so what the block, the weight factor, and
+# the psw's own record say about such a fit is settled here, once, in favor of
+# the binary machinery all three of them already agree on.
+ipw_joint_models_component_types <- function(models) {
+  types <- models$exposure_type
+
+  two_level <- vapply(
+    models$models,
+    function(fit) inherits(fit, "multinom") && length(fit$lev) == 2L,
+    logical(1)
+  )
+
+  types[two_level] <- "binary"
+  types
+}
 
 check_ipw_joint_models_types <- function(
   exposure_type,
@@ -522,16 +740,18 @@ check_ipw_joint_models_types <- function(
 
   abort(
     c(
-      "{.fun ipw} currently supports a joint intervention on two binary \\
-      treatments, or on a binary treatment and a dose.",
+      "{.fun ipw} currently supports a joint intervention on two discrete \\
+      treatments, each of them binary or categorical, or on a discrete \\
+      treatment and a dose.",
       x = "The model named {.arg {bad}} fits a {.val {bad_type}} treatment as \\
       the {position} of the two.",
-      i = "The stacked system carries a binomial score for a binary treatment \\
-      and a linear score with a conditional variance for a dose. A categorical \\
-      treatment model sits at neither, and a dose is carried as the second \\
-      treatment alone.",
-      i = "Cross two binary treatments, weight a dose as the second treatment, \\
-      or report the two treatments separately."
+      i = "The stacked system carries a binomial score for a binary treatment, \\
+      a multinomial score for a categorical one, and a linear score with a \\
+      conditional variance for a dose. A dose is carried as the second \\
+      treatment, the one whose model conditions on the first, and nothing here \\
+      carries the density of a first factor that is one.",
+      i = "Cross two discrete treatments, weight a dose as the second of a \\
+      discrete first, or report the two treatments separately."
     ),
     error_class = "propensity_ipw_exposure_error",
     call = call
@@ -563,6 +783,94 @@ check_ipw_joint_model_weights <- function(
       i = "Refit {.arg {label}} without {.arg weights}."
     ),
     error_class = "propensity_ipw_ps_weights_error",
+    call = call
+  )
+}
+
+# Require a treatment read out of `.data` to code the way the model fit to it
+# codes it. Both halves ask the same thing of the column and differ only in
+# where the order it declares comes from: a factor declares it in its levels,
+# which `check_ipw_exposure_levels()` compares, and a column that carries no
+# levels of its own declares it in its values, since everything here levels such
+# a column by `sort(unique())` and reads the second level as the exposed group.
+#
+# The non-factor half is this route's alone. The single-treatment route refuses
+# a non-factor exposure outright, because the counterfactual rebuild there sets
+# the outcome design's exposure column to one value at a time and a column that
+# carries no levels cannot hold the rest; this route writes no such column, so a
+# character treatment is a coding it can rebuild and only a coding that
+# disagrees with the fit is a fault.
+#
+# What the fit codes by is its own response, which `xlevels` never records and
+# which a model that transforms it in place does not name after the column
+# either, so the fitted frame is the only place to read it. A fit whose frame
+# cannot be rebuilt leaves nothing to compare and is passed, and the
+# weight-consistency preflight is what reports it there.
+#
+# Only a definite inversion is refused: the same two labels in the other order.
+# Label sets that do not match at all say nothing about order, since a fit is
+# free to rename its response as it codes it, and a rename that agrees with the
+# column (`factor(a, labels = c("ctl", "trt"))` over a 0/1 column, where
+# `labels` assigns in sorted-value order) is the coding this route reads. A
+# rename that disagrees carries no evidence here either, and is left to the
+# weight-consistency preflight, which compares the weights the rebuilt column
+# produces against the ones the outcome model was fit under and so reads the
+# coding rather than the names. A column holding only one of the fitted values
+# is a third thing again, neither an order nor a rename, and it passes here so
+# that the crossing downstream can refuse it for what it is: a treatment
+# observed at one level, which no crossing can vary.
+check_ipw_joint_models_treatment_levels <- function(
+  exposure,
+  ps_mod,
+  exposure_name,
+  call = rlang::caller_env()
+) {
+  check_ipw_exposure_levels(
+    exposure,
+    ps_mod,
+    exposure_name,
+    arg = exposure_name,
+    call = call
+  )
+
+  # Read off the fitted frame, which a fit made with `model = FALSE` rebuilds
+  # from the call rather than keeps. That rebuild can read a changed `data`, so
+  # what comes back is advisory: it is enough to name an inversion it does see
+  # and never the only thing standing between a mis-coded column and the
+  # answer, which is what the preflight is for.
+  fit_levels <- ipw_fitted_response_levels(ps_mod)
+
+  if (is.null(fit_levels) || is.factor(exposure)) {
+    return(invisible(TRUE))
+  }
+
+  implied <- as.character(sort(unique(exposure)))
+
+  if (!setequal(implied, fit_levels) || identical(implied, fit_levels)) {
+    return(invisible(TRUE))
+  }
+
+  supplied_class <- stats::.MFclass(exposure)
+  supplied_article <- if (supplied_class %in% names(ipw_class_articles)) {
+    ipw_class_articles[[supplied_class]]
+  } else {
+    paste("a", class(exposure)[[1]], "vector")
+  }
+
+  abort(
+    c(
+      "{.arg .data} must supply {.val {exposure_name}} on the levels \\
+      {.arg {exposure_name}} was fit with, in that order.",
+      x = "{.arg .data} has {.val {exposure_name}} as {supplied_article}, \\
+      whose values level as {.val {implied}}; {.arg {exposure_name}} was fit \\
+      on {.val {fit_levels}}.",
+      x = "{.fun ipw} treats the second level of a binary treatment as the \\
+      exposed group, so a different order contrasts the levels the other way \\
+      round.",
+      i = "Supply {.val {exposure_name}} as a factor with the levels \\
+      {.arg {exposure_name}} was fit with."
+    ),
+    error_class = "propensity_ipw_data_error",
     call = call
   )
 }
@@ -639,13 +947,26 @@ ipw_joint_dose_rows <- function(
   columns <- which(term_of_column %in% which(reads_treatment))
   column_terms <- term_of_column[columns]
 
-  # A model in bare treatment terms is one the vocabulary describes, and it is
-  # reported in that vocabulary. Every other model reaches the coefficient
-  # surface. Nothing else decides this: a fit reports the surface its own
-  # marginal structural model has a reading for.
+  # A model in bare treatment terms, fit with an intercept, is one the
+  # vocabulary describes, and it is reported in that vocabulary. Every other
+  # model reaches the coefficient surface. Nothing else decides this: a fit
+  # reports the surface its own marginal structural model has a reading for.
+  #
+  # The intercept is part of the reading rather than a separate guard. Dropping
+  # it expands a factor treatment to an indicator for every level rather than
+  # for the non-reference levels alone, and where the columns survive that, as
+  # a 0/1 numeric treatment's do, the forced zero moves what the coefficients
+  # mean instead: the treatment's own coefficient becomes a mean at a dose of
+  # zero rather than a difference between its levels there. Either way no row
+  # the vocabulary writes would be true of the fit, and the coefficient surface
+  # names each row after the column it multiplies and so claims neither.
   bare <- ipw_joint_dose_bare_terms(names)
+  intercept <- identical(
+    as.integer(attr(stats::terms(outcome_mod), "intercept")),
+    1L
+  )
 
-  if (all(term_labels[reads_treatment] %in% bare$admitted)) {
+  if (intercept && all(term_labels[reads_treatment] %in% bare$admitted)) {
     return(ipw_joint_dose_vocabulary_rows(
       out_X,
       columns,
@@ -654,6 +975,12 @@ ipw_joint_dose_rows <- function(
       term_labels,
       names,
       treatments,
+      # The dose the outcome model itself was fit on, read off its frame rather
+      # than off its design: a model may carry the dose in an interaction and in
+      # no column of its own, and whether the dose moved is a fact about the
+      # variable rather than about which columns happen to be built from it
+      # alone.
+      model.frame(outcome_mod)[[names[[2]]]],
       link,
       call = call
     ))
@@ -665,16 +992,19 @@ ipw_joint_dose_rows <- function(
 # The vocabulary surface, which a model linear in each treatment reports. Each
 # row is named the way the declared route names its rows: `contrast` names the
 # treatment being varied and how, and `group` says where in the other
-# treatment's range the row is evaluated. The binary treatment's coefficient is
-# its effect at a dose of zero, the dose's is its slope at the binary
-# treatment's reference level, and the interaction row keeps the discrete
-# route's idiom of a group comparing the other treatment's levels, which for a
-# dose is a one-unit step. An additive model evaluates neither row anywhere in
-# particular, so both are reported as overall.
+# treatment's range the row is evaluated. A first treatment's coefficient is the
+# effect of one of its level contrasts at a dose of zero, the dose's is its
+# slope at that treatment's reference level, and the interaction row keeps the
+# discrete route's idiom of a group comparing the other treatment's levels,
+# which for a dose is a one-unit step. An additive model evaluates neither
+# reading anywhere in particular, so all of them are reported as overall.
 #
-# A bare term of a binary treatment or of a dose contributes exactly one column,
-# so the columns and the terms they belong to are in step here and each row is
-# one coefficient.
+# A bare term of the first treatment contributes one column per non-reference
+# level, so a term is not what a row reports and the level a row names is read
+# off the column's position within its own term. A binary treatment is the one
+# non-reference level of that rule rather than a case of its own, which is what
+# makes the three rows a binary crossing reports the degenerate shape of this
+# surface rather than a separate one.
 ipw_joint_dose_vocabulary_rows <- function(
   out_X,
   columns,
@@ -683,10 +1013,16 @@ ipw_joint_dose_vocabulary_rows <- function(
   term_labels,
   names,
   treatments,
+  dose,
   link,
   call = rlang::caller_env()
 ) {
-  level_labels <- as.character(ipw_joint_models_level_values(treatments[[1]]))
+  level_values <- ipw_joint_models_level_values(treatments[[1]])
+  level_labels <- as.character(level_values)
+  column_levels <- ipw_joint_dose_column_levels(
+    column_terms,
+    length(level_labels)
+  )
 
   # A bare term says which variables a column is built from and nothing about
   # how it is coded, so the columns themselves are read here. Each reported row
@@ -695,20 +1031,45 @@ ipw_joint_dose_vocabulary_rows <- function(
   check_ipw_joint_dose_coding(
     out_X,
     columns,
-    ipw_joint_dose_columns(reads, column_terms, treatments),
+    ipw_joint_dose_columns(
+      reads,
+      column_terms,
+      column_levels,
+      treatments,
+      level_values
+    ),
     term_labels[column_terms],
     names,
     level_labels,
+    # Which reported column reads what, so that a coding can be told apart by
+    # the column that carries it rather than by the variables its term names.
+    reads_dose = reads[[2]][column_terms],
+    reads_treatment = reads[[1]][column_terms],
+    # Whether the dose the outcome model was fit on is the dose the treatment
+    # models hold, compared as the columns below are compared. The design says
+    # nothing about this: a model carrying the dose in an interaction alone has
+    # no column of it to read, and one that does carry such a column is no more
+    # informative, since the same variable built it.
+    dose_moved = !identical(
+      unname(as.double(dose)),
+      unname(as.double(treatments[[2]]))
+    ),
     call = call
   )
 
   interacted <- any(reads[[1]] & reads[[2]])
-  level_contrast <- ipw_joint_contrast_label(names[[1]], level_labels, 2L)
   level_effect <- ipw_effect_label(link, "diff", call = call)
   dose_contrast <- paste0(names[[2]], ": per unit")
   dose_effect <- ipw_effect_label(link, "slope", call = call)
 
-  named <- lapply(column_terms, function(term) {
+  named <- lapply(seq_along(column_terms), function(i) {
+    term <- column_terms[[i]]
+    level_contrast <- ipw_joint_contrast_label(
+      names[[1]],
+      level_labels,
+      column_levels[[i]]
+    )
+
     if (reads[[1]][[term]] && reads[[2]][[term]]) {
       return(c(
         level_effect,
@@ -823,29 +1184,80 @@ check_ipw_joint_dose_terms <- function(
   )
 }
 
-# The column each reported term has to contribute for the row it lands in to be
-# true: the indicator of the first treatment's non-reference level, the dose
-# itself, or their product. The indicator is built with the recode the weight
-# machinery uses, so what is compared is the coding the estimator assumes
-# against the coding the outcome model was fit under.
-ipw_joint_dose_columns <- function(reads, column_terms, treatments) {
-  indicator <- ipw_recode_binary_exposure(treatments[[1]])
+# Which of the first treatment's levels each reported column is a claim about.
+# Under treatment contrasts a bare term of that treatment contributes one column
+# per non-reference level, in the order the levels are in, so a column's
+# position within its own term counts off the levels from the reference: the
+# term's first column is the second level. A term reading the dose alone
+# contributes one column and lands on the second level too, which no row of it
+# ever reads.
+#
+# A term contributing more columns than there are non-reference levels is one
+# the treatment is coded some other way in, or one an absent dose term expanded
+# to a column per level, and the index is held at the last level so that the
+# column comparison is what reports either rather than an out-of-range
+# subscript.
+ipw_joint_dose_column_levels <- function(column_terms, n_levels) {
+  within <- stats::ave(
+    seq_along(column_terms),
+    column_terms,
+    FUN = seq_along
+  )
+
+  pmin(as.integer(within) + 1L, n_levels)
+}
+
+# The column each reported column has to be for the row it lands in to be true:
+# the indicator of the first treatment level that row names, the dose itself, or
+# their product. The indicator is the one the multinomial score and the
+# categorical weight are both written over, which at two levels is the 0/1
+# recode the binary weight machinery makes, so what is compared is the coding
+# the estimator assumes against the coding the outcome model was fit under.
+ipw_joint_dose_columns <- function(
+  reads,
+  column_terms,
+  column_levels,
+  treatments,
+  level_values
+) {
   dose <- as.double(treatments[[2]])
 
-  lapply(column_terms, function(term) {
-    if (reads[[1]][[term]] && reads[[2]][[term]]) {
+  lapply(seq_along(column_terms), function(i) {
+    term <- column_terms[[i]]
+
+    if (!reads[[1]][[term]]) {
+      return(dose)
+    }
+
+    indicator <- ipw_joint_dose_indicator(
+      treatments[[1]],
+      level_values,
+      column_levels[[i]]
+    )
+
+    if (reads[[2]][[term]]) {
       return(indicator * dose)
     }
 
-    if (reads[[1]][[term]]) {
-      return(as.double(indicator))
-    }
-
-    dose
+    indicator
   })
 }
 
-# Refuse an outcome model whose treatment columns are coded some other way.
+# The 0/1 indicator of one of the first treatment's levels. A factor reads its
+# indicator off the reference-first matrix the categorical block is written
+# over, and a treatment of any other type is compared against the level value
+# itself, which for the two values a binary treatment takes is the recode
+# `ipw_recode_binary_exposure()` makes of it.
+ipw_joint_dose_indicator <- function(treatment, level_values, level) {
+  if (is.factor(treatment)) {
+    return(as.double(ipw_categorical_indicator(treatment)[, level]))
+  }
+
+  as.double(treatment == level_values[[level]])
+}
+
+# Refuse an outcome model whose treatment columns are not the ones the reported
+# rows describe, and say which of the three things a caller did made them so.
 #
 # The bare-term boundary reads term labels, which say which variables a column
 # is built from and nothing about how the column is built. A factor treatment
@@ -859,11 +1271,35 @@ ipw_joint_dose_columns <- function(reads, column_terms, treatments) {
 #
 # Reading the columns rather than the contrast attributes is what makes this
 # hold for codings not considered here, including one a user writes by hand and
-# attaches to the factor. The comparison is exact: an indicator is an exact 0/1
-# double and an interaction column is one multiplication of the same two
-# vectors, so a column that is the one the row describes agrees to the last bit
-# and anything else is a different quantity rather than a rounding of the same
-# one.
+# attaches to the factor, and at more than two levels, where a polynomial coding
+# rescales every column the term contributes rather than the one. The comparison
+# is exact: an indicator is an exact 0/1 double and an interaction column is one
+# multiplication of the same two vectors, so a column that is the one the row
+# describes agrees to the last bit and anything else is a different quantity
+# rather than a rounding of the same one.
+#
+# The same comparison catches a second thing, which is a dose the outcome model
+# was fit on values of that the treatment models never saw: the estimator holds
+# the dose those models were fit to, so a marginal structural model fit on a
+# rescaled copy of that column is a model of a different variable, and its
+# weights were built for the original. That is a mismatch between models rather
+# than a coding, and it is decided by `dose_moved`, which compares the variables
+# rather than a column, since a model may hold the dose in an interaction and
+# carry no column of it to read.
+#
+# The third thing is the formula's own doing rather than the caller's coding. A
+# factor crossed with the dose where the dose has no term of its own is coded
+# with one indicator per level rather than with the contrasts it carries. The
+# extra column is a column no row names, and every reported column after it is a
+# claim about the level to its left. Refitting the treatment as an unordered
+# factor would change nothing there, so this is told apart from a coding and
+# given the remedy that does change it: the formula.
+#
+# The three are independent faults, and a model carrying more than one is told
+# all of them, on the line naming the causes and in the bullets alike, since a
+# caller who fixed one alone would meet the rest next. They are told in the
+# order a caller works through them: the coding, then a dose no rewriting of the
+# formula would make the weights right for, then the formula itself.
 check_ipw_joint_dose_coding <- function(
   out_X,
   columns,
@@ -871,6 +1307,9 @@ check_ipw_joint_dose_coding <- function(
   term_labels,
   names,
   level_labels,
+  reads_dose,
+  reads_treatment,
+  dose_moved,
   call = rlang::caller_env()
 ) {
   mismatched <- !vapply(
@@ -885,34 +1324,157 @@ check_ipw_joint_dose_coding <- function(
     return(invisible(TRUE))
   }
 
-  bad_terms <- term_labels[mismatched]
+  bad_terms <- unique(term_labels[mismatched])
   first <- names[[1]]
   second <- names[[2]]
   reference <- level_labels[[1]]
   focal <- level_labels[[2]]
+  non_reference <- level_labels[-1]
 
-  abort(
+  # Which of the three causes to describe. Each is decided on its own terms, and
+  # a model carrying more than one is told all of them: they are independent
+  # faults, and a caller who fixed one alone would meet the rest next.
+  #
+  # The dose is decided by the variable, above. A treatment coded some other way
+  # moves the columns reading the treatment, and every interaction column with
+  # those, so a mismatched column reading no dose is what says the coding is a
+  # cause. Where neither holds, the columns that disagree are the crossing's,
+  # and the expansion below is what put them there.
+  #
+  # The expansion is read off the design rather than off what disagrees: the
+  # crossing contributes a column for every level rather than for the
+  # non-reference levels alone, and the model carries no column reading the dose
+  # by itself, which is the shape a dose with no term of its own leaves. That
+  # shape is what the formula is, so it holds whatever the treatment's contrasts
+  # are and whether or not the dose is the one the treatment models hold.
+  crossed <- reads_dose & reads_treatment
+  expanded <- !any(reads_dose & !reads_treatment) &&
+    sum(crossed) == length(level_labels)
+  coding_moved <- (!dose_moved && !expanded) || any(mismatched & !reads_dose)
+
+  # Two levels leave one indicator and one numeric coding of it, and more than
+  # two leave one indicator per non-reference level and no numeric coding at
+  # all, since no single column carries what the several of them say. The
+  # difference is in what the columns are and in what a caller can do about
+  # them, so it is in the wording rather than in the comparison above.
+  binary <- length(level_labels) == 2L
+
+  coding <- if (binary) {
+    "The reported rows name the coefficients of a model in which \\
+    {.val {first}} enters as 0 for {.val {reference}} and 1 for \\
+    {.val {focal}}, {.val {second}} enters as itself, and their interaction \\
+    is the product of the two."
+  } else {
+    "The reported rows name the coefficients of a model in which \\
+    {.val {first}} enters as one 0/1 indicator per non-reference level, \\
+    {.val {non_reference}} in that order and each against \\
+    {.val {reference}}, {.val {second}} enters as itself, and each \\
+    interaction column is the product of one indicator with it."
+  }
+
+  # A treatment with two levels has a numeric coding that contributes the same
+  # column its factor coding does, and one with more than two has none, so the
+  # sentence after the remedy says which and the remedy itself names the factor
+  # coding either way. The model reaching here was fit with an intercept, since
+  # a model without one reports the coefficient surface and never arrives, so
+  # no reading of these columns turns on one.
+  remedy <- if (binary) {
+    "Refit {.arg outcome_mod} with {.val {first}} as an unordered factor \\
+    under treatment contrasts. A treatment with two levels also has a numeric \\
+    coding whose bare term contributes that column, 0 for {.val {reference}} \\
+    and 1 for {.val {focal}}."
+  } else {
+    "Refit {.arg outcome_mod} with {.val {first}} as an unordered factor \\
+    under treatment contrasts. A treatment with more than two levels has no \\
+    numeric coding whose bare term contributes those columns."
+  }
+
+  # What the reported rows are is context the coding and the expansion are both
+  # read against rather than part of either, so it is said once ahead of them
+  # and a model carrying both faults does not say it twice.
+  reading_bullets <- if (coding_moved || expanded) {
+    c(i = coding)
+  }
+
+  coding_bullets <- if (coding_moved) {
     c(
-      "{.fun ipw} reports a joint intervention with a dose from a marginal \\
-      structural model whose treatment columns are the treatments themselves.",
-      x = "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} \\
-      a column coded some other way.",
-      i = "The reported rows name the coefficients of a model in which \\
-      {.val {first}} enters as 0 for {.val {reference}} and 1 for \\
-      {.val {focal}}, {.val {second}} enters as itself, and their interaction \\
-      is the product of the two.",
       i = "A contrast coding other than treatment contrasts rescales or \\
       recenters those columns without changing what the formula says. An \\
       ordered factor carries polynomial contrasts, and \\
       {.code options(contrasts = )} sets a coding for every factor in the \\
       session.",
-      i = "A model with no intercept, written {.code - 1} or {.code + 0}, \\
-      expands a factor treatment to an indicator for every level, so its first \\
-      column is the reference-level indicator rather than the 0/1 indicator \\
-      the rows describe. Keep the intercept, or code {.val {first}} as a 0/1 \\
-      numeric.",
-      i = "Refit {.arg outcome_mod} with {.val {first}} as a 0/1 numeric, or as \\
-      an unordered factor under treatment contrasts."
+      i = remedy
+    )
+  }
+
+  # The remedy an expansion takes is the formula, and no coding fixes it: the
+  # other way out of a refusal on this surface is a model the vocabulary has no
+  # reading for, which reports its coefficients instead, and every model written
+  # in bare terms with an intercept is read here. So the bullet says plainly
+  # what to write.
+  expansion_bullets <- if (expanded) {
+    c(
+      i = "A factor crossed with the dose is coded with one indicator per \\
+      level, rather than with the contrasts it carries, wherever the dose has \\
+      no term of its own. {.val {second}} has no term of its own in \\
+      {.arg outcome_mod}, so the design gains a column for {.val {reference}} \\
+      that no reported row names and each column after it holds the level \\
+      before it.",
+      i = "Cross the two in {.arg outcome_mod}, as \\
+      {.code {first} * {second}}, which gives {.val {second}} a term of its \\
+      own and reports on this vocabulary. A model written in bare terms with \\
+      an intercept has no other surface to report, so the formula is what \\
+      changes here."
+    )
+  }
+
+  dose_bullets <- if (dose_moved) {
+    c(
+      i = "The {.val {second}} column of {.arg outcome_mod} has to hold the \\
+      same values the treatment models were fit to. {.fun ipw} reads the dose \\
+      from those models, or from {.arg .data} where one is supplied.",
+      i = "A dose rescaled or recentered in the data after those models were \\
+      fit leaves them and {.arg outcome_mod} describing different variables, \\
+      and the weights {.arg outcome_mod} carries were built for the dose the \\
+      treatment models hold.",
+      i = "Working on a rescaled dose is supported. Rescale it before fitting \\
+      every model, the treatment models, any numerator model, and \\
+      {.arg outcome_mod}, or write the transformation into the formula of \\
+      {.arg outcome_mod}, as {.code I({second} / 10)} or \\
+      {.code scale({second})}, which reports the coefficient surface."
+    )
+  }
+
+  header <- "{.fun ipw} reports a joint intervention with a dose from a \\
+    marginal structural model whose treatment columns are the treatments \\
+    themselves."
+
+  # The line a reader sees first names the terms and every cause the bullets go
+  # on to describe, run together in the order the bullets themselves stand in,
+  # so that the line and the bullets under it describe the same model. Each
+  # phrase is written once and composed here rather than once per pairing.
+  faults <- c(
+    if (coding_moved) "a column coded some other way",
+    if (dose_moved) {
+      "a column built from a dose the treatment models were not fit to"
+    },
+    if (expanded) "one column per level of {.val {first}}"
+  )
+
+  cause <- paste0(
+    "{.code {bad_terms}} in {.arg outcome_mod} {?contributes/contribute} ",
+    cli::ansi_collapse(faults),
+    "."
+  )
+
+  abort(
+    c(
+      header,
+      x = cause,
+      reading_bullets,
+      coding_bullets,
+      dose_bullets,
+      expansion_bullets
     ),
     error_class = "propensity_ipw_msm_error",
     call = call
@@ -940,6 +1502,42 @@ ipw_joint_models_design <- function(fit, call = rlang::caller_env()) {
   design
 }
 
+# A treatment model's design and its response together, for a fit that keeps no
+# model frame and rebuilds one by re-evaluating its fitting call. Reading the two
+# separately would evaluate that call twice, which matters whenever evaluating it
+# is expensive or has an effect of its own. The refusal is the design's, since a
+# frame that cannot be rebuilt loses both halves at once.
+ipw_joint_models_recover <- function(fit, call = rlang::caller_env()) {
+  recovered <- tryCatch(ipw_recover_ps_data(fit), error = function(e) e)
+
+  if (inherits(recovered, "error")) {
+    abort(
+      c(
+        "Can't reconstruct the data behind a treatment model.",
+        x = "{conditionMessage(recovered)}",
+        i = "Refit the treatment models where the data they were fit to is \\
+        still available."
+      ),
+      error_class = "propensity_ipw_data_error",
+      call = call
+    )
+  }
+
+  recovered
+}
+
+# The link a binary component's block is written against. Every class this route
+# stacks a binomial score for records it on its family, except a
+# `nnet::multinom()`, which records no family at all: its own fit maximizes a
+# softmax likelihood, which over two levels is the logistic one.
+ipw_joint_models_link <- function(fit) {
+  if (inherits(fit, "multinom")) {
+    return("logit")
+  }
+
+  fit$family$link
+}
+
 ipw_joint_models_treatment <- function(fit, call = rlang::caller_env()) {
   values <- tryCatch(fmla_extract_left_vctr(fit), error = function(e) e)
 
@@ -959,14 +1557,22 @@ ipw_joint_models_treatment <- function(fit, call = rlang::caller_env()) {
   values
 }
 
-# The frame the counterfactual designs are rebuilt from: `.data` when the caller
-# supplied one and the outcome model's own frame otherwise, which is where both
-# treatment columns already sit.
+# The frame every design this route builds is rebuilt from: `.data` when the
+# caller supplied one and the outcome model's own frame otherwise, which is
+# where both treatment columns already sit.
+#
+# Every guard the single-treatment routes run over a supplied `.data` runs here,
+# read for the models this route holds: the columns the rebuilds need have to be
+# there before any of them goes looking, the frame has to describe the rows the
+# fits analyzed, the columns have to arrive under the coding the fits recorded,
+# and none of them may be missing a value, which `model.frame()` would drop a
+# row for while the weights kept it.
 ipw_joint_models_frame <- function(
   outcome_mod,
   .data,
   fits,
   treatment_names,
+  numerator_mods = NULL,
   call = rlang::caller_env()
 ) {
   if (is.null(.data)) {
@@ -977,6 +1583,19 @@ ipw_joint_models_frame <- function(
     return(frame)
   }
 
+  models <- ipw_joint_models_fit_args(
+    fits,
+    treatment_names,
+    outcome_mod,
+    numerator_mods
+  )
+  required <- ipw_joint_models_required_columns(
+    outcome_mod,
+    treatment_names,
+    models
+  )
+  assert_columns_exist(.data, required, call = call)
+
   n_fitted <- nrow(stats::model.frame(outcome_mod))
 
   # A set of fits made under `na.exclude` analyzed the rows complete over the
@@ -985,12 +1604,6 @@ ipw_joint_models_frame <- function(
   # what the single-model routes do with the same helper; a frame that is
   # longer for any other reason has no such restriction to make and keeps the
   # report below.
-  required <- unique(c(
-    treatment_names,
-    fmla_extract_left_vars(outcome_mod),
-    unlist(lapply(fits, ipw_model_covariates)),
-    ipw_model_covariates(outcome_mod)
-  ))
   .data <- restrict_ipw_data(.data, required, n_fitted)
 
   if (!identical(nrow(.data), n_fitted)) {
@@ -1007,7 +1620,120 @@ ipw_joint_models_frame <- function(
     )
   }
 
+  check_ipw_data_types(.data, models, outcome_mod, call = call)
+  check_ipw_data_complete(.data, required, call = call)
+
   .data
+}
+
+# The fits a `.data` guard reads on this route, keyed by the name the caller
+# would have to look at. A treatment model arrived under the name of the
+# treatment it fits, so that is what names it; a numerator model arrived under
+# the `stabilize` argument of the component's own weights, and the components
+# name it together, since a column two numerators read is one recoding either
+# way.
+ipw_joint_models_fit_args <- function(
+  fits,
+  treatment_names,
+  outcome_mod,
+  numerator_mods = NULL
+) {
+  numerators <- numerator_mods[!vapply(numerator_mods, is.null, logical(1))]
+
+  c(
+    stats::setNames(fits, treatment_names),
+    list(outcome_mod = outcome_mod),
+    stats::setNames(numerators, rep("stabilize", length(numerators)))
+  )
+}
+
+# The columns of `.data` the rebuilds read: both treatments, whatever the
+# outcome model's response is computed from, and every covariate any of the fits
+# reads, a numerator model's among them.
+ipw_joint_models_required_columns <- function(
+  outcome_mod,
+  treatment_names,
+  models
+) {
+  unique(c(
+    treatment_names,
+    fmla_extract_left_vars(outcome_mod),
+    unlist(lapply(models, ipw_model_covariates))
+  ))
+}
+
+# The numerator models the components' stabilization blocks are estimated from,
+# one entry per component and NULL where a component's numerator is not a fitted
+# model. A discrete component's model is recorded on the product itself and a
+# dose's on its density record, and the accessor spans both.
+#
+# What decides whether a component's model is read at all is what the record
+# says stabilized that component: a score is the numerator itself, an
+# unstabilized component has none, and a dose is read for the model only where
+# its density record says a model is what its numerator was.
+ipw_joint_models_numerator_models <- function(wts, dose_idx) {
+  meta <- joint_wt_meta(wts)
+  models <- joint_wt_numerator_models(meta)
+  stabilized <- meta$stabilized
+  scores <- joint_wt_stabilization_scores(meta)
+
+  lapply(seq_along(models), function(i) {
+    if (identical(i, dose_idx)) {
+      density <- joint_wt_dose_density(wts, dose_idx)
+
+      return(if (identical(density$numerator, "model")) models[[i]])
+    }
+
+    if (isTRUE(stabilized[[i]]) && is.null(scores[[i]])) {
+      models[[i]]
+    }
+  })
+}
+
+# The response a treatment model was fit against and the residuals it left, both
+# over the model's own rows. The moments the component's stabilization was built
+# at were computed from exactly these, and the rows `.data` leaves need not be
+# the rows the fit was made over, so the seeds read them from here rather than
+# recomputing them over the rows the system goes on to solve over.
+#
+# Both are read off the fit rather than out of its model frame, which a fit made
+# with `model = FALSE` in a function whose frame is gone has none of: the
+# response is the conditional mean plus the residual around it, and both are
+# kept whatever the frame is. Reading them on the response scale is what puts
+# their sum on the treatment's own scale under a link, and it is the 0/1 coding
+# for a discrete treatment, whose binomial fit takes its first level as zero.
+# A fit made under `na.exclude` pads both out to the length of the frame it was
+# given rather than to the rows it analyzed, so the padding is dropped.
+#
+# A multinomial reports both as n-by-K matrices, one column per level, and their
+# sum is the reference-first indicator matrix of the level each of its rows took.
+# That matrix is what a component's marginal numerator is the column means of, so
+# it is what the exposure moment carries. It leaves no residual of its own: a
+# multinomial's numerator is estimated from the levels rather than from a
+# residual around a single fitted mean.
+#
+# The type rather than the shape decides which of the two a component gets, since
+# a two-level multinomial reports its single column in matrix form while the
+# block written for it is the binary one, whose numerator is a proportion of a
+# 0/1 response and whose seeds read a residual around one fitted mean.
+ipw_joint_models_fit_moments <- function(fit, type) {
+  residuals <- stats::residuals(fit, type = "response")
+
+  if (is.matrix(residuals) && identical(type, "categorical")) {
+    indicator <- stats::fitted(fit) + residuals
+    kept <- rowSums(is.na(residuals)) == 0
+
+    return(list(
+      exposure = indicator[kept, , drop = FALSE],
+      residuals = NULL
+    ))
+  }
+
+  residuals <- as.double(residuals)
+  response <- as.double(stats::fitted(fit)) + residuals
+  kept <- !is.na(residuals)
+
+  list(exposure = response[kept], residuals = residuals[kept])
 }
 
 # Everything the stack multiplies is sized to the outcome model's observations,
@@ -1115,6 +1841,7 @@ ipw_joint_models_weight_fn <- function(
     switch(
       type,
       binary = ipw_binary_weight_fn(estimand),
+      categorical = ipw_categorical_weight_fn(estimand),
       continuous = ipw_continuous_weight_fn(estimand, call = call)
     )
   })
@@ -1134,32 +1861,41 @@ ipw_joint_models_weight_fn <- function(
 # The parameters those slices hold are named `stab_<component>_<parameter>`,
 # since a joint system carries two components and a name saying only which role
 # a parameter plays would not say whose. A marginal binary numerator is one
-# proportion, `pi`; a marginal dose numerator is the exposure's two moments,
-# `mu` and `sigma2`; and a fitted numerator is one parameter per column of its
-# own design, followed for a dose by `sigma2`, the spread its density is read
+# proportion, `pi`; a marginal categorical one is the k - 1 free proportions of
+# its own levels; a marginal dose numerator is the exposure's two moments, `mu`
+# and `sigma2`; and a fitted numerator is one parameter per column of its own
+# design, one run of them per non-reference level where that design is a
+# multinomial's, followed for a dose by `sigma2`, the spread its density is read
 # at. `ipw_init_joint_models_stab()` writes those names and is the one place
 # they are written.
 #
-# A binary component's numerator model is recorded on the product itself and a
+# A discrete component's numerator model is recorded on the product itself and a
 # dose's on its density record, so the two are read from the places their own
 # routes read them from and put through the guards their own routes apply. A
 # score is read from the product either way, since a vector the caller computed
 # belongs to no model and to no density.
+#
+# `fits` is the components' own treatment models, which a categorical
+# component's numerator is read against: how many levels its marginal numerator
+# is free over, and whether the fit handed to `stabilize` declares those levels
+# in the order everything the block does is positional in.
 ipw_joint_models_stab_components <- function(
   wts,
   types,
   names,
   n,
+  fits,
   numerator,
   recorded,
   numerator_model,
   scores,
   dose_idx,
+  .data = NULL,
   call = rlang::caller_env()
 ) {
   meta <- joint_wt_meta(wts)
   stabilized <- meta$stabilized
-  binary_models <- joint_wt_numerator_models(meta)
+  component_models <- joint_wt_numerator_models(meta)
   # Whether the record could have kept a score at all. A product written before
   # the slot existed says a discrete component was stabilized without saying
   # what by, so the marginal proportion stands in for a score of the caller's
@@ -1181,6 +1917,7 @@ ipw_joint_models_stab_components <- function(
         scores[[i]],
         names[[i]],
         n,
+        .data = .data,
         call = call
       ))
     }
@@ -1214,7 +1951,35 @@ ipw_joint_models_stab_components <- function(
       ))
     }
 
-    model <- ipw_binary_numerator_block(binary_models[[i]], call = call)
+    # Each type's numerator model goes through the block its own
+    # single-treatment route builds, so it meets the guards that route applies:
+    # the level order a multinomial numerator has to declare, the links a
+    # binomial one may take, and for both the refusal of case weights, the rank
+    # requirement, and the recovery of a design from a fit that keeps no model
+    # frame.
+    #
+    # The block is told which component the numerator was built for, so the
+    # guards that report a fit as the wrong one name that component. Both
+    # components' numerators arrive in the same argument, and a refusal naming
+    # the argument alone leaves a caller with two stabilized components unable
+    # to tell which fit it is about.
+    categorical <- identical(types[[i]], "categorical")
+    model <- if (categorical) {
+      ipw_categorical_numerator_block(
+        component_models[[i]],
+        fits[[i]],
+        .data = .data,
+        component = names[[i]],
+        call = call
+      )
+    } else {
+      ipw_binary_numerator_block(
+        component_models[[i]],
+        .data = .data,
+        component = names[[i]],
+        call = call
+      )
+    }
 
     if (is.null(model)) {
       return(list(
@@ -1222,7 +1987,11 @@ ipw_joint_models_stab_components <- function(
         numerator = "marginal",
         model = NULL,
         score = NULL,
-        width = 1L,
+        # A binary component's marginal numerator is the single proportion that
+        # took the non-reference level, and a categorical one's is the k - 1
+        # free proportions its levels leave, the reference level's completing
+        # the set.
+        width = if (categorical) length(fits[[i]]$lev) - 1L else 1L,
         # A record that keeps scores says the marginal proportion is what
         # stabilized this component, unless it also records that the component's
         # score was dropped. One written before it kept them says only that
@@ -1232,10 +2001,11 @@ ipw_joint_models_stab_components <- function(
     }
 
     check_ipw_numerator_model(
-      binary_models[[i]],
+      component_models[[i]],
       model,
       names[[i]],
       n,
+      component = names[[i]],
       call = call
     )
 
@@ -1244,7 +2014,10 @@ ipw_joint_models_stab_components <- function(
       numerator = "model",
       model = model,
       score = NULL,
-      width = ncol(model$X),
+      # A binomial numerator holds one coefficient per column of its design, and
+      # a multinomial one holds a run of them per non-reference level, which the
+      # block has already flattened.
+      width = if (categorical) length(model$coefs) else ncol(model$X),
       stand_in = FALSE
     )
   })
@@ -1261,6 +2034,7 @@ ipw_joint_models_dose_stab <- function(
   score,
   name,
   n,
+  .data = NULL,
   call = rlang::caller_env()
 ) {
   if (identical(numerator, "marginal")) {
@@ -1301,8 +2075,20 @@ ipw_joint_models_dose_stab <- function(
     ))
   }
 
-  model <- ipw_numerator_model_block(numerator_model, call = call)
-  check_ipw_numerator_model(numerator_model, model, name, n, call = call)
+  model <- ipw_numerator_model_block(
+    numerator_model,
+    .data = .data,
+    component = name,
+    call = call
+  )
+  check_ipw_numerator_model(
+    numerator_model,
+    model,
+    name,
+    n,
+    component = name,
+    call = call
+  )
 
   list(
     type = "continuous",
@@ -1352,6 +2138,26 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
     th <- th_ps[starts[[i]]:ends[[i]]]
     x <- spec$ps$X[[i]]
     stab <- spec$stab$components[[i]]
+
+    if (identical(spec$ps$types[[i]], "categorical")) {
+      k <- spec$ps$ks[[i]]
+
+      return(list(
+        type = "categorical",
+        coefs = th,
+        # The n-by-K softmax the multinomial score is written against, read
+        # reference level first, which is the column order the component's
+        # indicator matrix carries and the order its weight reads.
+        ps = ipw_categorical_ps(x, th, k),
+        extras = list(
+          stab_probs = ipw_categorical_stab_probs(stab, stab_th[[i]], k),
+          score = stab$score,
+          # The joint surface targets the joint ate, whose tilt is the constant
+          # one, so no component names a focal level.
+          focal_idx = NULL
+        )
+      ))
+    }
 
     if (!identical(spec$ps$types[[i]], "continuous")) {
       return(list(
@@ -1411,10 +2217,28 @@ ipw_joint_models_blocks <- function(spec, th_ps, th_stab) {
         # assume every dose was.
         density = spec$density,
         numerator = spec$numerator,
-        grid = spec$grid
+        grid = spec$grid,
+        # The conditional means an integrated numerator averages the density of,
+        # read over the dose fit's own rows at this value of theta. The average
+        # and the grid are halves of one reading, and the weights the caller
+        # carries are the fit's reading of both.
+        mu_avg = if (identical(spec$numerator, "integrated")) {
+          ps_fns$mean(ipw_joint_models_fit_design(spec, i), alpha)
+        }
       )
     )
   })
+}
+
+# The design a component's own rows enter through, carried only where `.data`
+# put the analyzed design over other rows; without that record the two are the
+# same design.
+ipw_joint_models_fit_design <- function(spec, i) {
+  if (!is.null(spec$ps$fit_X) && !is.null(spec$ps$fit_X[[i]])) {
+    return(spec$ps$fit_X[[i]])
+  }
+
+  spec$ps$X[[i]]
 }
 
 # The mean and the score the dose model contributes, read off the spec's record
@@ -1434,11 +2258,13 @@ ipw_joint_models_dose_fns <- function(spec) {
 }
 
 # One treatment model's score rows: the unweighted score its own fit sits at,
-# which for a dose is the equation its registry entry names rather than least
-# squares whatever the fit was. A dose model adds the row that estimates the
-# conditional variance its density ratio divides by, which is the mean squared
-# residual read against that entry's conditional mean; a dose whose spread the
-# caller fixed carries no such row, because a constant has no equation.
+# which for a categorical treatment is the multinomial score over its
+# reference-first indicator matrix and for a dose is the equation its registry
+# entry names rather than least squares whatever the fit was. A dose model adds
+# the row that estimates the conditional variance its density ratio divides by,
+# which is the mean squared residual read against that entry's conditional mean;
+# a dose whose spread the caller fixed carries no such row, because a constant
+# has no equation.
 ipw_joint_models_score_rows <- function(
   block,
   x,
@@ -1449,6 +2275,10 @@ ipw_joint_models_score_rows <- function(
   sigma = NULL,
   density = NULL
 ) {
+  if (identical(block$type, "categorical")) {
+    return(deli::ee_mlogit(block$coefs, X = x, y = y))
+  }
+
   if (!identical(block$type, "continuous")) {
     return(deli::ee_glm(
       block$coefs,
@@ -1475,9 +2305,10 @@ ipw_joint_models_score_rows <- function(
 # components' own order, each seeded at the exact root of the equation written
 # for it. A marginal dose numerator is the two moments of the exposure's own
 # density; a marginal binary one is the proportion that took the non-reference
-# level; a fitted one is the score its own class solves, followed for a dose by
-# the moment its spread is the root of. A component the system estimates no
-# numerator for contributes no rows at all.
+# level, and a marginal categorical one is that row read once per non-reference
+# level of its own treatment; a fitted one is the score its own class solves,
+# followed for a dose by the moment its spread is the root of. A component the
+# system estimates no numerator for contributes no rows at all.
 ipw_joint_models_stab_rows <- function(spec, th_stab, exposures) {
   slices <- ipw_joint_models_stab_slices(spec, th_stab)
 
@@ -1496,10 +2327,31 @@ ipw_joint_models_stab_rows <- function(spec, th_stab, exposures) {
         return(deli::ee_mean_variance(th, y = a))
       }
 
+      # A categorical component's exposure is its reference-first indicator
+      # matrix, so each non-reference level's proportion is estimated by the row
+      # its own column leaves, and the reference level's is what the k - 1 of
+      # them leave over.
+      if (identical(stab$type, "categorical")) {
+        return(do.call(
+          rbind,
+          lapply(seq_along(th), function(j) {
+            matrix(a[, j + 1] - th[[j]], nrow = 1)
+          })
+        ))
+      }
+
       return(matrix(a - th[[1]], nrow = 1))
     }
 
     model <- stab$model
+
+    # The numerator model's own score, which is the multinomial score the
+    # component's denominator block solves, written over the numerator's design
+    # and the same reference-first indicator matrix.
+    if (identical(stab$type, "categorical")) {
+      return(deli::ee_mlogit(th, X = model$X, y = a))
+    }
+
     p_n <- ncol(model$X)
 
     if (!identical(stab$type, "continuous")) {
@@ -1533,11 +2385,41 @@ ipw_joint_models_dose <- function(spec) {
   if (length(dose)) dose[[1]] else NULL
 }
 
+# The response a component's treatment model was fit against and the residuals
+# it left, over that model's own rows, which is where the moments the weights
+# were built at were read. `ipw_spec_joint_models()` carries both, because the
+# rows `.data` leaves need not be the rows a fit was made over. A spec assembled
+# without that record is one whose rows are the fits', so the rows it holds
+# answer the same question.
+ipw_joint_models_fit_exposure <- function(spec, i) {
+  recorded <- spec$ps$fit_exposure
+
+  if (!is.null(recorded)) {
+    return(recorded[[i]])
+  }
+
+  spec$exposure[[i]]
+}
+
+ipw_joint_models_fit_residuals <- function(spec, i, ps_fns) {
+  recorded <- spec$ps$fit_residuals
+
+  if (!is.null(recorded)) {
+    return(recorded[[i]])
+  }
+
+  spec$exposure[[i]] - ps_fns$mean(spec$ps$X[[i]], spec$ps$coefs[[i]])
+}
+
 # The treatment blocks' seed: each model's coefficients, and for a dose whose
 # spread the system estimates, the conditional variance of its density, read
-# against that model's own conditional mean and the exact root of the row that
-# estimates it. A dose whose spread the caller fixed seeds its coefficients
-# alone, since a constant is in no block.
+# from that model's own residuals and the exact root of the row that estimates
+# it. A dose whose spread the caller fixed seeds its coefficients alone, since a
+# constant is in no block.
+#
+# Those residuals are the fit's own rather than the ones the analyzed rows
+# leave. The weights were built at the fit's moment, and a seed at any other
+# moment rebuilds weights the caller was never given.
 ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
   dose <- ipw_joint_models_dose(spec)
   ps_fns <- if (!is.null(dose)) ipw_joint_models_dose_fns(spec)
@@ -1553,7 +2435,7 @@ ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
       return(alpha)
     }
 
-    resid <- spec$exposure[[i]] - ps_fns$mean(spec$ps$X[[i]], alpha)
+    resid <- ipw_joint_models_fit_residuals(spec, i, ps_fns)
     c(
       alpha,
       stats::setNames(
@@ -1577,6 +2459,13 @@ ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
 # carries two components and a name saying only which role a parameter plays
 # would not say whose. This is where that convention is written; every other
 # reader of the stabilization block slices it by the widths the spec records.
+# A categorical component composes it with the categorical block's own
+# `<level>:<term>`, which says which level's equation a parameter sits in.
+#
+# Every block is seeded at moments the fit it belongs to came to, taken over
+# that fit's rows, since those are the moments the weights were built at. The
+# rows the spec analyzes are what the equations solve the moments over, which is
+# the answer rather than the starting value.
 ipw_init_joint_models_stab <- function(spec) {
   blocks <- lapply(seq_along(spec$stab$components), function(i) {
     stab <- spec$stab$components[[i]]
@@ -1585,36 +2474,63 @@ ipw_init_joint_models_stab <- function(spec) {
       return(numeric(0))
     }
 
-    a <- spec$exposure[[i]]
     prefix <- paste0("stab_", spec$names[[i]], "_")
+    # The levels a categorical component's parameters are named for, read off
+    # the column order its indicator matrix carries, which is the order its
+    # block is laid out in on both sides of the weight.
+    levs <- colnames(spec$exposure[[i]])
 
     if (identical(stab$numerator, "marginal")) {
+      a_fit <- ipw_joint_models_fit_exposure(spec, i)
+
       if (identical(stab$type, "continuous")) {
-        mu_a <- mean(a)
+        mu_a <- mean(a_fit)
         return(stats::setNames(
-          c(mu_a, mean((a - mu_a)^2)),
+          c(mu_a, mean((a_fit - mu_a)^2)),
           paste0(prefix, c("mu", "sigma2"))
         ))
       }
 
+      # A categorical component's exposure moment is the fit's own
+      # reference-first indicator matrix, whose column means are the level
+      # proportions the k - 1 free ones are seeded at.
+      if (identical(stab$type, "categorical")) {
+        return(stats::setNames(
+          unname(colMeans(a_fit)[-1]),
+          paste0(prefix, levs[-1])
+        ))
+      }
+
       return(stats::setNames(
-        ipw_default_stab_seed(a),
+        ipw_default_stab_seed(a_fit),
         paste0(prefix, "pi")
       ))
     }
 
     model <- stab$model
+
+    # A multinomial numerator's block is the shape the component's own
+    # denominator block is: level-major and term-minor, under the joint route's
+    # prefix composed with the categorical block's own layout.
+    if (identical(stab$type, "categorical")) {
+      return(stats::setNames(
+        model$coefs,
+        ipw_name_categorical_coefs(levs[-1], colnames(model$X), prefix)
+      ))
+    }
+
     coefs <- stats::setNames(model$coefs, paste0(prefix, colnames(model$X)))
 
     if (!identical(stab$type, "continuous")) {
       return(coefs)
     }
 
-    fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, model$coefs)
-
     c(
       coefs,
-      stats::setNames(mean((a - fitted_n)^2), paste0(prefix, "sigma2"))
+      stats::setNames(
+        ipw_numerator_fit_sigma2(model, spec$exposure[[i]]),
+        paste0(prefix, "sigma2")
+      )
     )
   })
 

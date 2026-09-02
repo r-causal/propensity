@@ -325,7 +325,9 @@ test_that("ipw() reports the same estimate from a numerator model and its score"
     tolerance = 1e-12
   )
 
-  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_model <- muffle_coverage_warning(
+    ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  )
   res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
 
   expect_equal(
@@ -344,7 +346,9 @@ test_that("ipw() stacks the numerator model it was given", {
   dat <- sim_continuous()
   fits <- continuous_numerator_fits(dat)
 
-  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_model <- muffle_coverage_warning(
+    ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  )
   res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
 
   # A supplied score is a constant of the stacked system and a supplied model is
@@ -387,7 +391,9 @@ test_that("a stacked numerator model reports a different standard error", {
   dat <- sim_continuous()
   fits <- continuous_numerator_fits(dat)
 
-  res_model <- ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  res_model <- muffle_coverage_warning(
+    ipw(fits$model$ps_mod, fits$model$outcome_mod)
+  )
   res_score <- ipw(fits$score_fit$ps_mod, fits$score_fit$outcome_mod)
   res_marginal <- ipw(fits$marginal$ps_mod, fits$marginal$outcome_mod)
 
@@ -2515,7 +2521,9 @@ test_that("ipw() refuses a numerator model whose score it cannot write", {
   ))
   fits <- fit_continuous_models(dat, stabilize = num_mod)
 
-  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+  expect_propensity_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod))
+  )
 })
 
 test_that("ipw() refuses a numerator model fit with case weights", {
@@ -2542,10 +2550,12 @@ test_that("ipw() refuses a numerator model fit with case weights", {
   outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
 
   expect_error(
-    ipw(fits$ps_mod, outcome_mod),
+    muffle_coverage_warning(ipw(fits$ps_mod, outcome_mod)),
     class = "propensity_ipw_ps_weights_error"
   )
-  expect_propensity_error(ipw(fits$ps_mod, outcome_mod))
+  expect_propensity_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, outcome_mod))
+  )
 })
 
 test_that("ipw() refuses a numerator model of another response", {
@@ -2557,7 +2567,9 @@ test_that("ipw() refuses a numerator model of another response", {
   num_mod <- lm(yc ~ x1, data = dat)
   fits <- fit_continuous_models(dat, stabilize = num_mod)
 
-  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+  expect_propensity_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod))
+  )
 })
 
 test_that("ipw() refuses a numerator model fit to other observations", {
@@ -2584,7 +2596,7 @@ test_that("ipw() refuses a numerator model fit to other observations", {
     na.action = stats::na.exclude
   )
 
-  expect_propensity_error(ipw(ps_mod, outcome_mod))
+  expect_propensity_error(muffle_coverage_warning(ipw(ps_mod, outcome_mod)))
 })
 
 test_that("ipw() refuses a numerator model with a dropped coefficient", {
@@ -2600,8 +2612,1101 @@ test_that("ipw() refuses a numerator model with a dropped coefficient", {
   fits <- fit_continuous_models(dat, stabilize = num_mod)
 
   expect_error(
-    ipw(fits$ps_mod, fits$outcome_mod),
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod)),
     class = "propensity_ipw_rank_error"
   )
-  expect_propensity_error(ipw(fits$ps_mod, fits$outcome_mod))
+  expect_propensity_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod))
+  )
+})
+
+# ---- a continuous numerator design rebuilt from `.data` ---------------------
+#
+# A dose numerator model's design is one of the designs `ipw()` rebuilds when
+# the caller supplies `.data`, on the terms the binary route's numerator design
+# is rebuilt on: over the rows every model read, under the coding the fit
+# recorded, and out of `.data` rather than out of a frame the fit may no longer
+# keep. Read off the fit's own frame instead, it is a design over other rows
+# than everything it is stacked with, and a column `.data` supplies as another
+# type never reaches it at all.
+
+# Whitespace in a cli-formatted message wraps where the console is narrow, so
+# the message is flattened before anything is matched in it.
+continuous_numerator_ipw_message <- function(cnd) {
+  gsub("[[:space:]]+", " ", conditionMessage(cnd))
+}
+
+# A dose, an outcome, one confounder the propensity score model reads, and one
+# baseline covariate only the numerator model reads. `sim_continuous()` has no
+# column of that last kind, and it is the column every test below asks `.data`
+# for.
+sim_continuous_numerator <- function(seed = 7731, n = 600) {
+  withr::local_seed(seed)
+  x1 <- rnorm(n)
+  v <- rnorm(n)
+  A <- 0.5 + 0.8 * x1 - 0.4 * v + rnorm(n)
+  yc <- 1 + 0.6 * A + 0.5 * x1 + rnorm(n)
+
+  data.frame(x1, v, A, yc)
+}
+
+# The fixture above with a covariate only the marginal structural model reads,
+# one of whose values is missing. The three fits then read one frame and keep
+# different rows of it: the outcome model drops the incomplete row and the
+# propensity score and numerator models, which never read the column, keep it.
+# A `.data` holding the frame all three were given therefore has a row to drop
+# before any design is built over it.
+sim_continuous_numerator_gap <- function(seed = 7731, n = 600) {
+  dat <- sim_continuous_numerator(seed = seed, n = n)
+  dat$w <- rev(dat$x1)
+  dat$w[[7]] <- NA
+
+  dat
+}
+
+# The three fits, with the numerator model's right-hand side and the marginal
+# structural model's left to the caller. Every term the outcome model carries
+# besides the dose reads a covariate and not the dose, which is what the
+# marginal structural model guard asks of it.
+continuous_numerator_data_fits <- function(
+  dat,
+  num_rhs = "v",
+  msm_rhs = "A"
+) {
+  ps_mod <- lm(A ~ x1, data = dat)
+  num_mod <- lm(stats::reformulate(num_rhs, response = "A"), data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = num_mod
+  )
+  outcome_mod <- lm(
+    stats::reformulate(msm_rhs, response = "yc"),
+    data = dat,
+    weights = wts
+  )
+
+  list(ps_mod = ps_mod, num_mod = num_mod, outcome_mod = outcome_mod)
+}
+
+test_that("a continuous numerator design is restricted to the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  fits <- continuous_numerator_data_fits(dat, msm_rhs = c("A", "w"))
+  kept <- !is.na(dat$w)
+
+  # Supplying the frame the fits were given and supplying the rows `ipw()`
+  # restricts it to are the same request, so they report the same thing. The
+  # numerator's design is one of the designs that restriction is for.
+  res_given <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_kept <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat[kept, ]
+  ))
+
+  expect_s3_class(res_given, "ipw")
+  expect_equal(
+    res_given$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_given$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-8
+  )
+  expect_true(all(is.finite(res_given$estimates$std.err)))
+})
+
+test_that("a stacked continuous numerator block solves over the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  fits <- continuous_numerator_data_fits(dat, msm_rhs = c("A", "w"))
+  kept <- !is.na(dat$w)
+
+  # The block the numerator contributes is its own least-squares score together
+  # with the second moment of its residuals, and those equations read no
+  # parameter from anywhere else in the stack: the score is linear in the
+  # coefficients and is solved by the normal equations of the design the block
+  # carries, and the moment row is then solved by the mean square of the
+  # residuals those coefficients leave. Both are unique, so the rows the design
+  # carries are the rows the solved block is the fit over. The numerator arrived
+  # fit to the whole frame and the system reads it over the rows the outcome
+  # model kept, so what it solves to is the refit on those rows rather than the
+  # coefficients it came with. The two differ by more than the tolerance, which
+  # is what makes the pin say anything.
+  res <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  refit <- lm(A ~ v, data = dat[kept, ])
+
+  stab_names <- paste0("stab_", names(coef(refit)))
+  theta <- coef(res$fit)
+
+  expect_true(all(c(stab_names, "sigma2_n") %in% names(theta)))
+  expect_equal(
+    unname(theta[stab_names]),
+    unname(coef(refit)),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    unname(theta[["sigma2_n"]]),
+    mean(residuals(refit)^2),
+    tolerance = 1e-6
+  )
+  expect_false(isTRUE(all.equal(
+    unname(coef(refit)),
+    unname(coef(fits$num_mod)),
+    tolerance = 1e-6
+  )))
+})
+
+# ---- a dose numerator covariate `.data` supplies as another type ------------
+#
+# A numerator model is rebuilt from `.data` the way the other models are, so a
+# column it alone reads is a column the rebuild can be given as the wrong type,
+# or not given at all. The guards the other models meet report the column, the
+# argument the model arrived in, and both types.
+
+# A three-level factor over the same rows, which nothing models. It is what a
+# numeric numerator covariate is supplied as below, and what one is fit on when
+# the mistake runs the other way.
+continuous_numerator_grouping <- function(dat) {
+  factor(c("a", "b", "c")[1 + (rank(dat$x1) %% 3)], levels = c("a", "b", "c"))
+}
+
+test_that("a continuous numerator covariate supplied as a factor where the fit read a number is refused", {
+  dat <- sim_continuous_numerator()
+  fits <- continuous_numerator_data_fits(dat)
+
+  # The type sweep compares the class the fit recorded for the column with the
+  # class `.data` supplies and refuses the pair before any design is rebuilt.
+  # What it heads off is a factor of three levels taking two design columns
+  # where the number it stands in for took one.
+  supplied <- dat
+  supplied$v <- continuous_numerator_grouping(dat)
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, "v", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a continuous numerator covariate supplied as a number where the fit read a factor is refused", {
+  dat <- sim_continuous_numerator()
+  dat$v <- continuous_numerator_grouping(dat)
+
+  fits <- continuous_numerator_data_fits(dat)
+
+  # The other direction, which never reaches a width to compare: the rebuild
+  # asks for the fit's contrast coding of a column that arrives with no levels
+  # to code.
+  supplied <- dat
+  supplied$v <- as.numeric(dat$v)
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, "v", fixed = TRUE)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a continuous numerator covariate absent from .data is refused", {
+  dat <- sim_continuous_numerator()
+  fits <- continuous_numerator_data_fits(dat)
+
+  # The columns the rebuilds read are asked for before any of them runs, and a
+  # numerator model's covariates are among them. Left out of the set, a column
+  # only the numerator reads reaches `model.matrix()` as an object that is not
+  # there.
+  supplied <- dat
+  supplied$v <- NULL
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(
+      fits$ps_mod,
+      fits$outcome_mod,
+      .data = supplied
+    )),
+    class = "propensity_columns_exist_error"
+  )
+
+  expect_match(continuous_numerator_ipw_message(err), "v", fixed = TRUE)
+})
+
+# ---- recovering the data behind a dose numerator model ----------------------
+#
+# An `lm` keeps its model frame, so its design is usually there to be read. One
+# fit with `model = FALSE` keeps none, and the design is recovered by
+# re-evaluating the fitting call; a fit made inside a wrapper whose frame is
+# gone cannot be re-evaluated. What that owes the caller is the request the
+# denominator's recovery already makes: name the model that cannot be rebuilt
+# and ask for `.data`.
+
+# The formula is written in the calling frame and the fitting call names a
+# variable that lives only inside the wrapper, so nothing can rebuild the
+# numerator's design once the wrapper has returned. Its fitted values and
+# residuals are still readable, and the weights were built from them.
+continuous_numerator_frame_gone <- function(dat) {
+  fmla <- A ~ v
+  fit_in_function <- function(fitting_data) {
+    lm(fmla, data = fitting_data, model = FALSE)
+  }
+
+  fit_in_function(dat)
+}
+
+continuous_numerator_gone_fits <- function(dat, numerator) {
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = numerator
+  )
+  outcome_mod <- lm(yc ~ A, data = dat, weights = wts)
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod)
+}
+
+test_that("a continuous numerator model whose data is gone asks for .data", {
+  dat <- sim_continuous_numerator()
+  gone <- continuous_numerator_frame_gone(dat)
+
+  expect_error(model.matrix(gone))
+
+  fits <- continuous_numerator_gone_fits(dat, gone)
+
+  err <- expect_error(
+    muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod)),
+    class = "propensity_ipw_data_error"
+  )
+
+  # The propensity score model here is rebuildable, so a message naming it would
+  # send the caller to the wrong fit.
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, ".data", fixed = TRUE)
+  expect_match(message, "stabilize", fixed = TRUE)
+})
+
+test_that("a continuous numerator model whose data is gone is rebuilt from .data", {
+  dat <- sim_continuous_numerator()
+  gone <- continuous_numerator_frame_gone(dat)
+
+  # The other half of the contract: the `.data` the refusal above asks for
+  # rebuilds the numerator's design from the fit's own terms and contrasts, and
+  # what comes back is what the same numerator reports when its frame was never
+  # lost.
+  kept <- lm(A ~ v, data = dat)
+  expect_equal(unname(coef(gone)), unname(coef(kept)), tolerance = 1e-10)
+
+  gone_fits <- continuous_numerator_gone_fits(dat, gone)
+  kept_fits <- continuous_numerator_gone_fits(dat, kept)
+
+  res_data <- muffle_coverage_warning(ipw(
+    gone_fits$ps_mod,
+    gone_fits$outcome_mod,
+    .data = dat
+  ))
+  res_recovered <- muffle_coverage_warning(ipw(
+    kept_fits$ps_mod,
+    kept_fits$outcome_mod
+  ))
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_recovered$estimates$estimate,
+    tolerance = 1e-6
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_recovered$estimates$std.err,
+    tolerance = 1e-6
+  )
+})
+
+# ---- the moments the continuous seeds are read at ---------------------------
+#
+# Every parameter of the stacked system is seeded at the value the fits already
+# hold it at, so that the weights the system rebuilds before it solves anything
+# are the weights the caller was given. Four of those parameters are moments:
+# the spread the conditional density is read at, the spread a numerator model's
+# density is read at, and the mean and variance a marginal numerator is the
+# normal density of. The fits computed all four over their own rows, and the
+# weights were built at what the fits came to. Read again over the rows `.data`
+# leaves, they are different numbers, the rebuilt weights are different weights,
+# and the preflight refuses a call whose weights were exactly right.
+
+# The fits `continuous_numerator_data_fits()` makes with the stabilizing
+# numerator left to the caller, so the marginal, score, and model routes are
+# built the same way and differ only in what stabilized the weights.
+continuous_seed_fits <- function(
+  dat,
+  stabilize = TRUE,
+  stab_score = NULL,
+  msm_rhs = c("A", "w")
+) {
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = stabilize,
+    stab_score = stab_score
+  )
+  outcome_mod <- lm(
+    stats::reformulate(msm_rhs, response = "yc"),
+    data = dat,
+    weights = wts
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+# A numerator the caller fixed rather than one anything estimates, which is the
+# third thing a set of continuous weights can be stabilized on. The score is the
+# single value that scales every weight rather than one value per observation:
+# an outcome model that drops a row subsets the weights, and a per-observation
+# score is dropped when it does, so only a scalar reaches `ipw()` intact from a
+# frame with a gap in it.
+continuous_seed_score <- 0.4
+
+# `sim_continuous_numerator_gap()` drops a single row, and the exposure moments
+# over the rows it leaves sit within a few parts in 1e5 of the moments over
+# every row: a pin written against either would pass against the other. This
+# variant withholds the covariate at the ten largest doses instead, which moves
+# both marginal moments by percents rather than by rounding, so a seed at the
+# fits' moments and a solution over the analyzed rows are told apart well beyond
+# any tolerance below.
+sim_continuous_seed_gap <- function(seed = 7731, n = 600) {
+  dat <- sim_continuous_numerator(seed = seed, n = n)
+  dat$w <- rev(dat$x1)
+  dat$w[order(dat$A, decreasing = TRUE)[seq_len(10)]] <- NA
+
+  dat
+}
+
+test_that("a marginal numerator passes the preflight over the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  kept <- !is.na(dat$w)
+  fits <- continuous_seed_fits(dat)
+
+  # Nothing here asks for a numerator model: the marginal moments alone are
+  # enough to move the rebuilt weights off the supplied ones once they are read
+  # over other rows, which is the refusal this block is here to see lifted.
+  #
+  # What the call reports is not the outcome model's own slope. `.data` leaves
+  # fewer rows than the fits were made over, so the system solves its blocks
+  # over the rows that remain and reweights slightly away from the weights that
+  # model was fit with. What holds instead is that supplying the frame the fits
+  # were given and supplying the rows `ipw()` restricts it to are the same
+  # request, so the two forms report the same thing. That agreement is the
+  # invariant this block and the three below pin.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("a fixed stabilization score passes the preflight over the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  kept <- !is.na(dat$w)
+  fits <- continuous_seed_fits(dat, stab_score = continuous_seed_score)
+
+  # A score the caller fixed leaves no stabilization block at all, so the only
+  # moment this route seeds is the conditional spread. That one is enough on its
+  # own: the numerator is a constant the weights carry, and a denominator read
+  # at another spread divides it by a different density.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("a numerator model passes the preflight over the rows .data keeps", {
+  dat <- sim_continuous_numerator_gap()
+  kept <- !is.na(dat$w)
+  num_mod <- lm(A ~ v, data = dat)
+  fits <- continuous_seed_fits(dat, stabilize = num_mod)
+
+  # Both spreads move on this route, the denominator's and the numerator's, and
+  # they move in the same direction, so neither cancels the other.
+  res <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_kept <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat[kept, ]
+  ))
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("the continuous seeds are the fits' moments where every model read the same rows", {
+  dat <- sim_continuous_numerator()
+  num_mod <- lm(A ~ v, data = dat)
+  model_fits <- continuous_seed_fits(dat, stabilize = num_mod, msm_rhs = "A")
+  marginal_fits <- continuous_seed_fits(dat, msm_rhs = "A")
+
+  # Nothing is missing here, so the rows the spec analyzes are the rows every
+  # fit was made over and the two readings of each moment are the same number.
+  # What this says is which of the two the seed is; the row-restricted case
+  # below is what separates them.
+  model_layout <- ipw_theta_layout(ipw_spec_continuous(
+    model_fits$ps_mod,
+    model_fits$outcome_mod,
+    .data = dat
+  ))
+  expect_equal(
+    model_layout$init[["sigma2_d"]],
+    mean(residuals(model_fits$ps_mod)^2)
+  )
+  expect_equal(model_layout$init[["sigma2_n"]], mean(residuals(num_mod)^2))
+
+  # The marginal moments are moments of the exposure rather than of a residual,
+  # and the exposure they are moments of is the one the propensity score model
+  # was fit against, read off its own frame.
+  marginal_layout <- ipw_theta_layout(ipw_spec_continuous(
+    marginal_fits$ps_mod,
+    marginal_fits$outcome_mod,
+    .data = dat
+  ))
+  a_ps <- as.double(stats::model.response(stats::model.frame(
+    marginal_fits$ps_mod
+  )))
+  expect_equal(marginal_layout$init[["mu_a"]], mean(a_ps))
+  expect_equal(marginal_layout$init[["sigma2_a"]], mean((a_ps - mean(a_ps))^2))
+})
+
+test_that("the continuous seeds stay at the fits' moments where .data drops rows", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  num_mod <- lm(A ~ v, data = dat)
+  model_fits <- continuous_seed_fits(dat, stabilize = num_mod)
+  marginal_fits <- continuous_seed_fits(dat)
+
+  model_layout <- ipw_theta_layout(ipw_spec_continuous(
+    model_fits$ps_mod,
+    model_fits$outcome_mod,
+    .data = dat
+  ))
+  expect_equal(
+    model_layout$init[["sigma2_d"]],
+    mean(residuals(model_fits$ps_mod)^2)
+  )
+  expect_equal(model_layout$init[["sigma2_n"]], mean(residuals(num_mod)^2))
+
+  marginal_layout <- ipw_theta_layout(ipw_spec_continuous(
+    marginal_fits$ps_mod,
+    marginal_fits$outcome_mod,
+    .data = dat
+  ))
+  a_ps <- as.double(stats::model.response(stats::model.frame(
+    marginal_fits$ps_mod
+  )))
+  expect_equal(marginal_layout$init[["mu_a"]], mean(a_ps))
+  expect_equal(marginal_layout$init[["sigma2_a"]], mean((a_ps - mean(a_ps))^2))
+
+  # The same four moments taken over the rows the spec analyzes, which is the
+  # other reading the seeds could have. They differ from the fits' own by far
+  # more than the comparisons above tolerate, which is what makes those
+  # comparisons say which reading the seed is rather than passing on either.
+  a_kept <- dat$A[kept]
+  ps_resid_kept <- a_kept - fitted(model_fits$ps_mod)[kept]
+  num_resid_kept <- a_kept - fitted(num_mod)[kept]
+  expect_false(isTRUE(all.equal(
+    mean(residuals(model_fits$ps_mod)^2),
+    mean(ps_resid_kept^2)
+  )))
+  expect_false(isTRUE(all.equal(
+    mean(residuals(num_mod)^2),
+    mean(num_resid_kept^2)
+  )))
+  expect_false(isTRUE(all.equal(mean(a_ps), mean(a_kept))))
+  expect_false(isTRUE(all.equal(
+    mean((a_ps - mean(a_ps))^2),
+    mean((a_kept - mean(a_kept))^2)
+  )))
+})
+
+test_that("the solved continuous moments are the moments of the rows analyzed", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  fits <- continuous_seed_fits(dat)
+
+  # Seeding at the fits' moments is a starting value rather than an answer. The
+  # marginal moments have two equations of their own, written over the rows the
+  # spec analyzes, and the pair is solved by the mean and the mean square of the
+  # exposure over exactly those rows. A seed held in place through the solve
+  # would report the fits' moments here instead.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  theta <- coef(res$fit)
+  a_kept <- dat$A[kept]
+  a_ps <- as.double(stats::model.response(stats::model.frame(fits$ps_mod)))
+
+  expect_equal(unname(theta[["mu_a"]]), mean(a_kept), tolerance = 1e-8)
+  expect_equal(
+    unname(theta[["sigma2_a"]]),
+    mean((a_kept - mean(a_kept))^2),
+    tolerance = 1e-8
+  )
+  expect_false(isTRUE(all.equal(
+    mean(a_kept),
+    mean(a_ps),
+    tolerance = 1e-6
+  )))
+})
+
+# ---- an additive numerator model rebuilt from `.data` -----------------------
+
+test_that("a gam numerator model rebuilt from .data reads its own smooth basis", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_continuous_numerator()
+  num_mod <- mgcv::gam(A ~ s(v), data = dat, method = "REML")
+  fits <- continuous_seed_fits(dat, stabilize = num_mod, msm_rhs = "A")
+
+  # An additive fit's design is a smooth basis rather than the columns its
+  # formula names, so a `.data` rebuild has to ask the fit for the basis at the
+  # rows it was handed rather than re-evaluating the formula. Nothing is missing
+  # here, so both routes read every row and are the same fit; a rebuild that
+  # re-evaluated `s(v)` would be a different basis and move the estimate by
+  # orders more than this tolerance.
+  res_data <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_fit <- muffle_coverage_warning(ipw(fits$ps_mod, fits$outcome_mod))
+
+  expect_s3_class(res_data, "ipw")
+  expect_equal(
+    res_data$estimates$estimate,
+    res_fit$estimates$estimate,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res_data$estimates$std.err,
+    res_fit$estimates$std.err,
+    tolerance = 1e-8
+  )
+})
+
+test_that("a gam numerator model is seeded at its own residual moment", {
+  skip_if_not_installed("mgcv")
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  num_mod <- mgcv::gam(A ~ s(v), data = dat, method = "REML")
+  fits <- continuous_seed_fits(dat, stabilize = num_mod)
+
+  # The spread an additive numerator's density is read at is the moment of its
+  # own residuals, the same as a least-squares numerator's, and the rows it is a
+  # moment over are the fit's rather than the ones `.data` leaves.
+  layout <- ipw_theta_layout(ipw_spec_continuous(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  expect_equal(layout$init[["sigma2_n"]], mean(residuals(num_mod)^2))
+
+  res <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+  res_kept <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat[kept, ]
+  ))
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+})
+
+# ---- weights whose per-observation stabilization score was dropped ----------
+#
+# A `stabilization_score` the caller wrote per observation is one value per unit,
+# so an operation that changes the length of the weights cannot re-index it and
+# drops it. That drop is reported where it happens: a marginal structural model
+# fit over a frame with a gap in it subsets the weights while it builds its own
+# model frame, and the weights that come back out of that frame carry no score
+# aligned with them.
+#
+# What the record still says is that a score is what stabilized them, because
+# the density record describes how the weights were built rather than what
+# survived. `ipw()` reads the record, goes looking for the score it names, and
+# has nothing that describes the rows it is about to weight. Building the ratio
+# anyway divides by a numerator of the wrong length, which is arithmetic the
+# caller never wrote and cannot act on. The refusal owed here names the score
+# that was dropped and the two ways back: rebuild the weights on the rows that
+# remain, or stabilize on a scalar, which survives any subset.
+
+# The marginal density of the exposure, evaluated at the dose each unit took.
+# This is the numerator `stabilize = TRUE` would build for itself, written out
+# by the caller so that it arrives as a score rather than as the default.
+continuous_seed_score_vector <- function(dat) {
+  dnorm(dat$A, mean(dat$A), stats::sd(dat$A))
+}
+
+test_that("ipw() refuses weights whose per-observation score was dropped", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+
+  # The drop happens where the marginal structural model subsets the weights,
+  # and is asserted here so that the only condition left for the call below is
+  # the one being pinned.
+  expect_warning(
+    fits <- continuous_seed_fits(
+      dat,
+      stab_score = continuous_seed_score_vector(dat)
+    ),
+    class = "propensity_stabilization_score_warning"
+  )
+
+  # What this block pins is the refusal itself. Whether anything is raised on
+  # the way to it is the subject of the block below, which owns that assertion.
+  cnd <- suppressWarnings(tryCatch(
+    ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ]),
+    error = function(e) e
+  ))
+
+  expect_s3_class(cnd, "propensity_ipw_stabilization_score_error")
+
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "stabilization_score", fixed = TRUE)
+})
+
+test_that("weights whose per-observation score was dropped raise nothing raw", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+
+  expect_warning(
+    fits <- continuous_seed_fits(
+      dat,
+      stab_score = continuous_seed_score_vector(dat)
+    ),
+    class = "propensity_stabilization_score_warning"
+  )
+
+  # The refusal has to come before the ratio is built. A score of the length the
+  # weights were recorded at, divided into a density read over the rows that
+  # remain, recycles, and base R's report of that recycling names nothing the
+  # caller wrote and precedes whatever `ipw()` says next.
+  seen <- character()
+  withCallingHandlers(
+    tryCatch(
+      ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ]),
+      error = function(e) e
+    ),
+    warning = function(w) {
+      seen <<- c(seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(seen, character())
+})
+
+test_that("ipw() refuses weights whose score the subset dropped outright", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  sub <- dat[kept, ]
+
+  # The second shape the same drop arrives in. Restricting the rows by hand
+  # subsets the weights rather than shortening them behind their record, so the
+  # score is gone rather than stale, and the record still names it. Nothing
+  # recycles here and nothing raw is raised, so what a caller who wrote this
+  # would otherwise be told is that the weights disagree with the models they
+  # were built from, which is not what happened.
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = TRUE,
+    stab_score = continuous_seed_score_vector(dat)
+  )
+  expect_warning(
+    wts_kept <- wts[kept],
+    class = "propensity_stabilization_score_warning"
+  )
+  expect_null(stabilization_score(wts_kept))
+
+  ps_kept <- lm(A ~ x1, data = sub)
+  outcome_kept <- lm(yc ~ A + w, data = sub, weights = wts_kept)
+
+  seen <- character()
+  cnd <- withCallingHandlers(
+    tryCatch(ipw(ps_kept, outcome_kept), error = function(e) e),
+    warning = function(w) {
+      seen <<- c(seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_equal(seen, character())
+  expect_s3_class(cnd, "propensity_ipw_stabilization_score_error")
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(cnd)),
+    "stabilization_score",
+    fixed = TRUE
+  )
+})
+
+test_that("a scalar stabilization score survives the subset the score cannot", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+
+  # The boundary the refusal above draws. A scalar is one number rather than one
+  # per unit, so nothing re-indexes it and nothing drops it: the same frame with
+  # the same gap in it reaches the same estimates it always did, and the two
+  # ways of asking for the restricted rows agree.
+  fits <- continuous_seed_fits(dat, stab_score = continuous_seed_score)
+
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res_kept, "ipw")
+  expect_equal(
+    res_kept$estimates$estimate,
+    res$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res_kept$estimates$std.err,
+    res$estimates$std.err,
+    tolerance = 1e-10
+  )
+})
+
+# The guard reads what the record says and what the score in hand holds, and
+# those two can disagree in a third way as well: a record naming a score paired
+# with a score holding nothing. `stabilization_score_aligns()` passes that pair,
+# since it is written for the prototypes and empty subsets a `psw` restore
+# passes through, so the guard has to refuse it itself rather than hand a
+# zero-length numerator to the ratio. No supported construction pairs the two,
+# which is why the guard is called here rather than reached through `ipw()`.
+test_that("a zero-length stabilization score is refused with the missing one", {
+  cnd <- tryCatch(
+    check_ipw_stabilization_score("score", numeric(0), n = 10),
+    error = function(e) e
+  )
+
+  expect_s3_class(cnd, "propensity_ipw_stabilization_score_error")
+  expect_match(
+    gsub("[[:space:]]+", " ", conditionMessage(cnd)),
+    "hold 0 of them",
+    fixed = TRUE
+  )
+
+  # The lengths the guard accepts are the ones it always accepted: one value for
+  # every unit, and the scalar that survives any restriction.
+  expect_true(check_ipw_stabilization_score("score", rep(0.5, 10), n = 10))
+  expect_true(check_ipw_stabilization_score("score", 0.5, n = 10))
+})
+
+# ---- an integrated numerator read over the fit's own rows -------------------
+#
+# The integrated numerator is the conditional density averaged over the units,
+# read at points spanning their exposure. Both halves of that are quantities of
+# a set of rows: which units the average runs over, and where the grid it is
+# interpolated from begins and ends. `wt_ate()` took both over the rows the
+# caller handed it, which are the rows the propensity score model was fit over,
+# and the weights the caller carries away are that reading.
+#
+# `.data` can leave fewer rows than the fits were made over. Read again over the
+# rows that remain, the average is over other units and the grid spans a
+# narrower interval, so the rebuilt numerator is a different function, the
+# rebuilt weights are different weights, and the preflight refuses a call whose
+# weights were exactly right. The reading the rebuild owes is the fit's own, the
+# same reading the spreads and the marginal moments are seeded at.
+
+# The propensity score model, integrated-numerator weights built from it, and a
+# marginal structural model that reads a covariate with a gap in it. Nothing
+# else stabilizes these: an integrated numerator estimates no parameters of its
+# own, so what moves under a restriction is the numerator's reading alone.
+continuous_integrated_fits <- function(dat, msm_rhs = c("A", "w")) {
+  ps_mod <- lm(A ~ x1, data = dat)
+  wts <- continuous_weights(
+    as.double(fitted(ps_mod)),
+    dat$A,
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+  outcome_mod <- lm(
+    stats::reformulate(msm_rhs, response = "yc"),
+    data = dat,
+    weights = wts
+  )
+
+  list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
+}
+
+test_that("an integrated numerator passes the preflight over the rows .data keeps", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  fits <- continuous_integrated_fits(dat)
+
+  # Supplying the frame the fits were given and supplying the rows `ipw()`
+  # restricts it to are the same request, so they report the same thing.
+  res <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat)
+  res_kept <- ipw(fits$ps_mod, fits$outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
+  expect_true(all(is.finite(res$estimates$std.err)))
+  expect_gt(res$estimates$std.err, 0)
+})
+
+test_that("the integrated numerator ipw() rebuilds is the one the weights carry", {
+  dat <- sim_continuous_seed_gap()
+  kept <- !is.na(dat$w)
+  fits <- continuous_integrated_fits(dat)
+
+  # `sim_continuous_seed_gap()` withholds the covariate at the ten largest
+  # doses, so the rows `.data` leaves reach neither the largest dose nor the
+  # units nearest it. Asserted here so that the pin below says which rows the
+  # numerator was read over rather than passing on either reading.
+  expect_gt(max(dat$A), max(dat$A[kept]))
+
+  # The weights the system rebuilds before it solves anything are the weights
+  # the caller was given, over the rows it is about to weight. That holds only
+  # where the numerator is averaged over the fit's units and interpolated from
+  # a grid spanning the fit's exposure; every other reading of it reaches a
+  # different vector here.
+  spec <- ipw_spec_continuous(fits$ps_mod, fits$outcome_mod, .data = dat)
+  layout <- ipw_theta_layout(spec)
+  expect_equal(
+    as.double(ipw_weights_at_init(spec, layout)),
+    as.double(fits$wts)[kept],
+    tolerance = 1e-12
+  )
+
+  # The other reading, built through `wt_ate()` over the restricted rows alone:
+  # its average runs over those units and its grid spans their exposure. It
+  # differs from the weights the caller carries by percents rather than by
+  # rounding, which is what makes the comparison above say anything.
+  wts_kept <- continuous_weights(
+    as.double(fitted(fits$ps_mod))[kept],
+    dat$A[kept],
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+  supplied <- as.double(fits$wts)[kept]
+  expect_gt(max(abs(as.double(wts_kept) - supplied) / abs(supplied)), 0.01)
+})
+
+# The other side of that reading: a propensity score model whose own rows cannot
+# be read back. `.data` rebuilds every other design in the stack, and it is not
+# a remedy here, because it carries the rows about to be weighted rather than
+# the rows the numerator was averaged over. An `lm` fit with `model = FALSE`
+# inside a wrapper whose frame is gone leaves nothing to read, and the refusal
+# says which model and why `.data` does not answer for it.
+continuous_ps_frame_gone <- function(dat) {
+  fmla <- A ~ x1
+  fit_in_function <- function(fitting_data) {
+    lm(fmla, data = fitting_data, model = FALSE)
+  }
+
+  fit_in_function(dat)
+}
+
+test_that("an integrated numerator over an unreadable ps fit is refused", {
+  dat <- sim_continuous_seed_gap()
+  gone <- continuous_ps_frame_gone(dat)
+
+  expect_error(model.matrix(gone))
+
+  wts <- continuous_weights(
+    as.double(fitted(gone)),
+    dat$A,
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+  outcome_mod <- lm(yc ~ A + w, data = dat, weights = wts)
+
+  err <- expect_error(
+    ipw(gone, outcome_mod, .data = dat),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, "integrated", fixed = TRUE)
+  expect_match(message, "wt_mod", fixed = TRUE)
+})
+
+test_that("an unreadable ps fit under an integrated numerator is pointed past .data", {
+  dat <- sim_continuous_seed_gap()
+  gone <- continuous_ps_frame_gone(dat)
+
+  wts <- continuous_weights(
+    as.double(fitted(gone)),
+    dat$A,
+    stabilize = TRUE,
+    numerator = "integrated"
+  )
+  outcome_mod <- lm(yc ~ A + w, data = dat, weights = wts)
+
+  # Called without a frame, the fit is unreadable one step earlier, where the
+  # refusal every frame-gone design raises offers `.data`. The block above is
+  # where taking that offer lands, so it is not the remedy here: this one names
+  # the fit instead, and the caller is one step from an answer rather than two.
+  err <- expect_error(
+    ipw(gone, outcome_mod),
+    class = "propensity_ipw_data_error"
+  )
+
+  message <- continuous_numerator_ipw_message(err)
+  expect_match(message, "wt_mod", fixed = TRUE)
+  expect_match(message, "cannot stand in", fixed = TRUE)
+  expect_match(message, "model = TRUE", fixed = TRUE)
+  expect_no_match(message, "Supply `.data`", fixed = TRUE)
+})
+
+test_that("an unreadable ps fit under a marginal numerator keeps the .data remedy", {
+  dat <- sim_continuous_seed_gap()
+  gone <- continuous_ps_frame_gone(dat)
+
+  wts <- continuous_weights(as.double(fitted(gone)), dat$A, stabilize = TRUE)
+  outcome_mod <- lm(yc ~ A + w, data = dat, weights = wts)
+
+  # The boundary the branch above draws. A marginal numerator is the normal
+  # density of moments the rebuild reads over whatever rows it is given, so
+  # `.data` does stand in for the design behind it and is still what is asked
+  # for here.
+  err <- expect_error(
+    ipw(gone, outcome_mod),
+    class = "propensity_ipw_data_error"
+  )
+
+  expect_match(
+    continuous_numerator_ipw_message(err),
+    "Supply `.data`",
+    fixed = TRUE
+  )
+})
+
+# ---- a propensity score model fit with a gap in its covariate ---------------
+#
+# A fit made under `na.action = na.exclude` pads its fitted means back to the
+# length of the frame it was given, missing at the rows it dropped. Weights
+# built from those means and the exposure the caller holds in full are missing
+# at the same rows, and the marginal density they are stabilized on belongs to
+# the rows the fit kept, which are the rows the outcome model is then fit over.
+# `.data` may be either the frame the fits were given or the rows that survive
+# them, and the two are the same request.
+
+sim_continuous_na_exclude <- function(seed = 7731, n = 600) {
+  dat <- sim_continuous_numerator(seed = seed, n = n)
+  # The covariate the propensity score model reads is withheld at the ten
+  # largest doses, so the marginal moments over the rows the fit keeps sit
+  # percents away from the moments over every row rather than a rounding away.
+  dat$x1[order(dat$A, decreasing = TRUE)[seq_len(10)]] <- NA
+
+  dat
+}
+
+test_that("a na.exclude propensity score model passes the preflight", {
+  dat <- sim_continuous_na_exclude()
+  kept <- !is.na(dat$x1)
+
+  ps_mod <- lm(A ~ x1, data = dat, na.action = stats::na.exclude)
+  wts <- continuous_weights(as.double(fitted(ps_mod)), dat$A)
+  outcome_mod <- lm(yc ~ A + v, data = dat, weights = wts)
+
+  expect_equal(which(is.na(as.double(wts))), which(!kept))
+  expect_equal(nobs(outcome_mod), sum(kept))
+
+  res <- ipw(ps_mod, outcome_mod, .data = dat)
+  res_kept <- ipw(ps_mod, outcome_mod, .data = dat[kept, ])
+
+  expect_s3_class(res, "ipw")
+  expect_equal(
+    res$estimates$estimate,
+    res_kept$estimates$estimate,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    res$estimates$std.err,
+    res_kept$estimates$std.err,
+    tolerance = 1e-10
+  )
 })

@@ -27,7 +27,10 @@ with three fields:
 \item{\code{names}}{The two treatment names, in the factorization's order.}
 \item{\code{models}}{The two fitted models, named for their treatments.}
 \item{\code{exposure_type}}{Each model's exposure type, named for its treatment:
-\code{"binary"}, \code{"categorical"}, or \code{"continuous"}.}
+\code{"binary"}, \code{"categorical"}, or \code{"continuous"}. The type follows the
+model's class, so a \code{\link[nnet:multinom]{nnet::multinom()}} is recorded as \code{"categorical"}
+whatever its level count. One fit to two levels is a binary treatment
+model, and \code{\link[=ipw]{ipw()}} stacks it as one.}
 }
 
 \code{is_joint_wt_models()} returns a single logical.

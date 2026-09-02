@@ -138,10 +138,11 @@ ipw_binary_weight_fn <- function(estimand) {
 
 # Categorical weight registry. `ps` is the n-by-K propensity score matrix,
 # `exposure` the n-by-K reference-first indicator, and `extras` carries the
-# focal column index, the length-K stabilization probabilities (column order),
-# the fixed stabilization score, and optionally a tilt already evaluated at
-# `ps`, on the same terms as the binary registry. Formulas mirror
-# calculate_categorical_weights() in R/weights.R.
+# focal column index, the stabilization probabilities in column order, either
+# length K for a numerator every unit shares or an n-by-K matrix for one a
+# model gives each unit, the fixed stabilization score, and optionally a tilt
+# already evaluated at `ps`, on the same terms as the binary registry. Formulas
+# mirror calculate_categorical_weights() in R/weights.R.
 ipw_categorical_weight_fn <- function(estimand) {
   is_ate <- identical(estimand, "ate")
 
@@ -163,12 +164,21 @@ ipw_categorical_weight_fn <- function(estimand) {
     if (!is.null(extras$score)) {
       weights <- weights * extras$score
     } else if (!is.null(extras$stab_probs)) {
-      stab_row <- matrix(
-        extras$stab_probs,
-        nrow = nrow(ps),
-        ncol = ncol(ps),
-        byrow = TRUE
-      )
+      # A numerator that conditions on nothing is one probability per level, the
+      # same row for every unit, while a numerator model gives each unit its
+      # own. The matrix is read as it stands: broadcasting it would fill each
+      # row with the whole matrix read column-wise and gather every unit at
+      # another unit's numerator.
+      stab_row <- if (is.matrix(extras$stab_probs)) {
+        extras$stab_probs
+      } else {
+        matrix(
+          extras$stab_probs,
+          nrow = nrow(ps),
+          ncol = ncol(ps),
+          byrow = TRUE
+        )
+      }
       weights <- weights * rowSums(exposure * stab_row)
     }
 
@@ -181,7 +191,8 @@ ipw_categorical_weight_fn <- function(estimand) {
 # sigma2_d, the density the ratio is taken in, the numerator that stabilized it,
 # the marginal moments mu_a and sigma2_a, the numerator model's own mean mu_n
 # and spread sigma_n, the evaluation grid an integrated numerator marginalizes
-# over, the fixed stabilization score, and the stabilized flag.
+# over together with the conditional means it marginalizes, the fixed
+# stabilization score, and the stabilized flag.
 #
 # The ratio itself is `continuous_density_ratio()`, the same function
 # `ate_continuous()` builds the weights with, so the weights rebuilt at a value
@@ -217,6 +228,7 @@ ipw_continuous_weight_fn <- function(estimand, call = rlang::caller_env()) {
       sigma_n = extras$sigma_n,
       score = extras$score,
       grid = extras$grid,
+      mu_avg = extras$mu_avg,
       # The frame the user entered `ipw()` on. A conditional density that comes
       # out at zero part way through the solve is refused by the ratio, and
       # without this the refusal would name the frame the registry rebuilds the
@@ -433,6 +445,11 @@ ipw_init_contrasts <- function(contrasts, mu_hi, mu_lo, suffix = NULL) {
 # weights it would not, while `effective_stabilizer()` would move only the
 # standard errors. `exposure` is the 0/1 recode everywhere but `ate_binary()`,
 # which passes the same recode under its own name.
+#
+# Which rows that recode covers is the fit's own, wherever the two can differ.
+# `ate_binary()` scales the weights over the rows the propensity score model was
+# fit to, so a route that seeds this over the rows a `.data` leaves would seed a
+# probability the weights were never built at.
 ipw_default_stab_seed <- function(exposure) {
   mean(exposure, na.rm = TRUE)
 }
@@ -538,17 +555,26 @@ ipw_binary_seed_tilt <- function(spec, call = rlang::caller_env()) {
   ps_tilt_binary(e_fit, spec$estimand)
 }
 
-# Generate readable names for the multinomial ps coefficient block. The block is
-# as.vector(t(coef(multinom))): level-major, term-minor.
-ipw_name_categorical_ps <- function(spec) {
-  terms <- colnames(spec$ps$X)
-  levs <- names(spec$outcome$X_counterfactual)
-  nonref <- levs[-1]
-  nm <- as.vector(vapply(
-    nonref,
-    function(l) paste0(l, ":", terms),
+# Names for a multinomial coefficient block, which is
+# as.vector(t(coef(multinom))): level-major, term-minor, over the
+# non-reference levels. `prefix` says which side of the weight the block is,
+# the denominator writing its coefficients under their bare names and a
+# numerator model's under the "stab_" every stabilization block carries. Both
+# sides read the convention here rather than each writing it, because a name
+# the two spelled differently would report one block under the other's terms.
+ipw_name_categorical_coefs <- function(levels, terms, prefix = "") {
+  as.vector(vapply(
+    levels,
+    function(l) paste0(prefix, l, ":", terms),
     character(length(terms))
   ))
+}
+
+# Generate readable names for the multinomial ps coefficient block.
+ipw_name_categorical_ps <- function(spec) {
+  levs <- names(spec$outcome$X_counterfactual)
+  nm <- ipw_name_categorical_coefs(levs[-1], colnames(spec$ps$X))
+
   stats::setNames(spec$ps$coefs, nm)
 }
 
@@ -558,8 +584,21 @@ ipw_init_categorical <- function(spec, call = rlang::caller_env()) {
   levs <- names(spec$outcome$X_counterfactual)
 
   if (spec$stab$stabilized && is.null(spec$stab$score)) {
-    props <- colMeans(spec$exposure)
-    stab_block <- stats::setNames(props[-1], paste0("stab_", levs[-1]))
+    # A numerator model's block is the shape the propensity score block is: one
+    # parameter per coefficient of the multinomial fit, seeded at the
+    # coefficients it was fit at, which is the exact root of the score written
+    # for it. The default stabilizer estimates the k - 1 free marginal
+    # proportions instead.
+    model <- spec$stab$model
+    stab_block <- if (is.null(model)) {
+      props <- colMeans(spec$exposure)
+      stats::setNames(props[-1], paste0("stab_", levs[-1]))
+    } else {
+      stats::setNames(
+        model$coefs,
+        ipw_name_categorical_coefs(levs[-1], colnames(model$X), "stab_")
+      )
+    }
   } else {
     stab_block <- numeric(0)
   }
@@ -639,13 +678,66 @@ ipw_categorical_seed_tilt <- function(spec, levs) {
   ps_tilt_categorical(ps_fit, spec$estimand, focal_idx)
 }
 
+# The residuals the conditional density's spread was estimated from and the
+# exposure a marginal numerator is the normal density of, both as the propensity
+# score fit came to them over its own rows. `ipw_spec_continuous()` reads them
+# off the model and carries them, because the rows `.data` leaves need not be
+# the rows the fit was made over and the weights were built at the fit's
+# reading. A spec assembled without that record is one whose rows are the fit's,
+# so the rows it holds answer the same question.
+ipw_continuous_fit_residuals <- function(spec) {
+  if (!is.null(spec$ps$fit_residuals)) {
+    return(spec$ps$fit_residuals)
+  }
+
+  spec$exposure - ipw_continuous_spec_fns(spec)$mean(spec$ps$X, spec$ps$coefs)
+}
+
+ipw_continuous_fit_exposure <- function(spec) {
+  if (!is.null(spec$ps$fit_exposure)) {
+    return(spec$ps$fit_exposure)
+  }
+
+  spec$exposure
+}
+
+# The design the propensity score fit's own rows enter through, which an
+# integrated numerator needs to read its average over those rows at a value of
+# theta the fit never sat at. It is carried only where `.data` put the analyzed
+# design over other rows; without that record the two are the same design.
+ipw_continuous_fit_design <- function(spec) {
+  if (!is.null(spec$ps$fit_X)) {
+    return(spec$ps$fit_X)
+  }
+
+  spec$ps$X
+}
+
+# The same reading for a numerator model, whose block carries the spread its own
+# fit's residuals came to. A block assembled without that record is one whose
+# design is its own fit's, so the dose it is stacked against, passed here as
+# `exposure`, answers the same question.
+ipw_numerator_fit_sigma2 <- function(model, exposure) {
+  if (!is.null(model$sigma2_fit)) {
+    return(model$sigma2_fit)
+  }
+
+  fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, model$coefs)
+
+  mean((exposure - fitted_n)^2)
+}
+
 ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   alpha <- spec$ps$coefs
-  fitted_ps <- ipw_continuous_spec_fns(spec)$mean(spec$ps$X, alpha)
 
   # A spread the caller fixed is a constant the weights were built with rather
   # than a quantity the data estimate, so the block is the coefficients alone
   # and nothing in the stacked system carries its uncertainty.
+  #
+  # The residuals the spread is read from are the propensity score fit's own,
+  # carried on the spec, rather than the ones the analyzed rows leave. The
+  # weights were built at the fit's moment, and a seed at any other moment
+  # rebuilds weights the caller was never given.
   ps_block <- if (identical(spec$sigma$kind, "fixed")) {
     alpha
   } else {
@@ -653,7 +745,7 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
       alpha,
       sigma2_d = ipw_continuous_sigma2_seed(
         spec$sigma,
-        spec$exposure - fitted_ps,
+        ipw_continuous_fit_residuals(spec),
         spec$density,
         call = call
       )
@@ -672,17 +764,22 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   # of its residuals. Both seeds are the exact root of the row that estimates
   # them, which is what makes the stacked system carry the uncertainty of having
   # fit the model rather than move away from it.
+  #
+  # Both blocks are seeded at moments their own fit came to, taken over that
+  # fit's rows, since those are the moments the weights were built at. The rows
+  # the spec analyzes are what the equations below solve the moments over, which
+  # is the answer rather than the starting value.
   if (identical(spec$numerator, "model")) {
     model <- spec$stab$model
     coefs <- model$coefs
-    fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, coefs)
     stab_block <- c(
       stats::setNames(coefs, paste0("stab_", colnames(model$X))),
-      sigma2_n = mean((spec$exposure - fitted_n)^2)
+      sigma2_n = ipw_numerator_fit_sigma2(model, spec$exposure)
     )
   } else if (identical(spec$numerator, "marginal")) {
-    mu_a <- mean(spec$exposure)
-    sigma2_a <- mean((spec$exposure - mu_a)^2)
+    a_fit <- ipw_continuous_fit_exposure(spec)
+    mu_a <- mean(a_fit)
+    sigma2_a <- mean((a_fit - mu_a)^2)
     stab_block <- c(mu_a = mu_a, sigma2_a = sigma2_a)
   } else {
     stab_block <- numeric(0)
@@ -921,6 +1018,35 @@ ipw_categorical_ps <- function(x, theta, k) {
   ps / rowSums(ps)
 }
 
+# The probabilities the categorical stabilization block reports at one value of
+# theta, in the column order the exposure indicator carries: the k - 1 free
+# marginal proportions the default stabilizer estimates, completed by the
+# reference level's, or, where the caller stabilized on a fitted model, the
+# n-by-K matrix that model gives, rebuilt from the numerator design and the
+# block's own parameters. The preflight that rebuilds the weights once and the
+# psi that rebuilds them at every evaluation both read it here, so the two
+# cannot compute a different numerator from the same parameters. Weights with no
+# numerator to estimate leave the block empty and take no probability at all.
+#
+# `stab_block` is the stabilization block itself and `th_stab` the slice of
+# theta that belongs to it, rather than the whole spec, on the terms
+# `ipw_binary_stab_prob()` takes its own pair.
+ipw_categorical_stab_probs <- function(stab_block, th_stab, k) {
+  if (!length(th_stab)) {
+    return(NULL)
+  }
+
+  model <- stab_block$model
+  if (is.null(model)) {
+    return(c(1 - sum(th_stab), th_stab))
+  }
+
+  # The same softmax the denominator is rebuilt through, so the numerator a
+  # model reports is read back the way the model itself computes it, reference
+  # level first.
+  ipw_categorical_ps(model$X, th_stab, k)
+}
+
 ipw_psi_categorical <- function(
   spec,
   layout,
@@ -938,7 +1064,8 @@ ipw_psi_categorical <- function(
   inv_out <- ipw_inv_link(out_link, call = call)
   x_cf <- spec$outcome$X_counterfactual
   levs <- names(x_cf)
-  score <- spec$stab$score
+  stab <- spec$stab
+  score <- stab$score
   focal_idx <- if (!is.null(spec$focal_level)) {
     match(spec$focal_level, levs)
   } else {
@@ -968,11 +1095,7 @@ ipw_psi_categorical <- function(
     ps_rows <- deli::ee_mlogit(th_ps, X = x_ps, y = z_ind)
     ps_mat <- ipw_categorical_ps(x_ps, th_ps, k)
 
-    stab_probs <- if (length(th_stab)) {
-      c(1 - sum(th_stab), th_stab)
-    } else {
-      NULL
-    }
+    stab_probs <- ipw_categorical_stab_probs(stab, th_stab, k)
     # Evaluated once and handed to both the weights and the marginal-mean rows.
     h <- if (tilted) {
       ps_tilt_categorical(ps_mat, estimand, focal_idx)
@@ -992,15 +1115,20 @@ ipw_psi_categorical <- function(
 
     out_rows <- ipw_outcome_rows(th_out, x_out, y, family, out_link, w)
 
-    stab_rows <- if (length(th_stab)) {
+    stab_rows <- if (!length(th_stab)) {
+      NULL
+    } else if (!is.null(stab$model)) {
+      # The numerator model's own score, which is the multinomial score the
+      # denominator's block solves, written over the numerator's design and the
+      # same reference-first indicator matrix.
+      deli::ee_mlogit(th_stab, X = stab$model$X, y = z_ind)
+    } else {
       do.call(
         rbind,
         lapply(seq_len(k - 1), function(j) {
           matrix(z_ind[, j + 1] - th_stab[[j]], nrow = 1)
         })
       )
-    } else {
-      NULL
     }
 
     # Standardize each level's marginal mean to the estimand's tilted
@@ -1191,9 +1319,20 @@ ipw_continuous_inputs <- function(
     sigma_n <- sqrt(th_stab[[p_n + 1L]])
   }
 
+  # The conditional means an integrated numerator averages the density of, read
+  # over the propensity score fit's own rows at this value of theta. The average
+  # and the grid are halves of one reading, and the weights the caller carries
+  # are the fit's reading of both, so the rows the average runs over are the
+  # fit's wherever `.data` left the analyzed design over fewer of them. Every
+  # other numerator averages nothing and computes none of this.
+  ps_fns <- ipw_continuous_spec_fns(spec)
+  mu_avg <- if (identical(spec$numerator, "integrated")) {
+    ps_fns$mean(ipw_continuous_fit_design(spec), alpha)
+  }
+
   list(
     alpha = alpha,
-    mu = ipw_continuous_spec_fns(spec)$mean(spec$ps$X, alpha),
+    mu = ps_fns$mean(spec$ps$X, alpha),
     extras = list(
       sigma2_d = sigma2_d,
       mu_a = if (length(th_stab) && !numerator_model) th_stab[[1]],
@@ -1204,7 +1343,8 @@ ipw_continuous_inputs <- function(
       stabilized = spec$stab$stabilized,
       density = spec$density,
       numerator = spec$numerator,
-      grid = grid
+      grid = grid,
+      mu_avg = mu_avg
     )
   )
 }
@@ -1213,8 +1353,13 @@ ipw_continuous_inputs <- function(
 # which `wt_ate()` builds from the exposure of the units it weights. The grid is
 # a function of the data alone, so holding it fixed across the solve is what
 # makes the weights the sandwich differentiates the weights the user was given.
+#
+# The exposure it spans is the propensity score fit's own, for the reason the
+# average runs over that fit's units: the weights the caller carries were read
+# over the rows the model was fit to, and a grid spanning the rows `.data` left
+# would interpolate a different function.
 ipw_continuous_grid <- function(spec) {
-  ipw_numerator_grid(spec$exposure, spec$numerator)
+  ipw_numerator_grid(ipw_continuous_fit_exposure(spec), spec$numerator)
 }
 
 # The same grid built from an exposure vector, which the joint route holds one
@@ -1251,7 +1396,10 @@ ipw_continuous_sigma_row <- function(sigma, residuals, sigma2_d, density) {
 
 # The seed for that parameter: the exact root of whichever row estimates it, so
 # that the weights the system rebuilds at its starting value are the weights the
-# user was given.
+# user was given. That holds only where `residuals` are the ones the spread was
+# estimated from, which are the fitted model's own over the rows it was fit
+# over; the rows the system goes on to solve over are a separate question the
+# row itself answers.
 ipw_continuous_sigma2_seed <- function(
   sigma,
   residuals,

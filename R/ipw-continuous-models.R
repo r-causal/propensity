@@ -819,16 +819,107 @@ check_ipw_continuous_model <- function(entry, call = rlang::caller_env()) {
 # kernel density is refused only for the caller that is, since a route that
 # rebuilds the weights by calling `wt_ate()` again asks the density for nothing
 # a kernel cannot give.
+#
+# `n` is the number of observations the ratio is about to be read over, which is
+# what the score the record names is checked against.
 ipw_continuous_ratio <- function(
   wts,
+  n,
   stacked = TRUE,
   call = rlang::caller_env()
 ) {
-  ipw_continuous_ratio_meta(
+  score <- stabilization_score(wts)
+
+  ratio <- ipw_continuous_ratio_meta(
     density_meta(wts),
     stabilized = is_stabilized(wts),
-    score = stabilization_score(wts),
+    score = score,
     stacked = stacked,
+    call = call
+  )
+
+  check_ipw_stabilization_score(ratio$numerator, score, n, call = call)
+
+  ratio
+}
+
+# Refuse weights whose record names a score as their numerator when the score in
+# hand is not one value for each observation being weighted. The record
+# describes how the weights were built rather than what survived reaching here,
+# and two things break the agreement between the two.
+#
+# Subsetting the weights drops a per-observation score outright, since nothing
+# rebuilding a psw is given the indices behind a length change; the record still
+# says a score stabilized them and there is no vector left to read.
+# `stats::model.frame()` instead re-attaches the original attributes to the
+# shortened vector, so the score arrives at the length the weights were recorded
+# at rather than the length they now are.
+#
+# Either way the ratio would divide a density read over the analyzed rows by a
+# numerator describing other rows: zero-length in the first case, recycling in
+# the second. Neither is arithmetic the caller wrote, and the report that
+# followed named the estimand, the spread, and `.data` rather than the score, so
+# the score is checked here, before any ratio is built.
+#
+# A scalar score is exempt for the reason it is the remedy: one number scales
+# every weight whatever the rows are, so nothing about it is indexed and nothing
+# drops it.
+#
+# `component` names the component of a product weight the score belongs to, and
+# is `NULL` for the single-treatment route, whose weights carry the one score
+# they have on the vector itself.
+check_ipw_stabilization_score <- function(
+  numerator,
+  score,
+  n,
+  component = NULL,
+  call = rlang::caller_env()
+) {
+  if (!identical(numerator, "score")) {
+    return(invisible(TRUE))
+  }
+
+  # A score with no values in it is refused alongside a missing one.
+  # `stabilization_score_aligns()` passes a zero-length score, because it is
+  # written for the prototypes and empty subsets a `psw` restore passes through,
+  # where a score lines up with observations that have not arrived yet. Here the
+  # observations have arrived and the record names a score as their numerator,
+  # so a score holding nothing is a numerator with nothing to read.
+  if (length(score) > 0 && stabilization_score_aligns(score, n)) {
+    return(invisible(TRUE))
+  }
+
+  # Both halves are cli templates rather than values spliced into one, because
+  # cli reads the message once: a brace inside a value is text by the time it
+  # arrives.
+  headline <- if (is.null(component)) {
+    "{.fun ipw} can't read the {.arg stabilization_score} the weights \\
+    supplied to {.arg outcome_mod} record as their numerator."
+  } else {
+    "{.fun ipw} can't read the {.arg stabilization_score} the \\
+    {.arg {component}} component of the weights supplied to \\
+    {.arg outcome_mod} records as its numerator."
+  }
+
+  held <- if (is.null(score)) {
+    "hold no score at all."
+  } else {
+    "hold {length(score)} of them."
+  }
+
+  abort(
+    c(
+      headline,
+      x = paste("They weight {n} observation{?s} and", held),
+      i = "A per-observation score is one value for each unit, so it does not \\
+      survive the rows being restricted: subsetting the weights drops it, and \\
+      a model frame that drops incomplete rows leaves it at the length the \\
+      weights were built at.",
+      i = "Rebuild the weights on the rows being analyzed, or stabilize on a \\
+      single {.arg stabilization_score}, which scales every weight and \\
+      survives any restriction."
+    ),
+    error_class = "propensity_ipw_stabilization_score_error",
     call = call
   )
 }
@@ -873,8 +964,18 @@ ipw_continuous_ratio_meta <- function(
 # back through. The model goes through the registry the propensity score model
 # goes through, so a class whose score this stack cannot write is refused with
 # that registry's own reason, naming the argument the model arrived in.
+#
+# `.data` is the frame every other design in the stack is rebuilt from, over the
+# rows every model read, and this design is rebuilt from it alongside them.
+# Without one the design is read off the fit itself.
+#
+# `component` names the component whose weights the numerator was built for on
+# the joint route, where naming the argument alone would leave a caller with two
+# stabilized components unable to tell which fit is refused.
 ipw_numerator_model_block <- function(
   numerator_model,
+  .data = NULL,
+  component = NULL,
   call = rlang::caller_env()
 ) {
   if (is.null(numerator_model)) {
@@ -888,34 +989,147 @@ ipw_numerator_model_block <- function(
     call = call
   )
   check_ipw_continuous_model(entry, call = call)
-  check_ipw_numerator_model_weights(numerator_model, call = call)
+  check_ipw_numerator_model_weights(
+    numerator_model,
+    component = component,
+    call = call
+  )
 
   # The block below multiplies the fitted coefficients against the design
   # positionally, as the propensity score block does, so the model needs a
   # coefficient for every column of its design. Without this the numerator comes
   # back missing at every value of theta, and the first report of it is the
   # weights the system rebuilds failing to match the ones the caller built.
-  check_ipw_model_rank(stats::coef(numerator_model), "stabilize", call = call)
+  check_ipw_model_rank(
+    stats::coef(numerator_model),
+    "stabilize",
+    component = component,
+    call = call
+  )
 
-  numerator_design <- entry$design
-  if (is.null(numerator_design)) {
-    numerator_design <- stats::model.matrix(numerator_model)
-  }
+  numerator_design <- ipw_numerator_model_design(
+    numerator_model,
+    entry,
+    .data = .data,
+    component = component,
+    call = call
+  )
 
   list(
-    # An additive fit's design is the smooth basis it reports rather than the
-    # columns its formula names, which `model.matrix()` returns for it as well.
-    # Such a fit's entry has already evaluated that basis, and it is the
-    # numerator model's own: a block multiplied by another model's design would
-    # rebuild a numerator nobody fit.
+    # The numerator model's own design, whichever way it was arrived at: a block
+    # multiplied by another model's design would rebuild a numerator nobody fit.
     X = numerator_design,
     kind = entry$kind,
     link = entry$link,
     psi_loss = entry$psi_loss,
     psi_k = entry$psi_k,
     penalty = entry$penalty,
-    coefs = stats::coef(numerator_model)
+    coefs = stats::coef(numerator_model),
+    # The spread the numerator's density was read at, taken the way
+    # `numerator_model_moments()` takes it: the mean square of the fit's own
+    # response-scale residuals, over the fit's own rows. The design above is
+    # rebuilt over the rows `.data` leaves, and the same moment read over those
+    # rows is a different spread from the one the weights carry.
+    sigma2_fit = mean(
+      as.numeric(stats::residuals(numerator_model, type = "response"))^2,
+      na.rm = TRUE
+    )
   )
+}
+
+# The design a numerator model's block multiplies its coefficients against.
+#
+# With a `.data` the caller supplied it is rebuilt from that frame under the
+# fit's own terms, contrasts, and levels, which is what puts it over the rows
+# every other design in the stack is built over. Without one it is read off the
+# fit: an additive fit's entry has already evaluated its smooth basis, and every
+# other fit is asked for its own model matrix.
+#
+# An `lm` or `glm` usually keeps its model frame, but one fit with
+# `model = FALSE` keeps none and rebuilds it by re-evaluating the fitting call,
+# which a fit made inside a function whose frame is gone cannot do. That is the
+# denominator's recovery and the failure it can meet, so it is reported the way
+# the denominator's is, named for the argument this model arrived in and, on the
+# joint route, for the component it was built for.
+ipw_numerator_model_design <- function(
+  numerator_model,
+  entry,
+  .data = NULL,
+  component = NULL,
+  call = rlang::caller_env()
+) {
+  if (!is.null(.data)) {
+    rebuilt <- ipw_rebuild_design(
+      numerator_model,
+      stats::delete.response(stats::terms(numerator_model)),
+      .data,
+      call = call
+    )
+    check_ipw_design_width(
+      rebuilt,
+      numerator_model,
+      "stabilize",
+      component = component,
+      call = call
+    )
+
+    return(rebuilt)
+  }
+
+  if (!is.null(entry$design)) {
+    return(entry$design)
+  }
+
+  recovered <- tryCatch(
+    stats::model.matrix(numerator_model),
+    error = function(e) e
+  )
+
+  if (inherits(recovered, "error")) {
+    abort_ipw_numerator_frame_gone(
+      conditionMessage(recovered),
+      evaluates_to = "numerator",
+      component = component,
+      call = call
+    )
+  }
+
+  recovered
+}
+
+# The design a model's own rows enter through, which is what an integrated
+# numerator's average has to be read over: that numerator is the conditional
+# density averaged over the units the model was fit to, and a `.data` the caller
+# supplied can leave the rest of the stack standing on fewer of them. An
+# additive fit's entry has already evaluated its smooth basis over those rows,
+# and every other fit is asked for its own model matrix.
+#
+# An `lm` or a `glm` fit with `model = FALSE` keeps no model frame and rebuilds
+# one by re-evaluating its fitting call, which a fit made inside a function whose
+# frame is gone cannot do. Unlike every other design here, `.data` cannot stand
+# in for it, because `.data` describes the rows about to be weighted rather than
+# the rows the numerator was read over.
+ipw_integrated_fit_design <- function(
+  mod,
+  entry,
+  label,
+  call = rlang::caller_env()
+) {
+  if (!is.null(entry$design)) {
+    return(entry$design)
+  }
+
+  recovered <- tryCatch(stats::model.matrix(mod), error = function(e) e)
+
+  if (inherits(recovered, "error")) {
+    abort_ipw_integrated_frame_gone(
+      conditionMessage(recovered),
+      label,
+      call = call
+    )
+  }
+
+  recovered
 }
 
 # The numerator model's prior case weights, refused for the reason the
@@ -925,8 +1139,13 @@ ipw_numerator_model_block <- function(
 # refusal names `stabilize`, since that is the argument the model arrived in
 # and a reader told to refit the propensity score model would be told to refit
 # the wrong thing.
+#
+# `component` names the component the numerator was built for where there is
+# one to name, which is what the joint route has and the single-treatment routes
+# do not.
 check_ipw_numerator_model_weights <- function(
   numerator_model,
+  component = NULL,
   call = rlang::caller_env()
 ) {
   weights <- ipw_model_prior_weights(numerator_model)
@@ -935,12 +1154,17 @@ check_ipw_numerator_model_weights <- function(
     return(invisible(TRUE))
   }
 
+  labels <- ipw_numerator_labels(component)
+
   abort(
     c(
       "{.fun ipw} does not support a numerator model fit with case weights.",
-      x = "{.arg stabilize} was fit with non-unit {.arg weights}, so its \\
-      coefficients are not the root of the unweighted score stacked for it.",
-      i = "Refit {.arg stabilize} without {.arg weights}."
+      x = paste0(
+        labels$numerator,
+        " was fit with non-unit {.arg weights}, so its coefficients are not \\
+        the root of the unweighted score stacked for it."
+      ),
+      i = paste0("Refit ", labels$numerator, " without {.arg weights}.")
     ),
     error_class = "propensity_ipw_ps_weights_error",
     call = call
@@ -971,13 +1195,20 @@ ipw_numerator_model_fns <- function(model) {
 # Row identity is what the preflight at initialization covers: weights rebuilt
 # over misaligned rows do not match the ones the caller supplied, and that
 # comparison reports the misalignment.
+#
+# `component` names the component the numerator was built for where there is
+# one to name, which is what the joint route has and the single-treatment routes
+# do not.
 check_ipw_numerator_model <- function(
   numerator_model,
   block,
   exposure_name,
   n,
+  component = NULL,
   call = rlang::caller_env()
 ) {
+  labels <- ipw_numerator_labels(component)
+
   response <- tryCatch(
     fmla_extract_left_chr(numerator_model),
     error = function(e) NA_character_
@@ -986,9 +1217,16 @@ check_ipw_numerator_model <- function(
   if (!identical(response, exposure_name)) {
     abort(
       c(
-        "The model supplied to {.arg stabilize} must model the exposure.",
-        x = "It models {.val {response}} and {.arg wt_mod} models
-             {.val {exposure_name}}.",
+        paste0(
+          "The model supplied to ",
+          labels$numerator,
+          " must model the exposure."
+        ),
+        x = paste0(
+          "It models {.val {response}} and ",
+          labels$model,
+          " models {.val {exposure_name}}."
+        ),
         i = "The numerator of the weights is what the numerator model reports
              about the exposure given what it reads, so both models describe
              the same response."
@@ -1001,8 +1239,11 @@ check_ipw_numerator_model <- function(
   if (!identical(nrow(block$X), as.integer(n))) {
     abort(
       c(
-        "The model supplied to {.arg stabilize} must be fit to the observations
-         the other models were fit to.",
+        paste0(
+          "The model supplied to ",
+          labels$numerator,
+          " must be fit to the observations the other models were fit to."
+        ),
         x = "It was fit to {nrow(block$X)} observation{?s} and
              {.arg outcome_mod} to {n}.",
         i = "Refit the numerator model on the data the other models were fit

@@ -404,8 +404,10 @@
 #' about the model rather than a free choice. A numerator conditioning on a
 #' variable the outcome model does not read changes the estimand rather than the
 #' precision, because the pseudo-population it builds is one in which that
-#' variable still predicts the exposure. Condition the numerator on the modifier
-#' and on nothing the model does not hold. The same rule governs an
+#' variable still predicts the exposure, and confounding by it remains (Robins
+#' et al. 2000; Cole and Hernán 2008; Hernán and Robins 2020, Chapter 12).
+#' Condition the numerator on the modifier and on nothing the model does not
+#' hold. The same rule governs an
 #' exposure-by-modifier interaction reported without `.by`, since what matters
 #' is what the reported model reads and not which argument asked for the rows.
 #'
@@ -415,12 +417,13 @@
 #' standard errors do not account for the numerator model having been fitted.
 #' The default stabilizer is estimated in the stacked system instead, which is
 #' one parameter wider as a result. There is a third way: pass the fitted
-#' numerator model to `stabilize` itself, and its own equations join the stack,
-#' which is what a supplied score has none of. That accounting has something to
-#' say only where the reported model is not saturated in the variables the
-#' numerator reads; a binary exposure's numerator on a modifier the reported
-#' model interacts with fully divides out of every cell, so the estimates and
-#' the standard errors are the ones the unstabilized weights give.
+#' numerator model to `stabilize` itself, a [stats::glm()] of a binary exposure
+#' or an [nnet::multinom()] of a categorical one, and its own equations join the
+#' stack, which is what a supplied score has none of. That accounting has
+#' something to say only where the reported model is not saturated in the
+#' variables the numerator reads; a numerator on a modifier the reported model
+#' interacts with fully divides out of every cell, so the estimates and the
+#' standard errors are the ones the unstabilized weights give.
 #'
 #' A stabilized fit reporting effects within the strata of a modifier, and
 #' carrying the default numerator, warns with class
@@ -508,6 +511,29 @@
 #' as estimators rather than to the last bit, and they coincide when the two
 #' parameterizations are saturated in the same covariates.
 #'
+#' Either treatment may have more than two levels, fit with [nnet::multinom()]
+#' and weighted with categorical [wt_ate()] weights. Such a component is stacked
+#' under the multinomial score its own fit solves, which reads no order into the
+#' pair, so a categorical treatment sits in either position. The surface grows
+#' with the crossing rather than changing shape: a 2-by-3 crossing reports
+#' twenty-four rows for a binary outcome and fifteen for a continuous one, being
+#' the six cell means, each treatment's simple effects within each level of the
+#' other, and the first treatment's interaction against each non-reference level
+#' of the second. A categorical component needs no stabilization, and a caller
+#' who asks for it anyway is answered: the marginal proportions of its levels,
+#' a `stabilization_score`, and a fitted [nnet::multinom()] numerator each get
+#' the block described under **Stabilizing numerators, one per component**. A
+#' categorical treatment may also be paired with a dose, whose vocabulary names
+#' one level contrast per non-reference level; see the dose section below.
+#'
+#' A [nnet::multinom()] fit to two levels is a logistic regression solved by a
+#' different optimizer, and it is stacked as one. [joint_wt_models()] records
+#' such a component as `"categorical"`, after the model's class, but the block
+#' written for it is the binomial score, the weight factor is the binary one
+#' [wt_ate()] already builds from such a fit, and the pair reports the same
+#' fourteen-row two-by-two surface a pair of binomial [stats::glm()] fits
+#' reports.
+#'
 #' Prefer the two-model route when the two treatments call for different
 #' adjustment sets, or when the dependence of the second treatment on the first
 #' is what you want to model directly, since each treatment then gets its own
@@ -533,11 +559,19 @@
 #' marginal structural model's own coefficients, which for an identity-link
 #' model are exactly the weighted fit's coefficients.
 #'
+#' The first treatment may be binary or categorical. What the position settles
+#' is the dose: it is the second factor of the factorization, the treatment
+#' whose model conditions on the other, and nothing here carries the density of
+#' a first factor that is one, so a dose in the first slot and a pair of doses
+#' are both refused by type with an error of class
+#' `propensity_ipw_exposure_error`.
+#'
 #' Which of two surfaces a fit reports is decided by the marginal structural
-#' model alone. A model written in bare treatment terms reports the vocabulary
-#' surface below, whose rows name the treatment each one varies and where it is
-#' evaluated. Every other treatment-reading model reports the coefficient
-#' surface, whose rows are named after the coefficients they report.
+#' model alone. A model written in bare treatment terms and fit with an
+#' intercept reports the vocabulary surface below, whose rows name the treatment
+#' each one varies and where it is evaluated. Every other treatment-reading
+#' model reports the coefficient surface, whose rows are named after the
+#' coefficients they report.
 #'
 #' ### The vocabulary surface
 #'
@@ -561,14 +595,74 @@
 #' either of its levels, so it reports two rows under the group `"overall"` and
 #' no interaction.
 #'
-#' Those three readings hold of a model that is linear in each treatment and of
-#' no other, which is why such a model reports this surface and no other model
-#' does. The columns are read as well as the formula: a factor treatment under a
+#' A categorical first treatment reports those same three readings with the
+#' level contrasts run out over the levels it has: one contrast row per
+#' non-reference level at a dose of zero, one slope row at the reference level,
+#' and one interaction row per non-reference level. For `y ~ z * e` with `z`
+#' taking `"lo"`, `"mid"`, and `"hi"`, that is five rows, in the outcome
+#' design's column order:
+#'
+#' - `"z: mid vs lo"` at `"e = 0"` and `"z: hi vs lo"` at `"e = 0"`;
+#' - `"e: per unit"` at `"z = lo"`;
+#' - `"z: mid vs lo"` and `"z: hi vs lo"`, each at `"e + 1 vs e"`.
+#'
+#' A binary treatment is the one non-reference level of that rule rather than a
+#' case of its own, so the three rows above are this surface at two levels. An
+#' additive model reports the level contrasts and the slope under the group
+#' `"overall"` and no interaction, K rows for K levels. Every row is one
+#' coefficient of the weighted fit, so the surface grows by a row per level
+#' rather than by a table of contrasts, and per-arm dose slopes, which are not
+#' coefficients of this model, are built downstream from `coef()` and `vcov()`.
+#' No guard here reads how thin an arm is: a level the dose model rarely sees
+#' has its conditional density read far from any data, and the product weight
+#' carries that as a heavy tail. Check the weights' effective sample size and
+#' their spread within each level, as for any joint weight, before reading the
+#' rows.
+#'
+#' Those three readings hold of a model that is linear in each treatment and
+#' carries an intercept, and of no other, which is why such a model reports this
+#' surface and no other model does. A model fit without one, written `- 1` or
+#' `+ 0`, reports the coefficient surface: dropping the intercept expands a
+#' factor treatment to an indicator for every level rather than for the
+#' non-reference levels alone, and where the columns survive it, as a 0/1
+#' numeric treatment's do, the forced zero moves what the coefficients mean
+#' instead, so no row of this vocabulary would be true of the fit either way.
+#'
+#' The columns are read as well as the formula: a factor treatment under a
 #' coding other than treatment contrasts leaves the terms bare while rescaling
 #' or recentering the column, so its coefficients are no longer the effects
-#' these rows name, and such a fit is refused rather than reported on either
-#' surface. Refit the outcome model with the treatment as a 0/1 numeric or as an
-#' unordered factor under treatment contrasts.
+#' these rows name, and such a fit is refused rather than reported in this
+#' vocabulary. Refit the outcome model with the treatment as an unordered factor
+#' under treatment contrasts. A treatment with two levels also has a numeric
+#' coding whose bare term contributes that column, 0 for the reference level and
+#' 1 for the other; a treatment with more than two levels has none, so there it
+#' is the unordered factor alone. The refusal belongs to this surface rather
+#' than to the fit. A model the vocabulary has no reading for reports the
+#' coefficient surface instead, and a model written without an intercept is one
+#' such, so an ordered factor there contributes an `a.L:e` row named after the
+#' column it multiplies, claiming nothing about a coding.
+#'
+#' An interaction of the treatment with the dose written where the dose has no
+#' term of its own, as `y ~ a + a:e`, is refused here too, as is a crossing
+#' carrying no treatment term either, `y ~ a:e`. R codes a factor in such an
+#' interaction with one indicator per level rather than with the contrasts it
+#' carries, so the design gains a reference-level column no row names and each
+#' column after it holds the level before it. Write the crossing as `y ~ a * e`,
+#' which gives the dose a term of its own and reports on this vocabulary.
+#'
+#' The dose column is read the same way, against the dose the treatment models
+#' were fit to. A dose transformed in the outcome model's own formula, as
+#' `I(e / 10)` or `scale(e)`, leaves that column alone and is no longer a bare
+#' term, so the fit reports the coefficient surface. A dose rescaled or
+#' recentered in the data after the treatment models were fit is refused on this
+#' surface instead: the models have to agree on what the variable is, and the
+#' weights the outcome model carries were built for the dose those models hold.
+#' Working on a rescaled dose is supported either by rescaling it before every
+#' model is fit or by writing the transformation into the outcome formula.
+#' Neither refusal reaches the coefficient surface, which reports whatever
+#' columns the model holds and names each row after its own column: a bare-term
+#' model on a rescaled dose fit without an intercept, `y ~ a * e - 1`, reports
+#' the coefficients and standard errors that reparameterization leaves.
 #'
 #' ### The coefficient surface
 #'
@@ -579,7 +673,18 @@
 #' the fit writes it, and there is no `group` column at all: the surface makes
 #' no claim about where a row is evaluated, because for a curve there is no one
 #' place. Build an interpretable dose response downstream from `coef()` and
-#' `vcov()`, whose covariance between the rows is what that takes.
+#' `vcov()`, whose covariance between the rows is what that takes. Marginalizing
+#' the curve over the observed doses is a separate estimand that this package
+#' does not compute, here as on the single-treatment route: use the
+#' \pkg{marginaleffects} package on the result, `avg_slopes()` for slopes,
+#' `avg_comparisons()` for contrasts, and `avg_predictions()` for causal
+#' dose-response functions.
+#'
+#' Unlike the single-treatment route, this one announces nothing and refuses
+#' nothing for such a fit. There the surface a basis exposure leaves is the only
+#' reading the result has, so the reading is declared; here both readings are
+#' computed whatever the marginal structural model is, and `effects` is answered
+#' either way.
 #'
 #' The `effect` label follows the outcome link, `coef` at an identity link and
 #' the same `log(or)` and `log(rr)` as everywhere else. `coef` is a word of its
@@ -597,9 +702,20 @@
 #' the covariates, which is what the declared crossing does instead.
 #'
 #' Unlike the single-treatment route, this one needs no `.data` for a basis
-#' marginal structural model. Each treatment is read off its own treatment
-#' model, so the outcome model frame is never asked for a column it does not
-#' hold.
+#' marginal structural model. Without one, each treatment and each treatment
+#' design is read off the model that owns it, so the outcome model frame is
+#' never asked for a column it does not hold.
+#'
+#' A `.data` the caller does supply is the frame every design here is rebuilt
+#' from, on the terms the single-treatment routes rebuild theirs: both treatment
+#' columns, both treatment designs, each component's numerator design, and the
+#' counterfactual designs are built over the rows every model read and under the
+#' coding each fit recorded. A column one of those fits reads that is missing
+#' from `.data` errors with class `propensity_columns_exist_error`, and one
+#' supplied as another type errors with class `propensity_ipw_data_error`,
+#' naming the fits that recorded it, a treatment model by the treatment it fits.
+#' A set of fits made under `na.action = na.exclude` is reconciled with the
+#' frame they were given by restricting `.data` to the rows they analyzed.
 #'
 #' The dose model contributes its coefficients and the conditional variance its
 #' density ratio divides by, all as parameters of the same stacked system. Each
@@ -612,28 +728,51 @@
 #' estimated in its own block of the stacked system, so the standard errors
 #' account for that numerator having been fitted rather than reading it as a
 #' constant. What the block holds follows what the component's weights record.
-#' A discrete component stabilized by the default numerator contributes the one
-#' marginal proportion that numerator is, and a dose stabilized by the default
-#' numerator contributes the exposure's two marginal moments. A component
-#' stabilized on a fitted model passed to [wt_ate()]'s `stabilize` contributes
-#' that model instead: one parameter per coefficient for a discrete component,
-#' and for a dose one per coefficient plus one for the spread its density is
-#' read at. A dose stabilized with `numerator = "integrated"` is built from the
-#' dose block and the data alone and contributes nothing, and an unstabilized
-#' discrete component contributes nothing either.
+#' A binary component stabilized by the default numerator contributes the one
+#' marginal proportion that numerator is, a categorical one the \eqn{k - 1} free
+#' proportions its levels leave, and a dose stabilized by the default numerator
+#' the exposure's two marginal moments. A component stabilized on a fitted model
+#' passed to [wt_ate()]'s `stabilize` contributes that model instead: one
+#' parameter per coefficient for a binary component, one run of them per
+#' non-reference level for a categorical one, and for a dose one per coefficient
+#' plus one for the spread its density is read at. A dose stabilized with
+#' `numerator = "integrated"` is built from the dose block and the data alone and
+#' contributes nothing, and an unstabilized discrete component contributes
+#' nothing either.
 #'
 #' Those parameters are named `stab_<component>_<parameter>`, where
 #' `<component>` is the name the component was recorded under in
 #' [joint_wt_models()]: a joint system carries two components, and a name
-#' saying only which role a parameter plays would not say whose.
+#' saying only which role a parameter plays would not say whose. A categorical
+#' component composes that prefix with the multinomial layout its own block
+#' takes, `<level>:<term>` for a fitted numerator and the level alone for a
+#' marginal one, so a treatment `z` with levels `lo`, `mid`, and `hi` reports
+#' `stab_z_mid` and `stab_z_hi` for the marginal proportions and
+#' `stab_z_mid:(Intercept)`, `stab_z_mid:v`, `stab_z_hi:(Intercept)`, and
+#' `stab_z_hi:v` for a numerator of `v`.
 #'
 #' A numerator model is read through the guards its own single-treatment route
-#' reads it through. A discrete component's is read as an unpenalized binomial
-#' fit at a logit, probit, or cloglog link, and a dose's goes through the
-#' registry under **Continuous propensity score models**. A model of a response
-#' other than the treatment it stabilizes, or one fit to a different set of
-#' observations, errors with class `propensity_ipw_numerator_error`; one fit
-#' with case weights errors with class `propensity_ipw_ps_weights_error`.
+#' reads it through. A binary component's is read as an unpenalized binomial
+#' fit at a logit, probit, or cloglog link; a categorical component's as an
+#' [nnet::multinom()] fit that declares the treatment's levels in the order the
+#' component's own model declares them; and a dose's goes through the registry
+#' under **Continuous propensity score models**. A multinomial numerator fit
+#' under another level order, a model of a response other than the treatment it
+#' stabilizes, or one fit to a different set of observations errors with class
+#' `propensity_ipw_numerator_error`; one fit with case weights errors with class
+#' `propensity_ipw_ps_weights_error`. Every
+#' numerator design here is one of the designs a `.data` the caller supplies
+#' rebuilds, on the terms the single-treatment routes rebuild theirs, so a
+#' numerator that keeps no model frame and whose fitting call can no longer be
+#' evaluated errors with class `propensity_ipw_data_error` without one, and is
+#' rebuilt from `.data` with one.
+#'
+#' Both components' numerators arrive in the same argument, one `stabilize` per
+#' component, so every refusal about one names the component it was built for
+#' beside that argument, `stabilize` for `z`. `wt_mod` here is the container the
+#' two treatment models arrived in rather than a model anyone could refit, so a
+#' refusal reading a numerator against its treatment model names that component
+#' too.
 #'
 #' What a numerator may condition on is a statement about the reported model
 #' rather than a free choice, and it is the same statement here as for a single
@@ -675,8 +814,13 @@
 #' and the stacked system rebuilds the dose factor from that record, so what is
 #' differentiated is the weight the outcome model was fit with. An integrated
 #' numerator is built from the dose block and the data alone, so it adds no
-#' stabilization parameters; a fixed scalar `.sigma` is a known constant, so the
-#' dose block is its coefficients alone and none of that number's uncertainty is
+#' stabilization parameters; it is the conditional density averaged over the
+#' units the dose model was fit to and read at points spanning their dose, so it
+#' is rebuilt over those rows the way a single dose's is, and a dose model that
+#' keeps no model frame and whose fitting call can no longer be evaluated errors
+#' with class `propensity_ipw_data_error` under it, `.data` or no `.data`. A
+#' fixed scalar `.sigma` is a known constant, so the dose block is its
+#' coefficients alone and none of that number's uncertainty is
 #' carried. A spread supplied for each observation has no counterpart in the
 #' system and errors with class `propensity_ipw_sigma_error`.
 #'
@@ -690,7 +834,12 @@
 #' without saying what by: the system stands that component's own marginal
 #' numerator in, and the weight-consistency check reports the difference,
 #' naming the components whose numerator was stood in for. Rebuild such weights
-#' with [wt_joint()] to have the score read back.
+#' with [wt_joint()] to have the score read back. A record left whole over
+#' fewer rows is refused instead: a model frame that drops incomplete rows
+#' re-attaches the record as it was, leaving a component's score at the length
+#' the product was built at, and a score that describes other observations than
+#' the ones being weighted errors with class
+#' `propensity_ipw_stabilization_score_error`.
 #'
 #' Dose weights built with a `"kernel"` density are refused with class
 #' `propensity_ipw_se_method_unavailable_error`. The bandwidth is not a function
@@ -743,6 +892,68 @@
 #' from the stacked estimating-equation machinery rather than any single term,
 #' and for very large samples you can expect long, garbage-collection-heavy
 #' fits. This is expected behavior.
+#'
+#' ## Stabilizing numerators for a discrete exposure
+#'
+#' A numerator estimated by a model the caller passed to [wt_ate()]'s
+#' `stabilize` is estimated here as well, whichever type the exposure is. A
+#' binary exposure's numerator model contributes one parameter per coefficient,
+#' named `stab_<term>`, and a categorical exposure's contributes one per
+#' coefficient of its [nnet::multinom()] fit, named `stab_<level>:<term>`, so
+#' that the level a coefficient belongs to is read off the name. The multinomial
+#' numerator's own score is stacked alongside the propensity score model's,
+#' written as the same multinomial estimating equation, so the standard errors
+#' account for the numerator having been fitted rather than reading it as a
+#' constant. The default stabilizer contributes what it estimates instead: the
+#' single marginal proportion `stab_pi` for a binary exposure, and the K - 1
+#' free marginal proportions `stab_<level>` for a categorical one. A
+#' `stabilization_score` contributes nothing at all, being a number the caller
+#' fixed. What a dose's numerator contributes is described under **Continuous
+#' propensity score models**.
+#'
+#' Reading an estimated numerator as known would be conservative for these
+#' weights rather than wrong, since stabilization is offered for the `ate`
+#' estimand alone (Lunceford and Davidian 2004; Kostouraki et al. 2024), and
+#' Shu et al. (2020) stack the numerator and the denominator of stabilized
+#' weights for that reason. Stacking the multinomial score therefore tightens
+#' the inference rather than rescuing it. Neither result isolates the
+#' numerator's own contribution, and Kostouraki et al.'s tutorial is written for
+#' a binary exposure, so what they give is the direction of the correction
+#' rather than a bound on its size.
+#'
+#' A numerator model's design is one of the designs `ipw()` rebuilds when
+#' `.data` is supplied: it is rebuilt over the rows every model read and under
+#' the coding the fit recorded, so a column only the numerator reads is asked of
+#' `.data` and is held to the type the fit recorded for it. A `.data` missing
+#' such a column errors with class `propensity_columns_exist_error`, and one
+#' supplying it as another type with class `propensity_ipw_data_error`. Without
+#' `.data` the design is read off the fit itself, and a fit that keeps no model
+#' frame rebuilds one by re-evaluating its fitting call. A [stats::glm()] fit
+#' with `model = FALSE` is such a fit, so one made inside a function whose frame
+#' is gone errors with class `propensity_ipw_data_error`, and the remedy is to
+#' supply `.data`.
+#'
+#' A multinomial numerator model is held to the propensity score model's levels
+#' in the propensity score model's own order. Everything its block contributes
+#' is positional: the coefficients are stacked level-major, and the softmax the
+#' numerator is rebuilt from reads the first level as the reference the others
+#' are contrasted with, so a fit made under another order is a different
+#' parameterization rather than a permutation of this one. Such a fit is refused
+#' with an error of class `propensity_ipw_numerator_error`, which is also what a
+#' model of a response other than the exposure, or one fit to a different number
+#' of observations, errors with. One fit with case weights errors with class
+#' `propensity_ipw_ps_weights_error`, for the reason a weighted propensity score
+#' model does. [nnet::multinom()] keeps no model frame, so the design its
+#' coefficients were fit over is recovered by re-evaluating the fitting call; a
+#' fit whose call can no longer be evaluated, such as one made inside a function
+#' whose frame is gone, errors with class `propensity_ipw_data_error`, and the
+#' remedy is to supply `.data`, which the numerator's design is rebuilt from.
+#'
+#' A categorical exposure reports M-estimation standard errors alone, so a
+#' multinomial numerator model meets neither of the other two methods. The
+#' linearization's refusal of a fitted numerator model, below, and the robust
+#' diagnostic's reading of every weight as a known constant are both matters for
+#' a binary exposure.
 #'
 #' ## Continuous propensity score models
 #'
@@ -859,9 +1070,17 @@
 #' it differentiates are the weights the outcome model was fit with. A marginal
 #' numerator contributes the exposure's two marginal moments to the parameter
 #' vector; an integrated one is built from the propensity score block and the
-#' data alone and contributes none. Weights carrying no such record, including
-#' any written with [psw()] by hand, are read as the normal ratio the package
-#' built before the record existed.
+#' data alone and contributes none. That numerator is the conditional density
+#' averaged over the units the propensity score model was fit to, read at points
+#' spanning their exposure, so it is rebuilt over those rows even where `.data`
+#' leaves the rest of the system standing on fewer of them. Rebuilding it needs
+#' the design those rows enter through, which `.data` cannot stand in for: a
+#' propensity score model that keeps no model frame, made inside a function whose
+#' frame is gone, errors with class `propensity_ipw_data_error` under
+#' `numerator = "integrated"`, and the remedy is to refit it where its data is
+#' available. Weights carrying no such record, including any written with [psw()]
+#' by hand, are read as the normal ratio the package built before the record
+#' existed.
 #'
 #' A numerator estimated by a model the caller passed to [wt_ate()]'s
 #' `stabilize` contributes that model: one parameter per coefficient, named with
@@ -880,6 +1099,18 @@
 #' class `propensity_ipw_ps_weights_error`, for the reason a weighted propensity
 #' score model does: the block written for it is its unweighted score, and its
 #' coefficients are not at the root of that.
+#'
+#' A dose numerator model's design is one of the designs `ipw()` rebuilds when
+#' `.data` is supplied, on the terms a discrete exposure's is: it is rebuilt
+#' over the rows every model read and under the coding the fit recorded, so a
+#' column only the numerator reads is asked of `.data` and is held to the type
+#' the fit recorded for it. A `.data` missing such a column errors with class
+#' `propensity_columns_exist_error`, and one supplying it as another type with
+#' class `propensity_ipw_data_error`. Without `.data` the design is read off the
+#' fit itself, and a fit that keeps no model frame rebuilds one by re-evaluating
+#' its fitting call. A [stats::lm()] or [stats::glm()] fit with `model = FALSE`
+#' is such a fit, so one made inside a function whose frame is gone errors with
+#' class `propensity_ipw_data_error`, and the remedy is to supply `.data`.
 #'
 #' One choice is refused for the standard error rather than for the model. A
 #' `"kernel"` density chooses its bandwidth from the residuals of the propensity
@@ -1122,6 +1353,40 @@
 #' `propensity_ipw_sigma_error`. Rebuild the weights with the pooled default or
 #' with one number to use `ipw()`.
 #'
+#' It bears on a `stabilization_score` in the same way. A score written per
+#' observation is one value per unit, so it does not survive the rows being
+#' restricted: subsetting the weights drops it, and a model frame that drops
+#' incomplete rows leaves it at the length the weights were built at. Either way
+#' the record still names a score as the numerator and the score in hand no
+#' longer describes the observations being weighted, so `ipw()` refuses before
+#' anything is solved, with an error of class
+#' `propensity_ipw_stabilization_score_error`. Rebuild the weights on the rows
+#' being analyzed, or stabilize on a single `stabilization_score`, which scales
+#' every weight and survives any restriction.
+#'
+#' Weights stabilized on a fitted numerator model carry a further requirement,
+#' on `outcome_mod` rather than on the weights. A numerator fit on a covariate
+#' divides every weight by a quantity that varies with it, so the
+#' pseudo-population the weights build is one in which that covariate still
+#' predicts the exposure. Confounding by it remains there, and what the weighted
+#' fit identifies is the effect within its levels rather than the marginal one,
+#' which only a marginal structural model carrying it reports (Robins et al.
+#' 2000; Cole and Hernán 2008). `ipw()` compares the two: the variables on the
+#' right-hand side of the numerator model's formula against the variables
+#' `outcome_mod`'s formula reads anywhere, and any the second does not read are
+#' reported once for the call, in a warning of class
+#' `propensity_ipw_stabilizer_coverage_warning` naming each of them. The
+#' comparison is of variables rather than of terms, so a model reading
+#' `factor(v)`, `poly(v, 2)`, or `splines::ns(v, 3)` reads `v`; a marginal
+#' structural model conditional on a transformation of a covariate is
+#' conditional on the covariate. The joint route asks the same question of each
+#' component's numerator and reports the answers together. The estimates are the
+#' ones the fit gives either way, so this is a warning and not a refusal: add
+#' the variables to `outcome_mod`, or refit the model given to `stabilize`
+#' without them. The default stabilizer, an intercept-only numerator model, and
+#' a `stabilization_score` all condition on nothing this can name and say
+#' nothing.
+#'
 #' The propensity score model must not separate the exposure. A model whose
 #' covariates predict the exposure without error has no finite maximum likelihood
 #' estimate, and the propensity scores its coefficients imply reach exactly zero
@@ -1168,6 +1433,24 @@
 #' inverse probability-of-treatment weighting estimator: A tutorial for
 #' different types of propensity score weights. *Statistics in Medicine*.
 #' 2024;43(13):2672--2694. \doi{10.1002/sim.10078}
+#'
+#' Lunceford JK, Davidian M. Stratification and weighting via the propensity
+#' score in estimation of causal treatment effects: a comparative study.
+#' *Statistics in Medicine*. 2004;23(19):2937--2960. \doi{10.1002/sim.1903}
+#'
+#' Shu D, Young JG, Toh S, Wang R. Variance estimation in inverse probability
+#' weighted Cox models. *Biometrics*. 2020. \doi{10.1111/biom.13332}
+#'
+#' Robins JM, Hernán MA, Brumback B. Marginal structural models and causal
+#' inference in epidemiology. *Epidemiology*. 2000;11(5):550--560.
+#' \doi{10.1097/00001648-200009000-00011}
+#'
+#' Cole SR, Hernán MA. Constructing inverse probability weights for marginal
+#' structural models. *American Journal of Epidemiology*.
+#' 2008;168(6):656--664. \doi{10.1093/aje/kwn164}
+#'
+#' Hernán MA, Robins JM. *Causal Inference: What If*. Boca Raton: Chapman &
+#' Hall/CRC; 2020.
 #'
 #' Leyrat C, Seaman SR, White IR, et al. Propensity score analysis with partially
 #' observed covariates: How should multiple imputation be used? *Statistical
@@ -1416,6 +1699,10 @@ ipw.glm <- function(
   check_ipw_weights(wts)
   check_ipw_binary_focal(wts, wt_mod, .data = .data, estimand = estimand)
   check_ipw_linearization_numerator(wts, se_method)
+
+  # After the refusal above, so that the one path a fitted numerator cannot be
+  # estimated on is refused rather than warned about and then refused.
+  check_ipw_stabilizer_coverage(wts, outcome_mod)
 
   if (identical(se_method, "mestimation")) {
     spec <- ipw_spec_binary(
@@ -1723,6 +2010,7 @@ ipw_continuous_estimate <- function(
   # modified propensity score is detected before any estimand parsing.
   wts <- extract_weights(outcome_mod)
   check_ipw_weights(wts, call = call)
+  check_ipw_stabilizer_coverage(wts, outcome_mod, call = call)
 
   spec <- ipw_spec_continuous(
     wt_mod,
@@ -1814,21 +2102,31 @@ check_ipw_binary_gam <- function(
   wt_mod,
   arg = "wt_mod",
   what = "a binary propensity score model",
+  component = NULL,
   call = rlang::caller_env()
 ) {
   if (!inherits(wt_mod, "gam")) {
     return(invisible(TRUE))
   }
 
+  label <- ipw_model_arg_label(arg, component)
+
   abort(
     c(
       "{.fun ipw} stacks {what} at the unpenalized \\
       score of a {.fun stats::glm}.",
-      x = "{.arg {arg}} has class {.cls {class(wt_mod)}}, whose coefficients \\
-      are the root of a penalized score instead, so every standard error \\
-      here would describe a model that was not fit.",
-      i = "Refit {.arg {arg}} as a {.fun stats::glm}, writing the shape each \\
-      smooth term carries out as columns of the formula.",
+      x = paste0(
+        label,
+        " has class {.cls {class(wt_mod)}}, whose coefficients are the root \\
+        of a penalized score instead, so every standard error here would \\
+        describe a model that was not fit."
+      ),
+      i = paste0(
+        "Refit ",
+        label,
+        " as a {.fun stats::glm}, writing the shape each smooth term carries \\
+        out as columns of the formula."
+      ),
       i = ipw_continuous_resample_hint()
     ),
     error_class = c(
@@ -1837,6 +2135,101 @@ check_ipw_binary_gam <- function(
     ),
     call = call
   )
+}
+
+# Whether the numerator the weights were stabilized on conditions on anything
+# the reported model does not read.
+#
+# A numerator fit on V divides every weight by a quantity that varies with V, so
+# the pseudo-population it builds is one in which V still predicts the exposure.
+# Confounding by V remains there, and what the weighted fit identifies is the
+# effect within levels of V rather than the marginal one (Robins et al. 2000;
+# Cole and Hernán 2008). Only a marginal structural model carrying V reports
+# what those weights were built for, so a reported model that omits V is told
+# about V.
+#
+# The two sides are compared as variables rather than as terms. A model reading
+# `factor(v)`, `poly(v, 2)`, or `splines::ns(v, 3)` is conditional on V whatever
+# shape the term takes, and `all.vars()` reaches past the call to the names
+# inside it, so only a variable that is truly absent is reported.
+#
+# It is a warning rather than a refusal, for the reason the `.by` report is one:
+# the fit is a real weighted estimator of something, the numbers are the
+# caller's to keep, and what changed is which estimand they belong to.
+check_ipw_stabilizer_coverage <- function(
+  wts,
+  outcome_mod,
+  call = rlang::caller_env()
+) {
+  models <- ipw_stabilizer_models(wts)
+
+  if (!length(models)) {
+    return(invisible(TRUE))
+  }
+
+  # One report per call rather than one per model: the joint route carries a
+  # numerator for each component, and a reader told about one of them would add
+  # it, refit, and be told about the other.
+  variables <- unique(unlist(
+    lapply(models, numerator_model_variables),
+    use.names = FALSE
+  ))
+  uncovered <- setdiff(variables, ipw_outcome_model_variables(outcome_mod))
+
+  if (!length(uncovered)) {
+    return(invisible(TRUE))
+  }
+
+  warn(
+    c(
+      "The weights {.arg outcome_mod} was fit with are stabilized on a \\
+      numerator that conditions on {.val {uncovered}}, which \\
+      {.arg outcome_mod} does not read.",
+      i = "Dividing the weights by a quantity that varies with \\
+      {.val {uncovered}} leaves {.val {uncovered}} predicting the exposure in \\
+      the weighted sample, so the fit reports the effect within levels of \\
+      {.val {uncovered}} rather than the marginal one.",
+      i = "Add {.val {uncovered}} to {.arg outcome_mod}, or refit the model \\
+      given to {.arg stabilize} without {.val {uncovered}}; see \\
+      {.strong Stabilization} in {.fun wt_ate}."
+    ),
+    warning_class = "propensity_ipw_stabilizer_coverage_warning",
+    call = call
+  )
+
+  invisible(FALSE)
+}
+
+# The fitted numerator models the weights record, in the order the record holds
+# them. A single exposure's weights hold at most one, in whichever of the two
+# homes the accessor spans; a product's hold one per component, and both homes
+# are read for each. Weights stabilized on the default numerator, on a score the
+# caller supplied, or on nothing at all record no model and yield none.
+ipw_stabilizer_models <- function(wts) {
+  meta <- joint_wt_meta(wts)
+
+  models <- if (is.null(meta)) {
+    list(numerator_model(wts))
+  } else {
+    joint_wt_numerator_models(meta)
+  }
+
+  models[!vapply(models, is.null, logical(1))]
+}
+
+# The variables the reported model reads, anywhere in its formula. Read off the
+# terms so that a model written with a dot is asked about the variables the dot
+# stood for, and read whole rather than off the right-hand side: the response is
+# among them harmlessly, since a numerator is a model of the exposure and never
+# of the outcome.
+ipw_outcome_model_variables <- function(outcome_mod) {
+  model_terms <- tryCatch(stats::terms(outcome_mod), error = function(e) NULL)
+
+  if (is.null(model_terms)) {
+    return(all.vars(stats::formula(outcome_mod)))
+  }
+
+  all.vars(model_terms)
 }
 
 # Weights stabilized on a fitted numerator model, refused for the linearization.
@@ -3628,6 +4021,111 @@ abort_outcome_frame_gone <- function(cause, call = rlang::caller_env()) {
       with {.code model = TRUE} so the model frame is kept.",
       i = "{.arg .data} cannot stand in here: the weights are read from \\
       {.arg outcome_mod}'s own model frame."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# How a refusal about a numerator model names that model and the treatment model
+# it is read against. A single-treatment route reads one numerator, so the
+# argument it arrived in identifies it on its own and the treatment model is
+# `wt_mod`. The joint route reads a numerator per component, each arriving in
+# the `stabilize` of that component's own weights, so a refusal naming only the
+# argument leaves a caller with two stabilized components unable to tell which
+# fit is being refused. There the component is named the way the route's other
+# refusals name one, by the name its treatment model was given, `wt_mod` being
+# the container the pair arrived in rather than a model a reader could refit.
+#
+# Both pieces are cli format strings spliced into the messages before those are
+# formatted, so a route that names no component raises the message it always
+# raised.
+ipw_numerator_labels <- function(component = NULL) {
+  if (is.null(component)) {
+    return(list(numerator = "{.arg stabilize}", model = "{.arg wt_mod}"))
+  }
+
+  list(
+    numerator = "{.arg stabilize} for {.arg {component}}",
+    model = "{.arg {component}}"
+  )
+}
+
+# The same split for the refusals a numerator model shares with the other models
+# this route stacks, which name the model by the argument it arrived in rather
+# than by a word of their own. A route reading one model per argument is named
+# by the argument alone, and the joint route, which reads a numerator per
+# component, names the component beside it, so one guard raised for two
+# components says which of them it is about.
+ipw_model_arg_label <- function(arg, component = NULL) {
+  if (is.null(component)) {
+    return("{.arg {arg}}")
+  }
+
+  "{.arg {arg}} for {.arg {component}}"
+}
+
+# Report a numerator model whose design cannot be recovered from the fit, the
+# counterpart of the guard above for the model the weights were stabilized on.
+# An `lm`, a `glm`, or an `nnet::multinom()` fit that keeps no model frame
+# rebuilds one by re-evaluating its fitting call, which a fit made inside a
+# function whose frame is gone cannot do. Every numerator route meets that
+# failure and every one of them rebuilds the design from `.data` instead, so the
+# report is written once and the remedy is the same one the propensity score
+# model's recovery offers. `component` names the component the numerator was
+# built for where a route reads one per component.
+#
+# `evaluates_to` names what the coefficients would give if the numerator were
+# read off the fit rather than estimated: probabilities for a discrete exposure,
+# and the numerator itself for a dose, whose density is a value rather than a
+# probability.
+abort_ipw_numerator_frame_gone <- function(
+  cause,
+  evaluates_to = "probabilities",
+  component = NULL,
+  call = rlang::caller_env()
+) {
+  labels <- ipw_numerator_labels(component)
+
+  abort(
+    c(
+      paste0("Can't reconstruct the data behind ", labels$numerator, "."),
+      x = "{cause}",
+      i = "The numerator model is estimated alongside everything else, so \\
+      {.fun ipw} needs the design its coefficients were fit over rather than \\
+      the {evaluates_to} they evaluate to.",
+      i = "Supply {.arg .data} with the exposure, outcome, and covariates."
+    ),
+    error_class = "propensity_ipw_data_error",
+    call = call
+  )
+}
+
+# Report a model whose own rows cannot be read back under an integrated
+# numerator. That numerator is the conditional density averaged over the units
+# the model was fit to and interpolated from a grid spanning their exposure, so
+# rebuilding it needs the design those units enter through rather than the one
+# `.data` describes.
+#
+# `.data` is the remedy every other design here offers and it is not one here,
+# which is the reason this report is its own: it carries the rows about to be
+# weighted, and averaging over those is the reading the weights are not.
+abort_ipw_integrated_frame_gone <- function(
+  cause,
+  label,
+  call = rlang::caller_env()
+) {
+  abort(
+    c(
+      "Can't reconstruct the data behind {.arg {label}}.",
+      x = "{cause}",
+      i = "{.arg numerator} = {.val integrated} averages the conditional \\
+      density over the rows the model was fit to, so {.fun ipw} needs the \\
+      design those rows enter through.",
+      i = "{.arg .data} cannot stand in here: it describes the rows about to \\
+      be weighted, which need not be the rows the numerator was read over.",
+      i = "Refit {.arg {label}} where its data is available, or fit it with \\
+      {.code model = TRUE} so the model frame is kept."
     ),
     error_class = "propensity_ipw_data_error",
     call = call
