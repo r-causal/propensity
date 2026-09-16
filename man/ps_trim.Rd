@@ -13,6 +13,8 @@ ps_trim(
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated()
@@ -20,11 +22,12 @@ ps_trim(
 }
 \arguments{
 \item{.propensity}{A numeric vector of propensity scores in (0, 1) for binary
-exposures, or a matrix / data frame where each column gives the propensity
-score for one level of a categorical exposure. A data frame trimmed for a
-binary exposure is reduced to a single column: the second column of a two
-column data frame, which is the probability of the second level in the
-layout model predictions come in, and the first column otherwise. The
+exposures, a matrix / data frame where each column gives the propensity
+score for one level of a categorical exposure, or a fitted model (see
+\strong{Fitted models} and \strong{Dose models} in Details). A data frame trimmed
+for a binary exposure is reduced to a single column: the second column of
+a two column data frame, which is the probability of the second level in
+the layout model predictions come in, and the first column otherwise. The
 column taken is announced; \code{options(propensity.quiet = TRUE)} silences the
 announcement. A matrix is held to the same open interval as a vector, so a
 score of exactly 0 or 1 in any cell is refused and a separated multinomial
@@ -65,12 +68,22 @@ the same data with an error of class \code{propensity_no_overlap_error}
 because there is no range left to bound the scores to.
 \item \strong{\code{"optimal"}}: Multi-category optimal trimming (Yang et al., 2016).
 Categorical exposures only. Requires \code{.exposure}.
-\item \strong{\code{"density"}}, \strong{\code{"resid"}}: Trimming on the scale of the conditional
-density of a continuous exposure. A density needs the residuals and the
-family of the model that fit the exposure's conditional mean, so these
-methods refuse a vector or matrix of values with an error of class
-\code{propensity_method_error}.
+\item \strong{\code{"density"}}: Quantile floor on the conditional density of a
+continuous exposure. Units whose conditional density at their observed
+dose falls below its \code{lower} quantile are trimmed. Default:
+\code{lower = 0.01}.
+\item \strong{\code{"resid"}}: Bound on the absolute standardized residual of a
+continuous exposure. Units more than \code{upper} spreads from their
+predicted dose are trimmed. \code{upper} has no default.
 }
+
+\code{"density"} and \code{"resid"} need the residuals and the family of the model
+that fit the exposure's conditional mean, so they accept only a dose model
+(see \strong{Dose models} in Details). They refuse a vector or matrix of values,
+a binomial or quasibinomial \code{glm}, and a \code{multinom} with an error of class
+\code{propensity_method_error}. A dose model accepts only these two methods, and
+refuses every other one, including the default \code{"ps"} when \code{method} is not
+supplied, with the same class.
 
 For categorical exposures, only \code{"ps"} and \code{"optimal"} are supported.}
 
@@ -89,11 +102,22 @@ an error.
 \item \code{"pctl"}: quantile probabilities (defaults: 0.05, 0.95).
 \item \code{"pref"}: preference score bounds (defaults: 0.3, 0.7).
 \item \code{"adaptive"}, \code{"cr"}, \code{"optimal"}: ignored (thresholds are data-driven).
-}}
+\item \code{"density"}: \code{lower} is the quantile probability of the floor, in
+(0, 0.5) (default 0.01). \code{upper} is refused with an error of class
+\code{propensity_unsupported_arg_error}.
+\item \code{"resid"}: \code{upper} is the bound on the absolute standardized residual, a
+single positive finite number, and is required (an error of class
+\code{propensity_missing_arg_error} without it). \code{lower} is refused with an
+error of class \code{propensity_unsupported_arg_error}.
+}
+
+A \code{"density"} \code{lower} or \code{"resid"} \code{upper} out of range is refused with an
+error of class \code{propensity_range_error}.}
 
 \item{.exposure}{An exposure variable. Required for \code{"pref"}, \code{"cr"} (binary
-vector), and \code{"optimal"} (factor or character). Not required for other
-methods.}
+vector), and \code{"optimal"} (factor or character). For \code{"density"} and
+\code{"resid"}, the dose is read from the model's response unless supplied here.
+Not required for other methods.}
 
 \item{.focal_level}{The value of \code{.exposure} representing the focal
 (treated) group, used by \code{"pref"} and \code{"cr"}. Every binary coding honors
@@ -112,6 +136,24 @@ the same consequence for \code{.propensity}, and a level the exposure never
 takes is an error. Automatically detected if not supplied.}
 
 \item{...}{Additional arguments passed to methods.}
+
+\item{.sigma}{For \code{"density"} and \code{"resid"}, a single residual spread to
+read the conditional density at, recorded as \code{"supplied"}. With none
+supplied, the spread is the one the density family estimates from the
+residuals, as in \code{\link[=wt_ate]{wt_ate()}}: the root mean square, unless the family
+estimates a scale of its own. A spread for each unit is refused with an
+error of class \code{propensity_sigma_error}, and a spread supplied with a
+family that estimates its own scale is refused with an error of class
+\code{propensity_density_error}. The other methods refuse any \code{.sigma} with an
+error of class \code{propensity_sigma_error}.}
+
+\item{.density}{For \code{"density"} and \code{"resid"}, the family of the conditional
+density, in any form \code{\link[=wt_ate]{wt_ate()}} accepts: \code{"normal"} (the default),
+\code{"laplace"}, \code{"kernel"}, a specification such as \code{\link[=dens_t]{dens_t()}}, or a function
+of the standardized residual. \code{"resid"} accepts only \code{\link[=dens_normal]{dens_normal()}},
+\code{\link[=dens_t]{dens_t()}}, and \code{\link[=dens_laplace]{dens_laplace()}}, and refuses a kernel or user-written
+density with an error of class \code{propensity_density_error}. The other
+methods refuse any family but the normal with the same class.}
 
 \item{.treated}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{.focal_level} instead.}
 
@@ -135,6 +177,12 @@ with \code{\link[=ps_trim_meta]{ps_trim_meta()}}. Key fields include:
 (pctl), \code{cr_lower}/\code{cr_upper} (cr), \code{delta} (categorical ps),
 or \code{lambda} (optimal)
 }
+
+A trim of a dose model records \code{method}, \code{lower} (\code{"density"}, else
+\code{NULL}), \code{upper} (\code{"resid"}, else \code{NULL}), \code{threshold} (the realized floor
+on the conditional density), \code{sigma} (the spread it was read at),
+\code{sigma_kind} (\code{"pooled"}, \code{"mle"}, or \code{"supplied"}), \code{density} (the
+density specification), \code{keep_idx}, \code{trimmed_idx}, and \code{n_obs}.
 }
 \description{
 Trim observations with extreme propensity scores by replacing them with \code{NA},
@@ -166,6 +214,7 @@ equipoise based on the preference score.
 groups have observed propensity scores.
 \item Use \code{"optimal"} for multi-category (3+) exposures; this is the only
 data-driven method available for categorical treatments.
+\item Use \code{"density"} or \code{"resid"} for a continuous exposure, on its dose model.
 }
 }
 
@@ -193,6 +242,32 @@ silences the announcement. An \code{.exposure} you supply is used instead, and a
 categorical model's columns are matched to its levels by name, so an exposure
 whose levels are ordered differently is still trimmed against the right
 column.
+}
+
+\subsection{Dose models}{
+
+For a continuous exposure, \code{.propensity} can be the model of the exposure's
+conditional mean: a \code{\link[stats:lm]{stats::lm()}}, a \code{glm} of the \code{gaussian()} family (or
+another family whose variance is constant), a \code{MASS::rlm()}, or an
+\code{mgcv::gam()}, the models \code{\link[=wt_ate]{wt_ate()}} reads a dose from. A \code{glm} whose spread
+changes with its mean, such as \code{poisson()}, is refused with an error of
+class \code{propensity_model_family_error}. Only \code{"density"} and \code{"resid"} apply.
+
+Both read the fitted conditional mean \code{mu}, the spread \code{sigma} of the
+residuals under the family in \code{.density}, the standardized residual
+\code{z = (a - mu) / sigma}, and the conditional density \code{f = g(z) / sigma},
+where \code{g} is the family's standardized density. \code{"density"} keeps the units
+whose \code{f} is at least its \code{lower} quantile. \code{"resid"} keeps those whose
+\verb{|z|} is at most \code{upper}; for the symmetric unimodal families it accepts,
+that is the floor \code{g(upper) / sigma} on \code{f}, which is the threshold it
+records.
+
+The retained values are the conditional means, and the trimmed ones are
+\code{NA}. A unit with a missing mean or dose takes no part in the trim. The
+population a trimmed analysis describes is the units whose observed dose
+was plausible under the model, not the full sample. \code{.focal_level},
+\code{.reference_level}, and their deprecated forms are refused with an error of
+class \code{propensity_focal_level_error}, since a dose has no levels.
 }
 
 \subsection{Object behavior}{
@@ -319,6 +394,12 @@ wt_ate(refitted, .exposure = z)
 
 # Trim the scores a fitted model reports, reading the exposure off the model
 ps_trim(fit, method = "cr")
+
+# Trim a dose model on the scale of its conditional density
+dose <- 1 + 0.5 * x + rt(n, df = 3)
+dose_fit <- lm(dose ~ x)
+ps_trim(dose_fit, method = "density", lower = 0.05)
+ps_trim(dose_fit, method = "resid", upper = 3, .density = dens_t(4))
 
 if (rlang::is_installed("nnet")) {
   trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))

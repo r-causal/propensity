@@ -280,7 +280,7 @@
       expr
     Condition <propensity_method_error>
       Error in `ps_trim()`:
-      ! No method for objects of class lm
+      ! No method for objects of class not_a_model
 
 # ps_trim() refuses scores that are not numbers
 

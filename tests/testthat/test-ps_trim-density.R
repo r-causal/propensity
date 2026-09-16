@@ -794,6 +794,52 @@ test_that("ps_trim() refuses a spread it cannot record on a dose model", {
   )
 })
 
+test_that("ps_trim() refuses a dose that does not line up with the fitted means", {
+  dat <- sim_dose_trim()
+  n <- nrow(dat)
+
+  # A fit that omits the rows it dropped reports fewer means than the data has
+  # doses, so the full dose cannot be read against them.
+  dat_missing <- dat
+  dat_missing$x1[c(4L, 30L)] <- NA
+  fit_omit <- lm(a ~ x1 + x2, data = dat_missing, na.action = na.omit)
+  expect_length(fitted(fit_omit), n - 2L)
+  expect_error(
+    ps_trim(fit_omit, method = "density", .exposure = dat_missing$a),
+    class = "propensity_length_error"
+  )
+  expect_propensity_error(
+    ps_trim(fit_omit, method = "density", .exposure = dat_missing$a)
+  )
+
+  # The dose is read as a number for each unit, so neither text nor a matrix
+  # will do.
+  fit <- lm(a ~ x1 + x2, data = dat)
+  expect_error(
+    ps_trim(fit, method = "density", .exposure = as.character(dat$a)),
+    class = "propensity_type_error"
+  )
+  expect_error(
+    ps_trim(fit, method = "resid", upper = 2, .exposure = matrix(dat$a)),
+    class = "propensity_type_error"
+  )
+  expect_propensity_error(
+    ps_trim(fit, method = "density", .exposure = as.character(dat$a))
+  )
+})
+
+test_that("ps_trim() refuses a dose model of several responses", {
+  dat <- sim_dose_trim()
+  dat$b <- dat$a + dat$x1
+  fit <- lm(cbind(a, b) ~ x1 + x2, data = dat)
+
+  expect_error(
+    ps_trim(fit, method = "density"),
+    class = "propensity_ps_shape_error"
+  )
+  expect_propensity_error(ps_trim(fit, method = "density"))
+})
+
 test_that("ps_trim() refuses a dose model fit with a spread that moves with its mean", {
   withr::local_seed(5)
   dat <- sim_dose_trim()
@@ -881,15 +927,19 @@ test_that("ps_trim() refuses levels on a dose model", {
 })
 
 test_that("ps_trim() refuses the deprecated level arguments on a dose model", {
-  fit <- lm(a ~ x1 + x2, data = sim_dose_trim())
+  dat <- sim_dose_trim()
+  fit <- lm(a ~ x1 + x2, data = dat)
+  fit_glm <- glm(a ~ x1 + x2, data = dat, family = gaussian())
 
   # The deprecated pair names levels too, and is refused the same way once its
-  # deprecation has been reported.
+  # deprecation has been reported. A gaussian glm reaches the dose route by its
+  # own method, so it is held to the same refusal.
   deprecated <- list(
     treated = quote(ps_trim(fit, method = "density", .treated = 1)),
     untreated = quote(
       ps_trim(fit, method = "resid", upper = 2, .untreated = 0)
-    )
+    ),
+    glm_treated = quote(ps_trim(fit_glm, method = "density", .treated = 1))
   )
   for (kind in names(deprecated)) {
     warned <- 0L
@@ -941,8 +991,51 @@ test_that("ps_trim() refuses a density or a spread on the score routes", {
     class = "propensity_sigma_error"
   )
 
+  # A matrix of scores for a categorical exposure, and a data frame of them,
+  # are score routes too.
+  trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
+  ps_matrix <- matrix(
+    c(rep(0.3, n), rep(0.3, n), rep(0.4, n)),
+    ncol = 3,
+    dimnames = list(NULL, levels(trt))
+  )
+  expect_error(
+    ps_trim(ps_matrix, method = "ps", .exposure = trt, .sigma = 1),
+    class = "propensity_sigma_error"
+  )
+  expect_error(
+    ps_trim(ps_matrix, method = "ps", .exposure = trt, .density = "laplace"),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    ps_trim(
+      as.data.frame(ps_matrix),
+      method = "ps",
+      .exposure = trt,
+      .sigma = 1
+    ),
+    class = "propensity_sigma_error"
+  )
+  expect_error(
+    ps_trim(
+      as.data.frame(ps_matrix),
+      method = "ps",
+      .exposure = trt,
+      .density = "laplace"
+    ),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    ps_trim(data.frame(ps = ps), method = "ps", .density = dens_t(4)),
+    class = "propensity_density_error"
+  )
+
   # The default family is no instruction at all.
   expect_s3_class(ps_trim(ps, method = "ps", .density = "normal"), "ps_trim")
+  expect_s3_class(
+    ps_trim(ps_matrix, method = "ps", .exposure = trt, .density = "normal"),
+    "ps_trim"
+  )
 
   expect_propensity_error(ps_trim(ps, method = "ps", .density = dens_t(4)))
   expect_propensity_error(ps_trim(ps, method = "ps", .sigma = 1))

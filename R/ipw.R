@@ -2067,10 +2067,7 @@ ipw_continuous_estimate <- function(
 # for.
 check_ipw_model_family <- function(wt_mod, call = rlang::caller_env()) {
   family <- wt_mod[["family"]]
-  binomial_family <- is.list(family) &&
-    isTRUE(family$family %in% c("binomial", "quasibinomial"))
-
-  if (binomial_family) {
+  if (is_binomial_family(family)) {
     return(invisible(TRUE))
   }
 

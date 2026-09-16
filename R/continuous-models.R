@@ -36,8 +36,15 @@ extract_continuous_ps.lm <- function(model, call = rlang::caller_env()) {
 # route says which, so the fit is refused here rather than downstream, where a
 # matrix with a row for each unit is only ever described by a length that the
 # caller never wrote.
+#
+# `problem` and `remedy` say what the caller needed the single mean for and what
+# to do instead, since trimming a dose model cannot take the means on their own.
 check_continuous_model_response <- function(
   model,
+  problem = "Weights for a continuous exposure need a model of one conditional
+             mean for each unit.",
+  remedy = "Fit the exposure on its own, or pass the conditional means of this
+            exposure to {.arg .propensity} as a numeric vector.",
   call = rlang::caller_env()
 ) {
   fitted_values <- stats::fitted(model)
@@ -50,13 +57,11 @@ check_continuous_model_response <- function(
 
   abort(
     c(
-      "Weights for a continuous exposure need a model of one conditional mean
-       for each unit.",
+      problem,
       x = "{.arg .propensity} is {.cls {class(model)[[1]]}}, a fit of
            {dims[[2]]} response{?s}, whose fitted values are {dims[[1]]} by
            {dims[[2]]}.",
-      i = "Fit the exposure on its own, or pass the conditional means of this
-           exposure to {.arg .propensity} as a numeric vector."
+      i = remedy
     ),
     error_class = "propensity_ps_shape_error",
     call = call
@@ -195,16 +200,11 @@ check_binary_model_family.default <- function(
   # A family object is a list. An element that is not one is not a family, and
   # `$` on an atomic vector raises an error of base R's rather than one of this
   # package's, so what the element is gets read before anything is asked of it.
-  #
-  # `isTRUE()` because a family object that carries no name answers the test
-  # with nothing at all, which `&&` can read as neither true nor false. A
-  # family like that is not one of the two, and is refused below by what it is
-  # missing.
+  # A family object that carries no name is not one of the binomial two, and is
+  # refused below by what it is missing.
   family_object <- is.list(family)
-  binomial_family <- family_object &&
-    isTRUE(family$family %in% c("binomial", "quasibinomial"))
 
-  if (binomial_family) {
+  if (is_binomial_family(family)) {
     return(invisible(NULL))
   }
 
@@ -231,6 +231,15 @@ check_binary_model_family.default <- function(
     error_class = "propensity_model_family_error",
     call = call
   )
+}
+
+# Whether a family fits the probability of a binary exposure. A family object is
+# a list, and an element that is not one is not a family. `isTRUE()` because a
+# family object that carries no name answers the test with nothing at all, which
+# `&&` can read as neither true nor false.
+is_binomial_family <- function(family) {
+  is.list(family) &&
+    isTRUE(family$family %in% c("binomial", "quasibinomial"))
 }
 
 # Whether a family object names itself. Every family built by `binomial()` and

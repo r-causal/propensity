@@ -2861,12 +2861,6 @@ test_that("ps_trim() reads a two-level multinomial fit on the binary path", {
 })
 
 test_that("ps_trim() refuses a fit it cannot read propensity scores from", {
-  linear <- lm(z ~ x1 + x2, data = trim_model_data)
-
-  expect_error(
-    ps_trim(linear, method = "ps"),
-    class = "propensity_method_error"
-  )
   expect_error(
     ps_trim(structure(list(), class = "not_a_model"), method = "ps"),
     class = "propensity_method_error"
@@ -2917,7 +2911,7 @@ test_that("ps_refit() refits a multinomial fit trimmed through the model route",
 
 test_that("ps_trim() names the class of a fit it has no reading for", {
   expect_propensity_error(
-    ps_trim(lm(z ~ x1 + x2, data = trim_model_data), method = "ps")
+    ps_trim(structure(list(), class = "not_a_model"), method = "ps")
   )
 })
 

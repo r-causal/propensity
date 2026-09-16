@@ -1,5 +1,19 @@
 # propensity 0.1.0.9000 (development version)
 
+* `ps_trim()` now trims a model of a continuous exposure on the scale of its
+  conditional density. A `lm`, a `glm` whose variance is constant, a
+  `MASS::rlm()`, or an `mgcv::gam()` of the dose can be trimmed with
+  `method = "density"`, which sets aside the units whose conditional density at
+  their observed dose falls below a quantile floor (`lower`, default 0.01), or
+  with `method = "resid"`, which sets aside the units more than `upper` spreads
+  from their predicted dose. The new `.density` and `.sigma` arguments choose
+  the density family and the spread, which is otherwise the one the family
+  estimates from the residuals, as in `wt_ate()`. The trim record keeps the
+  realized floor, the spread, how the spread was found, and the family, and
+  trims that differ in any of them do not combine. A dose model asked for any
+  other method, a model of a probability asked for either density method, and a
+  level argument on a dose model are refused with informative errors.
+
 * Weights for a continuous exposure can no longer be built from a trimmed,
   truncated, or calibrated score. A conditional mean whose values happened to
   fall in (0, 1) could be passed through `ps_trim()`, `ps_trunc()`, or

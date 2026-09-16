@@ -8,11 +8,12 @@
 #' observations with [ps_refit()].
 #'
 #' @param .propensity A numeric vector of propensity scores in (0, 1) for binary
-#'   exposures, or a matrix / data frame where each column gives the propensity
-#'   score for one level of a categorical exposure. A data frame trimmed for a
-#'   binary exposure is reduced to a single column: the second column of a two
-#'   column data frame, which is the probability of the second level in the
-#'   layout model predictions come in, and the first column otherwise. The
+#'   exposures, a matrix / data frame where each column gives the propensity
+#'   score for one level of a categorical exposure, or a fitted model (see
+#'   **Fitted models** and **Dose models** in Details). A data frame trimmed
+#'   for a binary exposure is reduced to a single column: the second column of
+#'   a two column data frame, which is the probability of the second level in
+#'   the layout model predictions come in, and the first column otherwise. The
 #'   column taken is announced; `options(propensity.quiet = TRUE)` silences the
 #'   announcement. A matrix is held to the same open interval as a vector, so a
 #'   score of exactly 0 or 1 in any cell is refused and a separated multinomial
@@ -52,11 +53,21 @@
 #'     because there is no range left to bound the scores to.
 #'   * **`"optimal"`**: Multi-category optimal trimming (Yang et al., 2016).
 #'     Categorical exposures only. Requires `.exposure`.
-#'   * **`"density"`**, **`"resid"`**: Trimming on the scale of the conditional
-#'     density of a continuous exposure. A density needs the residuals and the
-#'     family of the model that fit the exposure's conditional mean, so these
-#'     methods refuse a vector or matrix of values with an error of class
-#'     `propensity_method_error`.
+#'   * **`"density"`**: Quantile floor on the conditional density of a
+#'     continuous exposure. Units whose conditional density at their observed
+#'     dose falls below its `lower` quantile are trimmed. Default:
+#'     `lower = 0.01`.
+#'   * **`"resid"`**: Bound on the absolute standardized residual of a
+#'     continuous exposure. Units more than `upper` spreads from their
+#'     predicted dose are trimmed. `upper` has no default.
+#'
+#'   `"density"` and `"resid"` need the residuals and the family of the model
+#'   that fit the exposure's conditional mean, so they accept only a dose model
+#'   (see **Dose models** in Details). They refuse a vector or matrix of values,
+#'   a binomial or quasibinomial `glm`, and a `multinom` with an error of class
+#'   `propensity_method_error`. A dose model accepts only these two methods, and
+#'   refuses every other one, including the default `"ps"` when `method` is not
+#'   supplied, with the same class.
 #'
 #'   For categorical exposures, only `"ps"` and `"optimal"` are supported.
 #' @param lower,upper Numeric thresholds whose interpretation depends on
@@ -74,9 +85,20 @@
 #'   * `"pctl"`: quantile probabilities (defaults: 0.05, 0.95).
 #'   * `"pref"`: preference score bounds (defaults: 0.3, 0.7).
 #'   * `"adaptive"`, `"cr"`, `"optimal"`: ignored (thresholds are data-driven).
+#'   * `"density"`: `lower` is the quantile probability of the floor, in
+#'     (0, 0.5) (default 0.01). `upper` is refused with an error of class
+#'     `propensity_unsupported_arg_error`.
+#'   * `"resid"`: `upper` is the bound on the absolute standardized residual, a
+#'     single positive finite number, and is required (an error of class
+#'     `propensity_missing_arg_error` without it). `lower` is refused with an
+#'     error of class `propensity_unsupported_arg_error`.
+#'
+#'   A `"density"` `lower` or `"resid"` `upper` out of range is refused with an
+#'   error of class `propensity_range_error`.
 #' @param .exposure An exposure variable. Required for `"pref"`, `"cr"` (binary
-#'   vector), and `"optimal"` (factor or character). Not required for other
-#'   methods.
+#'   vector), and `"optimal"` (factor or character). For `"density"` and
+#'   `"resid"`, the dose is read from the model's response unless supplied here.
+#'   Not required for other methods.
 #' @inheritParams wt_ate
 #' @param .focal_level The value of `.exposure` representing the focal
 #'   (treated) group, used by `"pref"` and `"cr"`. Every binary coding honors
@@ -93,6 +115,22 @@
 #'   the same consequence for `.propensity`, and a level the exposure never
 #'   takes is an error. Automatically detected if not supplied.
 #' @param ... Additional arguments passed to methods.
+#' @param .sigma For `"density"` and `"resid"`, a single residual spread to
+#'   read the conditional density at, recorded as `"supplied"`. With none
+#'   supplied, the spread is the one the density family estimates from the
+#'   residuals, as in [wt_ate()]: the root mean square, unless the family
+#'   estimates a scale of its own. A spread for each unit is refused with an
+#'   error of class `propensity_sigma_error`, and a spread supplied with a
+#'   family that estimates its own scale is refused with an error of class
+#'   `propensity_density_error`. The other methods refuse any `.sigma` with an
+#'   error of class `propensity_sigma_error`.
+#' @param .density For `"density"` and `"resid"`, the family of the conditional
+#'   density, in any form [wt_ate()] accepts: `"normal"` (the default),
+#'   `"laplace"`, `"kernel"`, a specification such as [dens_t()], or a function
+#'   of the standardized residual. `"resid"` accepts only [dens_normal()],
+#'   [dens_t()], and [dens_laplace()], and refuses a kernel or user-written
+#'   density with an error of class `propensity_density_error`. The other
+#'   methods refuse any family but the normal with the same class.
 #' @param ps `r lifecycle::badge("deprecated")` Use `.propensity` instead. A
 #'   call that names `ps` must name the arguments after it as well, since a
 #'   positional argument binds to `.propensity`.
@@ -119,6 +157,7 @@
 #'   groups have observed propensity scores.
 #' * Use `"optimal"` for multi-category (3+) exposures; this is the only
 #'   data-driven method available for categorical treatments.
+#' * Use `"density"` or `"resid"` for a continuous exposure, on its dose model.
 #'
 #' ## Typical workflow
 #'
@@ -143,6 +182,31 @@
 #' categorical model's columns are matched to its levels by name, so an exposure
 #' whose levels are ordered differently is still trimmed against the right
 #' column.
+#'
+#' ## Dose models
+#'
+#' For a continuous exposure, `.propensity` can be the model of the exposure's
+#' conditional mean: a [stats::lm()], a `glm` of the `gaussian()` family (or
+#' another family whose variance is constant), a `MASS::rlm()`, or an
+#' `mgcv::gam()`, the models [wt_ate()] reads a dose from. A `glm` whose spread
+#' changes with its mean, such as `poisson()`, is refused with an error of
+#' class `propensity_model_family_error`. Only `"density"` and `"resid"` apply.
+#'
+#' Both read the fitted conditional mean `mu`, the spread `sigma` of the
+#' residuals under the family in `.density`, the standardized residual
+#' `z = (a - mu) / sigma`, and the conditional density `f = g(z) / sigma`,
+#' where `g` is the family's standardized density. `"density"` keeps the units
+#' whose `f` is at least its `lower` quantile. `"resid"` keeps those whose
+#' `|z|` is at most `upper`; for the symmetric unimodal families it accepts,
+#' that is the floor `g(upper) / sigma` on `f`, which is the threshold it
+#' records.
+#'
+#' The retained values are the conditional means, and the trimmed ones are
+#' `NA`. A unit with a missing mean or dose takes no part in the trim. The
+#' population a trimmed analysis describes is the units whose observed dose
+#' was plausible under the model, not the full sample. `.focal_level`,
+#' `.reference_level`, and their deprecated forms are refused with an error of
+#' class `propensity_focal_level_error`, since a dose has no levels.
 #'
 #' ## Object behavior
 #'
@@ -250,6 +314,12 @@
 #'     (pctl), `cr_lower`/`cr_upper` (cr), `delta` (categorical ps),
 #'     or `lambda` (optimal)
 #'
+#'   A trim of a dose model records `method`, `lower` (`"density"`, else
+#'   `NULL`), `upper` (`"resid"`, else `NULL`), `threshold` (the realized floor
+#'   on the conditional density), `sigma` (the spread it was read at),
+#'   `sigma_kind` (`"pooled"`, `"mle"`, or `"supplied"`), `density` (the
+#'   density specification), `keep_idx`, `trimmed_idx`, and `n_obs`.
+#'
 #' @references
 #' Crump, R. K., Hotz, V. J., Imbens, G. W., & Mitnik, O. A. (2009). Dealing
 #' with limited overlap in estimation of average treatment effects.
@@ -298,6 +368,12 @@
 #' # Trim the scores a fitted model reports, reading the exposure off the model
 #' ps_trim(fit, method = "cr")
 #'
+#' # Trim a dose model on the scale of its conditional density
+#' dose <- 1 + 0.5 * x + rt(n, df = 3)
+#' dose_fit <- lm(dose ~ x)
+#' ps_trim(dose_fit, method = "density", lower = 0.05)
+#' ps_trim(dose_fit, method = "resid", upper = 3, .density = dens_t(4))
+#'
 #' if (rlang::is_installed("nnet")) {
 #'   trt <- factor(sample(c("a", "b", "c"), n, replace = TRUE))
 #'   multinomial_fit <- nnet::multinom(trt ~ x, trace = FALSE)
@@ -323,6 +399,8 @@ ps_trim <- function(
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated()
@@ -355,6 +433,8 @@ ps_trim.default <- function(
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated(),
@@ -421,6 +501,7 @@ ps_trim.default <- function(
     )
   }
 
+  check_score_trim_density(.sigma, .density, call = call)
   check_ps_range(.propensity, call = call)
 
   # Handle deprecation
@@ -612,6 +693,8 @@ ps_trim.matrix <- function(
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated(),
@@ -647,6 +730,8 @@ ps_trim.matrix <- function(
       call = call
     )
   }
+
+  check_score_trim_density(.sigma, .density, call = call)
 
   check_no_focal_levels(
     .focal_level,
@@ -832,6 +917,8 @@ ps_trim.data.frame <- function(
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated(),
@@ -866,6 +953,8 @@ ps_trim.data.frame <- function(
         .focal_level = .focal_level,
         .reference_level = .reference_level,
         ...,
+        .sigma = .sigma,
+        .density = .density,
         .treated = .treated,
         .untreated = .untreated,
         call = call
@@ -887,6 +976,8 @@ ps_trim.data.frame <- function(
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     ...,
+    .sigma = .sigma,
+    .density = .density,
     .treated = .treated,
     .untreated = .untreated,
     user_env = rlang::caller_env(),
@@ -894,22 +985,32 @@ ps_trim.data.frame <- function(
   )
 }
 
-# The fitted propensity score models trimming reads, registered for the same
-# classes the weight functions read: a `glm`, whose binomial families fit the
-# probability of a binary exposure, and a `multinom`, which fits a probability
-# for every level. A `lm` is not among them, its fitted values being conditional
-# means rather than probabilities, and it reaches the default method, which
-# reports that it has no scores to trim.
+# The fitted models trimming reads. A `glm` of a binomial family fits the
+# probability of a binary exposure and a `multinom` fits a probability for every
+# level, so both are trimmed on the scale of that probability. A `lm`, and a
+# `glm` of any other family, fits the conditional mean of a dose, which is
+# trimmed on the scale of its conditional density.
 #' @export
 ps_trim.glm <- function(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c(
+    "ps",
+    "adaptive",
+    "pctl",
+    "pref",
+    "cr",
+    "optimal",
+    "density",
+    "resid"
+  ),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated(),
@@ -918,7 +1019,13 @@ ps_trim.glm <- function(
   check_call_arg(call)
   .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
 
-  ps_trim_from_model(
+  trim <- if (is_binomial_family(.propensity[["family"]])) {
+    ps_trim_from_model
+  } else {
+    ps_trim_dose
+  }
+
+  trim(
     .propensity,
     method = method,
     lower = lower,
@@ -927,6 +1034,57 @@ ps_trim.glm <- function(
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     ...,
+    .sigma = .sigma,
+    .density = .density,
+    .treated = .treated,
+    .untreated = .untreated,
+    call = call,
+    user_env = rlang::caller_env()
+  )
+}
+
+# A `lm` has no family, and its fitted values are the conditional mean of a
+# dose. `MASS::rlm()` fits and other subclasses arrive here by inheritance.
+#' @export
+ps_trim.lm <- function(
+  .propensity,
+  method = c(
+    "ps",
+    "adaptive",
+    "pctl",
+    "pref",
+    "cr",
+    "optimal",
+    "density",
+    "resid"
+  ),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .sigma = NULL,
+  .density = "normal",
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
+  ps_trim_dose(
+    .propensity,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
+    .sigma = .sigma,
+    .density = .density,
     .treated = .treated,
     .untreated = .untreated,
     call = call,
@@ -941,13 +1099,24 @@ ps_trim.glm <- function(
 #' @export
 ps_trim.multinom <- function(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c(
+    "ps",
+    "adaptive",
+    "pctl",
+    "pref",
+    "cr",
+    "optimal",
+    "density",
+    "resid"
+  ),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated(),
@@ -966,6 +1135,8 @@ ps_trim.multinom <- function(
     .focal_level = .focal_level,
     .reference_level = .reference_level,
     ...,
+    .sigma = .sigma,
+    .density = .density,
     .treated = .treated,
     .untreated = .untreated,
     call = call,
@@ -973,12 +1144,12 @@ ps_trim.multinom <- function(
   )
 }
 
-# The model methods differ only in the class they are registered for and in what
-# that class needs checked before it is read, so both route through here. The
-# method is resolved first because it decides whether the trimming reads an
-# exposure at all, and a method the vector route does not define is left to the
-# route that does not define it, so that the refusal is the same one a vector of
-# scores gets.
+# The model methods of the score route differ only in the class they are
+# registered for and in what that class needs checked before it is read, so
+# both route through here. The method is resolved first because it decides
+# whether the trimming reads an exposure at all, and a score method the vector
+# route does not define is left to the route that does not define it, so that
+# the refusal is the same one a vector of scores gets.
 #
 # The vector and matrix methods are reached by a call rather than by dispatch,
 # so they are handed the frame the route was entered on. Left to their own, a
@@ -992,6 +1163,8 @@ ps_trim_from_model <- function(
   .focal_level,
   .reference_level,
   ...,
+  .sigma,
+  .density,
   .treated,
   .untreated,
   call,
@@ -999,9 +1172,28 @@ ps_trim_from_model <- function(
 ) {
   method <- rlang::arg_match(
     method,
-    values = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+    values = ps_trim_methods,
     error_call = call
   )
+
+  # Checked before anything is read off the fit, so that a refusal is never
+  # preceded by an announcement about an exposure nothing goes on to use.
+  if (method %in% ps_trim_dose_methods) {
+    abort(
+      c(
+        "Method {.val {method}} cannot trim a model of a probability.",
+        x = "{.arg .propensity} is {.cls {class(model)[[1]]}}, whose fitted
+             values are probabilities of the exposure, and a model of a
+             probability has no conditional density to trim.",
+        i = "Trim its propensity scores with a score method such as
+             {.val ps}, or supply the model of a continuous exposure's
+             conditional mean to trim with {.val {method}}."
+      ),
+      error_class = "propensity_method_error",
+      call = call
+    )
+  }
+  check_score_trim_density(.sigma, .density, call = call)
 
   args <- prepare_model_ps(
     model,
@@ -1048,6 +1240,391 @@ ps_trim_from_model <- function(
   )
 }
 
+ps_trim_score_methods <- c("ps", "adaptive", "pctl", "pref", "cr", "optimal")
+ps_trim_dose_methods <- c("density", "resid")
+ps_trim_methods <- c(ps_trim_score_methods, ps_trim_dose_methods)
+
+# The score routes read no density, so a family or a spread handed to them
+# would be an instruction silently ignored. The default family is accepted, so
+# that a caller who writes out the family they were getting anyway is not
+# refused for saying so, which is how the weight functions treat a binary
+# exposure.
+check_score_trim_density <- function(
+  .sigma,
+  .density,
+  call = rlang::caller_env()
+) {
+  if (!is.null(.sigma)) {
+    abort(
+      c(
+        "{.arg .sigma} applies only to trimming a dose model.",
+        x = "The trimming method bounds propensity scores, which have no
+             spread to read.",
+        i = "Leave {.arg .sigma} unset, or supply the model of a continuous
+             exposure with {.code method = \"density\"} or
+             {.code method = \"resid\"}."
+      ),
+      error_class = "propensity_sigma_error",
+      call = call
+    )
+  }
+
+  spec <- as_density_spec(.density, arg = ".density", call = call)
+  if (identical(spec$family, "normal")) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "{.arg .density} applies only to trimming a dose model.",
+      x = "The trimming method bounds propensity scores, which have no
+           conditional density to read.",
+      i = "Leave {.arg .density} unset, or supply the model of a continuous
+           exposure with {.code method = \"density\"} or
+           {.code method = \"resid\"}."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
+}
+
+# Trimming a dose model on the scale of its conditional density. The fitted
+# values are the conditional mean of the dose, the residuals are spread by the
+# estimator the density family asks for, as the weights spread them, and each
+# unit's conditional density at its own dose decides whether it is kept.
+#
+# Every argument is checked before the exposure is read, so a refusal is never
+# preceded by an announcement about an exposure nothing goes on to use.
+ps_trim_dose <- function(
+  model,
+  method,
+  lower,
+  upper,
+  .exposure,
+  .focal_level,
+  .reference_level,
+  ...,
+  .sigma,
+  .density,
+  .treated,
+  .untreated,
+  call,
+  user_env
+) {
+  rlang::check_dots_empty(call = call)
+  method <- rlang::arg_match(
+    method,
+    values = ps_trim_methods,
+    error_call = call
+  )
+
+  check_continuous_model_family(
+    model,
+    problem = "Trimming a dose model needs a model of its conditional mean
+               with a single spread.",
+    remedy = "Fit the dose model with {.fun gaussian}, {.fun lm},
+              {.fun mgcv::gam}, or {.fun MASS::rlm}.",
+    call = call
+  )
+  check_continuous_model_response(
+    model,
+    problem = "Trimming a dose model needs a model of one conditional mean for
+               each unit.",
+    remedy = "Fit the dose on its own and trim that model.",
+    call = call
+  )
+
+  if (!method %in% ps_trim_dose_methods) {
+    abort(
+      c(
+        "Method {.val {method}} cannot trim a dose model.",
+        x = "{.arg .propensity} is {.cls {class(model)[[1]]}}, a model of a
+             continuous exposure's conditional mean, which has no propensity
+             score in (0, 1) for {.val {method}} to bound.",
+        i = "Trim it on the scale of its conditional density with
+             {.code method = \"density\"} or {.code method = \"resid\"}."
+      ),
+      error_class = "propensity_method_error",
+      call = call
+    )
+  }
+
+  focal_params <- handle_focal_deprecation(
+    .focal_level,
+    .reference_level,
+    .treated,
+    .untreated,
+    "ps_trim",
+    user_env = user_env
+  )
+  check_dose_no_levels(
+    focal_params$.focal_level,
+    focal_params$.reference_level,
+    call = call
+  )
+
+  density <- as_density_spec(.density, arg = ".density", call = call)
+  check_dose_trim_sigma(.sigma, call = call)
+  check_sigma_method(.sigma, density, call = call)
+
+  if (method == "density") {
+    if (!is.null(upper)) {
+      abort(
+        c(
+          "{.arg upper} is not used by {.code method = \"density\"}.",
+          x = "The method sets aside the units whose conditional density falls
+               below a quantile floor, and a large conditional density is a
+               plausible dose, so there is no upper tail to trim.",
+          i = "Drop {.arg upper}, and set the floor with {.arg lower}."
+        ),
+        error_class = "propensity_unsupported_arg_error",
+        call = call
+      )
+    }
+    if (is.null(lower)) {
+      lower <- 0.01
+    }
+    check_density_trim_lower(lower, call = call)
+  } else {
+    if (!is.null(lower)) {
+      abort(
+        c(
+          "{.arg lower} is not used by {.code method = \"resid\"}.",
+          x = "The method bounds the absolute standardized residual, which has
+               no lower end to trim.",
+          i = "Drop {.arg lower}, and set the bound with {.arg upper}."
+        ),
+        error_class = "propensity_unsupported_arg_error",
+        call = call
+      )
+    }
+    if (is.null(upper)) {
+      abort(
+        c(
+          "{.code method = \"resid\"} needs {.arg upper}.",
+          x = "The bound on the absolute standardized residual has no
+               default.",
+          i = "Supply the number of spreads from the predicted dose beyond
+               which a unit is trimmed, such as {.code upper = 3}."
+        ),
+        error_class = "propensity_missing_arg_error",
+        call = call
+      )
+    }
+    check_resid_trim_upper(upper, call = call)
+    check_resid_trim_density(density, call = call)
+  }
+
+  mu <- as.numeric(extract_continuous_ps(model, call = call)$mu)
+  exposure <- extract_exposure_from_model(model, .exposure)
+  check_dose_trim_exposure(exposure, length(mu), call = call)
+
+  n <- length(mu)
+  sigma <- continuous_sigma(exposure, mu, .sigma, density, call = call)
+  z <- (exposure - mu) / sigma
+  f <- density_eval_present(density, z, call = call) / sigma
+
+  # A unit with a missing mean or dose has no density to place against the
+  # floor, so it takes no part in working the floor out and no part in the
+  # record, as a missing score takes none in a trim of scores.
+  observed <- !is.na(f)
+
+  if (method == "density") {
+    # `quantile()` names its result for the probability it was asked for, which
+    # says nothing about the floor.
+    threshold <- unname(stats::quantile(f, probs = lower, na.rm = TRUE))
+    keep_idx <- which(f >= threshold)
+  } else {
+    # For a symmetric unimodal density the bound on `|z|` is a floor on the
+    # density written in residual units, and the floor is what is recorded, so
+    # that both methods describe the same kind of cut.
+    threshold <- density_eval(density, upper, call = call) / sigma
+    keep_idx <- which(abs(z) <= upper)
+  }
+
+  trimmed_idx <- setdiff(which(observed), keep_idx)
+
+  values <- mu
+  values[trimmed_idx] <- NA_real_
+
+  # Every field is named whichever method made the record, and the bound a
+  # method does not read is `NULL`, so that two records compare field by field.
+  new_trimmed_ps(
+    x = values,
+    ps_trim_meta = list(
+      method = method,
+      lower = if (method == "density") lower,
+      upper = if (method == "resid") upper,
+      threshold = threshold,
+      sigma = sigma,
+      sigma_kind = density_sigma_source(.sigma, density),
+      density = density,
+      keep_idx = keep_idx,
+      trimmed_idx = trimmed_idx,
+      n_obs = n
+    )
+  )
+}
+
+# A dose has no levels, so an argument naming one describes a coding the dose
+# route never reads.
+check_dose_no_levels <- function(
+  .focal_level,
+  .reference_level,
+  call = rlang::caller_env()
+) {
+  supplied <- c(
+    ".focal_level" = !is.null(.focal_level),
+    ".reference_level" = !is.null(.reference_level)
+  )
+
+  if (!any(supplied)) {
+    return(invisible(NULL))
+  }
+
+  named <- names(supplied)[supplied]
+  abort(
+    c(
+      "{.arg {named}} cannot be used when trimming a dose model.",
+      x = "A continuous exposure has no levels, so none is focal and none is
+           reference.",
+      i = "Drop {.arg {named}}."
+    ),
+    error_class = "propensity_focal_level_error",
+    call = call
+  )
+}
+
+# A dose trim is recorded with the single spread it was read at, which a refit
+# can keep. A spread for each unit describes a density no refit could
+# reproduce, so it is refused here rather than accepted as the weights accept
+# it.
+check_dose_trim_sigma <- function(.sigma, call = rlang::caller_env()) {
+  if (is.null(.sigma)) {
+    return(invisible(NULL))
+  }
+
+  if (is.numeric(.sigma) && is.null(dim(.sigma)) && length(.sigma) != 1) {
+    abort(
+      c(
+        "{.arg .sigma} must be a single spread when trimming a dose model.",
+        x = "It holds {length(.sigma)} value{?s}.",
+        i = "A trim is recorded at one spread, which a refit of the dose model
+             can keep; a spread for each unit cannot be refit. Supply one
+             value, or leave {.arg .sigma} unset to estimate it."
+      ),
+      error_class = "propensity_sigma_error",
+      call = call
+    )
+  }
+
+  check_sigma(.sigma, "continuous", n = 1, call = call)
+}
+
+check_density_trim_lower <- function(lower, call = rlang::caller_env()) {
+  if (
+    is.numeric(lower) &&
+      length(lower) == 1 &&
+      !is.na(lower) &&
+      lower > 0 &&
+      lower < 0.5
+  ) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "For {.code method = \"density\"}, {.arg lower} must be a single
+       probability between 0 and 0.5.",
+      x = "{.arg lower} is {.val {lower}}.",
+      i = "{.arg lower} is the quantile of the conditional density below which
+           units are trimmed, such as the default {.code lower = 0.01}."
+    ),
+    error_class = "propensity_range_error",
+    call = call
+  )
+}
+
+check_resid_trim_upper <- function(upper, call = rlang::caller_env()) {
+  if (
+    is.numeric(upper) &&
+      length(upper) == 1 &&
+      is.finite(upper) &&
+      upper > 0
+  ) {
+    return(invisible(NULL))
+  }
+
+  abort(
+    c(
+      "For {.code method = \"resid\"}, {.arg upper} must be a single positive,
+       finite number.",
+      x = "{.arg upper} is {.val {upper}}.",
+      i = "{.arg upper} is the number of spreads from the predicted dose
+           beyond which a unit is trimmed, such as {.code upper = 3}."
+    ),
+    error_class = "propensity_range_error",
+    call = call
+  )
+}
+
+# A bound on the absolute residual is a floor on the density only for a
+# symmetric unimodal family. A kernel estimate or a function of the caller's
+# need be neither, and the bound and the floor would then keep different units.
+check_resid_trim_density <- function(density, call = rlang::caller_env()) {
+  if (density$family %in% c("normal", "t", "laplace")) {
+    return(invisible(NULL))
+  }
+
+  family <- density$family
+  abort(
+    c(
+      "{.code method = \"resid\"} needs a symmetric unimodal density.",
+      x = "{.arg .density} is a {.val {family}} density, which need not be
+           symmetric or unimodal, so a bound on the absolute residual is not a
+           floor on it.",
+      i = "Use {.code method = \"density\"}, which trims on the density itself
+           under any family, or a {.fun dens_normal}, {.fun dens_t}, or
+           {.fun dens_laplace} density."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
+}
+
+# The dose is read against the model's fitted means one unit at a time, so it
+# has to be a number for each of them.
+check_dose_trim_exposure <- function(exposure, n, call = rlang::caller_env()) {
+  if (!is.numeric(exposure) || !is.null(dim(exposure))) {
+    abort(
+      c(
+        "{.arg .exposure} must be a numeric vector when trimming a dose model.",
+        x = "It is {.obj_type_friendly {exposure}}.",
+        i = "Supply the dose the model was fit to, one value per unit."
+      ),
+      error_class = "propensity_type_error",
+      call = call
+    )
+  }
+
+  if (length(exposure) != n) {
+    abort(
+      c(
+        "{.arg .exposure} must have one value for each fitted mean.",
+        x = "It has {length(exposure)} value{?s}, and the model reports
+             {n} fitted mean{?s}.",
+        i = "Supply the dose for the rows the model was fit to, or refit it
+             with {.code na.action = na.exclude}, which reports a mean for
+             every row of its data."
+      ),
+      error_class = "propensity_length_error",
+      call = call
+    )
+  }
+
+  invisible(NULL)
+}
+
 #' @export
 ps_trim.ps_trim <- function(
   .propensity,
@@ -1067,6 +1644,8 @@ ps_trim.ps_trim <- function(
   .focal_level = NULL,
   .reference_level = NULL,
   ...,
+  .sigma = NULL,
+  .density = "normal",
   .treated = NULL,
   .untreated = NULL,
   ps = lifecycle::deprecated()
@@ -1492,7 +2071,8 @@ vec_arith.ps_trim.list <- function(op, x, y, ...) {
 # How a trimming is described, as opposed to which units it touched: the
 # method, the bounds it was given, and the cutoffs it settled on. A cutoff is
 # read off the scores, so two objects that agree on the method and the bounds
-# can still have been trimmed at different places.
+# can still have been trimmed at different places. A trim of a dose model is
+# also described by the spread and the density family it was read at.
 trim_parameters <- function(meta) {
   fields <- c(
     "method",
@@ -1503,10 +2083,41 @@ trim_parameters <- function(meta) {
     "q_upper",
     "P",
     "cr_lower",
-    "cr_upper"
+    "cr_upper",
+    "threshold",
+    "sigma",
+    "sigma_kind",
+    "density"
   )
 
-  rlang::set_names(lapply(fields, function(field) meta[[field]]), fields)
+  params <- rlang::set_names(
+    lapply(fields, function(field) meta[[field]]),
+    fields
+  )
+  params["density"] <- list(trim_density_parameters(meta$density))
+
+  params
+}
+
+# What identifies a density specification, as `density_specs_agree()` reads
+# it. Each constructor writes a fresh function, so two specifications built the
+# same way hold functions that are not `identical()`; only a function the caller
+# wrote is the specification's identity.
+trim_density_parameters <- function(density) {
+  if (is.null(density)) {
+    return(NULL)
+  }
+
+  params <- list(
+    family = density$family,
+    params = density$params,
+    sigma_method = density$sigma_method
+  )
+  if (identical(density$family, "function")) {
+    params$fn <- density$fn
+  }
+
+  params
 }
 
 #' @export
