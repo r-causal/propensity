@@ -52,6 +52,11 @@
 #'     because there is no range left to bound the scores to.
 #'   * **`"optimal"`**: Multi-category optimal trimming (Yang et al., 2016).
 #'     Categorical exposures only. Requires `.exposure`.
+#'   * **`"density"`**, **`"resid"`**: Trimming on the scale of the conditional
+#'     density of a continuous exposure. A density needs the residuals and the
+#'     family of the model that fit the exposure's conditional mean, so these
+#'     methods refuse a vector or matrix of values with an error of class
+#'     `propensity_method_error`.
 #'
 #'   For categorical exposures, only `"ps"` and `"optimal"` are supported.
 #' @param lower,upper Numeric thresholds whose interpretation depends on
@@ -302,7 +307,16 @@
 #' @export
 ps_trim <- function(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c(
+    "ps",
+    "adaptive",
+    "pctl",
+    "pref",
+    "cr",
+    "optimal",
+    "density",
+    "resid"
+  ),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -325,7 +339,16 @@ ps_trim <- function(
 #' @export
 ps_trim.default <- function(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c(
+    "ps",
+    "adaptive",
+    "pctl",
+    "pref",
+    "cr",
+    "optimal",
+    "density",
+    "resid"
+  ),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -374,6 +397,26 @@ ps_trim.default <- function(
         i = "Supply the propensity scores as a matrix or data frame with one column per exposure level."
       ),
       error_class = "propensity_wt_not_supported_error",
+      call = call
+    )
+  }
+
+  # The density methods read the conditional density of a continuous exposure,
+  # which takes the residuals and the family of the model that fit its mean. A
+  # vector of fitted means carries neither. The refusal comes before the range
+  # check, so that means outside the unit interval are refused for the method
+  # asked of them rather than for their values.
+  if (method %in% c("density", "resid")) {
+    abort(
+      c(
+        "Method {.val {method}} cannot trim a vector of values.",
+        x = "It reads the conditional density of a continuous exposure, which
+             needs the residuals and the family of the model that fit its
+             conditional mean, and {.arg .propensity} carries neither.",
+        i = "Supply the fitted model of the exposure itself as
+             {.arg .propensity}."
+      ),
+      error_class = "propensity_method_error",
       call = call
     )
   }
@@ -553,7 +596,16 @@ ps_trim.default <- function(
 #' @export
 ps_trim.matrix <- function(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c(
+    "ps",
+    "adaptive",
+    "pctl",
+    "pref",
+    "cr",
+    "optimal",
+    "density",
+    "resid"
+  ),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -573,7 +625,16 @@ ps_trim.matrix <- function(
   # reject the ones the categorical path does not define.
   method <- rlang::arg_match(
     method,
-    values = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+    values = c(
+      "ps",
+      "adaptive",
+      "pctl",
+      "pref",
+      "cr",
+      "optimal",
+      "density",
+      "resid"
+    ),
     error_call = call
   )
   if (!method %in% c("ps", "optimal")) {
@@ -755,7 +816,16 @@ ps_trim.matrix <- function(
 #' @export
 ps_trim.data.frame <- function(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c(
+    "ps",
+    "adaptive",
+    "pctl",
+    "pref",
+    "cr",
+    "optimal",
+    "density",
+    "resid"
+  ),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -981,7 +1051,16 @@ ps_trim_from_model <- function(
 #' @export
 ps_trim.ps_trim <- function(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c(
+    "ps",
+    "adaptive",
+    "pctl",
+    "pref",
+    "cr",
+    "optimal",
+    "density",
+    "resid"
+  ),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -1814,6 +1893,10 @@ diff.ps_trim <- function(x, lag = 1L, differences = 1L, ...) {
 #' @param model The original fitted model used to estimate the propensity
 #'   scores (e.g. a [glm][stats::glm] or [multinom][nnet::multinom] object).
 #'   The model is refit via [update()][stats::update] on the retained subset.
+#'   Trimmed propensity scores are refit only by a model of the probability of
+#'   the exposure; a model of a conditional mean, such as a [stats::lm()] fit
+#'   or a gaussian [stats::glm()], never produced them and raises an error of
+#'   class `propensity_model_family_error`.
 #' @param .data A data frame with one row per observation in `trimmed_ps`, in
 #'   the same order. If `NULL` (the default), the data are recovered from
 #'   `model`: its [model.frame()][stats::model.frame] when that already holds
@@ -1898,6 +1981,11 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
       error_class = "propensity_no_data_error"
     )
   }
+
+  # Checked before any data are recovered or any model is refit, so that a
+  # model that could never have produced the trimmed values is refused for that
+  # rather than for whatever refitting it would run into.
+  check_refit_model(meta, model)
 
   from_model <- is.null(.data)
   if (from_model) {
@@ -1987,6 +2075,68 @@ ps_refit <- function(trimmed_ps, model, .data = NULL, ...) {
   new_trimmed_ps(
     x = new_ps,
     ps_trim_meta = meta
+  )
+}
+
+# Whether `model` can refit what the trimming record was made from. A record of
+# trimmed propensity scores needs a model that fits a probability: one that fits
+# a probability for every level, or one whose family fits the probability of a
+# binary exposure, which a two-level `multinom` also answers. A model of a
+# conditional mean never produced those scores, however close to the unit
+# interval its fitted values fall.
+#
+# A record of a trimmed dose model needs the other kind. A `multinom` is refused
+# by its class before the family is read, because the continuous family check
+# reads a model that carries no family as a least squares fit, and a two-level
+# `multinom` carries none and does not answer to `model_fits_levels()` either.
+check_refit_model <- function(meta, model, call = rlang::caller_env()) {
+  density_record <- isTRUE(meta$method %in% c("density", "resid"))
+
+  if (!density_record) {
+    if (model_fits_levels(model)) {
+      return(invisible(NULL))
+    }
+
+    check_binary_model_family(
+      model,
+      arg = "model",
+      problem = "Trimmed propensity scores can only be refit with a model of
+                 the probability of the exposure.",
+      remedy = "{.arg trimmed_ps} holds propensity scores this model never
+                produced. To set aside the units whose dose is implausible
+                under a model of a continuous exposure, trim that model itself
+                with {.code ps_trim(method = \"density\")}.",
+      call = call
+    )
+    return(invisible(NULL))
+  }
+
+  dose_problem <- "A trimmed dose model can only be refit with a model of the
+                   exposure's conditional mean."
+
+  if (inherits(model, "multinom") || model_fits_levels(model)) {
+    abort(
+      c(
+        dose_problem,
+        x = "The trimming record holds a dose model's conditional means, and
+             {.arg model} fits a probability for each of its levels.",
+        i = "Refit with the model of the continuous exposure the trimming was
+             made from."
+      ),
+      error_class = "propensity_model_family_error",
+      call = call
+    )
+  }
+
+  check_continuous_model_family(
+    model,
+    arg = "model",
+    problem = dose_problem,
+    remedy = "The trimming record holds a dose model's conditional means, so
+              refit with the model of the continuous exposure the trimming was
+              made from, fit with {.fun lm} or
+              {.code glm(family = gaussian())}.",
+    call = call
   )
 }
 

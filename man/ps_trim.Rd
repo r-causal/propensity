@@ -6,7 +6,7 @@
 \usage{
 ps_trim(
   .propensity,
-  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal"),
+  method = c("ps", "adaptive", "pctl", "pref", "cr", "optimal", "density", "resid"),
   lower = NULL,
   upper = NULL,
   .exposure = NULL,
@@ -65,6 +65,11 @@ the same data with an error of class \code{propensity_no_overlap_error}
 because there is no range left to bound the scores to.
 \item \strong{\code{"optimal"}}: Multi-category optimal trimming (Yang et al., 2016).
 Categorical exposures only. Requires \code{.exposure}.
+\item \strong{\code{"density"}}, \strong{\code{"resid"}}: Trimming on the scale of the conditional
+density of a continuous exposure. A density needs the residuals and the
+family of the model that fit the exposure's conditional mean, so these
+methods refuse a vector or matrix of values with an error of class
+\code{propensity_method_error}.
 }
 
 For categorical exposures, only \code{"ps"} and \code{"optimal"} are supported.}

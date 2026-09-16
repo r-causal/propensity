@@ -107,7 +107,10 @@
 #' read as one score per unit; a `nnet::multinom()` of three or more levels is
 #' read as one column per level. Those are the shapes `predict(fit, type =
 #' "response")` and `fitted(fit)` give, and truncating a fit bounds exactly what
-#' bounding those values would.
+#' bounding those values would. A model of a continuous exposure's conditional
+#' mean, such as a [stats::lm()] fit or a gaussian [stats::glm()], has no
+#' propensity score to bound and raises an error of class
+#' `propensity_model_family_error`.
 #'
 #' The methods that read an exposure (`"cr"`, and every method on the
 #' categorical route) take it from the model when `.exposure` is not supplied,
@@ -718,9 +721,8 @@ ps_trunc.data.frame <- function(
 # The fitted propensity score models truncation reads, registered for the same
 # classes the weight functions read: a `glm`, whose binomial families fit the
 # probability of a binary exposure, and a `multinom`, which fits a probability
-# for every level. A `lm` is not among them, its fitted values being conditional
-# means rather than probabilities, and it reaches the default method, which
-# reports that it has no scores to bound.
+# for every level. A `glm` of any other family fits a conditional mean, and is
+# refused by the family check on the way in.
 #' @export
 ps_trunc.glm <- function(
   .propensity,
@@ -753,6 +755,63 @@ ps_trunc.glm <- function(
     call = call,
     user_env = rlang::caller_env()
   )
+}
+
+# A least squares fit is a model of a continuous exposure's conditional mean,
+# which has no propensity score to bound. It is registered only to be refused
+# with the same message a gaussian `glm` gets, naming the routes that do work
+# for a dose, rather than falling to the default method's report that the class
+# has no reading at all. It takes the model route so that the refusal is the
+# one that route writes: the family check reads a model with no family as a
+# model of a conditional mean, so a `lm` goes no further than that check.
+#' @export
+ps_trunc.lm <- function(
+  .propensity,
+  method = c("ps", "pctl", "cr"),
+  lower = NULL,
+  upper = NULL,
+  .exposure = NULL,
+  .focal_level = NULL,
+  .reference_level = NULL,
+  ...,
+  .treated = NULL,
+  .untreated = NULL,
+  ps = lifecycle::deprecated(),
+  call = rlang::current_env()
+) {
+  check_call_arg(call)
+  .propensity <- read_method_propensity(rlang::maybe_missing(.propensity), ps)
+
+  ps_trunc_from_model(
+    .propensity,
+    method = method,
+    lower = lower,
+    upper = upper,
+    .exposure = .exposure,
+    .focal_level = .focal_level,
+    .reference_level = .reference_level,
+    ...,
+    .treated = .treated,
+    .untreated = .untreated,
+    call = call,
+    user_env = rlang::caller_env()
+  )
+}
+
+# What truncation needs of a fitted model, and what a dose model can do
+# instead. Truncation bounds a probability, and a model of a continuous
+# exposure fits none; a dose is either trimmed on the scale of its conditional
+# density or weighted and then bounded on the scale of its weights.
+ps_trunc_family_problem <- function() {
+  "Truncation needs a model of the probability of the exposure."
+}
+
+ps_trunc_dose_remedy <- function() {
+  "A continuous exposure has no propensity score to bound. To set aside the
+   units whose dose is implausible under the model, trim the dose model with
+   {.code ps_trim(method = \"density\")}; to hold down extreme weights while
+   keeping every unit, build them with {.fun wt_ate} and bound them with
+   {.fun wt_trunc}."
 }
 
 # A `multinom` is `c("multinom", "nnet")` and inherits from neither `glm` nor
@@ -834,6 +893,8 @@ ps_trunc_from_model <- function(
     .treated = .treated,
     .untreated = .untreated,
     fn_name = "ps_trunc",
+    remedy = ps_trunc_dose_remedy(),
+    problem = ps_trunc_family_problem(),
     call = call,
     user_env = user_env
   )

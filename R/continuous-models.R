@@ -101,12 +101,16 @@ extract_continuous_ps.gam <- function(model, call = rlang::caller_env()) {
 # `arg` is the argument the model arrived in, and `remedy` the advice that goes
 # with it: a propensity score model's fitted means can be passed directly
 # instead, and a numerator model a caller stabilizes on is a model or nothing.
+# `problem` states what the caller needed the model for, since a refit of a
+# trimmed dose model needs the same model for a different purpose.
 check_continuous_model_family <- function(
   model,
   arg = ".propensity",
   remedy = "Fit the propensity score model with {.fun gaussian}, {.fun lm},
             {.fun mgcv::gam}, or {.fun MASS::rlm}, or pass fitted conditional
             means to {.arg .propensity} directly.",
+  problem = "Weights for a continuous exposure need a model of its conditional
+             mean with a single spread.",
   call = rlang::caller_env()
 ) {
   family <- model[["family"]]
@@ -137,8 +141,7 @@ check_continuous_model_family <- function(
 
   abort(
     c(
-      "Weights for a continuous exposure need a model of its conditional mean
-       with a single spread.",
+      problem,
       x = fit_with,
       i = remedy
     ),
@@ -154,14 +157,19 @@ check_continuous_model_family <- function(
 # own.
 #
 # `arg` names the argument the model arrived in and `remedy` says what to do
-# about it, because the same question is asked of two models: the propensity
-# score model of a binary exposure, and the numerator model that estimates the
-# probability the weights are stabilized on.
+# about it, because the same question is asked of more than one model: the
+# propensity score model of a binary exposure, the numerator model that
+# estimates the probability the weights are stabilized on, and the model a
+# modified score is read from or refit with. `problem` states what the caller
+# needed a probability for, which differs between building weights, bounding
+# scores, and refitting them.
 check_binary_model_family <- function(
   model,
   arg = ".propensity",
   remedy = "Fit the propensity score model with {.fun binomial}, or pass
             fitted probabilities to {.arg .propensity} directly.",
+  problem = "Weights for a binary exposure need a model of the probability of
+             the exposure.",
   call = rlang::caller_env()
 ) {
   UseMethod("check_binary_model_family")
@@ -178,6 +186,8 @@ check_binary_model_family.default <- function(
   arg = ".propensity",
   remedy = "Fit the propensity score model with {.fun binomial}, or pass
             fitted probabilities to {.arg .propensity} directly.",
+  problem = "Weights for a binary exposure need a model of the probability of
+             the exposure.",
   call = rlang::caller_env()
 ) {
   family <- model[["family"]]
@@ -214,8 +224,7 @@ check_binary_model_family.default <- function(
 
   abort(
     c(
-      "Weights for a binary exposure need a model of the probability of the
-       exposure.",
+      problem,
       x = fitted_by,
       i = remedy
     ),

@@ -14,7 +14,11 @@ record was dropped or no longer covers it raises an error of class
 
 \item{model}{The original fitted model used to estimate the propensity
 scores (e.g. a \link[stats:glm]{glm} or \link[nnet:multinom]{multinom} object).
-The model is refit via \link[stats:update]{update()} on the retained subset.}
+The model is refit via \link[stats:update]{update()} on the retained subset.
+Trimmed propensity scores are refit only by a model of the probability of
+the exposure; a model of a conditional mean, such as a \code{\link[stats:lm]{stats::lm()}} fit
+or a gaussian \code{\link[stats:glm]{stats::glm()}}, never produced them and raises an error of
+class \code{propensity_model_family_error}.}
 
 \item{.data}{A data frame with one row per observation in \code{trimmed_ps}, in
 the same order. If \code{NULL} (the default), the data are recovered from

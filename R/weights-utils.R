@@ -1335,6 +1335,17 @@ calculate_weight_from_modified_ps <- function(
 
   modification_type <- rlang::arg_match(modification_type)
 
+  # Read before the refit check, so that a pairing that is refused outright is
+  # not also advised to refit.
+  check_modified_ps_exposure(
+    .propensity,
+    .exposure,
+    weight_fn = weight_fn,
+    modification_type = modification_type,
+    exposure_type = list(...)[["exposure_type"]],
+    call = call
+  )
+
   # Only check refit for trim
   if (modification_type == "trim") {
     check_refit(.propensity, call = call)
@@ -1395,6 +1406,111 @@ calculate_weight_from_modified_ps <- function(
   }
 
   base_wt
+}
+
+# Whether a modified score and the exposure it is weighted against describe the
+# same route. A continuous exposure has no propensity score, so a trimmed,
+# truncated, or calibrated vector weighted against one was a conditional mean
+# modified as if it were a probability, which selects or moves units by their
+# predicted dose and says nothing about positivity. The one record that does
+# describe a dose is a density trim of a dose model, which in turn describes no
+# binary or categorical exposure.
+#
+# Only the ATE and censoring weights read a continuous exposure, so only they
+# are gated here; the other estimands refuse a continuous exposure on their own.
+# The type is the resolved one, since `"auto"` reaches continuous from a numeric
+# exposure of many values. It is resolved quietly because the numeric method
+# resolves it again and announces it there, and resolved against every type
+# because an unsupported one is refused by the method that does not support it.
+check_modified_ps_exposure <- function(
+  .propensity,
+  .exposure,
+  weight_fn,
+  modification_type,
+  exposure_type,
+  call = rlang::caller_env()
+) {
+  fn <- if (identical(weight_fn, wt_ate.numeric)) {
+    "wt_ate"
+  } else if (identical(weight_fn, wt_cens.numeric)) {
+    "wt_cens"
+  }
+
+  if (is.null(fn) || is.null(exposure_type)) {
+    return(invisible(NULL))
+  }
+
+  # An unmatched argument arrives as the method's own set of choices, whose
+  # first is `"auto"`. A value that names no type at all is left for the
+  # numeric method to refuse, where every other malformed argument is refused.
+  if (length(exposure_type) > 1) {
+    exposure_type <- "auto"
+  }
+  exposure_types <- c("auto", "binary", "categorical", "continuous")
+  if (!rlang::is_string(exposure_type) || !exposure_type %in% exposure_types) {
+    return(invisible(NULL))
+  }
+
+  exposure_type <- causalgenerics::match_exposure_type(
+    exposure_type,
+    .exposure,
+    announce = FALSE,
+    call = call
+  )
+
+  meta <- if (identical(modification_type, "trim")) {
+    attr(.propensity, "ps_trim_meta")
+  }
+  density_record <- isTRUE(meta$method %in% c("density", "resid"))
+  continuous <- identical(exposure_type, "continuous")
+
+  if (continuous && !density_record) {
+    verb <- switch(
+      modification_type,
+      trim = "trimmed",
+      trunc = "truncated",
+      calib = "calibrated"
+    )
+    modifier <- switch(
+      modification_type,
+      trim = "ps_trim",
+      trunc = "ps_trunc",
+      calib = "ps_calibrate"
+    )
+
+    abort(
+      c(
+        "Weights for a continuous exposure cannot be built from {verb}
+         propensity scores.",
+        x = "A continuous exposure has no propensity score, so the values
+             {.fun {modifier}} {verb} were conditional means rather than
+             probabilities.",
+        i = "Trim the dose model itself with
+             {.code ps_trim(method = \"density\")}, or build weights from the
+             dose model with {.fun {fn}} and hold down extreme weights with
+             {.fun wt_trunc}."
+      ),
+      error_class = "propensity_modified_continuous_error",
+      call = call
+    )
+  }
+
+  if (!continuous && density_record) {
+    abort(
+      c(
+        "Weights for a {exposure_type} exposure cannot be built from a
+         density-trimmed dose model.",
+        x = "The trimming record holds conditional means and a density family,
+             not propensity scores.",
+        i = "Pass the dose as {.arg .exposure}, or trim a propensity score
+             model for the {exposure_type} exposure instead."
+      ),
+      error_class = "propensity_modified_continuous_error",
+      call = call
+    )
+  }
+
+  invisible(NULL)
 }
 
 # What the weights record about the exposure they were built for. The type is
@@ -1661,14 +1777,28 @@ extract_binary_ps.default <- function(model, call = rlang::caller_env()) {
 # `exposure_levels` carries the levels of the exposure being weighted, so that a
 # categorical model fit to some other set of them is reported against the model
 # rather than against the shape of what it returns.
+#
+# `remedy` and `problem` replace the advice and the statement of need in the
+# binary family refusal when they are supplied, so that a route that reads a
+# probability for some other purpose than weighting, such as bounding it, can
+# say what it needed and what works instead. Left `NULL`, the refusal keeps the
+# wording written for the weight functions.
 extract_model_propensity <- function(
   model,
   exposure_type,
   exposure_levels = NULL,
+  remedy = NULL,
+  problem = NULL,
   call = rlang::caller_env()
 ) {
   if (identical(exposure_type, "binary")) {
-    check_binary_model_family(model, call = call)
+    family_text <- list(remedy = remedy, problem = problem)
+    rlang::exec(
+      check_binary_model_family,
+      model,
+      !!!family_text[!vapply(family_text, is.null, logical(1))],
+      call = call
+    )
 
     return(extract_binary_ps(model, call = call))
   }
@@ -1978,6 +2108,10 @@ prepare_model_weight_args <- function(
 # level requires it too, because the fitted values report the probability of the
 # level the response's default coding treats as focal, so naming the other level
 # means inverting them, exactly as `prepare_model_weight_args()` does.
+#
+# `remedy` and `problem` are handed to the binary family refusal, so that a
+# modifier refusing a model of a conditional mean can say what it needed the
+# probability for and name the routes that work for a dose.
 prepare_model_ps <- function(
   model,
   .exposure = NULL,
@@ -1987,6 +2121,8 @@ prepare_model_ps <- function(
   .treated = NULL,
   .untreated = NULL,
   fn_name,
+  remedy = NULL,
+  problem = NULL,
   call = rlang::caller_env(),
   user_env = rlang::caller_env(2)
 ) {
@@ -2039,7 +2175,13 @@ prepare_model_ps <- function(
   # Read before the exposure, so that a fit whose scores cannot be read at all
   # is reported as such rather than after an announcement about an exposure
   # nothing goes on to use.
-  ps_vec <- extract_model_propensity(model, "binary", call = call)
+  ps_vec <- extract_model_propensity(
+    model,
+    "binary",
+    remedy = remedy,
+    problem = problem,
+    call = call
+  )
 
   focal_named <- !is.null(focal_params$.focal_level) ||
     !is.null(focal_params$.reference_level)

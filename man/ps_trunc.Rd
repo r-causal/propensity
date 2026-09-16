@@ -146,7 +146,10 @@ return a plain numeric vector.
 it reports. A binomial \code{\link[stats:glm]{stats::glm()}} and a two-level \code{nnet::multinom()} are
 read as one score per unit; a \code{nnet::multinom()} of three or more levels is
 read as one column per level. Those are the shapes \code{predict(fit, type = "response")} and \code{fitted(fit)} give, and truncating a fit bounds exactly what
-bounding those values would.
+bounding those values would. A model of a continuous exposure's conditional
+mean, such as a \code{\link[stats:lm]{stats::lm()}} fit or a gaussian \code{\link[stats:glm]{stats::glm()}}, has no
+propensity score to bound and raises an error of class
+\code{propensity_model_family_error}.
 
 The methods that read an exposure (\code{"cr"}, and every method on the
 categorical route) take it from the model when \code{.exposure} is not supplied,

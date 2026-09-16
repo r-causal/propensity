@@ -138,6 +138,26 @@
       i Metadata cannot be preserved when combining incompatible objects
       i Use identical objects or explicitly cast to numeric to avoid this warning
 
+# ps_refit() refuses a model of a dose for a trimmed score
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_refit()`:
+      ! Trimmed propensity scores can only be refit with a model of the probability of the exposure.
+      x `model` is <lm>, whose fitted values are conditional means rather than probabilities.
+      i `trimmed_ps` holds propensity scores this model never produced. To set aside the units whose dose is implausible under a model of a continuous exposure, trim that model itself with `ps_trim(method = "density")`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_model_family_error>
+      Error in `ps_refit()`:
+      ! Trimmed propensity scores can only be refit with a model of the probability of the exposure.
+      x `model` was fit with `gaussian()`, whose fitted values are conditional means rather than probabilities.
+      i `trimmed_ps` holds propensity scores this model never produced. To set aside the units whose dose is implausible under a model of a continuous exposure, trim that model itself with `ps_trim(method = "density")`.
+
 # ps_trim rejects the categorical-only optimal method on a vector
 
     Code
@@ -146,6 +166,26 @@
       Error in `ps_trim()`:
       ! Method "optimal" is only supported for categorical exposures.
       i Supply the propensity scores as a matrix or data frame with one column per exposure level.
+
+# ps_trim() refuses the density methods on a vector of fitted means
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_trim()`:
+      ! Method "density" cannot trim a vector of values.
+      x It reads the conditional density of a continuous exposure, which needs the residuals and the family of the model that fit its conditional mean, and `.propensity` carries neither.
+      i Supply the fitted model of the exposure itself as `.propensity`.
+
+---
+
+    Code
+      expr
+    Condition <propensity_method_error>
+      Error in `ps_trim()`:
+      ! Method "resid" cannot trim a vector of values.
+      x It reads the conditional density of a continuous exposure, which needs the residuals and the family of the model that fit its conditional mean, and `.propensity` carries neither.
+      i Supply the fitted model of the exposure itself as `.propensity`.
 
 # ps_trim names `.exposure` when the method requires one
 

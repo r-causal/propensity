@@ -1,5 +1,28 @@
 # propensity 0.1.0.9000 (development version)
 
+* Weights for a continuous exposure can no longer be built from a trimmed,
+  truncated, or calibrated score. A conditional mean whose values happened to
+  fall in (0, 1) could be passed through `ps_trim()`, `ps_trunc()`, or
+  `ps_calibrate()` as if it were a propensity score and then weighted with
+  `wt_ate()` or `wt_cens()`, which selected or moved units by their predicted
+  dose and said nothing about positivity. Those six methods now refuse an
+  exposure they resolve as continuous, including one resolved from
+  `exposure_type = "auto"`, with an error of class
+  `propensity_modified_continuous_error`. A model of a conditional mean, a
+  least squares fit or a `glm` of any family but the binomial ones, is refused
+  by `ps_trunc()` and by `ps_refit()` on trimmed scores with an error of class
+  `propensity_model_family_error`, where `ps_refit()` previously refit
+  whatever model it was handed. `ps_trim()` reserves `method = "density"` and
+  `method = "resid"` for trimming a dose model on the scale of its conditional
+  density, and refuses both for a vector of values with an error of class
+  `propensity_method_error`, since a vector carries neither the residuals nor
+  the family a density is read from. Each refusal names the
+  routes for a dose: trimming the dose model with
+  `ps_trim(method = "density")`, or building its weights with `wt_ate()` and
+  bounding the weights with `wt_trunc()`. Until those routes are available,
+  build the weights of a continuous exposure from the dose model or its fitted
+  means directly, without a score modification.
+
 * `dens_t()` now estimates the scale of the t under the t itself by default,
   as `dens_laplace()` estimates the scale of the Laplace. Both densities of a
   continuous exposure's weights are read at a residual standardized by a spread
