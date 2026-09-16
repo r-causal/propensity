@@ -1483,7 +1483,8 @@ constant. It solves an equation of its own that the stacked system does
 not write, so none of its sampling variability is propagated, and the
 standard errors are those of a psi score read at a scale treated as
 fixed. The spread of the conditional density is a separate quantity, and
-is the pooled residual spread there as it is for every other class.
+comes from the estimator its family asks for, there as for every other
+class.
 
 [`MASS::psi.bisquare()`](https://rdrr.io/pkg/MASS/man/rlm.html) and
 [`MASS::psi.hampel()`](https://rdrr.io/pkg/MASS/man/rlm.html) redescend,
@@ -1603,14 +1604,17 @@ A numerator estimated by a model the caller passed to
 `stabilize` contributes that model: one parameter per coefficient, named
 with a `stab_` prefix so the terms it shares with the propensity score
 model stay apart from it, and one for the spread its density is read at,
-`sigma2_n`. Its score and the moment its spread is the root of are
-stacked alongside the propensity score model's, so the standard errors
-account for the numerator having been fitted, which is what separates
-this from a `stabilization_score`: a score the caller computed is
-carried as a known constant and contributes no parameter at all. The
-numerator model is read through the registry above, so a class, family,
-or link whose score this system cannot write is refused there in the
-terms that registry refuses a propensity score model in, naming
+`sigma2_n`. That parameter holds a squared scale rather than a variance,
+which are the same number only for a family whose scale is its standard
+deviation. Its score, and the equation that spread is the root of, which
+is the residual moment or the family's own score depending on what the
+density asks for, are stacked alongside the propensity score model's, so
+the standard errors account for the numerator having been fitted, which
+is what separates this from a `stabilization_score`: a score the caller
+computed is carried as a known constant and contributes no parameter at
+all. The numerator model is read through the registry above, so a class,
+family, or link whose score this system cannot write is refused there in
+the terms that registry refuses a propensity score model in, naming
 `stabilize`. A model of a response other than the exposure, or one fit
 to a different set of observations, errors with class
 `propensity_ipw_numerator_error`. One fit with case weights errors with
@@ -1911,11 +1915,13 @@ methods.
 For a continuous exposure that requirement bears on the spread of the
 conditional density.
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
-stacks a single pooled residual variance alongside the propensity score
-coefficients, so the weights it rebuilds are the ones
+stacks a single conditional spread alongside the propensity score
+coefficients, by the moment the pooled spread is the root of or, for a
+density built with `sigma_method = "mle"`, by the score of the family it
+names, so the weights it rebuilds are the ones
 [`wt_ate()`](https://r-causal.github.io/propensity/reference/wt_ate.md)
-produces with its pooled default. A single `.sigma` is taken instead as
-a known constant: the weights are rebuilt at the number that was
+produces when no `.sigma` is given. A single `.sigma` is taken instead
+as a known constant: the weights are rebuilt at the number that was
 supplied, and the stacked system carries none of that number's
 uncertainty, which is what fixing a spread says. Weights built with an
 observation-level `.sigma`, such as `influence(model)$sigma`, are a

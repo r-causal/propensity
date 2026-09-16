@@ -330,8 +330,9 @@ wt_cens(
   exposures: a single standard deviation applied to every unit, or one
   for each observation (e.g., `influence(model)$sigma`). Optional: with
   none supplied, including when `.propensity` is a fitted model, the
-  conditional density uses the pooled residual spread of `.exposure`
-  around `.propensity`.
+  conditional density uses the spread its family estimates from the
+  residuals of `.exposure` around `.propensity`, the pooled root mean
+  square unless the family estimates a scale of its own.
 
   The two shapes differ downstream. A single spread is a constant the
   weights can be rebuilt from, so it is recorded in
@@ -408,9 +409,9 @@ wt_cens(
     the weights are \\P(A = a_i \mid V_i) / f(a_i \mid X_i)\\ for the
     variables \\V\\ the numerator model reads. For a continuous exposure
     the numerator is the family `.density` names, read at the model's
-    fitted mean and the root mean square of its residuals, so the
-    weights are \\f(A \mid V) / f(A \mid X)\\. For a categorical
-    exposure the model is an
+    fitted mean and the spread its own residuals leave under that
+    family, so the weights are \\f(A \mid V) / f(A \mid X)\\. For a
+    categorical exposure the model is an
     [`nnet::multinom()`](https://rdrr.io/pkg/nnet/man/multinom.html) fit
     and the numerator is its fitted probability of the level each unit
     took, read from the column named for that level, so the weights are
@@ -513,10 +514,11 @@ wt_cens(
   How the marginal density that stabilizes a continuous exposure's
   weights is obtained, described under **Stabilization** in Details.
   Either `"marginal"`, the default, which reads the family `.density`
-  names at the mean and standard deviation of `.exposure` over the rows
-  the propensity model kept, or `"integrated"`, which averages the
-  conditional density over the units on a grid spanning `.exposure` and
-  interpolates the result back to each observed exposure.
+  names at the mean of `.exposure` and the spread the same estimator
+  gives for it, both over the rows the propensity model kept, or
+  `"integrated"`, which averages the conditional density over the units
+  on a grid spanning `.exposure` and interpolates the result back to
+  each observed exposure.
 
   `"integrated"` describes a continuous exposure alone, and needs a
   conditional density to marginalize: it is refused with an error of
@@ -638,9 +640,9 @@ variables a model of the exposure reads, reducing variance. When no
 `stabilization_score` is supplied, that estimate is the marginal mean of
 `.exposure` for a binary or categorical exposure, and for a continuous
 exposure the marginal density of the family `.density` names, evaluated
-at the population mean and standard deviation of `.exposure`.
-Stabilization is supported for ATE and censoring weights (`wt_ate()` and
-`wt_cens()`) alone.
+at the population mean of `.exposure` and at the spread the same
+estimator gives for it. Stabilization is supported for ATE and censoring
+weights (`wt_ate()` and `wt_cens()`) alone.
 
 Whether it is applied is read from the exposure type unless `stabilize`
 says so outright. A continuous exposure is stabilized, since the
@@ -650,11 +652,11 @@ left unstabilized, and `stabilize = TRUE` asks for it there.
 
 For a continuous exposure, `numerator` chooses how that marginal density
 is arrived at. `"marginal"`, the default, reads the family `.density`
-names at the mean and standard deviation of `.exposure` over the rows
-the propensity model kept, which are the rows the weights describe: a
-model that dropped rows leaves `.propensity` missing at them, and those
-rows carry no weight. Those two moments are parameters of the weights,
-and
+names at the mean of `.exposure` and the spread the same estimator gives
+for it, both over the rows the propensity model kept, which are the rows
+the weights describe: a model that dropped rows leaves `.propensity`
+missing at them, and those rows carry no weight. Those two moments are
+parameters of the weights, and
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html)
 estimates them alongside the rest of its parameter vector, so the
 standard errors account for the numerator having been estimated.
@@ -729,8 +731,8 @@ written around by hand.
 
 For a continuous exposure they are \\f(A \mid V) / f(A \mid X)\\: the
 family `.density` names, read at the numerator model's fitted mean and
-the root mean square of its residuals, over the same family read at the
-propensity score model's.
+the spread its own residuals leave under that family, over the same
+family read at the propensity score model's.
 
 For a categorical exposure they are \\P(Z = z_i \mid V_i) / f(z_i \mid
 X_i)\\: the multinomial model's fitted probability of the level each
@@ -901,14 +903,15 @@ Both densities are read on a standardized residual. The conditional
 density is evaluated at \\z_i = (A_i - \hat{A}\_i) / \sigma\\, where
 \\\hat{A}\_i\\ is the fitted conditional mean in `.propensity` and
 \\\sigma\\ is the residual spread; the marginal density is evaluated at
-\\z^A_i = (A_i - \bar{A}) / s_A\\, where \\\bar{A}\\ and \\s_A\\ are the
-mean and standard deviation of `.exposure` over the rows the propensity
-model kept. Both moments are read over those rows whether the spread was
-pooled from the model's own residuals or supplied through `.sigma`, so
-the two halves of the ratio describe one set of units. Each density is
-then divided by the spread that standardized it, the Jacobian of that
-change of variable, which returns both to the exposure's own units so
-that each integrates to one:
+\\z^A_i = (A_i - \bar{A}) / s_A\\, where \\\bar{A}\\ is the mean of
+`.exposure` over the rows the propensity model kept and \\s_A\\ is the
+spread the same estimator gives for it, the standard deviation unless
+the family estimates a scale of its own. Both moments are read over
+those rows whether the spread was pooled from the model's own residuals
+or supplied through `.sigma`, so the two halves of the ratio describe
+one set of units. Each density is then divided by the spread that
+standardized it, the Jacobian of that change of variable, which returns
+both to the exposure's own units so that each integrates to one:
 
 \$\$w_i = \frac{g(z^A_i) / s_A}{g(z_i) / \sigma}\$\$
 
@@ -976,15 +979,24 @@ probability those weights divide by, so a model of a conditional mean is
 refused there whatever its fitted values happen to fall on, a linear
 probability model included.
 
-\\\sigma\\ is the pooled residual spread \\\sqrt{\mathrm{mean}((A -
-\hat{A})^2)}\\ unless `.sigma` supplies a single standard deviation, or
-one for each unit, which the model methods do not do on their own.
+\\\sigma\\ is the spread the family `.density` names asks for, read from
+the residuals of the propensity score model. For a family with no scale
+estimator of its own that is the pooled root mean square
+\\\sqrt{\mathrm{mean}((A - \hat{A})^2)}\\; for
 [`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
-offers a second estimator, the maximum likelihood scale of the t itself,
-through `sigma_method = "mle"`; see **The spread of a t density** in its
-documentation. The marginal density is spread by \\s_A\\ whatever the
-conditional spread was arrived at, the spread of the exposure itself
-being no business of the conditional model's.
+and
+[`dens_laplace()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+it is the maximum likelihood scale of the family itself, which both take
+by default. `sigma_method = "rms"` asks either of them for the root mean
+square instead; see **The spread of the conditional density** in
+[`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)'s
+documentation. `.sigma` supplies a spread of your own, a single standard
+deviation or one for each unit, which the model methods do not do on
+their own, and is refused alongside a family that estimates its own
+scale, being a second instruction about the same quantity. A family that
+estimates its own scale spreads both densities of the ratio, so the
+marginal density is read at that scale too and the two halves are
+densities of one width rather than two.
 
 Every model class is spread that same way,
 [`MASS::rlm()`](https://rdrr.io/pkg/MASS/man/rlm.html) included. `rlm`
@@ -1003,12 +1015,12 @@ propagating the uncertainty of neither.
 models the conditional density with a single conditional variance,
 estimated jointly with the rest of the parameter vector, by the moment
 the pooled spread is the root of or, for a density built with
-`sigma_method = "mle"`, by the score of the t. A single `.sigma` is
-taken instead as a known constant: the weights are rebuilt at the number
-that was supplied, and the stacked system carries none of that number's
-uncertainty. An observation-level `.sigma` is a different function of
-the data with no counterpart in that estimating equation, and is refused
-before anything is solved, with an error of class
+`sigma_method = "mle"`, by the score of the family it names. A single
+`.sigma` is taken instead as a known constant: the weights are rebuilt
+at the number that was supplied, and the stacked system carries none of
+that number's uncertainty. An observation-level `.sigma` is a different
+function of the data with no counterpart in that estimating equation,
+and is refused before anything is solved, with an error of class
 `propensity_ipw_sigma_error`. Build weights with the pooled default, or
 with one number, when the outcome model is headed for
 [`ipw()`](https://r-causal.github.io/causalgenerics/reference/ipw.html).
@@ -1342,24 +1354,24 @@ wt_ate(dose_model, .density = dens_t(df = 4))
 #> ℹ Using exposure variable "dose" from the propensity score model
 #> ℹ Treating `.exposure` as continuous
 #> <psw{estimand = ate; stabilized}[100]>
-#>   [1] 1.8646342 0.9733784 0.8752609 0.8688423 0.7479327 0.7798293 0.9016771
-#>   [8] 0.7597835 0.6310464 0.6911070 0.7999152 0.7082642 0.8020596 0.7990152
-#>  [15] 0.5044498 0.7911563 0.7468465 0.9357483 0.9238356 0.8522952 0.9048531
-#>  [22] 0.5633915 0.6523243 1.1495582 0.3374106 0.7535244 1.3004884 0.7506499
-#>  [29] 0.7409988 1.7593253 0.8070058 0.7424372 0.8403367 1.0590076 1.0785524
-#>  [36] 0.3059582 1.0582182 1.3140401 0.8689788 0.9671610 1.1106228 1.4415967
-#>  [43] 1.6841604 0.7055659 0.5493660 2.4236372 0.5417968 0.4050666 2.2863800
-#>  [50] 0.5851142 0.7353432 1.6511412 1.0393921 0.7953566 1.1868726 1.0917254
-#>  [57] 0.8642301 1.1409825 1.0153774 0.7270439 0.4827268 0.9199718 1.2137686
-#>  [64] 0.4873167 0.5196829 1.0329573 0.7868673 0.6905860 0.6315537 0.9681556
-#>  [71] 1.6544586 0.9066800 0.8659805 0.1618948 0.5878388 0.7318754 1.2574093
-#>  [78] 0.8112021 0.9306485 0.9048382 0.8503056 0.6369130 0.9173769 0.7515608
-#>  [85] 0.8473410 0.9312568 0.5513774 1.4042470 2.4415982 1.3000206 0.8634111
-#>  [92] 1.0266033 1.0473099 0.8128075 0.3222650 0.4487284 0.9522881 1.0692692
-#>  [99] 0.9326978 0.3828823
+#>   [1] 2.6238745 1.0103107 0.8920484 0.8823548 0.7107517 0.7494450 0.9325810
+#>   [8] 0.7193136 0.6017473 0.6723447 0.7773808 0.6556842 0.7829746 0.7835836
+#>  [15] 0.4137030 0.7644746 0.7032374 0.9795602 0.9608531 0.8566635 0.9187813
+#>  [22] 0.5057423 0.5757429 1.3206112 0.2338168 0.7135029 1.5793899 0.7063985
+#>  [29] 0.6930408 2.2014225 0.7878651 0.6951426 0.8383498 1.1663998 1.2185765
+#>  [36] 0.2335251 1.1865013 1.5835814 0.8818053 1.0380727 1.2733706 1.6394177
+#>  [43] 2.2847066 0.6530425 0.4522302 3.5033114 0.4493522 0.3095950 3.4385805
+#>  [50] 0.4905245 0.6848066 2.1980088 1.1543465 0.7707278 1.3979222 1.1826720
+#>  [57] 0.8750933 1.3117141 1.1157209 0.6740198 0.3788968 0.9626725 1.4469005
+#>  [64] 0.3812262 0.4150376 1.0724443 0.7582439 0.6275699 0.5540242 1.0386926
+#>  [71] 1.9982887 0.9413866 0.8779022 0.1056291 0.5016373 0.6816394 1.3580260
+#>  [78] 0.7941020 0.9580920 0.9276147 0.8536041 0.5571590 0.9583103 0.7176456
+#>  [85] 0.8490227 0.9703996 0.4630760 1.7262520 3.1857310 1.5253791 0.8718945
+#>  [92] 1.1340976 1.1606542 0.7965602 0.2198846 0.3375182 1.0125030 1.1847894
+#>  [99] 0.9571773 0.3125740
 #> density:   t(df = 4)
 #> numerator: marginal
-#> sigma:     pooled
+#> sigma:     mle
 
 # The stabilizing numerator can marginalize the conditional density over the
 # units instead of reading the same family at the exposure's own moments
@@ -1387,7 +1399,7 @@ density_meta(w_dose)
 density_meta(w_int)
 #> density:   t(df = 4)
 #> numerator: integrated
-#> sigma:     pooled
+#> sigma:     mle
 
 # -- Data frame input ------------------------------------------------
 ps_df <- data.frame(

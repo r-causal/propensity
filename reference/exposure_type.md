@@ -90,10 +90,12 @@ of weights for a binary or categorical exposure:
 
 - `sigma`, where the residual spread of the conditional density came
   from: `"pooled"` for the pooled residual root mean square, `"mle"` for
-  the scale a
+  a scale estimated under the family that reads it, which
   [`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
-  built with `sigma_method = "mle"` estimates under the t itself, and
-  `"supplied"` for a `.sigma` the caller gave.
+  and
+  [`dens_laplace()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+  take with `sigma_method = "mle"`, and `"supplied"` for a `.sigma` the
+  caller gave.
 
 - `sigma_value`, the single spread the caller supplied, and `NULL` for a
   spread estimated from the residuals, by either estimator, and for one

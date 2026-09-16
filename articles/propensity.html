@@ -507,14 +507,18 @@ right tail; pass <code>stabilize = FALSE</code> to turn that off.</p>
 <p>The default reads that ratio in the normal family, which is a strong
 claim about the residuals of a dose model. <code>.density</code> chooses
 another family, and a heavier tail holds down the weight of a unit whose
-dose the model fits poorly:</p>
+dose the model fits poorly. A family is a model of the residual
+distribution, so its scale is estimated under that family rather than by
+the root mean square, which is the scale of a normal alone;
+<code><a href="../reference/dens_normal.html">dens_t()</a></code> and <code><a href="../reference/dens_normal.html">dens_laplace()</a></code> do that by
+default:</p>
 <div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wts_t</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/wt_ate.html">wt_ate</a></span><span class="op">(</span><span class="va">ps_dose</span>, .density <span class="op">=</span> <span class="fu"><a href="../reference/dens_normal.html">dens_t</a></span><span class="op">(</span>df <span class="op">=</span> <span class="fl">4</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"a"</span> from the propensity score model</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">wts_t</span><span class="op">)</span></span>
 <span><span class="co">#&gt;    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. </span></span>
-<span><span class="co">#&gt;  0.1577  0.5619  0.7310  0.8714  0.9051  3.8192</span></span></code></pre></div>
+<span><span class="co">#&gt;  0.1086  0.5173  0.7337  0.9552  0.9838  5.3986</span></span></code></pre></div>
 <p>Pass the dose model and a weighted marginal structural model to
 <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> for the dose-response slope. Its standard errors come
 from M-estimation, which stacks the dose model, the density ratio, and

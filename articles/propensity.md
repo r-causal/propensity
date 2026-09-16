@@ -495,7 +495,13 @@ density_meta(wts_dose)
 The default reads that ratio in the normal family, which is a strong
 claim about the residuals of a dose model. `.density` chooses another
 family, and a heavier tail holds down the weight of a unit whose dose
-the model fits poorly:
+the model fits poorly. A family is a model of the residual distribution,
+so its scale is estimated under that family rather than by the root mean
+square, which is the scale of a normal alone;
+[`dens_t()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+and
+[`dens_laplace()`](https://r-causal.github.io/propensity/reference/dens_normal.md)
+do that by default:
 
 ``` r
 
@@ -504,7 +510,7 @@ wts_t <- wt_ate(ps_dose, .density = dens_t(df = 4))
 #> ℹ Treating `.exposure` as continuous
 summary(wts_t)
 #>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#>  0.1577  0.5619  0.7310  0.8714  0.9051  3.8192
+#>  0.1086  0.5173  0.7337  0.9552  0.9838  5.3986
 ```
 
 Pass the dose model and a weighted marginal structural model to

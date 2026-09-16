@@ -19,10 +19,13 @@ is wrapped with dens_fn().
 dens_normal() is the standard normal density, the default.
 dens_laplace() is the standard Laplace density,
 \(\exp(-|z|) / 2\), which puts more mass in the tails than the normal.
+Its scale is estimated under the Laplace itself, where it is the mean
+absolute residual, or by the root mean square of the residuals, which is
+the spread every family without an estimator of its own is read at.
 dens_t() is Student's t density with df degrees of freedom, heavier
-tailed still, and heavier the smaller df is. Its scale is estimated by
-the root mean square of the residuals, as every other family's spread is,
-or by maximum likelihood under the t itself.
+tailed still, and heavier the smaller df is. Its scale is estimated
+under the t itself, by maximum likelihood, or by the root mean square of
+the residuals.
 dens_kernel() is a kernel density estimate of the standardized
 residuals, fit with stats::density() and interpolated to each
 observation. It assumes no family at all, at the cost of a density that
@@ -46,10 +49,13 @@ is wrapped with dens_fn().
 dens_normal() is the standard normal density, the default.
 dens_laplace() is the standard Laplace density,
 \(\exp(-|z|) / 2\), which puts more mass in the tails than the normal.
+Its scale is estimated under the Laplace itself, where it is the mean
+absolute residual, or by the root mean square of the residuals, which is
+the spread every family without an estimator of its own is read at.
 dens_t() is Student's t density with df degrees of freedom, heavier
-tailed still, and heavier the smaller df is. Its scale is estimated by
-the root mean square of the residuals, as every other family's spread is,
-or by maximum likelihood under the t itself.
+tailed still, and heavier the smaller df is. Its scale is estimated
+under the t itself, by maximum likelihood, or by the root mean square of
+the residuals.
 dens_kernel() is a kernel density estimate of the standardized
 residuals, fit with stats::density() and interpolated to each
 observation. It assumes no family at all, at the cost of a density that
@@ -110,11 +116,14 @@ also accept the strings <code>"normal"</code>, <code>"laplace"</code>, and <code
 families that need no parameters, and a bare function of one argument, which
 is wrapped with <code>dens_fn()</code>.</p><ul><li><p><code>dens_normal()</code> is the standard normal density, the default.</p></li>
 <li><p><code>dens_laplace()</code> is the standard Laplace density,
-\(\exp(-|z|) / 2\), which puts more mass in the tails than the normal.</p></li>
+\(\exp(-|z|) / 2\), which puts more mass in the tails than the normal.
+Its scale is estimated under the Laplace itself, where it is the mean
+absolute residual, or by the root mean square of the residuals, which is
+the spread every family without an estimator of its own is read at.</p></li>
 <li><p><code>dens_t()</code> is Student's t density with <code>df</code> degrees of freedom, heavier
-tailed still, and heavier the smaller <code>df</code> is. Its scale is estimated by
-the root mean square of the residuals, as every other family's spread is,
-or by maximum likelihood under the t itself.</p></li>
+tailed still, and heavier the smaller <code>df</code> is. Its scale is estimated
+under the t itself, by maximum likelihood, or by the root mean square of
+the residuals.</p></li>
 <li><p><code>dens_kernel()</code> is a kernel density estimate of the standardized
 residuals, fit with <code><a href="https://rdrr.io/r/stats/density.html" class="external-link">stats::density()</a></code> and interpolated to each
 observation. It assumes no family at all, at the cost of a density that
@@ -129,9 +138,9 @@ estimate.</p></li>
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">dens_normal</span><span class="op">(</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">dens_laplace</span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="fu">dens_laplace</span><span class="op">(</span>sigma_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mle"</span>, <span class="st">"rms"</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">dens_t</span><span class="op">(</span><span class="va">df</span>, sigma_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"rms"</span>, <span class="st">"mle"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu">dens_t</span><span class="op">(</span><span class="va">df</span>, sigma_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mle"</span>, <span class="st">"rms"</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">dens_kernel</span><span class="op">(</span>bw <span class="op">=</span> <span class="st">"nrd0"</span>, adjust <span class="op">=</span> <span class="fl">1</span>, kernel <span class="op">=</span> <span class="st">"gaussian"</span>, n <span class="op">=</span> <span class="fl">512</span><span class="op">)</span></span>
 <span></span>
@@ -142,15 +151,17 @@ estimate.</p></li>
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
 
 
-<dl><dt id="arg-df">df<a class="anchor" aria-label="anchor" href="#arg-df"></a></dt>
+<dl><dt id="arg-sigma-method">sigma_method<a class="anchor" aria-label="anchor" href="#arg-sigma-method"></a></dt>
+<dd><p>How the spread of the conditional density is estimated
+from the residuals of the propensity score model, either <code>"rms"</code>, the root
+mean square, or <code>"mle"</code>, the scale estimated under the family itself, which
+both <code>dens_laplace()</code> and <code>dens_t()</code> take by default. See the section
+below.</p></dd>
+
+
+<dt id="arg-df">df<a class="anchor" aria-label="anchor" href="#arg-df"></a></dt>
 <dd><p>Degrees of freedom for Student's t, a single positive, finite
 number.</p></dd>
-
-
-<dt id="arg-sigma-method">sigma_method<a class="anchor" aria-label="anchor" href="#arg-sigma-method"></a></dt>
-<dd><p>How the spread of the conditional density is estimated
-from the residuals of the propensity score model, either <code>"rms"</code> or
-<code>"mle"</code>. See the section below.</p></dd>
 
 
 <dt id="arg-bw">bw<a class="anchor" aria-label="anchor" href="#arg-bw"></a></dt>
@@ -186,40 +197,51 @@ non-negative, finite density value for each element it is given.</p></dd>
 <code>family</code>, the name of the family; <code>params</code>, the parameters that identify
 it, which is an empty list for a family that takes none; and <code>fn</code>, the
 function that evaluates the density, which is <code>NULL</code> for <code>dens_kernel()</code>.
-<code>dens_t()</code> carries a fourth element, <code>sigma_method</code>, the name of the
-estimator its scale is read with.</p>
+<code>dens_t()</code> and <code>dens_laplace()</code> carry a fourth element, <code>sigma_method</code>,
+the name of the estimator their scale is read with.</p>
     </div>
     <div class="section level2">
-    <h2 id="the-spread-of-a-t-density">The spread of a t density<a class="anchor" aria-label="anchor" href="#the-spread-of-a-t-density"></a></h2>
+    <h2 id="the-spread-of-the-conditional-density">The spread of the conditional density<a class="anchor" aria-label="anchor" href="#the-spread-of-the-conditional-density"></a></h2>
 
 
 
 <p>Both densities are evaluated on a residual standardized by a spread, and for
 the conditional density that spread is estimated from the residuals of the
-propensity score model. Every family takes the root mean square of those
-residuals, which is <code>sigma_method = "rms"</code>, the default, and is the maximum
-likelihood estimator of the spread of a normal density.</p>
-<p>It is not the maximum likelihood estimator of the scale of a t. The scale of
-a t is smaller than its standard deviation by a factor that depends on <code>df</code>,
+propensity score model. A family with no scale estimator of its own takes
+the root mean square of those residuals, which is <code>sigma_method = "rms"</code> and
+is the maximum likelihood estimator of the spread of a normal density.</p>
+<p>It is not the maximum likelihood estimator of the scale of a heavier-tailed
+family. The scale of such a family is smaller than its standard deviation,
 and the root mean square is pulled outward by the large residuals a heavy
 tail produces, which is what the family was chosen to accommodate.
-<code>sigma_method = "mle"</code> estimates the scale under the t itself, as the root of
+<code>sigma_method = "mle"</code> estimates the scale under the family itself, and both
+<code>dens_laplace()</code> and <code>dens_t()</code> take it by default, since the spread the
+density is divided by is the scale parameter of the family reading it. For
+<code>dens_laplace()</code> it is the mean absolute residual. For <code>dens_t()</code> it is the
+root of
 \(\sum_i \left[(\nu + 1) r_i^2 / (\nu \sigma^2 + r_i^2)\right] = n\),
 where \(r_i\) is the residual and \(\nu\) is <code>df</code>. Each residual enters
 that sum through a bounded term, so a residual far out in the tail moves the
 estimate by less than it moves the root mean square. Prefer it when the
-residuals are heavy tailed, which is the case the t family is for; the two
+residuals are heavy tailed, which is the case these families are for; the two
 estimators answer the same question, and answer it alike, as <code>df</code> grows and
 the t approaches the normal.</p>
-<p>The choice describes the conditional density alone. The marginal density
-that stabilizes the weights is the exposure's own, read at the exposure's
-mean and root mean square, whatever the conditional spread was estimated by.
-A scale estimated by maximum likelihood is recorded by <code><a href="exposure_type.html">density_meta()</a></code> as
-<code>sigma = "mle"</code>, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> estimates it alongside the propensity score
-model's coefficients, solving the equation above as part of its stacked
-system so that the standard errors account for it. Supplying a <code>.sigma</code> says
-the spread is a number of your own rather than one estimated from the
-residuals, so the two cannot be given together.</p>
+<p><code>dens_normal()</code> offers no such choice, because the root mean square is
+already its maximum likelihood estimator. Neither do <code>dens_kernel()</code> and
+<code>dens_fn()</code>: a kernel is fit to the standardized residuals and divided by the
+same spread, so the spread cancels up to the grid the estimate is
+interpolated on, and a density you write yourself names no family an
+estimator could be derived from.</p>
+<p>The choice describes both densities of the ratio. The marginal density that
+stabilizes the weights is the exposure's own, read at the exposure's mean and
+at the spread the same estimator gives for it, so the two halves of the ratio
+are densities of the same width. A scale estimated by maximum likelihood is
+recorded by <code><a href="exposure_type.html">density_meta()</a></code> as <code>sigma = "mle"</code>, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> estimates it
+alongside the propensity score model's coefficients, solving the equation it
+is the root of as part of its stacked system so that the standard errors
+account for it. Supplying a <code>.sigma</code> says the spread is a number of your own
+rather than one estimated from the residuals, so the two cannot be given
+together.</p>
     </div>
 
     <div class="section level2">
@@ -232,6 +254,9 @@ residuals, so the two cannot be given together.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu">dens_t</span><span class="op">(</span>df <span class="op">=</span> <span class="fl">4</span>, sigma_method <span class="op">=</span> <span class="st">"mle"</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;density: t(df = 4)&gt;</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="fu">dens_laplace</span><span class="op">(</span>sigma_method <span class="op">=</span> <span class="st">"rms"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;density: laplace&gt;</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu">dens_kernel</span><span class="op">(</span>adjust <span class="op">=</span> <span class="fl">1.5</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;density: kernel(bw = "nrd0", adjust = 1.5, kernel = "gaussian", n = 512)&gt;</span>

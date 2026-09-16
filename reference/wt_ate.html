@@ -389,8 +389,9 @@ and are carried through to the weights as missing.</p></dd>
 exposures: a single standard deviation applied to every unit, or one for
 each observation (e.g., <code>influence(model)$sigma</code>). Optional: with none
 supplied, including when <code>.propensity</code> is a fitted model, the conditional
-density uses the pooled residual spread of <code>.exposure</code> around
-<code>.propensity</code>.</p>
+density uses the spread its family estimates from the residuals of
+<code>.exposure</code> around <code>.propensity</code>, the pooled root mean square unless the
+family estimates a scale of its own.</p>
 <p>The two shapes differ downstream. A single spread is a constant the weights
 can be rebuilt from, so it is recorded in <code><a href="exposure_type.html">density_meta()</a></code> as <code>sigma_value</code>
 and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> reads it as a spread held fixed, propagating none of its
@@ -454,7 +455,8 @@ is its fitted probability of the level each unit took, so the weights
 are \(P(A = a_i \mid V_i) / f(a_i \mid X_i)\) for the variables
 \(V\) the numerator model reads. For a continuous exposure the
 numerator is the family <code>.density</code> names, read at the model's fitted mean
-and the root mean square of its residuals, so the weights are
+and the spread its own residuals leave under that family, so the weights
+are
 \(f(A \mid V) / f(A \mid X)\). For a categorical exposure the model is
 an <code><a href="https://rdrr.io/pkg/nnet/man/multinom.html" class="external-link">nnet::multinom()</a></code> fit and the numerator is its fitted probability of
 the level each unit took, read from the column named for that level, so
@@ -537,8 +539,9 @@ the weights were built from is recorded on the result and read back with
 <dd><p>How the marginal density that stabilizes a continuous
 exposure's weights is obtained, described under <strong>Stabilization</strong> in
 Details. Either <code>"marginal"</code>, the default, which reads the family
-<code>.density</code> names at the mean and standard deviation of <code>.exposure</code> over
-the rows the propensity model kept, or <code>"integrated"</code>, which averages the
+<code>.density</code> names at the mean of <code>.exposure</code> and the spread the same
+estimator gives for it, both over the rows the propensity model kept, or
+<code>"integrated"</code>, which averages the
 conditional density
 over the units on a grid spanning <code>.exposure</code> and interpolates the result
 back to each observed exposure.</p>
@@ -643,9 +646,9 @@ f_A(A) (continuous), or by an estimate of either conditional on variables a
 model of the exposure reads, reducing variance. When no <code>stabilization_score</code> is
 supplied, that estimate is the marginal mean of <code>.exposure</code> for a binary or
 categorical exposure, and for a continuous exposure the marginal density of
-the family <code>.density</code> names, evaluated at the population mean and standard
-deviation of <code>.exposure</code>. Stabilization is supported for ATE and censoring
-weights (<code>wt_ate()</code> and <code>wt_cens()</code>) alone.</p>
+the family <code>.density</code> names, evaluated at the population mean of <code>.exposure</code>
+and at the spread the same estimator gives for it. Stabilization is
+supported for ATE and censoring weights (<code>wt_ate()</code> and <code>wt_cens()</code>) alone.</p>
 <p>Whether it is applied is read from the exposure type unless <code>stabilize</code> says
 so outright. A continuous exposure is stabilized, since the unstabilized
 ratio carries the exposure's own units and is not a form of the weights the
@@ -653,17 +656,17 @@ package recommends; a binary or categorical exposure is left unstabilized,
 and <code>stabilize = TRUE</code> asks for it there.</p>
 <p>For a continuous exposure, <code>numerator</code> chooses how that marginal density is
 arrived at. <code>"marginal"</code>, the default, reads the family <code>.density</code> names at
-the mean and standard deviation of <code>.exposure</code> over the rows the propensity
-model kept, which are the rows the weights describe: a model that dropped
-rows leaves <code>.propensity</code> missing at them, and those rows carry no weight.
-Those two moments are parameters of the weights, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> estimates them
-alongside the rest
-of its parameter vector, so the standard errors account for the numerator
-having been estimated. <code>"integrated"</code> marginalizes the conditional density
-numerically instead: it averages \(f_{A|X}(t \mid X_i)\) over the units at
-each of 50 points spanning <code>.exposure</code>, then interpolates that average back
-to each observed exposure with a cubic spline. It estimates no parameters of
-its own, and it is what WeightIt has done since version 2.0.0.</p>
+the mean of <code>.exposure</code> and the spread the same estimator gives for it, both
+over the rows the propensity model kept, which are the rows the weights
+describe: a model that dropped rows leaves <code>.propensity</code> missing at them,
+and those rows carry no weight. Those two moments are parameters of the
+weights, and <code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> estimates them alongside the rest of its parameter
+vector, so the standard errors account for the numerator having been
+estimated. <code>"integrated"</code> marginalizes the conditional density numerically
+instead: it averages \(f_{A|X}(t \mid X_i)\) over the units at each of 50
+points spanning <code>.exposure</code>, then interpolates that average back to each
+observed exposure with a cubic spline. It estimates no parameters of its
+own, and it is what WeightIt has done since version 2.0.0.</p>
 <p>The two agree whenever the family is normal and the fitted conditional means
 are themselves normal, since an average of normal densities centered on
 normally distributed means is again a normal density. They separate as
@@ -719,8 +722,8 @@ carrying \(P(A = 1 \mid V)\), which is the mistake the
 <code>stabilization_score</code> form has to be written around by hand.</p>
 <p>For a continuous exposure they are \(f(A \mid V) / f(A \mid X)\): the
 family <code>.density</code> names, read at the numerator model's fitted mean and the
-root mean square of its residuals, over the same family read at the
-propensity score model's.</p>
+spread its own residuals leave under that family, over the same family read
+at the propensity score model's.</p>
 <p>For a categorical exposure they are
 \(P(Z = z_i \mid V_i) / f(z_i \mid X_i)\): the multinomial model's fitted
 probability of the level each unit took, gathered from the column named for
@@ -857,14 +860,15 @@ continuous exposures.</p>
 is evaluated at \(z_i = (A_i - \hat{A}_i) / \sigma\), where
 \(\hat{A}_i\) is the fitted conditional mean in <code>.propensity</code> and
 \(\sigma\) is the residual spread; the marginal density is evaluated at
-\(z^A_i = (A_i - \bar{A}) / s_A\), where \(\bar{A}\) and \(s_A\) are
-the mean and standard deviation of <code>.exposure</code> over the rows the propensity
-model kept. Both moments are read over those rows whether the spread was
-pooled from the model's own residuals or supplied through <code>.sigma</code>, so the
-two halves of the ratio describe one set of units. Each density is
-then divided by the spread that standardized it, the Jacobian of that change
-of variable, which returns both to the exposure's own units so that each
-integrates to one:</p>
+\(z^A_i = (A_i - \bar{A}) / s_A\), where \(\bar{A}\) is the mean of
+<code>.exposure</code> over the rows the propensity model kept and \(s_A\) is the
+spread the same estimator gives for it, the standard deviation unless the
+family estimates a scale of its own. Both moments are read over those rows
+whether the spread was pooled from the model's own residuals or supplied
+through <code>.sigma</code>, so the two halves of the ratio describe one set of units.
+Each density is then divided by the spread that standardized it, the
+Jacobian of that change of variable, which returns both to the exposure's
+own units so that each integrates to one:</p>
 <p>$$w_i = \frac{g(z^A_i) / s_A}{g(z_i) / \sigma}$$</p>
 <p><code>.density</code> chooses the family \(g\):</p><table class="table table"><tr><td><code>.density</code></td><td>\(g(z)\)</td></tr><tr><td><code>"normal"</code>, <code><a href="dens_normal.html">dens_normal()</a></code></td><td>the standard normal density, the default</td></tr><tr><td><code>"laplace"</code>, <code><a href="dens_normal.html">dens_laplace()</a></code></td><td>\(\exp(-\lvert z \rvert) / 2\)</td></tr><tr><td><code><a href="dens_normal.html">dens_t()</a></code></td><td>Student's t with <code>df</code> degrees of freedom</td></tr><tr><td><code>"kernel"</code>, <code><a href="dens_normal.html">dens_kernel()</a></code></td><td>a kernel density estimate of the standardized residuals</td></tr><tr><td><code><a href="dens_normal.html">dens_fn()</a></code>, or a bare function</td><td>a density you write yourself</td></tr></table><p>The numerator and the denominator take the same family, so the choice
 describes the shape of the residuals rather than the estimand. A heavier tail
@@ -901,14 +905,20 @@ exposure is held to the same rule from the other side: only <code><a href="https
 <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">quasibinomial()</a></code> fit the probability those weights divide by, so a model of
 a conditional mean is refused there whatever its fitted values happen to fall
 on, a linear probability model included.</p>
-<p>\(\sigma\) is the pooled residual spread
-\(\sqrt{\mathrm{mean}((A - \hat{A})^2)}\) unless <code>.sigma</code> supplies a single
-standard deviation, or one for each unit, which the model methods do not do
-on their own. <code><a href="dens_normal.html">dens_t()</a></code> offers a second estimator, the maximum likelihood
-scale of the t itself, through <code>sigma_method = "mle"</code>; see <strong>The spread of a
-t density</strong> in its documentation. The marginal density is spread by
-\(s_A\) whatever the conditional spread was arrived at, the spread of the
-exposure itself being no business of the conditional model's.</p>
+<p>\(\sigma\) is the spread the family <code>.density</code> names asks for, read from
+the residuals of the propensity score model. For a family with no scale
+estimator of its own that is the pooled root mean square
+\(\sqrt{\mathrm{mean}((A - \hat{A})^2)}\); for <code><a href="dens_normal.html">dens_t()</a></code> and
+<code><a href="dens_normal.html">dens_laplace()</a></code> it is the maximum likelihood scale of the family itself,
+which both take by default. <code>sigma_method = "rms"</code> asks either of them for
+the root mean square instead; see <strong>The spread of the conditional density</strong>
+in <code><a href="dens_normal.html">dens_t()</a></code>'s documentation. <code>.sigma</code> supplies a spread of your own, a
+single standard deviation or one for each unit, which the model methods do
+not do on their own, and is refused alongside a family that estimates its
+own scale, being a second instruction about the same quantity. A family that
+estimates its own scale spreads both densities of the ratio, so the marginal
+density is read at that scale too and the two halves are densities of one
+width rather than two.</p>
 <p>Every model class is spread that same way, <code><a href="https://rdrr.io/pkg/MASS/man/rlm.html" class="external-link">MASS::rlm()</a></code> included. <code>rlm</code>
 reports a robust scale estimate of its own in <code>fit$s</code>, which resists the
 extreme residuals rather than pooling all of them; pass <code>.sigma = fit$s</code> to
@@ -921,7 +931,7 @@ propagating the uncertainty of neither.</p>
 <p><code><a href="https://r-causal.github.io/causalgenerics/reference/ipw.html" class="external-link">ipw()</a></code> models the conditional density with a single conditional variance,
 estimated jointly with the rest of the parameter vector, by the moment the
 pooled spread is the root of or, for a density built with
-<code>sigma_method = "mle"</code>, by the score of the t. A single
+<code>sigma_method = "mle"</code>, by the score of the family it names. A single
 <code>.sigma</code> is taken instead as a known constant: the weights are rebuilt at the
 number that was supplied, and the stacked system carries none of that
 number's uncertainty. An observation-level <code>.sigma</code> is a different function
@@ -1229,24 +1239,24 @@ g-computation estimate to the same target population.</p></li>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Using exposure variable <span style="color: #0000BB;">"dose"</span> from the propensity score model</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Treating `.exposure` as continuous</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;psw{estimand = ate; stabilized}[100]&gt;</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   [1] 1.8646342 0.9733784 0.8752609 0.8688423 0.7479327 0.7798293 0.9016771</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   [8] 0.7597835 0.6310464 0.6911070 0.7999152 0.7082642 0.8020596 0.7990152</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [15] 0.5044498 0.7911563 0.7468465 0.9357483 0.9238356 0.8522952 0.9048531</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [22] 0.5633915 0.6523243 1.1495582 0.3374106 0.7535244 1.3004884 0.7506499</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [29] 0.7409988 1.7593253 0.8070058 0.7424372 0.8403367 1.0590076 1.0785524</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [36] 0.3059582 1.0582182 1.3140401 0.8689788 0.9671610 1.1106228 1.4415967</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [43] 1.6841604 0.7055659 0.5493660 2.4236372 0.5417968 0.4050666 2.2863800</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [50] 0.5851142 0.7353432 1.6511412 1.0393921 0.7953566 1.1868726 1.0917254</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [57] 0.8642301 1.1409825 1.0153774 0.7270439 0.4827268 0.9199718 1.2137686</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [64] 0.4873167 0.5196829 1.0329573 0.7868673 0.6905860 0.6315537 0.9681556</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [71] 1.6544586 0.9066800 0.8659805 0.1618948 0.5878388 0.7318754 1.2574093</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [78] 0.8112021 0.9306485 0.9048382 0.8503056 0.6369130 0.9173769 0.7515608</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [85] 0.8473410 0.9312568 0.5513774 1.4042470 2.4415982 1.3000206 0.8634111</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [92] 1.0266033 1.0473099 0.8128075 0.3222650 0.4487284 0.9522881 1.0692692</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [99] 0.9326978 0.3828823</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   [1] 2.6238745 1.0103107 0.8920484 0.8823548 0.7107517 0.7494450 0.9325810</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   [8] 0.7193136 0.6017473 0.6723447 0.7773808 0.6556842 0.7829746 0.7835836</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [15] 0.4137030 0.7644746 0.7032374 0.9795602 0.9608531 0.8566635 0.9187813</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [22] 0.5057423 0.5757429 1.3206112 0.2338168 0.7135029 1.5793899 0.7063985</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [29] 0.6930408 2.2014225 0.7878651 0.6951426 0.8383498 1.1663998 1.2185765</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [36] 0.2335251 1.1865013 1.5835814 0.8818053 1.0380727 1.2733706 1.6394177</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [43] 2.2847066 0.6530425 0.4522302 3.5033114 0.4493522 0.3095950 3.4385805</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [50] 0.4905245 0.6848066 2.1980088 1.1543465 0.7707278 1.3979222 1.1826720</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [57] 0.8750933 1.3117141 1.1157209 0.6740198 0.3788968 0.9626725 1.4469005</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [64] 0.3812262 0.4150376 1.0724443 0.7582439 0.6275699 0.5540242 1.0386926</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [71] 1.9982887 0.9413866 0.8779022 0.1056291 0.5016373 0.6816394 1.3580260</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [78] 0.7941020 0.9580920 0.9276147 0.8536041 0.5571590 0.9583103 0.7176456</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [85] 0.8490227 0.9703996 0.4630760 1.7262520 3.1857310 1.5253791 0.8718945</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [92] 1.1340976 1.1606542 0.7965602 0.2198846 0.3375182 1.0125030 1.1847894</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [99] 0.9571773 0.3125740</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> density:   t(df = 4)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> numerator: marginal</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> sigma:     pooled</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sigma:     mle</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># The stabilizing numerator can marginalize the conditional density over the</span></span></span>
 <span class="r-in"><span><span class="co"># units instead of reading the same family at the exposure's own moments</span></span></span>
@@ -1274,7 +1284,7 @@ g-computation estimate to the same target population.</p></li>
 <span class="r-in"><span><span class="fu"><a href="exposure_type.html">density_meta</a></span><span class="op">(</span><span class="va">w_int</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> density:   t(df = 4)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> numerator: integrated</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> sigma:     pooled</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sigma:     mle</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># -- Data frame input ------------------------------------------------</span></span></span>
 <span class="r-in"><span><span class="va">ps_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span></span>
