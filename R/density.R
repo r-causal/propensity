@@ -51,10 +51,13 @@ new_density_spec <- function(
 #' * `dens_normal()` is the standard normal density, the default.
 #' * `dens_laplace()` is the standard Laplace density,
 #'   \eqn{\exp(-|z|) / 2}, which puts more mass in the tails than the normal.
+#'   Its scale is estimated under the Laplace itself, where it is the mean
+#'   absolute residual, or by the root mean square of the residuals, which is
+#'   the spread every family without an estimator of its own is read at.
 #' * `dens_t()` is Student's t density with `df` degrees of freedom, heavier
 #'   tailed still, and heavier the smaller `df` is. Its scale is estimated by
-#'   the root mean square of the residuals, as every other family's spread is,
-#'   or by maximum likelihood under the t itself.
+#'   the root mean square of the residuals, or by maximum likelihood under the
+#'   t itself.
 #' * `dens_kernel()` is a kernel density estimate of the standardized
 #'   residuals, fit with [stats::density()] and interpolated to each
 #'   observation. It assumes no family at all, at the cost of a density that
@@ -86,39 +89,49 @@ new_density_spec <- function(
 #'   `family`, the name of the family; `params`, the parameters that identify
 #'   it, which is an empty list for a family that takes none; and `fn`, the
 #'   function that evaluates the density, which is `NULL` for `dens_kernel()`.
-#'   `dens_t()` carries a fourth element, `sigma_method`, the name of the
-#'   estimator its scale is read with.
+#'   `dens_t()` and `dens_laplace()` carry a fourth element, `sigma_method`,
+#'   the name of the estimator their scale is read with.
 #'
-#' @section The spread of a t density:
+#' @section The spread of the conditional density:
 #'
 #' Both densities are evaluated on a residual standardized by a spread, and for
 #' the conditional density that spread is estimated from the residuals of the
-#' propensity score model. Every family takes the root mean square of those
-#' residuals, which is `sigma_method = "rms"`, the default, and is the maximum
-#' likelihood estimator of the spread of a normal density.
+#' propensity score model. A family with no scale estimator of its own takes
+#' the root mean square of those residuals, which is `sigma_method = "rms"` and
+#' is the maximum likelihood estimator of the spread of a normal density.
 #'
-#' It is not the maximum likelihood estimator of the scale of a t. The scale of
-#' a t is smaller than its standard deviation by a factor that depends on `df`,
+#' It is not the maximum likelihood estimator of the scale of a heavier-tailed
+#' family. The scale of such a family is smaller than its standard deviation,
 #' and the root mean square is pulled outward by the large residuals a heavy
 #' tail produces, which is what the family was chosen to accommodate.
-#' `sigma_method = "mle"` estimates the scale under the t itself, as the root of
+#' `sigma_method = "mle"` estimates the scale under the family itself.
+#' `dens_laplace()` takes it by default, where it is the mean absolute
+#' residual. For `dens_t()` it is the root of
 #' \eqn{\sum_i \left[(\nu + 1) r_i^2 / (\nu \sigma^2 + r_i^2)\right] = n},
 #' where \eqn{r_i} is the residual and \eqn{\nu} is `df`. Each residual enters
 #' that sum through a bounded term, so a residual far out in the tail moves the
 #' estimate by less than it moves the root mean square. Prefer it when the
-#' residuals are heavy tailed, which is the case the t family is for; the two
+#' residuals are heavy tailed, which is the case these families are for; the two
 #' estimators answer the same question, and answer it alike, as `df` grows and
 #' the t approaches the normal.
 #'
-#' The choice describes the conditional density alone. The marginal density
-#' that stabilizes the weights is the exposure's own, read at the exposure's
-#' mean and root mean square, whatever the conditional spread was estimated by.
-#' A scale estimated by maximum likelihood is recorded by [density_meta()] as
-#' `sigma = "mle"`, and [ipw()] estimates it alongside the propensity score
-#' model's coefficients, solving the equation above as part of its stacked
-#' system so that the standard errors account for it. Supplying a `.sigma` says
-#' the spread is a number of your own rather than one estimated from the
-#' residuals, so the two cannot be given together.
+#' `dens_normal()` offers no such choice, because the root mean square is
+#' already its maximum likelihood estimator. Neither do `dens_kernel()` and
+#' `dens_fn()`: a kernel is fit to the standardized residuals and divided by the
+#' same spread, so the spread cancels up to the grid the estimate is
+#' interpolated on, and a density you write yourself names no family an
+#' estimator could be derived from.
+#'
+#' The choice describes both densities of the ratio. The marginal density that
+#' stabilizes the weights is the exposure's own, read at the exposure's mean and
+#' at the spread the same estimator gives for it, so the two halves of the ratio
+#' are densities of the same width. A scale estimated by maximum likelihood is
+#' recorded by [density_meta()] as `sigma = "mle"`, and [ipw()] estimates it
+#' alongside the propensity score model's coefficients, solving the equation it
+#' is the root of as part of its stacked system so that the standard errors
+#' account for it. Supplying a `.sigma` says the spread is a number of your own
+#' rather than one estimated from the residuals, so the two cannot be given
+#' together.
 #'
 #' @examples
 #' dens_normal()
@@ -126,6 +139,8 @@ new_density_spec <- function(
 #' dens_t(df = 4)
 #'
 #' dens_t(df = 4, sigma_method = "mle")
+#'
+#' dens_laplace(sigma_method = "rms")
 #'
 #' dens_kernel(adjust = 1.5)
 #'
@@ -139,8 +154,14 @@ dens_normal <- function() {
 
 #' @rdname dens_normal
 #' @export
-dens_laplace <- function() {
-  new_density_spec("laplace", fn = function(z) exp(-abs(z)) / 2)
+dens_laplace <- function(sigma_method = c("mle", "rms")) {
+  sigma_method <- rlang::arg_match(sigma_method)
+
+  new_density_spec(
+    "laplace",
+    fn = function(z) exp(-abs(z)) / 2,
+    sigma_method = sigma_method
+  )
 }
 
 #' @rdname dens_normal
@@ -418,7 +439,7 @@ check_numerator <- function(
              model estimated at every unit's fitted mean, and {.arg .sigma}
              replaces the spread of that density with one of your own.",
         i = "Leave {.arg .sigma} unset to spread the conditional density by the
-             pooled residual root mean square, or use {.arg numerator} =
+             estimator its family asks for, or use {.arg numerator} =
              {.val marginal}, which takes a spread you supply."
       ),
       error_class = "propensity_numerator_error",
@@ -601,9 +622,9 @@ check_numerator_model_not_multinom <- function(
 
 # What the numerator model contributes to the ratio: the conditional mean it
 # fits for each unit and the spread of its residuals around them. The spread is
-# the uncentered root mean square, the estimator the conditional density is read
-# at, so the two densities of the ratio are spread by the same estimator applied
-# to each model's own residuals.
+# the uncentered root mean square of that model's own residuals, taken about
+# zero rather than about their mean because the fitted mean is what the ratio
+# reads the density at.
 numerator_model_moments <- function(numerator_model) {
   mu <- as.numeric(stats::fitted(numerator_model))
   residuals <- as.numeric(stats::residuals(numerator_model, type = "response"))
@@ -669,12 +690,11 @@ check_continuous_finite <- function(x, arg, call = rlang::caller_env()) {
   )
 }
 
-# The spread of the conditional density: the one the caller supplied, the scale
-# of a t density estimated by maximum likelihood, or the pooled uncentered root
-# mean square of the residuals. The root mean square is uncentered because the
-# residuals of a fitted model already average to zero, and because the
-# estimating equation `ipw()` solves for the same quantity is the uncentered
-# moment.
+# The spread of the conditional density: the one the caller supplied, or the one
+# the residuals leave under the family that reads them. The supplied spread and
+# the estimator are the whole of the resolution, so nothing here can answer a
+# different question from the estimator every other reader of the spread comes
+# through.
 continuous_sigma <- function(
   exposure,
   mu,
@@ -686,18 +706,75 @@ continuous_sigma <- function(
     return(.sigma)
   }
 
-  residuals <- exposure - mu
+  density_scale_estimate(exposure - mu, density, call = call)
+}
 
-  if (density_sigma_is_mle(density)) {
-    return(t_sigma_mle(residuals, density$params$df, call = call))
+# The spread a density is read at, estimated from the residuals it is read
+# against: the uncentered root mean square unless the density asks to be fit
+# under itself, and then that family's own estimator. The root mean square is
+# uncentered because the residuals of a fitted model already average to zero,
+# and because the estimating equation `ipw()` solves for the same quantity is
+# the uncentered moment.
+#
+# Every spread estimated from residuals comes through here, the conditional
+# density's and the marginal one's alike, so the two halves of a ratio cannot be
+# spread by different estimators. What is asked is what the density asked for
+# rather than what family it names: a family with an estimator of its own that
+# was asked for the root mean square is spread by the root mean square on both
+# halves.
+density_scale_estimate <- function(
+  residuals,
+  density,
+  call = rlang::caller_env()
+) {
+  if (!density_sigma_is_mle(density)) {
+    return(sqrt(mean(residuals^2, na.rm = TRUE)))
   }
 
-  sqrt(mean(residuals^2, na.rm = TRUE))
+  switch(
+    density$family,
+    t = t_sigma_mle(residuals, density$params$df, call = call),
+    laplace = laplace_sigma_mle(residuals),
+    abort_no_scale_estimator(density, call = call)
+  )
+}
+
+# The maximum likelihood scale of a Laplace density fit to the residuals that
+# are there, which is their mean absolute value in closed form, so it needs
+# neither a search nor a refusal. It is zero only where every residual is zero,
+# which is where the root mean square is zero too, so the two estimators agree
+# on the degenerate case.
+laplace_sigma_mle <- function(residuals) {
+  mean(abs(residuals), na.rm = TRUE)
+}
+
+# A specification that asks to be fit under itself while naming a family with no
+# estimator of its own. Only `dens_t()` and `dens_laplace()` take
+# `sigma_method`, so nothing a user writes reaches this; a specification built
+# by hand does, and it is refused rather than spread by nothing, which would
+# leave every weight missing and the stacked system solving an equation no
+# weight was built at.
+abort_no_scale_estimator <- function(density, call = rlang::caller_env()) {
+  family <- density$family
+
+  abort(
+    c(
+      "The scale of a {.val {family}} density cannot be estimated by maximum
+       likelihood.",
+      x = "{.code sigma_method = \"mle\"} asks for an estimator this package
+           has only for {.fun dens_t} and {.fun dens_laplace}.",
+      i = "Build the density with {.fun dens_t} or {.fun dens_laplace}, or
+           leave its scale to the root mean square of the residuals."
+    ),
+    error_class = "propensity_density_error",
+    call = call
+  )
 }
 
 # Whether a density asks for its scale to be estimated under itself rather than
-# by the root mean square every family otherwise takes. Only `dens_t()` records
-# the field, so every other specification answers no.
+# by the root mean square every family otherwise takes. Only `dens_t()` and
+# `dens_laplace()` record the field, so every other specification answers no,
+# and so does no density at all.
 density_sigma_is_mle <- function(density) {
   identical(density$sigma_method, "mle")
 }
@@ -805,15 +882,18 @@ check_sigma_method <- function(.sigma, density, call = rlang::caller_env()) {
     return(invisible(NULL))
   }
 
+  family <- density$family
+
   abort(
     c(
       "{.code sigma_method = \"mle\"} cannot be used with {.arg .sigma}.",
       x = "{.code sigma_method = \"mle\"} estimates the scale of the
-           conditional density from the residuals of the propensity score
-           model, and {.arg .sigma} is a spread of your own that replaces it.",
-      i = "Drop {.arg .sigma} to estimate the scale under the t density, or
-           build the density with {.code sigma_method = \"rms\"} to spread the
-           one you supplied."
+           {.val {family}} conditional density from the residuals of the
+           propensity score model, and {.arg .sigma} is a spread of your own
+           that replaces it.",
+      i = "Drop {.arg .sigma} to estimate the scale under the {.val {family}}
+           density, or build the density with {.code sigma_method = \"rms\"}
+           to spread the one you supplied."
     ),
     error_class = "propensity_density_error",
     call = call

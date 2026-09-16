@@ -63,9 +63,9 @@
 #' model of the exposure reads, reducing variance. When no `stabilization_score` is
 #' supplied, that estimate is the marginal mean of `.exposure` for a binary or
 #' categorical exposure, and for a continuous exposure the marginal density of
-#' the family `.density` names, evaluated at the population mean and standard
-#' deviation of `.exposure`. Stabilization is supported for ATE and censoring
-#' weights (`wt_ate()` and `wt_cens()`) alone.
+#' the family `.density` names, evaluated at the population mean of `.exposure`
+#' and at the spread the same estimator gives for it. Stabilization is
+#' supported for ATE and censoring weights (`wt_ate()` and `wt_cens()`) alone.
 #'
 #' Whether it is applied is read from the exposure type unless `stabilize` says
 #' so outright. A continuous exposure is stabilized, since the unstabilized
@@ -75,17 +75,17 @@
 #'
 #' For a continuous exposure, `numerator` chooses how that marginal density is
 #' arrived at. `"marginal"`, the default, reads the family `.density` names at
-#' the mean and standard deviation of `.exposure` over the rows the propensity
-#' model kept, which are the rows the weights describe: a model that dropped
-#' rows leaves `.propensity` missing at them, and those rows carry no weight.
-#' Those two moments are parameters of the weights, and [ipw()] estimates them
-#' alongside the rest
-#' of its parameter vector, so the standard errors account for the numerator
-#' having been estimated. `"integrated"` marginalizes the conditional density
-#' numerically instead: it averages \eqn{f_{A|X}(t \mid X_i)} over the units at
-#' each of 50 points spanning `.exposure`, then interpolates that average back
-#' to each observed exposure with a cubic spline. It estimates no parameters of
-#' its own, and it is what WeightIt has done since version 2.0.0.
+#' the mean of `.exposure` and the spread the same estimator gives for it, both
+#' over the rows the propensity model kept, which are the rows the weights
+#' describe: a model that dropped rows leaves `.propensity` missing at them,
+#' and those rows carry no weight. Those two moments are parameters of the
+#' weights, and [ipw()] estimates them alongside the rest of its parameter
+#' vector, so the standard errors account for the numerator having been
+#' estimated. `"integrated"` marginalizes the conditional density numerically
+#' instead: it averages \eqn{f_{A|X}(t \mid X_i)} over the units at each of 50
+#' points spanning `.exposure`, then interpolates that average back to each
+#' observed exposure with a cubic spline. It estimates no parameters of its
+#' own, and it is what WeightIt has done since version 2.0.0.
 #'
 #' The two agree whenever the family is normal and the fitted conditional means
 #' are themselves normal, since an average of normal densities centered on
@@ -294,14 +294,15 @@
 #' is evaluated at \eqn{z_i = (A_i - \hat{A}_i) / \sigma}, where
 #' \eqn{\hat{A}_i} is the fitted conditional mean in `.propensity` and
 #' \eqn{\sigma} is the residual spread; the marginal density is evaluated at
-#' \eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} and \eqn{s_A} are
-#' the mean and standard deviation of `.exposure` over the rows the propensity
-#' model kept. Both moments are read over those rows whether the spread was
-#' pooled from the model's own residuals or supplied through `.sigma`, so the
-#' two halves of the ratio describe one set of units. Each density is
-#' then divided by the spread that standardized it, the Jacobian of that change
-#' of variable, which returns both to the exposure's own units so that each
-#' integrates to one:
+#' \eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} is the mean of
+#' `.exposure` over the rows the propensity model kept and \eqn{s_A} is the
+#' spread the same estimator gives for it, the standard deviation unless the
+#' family estimates a scale of its own. Both moments are read over those rows
+#' whether the spread was pooled from the model's own residuals or supplied
+#' through `.sigma`, so the two halves of the ratio describe one set of units.
+#' Each density is then divided by the spread that standardized it, the
+#' Jacobian of that change of variable, which returns both to the exposure's
+#' own units so that each integrates to one:
 #'
 #' \deqn{w_i = \frac{g(z^A_i) / s_A}{g(z_i) / \sigma}}
 #'
@@ -355,13 +356,14 @@
 #' on, a linear probability model included.
 #'
 #' \eqn{\sigma} is the pooled residual spread
-#' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies a single
-#' standard deviation, or one for each unit, which the model methods do not do
-#' on their own. [dens_t()] offers a second estimator, the maximum likelihood
-#' scale of the t itself, through `sigma_method = "mle"`; see **The spread of a
-#' t density** in its documentation. The marginal density is spread by
-#' \eqn{s_A} whatever the conditional spread was arrived at, the spread of the
-#' exposure itself being no business of the conditional model's.
+#' \eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless `.sigma` supplies a
+#' single standard deviation, or one for each unit, which the model methods do
+#' not do on their own. [dens_t()] and [dens_laplace()] offer a second
+#' estimator, the maximum likelihood scale of the family itself, through
+#' `sigma_method = "mle"`; see **The spread of the conditional density** in
+#' [dens_t()]'s documentation. A family that estimates its own scale spreads
+#' both densities of the ratio, so the marginal density is read at that scale
+#' too and the two halves are densities of one width rather than two.
 #'
 #' Every model class is spread that same way, [MASS::rlm()] included. `rlm`
 #' reports a robust scale estimate of its own in `fit$s`, which resists the
@@ -376,7 +378,7 @@
 #' [ipw()] models the conditional density with a single conditional variance,
 #' estimated jointly with the rest of the parameter vector, by the moment the
 #' pooled spread is the root of or, for a density built with
-#' `sigma_method = "mle"`, by the score of the t. A single
+#' `sigma_method = "mle"`, by the score of the family it names. A single
 #' `.sigma` is taken instead as a known constant: the weights are rebuilt at the
 #' number that was supplied, and the stacked system carries none of that
 #' number's uncertainty. An observation-level `.sigma` is a different function
@@ -491,8 +493,9 @@
 #'   exposures: a single standard deviation applied to every unit, or one for
 #'   each observation (e.g., `influence(model)$sigma`). Optional: with none
 #'   supplied, including when `.propensity` is a fitted model, the conditional
-#'   density uses the pooled residual spread of `.exposure` around
-#'   `.propensity`.
+#'   density uses the spread its family estimates from the residuals of
+#'   `.exposure` around `.propensity`, the pooled root mean square unless the
+#'   family estimates a scale of its own.
 #'
 #'   The two shapes differ downstream. A single spread is a constant the weights
 #'   can be rebuilt from, so it is recorded in `density_meta()` as `sigma_value`
@@ -532,8 +535,9 @@
 #' @param numerator How the marginal density that stabilizes a continuous
 #'   exposure's weights is obtained, described under **Stabilization** in
 #'   Details. Either `"marginal"`, the default, which reads the family
-#'   `.density` names at the mean and standard deviation of `.exposure` over
-#'   the rows the propensity model kept, or `"integrated"`, which averages the
+#'   `.density` names at the mean of `.exposure` and the spread the same
+#'   estimator gives for it, both over the rows the propensity model kept, or
+#'   `"integrated"`, which averages the
 #'   conditional density
 #'   over the units on a grid spanning `.exposure` and interpolates the result
 #'   back to each observed exposure.
@@ -1376,13 +1380,21 @@ ate_continuous <- function(
   # population the weights describe. Reading the marginal moments over them
   # while the conditional spread above is pooled over the rows that remain would
   # leave the two halves of the ratio describing different sets of units.
+  #
+  # Its spread is read by the estimator the family asks for, which is the one
+  # the conditional density above was spread by, so the two halves of the ratio
+  # are densities of the same width.
   mu_a <- NULL
   sigma_a <- NULL
   if (identical(numerator, "marginal")) {
     kept <- !is.na(.exposure) & !is.na(.propensity)
     exposure_kept <- .exposure[kept]
     mu_a <- mean(exposure_kept)
-    sigma_a <- sqrt(mean((exposure_kept - mu_a)^2))
+    sigma_a <- density_scale_estimate(
+      exposure_kept - mu_a,
+      .density,
+      call = call
+    )
   }
 
   # Whether the weights this call is about to build have a finite second moment.

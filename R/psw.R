@@ -335,9 +335,10 @@ stabilization_score <- function(wt) {
 #'   to different values of the same terms, record different numerators and are
 #'   combined the way any other disagreeing records are.
 #' * `sigma`, where the residual spread of the conditional density came from:
-#'   `"pooled"` for the pooled residual root mean square, `"mle"` for the scale
-#'   a [dens_t()] built with `sigma_method = "mle"` estimates under the t
-#'   itself, and `"supplied"` for a `.sigma` the caller gave.
+#'   `"pooled"` for the pooled residual root mean square, `"mle"` for a scale
+#'   estimated under the family that reads it, which [dens_t()] and
+#'   [dens_laplace()] take with `sigma_method = "mle"`, and `"supplied"` for a
+#'   `.sigma` the caller gave.
 #' * `sigma_value`, the single spread the caller supplied, and `NULL` for a
 #'   spread estimated from the residuals, by either estimator, and for one
 #'   supplied per observation. A spread that is one

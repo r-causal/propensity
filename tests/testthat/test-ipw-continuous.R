@@ -2067,8 +2067,8 @@ test_that("ipw() stacks a density the user wrote", {
 # ---- densities and numerators end to end ------------------------------------
 #
 # The combinations the sandwich has to rebuild weights for. Each is a family and
-# a numerator; the spread is pooled throughout, which is the case a fixed
-# `.sigma` and an observation-level one are held against below.
+# a numerator, each spread by the estimator its own family asks for, which is
+# the case a fixed `.sigma` and an observation-level one are held against below.
 continuous_density_cases <- list(
   list(.density = dens_t(4), numerator = "marginal"),
   list(.density = "laplace", numerator = "marginal"),
@@ -2388,7 +2388,10 @@ test_that("ipw() continuous m-estimation standard errors match WeightIt", {
   densities <- list(
     list(ours = "normal", theirs = NULL),
     list(ours = dens_t(df = 4), theirs = "dt_4"),
-    list(ours = "laplace", theirs = "dlaplace")
+    # WeightIt standardizes by the root mean square whatever the family, so the
+    # parity is written at that estimator rather than at the scale of the
+    # Laplace, which is what the family asks for on its own.
+    list(ours = dens_laplace(sigma_method = "rms"), theirs = "dlaplace")
   )
 
   for (dens in densities) {
@@ -2452,8 +2455,22 @@ test_that("ipw() solves the scale equation of a t spread by maximum likelihood",
   # the number it estimates supplied as a constant. The weights are equal, so
   # the point estimates are, and what differs between the two fits is what the
   # sandwich accounts for.
-  mle <- fit_continuous_models(dat, .density = dens_t(6, sigma_method = "mle"))
-  fixed <- fit_continuous_models(dat, .density = dens_t(6), .sigma = scale)
+  #
+  # Unstabilized, so that the conditional density is the whole of the ratio. A
+  # marginal numerator is read at the estimator the family it names asks for,
+  # which a spread supplied for the conditional density does not replace, so the
+  # two arms would divide by the same number and multiply by different ones.
+  mle <- fit_continuous_models(
+    dat,
+    .density = dens_t(6, sigma_method = "mle"),
+    stabilize = FALSE
+  )
+  fixed <- fit_continuous_models(
+    dat,
+    .density = dens_t(6),
+    .sigma = scale,
+    stabilize = FALSE
+  )
   expect_equal(as.double(mle$wts), as.double(fixed$wts), tolerance = 1e-8)
 
   res_mle <- ipw(mle$ps_mod, mle$outcome_mod)

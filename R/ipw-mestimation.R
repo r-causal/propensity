@@ -2865,15 +2865,15 @@ ipw_compare_weights <- function(
     )
     # A dose is the only exposure whose weights carry a spread, and it is a dose
     # whether it is the exposure or the second component of a joint one. The
-    # stacked system estimates one pooled residual variance, so weights built on
-    # observation-level standard deviations are a different function of the data
-    # and cannot be reproduced here at any parameter value.
+    # stacked system estimates a single spread, the one its family estimates, so
+    # weights built on observation-level standard deviations are a different
+    # function of the data and cannot be reproduced here at any parameter value.
     dose <- identical(exposure_type, "continuous") ||
       "continuous" %in% components
     sigma_hint <- if (dose) {
       "Weights built with an observation-level {.arg .sigma}, such as \\
       {.code influence(model)$sigma}, are one cause: {.fun ipw} models the \\
-      conditional density with a single pooled residual root mean square, \\
+      conditional density with a single spread, the one its family estimates, \\
       which is what {.fun wt_ate} uses when no {.arg .sigma} is given."
     } else {
       NULL

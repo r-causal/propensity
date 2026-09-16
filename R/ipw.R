@@ -986,8 +986,8 @@
 #' as a known constant. It solves an equation of its own that the stacked system
 #' does not write, so none of its sampling variability is propagated, and the
 #' standard errors are those of a psi score read at a scale treated as fixed.
-#' The spread of the conditional density is a separate quantity, and is the
-#' pooled residual spread there as it is for every other class.
+#' The spread of the conditional density is a separate quantity, and comes from
+#' the estimator its family asks for, there as for every other class.
 #'
 #' [MASS::psi.bisquare()] and [MASS::psi.hampel()] redescend, and that is worth
 #' knowing about the standard errors they get. A redescending psi's estimating
@@ -1341,17 +1341,18 @@
 #' propensity score model; a mismatch errors, on both standard error methods.
 #'
 #' For a continuous exposure that requirement bears on the spread of the
-#' conditional density. `ipw()` stacks a single pooled residual variance
-#' alongside the propensity score coefficients, so the weights it rebuilds are
-#' the ones [wt_ate()] produces with its pooled default. A single `.sigma` is
-#' taken instead as a known constant: the weights are rebuilt at the number that
-#' was supplied, and the stacked system carries none of that number's
-#' uncertainty, which is what fixing a spread says. Weights built with an
-#' observation-level `.sigma`, such as `influence(model)$sigma`, are a different
-#' function of the data with no counterpart in the stacked system, and are
-#' refused before anything is solved, with an error of class
-#' `propensity_ipw_sigma_error`. Rebuild the weights with the pooled default or
-#' with one number to use `ipw()`.
+#' conditional density. `ipw()` stacks a single conditional spread alongside
+#' the propensity score coefficients, by the moment the pooled spread is the
+#' root of or, for a density built with `sigma_method = "mle"`, by the score of
+#' the family it names, so the weights it rebuilds are the ones [wt_ate()]
+#' produces when no `.sigma` is given. A single `.sigma` is taken instead as a
+#' known constant: the weights are rebuilt at the number that was supplied, and
+#' the stacked system carries none of that number's uncertainty, which is what
+#' fixing a spread says. Weights built with an observation-level `.sigma`, such
+#' as `influence(model)$sigma`, are a different function of the data with no
+#' counterpart in the stacked system, and are refused before anything is
+#' solved, with an error of class `propensity_ipw_sigma_error`. Rebuild the
+#' weights with the pooled default or with one number to use `ipw()`.
 #'
 #' It bears on a `stabilization_score` in the same way. A score written per
 #' observation is one value per unit, so it does not survive the rows being

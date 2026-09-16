@@ -2272,7 +2272,6 @@ ipw_joint_models_score_rows <- function(
   link,
   ps_fns = NULL,
   sigma_row = TRUE,
-  sigma = NULL,
   density = NULL
 ) {
   if (identical(block$type, "categorical")) {
@@ -2297,7 +2296,7 @@ ipw_joint_models_score_rows <- function(
 
   rbind(
     score,
-    ipw_continuous_sigma_row(sigma, y - block$ps, block$sigma2_d, density)
+    density_scale_row(y - block$ps, block$sigma2_d, density)
   )
 }
 
@@ -2324,7 +2323,12 @@ ipw_joint_models_stab_rows <- function(spec, th_stab, exposures) {
 
     if (identical(stab$numerator, "marginal")) {
       if (identical(stab$type, "continuous")) {
-        return(deli::ee_mean_variance(th, y = a))
+        r_a <- a - th[[1]]
+
+        return(rbind(
+          matrix(r_a, nrow = 1),
+          density_scale_row(r_a, th[[2]], spec$density)
+        ))
       }
 
       # A categorical component's exposure is its reference-first indicator
@@ -2439,12 +2443,7 @@ ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
     c(
       alpha,
       stats::setNames(
-        ipw_continuous_sigma2_seed(
-          spec$sigma,
-          resid,
-          spec$density,
-          call = call
-        ),
+        ipw_continuous_sigma2_seed(resid, spec$density, call = call),
         paste0("sigma2_", spec$names[[i]])
       )
     )
@@ -2486,7 +2485,7 @@ ipw_init_joint_models_stab <- function(spec) {
       if (identical(stab$type, "continuous")) {
         mu_a <- mean(a_fit)
         return(stats::setNames(
-          c(mu_a, mean((a_fit - mu_a)^2)),
+          c(mu_a, density_scale_estimate(a_fit - mu_a, spec$density)^2),
           paste0(prefix, c("mu", "sigma2"))
         ))
       }
@@ -2627,7 +2626,6 @@ ipw_psi_joint_models <- function(
           ps_link[[i]],
           ps_fns = ps_fns,
           sigma_row = sigma_row,
-          sigma = spec$sigma,
           density = spec$density
         )
       })

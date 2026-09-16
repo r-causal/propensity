@@ -1258,13 +1258,14 @@ check_ipw_numerator_model <- function(
 }
 
 # The spread the stacked system reads the conditional density at. A pooled
-# spread is the residual moment the system estimates alongside the coefficients,
-# and a scale fit by maximum likelihood is the score of the t estimated in the
-# same place; a single spread the caller supplied is a constant it holds fixed,
-# carrying none of its uncertainty, which is what fixing it says. A spread
-# supplied for each observation is neither: it is a function of the data that no
-# parameter value here reproduces, so it is refused before anything is solved
-# rather than reported afterwards as two vectors that disagree.
+# spread is the residual moment the system estimates alongside the
+# coefficients, and a scale fit by maximum likelihood is the score of the
+# family it names, estimated in the same place; a single spread the caller
+# supplied is a constant it holds fixed, carrying none of its uncertainty,
+# which is what fixing it says. A spread supplied for each observation is
+# neither: it is a function of the data that no parameter value here
+# reproduces, so it is refused before anything is solved rather than reported
+# afterwards as two vectors that disagree.
 ipw_continuous_spread <- function(meta, call = rlang::caller_env()) {
   if (identical(meta$sigma, "pooled")) {
     return(list(kind = "pooled", value = NULL))

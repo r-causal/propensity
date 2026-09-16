@@ -432,11 +432,10 @@ continuous_spec <- function(
     ),
     density = meta$density,
     numerator = meta$numerator,
-    sigma = if (is.null(.sigma)) {
-      list(kind = "pooled", value = NULL)
-    } else {
-      list(kind = "fixed", value = .sigma)
-    },
+    # Read off the record the weights carry, the way `ipw_continuous_spread()`
+    # reads it, rather than off `.sigma` alone: a family that estimates its
+    # scale under itself records a spread of its own with no `.sigma` in sight.
+    sigma = ipw_continuous_spread(meta),
     outcome = list(
       X = model.matrix(msm),
       y = dat[[outcome_var]],
@@ -1622,7 +1621,6 @@ test_that("a degenerate maximum likelihood scale is refused in the caller's name
   # than against the seed.
   cnd <- rlang::catch_cnd(
     ipw_continuous_sigma2_seed(
-      list(kind = "mle"),
       c(rep(0, 9), 1),
       dens_t(4, sigma_method = "mle"),
       call = rlang::call2("ipw")

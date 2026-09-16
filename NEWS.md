@@ -290,20 +290,20 @@
   freedom, and the root mean square is pulled outward by the large residuals a
   heavy tail produces, which is what the family was chosen to accommodate.
   `sigma_method = "mle"` now estimates the scale under the t itself, by the
-  score each residual enters through a bounded term of, so a residual far out in
-  the tail moves the estimate by less than it moves the root mean square. It
-  spreads the conditional density alone; the marginal density that stabilizes
-  the weights is still read at the exposure's own mean and root mean square.
-  Weights built that way record `sigma = "mle"` in `density_meta()`, and `ipw()`
-  stacks the score of the t for the scale in place of the moment equation the
-  pooled spread is the root of, so the sandwich accounts for having estimated
-  it. The default is unchanged, and a `.sigma` supplied alongside
-  `sigma_method = "mle"` is refused with an error of class
-  `propensity_density_error`, being a second instruction about the same
-  quantity. Residuals a model reproduced exactly say nothing about the spread
-  of the density around it, so a fit with enough of them that the likelihood
-  has no maximum at a positive scale is refused with that same class, naming
-  how many they are.
+  score each residual enters through a bounded term of, so a residual far out
+  in the tail moves the estimate by less than it moves the root mean square. It
+  spreads both densities of the ratio: the marginal density that stabilizes the
+  weights is read at the exposure's own mean and at the scale the same
+  estimator gives for it. Weights built that way record `sigma = "mle"` in
+  `density_meta()`, and `ipw()` stacks that score for each of the two scales in
+  place of the moment equation the pooled spread is the root of, so the
+  sandwich accounts for having estimated them. The default is unchanged, and a
+  `.sigma` supplied alongside `sigma_method = "mle"` is refused with an error
+  of class `propensity_density_error`, being a second instruction about the
+  same quantity. Residuals a model reproduced exactly say nothing about the
+  spread of the density around it, so a fit with enough of them that the
+  likelihood has no maximum at a positive scale is refused with that same
+  class, naming how many they are.
 
 * Weights for a continuous exposure now print the record of the density ratio
   they are under their values, as the three lines `density_meta()` renders. Two
@@ -686,23 +686,25 @@
 
   Both densities in the ratio are now evaluated on a standardized residual,
   `(A - mu) / sigma` for the conditional density and the exposure standardized
-  by its own mean and standard deviation for the marginal one, and each is
-  divided by the spread that standardized it. That factor is the Jacobian of
-  the change of variable, and it returns both densities to the exposure's own
-  units, so every family is read on one scale and the normal family returns the
-  weights the package returned before, to within a rounding error in the last
-  binary digit. Whatever the density gives back is checked before it becomes a
-  weight: one finite, non-negative value for each standardized residual, and
-  not zero at every one of them. Anything else is an error of class
-  `propensity_density_error` whose message reports the standardized residuals
-  it failed at. What the ratio was built from is recorded on the weights and
-  read back with `density_meta()`.
+  by its own mean and the spread its family estimates for the marginal one, and
+  each is divided by the spread that standardized it. That factor is the
+  Jacobian of the change of variable, and it returns both densities to the
+  exposure's own units, so every family is read on one scale and the normal
+  family returns the weights the package returned before, to within a rounding
+  error in the last binary digit. Whatever the density gives back is checked
+  before it becomes a weight: one finite, non-negative value for each
+  standardized residual, and not zero at every one of them. Anything else is an
+  error of class `propensity_density_error` whose message reports the
+  standardized residuals it failed at. What the ratio was built from is
+  recorded on the weights and read back with `density_meta()`.
 
 * `wt_ate()` and `wt_cens()` gain a `numerator` argument, which chooses how the
   marginal density that stabilizes a continuous exposure's weights is arrived
   at. `"marginal"`, the default and the behavior of every earlier version,
-  reads the family `.density` names at the population mean and standard
-  deviation of the exposure; those two moments are parameters of the weights,
+  reads the family `.density` names at the population mean of the exposure and
+  at the spread the same estimator gives for it, which is the standard
+  deviation unless the family estimates a scale of its own. That mean and that
+  spread are parameters of the weights,
   and `ipw()` estimates them alongside the rest of its parameter vector.
   `"integrated"` marginalizes the conditional density numerically instead,
   averaging it over the units at each of 50 points spanning the exposure and

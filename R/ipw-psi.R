@@ -744,7 +744,6 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
     c(
       alpha,
       sigma2_d = ipw_continuous_sigma2_seed(
-        spec$sigma,
         ipw_continuous_fit_residuals(spec),
         spec$density,
         call = call
@@ -779,7 +778,7 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
   } else if (identical(spec$numerator, "marginal")) {
     a_fit <- ipw_continuous_fit_exposure(spec)
     mu_a <- mean(a_fit)
-    sigma2_a <- mean((a_fit - mu_a)^2)
+    sigma2_a <- density_scale_estimate(a_fit - mu_a, spec$density)^2
     stab_block <- c(mu_a = mu_a, sigma2_a = sigma2_a)
   } else {
     stab_block <- numeric(0)
@@ -1248,11 +1247,11 @@ ipw_psi_continuous <- function(
     } else {
       rbind(
         ps_score,
-        ipw_continuous_sigma_row(
-          spec$sigma,
+        density_scale_row(
           a - inputs$mu,
           inputs$extras$sigma2_d,
-          spec$density
+          spec$density,
+          call = call
         )
       )
     }
@@ -1276,7 +1275,12 @@ ipw_psi_continuous <- function(
         matrix((a - inputs$extras$mu_n)^2 - th_stab[[p_n + 1L]], nrow = 1)
       )
     } else {
-      deli::ee_mean_variance(th_stab, y = a)
+      r_a <- a - th_stab[[1]]
+
+      rbind(
+        matrix(r_a, nrow = 1),
+        density_scale_row(r_a, th_stab[[2]], spec$density, call = call)
+      )
     }
 
     w <- weight_fn(inputs$mu, a, inputs$extras)
@@ -1374,24 +1378,41 @@ ipw_numerator_grid <- function(exposure, numerator) {
   seq(min(present), max(present), length.out = continuous_grid_n)
 }
 
-# The equation the stacked system estimates the conditional variance of the
-# density by, which is the equation the spread the weights were built with is
-# the root of. The pooled spread is the root mean square of the residuals, so
-# its row is the uncentered second moment; a scale fit by maximum likelihood is
-# the root of the score of the t itself for the scale, so its row is that score,
-# multiplied through by the scale so that each residual enters through a bounded
-# term.
-ipw_continuous_sigma_row <- function(sigma, residuals, sigma2_d, density) {
-  if (identical(sigma$kind, "mle")) {
-    df <- density$params$df
-
-    return(matrix(
-      (df + 1) * residuals^2 / (df * sigma2_d + residuals^2) - 1,
-      nrow = 1
-    ))
+# The equation the stacked system estimates a density's squared scale by, which
+# is the equation the spread the weights were built at is the root of. The
+# pooled spread is the root mean square of the residuals, so its row is the
+# uncentered second moment; a scale fit under the family itself is the root of
+# that family's own score for the scale, multiplied through by the scale so that
+# each residual enters through a bounded term.
+#
+# It asks the question `density_scale_estimate()` asks, so the estimator and the
+# equation it is the root of cannot come apart: the row follows what the density
+# asked for rather than the family it names, and a family asked for the root
+# mean square emits the moment row. The conditional density's residuals are
+# `a - mu`, a marginal numerator's are `a - mu_a`, and a numerator model's are
+# `a - mu_n`.
+density_scale_row <- function(
+  residuals,
+  sigma2,
+  density,
+  call = rlang::caller_env()
+) {
+  if (!density_sigma_is_mle(density)) {
+    return(matrix(residuals^2 - sigma2, nrow = 1))
   }
 
-  matrix(residuals^2 - sigma2_d, nrow = 1)
+  switch(
+    density$family,
+    t = matrix(
+      (density$params$df + 1) *
+        residuals^2 /
+        (density$params$df * sigma2 + residuals^2) -
+        1,
+      nrow = 1
+    ),
+    laplace = matrix(abs(residuals) - sqrt(sigma2), nrow = 1),
+    abort_no_scale_estimator(density, call = call)
+  )
 }
 
 # The seed for that parameter: the exact root of whichever row estimates it, so
@@ -1401,14 +1422,9 @@ ipw_continuous_sigma_row <- function(sigma, residuals, sigma2_d, density) {
 # over; the rows the system goes on to solve over are a separate question the
 # row itself answers.
 ipw_continuous_sigma2_seed <- function(
-  sigma,
   residuals,
   density,
   call = rlang::caller_env()
 ) {
-  if (identical(sigma$kind, "mle")) {
-    return(t_sigma_mle(residuals, density$params$df, call = call)^2)
-  }
-
-  mean(residuals^2)
+  density_scale_estimate(residuals, density, call = call)^2
 }

@@ -192,12 +192,16 @@ test_that("Student's t weights are the t density ratio computed by hand", {
 })
 
 test_that("Laplace weights are the Laplace density ratio computed by hand", {
-  z <- continuous_density_z()
-  sigma <- continuous_density_pooled()
-  sd_a <- continuous_density_sd_a()
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
 
-  f_den <- exp(-abs(z)) / 2 / sigma
-  f_num <- exp(-abs(continuous_density_z_a())) / 2 / sd_a
+  # The Laplace is read at its own scale, the mean absolute residual, on both
+  # halves of the ratio.
+  scale <- mean(abs(exposure - mu))
+  scale_a <- mean(abs(exposure - mean(exposure)))
+
+  f_den <- exp(-abs((exposure - mu) / scale)) / 2 / scale
+  f_num <- exp(-abs((exposure - mean(exposure)) / scale_a)) / 2 / scale_a
 
   by_string <- continuous_density_wt(.density = "laplace")
   by_spec <- continuous_density_wt(.density = dens_laplace())
@@ -1468,7 +1472,10 @@ test_that("the denominator is the one WeightIt divides by", {
       g = stats::dt(z, df = 4)
     ),
     list(
-      ours = "laplace",
+      # WeightIt standardizes by the root mean square whatever the family, so
+      # the parity is written at that estimator rather than at the scale of the
+      # Laplace, which is what the family asks for on its own.
+      ours = dens_laplace(sigma_method = "rms"),
       theirs = "dlaplace",
       g = exp(-abs(z)) / 2
     )
@@ -1548,9 +1555,9 @@ continuous_integrated_numerator <- function(
 continuous_integrated_wt <- function(
   g,
   exposure = continuous_density_data$exposure,
-  mu = continuous_density_data$mu
+  mu = continuous_density_data$mu,
+  sigma = sqrt(mean((exposure - mu)^2))
 ) {
-  sigma <- sqrt(mean((exposure - mu)^2))
   f_den <- g((exposure - mu) / sigma) / sigma
   f_num <- continuous_integrated_numerator(
     g,
@@ -1560,6 +1567,21 @@ continuous_integrated_wt <- function(
   )
 
   f_num / f_den
+}
+
+# The same ratio for the Laplace, which is read at the scale of the Laplace
+# rather than at the root mean square. An integrated numerator reads the
+# conditional density in both places, so the one scale spreads the whole ratio.
+continuous_integrated_laplace_wt <- function(
+  exposure = continuous_density_data$exposure,
+  mu = continuous_density_data$mu
+) {
+  continuous_integrated_wt(
+    function(z) exp(-abs(z)) / 2,
+    exposure = exposure,
+    mu = mu,
+    sigma = mean(abs(exposure - mu))
+  )
 }
 
 # The integrated ratio for a kernel, which is one estimate rather than two: the
@@ -1603,13 +1625,29 @@ continuous_integrated_kernel_wt <- function(
 }
 
 test_that("the integrated numerator is the grid marginalization by hand", {
+  # An integrated numerator reads the conditional density in both places, so the
+  # whole ratio is spread by the estimator the family it names asks for.
+  pooled <- continuous_density_pooled()
+  laplace_scale <- mean(abs(
+    continuous_density_data$exposure - continuous_density_data$mu
+  ))
+
   families <- list(
-    list(input = "normal", g = function(z) stats::dnorm(z)),
-    list(input = dens_t(df = 4), g = function(z) stats::dt(z, df = 4)),
-    list(input = "laplace", g = function(z) exp(-abs(z)) / 2),
+    list(input = "normal", g = function(z) stats::dnorm(z), sigma = pooled),
+    list(
+      input = dens_t(df = 4),
+      g = function(z) stats::dt(z, df = 4),
+      sigma = pooled
+    ),
+    list(
+      input = "laplace",
+      g = function(z) exp(-abs(z)) / 2,
+      sigma = laplace_scale
+    ),
     list(
       input = function(z) stats::dlogis(z),
-      g = function(z) stats::dlogis(z)
+      g = function(z) stats::dlogis(z),
+      sigma = pooled
     )
   )
 
@@ -1621,7 +1659,7 @@ test_that("the integrated numerator is the grid marginalization by hand", {
 
     expect_equal(
       as.numeric(weights),
-      continuous_integrated_wt(family$g),
+      continuous_integrated_wt(family$g, sigma = family$sigma),
       tolerance = 1e-12
     )
   }
@@ -2297,7 +2335,7 @@ test_that("the numerator reaches the weights through a data frame", {
 
   expect_equal(
     as.numeric(from_frame),
-    continuous_integrated_wt(function(z) exp(-abs(z)) / 2),
+    continuous_integrated_laplace_wt(),
     tolerance = 1e-12
   )
   expect_identical(density_meta(from_frame)$numerator, "integrated")
@@ -2398,7 +2436,7 @@ test_that("censoring weights carry a numerator through their other methods", {
 
   expect_equal(
     as.numeric(from_frame),
-    continuous_integrated_wt(function(z) exp(-abs(z)) / 2),
+    continuous_integrated_laplace_wt(),
     tolerance = 1e-12
   )
   expect_identical(estimand(from_frame), "uncensored")
@@ -2489,7 +2527,10 @@ test_that("integrated weights are the weights WeightIt gives", {
   families <- list(
     list(ours = "normal", theirs = NULL),
     list(ours = dens_t(df = 4), theirs = "dt_4"),
-    list(ours = "laplace", theirs = "dlaplace"),
+    # WeightIt standardizes by the root mean square whatever the family, so the
+    # parity is written at that estimator rather than at the scale of the
+    # Laplace, which is what the family asks for on its own.
+    list(ours = dens_laplace(sigma_method = "rms"), theirs = "dlaplace"),
     list(ours = "kernel", theirs = "kernel")
   )
 
@@ -2640,18 +2681,17 @@ test_that("weights record a maximum likelihood spread as a source of its own", {
   expect_null(density_meta(mle)$sigma_value)
 })
 
-test_that("a maximum likelihood scale spreads the conditional density alone", {
+test_that("a maximum likelihood scale spreads the density it is read under", {
   # `.sigma` and `sigma_method` describe the same thing: the spread of the
-  # conditional density the weights divide by. The marginal density that
-  # stabilizes them is the exposure's own, read at the exposure's own mean and
-  # root mean square, which neither of them has ever changed.
+  # conditional density the weights divide by, which is the whole of an
+  # unstabilized ratio.
   scale <- t_scale_mle(continuous_t_residuals, df = 6)
 
-  stabilized <- wt_ate(
+  mle <- wt_ate(
     continuous_t_data$mu,
     continuous_t_data$exposure,
     exposure_type = "continuous",
-    stabilize = TRUE,
+    stabilize = FALSE,
     .density = dens_t(6, sigma_method = "mle")
   )
   oracle <- wt_ate(
@@ -2659,11 +2699,33 @@ test_that("a maximum likelihood scale spreads the conditional density alone", {
     continuous_t_data$exposure,
     .sigma = scale,
     exposure_type = "continuous",
-    stabilize = TRUE,
+    stabilize = FALSE,
     .density = dens_t(6)
   )
 
-  expect_equal(as.numeric(stabilized), as.numeric(oracle), tolerance = 1e-8)
+  expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
+
+  # The marginal density that stabilizes the weights is the exposure's own, read
+  # at its own mean and at the spread the same estimator gives for it, so the
+  # two halves of the ratio are densities of one width rather than two.
+  exposure <- continuous_t_data$exposure
+  scale_a <- t_scale_mle(exposure - mean(exposure), df = 6)
+
+  stabilized <- wt_ate(
+    continuous_t_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(6, sigma_method = "mle")
+  )
+
+  expect_equal(
+    as.numeric(stabilized),
+    stats::dt((exposure - mean(exposure)) / scale_a, df = 6) /
+      scale_a *
+      as.numeric(mle),
+    tolerance = 1e-8
+  )
 })
 
 test_that("a maximum likelihood scale is fit on the residuals that are there", {
