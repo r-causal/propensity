@@ -55,9 +55,9 @@ new_density_spec <- function(
 #'   absolute residual, or by the root mean square of the residuals, which is
 #'   the spread every family without an estimator of its own is read at.
 #' * `dens_t()` is Student's t density with `df` degrees of freedom, heavier
-#'   tailed still, and heavier the smaller `df` is. Its scale is estimated by
-#'   the root mean square of the residuals, or by maximum likelihood under the
-#'   t itself.
+#'   tailed still, and heavier the smaller `df` is. Its scale is estimated
+#'   under the t itself, by maximum likelihood, or by the root mean square of
+#'   the residuals.
 #' * `dens_kernel()` is a kernel density estimate of the standardized
 #'   residuals, fit with [stats::density()] and interpolated to each
 #'   observation. It assumes no family at all, at the cost of a density that
@@ -104,9 +104,11 @@ new_density_spec <- function(
 #' family. The scale of such a family is smaller than its standard deviation,
 #' and the root mean square is pulled outward by the large residuals a heavy
 #' tail produces, which is what the family was chosen to accommodate.
-#' `sigma_method = "mle"` estimates the scale under the family itself.
-#' `dens_laplace()` takes it by default, where it is the mean absolute
-#' residual. For `dens_t()` it is the root of
+#' `sigma_method = "mle"` estimates the scale under the family itself, and both
+#' `dens_laplace()` and `dens_t()` take it by default, since the spread the
+#' density is divided by is the scale parameter of the family reading it. For
+#' `dens_laplace()` it is the mean absolute residual. For `dens_t()` it is the
+#' root of
 #' \eqn{\sum_i \left[(\nu + 1) r_i^2 / (\nu \sigma^2 + r_i^2)\right] = n},
 #' where \eqn{r_i} is the residual and \eqn{\nu} is `df`. Each residual enters
 #' that sum through a bounded term, so a residual far out in the tail moves the
@@ -166,7 +168,7 @@ dens_laplace <- function(sigma_method = c("mle", "rms")) {
 
 #' @rdname dens_normal
 #' @export
-dens_t <- function(df, sigma_method = c("rms", "mle")) {
+dens_t <- function(df, sigma_method = c("mle", "rms")) {
   check_density_number(df, "df")
   sigma_method <- rlang::arg_match(sigma_method)
   force(df)
@@ -621,15 +623,24 @@ check_numerator_model_not_multinom <- function(
 }
 
 # What the numerator model contributes to the ratio: the conditional mean it
-# fits for each unit and the spread of its residuals around them. The spread is
-# the uncentered root mean square of that model's own residuals, taken about
+# fits for each unit and the spread of its residuals around them, taken about
 # zero rather than about their mean because the fitted mean is what the ratio
-# reads the density at.
-numerator_model_moments <- function(numerator_model) {
+# reads the density at. The spread is read by the estimator the family asks
+# for, which is the estimator the conditional density was spread by, so both
+# densities of the ratio are spread by one estimator applied to each model's
+# own residuals and are densities of the same width.
+numerator_model_moments <- function(
+  numerator_model,
+  density,
+  call = rlang::caller_env()
+) {
   mu <- as.numeric(stats::fitted(numerator_model))
   residuals <- as.numeric(stats::residuals(numerator_model, type = "response"))
 
-  list(mu = mu, sigma = sqrt(mean(residuals^2, na.rm = TRUE)))
+  list(
+    mu = mu,
+    sigma = density_scale_estimate(residuals, density, call = call)
+  )
 }
 
 # What a binary exposure's numerator model contributes to the ratio: the fitted
@@ -891,6 +902,9 @@ check_sigma_method <- function(.sigma, density, call = rlang::caller_env()) {
            {.val {family}} conditional density from the residuals of the
            propensity score model, and {.arg .sigma} is a spread of your own
            that replaces it.",
+      i = "A {.val {family}} density is spread by its own estimator unless you
+           ask for another, so {.code sigma_method = \"mle\"} is what it
+           carries whether or not you wrote it.",
       i = "Drop {.arg .sigma} to estimate the scale under the {.val {family}}
            density, or build the density with {.code sigma_method = \"rms\"}
            to spread the one you supplied."

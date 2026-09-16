@@ -2396,10 +2396,10 @@ test_that("ipw() continuous m-estimation standard errors match WeightIt", {
 
   densities <- list(
     list(ours = "normal", theirs = NULL),
-    list(ours = dens_t(df = 4), theirs = "dt_4"),
     # WeightIt standardizes by the root mean square whatever the family, so the
-    # parity is written at that estimator rather than at the scale of the
-    # Laplace, which is what the family asks for on its own.
+    # parity is written at that estimator rather than at the scale each family
+    # asks for on its own.
+    list(ours = dens_t(df = 4, sigma_method = "rms"), theirs = "dt_4"),
     list(ours = dens_laplace(sigma_method = "rms"), theirs = "dlaplace")
   )
 
@@ -2476,7 +2476,7 @@ test_that("ipw() solves the scale equation of a t spread by maximum likelihood",
   )
   fixed <- fit_continuous_models(
     dat,
-    .density = dens_t(6),
+    .density = dens_t(6, sigma_method = "rms"),
     .sigma = scale,
     stabilize = FALSE
   )

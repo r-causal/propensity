@@ -714,17 +714,23 @@ ipw_continuous_fit_design <- function(spec) {
 }
 
 # The same reading for a numerator model, whose block carries the spread its own
-# fit's residuals came to. A block assembled without that record is one whose
-# design is its own fit's, so the dose it is stacked against, passed here as
-# `exposure`, answers the same question.
-ipw_numerator_fit_sigma2 <- function(model, exposure) {
+# fit's residuals came to under the estimator the family asks for. A block
+# assembled without that record is one whose design is its own fit's, so the
+# dose it is stacked against, passed here as `exposure`, answers the same
+# question, read by that same estimator.
+ipw_numerator_fit_sigma2 <- function(
+  model,
+  exposure,
+  density,
+  call = rlang::caller_env()
+) {
   if (!is.null(model$sigma2_fit)) {
     return(model$sigma2_fit)
   }
 
   fitted_n <- ipw_numerator_model_fns(model)$mean(model$X, model$coefs)
 
-  mean((exposure - fitted_n)^2)
+  ipw_continuous_sigma2_seed(exposure - fitted_n, density, call = call)
 }
 
 ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
@@ -773,7 +779,12 @@ ipw_init_continuous <- function(spec, call = rlang::caller_env()) {
     coefs <- model$coefs
     stab_block <- c(
       stats::setNames(coefs, paste0("stab_", colnames(model$X))),
-      sigma2_n = ipw_numerator_fit_sigma2(model, spec$exposure)
+      sigma2_n = ipw_numerator_fit_sigma2(
+        model,
+        spec$exposure,
+        spec$density,
+        call = call
+      )
     )
   } else if (identical(spec$numerator, "marginal")) {
     a_fit <- ipw_continuous_fit_exposure(spec)
@@ -1272,7 +1283,12 @@ ipw_psi_continuous <- function(
           model$X,
           a
         ),
-        matrix((a - inputs$extras$mu_n)^2 - th_stab[[p_n + 1L]], nrow = 1)
+        density_scale_row(
+          a - inputs$extras$mu_n,
+          th_stab[[p_n + 1L]],
+          spec$density,
+          call = call
+        )
       )
     } else {
       r_a <- a - th_stab[[1]]

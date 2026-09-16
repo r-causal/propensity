@@ -188,6 +188,7 @@
       Error in `wt_ate()`:
       ! `sigma_method = "mle"` cannot be used with `.sigma`.
       x `sigma_method = "mle"` estimates the scale of the "t" conditional density from the residuals of the propensity score model, and `.sigma` is a spread of your own that replaces it.
+      i A "t" density is spread by its own estimator unless you ask for another, so `sigma_method = "mle"` is what it carries whether or not you wrote it.
       i Drop `.sigma` to estimate the scale under the "t" density, or build the density with `sigma_method = "rms"` to spread the one you supplied.
 
 # a likelihood with no maximum at a positive scale is refused

@@ -1,5 +1,30 @@
 # propensity 0.1.0.9000 (development version)
 
+* `dens_t()` now estimates the scale of the t under the t itself by default,
+  as `dens_laplace()` estimates the scale of the Laplace. Both densities of a
+  continuous exposure's weights are read at a residual standardized by a spread
+  and divided by that spread, so the spread is the scale parameter of the family
+  reading it, and the root mean square is the scale parameter of the normal
+  alone. Weights built from `dens_t()` without a `sigma_method` change: they
+  record `sigma = "mle"` in `density_meta()`, and `ipw()` stacks the score the
+  t itself gives for the scale in place of the moment equation the root mean
+  square is the root of. Write `dens_t(df, sigma_method = "rms")` for the
+  spread the family was read at before, which is also the spread software that
+  standardizes every family alike reads it at. A `.sigma` supplied alongside a
+  `dens_t()` written without a `sigma_method` is now refused, being a second
+  instruction about the same quantity, and the refusal names
+  `sigma_method = "rms"` as the way to supply a spread of your own.
+
+* A numerator model supplied to `stabilize` for a continuous exposure is now
+  read at the spread its family asks for rather than always at the root mean
+  square of its residuals. Under `dens_laplace()`, or a `dens_t()` fit under
+  itself, the numerator was the one density of the ratio still spread by the
+  root mean square, so the two halves of the ratio were densities of different
+  widths. The weights, the value `ipw()` seeds that spread at, and the
+  estimating equation its stacked system solves for it now all read the
+  estimator the family asks for, applied to the numerator model's own
+  residuals, on the single-treatment route and the joint one alike.
+
 * A joint weight's record now keeps one copy of what stabilized each
   component. A component weighting a dose kept its numerator model in the
   `density` record `joint_wt_meta()` reports and in that record's
@@ -297,10 +322,11 @@
   estimator gives for it. Weights built that way record `sigma = "mle"` in
   `density_meta()`, and `ipw()` stacks that score for each of the two scales in
   place of the moment equation the pooled spread is the root of, so the
-  sandwich accounts for having estimated them. The default is unchanged, and a
-  `.sigma` supplied alongside `sigma_method = "mle"` is refused with an error
-  of class `propensity_density_error`, being a second instruction about the
-  same quantity. Residuals a model reproduced exactly say nothing about the
+  sandwich accounts for having estimated them. It is what `dens_t()` takes by
+  default, as the entry on that default describes, and a `.sigma` supplied
+  alongside `sigma_method = "mle"` is refused with an error of class
+  `propensity_density_error`, being a second instruction about the same
+  quantity. Residuals a model reproduced exactly say nothing about the
   spread of the density around it, so a fit with enough of them that the
   likelihood has no maximum at a positive scale is refused with that same
   class, naming how many they are.

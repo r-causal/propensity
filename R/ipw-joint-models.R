@@ -1917,6 +1917,7 @@ ipw_joint_models_stab_components <- function(
         scores[[i]],
         names[[i]],
         n,
+        joint_wt_dose_density(wts, dose_idx),
         .data = .data,
         call = call
       ))
@@ -2034,6 +2035,7 @@ ipw_joint_models_dose_stab <- function(
   score,
   name,
   n,
+  density,
   .data = NULL,
   call = rlang::caller_env()
 ) {
@@ -2077,6 +2079,7 @@ ipw_joint_models_dose_stab <- function(
 
   model <- ipw_numerator_model_block(
     numerator_model,
+    density,
     .data = .data,
     component = name,
     call = call
@@ -2465,7 +2468,7 @@ ipw_init_joint_models_ps <- function(spec, call = rlang::caller_env()) {
 # that fit's rows, since those are the moments the weights were built at. The
 # rows the spec analyzes are what the equations solve the moments over, which is
 # the answer rather than the starting value.
-ipw_init_joint_models_stab <- function(spec) {
+ipw_init_joint_models_stab <- function(spec, call = rlang::caller_env()) {
   blocks <- lapply(seq_along(spec$stab$components), function(i) {
     stab <- spec$stab$components[[i]]
 
@@ -2527,7 +2530,12 @@ ipw_init_joint_models_stab <- function(spec) {
     c(
       coefs,
       stats::setNames(
-        ipw_numerator_fit_sigma2(model, spec$exposure[[i]]),
+        ipw_numerator_fit_sigma2(
+          model,
+          spec$exposure[[i]],
+          spec$density,
+          call = call
+        ),
         paste0(prefix, "sigma2")
       )
     )
@@ -2541,7 +2549,7 @@ ipw_init_joint_models_stab <- function(spec) {
 ipw_init_joint_models <- function(spec, call = rlang::caller_env()) {
   beta <- spec$outcome$coefs
   ps_block <- ipw_init_joint_models_ps(spec, call = call)
-  stab_block <- ipw_init_joint_models_stab(spec)
+  stab_block <- ipw_init_joint_models_stab(spec, call = call)
 
   # A dose has no cells, so the surface reports the outcome block directly and
   # the system carries no marginal means and no contrasts over them.

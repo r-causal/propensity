@@ -2396,6 +2396,7 @@ ipw_spec_continuous <- function(
   numerator_block <- if (stacked) {
     ipw_numerator_model_block(
       numerator_mod,
+      ratio$density,
       .data = if (!is.null(.data)) mm_data,
       call = call
     )

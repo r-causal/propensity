@@ -172,11 +172,16 @@ test_that("Student's t weights are the t density ratio computed by hand", {
   f_den <- stats::dt(z, df = 4) / sigma
   f_num <- stats::dt(continuous_density_z_a(), df = 4) / sd_a
 
-  stabilized <- continuous_density_wt(.density = dens_t(df = 4))
+  # Both halves of the oracle are spread by the root mean square, so the family
+  # is written at that estimator rather than at the scale a t asks for on its
+  # own. What is under test here is the density, not the spread it is read at.
+  stabilized <- continuous_density_wt(
+    .density = dens_t(df = 4, sigma_method = "rms")
+  )
   expect_equal(as.numeric(stabilized), f_num / f_den, tolerance = 1e-12)
 
   unstabilized <- continuous_density_wt(
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     stabilize = FALSE
   )
   expect_equal(as.numeric(unstabilized), 1 / f_den, tolerance = 1e-12)
@@ -238,7 +243,9 @@ test_that("a density the user writes is evaluated as written", {
   as_function <- continuous_density_wt(
     .density = function(z) stats::dt(z, df = 4)
   )
-  as_spec <- continuous_density_wt(.density = dens_t(df = 4))
+  as_spec <- continuous_density_wt(
+    .density = dens_t(df = 4, sigma_method = "rms")
+  )
 
   expect_equal(
     as.numeric(as_function),
@@ -305,7 +312,7 @@ test_that("a supplied spread scales the density it is given to", {
   expect_equal(
     as.numeric(continuous_density_wt(
       .sigma = scalar,
-      .density = dens_t(df = 4)
+      .density = dens_t(df = 4, sigma_method = "rms")
     )),
     f_num / f_den_scalar,
     tolerance = 1e-12
@@ -317,7 +324,7 @@ test_that("a supplied spread scales the density it is given to", {
   expect_equal(
     as.numeric(continuous_density_wt(
       .sigma = per_observation,
-      .density = dens_t(df = 4)
+      .density = dens_t(df = 4, sigma_method = "rms")
     )),
     f_num / f_den_each,
     tolerance = 1e-12
@@ -328,7 +335,7 @@ test_that("a supplied spread scales the density it is given to", {
   expect_equal(
     as.numeric(continuous_density_wt(
       .sigma = per_observation,
-      .density = dens_t(df = 4),
+      .density = dens_t(df = 4, sigma_method = "rms"),
       stabilize = FALSE
     )),
     1 / f_den_each,
@@ -342,7 +349,7 @@ test_that("a stabilization score replaces the numerator of any family", {
   f_den <- stats::dt(continuous_density_z(), df = 4) / sigma
 
   weights <- continuous_density_wt(
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     stabilization_score = score
   )
 
@@ -1067,7 +1074,7 @@ test_that("a trimmed propensity score leaves the units it set aside missing", {
 
   families <- list(
     list(
-      input = dens_t(df = 4),
+      input = dens_t(df = 4, sigma_method = "rms"),
       g = function(values) stats::dt(values, df = 4)
     ),
     list(input = "kernel", g = continuous_density_kde)
@@ -1467,14 +1474,14 @@ test_that("the denominator is the one WeightIt divides by", {
       g = stats::dnorm(z)
     ),
     list(
-      ours = dens_t(df = 4),
+      # WeightIt standardizes by the root mean square whatever the family, so
+      # the parity is written at that estimator rather than at the scale each
+      # family asks for on its own.
+      ours = dens_t(df = 4, sigma_method = "rms"),
       theirs = "dt_4",
       g = stats::dt(z, df = 4)
     ),
     list(
-      # WeightIt standardizes by the root mean square whatever the family, so
-      # the parity is written at that estimator rather than at the scale of the
-      # Laplace, which is what the family asks for on its own.
       ours = dens_laplace(sigma_method = "rms"),
       theirs = "dlaplace",
       g = exp(-abs(z)) / 2
@@ -1635,7 +1642,7 @@ test_that("the integrated numerator is the grid marginalization by hand", {
   families <- list(
     list(input = "normal", g = function(z) stats::dnorm(z), sigma = pooled),
     list(
-      input = dens_t(df = 4),
+      input = dens_t(df = 4, sigma_method = "rms"),
       g = function(z) stats::dt(z, df = 4),
       sigma = pooled
     ),
@@ -1908,7 +1915,7 @@ test_that("the integrated numerator reads only the units with a residual", {
   # those units make on their own, and a unit with no residual has no weight.
   families <- list(
     list(
-      input = dens_t(df = 4),
+      input = dens_t(df = 4, sigma_method = "rms"),
       oracle = function(exposure, mu) {
         continuous_integrated_wt(
           function(z) stats::dt(z, df = 4),
@@ -2311,7 +2318,7 @@ test_that("the numerator reaches the weights through a fitted model", {
     exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     numerator = "integrated"
   )
 
@@ -2347,7 +2354,7 @@ test_that("censoring weights take an integrated numerator of their own", {
     continuous_density_data$exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     numerator = "integrated"
   )
 
@@ -2407,7 +2414,7 @@ test_that("the numerator reaches the weights through a modified score", {
       problem$exposure,
       exposure_type = "continuous",
       stabilize = TRUE,
-      .density = dens_t(df = 4),
+      .density = dens_t(df = 4, sigma_method = "rms"),
       numerator = "integrated"
     )
 
@@ -2453,7 +2460,7 @@ test_that("censoring weights carry a numerator through their other methods", {
     continuous_density_data$exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     numerator = "integrated"
   )
 
@@ -2486,7 +2493,7 @@ test_that("censoring weights carry a numerator through a modified score", {
       problem$exposure,
       exposure_type = "continuous",
       stabilize = TRUE,
-      .density = dens_t(df = 4),
+      .density = dens_t(df = 4, sigma_method = "rms"),
       numerator = "integrated"
     )
 
@@ -2526,10 +2533,10 @@ test_that("integrated weights are the weights WeightIt gives", {
   # the scale ever drifts.
   families <- list(
     list(ours = "normal", theirs = NULL),
-    list(ours = dens_t(df = 4), theirs = "dt_4"),
     # WeightIt standardizes by the root mean square whatever the family, so the
-    # parity is written at that estimator rather than at the scale of the
-    # Laplace, which is what the family asks for on its own.
+    # parity is written at that estimator rather than at the scale each family
+    # asks for on its own.
+    list(ours = dens_t(df = 4, sigma_method = "rms"), theirs = "dt_4"),
     list(ours = dens_laplace(sigma_method = "rms"), theirs = "dlaplace"),
     list(ours = "kernel", theirs = "kernel")
   )
@@ -2626,13 +2633,16 @@ test_that("the t scale by maximum likelihood is the root of the t score", {
   scale <- t_scale_mle(continuous_t_residuals, df = 3)
 
   mle <- continuous_t_wt(.density = dens_t(3, sigma_method = "mle"))
-  oracle <- continuous_t_wt(.density = dens_t(3), .sigma = scale)
+  oracle <- continuous_t_wt(
+    .density = dens_t(3, sigma_method = "rms"),
+    .sigma = scale
+  )
 
   expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
 })
 
 test_that("a maximum likelihood scale parts from the root mean square in heavy tails", {
-  rms <- continuous_t_wt(.density = dens_t(3))
+  rms <- continuous_t_wt(.density = dens_t(3, sigma_method = "rms"))
   mle <- continuous_t_wt(.density = dens_t(3, sigma_method = "mle"))
 
   relative <- abs(as.numeric(mle) / as.numeric(rms) - 1)
@@ -2653,7 +2663,10 @@ test_that("the two spreads meet as the t approaches the normal", {
 
   expect_equal(scale, continuous_density_pooled(), tolerance = 0.005)
 
-  rms <- continuous_density_wt(stabilize = FALSE, .density = dens_t(1000))
+  rms <- continuous_density_wt(
+    stabilize = FALSE,
+    .density = dens_t(1000, sigma_method = "rms")
+  )
   mle <- continuous_density_wt(
     stabilize = FALSE,
     .density = dens_t(1000, sigma_method = "mle")
@@ -2743,7 +2756,7 @@ test_that("a maximum likelihood scale spreads the density it is read under", {
     .sigma = scale,
     exposure_type = "continuous",
     stabilize = FALSE,
-    .density = dens_t(6)
+    .density = dens_t(6, sigma_method = "rms")
   )
 
   expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
@@ -2783,7 +2796,7 @@ test_that("a maximum likelihood scale is fit on the residuals that are there", {
   )
   oracle <- continuous_t_wt(
     exposure = exposure,
-    .density = dens_t(4),
+    .density = dens_t(4, sigma_method = "rms"),
     .sigma = scale
   )
 
@@ -2803,9 +2816,13 @@ test_that("a spread supplied and a spread estimated under the density are refuse
     continuous_t_wt(.density = dens_t(4, sigma_method = "mle"), .sigma = 0.9)
   )
 
-  # The default estimator takes a supplied spread as every other family does, so
-  # what is refused is the pairing rather than the family.
-  expect_no_error(continuous_t_wt(.density = dens_t(4), .sigma = 0.9))
+  # A family asked for the root mean square takes a supplied spread as every
+  # family without an estimator of its own does, so what is refused is the
+  # pairing rather than the family.
+  expect_no_error(continuous_t_wt(
+    .density = dens_t(4, sigma_method = "rms"),
+    .sigma = 0.9
+  ))
 })
 
 # A propensity score model that all but interpolates its exposure: every unit
@@ -2843,7 +2860,7 @@ test_that("a maximum likelihood scale far below the root mean square is found", 
     exposure,
     exposure_type = "continuous",
     stabilize = FALSE,
-    .density = dens_t(4),
+    .density = dens_t(4, sigma_method = "rms"),
     .sigma = scale
   )
 

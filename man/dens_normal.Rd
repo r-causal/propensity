@@ -12,7 +12,7 @@ dens_normal()
 
 dens_laplace(sigma_method = c("mle", "rms"))
 
-dens_t(df, sigma_method = c("rms", "mle"))
+dens_t(df, sigma_method = c("mle", "rms"))
 
 dens_kernel(bw = "nrd0", adjust = 1, kernel = "gaussian", n = 512)
 
@@ -72,9 +72,9 @@ Its scale is estimated under the Laplace itself, where it is the mean
 absolute residual, or by the root mean square of the residuals, which is
 the spread every family without an estimator of its own is read at.
 \item \code{dens_t()} is Student's t density with \code{df} degrees of freedom, heavier
-tailed still, and heavier the smaller \code{df} is. Its scale is estimated by
-the root mean square of the residuals, or by maximum likelihood under the
-t itself.
+tailed still, and heavier the smaller \code{df} is. Its scale is estimated
+under the t itself, by maximum likelihood, or by the root mean square of
+the residuals.
 \item \code{dens_kernel()} is a kernel density estimate of the standardized
 residuals, fit with \code{\link[stats:density]{stats::density()}} and interpolated to each
 observation. It assumes no family at all, at the cost of a density that
@@ -98,9 +98,11 @@ It is not the maximum likelihood estimator of the scale of a heavier-tailed
 family. The scale of such a family is smaller than its standard deviation,
 and the root mean square is pulled outward by the large residuals a heavy
 tail produces, which is what the family was chosen to accommodate.
-\code{sigma_method = "mle"} estimates the scale under the family itself.
-\code{dens_laplace()} takes it by default, where it is the mean absolute
-residual. For \code{dens_t()} it is the root of
+\code{sigma_method = "mle"} estimates the scale under the family itself, and both
+\code{dens_laplace()} and \code{dens_t()} take it by default, since the spread the
+density is divided by is the scale parameter of the family reading it. For
+\code{dens_laplace()} it is the mean absolute residual. For \code{dens_t()} it is the
+root of
 \eqn{\sum_i \left[(\nu + 1) r_i^2 / (\nu \sigma^2 + r_i^2)\right] = n},
 where \eqn{r_i} is the residual and \eqn{\nu} is \code{df}. Each residual enters
 that sum through a bounded term, so a residual far out in the tail moves the

@@ -338,7 +338,8 @@ is its fitted probability of the level each unit took, so the weights
 are \eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)} for the variables
 \eqn{V} the numerator model reads. For a continuous exposure the
 numerator is the family \code{.density} names, read at the model's fitted mean
-and the root mean square of its residuals, so the weights are
+and the spread its own residuals leave under that family, so the weights
+are
 \eqn{f(A \mid V) / f(A \mid X)}. For a categorical exposure the model is
 an \code{\link[nnet:multinom]{nnet::multinom()}} fit and the numerator is its fitted probability of
 the level each unit took, read from the column named for that level, so
@@ -642,8 +643,8 @@ carrying \eqn{P(A = 1 \mid V)}, which is the mistake the
 
 For a continuous exposure they are \eqn{f(A \mid V) / f(A \mid X)}: the
 family \code{.density} names, read at the numerator model's fitted mean and the
-root mean square of its residuals, over the same family read at the
-propensity score model's.
+spread its own residuals leave under that family, over the same family read
+at the propensity score model's.
 
 For a categorical exposure they are
 \eqn{P(Z = z_i \mid V_i) / f(z_i \mid X_i)}: the multinomial model's fitted
