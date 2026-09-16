@@ -136,6 +136,9 @@ fit_continuous_models <- function(
   } else {
     outcome_mod <- lm(msm_fmla, data = dat, weights = wts)
   }
+  # As in fit_outcome() in test-ipw-categorical.R: record the formula itself so
+  # the printed call reads the same on every R version.
+  outcome_mod$call$formula <- msm_fmla
 
   list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
 }

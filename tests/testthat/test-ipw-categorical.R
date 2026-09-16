@@ -108,7 +108,7 @@ fit_outcome <- function(
   outcome_var <- if (outcome_family == "binomial") "y" else "yc"
   rhs <- if (covariates) c("a", "x1") else "a"
   fmla <- stats::reformulate(rhs, response = outcome_var)
-  if (outcome_family == "binomial") {
+  mod <- if (outcome_family == "binomial") {
     glm(
       fmla,
       data = dat,
@@ -119,6 +119,12 @@ fit_outcome <- function(
   } else {
     lm(fmla, data = dat, weights = wts)
   }
+  # Record the formula itself rather than the name that held it. R-devel
+  # substitutes the formula into the call it stores, where released versions
+  # keep the symbol, so a printed call built from a variable is not the same
+  # text on every R version. Normalizing it here makes the snapshot stable.
+  mod$call$formula <- fmla
+  mod
 }
 
 # Build the propensity score model, the categorical weights, and the weighted

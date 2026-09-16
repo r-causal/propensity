@@ -11,7 +11,7 @@
         Call: lm(formula = A ~ x1 + x2, data = dat) 
       
       Outcome Model:
-        Call: lm(formula = msm_fmla, data = dat, weights = wts) 
+        Call: lm(formula = yc ~ A, data = dat, weights = wts) 
       
       Marginal estimates:
             estimate  std.err      z ci.lower ci.upper conf.level   p.value    
