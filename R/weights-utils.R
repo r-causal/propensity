@@ -1335,6 +1335,19 @@ calculate_weight_from_modified_ps <- function(
 
   modification_type <- rlang::arg_match(modification_type)
 
+  # An argument of several types is either the method's own unmatched set of
+  # choices or malformed. It is matched against the choices the numeric method
+  # matches it against, so a malformed one is refused as the plain score's
+  # route refuses it, before anything is read from the score.
+  exposure_type <- list(...)[["exposure_type"]]
+  if (length(exposure_type) > 1) {
+    exposure_type <- rlang::arg_match(
+      exposure_type,
+      eval(formals(weight_fn)[["exposure_type"]]),
+      error_call = call
+    )
+  }
+
   # Read before the refit check, so that a pairing that is refused outright is
   # not also advised to refit.
   check_modified_ps_exposure(
@@ -1342,7 +1355,7 @@ calculate_weight_from_modified_ps <- function(
     .exposure,
     weight_fn = weight_fn,
     modification_type = modification_type,
-    exposure_type = list(...)[["exposure_type"]],
+    exposure_type = exposure_type,
     call = call
   )
 
@@ -1440,12 +1453,9 @@ check_modified_ps_exposure <- function(
     return(invisible(NULL))
   }
 
-  # An unmatched argument arrives as the method's own set of choices, whose
-  # first is `"auto"`. A value that names no type at all is left for the
-  # numeric method to refuse, where every other malformed argument is refused.
-  if (length(exposure_type) > 1) {
-    exposure_type <- "auto"
-  }
+  # The argument arrives matched when it held several types. A single value
+  # that names no type at all is left for the numeric method to refuse, where
+  # every other malformed argument is refused.
   exposure_types <- c("auto", "binary", "categorical", "continuous")
   if (!rlang::is_string(exposure_type) || !exposure_type %in% exposure_types) {
     return(invisible(NULL))
@@ -1905,6 +1915,32 @@ handle_data_frame_weight_calculation <- function(
     .reference_level = focal_params$.reference_level,
     call = call
   )
+
+  # A column keeps the class of the score it holds, so a trimmed, truncated,
+  # or calibrated column takes the route that score takes on its own: its
+  # record travels to the weights, and it is refused for an exposure it does
+  # not describe.
+  modification_type <- if (inherits(ps_vec, "ps_trim")) {
+    "trim"
+  } else if (inherits(ps_vec, "ps_trunc")) {
+    "trunc"
+  } else if (inherits(ps_vec, "ps_calib")) {
+    "calib"
+  }
+
+  if (!is.null(modification_type)) {
+    return(calculate_weight_from_modified_ps(
+      .propensity = ps_vec,
+      .exposure = .exposure,
+      weight_fn = weight_fn_numeric,
+      modification_type = modification_type,
+      exposure_type = exposure_type_check,
+      .focal_level = focal_params$.focal_level,
+      .reference_level = focal_params$.reference_level,
+      ...,
+      call = call
+    ))
+  }
 
   # The numeric method is reached by value here, so its own frame deparses as
   # `weight_fn_numeric()`. Hand it the call the route was entered on.

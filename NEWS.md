@@ -23,6 +23,16 @@
   build the weights of a continuous exposure from the dose model or its fitted
   means directly, without a score modification.
 
+  A data frame of scores now behaves as the vector it holds does. A trimmed,
+  truncated, or calibrated column in a data frame passed to any `wt_*()`
+  function reached the weights as plain scores, so for a binary exposure its
+  trimming, truncation, or calibration record was silently dropped, along with
+  the warning that a trimmed score was not refit. The column now keeps its
+  record for a binary exposure, and is refused for a continuous exposure as
+  the vector is. A malformed `exposure_type` naming several types is now
+  reported as a malformed argument on the modified-score methods, rather than
+  read as unset and refused as a continuous exposure.
+
 * `dens_t()` now estimates the scale of the t under the t itself by default,
   as `dens_laplace()` estimates the scale of the Laplace. Both densities of a
   continuous exposure's weights are read at a residual standardized by a spread
