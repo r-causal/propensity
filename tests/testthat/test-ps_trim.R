@@ -810,6 +810,37 @@ test_that("ps_refit() refuses a ps_trim whose record was dropped", {
   )
 })
 
+test_that("ps_refit() refuses a model of a dose for a trimmed score", {
+  set.seed(37)
+  n <- 60
+  x <- rnorm(n)
+  dose <- 0.5 * x + rnorm(n)
+  dose_data <- data.frame(dose = dose, x = x)
+
+  # Means that happen to lie in (0, 1) can be trimmed as if they were scores,
+  # but a model of the dose never produced scores, so it cannot refit them. The
+  # dose model itself is what to trim.
+  trimmed <- ps_trim(plogis(0.5 * x), method = "ps", lower = 0.2, upper = 0.8)
+
+  fits <- list(
+    lm = lm(dose ~ x, data = dose_data),
+    gaussian = glm(dose ~ x, data = dose_data, family = gaussian())
+  )
+
+  for (kind in names(fits)) {
+    cnd <- expect_error(
+      ps_refit(trimmed, fits[[kind]], .data = dose_data),
+      class = "propensity_model_family_error",
+      info = kind
+    )
+    message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+    expect_match(message, "ps_trim(method = \"density\")", fixed = TRUE)
+  }
+
+  expect_propensity_error(ps_refit(trimmed, fits$lm, .data = dose_data))
+  expect_propensity_error(ps_refit(trimmed, fits$gaussian, .data = dose_data))
+})
+
 test_that("combining ps_trim objects drops the trimming record", {
   x <- trim_record_fixture()
 
@@ -946,6 +977,35 @@ test_that("ps_trim rejects the categorical-only optimal method on a vector", {
 
   # The message has to point at the input the method is defined for.
   expect_propensity_error(ps_trim(ps, method = "optimal", .exposure = z))
+})
+
+test_that("ps_trim() refuses the density methods on a vector of fitted means", {
+  set.seed(29)
+  n <- 40
+  x <- rnorm(n)
+  dose <- 0.5 * x + rnorm(n)
+  mu <- as.numeric(fitted(lm(dose ~ x)))
+
+  # A density needs the model's residuals and its family, and a vector of
+  # fitted means carries neither, so the dose model itself has to be supplied.
+  for (method in c("density", "resid")) {
+    expect_error(
+      ps_trim(mu, method = method),
+      class = "propensity_method_error",
+      info = method
+    )
+
+    # The refusal is for what was asked rather than for the values, so means
+    # that leave the unit interval hear the same thing and not the range check.
+    expect_error(
+      ps_trim(mu + 5, method = method),
+      class = "propensity_method_error",
+      info = method
+    )
+  }
+
+  expect_propensity_error(ps_trim(mu, method = "density"))
+  expect_propensity_error(ps_trim(mu + 5, method = "resid"))
 })
 
 test_that("ps_trim names `.exposure` when the method requires one", {

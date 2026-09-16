@@ -847,44 +847,61 @@ test_that("the density reaches the weights through a data frame", {
   expect_identical(format(density_meta(from_frame)$density), "laplace")
 })
 
-test_that("the density reaches the weights through a modified score", {
+test_that("a density does not reach the weights through a modified score", {
   set.seed(13)
   n <- 40
   x <- rnorm(n)
   exposure <- 0.5 * x + rnorm(n)
-  model_data <- data.frame(exposure = exposure, x = x)
-  fit <- glm(exposure ~ x, data = model_data, family = gaussian())
 
-  # A score a modification can be applied to has to lie in (0, 1); it stands in
-  # for the fitted conditional mean here.
+  # A score a modification can be applied to has to lie in (0, 1), and a
+  # conditional mean that happens to lie there is still not a propensity score.
+  # Trimming, truncating, or calibrating it selects or moves units by their
+  # predicted dose, which says nothing about positivity, so no weights are built
+  # from the result whatever density is asked for.
   scores <- plogis(0.5 * x)
 
-  refit <- ps_refit(
-    ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8),
-    model = fit
+  modified <- list(
+    trimmed = ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8),
+    truncated = ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+    calibrated = ps_calibrate(scores, rbinom(n, 1, scores))
   )
-  truncated <- ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8)
-  calibrated <- ps_calibrate(scores, rbinom(n, 1, scores))
 
-  for (modified in list(refit, truncated, calibrated)) {
-    weights <- wt_ate(
-      modified,
-      exposure,
-      exposure_type = "continuous",
-      stabilize = TRUE,
-      .density = dens_t(df = 4)
+  for (modification in names(modified)) {
+    expect_error(
+      wt_ate(
+        modified[[modification]],
+        exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = dens_t(df = 4)
+      ),
+      class = "propensity_modified_continuous_error",
+      info = modification
     )
-    plain <- wt_ate(
-      as.numeric(modified),
-      exposure,
-      exposure_type = "continuous",
-      stabilize = TRUE,
-      .density = dens_t(df = 4)
-    )
-
-    expect_equal(as.numeric(weights), as.numeric(plain), tolerance = 1e-12)
-    expect_identical(format(density_meta(weights)$density), "t(df = 4)")
   }
+
+  # The refusal names the modification and the weight function it came from.
+  expect_propensity_error(wt_ate(
+    modified$trimmed,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4)
+  ))
+  expect_propensity_error(wt_ate(
+    modified$truncated,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4)
+  ))
+  expect_propensity_error(wt_ate(
+    modified$calibrated,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4)
+  ))
 })
 
 test_that("censoring weights take a density of their own", {
@@ -924,11 +941,6 @@ test_that("censoring weights take a density of their own", {
 })
 
 test_that("censoring weights carry a density through their other methods", {
-  set.seed(17)
-  n <- 40
-  x <- rnorm(n)
-  exposure <- 0.5 * x + rnorm(n)
-
   from_frame <- wt_cens(
     data.frame(mu = continuous_density_data$mu),
     continuous_density_data$exposure,
@@ -944,42 +956,105 @@ test_that("censoring weights carry a density through their other methods", {
   )
   expect_identical(estimand(from_frame), "uncensored")
   expect_identical(format(density_meta(from_frame)$density), "laplace")
+})
 
-  # A score a modification can be applied to has to lie in (0, 1); it stands in
-  # for the fitted conditional mean here.
+test_that("censoring weights do not carry a density through a modified score", {
+  set.seed(17)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- 0.5 * x + rnorm(n)
+
+  # A conditional mean that happens to lie in (0, 1) can be trimmed as if it
+  # were a propensity score, but the trimmed means were never scores, so a model
+  # of the dose cannot refit them.
   scores <- plogis(0.5 * x)
+  trimmed <- ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8)
 
-  modified_scores <- list(
+  expect_error(
     ps_refit(
-      ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8),
+      trimmed,
       model = glm(
         exposure ~ x,
         data = data.frame(exposure = exposure, x = x),
         family = gaussian()
       )
     ),
-    ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
-    ps_calibrate(scores, rbinom(n, 1, scores))
+    class = "propensity_model_family_error"
   )
 
-  for (modified in modified_scores) {
-    weights <- wt_cens(
-      modified,
-      exposure,
-      exposure_type = "continuous",
-      stabilize = TRUE,
-      .density = dens_t(df = 4)
-    )
-    plain <- wt_cens(
-      as.numeric(modified),
-      exposure,
-      exposure_type = "continuous",
-      stabilize = TRUE,
-      .density = dens_t(df = 4)
-    )
+  # Censoring weights for a dose are the same density ratio as the ATE weights,
+  # so they refuse a modified score on the same grounds.
+  modified <- list(
+    trimmed = trimmed,
+    truncated = ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+    calibrated = ps_calibrate(scores, rbinom(n, 1, scores))
+  )
 
-    expect_equal(as.numeric(weights), as.numeric(plain), tolerance = 1e-12)
-    expect_identical(format(density_meta(weights)$density), "t(df = 4)")
+  for (modification in names(modified)) {
+    expect_error(
+      wt_cens(
+        modified[[modification]],
+        exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = dens_t(df = 4)
+      ),
+      class = "propensity_modified_continuous_error",
+      info = modification
+    )
+  }
+
+  # The refusal names the modification and the weight function it came from.
+  expect_propensity_error(wt_cens(
+    modified$trimmed,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4)
+  ))
+  expect_propensity_error(wt_cens(
+    modified$truncated,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4)
+  ))
+  expect_propensity_error(wt_cens(
+    modified$calibrated,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(df = 4)
+  ))
+})
+
+test_that("the modified-score methods refuse an exposure they resolve as continuous", {
+  set.seed(19)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- 0.5 * x + rnorm(n)
+  scores <- plogis(0.5 * x)
+
+  modified <- list(
+    trimmed = ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8),
+    truncated = ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+    calibrated = ps_calibrate(scores, rbinom(n, 1, scores))
+  )
+
+  # Nothing names the type here, and a numeric exposure of many values resolves
+  # to continuous. The refusal reads the type the exposure resolved to rather
+  # than the one the caller declared.
+  for (modification in names(modified)) {
+    expect_error(
+      wt_ate(modified[[modification]], exposure),
+      class = "propensity_modified_continuous_error",
+      info = modification
+    )
+    expect_error(
+      wt_cens(modified[[modification]], exposure),
+      class = "propensity_modified_continuous_error",
+      info = modification
+    )
   }
 })
 
@@ -1050,20 +1125,17 @@ test_that("a missing exposure is left out of the numerator as well", {
   expect_equal(weights[present], f_num / f_den, tolerance = 1e-12)
 })
 
-test_that("a trimmed propensity score leaves the units it set aside missing", {
+test_that("missing conditional means leave those weights missing in every family", {
   set.seed(18)
   n <- 40
   x <- rnorm(n)
   exposure <- 0.5 * x + rnorm(n)
 
-  # A score a modification can be applied to has to lie in (0, 1); it stands in
-  # for the fitted conditional mean here. Trimmed and not refit, it carries a
-  # missing value at every unit it set aside, which is the ordinary way a
-  # standardized residual goes missing.
-  trimmed <- ps_trim(plogis(0.9 * x), method = "ps", lower = 0.2, upper = 0.8)
-  mu <- as.numeric(trimmed)
-  missing_at <- which(is.na(mu))
-  expect_gt(length(missing_at), 1)
+  # Several units have no fitted mean, so several have no standardized
+  # residual, and the rest are weighted as the problem they make on their own.
+  mu <- 0.5 * x
+  missing_at <- c(3L, 12L, 26L, 38L)
+  mu[missing_at] <- NA_real_
 
   present <- setdiff(seq_len(n), missing_at)
   sigma <- sqrt(mean((exposure[present] - mu[present])^2))
@@ -1081,18 +1153,13 @@ test_that("a trimmed propensity score leaves the units it set aside missing", {
   )
 
   for (family in families) {
-    weights <- NULL
-    expect_warning(
-      weights <- wt_ate(
-        trimmed,
-        exposure,
-        exposure_type = "continuous",
-        stabilize = TRUE,
-        .density = family$input
-      ),
-      class = "propensity_no_refit_warning"
-    )
-    weights <- as.numeric(weights)
+    weights <- as.numeric(wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = family$input
+    ))
 
     expect_identical(which(is.na(weights)), missing_at)
 
@@ -1898,13 +1965,10 @@ test_that("the integrated numerator reads only the units with a residual", {
   x <- rnorm(n)
   exposure <- 0.5 * x + rnorm(n)
 
-  # A score a modification can be applied to has to lie in (0, 1); it stands in
-  # for the fitted conditional mean here. Trimmed and not refit, it carries a
-  # missing value at every unit it set aside.
-  trimmed <- ps_trim(plogis(0.9 * x), method = "ps", lower = 0.2, upper = 0.8)
-  mu <- as.numeric(trimmed)
-  missing_at <- which(is.na(mu))
-  expect_gt(length(missing_at), 1)
+  # Several units have no fitted mean, so several have no residual.
+  mu <- 0.5 * x
+  missing_at <- c(2L, 9L, 21L, 33L, 47L)
+  mu[missing_at] <- NA_real_
 
   present <- setdiff(seq_len(n), missing_at)
 
@@ -1928,19 +1992,14 @@ test_that("the integrated numerator reads only the units with a residual", {
   )
 
   for (family in families) {
-    weights <- NULL
-    expect_warning(
-      weights <- wt_ate(
-        trimmed,
-        exposure,
-        exposure_type = "continuous",
-        stabilize = TRUE,
-        .density = family$input,
-        numerator = "integrated"
-      ),
-      class = "propensity_no_refit_warning"
-    )
-    weights <- as.numeric(weights)
+    weights <- as.numeric(wt_ate(
+      mu,
+      exposure,
+      exposure_type = "continuous",
+      stabilize = TRUE,
+      .density = family$input,
+      numerator = "integrated"
+    ))
 
     expect_identical(which(is.na(weights)), missing_at)
     expect_equal(
@@ -2367,67 +2426,46 @@ test_that("censoring weights take an integrated numerator of their own", {
   expect_identical(density_meta(weights)$numerator, "integrated")
 })
 
-# The three modified propensity scores the numerator has to reach through,
-# built on one seeded problem. A score a modification can be applied to has to
-# lie in (0, 1); it stands in for the fitted conditional mean here.
-#
-# The seed is chosen so that the scores all lie inside the trimming bounds and
-# nothing is trimmed away: with no unit set aside, none of the three leaves a
-# missing value, and the grid marginalization reads every unit. That is a
-# property of this fixture rather than of trimming, and it keeps these tests
-# about the numerator reaching each route. What the marginalization does when a
-# unit has no residual is a separate question, and the trimmed weights already
-# have tests of their own above.
+# The three modified propensity scores the numerator is refused through, built
+# on one seeded problem. A score a modification can be applied to has to lie in
+# (0, 1), and these stand where a conditional mean in (0, 1) would, which is the
+# pairing the modified-score methods refuse for a continuous exposure.
 continuous_modified_scores <- function() {
   set.seed(23)
   n <- 40
   x <- rnorm(n)
   exposure <- 0.5 * x + rnorm(n)
-  fit <- glm(
-    exposure ~ x,
-    data = data.frame(exposure = exposure, x = x),
-    family = gaussian()
-  )
 
   scores <- plogis(0.5 * x)
-  trimmed <- ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8)
-  stopifnot(!anyNA(as.numeric(trimmed)))
 
   list(
     n = n,
     x = x,
     exposure = exposure,
     scores = list(
-      refit = ps_refit(trimmed, model = fit),
+      trimmed = ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8),
       truncated = ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
       calibrated = ps_calibrate(scores, rbinom(n, 1, scores))
     )
   )
 }
 
-test_that("the numerator reaches the weights through a modified score", {
+test_that("the numerator does not reach the weights through a modified score", {
   problem <- continuous_modified_scores()
 
-  for (modified in problem$scores) {
-    weights <- wt_ate(
-      modified,
-      problem$exposure,
-      exposure_type = "continuous",
-      stabilize = TRUE,
-      .density = dens_t(df = 4, sigma_method = "rms"),
-      numerator = "integrated"
-    )
-
-    expect_equal(
-      as.numeric(weights),
-      continuous_integrated_wt(
-        function(z) stats::dt(z, df = 4),
-        exposure = problem$exposure,
-        mu = as.numeric(modified)
+  for (modification in names(problem$scores)) {
+    expect_error(
+      wt_ate(
+        problem$scores[[modification]],
+        problem$exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = dens_t(df = 4, sigma_method = "rms"),
+        numerator = "integrated"
       ),
-      tolerance = 1e-12
+      class = "propensity_modified_continuous_error",
+      info = modification
     )
-    expect_identical(density_meta(weights)$numerator, "integrated")
   }
 })
 
@@ -2473,41 +2511,22 @@ test_that("censoring weights carry a numerator through their other methods", {
   expect_identical(density_meta(from_model)$numerator, "integrated")
 })
 
-test_that("censoring weights carry a numerator through a modified score", {
+test_that("censoring weights do not carry a numerator through a modified score", {
   problem <- continuous_modified_scores()
 
-  # A modification is recorded on the estimand after the censoring weights have
-  # named themselves, so each of the three reads as the estimand and then the
-  # modification.
-  estimands <- c(
-    refit = "uncensored; trimmed",
-    truncated = "uncensored; truncated",
-    calibrated = "uncensored; calibrated"
-  )
-
   for (modification in names(problem$scores)) {
-    modified <- problem$scores[[modification]]
-
-    weights <- wt_cens(
-      modified,
-      problem$exposure,
-      exposure_type = "continuous",
-      stabilize = TRUE,
-      .density = dens_t(df = 4, sigma_method = "rms"),
-      numerator = "integrated"
-    )
-
-    expect_equal(
-      as.numeric(weights),
-      continuous_integrated_wt(
-        function(z) stats::dt(z, df = 4),
-        exposure = problem$exposure,
-        mu = as.numeric(modified)
+    expect_error(
+      wt_cens(
+        problem$scores[[modification]],
+        problem$exposure,
+        exposure_type = "continuous",
+        stabilize = TRUE,
+        .density = dens_t(df = 4, sigma_method = "rms"),
+        numerator = "integrated"
       ),
-      tolerance = 1e-12
+      class = "propensity_modified_continuous_error",
+      info = modification
     )
-    expect_identical(estimand(weights), estimands[[modification]])
-    expect_identical(density_meta(weights)$numerator, "integrated")
   }
 })
 

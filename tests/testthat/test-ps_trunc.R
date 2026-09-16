@@ -1803,12 +1803,6 @@ test_that("ps_trunc() reads a two-level multinomial fit on the binary path", {
 })
 
 test_that("ps_trunc() refuses a fit it cannot read propensity scores from", {
-  linear <- lm(z ~ x1 + x2, data = trunc_model_data)
-
-  expect_error(
-    ps_trunc(linear, method = "ps"),
-    class = "propensity_method_error"
-  )
   expect_error(
     ps_trunc(structure(list(), class = "not_a_model"), method = "ps"),
     class = "propensity_method_error"
@@ -1817,8 +1811,39 @@ test_that("ps_trunc() refuses a fit it cannot read propensity scores from", {
 
 test_that("ps_trunc() names the class of a fit it has no reading for", {
   expect_propensity_error(
-    ps_trunc(lm(z ~ x1 + x2, data = trunc_model_data), method = "ps")
+    ps_trunc(structure(list(), class = "not_a_model"), method = "ps")
   )
+})
+
+test_that("ps_trunc() refuses a model of a dose and names the routes that work", {
+  set.seed(31)
+  n <- 60
+  x <- rnorm(n)
+  dose <- 0.5 * x + rnorm(n)
+  dose_data <- data.frame(dose = dose, x = x)
+
+  # A linear model and a gaussian glm both fit conditional means rather than
+  # probabilities, so there is no propensity score to bound. The refusal is the
+  # same for both, and it points at trimming the dose model on the density
+  # scale or bounding the weights built from it.
+  fits <- list(
+    lm = lm(dose ~ x, data = dose_data),
+    gaussian = glm(dose ~ x, data = dose_data, family = gaussian())
+  )
+
+  for (kind in names(fits)) {
+    cnd <- expect_error(
+      ps_trunc(fits[[kind]], method = "ps"),
+      class = "propensity_model_family_error",
+      info = kind
+    )
+    message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+    expect_match(message, "ps_trim(method = \"density\")", fixed = TRUE)
+    expect_match(message, "wt_trunc()", fixed = TRUE)
+  }
+
+  expect_propensity_error(ps_trunc(fits$lm, method = "ps"))
+  expect_propensity_error(ps_trunc(fits$gaussian, method = "ps"))
 })
 
 # The exposure is announced when it is read and not otherwise, so the message

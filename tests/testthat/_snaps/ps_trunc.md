@@ -116,7 +116,7 @@
       expr
     Condition <propensity_method_error>
       Error in `ps_trunc()`:
-      ! No method for objects of class lm
+      ! No method for objects of class not_a_model
 
 # ps_trunc() refuses scores that are not numbers
 
