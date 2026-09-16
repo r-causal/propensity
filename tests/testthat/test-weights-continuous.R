@@ -676,14 +676,23 @@ test_that("the refusal of a matrix of conditional means reads plainly", {
 
 test_that("the weights record the density family they were built from", {
   families <- list(
-    normal = list(input = "normal", recorded = "normal"),
-    laplace = list(input = dens_laplace(), recorded = "laplace"),
-    t = list(input = dens_t(df = 4), recorded = "t(df = 4)"),
+    normal = list(input = "normal", recorded = "normal", sigma = "pooled"),
+    laplace = list(
+      input = dens_laplace(),
+      recorded = "laplace",
+      sigma = "mle"
+    ),
+    t = list(input = dens_t(df = 4), recorded = "t(df = 4)", sigma = "pooled"),
     kernel = list(
       input = dens_kernel(adjust = 1.5),
-      recorded = 'kernel(bw = "nrd0", adjust = 1.5, kernel = "gaussian", n = 512)'
+      recorded = 'kernel(bw = "nrd0", adjust = 1.5, kernel = "gaussian", n = 512)',
+      sigma = "pooled"
     ),
-    fn = list(input = function(z) stats::dlogis(z), recorded = "function")
+    fn = list(
+      input = function(z) stats::dlogis(z),
+      recorded = "function",
+      sigma = "pooled"
+    )
   )
 
   for (family in families) {
@@ -695,10 +704,12 @@ test_that("the weights record the density family they were built from", {
     expect_identical(format(record$density), family$recorded)
     expect_identical(exposure_type(weights), "continuous")
 
-    # The rest of the record is what it was: the family says nothing about
-    # what stabilized the weights or where the spread came from.
+    # The family says nothing about what stabilized the weights, and says where
+    # the spread came from only when it has an estimator of its own: a family
+    # read at the moment estimator records the pooled spread whether it took
+    # that estimator for want of another or asked for it.
     expect_identical(record$numerator, "marginal")
-    expect_identical(record$sigma, "pooled")
+    expect_identical(record$sigma, family$sigma)
   }
 })
 
@@ -2178,15 +2189,26 @@ test_that("an interpolated numerator that dips below zero is refused", {
 # ---- what the integrated weights record -------------------------------------
 
 test_that("integrated weights record the numerator they were built from", {
-  for (family in list("normal", dens_t(df = 4), "laplace", "kernel")) {
+  families <- list(
+    list(input = "normal", sigma = "pooled"),
+    list(input = dens_t(df = 4), sigma = "pooled"),
+    list(input = "laplace", sigma = "mle"),
+    list(input = "kernel", sigma = "pooled")
+  )
+
+  for (family in families) {
     record <- density_meta(continuous_density_wt(
-      .density = family,
+      .density = family$input,
       numerator = "integrated"
     ))
 
     expect_s3_class(record, "propensity_density_meta")
     expect_identical(record$numerator, "integrated")
-    expect_identical(record$sigma, "pooled")
+
+    # An integrated numerator reads the conditional density in both places, so
+    # it carries the conditional spread and records the estimator that spread
+    # was reached by.
+    expect_identical(record$sigma, family$sigma)
   }
 
   # And the marginal numerator still records itself, written out or not.
@@ -2755,6 +2777,261 @@ test_that("a likelihood with no maximum at a positive scale is refused", {
       .density = dens_t(20, sigma_method = "mle")
     )
   )
+})
+
+# ---- the Laplace scale by maximum likelihood --------------------------------
+
+# A continuous-exposure problem whose residuals follow the family the weights
+# assert. The scale of a Laplace is its mean absolute deviation and its standard
+# deviation is sqrt(2) times that, so the two estimators of the spread stand far
+# enough apart here that no test below can pass on one where it meant the other.
+continuous_laplace_data <- local({
+  set.seed(20260904)
+
+  n <- 300
+  x <- rnorm(n)
+  u <- runif(n) - 0.5
+  exposure <- 1 + 0.7 * x - sign(u) * log(1 - 2 * abs(u))
+
+  list(
+    x = x,
+    exposure = exposure,
+    mu = as.numeric(fitted(lm(exposure ~ x)))
+  )
+})
+
+continuous_laplace_residuals <- continuous_laplace_data$exposure -
+  continuous_laplace_data$mu
+
+# Weights for that problem. They are unstabilized unless the test asks for the
+# marginal numerator, so that the conditional density is on its own wherever
+# what is under test is the conditional spread.
+continuous_laplace_wt <- function(
+  ...,
+  exposure = continuous_laplace_data$exposure,
+  stabilize = FALSE
+) {
+  wt_ate(
+    continuous_laplace_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = stabilize,
+    ...
+  )
+}
+
+# The Laplace density on the exposure's own scale: the standard density read at
+# the residual standardized by `scale`, divided by the scale that standardized
+# it.
+laplace_density <- function(residuals, scale) {
+  exp(-abs(residuals / scale)) / 2 / scale
+}
+
+test_that("a Laplace denominator is read at the scale of the Laplace", {
+  residuals <- continuous_laplace_residuals
+  scale <- mean(abs(residuals))
+
+  # The closed form is where the Laplace likelihood is maximized, held against
+  # an oracle that maximizes it by search.
+  expect_equal(scale, laplace_scale_mle(residuals), tolerance = 1e-6)
+
+  weights <- continuous_laplace_wt(.density = dens_laplace())
+
+  expect_equal(
+    as.numeric(weights),
+    1 / laplace_density(residuals, scale),
+    tolerance = 1e-12
+  )
+
+  # The spread the weights were built at is the scale rather than the standard
+  # deviation, and these residuals tell the two apart.
+  rms <- sqrt(mean(residuals^2))
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    1 / laplace_density(residuals, rms),
+    tolerance = 1e-2
+  )))
+})
+
+test_that("a Laplace denominator asked for the root mean square is read at it", {
+  residuals <- continuous_laplace_residuals
+  rms <- sqrt(mean(residuals^2))
+
+  weights <- continuous_laplace_wt(
+    .density = dens_laplace(sigma_method = "rms")
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    1 / laplace_density(residuals, rms),
+    tolerance = 1e-12
+  )
+
+  # Which is the same ratio as the one a caller who supplied that number by hand
+  # would be given, since the estimator is the only thing the setting changes.
+  supplied <- continuous_laplace_wt(
+    .density = dens_laplace(sigma_method = "rms"),
+    .sigma = rms
+  )
+
+  expect_equal(as.numeric(weights), as.numeric(supplied), tolerance = 1e-12)
+})
+
+test_that("the marginal numerator of a Laplace ratio is read at the same estimator", {
+  exposure <- continuous_laplace_data$exposure
+  residuals <- continuous_laplace_residuals
+  scale <- mean(abs(residuals))
+  mu_a <- mean(exposure)
+  scale_a <- mean(abs(exposure - mu_a))
+
+  weights <- continuous_laplace_wt(
+    .density = dens_laplace(),
+    stabilize = TRUE
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    laplace_density(exposure - mu_a, scale_a) /
+      laplace_density(residuals, scale),
+    tolerance = 1e-12
+  )
+
+  # The numerator's location is the exposure's own mean, as it has always been;
+  # its spread alone is what the family decides. A numerator spread by the root
+  # mean square while the denominator is spread by the scale is a ratio of two
+  # densities of different widths, and is the ratio these weights are not.
+  sd_a <- sqrt(mean((exposure - mu_a)^2))
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    laplace_density(exposure - mu_a, sd_a) /
+      laplace_density(residuals, scale),
+    tolerance = 1e-3
+  )))
+})
+
+test_that("a Laplace ratio asked for the root mean square is read at it on both halves", {
+  # The estimator follows what the density asks for rather than the family it
+  # names, on the numerator as well as on the denominator. An estimator keyed on
+  # the family alone would spread the denominator by the root mean square, which
+  # is what was asked for, and the numerator by the mean absolute deviation,
+  # which is what the family implies, leaving the weights the ratio of neither
+  # request.
+  exposure <- continuous_laplace_data$exposure
+  residuals <- continuous_laplace_residuals
+  rms <- sqrt(mean(residuals^2))
+  mu_a <- mean(exposure)
+  sd_a <- sqrt(mean((exposure - mu_a)^2))
+
+  weights <- continuous_laplace_wt(
+    .density = dens_laplace(sigma_method = "rms"),
+    stabilize = TRUE
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    laplace_density(exposure - mu_a, sd_a) / laplace_density(residuals, rms),
+    tolerance = 1e-12
+  )
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    laplace_density(exposure - mu_a, mean(abs(exposure - mu_a))) /
+      laplace_density(residuals, rms),
+    tolerance = 1e-3
+  )))
+
+  # The two settings are two different sets of weights, so neither test above
+  # could be passing on the other's numbers.
+  under_mle <- continuous_laplace_wt(
+    .density = dens_laplace(),
+    stabilize = TRUE
+  )
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    as.numeric(under_mle),
+    tolerance = 1e-3
+  )))
+})
+
+test_that("a Laplace scale is fit on the residuals that are there", {
+  exposure <- continuous_laplace_data$exposure
+  exposure[c(5, 22)] <- NA
+  residuals <- exposure - continuous_laplace_data$mu
+  scale <- mean(abs(residuals), na.rm = TRUE)
+
+  weights <- continuous_laplace_wt(
+    exposure = exposure,
+    .density = dens_laplace()
+  )
+
+  # A unit with no exposure has no residual for the likelihood to read and no
+  # weight to be given, and it is the only unit that comes back missing.
+  expect_equal(
+    as.numeric(weights)[-c(5, 22)],
+    (1 / laplace_density(residuals, scale))[-c(5, 22)],
+    tolerance = 1e-12
+  )
+  expect_true(all(is.na(as.numeric(weights)[c(5, 22)])))
+})
+
+test_that("weights record the Laplace scale estimator they were built at", {
+  under_mle <- continuous_laplace_wt(.density = dens_laplace())
+  under_rms <- continuous_laplace_wt(
+    .density = dens_laplace(sigma_method = "rms")
+  )
+
+  # A scale estimated under the family is a source of its own, the one `ipw()`
+  # has an equation of its own to solve. It is estimated from the residuals, as
+  # the pooled spread is, so there is no constant to keep either.
+  expect_identical(density_meta(under_mle)$sigma, "mle")
+  expect_null(density_meta(under_mle)$sigma_value)
+  expect_identical(density_meta(under_rms)$sigma, "pooled")
+
+  # The string names the family at its default, which is the constructor at its
+  # default.
+  by_string <- continuous_laplace_wt(.density = "laplace")
+
+  expect_identical(density_meta(by_string)$sigma, "mle")
+  expect_equal(
+    as.numeric(by_string),
+    as.numeric(under_mle),
+    tolerance = 1e-12
+  )
+})
+
+test_that("a spread supplied and a Laplace scale estimated under itself are refused together", {
+  # `.sigma` says the spread is a number of the caller's own, and a family that
+  # estimates its scale under itself says it is read off the residuals: two
+  # instructions about the same quantity, one of which would go unread whichever
+  # way the pairing was resolved. It is the pairing that is refused rather than
+  # the family, so the moment estimator takes a supplied spread as it always
+  # has.
+  expect_error(
+    continuous_laplace_wt(.density = dens_laplace(), .sigma = 0.9),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    continuous_laplace_wt(.density = "laplace", .sigma = 0.9),
+    class = "propensity_density_error"
+  )
+  expect_no_error(
+    continuous_laplace_wt(
+      .density = dens_laplace(sigma_method = "rms"),
+      .sigma = 0.9
+    )
+  )
+
+  # The check keys on the field rather than on the family, so it reads a Laplace
+  # exactly as it reads a t.
+  expect_error(
+    check_sigma_method(0.9, dens_laplace()),
+    class = "propensity_density_error"
+  )
+  expect_null(check_sigma_method(0.9, dens_laplace(sigma_method = "rms")))
+  expect_null(check_sigma_method(NULL, dens_laplace()))
 })
 
 # ---- a numerator model supplied to stabilize --------------------------------

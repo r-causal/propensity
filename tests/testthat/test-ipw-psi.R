@@ -1632,3 +1632,132 @@ test_that("a degenerate maximum likelihood scale is refused in the caller's name
 
   expect_identical(conditionCall(cnd), quote(ipw()))
 })
+
+# ---- the equation a density's scale is the root of ---------------------------
+
+# The residuals the scale rows are read at, heavier tailed than a normal's so
+# that the estimators the rows belong to answer differently.
+density_scale_row_residuals <- withr::with_seed(20260903, {
+  u <- stats::runif(150) - 0.5
+
+  -sign(u) * log(1 - 2 * abs(u))
+})
+
+test_that("density_scale_row() is the moment row unless the density asks otherwise", {
+  residuals <- c(-2.1, 0.4, 1.7, -0.3, 3.2)
+  sigma2 <- 1.6
+  moment <- matrix(residuals^2 - sigma2, nrow = 1)
+
+  # The uncentered second moment, which is the equation the root mean square is
+  # the root of and the row the continuous block has always carried.
+  expect_equal(density_scale_row(residuals, sigma2, NULL), moment)
+  expect_equal(density_scale_row(residuals, sigma2, dens_normal()), moment)
+  expect_equal(density_scale_row(residuals, sigma2, dens_kernel()), moment)
+
+  # A family with an estimator of its own that was asked not to use it emits the
+  # moment row too: the row follows what the density asks for, not the family it
+  # names, which is what keeps it the equation the weights were built at.
+  expect_equal(
+    density_scale_row(residuals, sigma2, dens_laplace(sigma_method = "rms")),
+    moment
+  )
+  expect_equal(
+    density_scale_row(residuals, sigma2, dens_t(4, sigma_method = "rms")),
+    moment
+  )
+})
+
+test_that("density_scale_row() is the score of the family a density is fit under", {
+  residuals <- c(-2.1, 0.4, 1.7, -0.3, 3.2)
+  sigma2 <- 1.6
+
+  # The Laplace score for the scale, multiplied through by the scale, is the
+  # absolute residual against the scale itself, so it is written against the
+  # square root of the parameter the block carries.
+  expect_equal(
+    density_scale_row(residuals, sigma2, dens_laplace()),
+    matrix(abs(residuals) - sqrt(sigma2), nrow = 1)
+  )
+  expect_equal(
+    density_scale_row(residuals, sigma2, dens_t(4, sigma_method = "mle")),
+    matrix(5 * residuals^2 / (4 * sigma2 + residuals^2) - 1, nrow = 1)
+  )
+
+  # One row for the one parameter it estimates, whatever the family.
+  expect_identical(
+    dim(density_scale_row(residuals, sigma2, dens_laplace())),
+    c(1L, length(residuals))
+  )
+})
+
+test_that("the scale a density is estimated at is the root of the row that estimates it", {
+  # The seam the whole stacked system rests on: one estimator and one equation,
+  # so the spread the weights were built at is exactly where the row averages to
+  # zero. The preflight that rebuilds the weights at the seed holds only while
+  # that is so, and it holds only because the two are keyed on the same
+  # question.
+  residuals <- density_scale_row_residuals
+
+  # Named by the estimator as well as by the family, because the printed density
+  # is the same whichever estimator it asked for and a failure has to say which
+  # of the five came apart.
+  densities <- list(
+    "normal" = dens_normal(),
+    "laplace, mle" = dens_laplace(),
+    "laplace, rms" = dens_laplace(sigma_method = "rms"),
+    "t(df = 4), mle" = dens_t(4, sigma_method = "mle"),
+    "t(df = 4), rms" = dens_t(4, sigma_method = "rms")
+  )
+
+  for (name in names(densities)) {
+    scale <- density_scale_estimate(residuals, densities[[name]])
+    row <- density_scale_row(residuals, scale^2, densities[[name]])
+
+    expect_lt(abs(mean(row)), 1e-8, label = name)
+  }
+})
+
+test_that("density_scale_row() leaves a missing residual missing", {
+  residuals <- c(-2.1, NA, 1.7, -0.3, 3.2)
+  sigma2 <- 1.6
+
+  laplace <- density_scale_row(residuals, sigma2, dens_laplace())
+  moment <- density_scale_row(residuals, sigma2, dens_normal())
+
+  # A unit whose exposure is missing leaves no residual for the equation to
+  # read, and the row it would have contributed is missing rather than zero,
+  # which would be a unit the equation is solved at. The row keeps its width
+  # either way, since the block it sits in is one row for each parameter and one
+  # column for each observation.
+  expect_equal(laplace, matrix(abs(residuals) - sqrt(sigma2), nrow = 1))
+  expect_equal(moment, matrix(residuals^2 - sigma2, nrow = 1))
+
+  expect_true(is.na(laplace[1, 2]))
+  expect_false(anyNA(laplace[1, -2]))
+  expect_identical(dim(laplace), c(1L, length(residuals)))
+})
+
+test_that("a scale row the package cannot write is refused", {
+  # The default arm aborts rather than falling through to nothing. Only the t
+  # and the Laplace can ask to be fit under themselves, so a specification that
+  # asks anyway is one the package cannot write a row for, and a block of
+  # nothing would leave the stacked system solving for a parameter no equation
+  # names.
+  spec <- new_density_spec(
+    "normal",
+    fn = function(z) stats::dnorm(z),
+    sigma_method = "mle"
+  )
+
+  expect_error(
+    density_scale_row(c(-1, 0.5, 2), 1.4, spec),
+    class = "propensity_density_error"
+  )
+
+  cnd <- rlang::catch_cnd(
+    density_scale_row(c(-1, 0.5, 2), 1.4, spec, call = rlang::call2("ipw")),
+    classes = "propensity_density_error"
+  )
+
+  expect_identical(conditionCall(cnd), quote(ipw()))
+})

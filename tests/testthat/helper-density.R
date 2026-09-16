@@ -50,3 +50,28 @@ t_scale_mle <- function(residuals, df) {
 
   exp(log_scale)
 }
+
+# The maximum likelihood scale of a Laplace density fit to `residuals`, for the
+# tests that hold the package's closed form against an oracle.
+#
+# The likelihood is maximized directly, over the log of the scale, rather than
+# evaluated at the mean absolute residual the closed form returns, so that the
+# closed form is the thing under test rather than the thing assumed. The search
+# is bracketed off the root mean square, which is the estimator the closed form
+# is not, and reaches a factor of e^6 either side of it.
+laplace_scale_mle <- function(residuals) {
+  residuals <- residuals[!is.na(residuals)]
+
+  loglik <- function(log_scale) {
+    sum(-log(2) - log_scale - abs(residuals) / exp(log_scale))
+  }
+
+  exp(
+    stats::optimize(
+      loglik,
+      interval = log(sqrt(mean(residuals^2))) + c(-6, 6),
+      maximum = TRUE,
+      tol = .Machine$double.eps^0.5
+    )$maximum
+  )
+}

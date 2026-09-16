@@ -63,7 +63,7 @@ test_that("dens_laplace() is the standard Laplace density", {
   spec <- dens_laplace()
 
   expect_s3_class(spec, "propensity_density")
-  expect_named(spec, c("family", "params", "fn"))
+  expect_named(spec, c("family", "params", "fn", "sigma_method"))
   expect_identical(spec$family, "laplace")
   expect_identical(spec$params, list())
   expect_equal(spec$fn(z), exp(-abs(z)) / 2)
@@ -99,6 +99,37 @@ test_that("dens_t() records how its scale is estimated", {
 test_that("dens_t() refuses a scale estimator it does not have", {
   expect_error(
     dens_t(df = 4, sigma_method = "median"),
+    class = "rlang_error"
+  )
+})
+
+test_that("dens_laplace() records how its scale is estimated", {
+  # The Laplace has a scale of its own, and the same choice of estimator for it
+  # that the t has: the root mean square that spreads every other family, or
+  # maximum likelihood under the Laplace itself, which is the default. It is
+  # recorded where the t records it, beside the parameters rather than among
+  # them, because `laplace` is the same density however its scale was arrived
+  # at.
+  spec <- dens_laplace()
+
+  expect_named(spec, c("family", "params", "fn", "sigma_method"))
+  expect_identical(spec$sigma_method, "mle")
+  expect_identical(dens_laplace(sigma_method = "mle")$sigma_method, "mle")
+  expect_identical(dens_laplace(sigma_method = "rms")$sigma_method, "rms")
+
+  # The estimator is not a parameter, so it reaches neither the parameters nor
+  # the printed density.
+  expect_identical(dens_laplace(sigma_method = "rms")$params, list())
+  expect_identical(format(dens_laplace(sigma_method = "rms")), "laplace")
+  expect_equal(
+    dens_laplace(sigma_method = "rms")$fn(density_z()),
+    exp(-abs(density_z())) / 2
+  )
+})
+
+test_that("dens_laplace() refuses a scale estimator it does not have", {
+  expect_error(
+    dens_laplace(sigma_method = "median"),
     class = "rlang_error"
   )
 })
@@ -640,6 +671,189 @@ test_that("density_eval() drops the shape of a matrix result", {
     ),
     class = "propensity_density_error"
   )
+})
+
+# ---- the scale a density is read at -----------------------------------------
+
+# `density_scale_estimate()` is the one estimator of the spread both densities
+# of a continuous exposure's ratio are read at, and `laplace_sigma_mle()` is the
+# closed form it reaches for the Laplace. The equation the estimate is the root
+# of lives beside the stacked system that solves it, and is tested in
+# tests/testthat/test-ipw-psi.R. All three are internal, and are called here by
+# name the way the rest of the suite calls internals.
+
+# Residuals from a law with tails heavier than a normal's, so that the mean
+# absolute residual and the root mean square stand about a factor of sqrt(2)
+# apart and no test below can pass on one where it meant the other.
+density_scale_residuals <- withr::with_seed(20260902, {
+  u <- stats::runif(200) - 0.5
+
+  -sign(u) * log(1 - 2 * abs(u))
+})
+
+test_that("laplace_sigma_mle() is the mean absolute residual", {
+  residuals <- density_scale_residuals
+
+  # The oracle maximizes the Laplace likelihood itself rather than evaluating
+  # the closed form, so what is under test is that the closed form is where the
+  # likelihood is maximized. The tolerance is the search's rather than the
+  # estimator's: a maximum found by search settles to about the square root of
+  # the machine epsilon.
+  expect_equal(
+    laplace_sigma_mle(residuals),
+    laplace_scale_mle(residuals),
+    tolerance = 1e-6
+  )
+  expect_equal(laplace_sigma_mle(residuals), mean(abs(residuals)))
+
+  # It is the estimator the root mean square is not.
+  expect_false(isTRUE(all.equal(
+    laplace_sigma_mle(residuals),
+    sqrt(mean(residuals^2)),
+    tolerance = 0.1
+  )))
+
+  # A residual that is not there is one the likelihood cannot read, exactly as
+  # it is one the root mean square does not average.
+  gappy <- residuals
+  gappy[c(3, 17)] <- NA
+
+  expect_equal(laplace_sigma_mle(gappy), mean(abs(residuals[-c(3, 17)])))
+})
+
+test_that("density_scale_estimate() takes the root mean square by default", {
+  residuals <- density_scale_residuals
+  rms <- sqrt(mean(residuals^2))
+
+  # A density that names no estimator, and every family that carries no
+  # `sigma_method` at all, is spread by the moment estimator, which is the
+  # maximum likelihood scale of the normal and the spread every family has
+  # always been read at.
+  expect_equal(density_scale_estimate(residuals, NULL), rms)
+  expect_equal(density_scale_estimate(residuals, dens_normal()), rms)
+  expect_equal(density_scale_estimate(residuals, dens_kernel()), rms)
+  expect_equal(
+    density_scale_estimate(residuals, dens_fn(function(z) stats::dnorm(z))),
+    rms
+  )
+
+  # A family that has an estimator of its own and was asked not to use it is
+  # read at the moment estimator too. The estimator follows what the density
+  # asks for, not the family it names.
+  expect_equal(
+    density_scale_estimate(residuals, dens_laplace(sigma_method = "rms")),
+    rms
+  )
+  expect_equal(
+    density_scale_estimate(residuals, dens_t(4, sigma_method = "rms")),
+    rms
+  )
+})
+
+test_that("density_scale_estimate() reads the family a density is fit under", {
+  residuals <- density_scale_residuals
+
+  expect_equal(
+    density_scale_estimate(residuals, dens_laplace()),
+    laplace_scale_mle(residuals),
+    tolerance = 1e-6
+  )
+  expect_equal(
+    density_scale_estimate(residuals, dens_laplace(sigma_method = "mle")),
+    mean(abs(residuals))
+  )
+  expect_equal(
+    density_scale_estimate(residuals, dens_t(4, sigma_method = "mle")),
+    t_scale_mle(residuals, df = 4),
+    tolerance = 1e-8
+  )
+
+  # The Laplace answer is the mean absolute residual rather than the moment
+  # estimator, which these residuals put about 40 percent away from it, so an
+  # estimate that reached the moment estimator could not pass the assertions
+  # above. The t answer is not separated here and is not asked to be: a t with
+  # four degrees of freedom fit to Laplace residuals lands within a thousandth
+  # of their mean absolute deviation, so what tells the two estimators apart is
+  # the oracle each is held against rather than a gap between their answers.
+  expect_false(isTRUE(all.equal(
+    density_scale_estimate(residuals, dens_laplace()),
+    density_scale_estimate(residuals, dens_normal()),
+    tolerance = 0.05
+  )))
+})
+
+test_that("density_scale_estimate() reads the residuals that are there", {
+  residuals <- density_scale_residuals
+  gappy <- residuals
+  gappy[c(3, 17)] <- NA
+  present <- residuals[-c(3, 17)]
+
+  expect_equal(
+    density_scale_estimate(gappy, dens_laplace()),
+    mean(abs(present))
+  )
+  expect_equal(
+    density_scale_estimate(gappy, dens_normal()),
+    sqrt(mean(present^2))
+  )
+})
+
+test_that("a scale estimator the package does not have is refused", {
+  # Only the t and the Laplace can ask to be fit under themselves, because no
+  # other constructor takes `sigma_method`. A specification that asks anyway is
+  # one the package cannot build, and it is refused rather than passed over for
+  # a spread of nothing, which would leave every weight missing and the stacked
+  # system solving an equation no weight was built at.
+  spec <- new_density_spec(
+    "normal",
+    fn = function(z) stats::dnorm(z),
+    sigma_method = "mle"
+  )
+
+  expect_error(
+    density_scale_estimate(density_scale_residuals, spec),
+    class = "propensity_density_error"
+  )
+
+  # The refusal reads against the function the user called rather than against
+  # the estimator, which is internal.
+  cnd <- rlang::catch_cnd(
+    density_scale_estimate(
+      density_scale_residuals,
+      spec,
+      call = rlang::call2("wt_ate")
+    ),
+    classes = "propensity_density_error"
+  )
+
+  expect_identical(conditionCall(cnd), quote(wt_ate()))
+})
+
+test_that("density_specs_agree() tells the scale estimators apart", {
+  # Two Laplace weights built with different scale estimators are ratios of
+  # densities of different widths, so the records they carry do not agree and
+  # the weights do not combine silently.
+  expect_true(density_specs_agree(dens_laplace(), dens_laplace()))
+  expect_true(density_specs_agree(
+    dens_laplace(sigma_method = "rms"),
+    dens_laplace(sigma_method = "rms")
+  ))
+  expect_true(density_specs_agree(
+    dens_laplace(sigma_method = "mle"),
+    dens_laplace()
+  ))
+
+  expect_false(density_specs_agree(
+    dens_laplace(sigma_method = "mle"),
+    dens_laplace(sigma_method = "rms")
+  ))
+
+  # The family still tells them apart on its own, whatever the estimator.
+  expect_false(density_specs_agree(dens_laplace(), dens_normal()))
+  expect_false(density_specs_agree(
+    dens_laplace(sigma_method = "rms"),
+    dens_t(4, sigma_method = "rms")
+  ))
 })
 
 # ---- print and format -------------------------------------------------------
