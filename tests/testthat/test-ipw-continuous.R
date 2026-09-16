@@ -2244,9 +2244,14 @@ test_that("the sandwich SE for a heavy-tailed integrated ratio tracks a bootstra
   skip_on_cran()
 
   dat <- sim_continuous(seed = 2024, n = 600)
+  # Written against the root mean square, which was the t's default when this
+  # block was first set down. The estimator is named here rather than left to
+  # the default so the block says which row it holds against the bootstrap: at
+  # `sigma_method = "mle"` the stacked system solves the t's own score for the
+  # scale, not the moment equation.
   mods <- fit_continuous_models(
     dat,
-    .density = dens_t(4),
+    .density = dens_t(4, sigma_method = "mle"),
     numerator = "integrated"
   )
   mest_se <- ipw(mods$ps_mod, mods$outcome_mod)$estimates$std.err
@@ -2256,8 +2261,46 @@ test_that("the sandwich SE for a heavy-tailed integrated ratio tracks a bootstra
     w <- continuous_weights(
       as.double(fitted(ps)),
       d$A,
-      .density = dens_t(4),
+      .density = dens_t(4, sigma_method = "mle"),
       numerator = "integrated"
+    )
+    msm <- lm(yc ~ A, data = d, weights = as.double(w))
+    unname(coef(msm)[["A"]])
+  }
+
+  withr::local_seed(918)
+  reps <- 400L
+  n <- nrow(dat)
+  boot <- vapply(
+    seq_len(reps),
+    function(i) {
+      boot_slope(dat[sample.int(n, n, replace = TRUE), , drop = FALSE])
+    },
+    numeric(1)
+  )
+
+  boot_se <- stats::sd(boot)
+  expect_lt(abs(mest_se - boot_se) / boot_se, 0.15)
+})
+
+test_that("the sandwich SE for a Laplace ratio tracks a bootstrap", {
+  skip_on_cran()
+
+  # The Laplace scale is the one estimator no bootstrap held the sandwich
+  # against, and it is the arm the simulation found the largest coverage error
+  # on when the scale was read by the moment instead. Its row is a different
+  # shape from the t's, `abs(r) - sqrt(sigma2)` rather than a score, and it is
+  # stacked twice, once for the conditional scale and once for the marginal.
+  dat <- sim_continuous(seed = 2024, n = 600)
+  mods <- fit_continuous_models(dat, .density = dens_laplace())
+  mest_se <- ipw(mods$ps_mod, mods$outcome_mod)$estimates$std.err
+
+  boot_slope <- function(d) {
+    ps <- lm(A ~ x1 + x2, data = d)
+    w <- continuous_weights(
+      as.double(fitted(ps)),
+      d$A,
+      .density = dens_laplace()
     )
     msm <- lm(yc ~ A, data = d, weights = as.double(w))
     unname(coef(msm)[["A"]])
