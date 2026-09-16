@@ -2195,8 +2195,17 @@ test_that("ipw_spec_continuous reads the density, numerator, and spread off the 
   spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
   expect_true(density_specs_agree(spec$density, dens_t(3)))
   expect_equal(spec$numerator, "integrated")
-  expect_equal(spec$sigma$kind, "pooled")
+
+  # A t is spread under itself and a normal by the root mean square, which is
+  # the normal's own scale parameter, so both estimators a fit can be made under
+  # are read back off the weights.
+  expect_equal(spec$sigma$kind, "mle")
   expect_null(spec$sigma$value)
+
+  normal <- fit_continuous_models(dat, .density = dens_normal())
+  normal_spec <- ipw_spec_continuous(normal$ps_mod, normal$outcome_mod)
+  expect_equal(normal_spec$sigma$kind, "pooled")
+  expect_null(normal_spec$sigma$value)
 
   fixed <- fit_continuous_models(dat, .sigma = 1.25)
   spec_fixed <- ipw_spec_continuous(fixed$ps_mod, fixed$outcome_mod)
@@ -2780,6 +2789,50 @@ test_that("a stacked continuous numerator block solves over the rows .data keeps
     unname(coef(refit)),
     unname(coef(fits$num_mod)),
     tolerance = 1e-6
+  )))
+})
+
+test_that("a numerator model's spread is stacked at the scale its family asks for", {
+  dat <- sim_continuous()
+  num_mod <- lm(A ~ x1, data = dat)
+  fits <- fit_continuous_models(
+    dat,
+    stabilize = num_mod,
+    .density = dens_laplace()
+  )
+
+  # Both halves of the ratio are Laplace densities, so the numerator's own block
+  # carries the scale of a Laplace fit to its residuals rather than the second
+  # moment a normal's block carries. The weights and the block's seed are two
+  # computations of that one quantity, and `ipw_weights_at_init()` refuses at
+  # 1e-6 when they part, so a route that corrected the weights alone would not
+  # reach this line.
+  res <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+
+  expect_s3_class(res, "ipw")
+
+  theta <- coef(res$fit)
+  expect_true("sigma2_n" %in% names(theta))
+
+  # The row the block solves is the Laplace score, whose root is the mean
+  # absolute residual, squared because the parameter carries a squared scale.
+  expect_equal(
+    unname(theta[["sigma2_n"]]),
+    mean(abs(residuals(num_mod)))^2,
+    tolerance = 1e-8
+  )
+
+  # The second moment is what that parameter would hold if the numerator were
+  # still read at the estimator the normal asks for, and these residuals tell
+  # the two apart.
+  expect_false(isTRUE(all.equal(
+    unname(theta[["sigma2_n"]]),
+    mean(residuals(num_mod)^2),
+    tolerance = 1e-3
   )))
 })
 

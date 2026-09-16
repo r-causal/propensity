@@ -686,7 +686,7 @@ test_that("the weights record the density family they were built from", {
       recorded = "laplace",
       sigma = "mle"
     ),
-    t = list(input = dens_t(df = 4), recorded = "t(df = 4)", sigma = "pooled"),
+    t = list(input = dens_t(df = 4), recorded = "t(df = 4)", sigma = "mle"),
     kernel = list(
       input = dens_kernel(adjust = 1.5),
       recorded = 'kernel(bw = "nrd0", adjust = 1.5, kernel = "gaussian", n = 512)',
@@ -2229,7 +2229,7 @@ test_that("an interpolated numerator that dips below zero is refused", {
 test_that("integrated weights record the numerator they were built from", {
   families <- list(
     list(input = "normal", sigma = "pooled"),
-    list(input = dens_t(df = 4), sigma = "pooled"),
+    list(input = dens_t(df = 4), sigma = "mle"),
     list(input = "laplace", sigma = "mle"),
     list(input = "kernel", sigma = "pooled")
   )
@@ -2598,6 +2598,12 @@ continuous_t_data <- local({
 
 continuous_t_residuals <- continuous_t_data$exposure - continuous_t_data$mu
 
+# The t density on the exposure's own scale: the standard density read at the
+# residual standardized by `scale`, divided by the scale that standardized it.
+t_density <- function(residuals, scale, df) {
+  stats::dt(residuals / scale, df = df) / scale
+}
+
 # Unstabilized weights for that problem, which are the conditional density and
 # nothing else. The marginal density that stabilizes weights is read at the
 # exposure's own moments, and what is under test here is the spread of the
@@ -2656,15 +2662,52 @@ test_that("the two spreads meet as the t approaches the normal", {
   expect_lt(max(abs(as.numeric(mle) / as.numeric(rms) - 1)), 0.01)
 })
 
-test_that("the t family is spread by the root mean square unless asked otherwise", {
-  # The default is the estimator every family takes, so weights written the way
-  # they have always been written are the weights they have always been.
+test_that("a t denominator is read at the scale of the t", {
+  residuals <- continuous_t_residuals
+  scale <- t_scale_mle(residuals, df = 4)
+
+  # The whole of an unstabilized ratio is the conditional density, so the
+  # weights say on their own what spread that density was read at, held against
+  # an oracle that maximizes the likelihood by search rather than by solving the
+  # equation the package solves.
+  weights <- continuous_t_wt(.density = dens_t(df = 4))
+
+  expect_equal(
+    as.numeric(weights),
+    1 / t_density(residuals, scale, df = 4),
+    tolerance = 1e-8
+  )
+
+  # The spread the weights were built at is the scale parameter of the t rather
+  # than the root mean square, and these residuals tell the two apart: a t with
+  # four degrees of freedom has a variance of twice its squared scale.
+  rms <- sqrt(mean(residuals^2))
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    1 / t_density(residuals, rms, df = 4),
+    tolerance = 1e-2
+  )))
+})
+
+test_that("the t family is spread under itself unless asked otherwise", {
+  # The density is read at a residual standardized by the spread and divided by
+  # that spread, so the spread is the scale parameter of the family reading it.
+  # The root mean square is the scale parameter of the normal alone, and a
+  # caller who wants a t spread by it says so.
   default <- continuous_t_wt(.density = dens_t(6))
   asked <- continuous_t_wt(.density = dens_t(6, sigma_method = "rms"))
+  under_mle <- continuous_t_wt(.density = dens_t(6, sigma_method = "mle"))
 
-  expect_identical(as.numeric(default), as.numeric(asked))
-  expect_identical(density_meta(default)$sigma, "pooled")
+  expect_identical(density_meta(default)$sigma, "mle")
   expect_identical(density_meta(asked)$sigma, "pooled")
+
+  expect_identical(as.numeric(default), as.numeric(under_mle))
+  expect_false(isTRUE(all.equal(
+    as.numeric(default),
+    as.numeric(asked),
+    tolerance = 1e-3
+  )))
 })
 
 test_that("weights record a maximum likelihood spread as a source of its own", {
@@ -3470,6 +3513,139 @@ test_that("censoring weights reach the numerator model route too", {
   expect_equal(as.numeric(weights), f_num / f_den, tolerance = 1e-12)
   expect_identical(density_meta(weights)$numerator, "model")
   expect_identical(density_meta(weights)$numerator_model, fit)
+})
+
+# ---- the spread a numerator model's density is read at ----------------------
+
+# Conditional numerators for the two problems whose residuals are not normal:
+# the exposure fit on a baseline covariate the propensity score model does not
+# read, so that the numerator model leaves residuals of its own and a spread of
+# its own for its half of the ratio to be read at.
+continuous_laplace_numerator_model <- local({
+  v <- withr::with_seed(
+    20260906,
+    stats::rnorm(length(continuous_laplace_data$exposure))
+  )
+  exposure <- continuous_laplace_data$exposure
+
+  stats::lm(exposure ~ v)
+})
+
+continuous_t_numerator_model <- local({
+  v <- withr::with_seed(
+    20260907,
+    stats::rnorm(length(continuous_t_data$exposure))
+  )
+  exposure <- continuous_t_data$exposure
+
+  stats::lm(exposure ~ v)
+})
+
+test_that("a Laplace numerator model is read at the scale of the Laplace", {
+  exposure <- continuous_laplace_data$exposure
+  fit <- continuous_laplace_numerator_model
+  numerator_residuals <- as.numeric(stats::residuals(fit))
+
+  denominator_scale <- mean(abs(continuous_laplace_residuals))
+  numerator_scale <- mean(abs(numerator_residuals))
+
+  weights <- wt_ate(
+    continuous_laplace_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit,
+    .density = dens_laplace()
+  )
+
+  # Both halves of the ratio are Laplace densities, so both are spread by the
+  # scale of a Laplace: the numerator by the scale of its own model's residuals,
+  # the denominator by the scale of the propensity score model's.
+  expect_equal(
+    as.numeric(weights),
+    laplace_density(numerator_residuals, numerator_scale) /
+      laplace_density(continuous_laplace_residuals, denominator_scale),
+    tolerance = 1e-12
+  )
+
+  # A numerator spread by the root mean square while the denominator is spread
+  # by the scale is a ratio of two densities of different widths, and is the
+  # ratio these weights are not.
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    laplace_density(
+      numerator_residuals,
+      sqrt(mean(numerator_residuals^2))
+    ) /
+      laplace_density(continuous_laplace_residuals, denominator_scale),
+    tolerance = 1e-3
+  )))
+})
+
+test_that("a numerator model asked for the root mean square is read at it", {
+  # The estimator follows what the density asks for rather than the family it
+  # names, on a fitted numerator as well as on a marginal one.
+  exposure <- continuous_laplace_data$exposure
+  fit <- continuous_laplace_numerator_model
+  numerator_residuals <- as.numeric(stats::residuals(fit))
+
+  weights <- wt_ate(
+    continuous_laplace_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit,
+    .density = dens_laplace(sigma_method = "rms")
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    laplace_density(
+      numerator_residuals,
+      sqrt(mean(numerator_residuals^2))
+    ) /
+      laplace_density(
+        continuous_laplace_residuals,
+        sqrt(mean(continuous_laplace_residuals^2))
+      ),
+    tolerance = 1e-12
+  )
+})
+
+test_that("a t numerator model is read at the scale of the t", {
+  exposure <- continuous_t_data$exposure
+  fit <- continuous_t_numerator_model
+  numerator_residuals <- as.numeric(stats::residuals(fit))
+
+  denominator_scale <- t_scale_mle(continuous_t_residuals, df = 4)
+  numerator_scale <- t_scale_mle(numerator_residuals, df = 4)
+
+  weights <- wt_ate(
+    continuous_t_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit,
+    .density = dens_t(df = 4)
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    t_density(numerator_residuals, numerator_scale, df = 4) /
+      t_density(continuous_t_residuals, denominator_scale, df = 4),
+    tolerance = 1e-8
+  )
+
+  # The root mean square of residuals this heavy-tailed is far from the scale
+  # the likelihood reaches, so a numerator read at it is a numerator of a
+  # different width from the denominator it is divided by.
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    t_density(
+      numerator_residuals,
+      sqrt(mean(numerator_residuals^2)),
+      df = 4
+    ) /
+      t_density(continuous_t_residuals, denominator_scale, df = 4),
+    tolerance = 1e-3
+  )))
 })
 
 # ---- the rows a gappy fit's numerator is read over --------------------------

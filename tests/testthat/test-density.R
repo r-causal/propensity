@@ -83,12 +83,12 @@ test_that("dens_t() records its degrees of freedom", {
 })
 
 test_that("dens_t() records how its scale is estimated", {
-  # The scale of the standardized residuals is estimated by the root mean square
-  # that spreads every other family, or by maximum likelihood under the t
-  # itself. It is not a parameter of the density: `t(df = 4)` is the same
-  # density however its scale was arrived at, so the choice sits beside the
-  # parameters rather than among them, and the printed density is what it was.
-  expect_identical(dens_t(df = 4)$sigma_method, "rms")
+  # The scale of the standardized residuals is estimated by maximum likelihood
+  # under the t itself, which is the default, or by the root mean square. It is
+  # not a parameter of the density: `t(df = 4)` is the same density however its
+  # scale was arrived at, so the choice sits beside the parameters rather than
+  # among them, and the printed density is what it was.
+  expect_identical(dens_t(df = 4)$sigma_method, "mle")
   expect_identical(dens_t(df = 4, sigma_method = "rms")$sigma_method, "rms")
   expect_identical(dens_t(df = 4, sigma_method = "mle")$sigma_method, "mle")
 
