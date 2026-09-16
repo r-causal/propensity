@@ -1,5 +1,30 @@
 # propensity 0.1.0.9000 (development version)
 
+* `dens_t()` now estimates the scale of the t under the t itself by default,
+  as `dens_laplace()` estimates the scale of the Laplace. Both densities of a
+  continuous exposure's weights are read at a residual standardized by a spread
+  and divided by that spread, so the spread is the scale parameter of the family
+  reading it, and the root mean square is the scale parameter of the normal
+  alone. Weights built from `dens_t()` without a `sigma_method` change: they
+  record `sigma = "mle"` in `density_meta()`, and `ipw()` stacks the score the
+  t itself gives for the scale in place of the moment equation the root mean
+  square is the root of. Write `dens_t(df, sigma_method = "rms")` for the
+  spread the family was read at before, which is also the spread software that
+  standardizes every family alike reads it at. A `.sigma` supplied alongside a
+  `dens_t()` written without a `sigma_method` is now refused, being a second
+  instruction about the same quantity, and the refusal names
+  `sigma_method = "rms"` as the way to supply a spread of your own.
+
+* A numerator model supplied to `stabilize` for a continuous exposure is now
+  read at the spread its family asks for rather than always at the root mean
+  square of its residuals. Under `dens_laplace()`, or a `dens_t()` fit under
+  itself, the numerator was the one density of the ratio still spread by the
+  root mean square, so the two halves of the ratio were densities of different
+  widths. The weights, the value `ipw()` seeds that spread at, and the
+  estimating equation its stacked system solves for it now all read the
+  estimator the family asks for, applied to the numerator model's own
+  residuals, on the single-treatment route and the joint one alike.
+
 * A joint weight's record now keeps one copy of what stabilized each
   component. A component weighting a dose kept its numerator model in the
   `density` record `joint_wt_meta()` reports and in that record's
@@ -290,20 +315,21 @@
   freedom, and the root mean square is pulled outward by the large residuals a
   heavy tail produces, which is what the family was chosen to accommodate.
   `sigma_method = "mle"` now estimates the scale under the t itself, by the
-  score each residual enters through a bounded term of, so a residual far out in
-  the tail moves the estimate by less than it moves the root mean square. It
-  spreads the conditional density alone; the marginal density that stabilizes
-  the weights is still read at the exposure's own mean and root mean square.
-  Weights built that way record `sigma = "mle"` in `density_meta()`, and `ipw()`
-  stacks the score of the t for the scale in place of the moment equation the
-  pooled spread is the root of, so the sandwich accounts for having estimated
-  it. The default is unchanged, and a `.sigma` supplied alongside
-  `sigma_method = "mle"` is refused with an error of class
+  score each residual enters through a bounded term of, so a residual far out
+  in the tail moves the estimate by less than it moves the root mean square. It
+  spreads both densities of the ratio: the marginal density that stabilizes the
+  weights is read at the exposure's own mean and at the scale the same
+  estimator gives for it. Weights built that way record `sigma = "mle"` in
+  `density_meta()`, and `ipw()` stacks that score for each of the two scales in
+  place of the moment equation the pooled spread is the root of, so the
+  sandwich accounts for having estimated them. It is what `dens_t()` takes by
+  default, as the entry on that default describes, and a `.sigma` supplied
+  alongside `sigma_method = "mle"` is refused with an error of class
   `propensity_density_error`, being a second instruction about the same
-  quantity. Residuals a model reproduced exactly say nothing about the spread
-  of the density around it, so a fit with enough of them that the likelihood
-  has no maximum at a positive scale is refused with that same class, naming
-  how many they are.
+  quantity. Residuals a model reproduced exactly say nothing about the
+  spread of the density around it, so a fit with enough of them that the
+  likelihood has no maximum at a positive scale is refused with that same
+  class, naming how many they are.
 
 * Weights for a continuous exposure now print the record of the density ratio
   they are under their values, as the three lines `density_meta()` renders. Two
@@ -546,7 +572,7 @@
   reports when an outcome is constant in one exposure group only; the
   weights-mismatch report no longer offers the focal level as a cause on the
   routes that resolve none; and the spread of a conditional density is named as
-  the pooled residual root mean square, which is what the package computes.
+  the spread its family estimates, which is what the package computes.
 
 * Weights for a continuous exposure now read a one-column matrix and a
   one-dimensional array of conditional means as the vector of one mean per unit
@@ -686,23 +712,25 @@
 
   Both densities in the ratio are now evaluated on a standardized residual,
   `(A - mu) / sigma` for the conditional density and the exposure standardized
-  by its own mean and standard deviation for the marginal one, and each is
-  divided by the spread that standardized it. That factor is the Jacobian of
-  the change of variable, and it returns both densities to the exposure's own
-  units, so every family is read on one scale and the normal family returns the
-  weights the package returned before, to within a rounding error in the last
-  binary digit. Whatever the density gives back is checked before it becomes a
-  weight: one finite, non-negative value for each standardized residual, and
-  not zero at every one of them. Anything else is an error of class
-  `propensity_density_error` whose message reports the standardized residuals
-  it failed at. What the ratio was built from is recorded on the weights and
-  read back with `density_meta()`.
+  by its own mean and the spread its family estimates for the marginal one, and
+  each is divided by the spread that standardized it. That factor is the
+  Jacobian of the change of variable, and it returns both densities to the
+  exposure's own units, so every family is read on one scale and the normal
+  family returns the weights the package returned before, to within a rounding
+  error in the last binary digit. Whatever the density gives back is checked
+  before it becomes a weight: one finite, non-negative value for each
+  standardized residual, and not zero at every one of them. Anything else is an
+  error of class `propensity_density_error` whose message reports the
+  standardized residuals it failed at. What the ratio was built from is
+  recorded on the weights and read back with `density_meta()`.
 
 * `wt_ate()` and `wt_cens()` gain a `numerator` argument, which chooses how the
   marginal density that stabilizes a continuous exposure's weights is arrived
   at. `"marginal"`, the default and the behavior of every earlier version,
-  reads the family `.density` names at the population mean and standard
-  deviation of the exposure; those two moments are parameters of the weights,
+  reads the family `.density` names at the population mean of the exposure and
+  at the spread the same estimator gives for it, which is the standard
+  deviation unless the family estimates a scale of its own. That mean and that
+  spread are parameters of the weights,
   and `ipw()` estimates them alongside the rest of its parameter vector.
   `"integrated"` marginalizes the conditional density numerically instead,
   averaging it over the units at each of 50 points spanning the exposure and
@@ -736,16 +764,16 @@
   `lm` method, which a `MASS::rlm()` reaches by inheritance, and their `glm`
   method reads a `gaussian()` fit under any of its links as well as an
   `mgcv::gam()` fit with it. Each of these classes reports its conditional mean
-  on the scale of the exposure, so a log, inverse, or square root link never has
-  to be undone, and every one of them uses the same pooled residual spread.
-  `rlm` reports a robust scale estimate of its own in `fit$s`, which resists the
-  extreme residuals rather than pooling all of them, and is used only when it is
-  asked for with `.sigma = fit$s`. A family whose spread changes with its fitted
-  values, such as `poisson()` or `quasi(variance = "mu")`, describes a different
-  density for every unit, which a single spread cannot stand in for, and is
-  refused with an error of class `propensity_model_family_error`.
-  `quasi(variance = "constant")` is the gaussian variance under another name and
-  is accepted.
+  on the scale of the exposure, so a log, inverse, or square root link never
+  has to be undone, and every one of them is spread by the same estimator.
+  `rlm` reports a robust scale estimate of its own in `fit$s`, which resists
+  the extreme residuals rather than pooling all of them, and is used only when
+  it is asked for with `.sigma = fit$s`. A family whose spread changes with its
+  fitted values, such as `poisson()` or `quasi(variance = "mu")`, describes a
+  different density for every unit, which a single spread cannot stand in for,
+  and is refused with an error of class `propensity_model_family_error`.
+  `quasi(variance = "constant")` is the gaussian variance under another name
+  and is accepted.
 
   The binary path is now held to the same rule from the other side, which
   changes what some calls return. Only `binomial()` and `quasibinomial()` fit
@@ -764,18 +792,20 @@
   `NULL` for weights built without an exposure to describe, such as those
   written with `psw()` directly. `density_meta()` describes the ratio a
   continuous exposure's weights are, and returns `NULL` for weights that are no
-  such ratio. Its elements are `density`, the specification of the
-  conditional density family; `numerator`, what stabilized the weights, which is
+  such ratio. Its elements are `density`, the specification of the conditional
+  density family; `numerator`, what stabilized the weights, which is
   `"marginal"` for the marginal density of the exposure, `"integrated"` for the
   conditional density marginalized over the units, `"score"` for a
   `stabilization_score` the caller supplied, and `"none"` for weights that were
-  not stabilized; `sigma`, where the residual spread came from, either
-  `"pooled"` or `"supplied"`; and `sigma_value`, the number a single supplied
-  spread was, which is `NULL` for a pooled spread and for one supplied per
-  observation. A spread that is one number is a constant the weights can be
-  rebuilt from, which is what `ipw()` needs of it; a spread that changes with
-  the observation is not, so the record holds where it came from and nothing
-  more.
+  not stabilized; `sigma`, where the residual spread came from, which is
+  `"pooled"` for the pooled residual root mean square, `"mle"` for a scale
+  estimated under the family that reads it, and `"supplied"` for one the caller
+  gave; and `sigma_value`, the number a single supplied spread was, which is
+  `NULL` for a spread estimated from the residuals, by either estimator, and
+  for one supplied per observation. A spread that is one number is a constant
+  the weights can be rebuilt from, which is what `ipw()` needs of it; a spread
+  that changes with the observation is not, so the record holds where it came
+  from and nothing more.
 
   Both records describe the exposure rather than the units, so neither holds a
   length of its own and both survive subsetting, arithmetic, and anything else
@@ -823,15 +853,15 @@
   than the sum of squares, so the stacked system carries the Huber score its
   coefficients are the root of, clipped where the fit itself clipped: at the
   psi's own constant, including one a caller passed as `k`, times the scale the
-  fit settled on. That scale enters the score as a known constant whose sampling
-  variability is not propagated, and the spread of the conditional density is
-  the pooled residual spread, as it is for every other class. A fit with a psi
-  other than Huber, and one fit with `method = "MM"`, which finishes on a
-  redescending psi, are refused with an error of class
-  `propensity_ipw_robust_psi_error`; one whose iteration stopped short of its
-  own tolerance is refused with `propensity_ipw_convergence_error`. The first
-  two point to a Huber refit or to a bootstrap of the whole fit written by hand;
-  the last points to a larger `maxit` or a looser `acc`.
+  fit settled on. That scale enters the score as a known constant whose
+  sampling variability is not propagated, and the spread of the conditional
+  density comes from the estimator its family asks for, there as for every
+  other class. A fit with a psi other than Huber, and one fit with `method =
+  "MM"`, which finishes on a redescending psi, are refused with an error of
+  class `propensity_ipw_robust_psi_error`; one whose iteration stopped short of
+  its own tolerance is refused with `propensity_ipw_convergence_error`. The
+  first two point to a Huber refit or to a bootstrap of the whole fit written
+  by hand; the last points to a larger `maxit` or a looser `acc`.
 
 * `wt_joint()` now reads each component's exposure type off the component
   rather than being told it. A weight function records the type of exposure it

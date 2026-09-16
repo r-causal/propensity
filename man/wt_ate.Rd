@@ -275,8 +275,9 @@ and are carried through to the weights as missing.}
 exposures: a single standard deviation applied to every unit, or one for
 each observation (e.g., \code{influence(model)$sigma}). Optional: with none
 supplied, including when \code{.propensity} is a fitted model, the conditional
-density uses the pooled residual spread of \code{.exposure} around
-\code{.propensity}.
+density uses the spread its family estimates from the residuals of
+\code{.exposure} around \code{.propensity}, the pooled root mean square unless the
+family estimates a scale of its own.
 
 The two shapes differ downstream. A single spread is a constant the weights
 can be rebuilt from, so it is recorded in \code{density_meta()} as \code{sigma_value}
@@ -337,7 +338,8 @@ is its fitted probability of the level each unit took, so the weights
 are \eqn{P(A = a_i \mid V_i) / f(a_i \mid X_i)} for the variables
 \eqn{V} the numerator model reads. For a continuous exposure the
 numerator is the family \code{.density} names, read at the model's fitted mean
-and the root mean square of its residuals, so the weights are
+and the spread its own residuals leave under that family, so the weights
+are
 \eqn{f(A \mid V) / f(A \mid X)}. For a categorical exposure the model is
 an \code{\link[nnet:multinom]{nnet::multinom()}} fit and the numerator is its fitted probability of
 the level each unit took, read from the column named for that level, so
@@ -418,8 +420,9 @@ the weights were built from is recorded on the result and read back with
 \item{numerator}{How the marginal density that stabilizes a continuous
 exposure's weights is obtained, described under \strong{Stabilization} in
 Details. Either \code{"marginal"}, the default, which reads the family
-\code{.density} names at the mean and standard deviation of \code{.exposure} over
-the rows the propensity model kept, or \code{"integrated"}, which averages the
+\code{.density} names at the mean of \code{.exposure} and the spread the same
+estimator gives for it, both over the rows the propensity model kept, or
+\code{"integrated"}, which averages the
 conditional density
 over the units on a grid spanning \code{.exposure} and interpolates the result
 back to each observed exposure.
@@ -551,9 +554,9 @@ f_A(A) (continuous), or by an estimate of either conditional on variables a
 model of the exposure reads, reducing variance. When no \code{stabilization_score} is
 supplied, that estimate is the marginal mean of \code{.exposure} for a binary or
 categorical exposure, and for a continuous exposure the marginal density of
-the family \code{.density} names, evaluated at the population mean and standard
-deviation of \code{.exposure}. Stabilization is supported for ATE and censoring
-weights (\code{wt_ate()} and \code{wt_cens()}) alone.
+the family \code{.density} names, evaluated at the population mean of \code{.exposure}
+and at the spread the same estimator gives for it. Stabilization is
+supported for ATE and censoring weights (\code{wt_ate()} and \code{wt_cens()}) alone.
 
 Whether it is applied is read from the exposure type unless \code{stabilize} says
 so outright. A continuous exposure is stabilized, since the unstabilized
@@ -563,17 +566,17 @@ and \code{stabilize = TRUE} asks for it there.
 
 For a continuous exposure, \code{numerator} chooses how that marginal density is
 arrived at. \code{"marginal"}, the default, reads the family \code{.density} names at
-the mean and standard deviation of \code{.exposure} over the rows the propensity
-model kept, which are the rows the weights describe: a model that dropped
-rows leaves \code{.propensity} missing at them, and those rows carry no weight.
-Those two moments are parameters of the weights, and \code{\link[=ipw]{ipw()}} estimates them
-alongside the rest
-of its parameter vector, so the standard errors account for the numerator
-having been estimated. \code{"integrated"} marginalizes the conditional density
-numerically instead: it averages \eqn{f_{A|X}(t \mid X_i)} over the units at
-each of 50 points spanning \code{.exposure}, then interpolates that average back
-to each observed exposure with a cubic spline. It estimates no parameters of
-its own, and it is what WeightIt has done since version 2.0.0.
+the mean of \code{.exposure} and the spread the same estimator gives for it, both
+over the rows the propensity model kept, which are the rows the weights
+describe: a model that dropped rows leaves \code{.propensity} missing at them,
+and those rows carry no weight. Those two moments are parameters of the
+weights, and \code{\link[=ipw]{ipw()}} estimates them alongside the rest of its parameter
+vector, so the standard errors account for the numerator having been
+estimated. \code{"integrated"} marginalizes the conditional density numerically
+instead: it averages \eqn{f_{A|X}(t \mid X_i)} over the units at each of 50
+points spanning \code{.exposure}, then interpolates that average back to each
+observed exposure with a cubic spline. It estimates no parameters of its
+own, and it is what WeightIt has done since version 2.0.0.
 
 The two agree whenever the family is normal and the fitted conditional means
 are themselves normal, since an average of normal densities centered on
@@ -640,8 +643,8 @@ carrying \eqn{P(A = 1 \mid V)}, which is the mistake the
 
 For a continuous exposure they are \eqn{f(A \mid V) / f(A \mid X)}: the
 family \code{.density} names, read at the numerator model's fitted mean and the
-root mean square of its residuals, over the same family read at the
-propensity score model's.
+spread its own residuals leave under that family, over the same family read
+at the propensity score model's.
 
 For a categorical exposure they are
 \eqn{P(Z = z_i \mid V_i) / f(z_i \mid X_i)}: the multinomial model's fitted
@@ -785,14 +788,15 @@ Both densities are read on a standardized residual. The conditional density
 is evaluated at \eqn{z_i = (A_i - \hat{A}_i) / \sigma}, where
 \eqn{\hat{A}_i} is the fitted conditional mean in \code{.propensity} and
 \eqn{\sigma} is the residual spread; the marginal density is evaluated at
-\eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} and \eqn{s_A} are
-the mean and standard deviation of \code{.exposure} over the rows the propensity
-model kept. Both moments are read over those rows whether the spread was
-pooled from the model's own residuals or supplied through \code{.sigma}, so the
-two halves of the ratio describe one set of units. Each density is
-then divided by the spread that standardized it, the Jacobian of that change
-of variable, which returns both to the exposure's own units so that each
-integrates to one:
+\eqn{z^A_i = (A_i - \bar{A}) / s_A}, where \eqn{\bar{A}} is the mean of
+\code{.exposure} over the rows the propensity model kept and \eqn{s_A} is the
+spread the same estimator gives for it, the standard deviation unless the
+family estimates a scale of its own. Both moments are read over those rows
+whether the spread was pooled from the model's own residuals or supplied
+through \code{.sigma}, so the two halves of the ratio describe one set of units.
+Each density is then divided by the spread that standardized it, the
+Jacobian of that change of variable, which returns both to the exposure's
+own units so that each integrates to one:
 
 \deqn{w_i = \frac{g(z^A_i) / s_A}{g(z_i) / \sigma}}
 
@@ -845,14 +849,20 @@ exposure is held to the same rule from the other side: only \code{\link[=binomia
 a conditional mean is refused there whatever its fitted values happen to fall
 on, a linear probability model included.
 
-\eqn{\sigma} is the pooled residual spread
-\eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies a single
-standard deviation, or one for each unit, which the model methods do not do
-on their own. \code{\link[=dens_t]{dens_t()}} offers a second estimator, the maximum likelihood
-scale of the t itself, through \code{sigma_method = "mle"}; see \strong{The spread of a
-t density} in its documentation. The marginal density is spread by
-\eqn{s_A} whatever the conditional spread was arrived at, the spread of the
-exposure itself being no business of the conditional model's.
+\eqn{\sigma} is the spread the family \code{.density} names asks for, read from
+the residuals of the propensity score model. For a family with no scale
+estimator of its own that is the pooled root mean square
+\eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}}; for \code{\link[=dens_t]{dens_t()}} and
+\code{\link[=dens_laplace]{dens_laplace()}} it is the maximum likelihood scale of the family itself,
+which both take by default. \code{sigma_method = "rms"} asks either of them for
+the root mean square instead; see \strong{The spread of the conditional density}
+in \code{\link[=dens_t]{dens_t()}}'s documentation. \code{.sigma} supplies a spread of your own, a
+single standard deviation or one for each unit, which the model methods do
+not do on their own, and is refused alongside a family that estimates its
+own scale, being a second instruction about the same quantity. A family that
+estimates its own scale spreads both densities of the ratio, so the marginal
+density is read at that scale too and the two halves are densities of one
+width rather than two.
 
 Every model class is spread that same way, \code{\link[MASS:rlm]{MASS::rlm()}} included. \code{rlm}
 reports a robust scale estimate of its own in \code{fit$s}, which resists the
@@ -867,7 +877,7 @@ propagating the uncertainty of neither.
 \code{\link[=ipw]{ipw()}} models the conditional density with a single conditional variance,
 estimated jointly with the rest of the parameter vector, by the moment the
 pooled spread is the root of or, for a density built with
-\code{sigma_method = "mle"}, by the score of the t. A single
+\code{sigma_method = "mle"}, by the score of the family it names. A single
 \code{.sigma} is taken instead as a known constant: the weights are rebuilt at the
 number that was supplied, and the stacked system carries none of that
 number's uncertainty. An observation-level \code{.sigma} is a different function

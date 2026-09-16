@@ -157,7 +157,7 @@
       Error in `wt_ate()`:
       ! `numerator` = "integrated" cannot be used with `.sigma`.
       x The marginalization reads the conditional density the propensity model estimated at every unit's fitted mean, and `.sigma` replaces the spread of that density with one of your own.
-      i Leave `.sigma` unset to spread the conditional density by the pooled residual root mean square, or use `numerator` = "marginal", which takes a spread you supply.
+      i Leave `.sigma` unset to spread the conditional density by the estimator its family asks for, or use `numerator` = "marginal", which takes a spread you supply.
 
 ---
 
@@ -187,8 +187,9 @@
     Condition <propensity_density_error>
       Error in `wt_ate()`:
       ! `sigma_method = "mle"` cannot be used with `.sigma`.
-      x `sigma_method = "mle"` estimates the scale of the conditional density from the residuals of the propensity score model, and `.sigma` is a spread of your own that replaces it.
-      i Drop `.sigma` to estimate the scale under the t density, or build the density with `sigma_method = "rms"` to spread the one you supplied.
+      x `sigma_method = "mle"` estimates the scale of the "t" conditional density from the residuals of the propensity score model, and `.sigma` is a spread of your own that replaces it.
+      i A "t" density is spread by its own estimator unless you ask for another, so `sigma_method = "mle"` is what it carries whether or not you wrote it.
+      i Drop `.sigma` to estimate the scale under the "t" density, or build the density with `sigma_method = "rms"` to spread the one you supplied.
 
 # a likelihood with no maximum at a positive scale is refused
 

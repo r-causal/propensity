@@ -71,9 +71,10 @@ weights stabilized on models that read different terms, or that were fit
 to different values of the same terms, record different numerators and are
 combined the way any other disagreeing records are.
 \item \code{sigma}, where the residual spread of the conditional density came from:
-\code{"pooled"} for the pooled residual root mean square, \code{"mle"} for the scale
-a \code{\link[=dens_t]{dens_t()}} built with \code{sigma_method = "mle"} estimates under the t
-itself, and \code{"supplied"} for a \code{.sigma} the caller gave.
+\code{"pooled"} for the pooled residual root mean square, \code{"mle"} for a scale
+estimated under the family that reads it, which \code{\link[=dens_t]{dens_t()}} and
+\code{\link[=dens_laplace]{dens_laplace()}} take with \code{sigma_method = "mle"}, and \code{"supplied"} for a
+\code{.sigma} the caller gave.
 \item \code{sigma_value}, the single spread the caller supplied, and \code{NULL} for a
 spread estimated from the residuals, by either estimator, and for one
 supplied per observation. A spread that is one

@@ -4,8 +4,9 @@
 # center of the conditional density: one fitted conditional mean for each unit,
 # on the scale of the exposure, around which a single spread describes the
 # residuals. Every class here reports that mean through `fitted()`, whatever
-# link it was fit under, and every one of them is spread by the pooled residual
-# root mean square unless the caller supplies `.sigma`.
+# link it was fit under, and every one of them is spread by the estimator its
+# density's family asks for, the pooled residual root mean square unless the
+# caller supplies `.sigma` or the family estimates a scale of its own.
 #
 # Methods are resolved in class order, so a `gam` is read as a `gam` rather than
 # as the `glm` it inherits from, and an `rlm` as an `rlm` rather than as the
@@ -66,8 +67,8 @@ check_continuous_model_response <- function(
 # iteration, so its fitted values are read the way an `lm`'s are. Its spread is
 # not: `rlm` reports a robust scale estimate in `fit$s`, which resists the
 # extreme residuals rather than pooling all of them, while the density these
-# weights are a ratio of is spread by the pooled residual root mean square, as
-# it is for every other class. That is deliberate, and the robust scale is
+# weights are a ratio of is spread by the estimator its family asks for, as it
+# is for every other class. That is deliberate, and the robust scale is
 # available by passing `.sigma = fit$s`.
 #' @export
 extract_continuous_ps.rlm <- function(model, call = rlang::caller_env()) {

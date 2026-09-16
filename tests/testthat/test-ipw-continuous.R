@@ -136,6 +136,9 @@ fit_continuous_models <- function(
   } else {
     outcome_mod <- lm(msm_fmla, data = dat, weights = wts)
   }
+  # As in fit_outcome() in test-ipw-categorical.R: record the formula itself so
+  # the printed call reads the same on every R version.
+  outcome_mod$call$formula <- msm_fmla
 
   list(ps_mod = ps_mod, outcome_mod = outcome_mod, wts = wts)
 }
@@ -2067,8 +2070,8 @@ test_that("ipw() stacks a density the user wrote", {
 # ---- densities and numerators end to end ------------------------------------
 #
 # The combinations the sandwich has to rebuild weights for. Each is a family and
-# a numerator; the spread is pooled throughout, which is the case a fixed
-# `.sigma` and an observation-level one are held against below.
+# a numerator, each spread by the estimator its own family asks for, which is
+# the case a fixed `.sigma` and an observation-level one are held against below.
 continuous_density_cases <- list(
   list(.density = dens_t(4), numerator = "marginal"),
   list(.density = "laplace", numerator = "marginal"),
@@ -2195,8 +2198,17 @@ test_that("ipw_spec_continuous reads the density, numerator, and spread off the 
   spec <- ipw_spec_continuous(mods$ps_mod, mods$outcome_mod)
   expect_true(density_specs_agree(spec$density, dens_t(3)))
   expect_equal(spec$numerator, "integrated")
-  expect_equal(spec$sigma$kind, "pooled")
+
+  # A t is spread under itself and a normal by the root mean square, which is
+  # the normal's own scale parameter, so both estimators a fit can be made under
+  # are read back off the weights.
+  expect_equal(spec$sigma$kind, "mle")
   expect_null(spec$sigma$value)
+
+  normal <- fit_continuous_models(dat, .density = dens_normal())
+  normal_spec <- ipw_spec_continuous(normal$ps_mod, normal$outcome_mod)
+  expect_equal(normal_spec$sigma$kind, "pooled")
+  expect_null(normal_spec$sigma$value)
 
   fixed <- fit_continuous_models(dat, .sigma = 1.25)
   spec_fixed <- ipw_spec_continuous(fixed$ps_mod, fixed$outcome_mod)
@@ -2235,9 +2247,14 @@ test_that("the sandwich SE for a heavy-tailed integrated ratio tracks a bootstra
   skip_on_cran()
 
   dat <- sim_continuous(seed = 2024, n = 600)
+  # Written against the root mean square, which was the t's default when this
+  # block was first set down. The estimator is named here rather than left to
+  # the default so the block says which row it holds against the bootstrap: at
+  # `sigma_method = "mle"` the stacked system solves the t's own score for the
+  # scale, not the moment equation.
   mods <- fit_continuous_models(
     dat,
-    .density = dens_t(4),
+    .density = dens_t(4, sigma_method = "mle"),
     numerator = "integrated"
   )
   mest_se <- ipw(mods$ps_mod, mods$outcome_mod)$estimates$std.err
@@ -2247,8 +2264,46 @@ test_that("the sandwich SE for a heavy-tailed integrated ratio tracks a bootstra
     w <- continuous_weights(
       as.double(fitted(ps)),
       d$A,
-      .density = dens_t(4),
+      .density = dens_t(4, sigma_method = "mle"),
       numerator = "integrated"
+    )
+    msm <- lm(yc ~ A, data = d, weights = as.double(w))
+    unname(coef(msm)[["A"]])
+  }
+
+  withr::local_seed(918)
+  reps <- 400L
+  n <- nrow(dat)
+  boot <- vapply(
+    seq_len(reps),
+    function(i) {
+      boot_slope(dat[sample.int(n, n, replace = TRUE), , drop = FALSE])
+    },
+    numeric(1)
+  )
+
+  boot_se <- stats::sd(boot)
+  expect_lt(abs(mest_se - boot_se) / boot_se, 0.15)
+})
+
+test_that("the sandwich SE for a Laplace ratio tracks a bootstrap", {
+  skip_on_cran()
+
+  # The Laplace scale is the one estimator no bootstrap held the sandwich
+  # against, and it is the arm the simulation found the largest coverage error
+  # on when the scale was read by the moment instead. Its row is a different
+  # shape from the t's, `abs(r) - sqrt(sigma2)` rather than a score, and it is
+  # stacked twice, once for the conditional scale and once for the marginal.
+  dat <- sim_continuous(seed = 2024, n = 600)
+  mods <- fit_continuous_models(dat, .density = dens_laplace())
+  mest_se <- ipw(mods$ps_mod, mods$outcome_mod)$estimates$std.err
+
+  boot_slope <- function(d) {
+    ps <- lm(A ~ x1 + x2, data = d)
+    w <- continuous_weights(
+      as.double(fitted(ps)),
+      d$A,
+      .density = dens_laplace()
     )
     msm <- lm(yc ~ A, data = d, weights = as.double(w))
     unname(coef(msm)[["A"]])
@@ -2387,8 +2442,11 @@ test_that("ipw() continuous m-estimation standard errors match WeightIt", {
 
   densities <- list(
     list(ours = "normal", theirs = NULL),
-    list(ours = dens_t(df = 4), theirs = "dt_4"),
-    list(ours = "laplace", theirs = "dlaplace")
+    # WeightIt standardizes by the root mean square whatever the family, so the
+    # parity is written at that estimator rather than at the scale each family
+    # asks for on its own.
+    list(ours = dens_t(df = 4, sigma_method = "rms"), theirs = "dt_4"),
+    list(ours = dens_laplace(sigma_method = "rms"), theirs = "dlaplace")
   )
 
   for (dens in densities) {
@@ -2452,8 +2510,22 @@ test_that("ipw() solves the scale equation of a t spread by maximum likelihood",
   # the number it estimates supplied as a constant. The weights are equal, so
   # the point estimates are, and what differs between the two fits is what the
   # sandwich accounts for.
-  mle <- fit_continuous_models(dat, .density = dens_t(6, sigma_method = "mle"))
-  fixed <- fit_continuous_models(dat, .density = dens_t(6), .sigma = scale)
+  #
+  # Unstabilized, so that the conditional density is the whole of the ratio. A
+  # marginal numerator is read at the estimator the family it names asks for,
+  # which a spread supplied for the conditional density does not replace, so the
+  # two arms would divide by the same number and multiply by different ones.
+  mle <- fit_continuous_models(
+    dat,
+    .density = dens_t(6, sigma_method = "mle"),
+    stabilize = FALSE
+  )
+  fixed <- fit_continuous_models(
+    dat,
+    .density = dens_t(6, sigma_method = "rms"),
+    .sigma = scale,
+    stabilize = FALSE
+  )
   expect_equal(as.double(mle$wts), as.double(fixed$wts), tolerance = 1e-8)
 
   res_mle <- ipw(mle$ps_mod, mle$outcome_mod)
@@ -2763,6 +2835,50 @@ test_that("a stacked continuous numerator block solves over the rows .data keeps
     unname(coef(refit)),
     unname(coef(fits$num_mod)),
     tolerance = 1e-6
+  )))
+})
+
+test_that("a numerator model's spread is stacked at the scale its family asks for", {
+  dat <- sim_continuous()
+  num_mod <- lm(A ~ x1, data = dat)
+  fits <- fit_continuous_models(
+    dat,
+    stabilize = num_mod,
+    .density = dens_laplace()
+  )
+
+  # Both halves of the ratio are Laplace densities, so the numerator's own block
+  # carries the scale of a Laplace fit to its residuals rather than the second
+  # moment a normal's block carries. The weights and the block's seed are two
+  # computations of that one quantity, and `ipw_weights_at_init()` refuses at
+  # 1e-6 when they part, so a route that corrected the weights alone would not
+  # reach this line.
+  res <- muffle_coverage_warning(ipw(
+    fits$ps_mod,
+    fits$outcome_mod,
+    .data = dat
+  ))
+
+  expect_s3_class(res, "ipw")
+
+  theta <- coef(res$fit)
+  expect_true("sigma2_n" %in% names(theta))
+
+  # The row the block solves is the Laplace score, whose root is the mean
+  # absolute residual, squared because the parameter carries a squared scale.
+  expect_equal(
+    unname(theta[["sigma2_n"]]),
+    mean(abs(residuals(num_mod)))^2,
+    tolerance = 1e-8
+  )
+
+  # The second moment is what that parameter would hold if the numerator were
+  # still read at the estimator the normal asks for, and these residuals tell
+  # the two apart.
+  expect_false(isTRUE(all.equal(
+    unname(theta[["sigma2_n"]]),
+    mean(residuals(num_mod)^2),
+    tolerance = 1e-3
   )))
 })
 

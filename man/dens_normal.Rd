@@ -10,21 +10,23 @@
 \usage{
 dens_normal()
 
-dens_laplace()
+dens_laplace(sigma_method = c("mle", "rms"))
 
-dens_t(df, sigma_method = c("rms", "mle"))
+dens_t(df, sigma_method = c("mle", "rms"))
 
 dens_kernel(bw = "nrd0", adjust = 1, kernel = "gaussian", n = 512)
 
 dens_fn(f)
 }
 \arguments{
+\item{sigma_method}{How the spread of the conditional density is estimated
+from the residuals of the propensity score model, either \code{"rms"}, the root
+mean square, or \code{"mle"}, the scale estimated under the family itself, which
+both \code{dens_laplace()} and \code{dens_t()} take by default. See the section
+below.}
+
 \item{df}{Degrees of freedom for Student's t, a single positive, finite
 number.}
-
-\item{sigma_method}{How the spread of the conditional density is estimated
-from the residuals of the propensity score model, either \code{"rms"} or
-\code{"mle"}. See the section below.}
 
 \item{bw}{The bandwidth passed to \code{\link[stats:density]{stats::density()}}: a single positive
 number, or the name of one of its selection rules
@@ -48,8 +50,8 @@ An object of class \code{propensity_density}: a list with the elements
 \code{family}, the name of the family; \code{params}, the parameters that identify
 it, which is an empty list for a family that takes none; and \code{fn}, the
 function that evaluates the density, which is \code{NULL} for \code{dens_kernel()}.
-\code{dens_t()} carries a fourth element, \code{sigma_method}, the name of the
-estimator its scale is read with.
+\code{dens_t()} and \code{dens_laplace()} carry a fourth element, \code{sigma_method},
+the name of the estimator their scale is read with.
 }
 \description{
 Weights for a continuous exposure are a ratio of densities. Both densities
@@ -68,10 +70,13 @@ is wrapped with \code{dens_fn()}.
 \item \code{dens_normal()} is the standard normal density, the default.
 \item \code{dens_laplace()} is the standard Laplace density,
 \eqn{\exp(-|z|) / 2}, which puts more mass in the tails than the normal.
+Its scale is estimated under the Laplace itself, where it is the mean
+absolute residual, or by the root mean square of the residuals, which is
+the spread every family without an estimator of its own is read at.
 \item \code{dens_t()} is Student's t density with \code{df} degrees of freedom, heavier
-tailed still, and heavier the smaller \code{df} is. Its scale is estimated by
-the root mean square of the residuals, as every other family's spread is,
-or by maximum likelihood under the t itself.
+tailed still, and heavier the smaller \code{df} is. Its scale is estimated
+under the t itself, by maximum likelihood, or by the root mean square of
+the residuals.
 \item \code{dens_kernel()} is a kernel density estimate of the standardized
 residuals, fit with \code{\link[stats:density]{stats::density()}} and interpolated to each
 observation. It assumes no family at all, at the cost of a density that
@@ -82,37 +87,49 @@ estimate.
 \item \code{dens_fn()} is a density you write yourself.
 }
 }
-\section{The spread of a t density}{
+\section{The spread of the conditional density}{
 
 
 Both densities are evaluated on a residual standardized by a spread, and for
 the conditional density that spread is estimated from the residuals of the
-propensity score model. Every family takes the root mean square of those
-residuals, which is \code{sigma_method = "rms"}, the default, and is the maximum
-likelihood estimator of the spread of a normal density.
+propensity score model. A family with no scale estimator of its own takes
+the root mean square of those residuals, which is \code{sigma_method = "rms"} and
+is the maximum likelihood estimator of the spread of a normal density.
 
-It is not the maximum likelihood estimator of the scale of a t. The scale of
-a t is smaller than its standard deviation by a factor that depends on \code{df},
+It is not the maximum likelihood estimator of the scale of a heavier-tailed
+family. The scale of such a family is smaller than its standard deviation,
 and the root mean square is pulled outward by the large residuals a heavy
 tail produces, which is what the family was chosen to accommodate.
-\code{sigma_method = "mle"} estimates the scale under the t itself, as the root of
+\code{sigma_method = "mle"} estimates the scale under the family itself, and both
+\code{dens_laplace()} and \code{dens_t()} take it by default, since the spread the
+density is divided by is the scale parameter of the family reading it. For
+\code{dens_laplace()} it is the mean absolute residual. For \code{dens_t()} it is the
+root of
 \eqn{\sum_i \left[(\nu + 1) r_i^2 / (\nu \sigma^2 + r_i^2)\right] = n},
 where \eqn{r_i} is the residual and \eqn{\nu} is \code{df}. Each residual enters
 that sum through a bounded term, so a residual far out in the tail moves the
 estimate by less than it moves the root mean square. Prefer it when the
-residuals are heavy tailed, which is the case the t family is for; the two
+residuals are heavy tailed, which is the case these families are for; the two
 estimators answer the same question, and answer it alike, as \code{df} grows and
 the t approaches the normal.
 
-The choice describes the conditional density alone. The marginal density
-that stabilizes the weights is the exposure's own, read at the exposure's
-mean and root mean square, whatever the conditional spread was estimated by.
-A scale estimated by maximum likelihood is recorded by \code{\link[=density_meta]{density_meta()}} as
-\code{sigma = "mle"}, and \code{\link[=ipw]{ipw()}} estimates it alongside the propensity score
-model's coefficients, solving the equation above as part of its stacked
-system so that the standard errors account for it. Supplying a \code{.sigma} says
-the spread is a number of your own rather than one estimated from the
-residuals, so the two cannot be given together.
+\code{dens_normal()} offers no such choice, because the root mean square is
+already its maximum likelihood estimator. Neither do \code{dens_kernel()} and
+\code{dens_fn()}: a kernel is fit to the standardized residuals and divided by the
+same spread, so the spread cancels up to the grid the estimate is
+interpolated on, and a density you write yourself names no family an
+estimator could be derived from.
+
+The choice describes both densities of the ratio. The marginal density that
+stabilizes the weights is the exposure's own, read at the exposure's mean and
+at the spread the same estimator gives for it, so the two halves of the ratio
+are densities of the same width. A scale estimated by maximum likelihood is
+recorded by \code{\link[=density_meta]{density_meta()}} as \code{sigma = "mle"}, and \code{\link[=ipw]{ipw()}} estimates it
+alongside the propensity score model's coefficients, solving the equation it
+is the root of as part of its stacked system so that the standard errors
+account for it. Supplying a \code{.sigma} says the spread is a number of your own
+rather than one estimated from the residuals, so the two cannot be given
+together.
 }
 
 \examples{
@@ -121,6 +138,8 @@ dens_normal()
 dens_t(df = 4)
 
 dens_t(df = 4, sigma_method = "mle")
+
+dens_laplace(sigma_method = "rms")
 
 dens_kernel(adjust = 1.5)
 

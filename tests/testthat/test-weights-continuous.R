@@ -172,11 +172,16 @@ test_that("Student's t weights are the t density ratio computed by hand", {
   f_den <- stats::dt(z, df = 4) / sigma
   f_num <- stats::dt(continuous_density_z_a(), df = 4) / sd_a
 
-  stabilized <- continuous_density_wt(.density = dens_t(df = 4))
+  # Both halves of the oracle are spread by the root mean square, so the family
+  # is written at that estimator rather than at the scale a t asks for on its
+  # own. What is under test here is the density, not the spread it is read at.
+  stabilized <- continuous_density_wt(
+    .density = dens_t(df = 4, sigma_method = "rms")
+  )
   expect_equal(as.numeric(stabilized), f_num / f_den, tolerance = 1e-12)
 
   unstabilized <- continuous_density_wt(
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     stabilize = FALSE
   )
   expect_equal(as.numeric(unstabilized), 1 / f_den, tolerance = 1e-12)
@@ -192,12 +197,16 @@ test_that("Student's t weights are the t density ratio computed by hand", {
 })
 
 test_that("Laplace weights are the Laplace density ratio computed by hand", {
-  z <- continuous_density_z()
-  sigma <- continuous_density_pooled()
-  sd_a <- continuous_density_sd_a()
+  exposure <- continuous_density_data$exposure
+  mu <- continuous_density_data$mu
 
-  f_den <- exp(-abs(z)) / 2 / sigma
-  f_num <- exp(-abs(continuous_density_z_a())) / 2 / sd_a
+  # The Laplace is read at its own scale, the mean absolute residual, on both
+  # halves of the ratio.
+  scale <- mean(abs(exposure - mu))
+  scale_a <- mean(abs(exposure - mean(exposure)))
+
+  f_den <- exp(-abs((exposure - mu) / scale)) / 2 / scale
+  f_num <- exp(-abs((exposure - mean(exposure)) / scale_a)) / 2 / scale_a
 
   by_string <- continuous_density_wt(.density = "laplace")
   by_spec <- continuous_density_wt(.density = dens_laplace())
@@ -234,7 +243,9 @@ test_that("a density the user writes is evaluated as written", {
   as_function <- continuous_density_wt(
     .density = function(z) stats::dt(z, df = 4)
   )
-  as_spec <- continuous_density_wt(.density = dens_t(df = 4))
+  as_spec <- continuous_density_wt(
+    .density = dens_t(df = 4, sigma_method = "rms")
+  )
 
   expect_equal(
     as.numeric(as_function),
@@ -301,7 +312,7 @@ test_that("a supplied spread scales the density it is given to", {
   expect_equal(
     as.numeric(continuous_density_wt(
       .sigma = scalar,
-      .density = dens_t(df = 4)
+      .density = dens_t(df = 4, sigma_method = "rms")
     )),
     f_num / f_den_scalar,
     tolerance = 1e-12
@@ -313,7 +324,7 @@ test_that("a supplied spread scales the density it is given to", {
   expect_equal(
     as.numeric(continuous_density_wt(
       .sigma = per_observation,
-      .density = dens_t(df = 4)
+      .density = dens_t(df = 4, sigma_method = "rms")
     )),
     f_num / f_den_each,
     tolerance = 1e-12
@@ -324,7 +335,7 @@ test_that("a supplied spread scales the density it is given to", {
   expect_equal(
     as.numeric(continuous_density_wt(
       .sigma = per_observation,
-      .density = dens_t(df = 4),
+      .density = dens_t(df = 4, sigma_method = "rms"),
       stabilize = FALSE
     )),
     1 / f_den_each,
@@ -338,7 +349,7 @@ test_that("a stabilization score replaces the numerator of any family", {
   f_den <- stats::dt(continuous_density_z(), df = 4) / sigma
 
   weights <- continuous_density_wt(
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     stabilization_score = score
   )
 
@@ -676,14 +687,23 @@ test_that("the refusal of a matrix of conditional means reads plainly", {
 
 test_that("the weights record the density family they were built from", {
   families <- list(
-    normal = list(input = "normal", recorded = "normal"),
-    laplace = list(input = dens_laplace(), recorded = "laplace"),
-    t = list(input = dens_t(df = 4), recorded = "t(df = 4)"),
+    normal = list(input = "normal", recorded = "normal", sigma = "pooled"),
+    laplace = list(
+      input = dens_laplace(),
+      recorded = "laplace",
+      sigma = "mle"
+    ),
+    t = list(input = dens_t(df = 4), recorded = "t(df = 4)", sigma = "mle"),
     kernel = list(
       input = dens_kernel(adjust = 1.5),
-      recorded = 'kernel(bw = "nrd0", adjust = 1.5, kernel = "gaussian", n = 512)'
+      recorded = 'kernel(bw = "nrd0", adjust = 1.5, kernel = "gaussian", n = 512)',
+      sigma = "pooled"
     ),
-    fn = list(input = function(z) stats::dlogis(z), recorded = "function")
+    fn = list(
+      input = function(z) stats::dlogis(z),
+      recorded = "function",
+      sigma = "pooled"
+    )
   )
 
   for (family in families) {
@@ -695,10 +715,12 @@ test_that("the weights record the density family they were built from", {
     expect_identical(format(record$density), family$recorded)
     expect_identical(exposure_type(weights), "continuous")
 
-    # The rest of the record is what it was: the family says nothing about
-    # what stabilized the weights or where the spread came from.
+    # The family says nothing about what stabilized the weights, and says where
+    # the spread came from only when it has an estimator of its own: a family
+    # read at the moment estimator records the pooled spread whether it took
+    # that estimator for want of another or asked for it.
     expect_identical(record$numerator, "marginal")
-    expect_identical(record$sigma, "pooled")
+    expect_identical(record$sigma, family$sigma)
   }
 })
 
@@ -1052,7 +1074,7 @@ test_that("a trimmed propensity score leaves the units it set aside missing", {
 
   families <- list(
     list(
-      input = dens_t(df = 4),
+      input = dens_t(df = 4, sigma_method = "rms"),
       g = function(values) stats::dt(values, df = 4)
     ),
     list(input = "kernel", g = continuous_density_kde)
@@ -1452,12 +1474,15 @@ test_that("the denominator is the one WeightIt divides by", {
       g = stats::dnorm(z)
     ),
     list(
-      ours = dens_t(df = 4),
+      # WeightIt standardizes by the root mean square whatever the family, so
+      # the parity is written at that estimator rather than at the scale each
+      # family asks for on its own.
+      ours = dens_t(df = 4, sigma_method = "rms"),
       theirs = "dt_4",
       g = stats::dt(z, df = 4)
     ),
     list(
-      ours = "laplace",
+      ours = dens_laplace(sigma_method = "rms"),
       theirs = "dlaplace",
       g = exp(-abs(z)) / 2
     )
@@ -1537,9 +1562,9 @@ continuous_integrated_numerator <- function(
 continuous_integrated_wt <- function(
   g,
   exposure = continuous_density_data$exposure,
-  mu = continuous_density_data$mu
+  mu = continuous_density_data$mu,
+  sigma = sqrt(mean((exposure - mu)^2))
 ) {
-  sigma <- sqrt(mean((exposure - mu)^2))
   f_den <- g((exposure - mu) / sigma) / sigma
   f_num <- continuous_integrated_numerator(
     g,
@@ -1549,6 +1574,21 @@ continuous_integrated_wt <- function(
   )
 
   f_num / f_den
+}
+
+# The same ratio for the Laplace, which is read at the scale of the Laplace
+# rather than at the root mean square. An integrated numerator reads the
+# conditional density in both places, so the one scale spreads the whole ratio.
+continuous_integrated_laplace_wt <- function(
+  exposure = continuous_density_data$exposure,
+  mu = continuous_density_data$mu
+) {
+  continuous_integrated_wt(
+    function(z) exp(-abs(z)) / 2,
+    exposure = exposure,
+    mu = mu,
+    sigma = mean(abs(exposure - mu))
+  )
 }
 
 # The integrated ratio for a kernel, which is one estimate rather than two: the
@@ -1592,13 +1632,29 @@ continuous_integrated_kernel_wt <- function(
 }
 
 test_that("the integrated numerator is the grid marginalization by hand", {
+  # An integrated numerator reads the conditional density in both places, so the
+  # whole ratio is spread by the estimator the family it names asks for.
+  pooled <- continuous_density_pooled()
+  laplace_scale <- mean(abs(
+    continuous_density_data$exposure - continuous_density_data$mu
+  ))
+
   families <- list(
-    list(input = "normal", g = function(z) stats::dnorm(z)),
-    list(input = dens_t(df = 4), g = function(z) stats::dt(z, df = 4)),
-    list(input = "laplace", g = function(z) exp(-abs(z)) / 2),
+    list(input = "normal", g = function(z) stats::dnorm(z), sigma = pooled),
+    list(
+      input = dens_t(df = 4, sigma_method = "rms"),
+      g = function(z) stats::dt(z, df = 4),
+      sigma = pooled
+    ),
+    list(
+      input = "laplace",
+      g = function(z) exp(-abs(z)) / 2,
+      sigma = laplace_scale
+    ),
     list(
       input = function(z) stats::dlogis(z),
-      g = function(z) stats::dlogis(z)
+      g = function(z) stats::dlogis(z),
+      sigma = pooled
     )
   )
 
@@ -1610,7 +1666,7 @@ test_that("the integrated numerator is the grid marginalization by hand", {
 
     expect_equal(
       as.numeric(weights),
-      continuous_integrated_wt(family$g),
+      continuous_integrated_wt(family$g, sigma = family$sigma),
       tolerance = 1e-12
     )
   }
@@ -1859,7 +1915,7 @@ test_that("the integrated numerator reads only the units with a residual", {
   # those units make on their own, and a unit with no residual has no weight.
   families <- list(
     list(
-      input = dens_t(df = 4),
+      input = dens_t(df = 4, sigma_method = "rms"),
       oracle = function(exposure, mu) {
         continuous_integrated_wt(
           function(z) stats::dt(z, df = 4),
@@ -2178,15 +2234,26 @@ test_that("an interpolated numerator that dips below zero is refused", {
 # ---- what the integrated weights record -------------------------------------
 
 test_that("integrated weights record the numerator they were built from", {
-  for (family in list("normal", dens_t(df = 4), "laplace", "kernel")) {
+  families <- list(
+    list(input = "normal", sigma = "pooled"),
+    list(input = dens_t(df = 4), sigma = "mle"),
+    list(input = "laplace", sigma = "mle"),
+    list(input = "kernel", sigma = "pooled")
+  )
+
+  for (family in families) {
     record <- density_meta(continuous_density_wt(
-      .density = family,
+      .density = family$input,
       numerator = "integrated"
     ))
 
     expect_s3_class(record, "propensity_density_meta")
     expect_identical(record$numerator, "integrated")
-    expect_identical(record$sigma, "pooled")
+
+    # An integrated numerator reads the conditional density in both places, so
+    # it carries the conditional spread and records the estimator that spread
+    # was reached by.
+    expect_identical(record$sigma, family$sigma)
   }
 
   # And the marginal numerator still records itself, written out or not.
@@ -2251,7 +2318,7 @@ test_that("the numerator reaches the weights through a fitted model", {
     exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     numerator = "integrated"
   )
 
@@ -2275,7 +2342,7 @@ test_that("the numerator reaches the weights through a data frame", {
 
   expect_equal(
     as.numeric(from_frame),
-    continuous_integrated_wt(function(z) exp(-abs(z)) / 2),
+    continuous_integrated_laplace_wt(),
     tolerance = 1e-12
   )
   expect_identical(density_meta(from_frame)$numerator, "integrated")
@@ -2287,7 +2354,7 @@ test_that("censoring weights take an integrated numerator of their own", {
     continuous_density_data$exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     numerator = "integrated"
   )
 
@@ -2347,7 +2414,7 @@ test_that("the numerator reaches the weights through a modified score", {
       problem$exposure,
       exposure_type = "continuous",
       stabilize = TRUE,
-      .density = dens_t(df = 4),
+      .density = dens_t(df = 4, sigma_method = "rms"),
       numerator = "integrated"
     )
 
@@ -2376,7 +2443,7 @@ test_that("censoring weights carry a numerator through their other methods", {
 
   expect_equal(
     as.numeric(from_frame),
-    continuous_integrated_wt(function(z) exp(-abs(z)) / 2),
+    continuous_integrated_laplace_wt(),
     tolerance = 1e-12
   )
   expect_identical(estimand(from_frame), "uncensored")
@@ -2393,7 +2460,7 @@ test_that("censoring weights carry a numerator through their other methods", {
     continuous_density_data$exposure,
     exposure_type = "continuous",
     stabilize = TRUE,
-    .density = dens_t(df = 4),
+    .density = dens_t(df = 4, sigma_method = "rms"),
     numerator = "integrated"
   )
 
@@ -2426,7 +2493,7 @@ test_that("censoring weights carry a numerator through a modified score", {
       problem$exposure,
       exposure_type = "continuous",
       stabilize = TRUE,
-      .density = dens_t(df = 4),
+      .density = dens_t(df = 4, sigma_method = "rms"),
       numerator = "integrated"
     )
 
@@ -2466,8 +2533,11 @@ test_that("integrated weights are the weights WeightIt gives", {
   # the scale ever drifts.
   families <- list(
     list(ours = "normal", theirs = NULL),
-    list(ours = dens_t(df = 4), theirs = "dt_4"),
-    list(ours = "laplace", theirs = "dlaplace"),
+    # WeightIt standardizes by the root mean square whatever the family, so the
+    # parity is written at that estimator rather than at the scale each family
+    # asks for on its own.
+    list(ours = dens_t(df = 4, sigma_method = "rms"), theirs = "dt_4"),
+    list(ours = dens_laplace(sigma_method = "rms"), theirs = "dlaplace"),
     list(ours = "kernel", theirs = "kernel")
   )
 
@@ -2535,6 +2605,12 @@ continuous_t_data <- local({
 
 continuous_t_residuals <- continuous_t_data$exposure - continuous_t_data$mu
 
+# The t density on the exposure's own scale: the standard density read at the
+# residual standardized by `scale`, divided by the scale that standardized it.
+t_density <- function(residuals, scale, df) {
+  stats::dt(residuals / scale, df = df) / scale
+}
+
 # Unstabilized weights for that problem, which are the conditional density and
 # nothing else. The marginal density that stabilizes weights is read at the
 # exposure's own moments, and what is under test here is the spread of the
@@ -2557,13 +2633,16 @@ test_that("the t scale by maximum likelihood is the root of the t score", {
   scale <- t_scale_mle(continuous_t_residuals, df = 3)
 
   mle <- continuous_t_wt(.density = dens_t(3, sigma_method = "mle"))
-  oracle <- continuous_t_wt(.density = dens_t(3), .sigma = scale)
+  oracle <- continuous_t_wt(
+    .density = dens_t(3, sigma_method = "rms"),
+    .sigma = scale
+  )
 
   expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
 })
 
 test_that("a maximum likelihood scale parts from the root mean square in heavy tails", {
-  rms <- continuous_t_wt(.density = dens_t(3))
+  rms <- continuous_t_wt(.density = dens_t(3, sigma_method = "rms"))
   mle <- continuous_t_wt(.density = dens_t(3, sigma_method = "mle"))
 
   relative <- abs(as.numeric(mle) / as.numeric(rms) - 1)
@@ -2584,7 +2663,10 @@ test_that("the two spreads meet as the t approaches the normal", {
 
   expect_equal(scale, continuous_density_pooled(), tolerance = 0.005)
 
-  rms <- continuous_density_wt(stabilize = FALSE, .density = dens_t(1000))
+  rms <- continuous_density_wt(
+    stabilize = FALSE,
+    .density = dens_t(1000, sigma_method = "rms")
+  )
   mle <- continuous_density_wt(
     stabilize = FALSE,
     .density = dens_t(1000, sigma_method = "mle")
@@ -2593,15 +2675,52 @@ test_that("the two spreads meet as the t approaches the normal", {
   expect_lt(max(abs(as.numeric(mle) / as.numeric(rms) - 1)), 0.01)
 })
 
-test_that("the t family is spread by the root mean square unless asked otherwise", {
-  # The default is the estimator every family takes, so weights written the way
-  # they have always been written are the weights they have always been.
+test_that("a t denominator is read at the scale of the t", {
+  residuals <- continuous_t_residuals
+  scale <- t_scale_mle(residuals, df = 4)
+
+  # The whole of an unstabilized ratio is the conditional density, so the
+  # weights say on their own what spread that density was read at, held against
+  # an oracle that maximizes the likelihood by search rather than by solving the
+  # equation the package solves.
+  weights <- continuous_t_wt(.density = dens_t(df = 4))
+
+  expect_equal(
+    as.numeric(weights),
+    1 / t_density(residuals, scale, df = 4),
+    tolerance = 1e-8
+  )
+
+  # The spread the weights were built at is the scale parameter of the t rather
+  # than the root mean square, and these residuals tell the two apart: a t with
+  # four degrees of freedom has a variance of twice its squared scale.
+  rms <- sqrt(mean(residuals^2))
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    1 / t_density(residuals, rms, df = 4),
+    tolerance = 1e-2
+  )))
+})
+
+test_that("the t family is spread under itself unless asked otherwise", {
+  # The density is read at a residual standardized by the spread and divided by
+  # that spread, so the spread is the scale parameter of the family reading it.
+  # The root mean square is the scale parameter of the normal alone, and a
+  # caller who wants a t spread by it says so.
   default <- continuous_t_wt(.density = dens_t(6))
   asked <- continuous_t_wt(.density = dens_t(6, sigma_method = "rms"))
+  under_mle <- continuous_t_wt(.density = dens_t(6, sigma_method = "mle"))
 
-  expect_identical(as.numeric(default), as.numeric(asked))
-  expect_identical(density_meta(default)$sigma, "pooled")
+  expect_identical(density_meta(default)$sigma, "mle")
   expect_identical(density_meta(asked)$sigma, "pooled")
+
+  expect_identical(as.numeric(default), as.numeric(under_mle))
+  expect_false(isTRUE(all.equal(
+    as.numeric(default),
+    as.numeric(asked),
+    tolerance = 1e-3
+  )))
 })
 
 test_that("weights record a maximum likelihood spread as a source of its own", {
@@ -2618,18 +2737,17 @@ test_that("weights record a maximum likelihood spread as a source of its own", {
   expect_null(density_meta(mle)$sigma_value)
 })
 
-test_that("a maximum likelihood scale spreads the conditional density alone", {
+test_that("a maximum likelihood scale spreads the density it is read under", {
   # `.sigma` and `sigma_method` describe the same thing: the spread of the
-  # conditional density the weights divide by. The marginal density that
-  # stabilizes them is the exposure's own, read at the exposure's own mean and
-  # root mean square, which neither of them has ever changed.
+  # conditional density the weights divide by, which is the whole of an
+  # unstabilized ratio.
   scale <- t_scale_mle(continuous_t_residuals, df = 6)
 
-  stabilized <- wt_ate(
+  mle <- wt_ate(
     continuous_t_data$mu,
     continuous_t_data$exposure,
     exposure_type = "continuous",
-    stabilize = TRUE,
+    stabilize = FALSE,
     .density = dens_t(6, sigma_method = "mle")
   )
   oracle <- wt_ate(
@@ -2637,11 +2755,33 @@ test_that("a maximum likelihood scale spreads the conditional density alone", {
     continuous_t_data$exposure,
     .sigma = scale,
     exposure_type = "continuous",
-    stabilize = TRUE,
-    .density = dens_t(6)
+    stabilize = FALSE,
+    .density = dens_t(6, sigma_method = "rms")
   )
 
-  expect_equal(as.numeric(stabilized), as.numeric(oracle), tolerance = 1e-8)
+  expect_equal(as.numeric(mle), as.numeric(oracle), tolerance = 1e-8)
+
+  # The marginal density that stabilizes the weights is the exposure's own, read
+  # at its own mean and at the spread the same estimator gives for it, so the
+  # two halves of the ratio are densities of one width rather than two.
+  exposure <- continuous_t_data$exposure
+  scale_a <- t_scale_mle(exposure - mean(exposure), df = 6)
+
+  stabilized <- wt_ate(
+    continuous_t_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = TRUE,
+    .density = dens_t(6, sigma_method = "mle")
+  )
+
+  expect_equal(
+    as.numeric(stabilized),
+    stats::dt((exposure - mean(exposure)) / scale_a, df = 6) /
+      scale_a *
+      as.numeric(mle),
+    tolerance = 1e-8
+  )
 })
 
 test_that("a maximum likelihood scale is fit on the residuals that are there", {
@@ -2656,7 +2796,7 @@ test_that("a maximum likelihood scale is fit on the residuals that are there", {
   )
   oracle <- continuous_t_wt(
     exposure = exposure,
-    .density = dens_t(4),
+    .density = dens_t(4, sigma_method = "rms"),
     .sigma = scale
   )
 
@@ -2676,9 +2816,13 @@ test_that("a spread supplied and a spread estimated under the density are refuse
     continuous_t_wt(.density = dens_t(4, sigma_method = "mle"), .sigma = 0.9)
   )
 
-  # The default estimator takes a supplied spread as every other family does, so
-  # what is refused is the pairing rather than the family.
-  expect_no_error(continuous_t_wt(.density = dens_t(4), .sigma = 0.9))
+  # A family asked for the root mean square takes a supplied spread as every
+  # family without an estimator of its own does, so what is refused is the
+  # pairing rather than the family.
+  expect_no_error(continuous_t_wt(
+    .density = dens_t(4, sigma_method = "rms"),
+    .sigma = 0.9
+  ))
 })
 
 # A propensity score model that all but interpolates its exposure: every unit
@@ -2716,7 +2860,7 @@ test_that("a maximum likelihood scale far below the root mean square is found", 
     exposure,
     exposure_type = "continuous",
     stabilize = FALSE,
-    .density = dens_t(4),
+    .density = dens_t(4, sigma_method = "rms"),
     .sigma = scale
   )
 
@@ -2755,6 +2899,261 @@ test_that("a likelihood with no maximum at a positive scale is refused", {
       .density = dens_t(20, sigma_method = "mle")
     )
   )
+})
+
+# ---- the Laplace scale by maximum likelihood --------------------------------
+
+# A continuous-exposure problem whose residuals follow the family the weights
+# assert. The scale of a Laplace is its mean absolute deviation and its standard
+# deviation is sqrt(2) times that, so the two estimators of the spread stand far
+# enough apart here that no test below can pass on one where it meant the other.
+continuous_laplace_data <- local({
+  set.seed(20260904)
+
+  n <- 300
+  x <- rnorm(n)
+  u <- runif(n) - 0.5
+  exposure <- 1 + 0.7 * x - sign(u) * log(1 - 2 * abs(u))
+
+  list(
+    x = x,
+    exposure = exposure,
+    mu = as.numeric(fitted(lm(exposure ~ x)))
+  )
+})
+
+continuous_laplace_residuals <- continuous_laplace_data$exposure -
+  continuous_laplace_data$mu
+
+# Weights for that problem. They are unstabilized unless the test asks for the
+# marginal numerator, so that the conditional density is on its own wherever
+# what is under test is the conditional spread.
+continuous_laplace_wt <- function(
+  ...,
+  exposure = continuous_laplace_data$exposure,
+  stabilize = FALSE
+) {
+  wt_ate(
+    continuous_laplace_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = stabilize,
+    ...
+  )
+}
+
+# The Laplace density on the exposure's own scale: the standard density read at
+# the residual standardized by `scale`, divided by the scale that standardized
+# it.
+laplace_density <- function(residuals, scale) {
+  exp(-abs(residuals / scale)) / 2 / scale
+}
+
+test_that("a Laplace denominator is read at the scale of the Laplace", {
+  residuals <- continuous_laplace_residuals
+  scale <- mean(abs(residuals))
+
+  # The closed form is where the Laplace likelihood is maximized, held against
+  # an oracle that maximizes it by search.
+  expect_equal(scale, laplace_scale_mle(residuals), tolerance = 1e-6)
+
+  weights <- continuous_laplace_wt(.density = dens_laplace())
+
+  expect_equal(
+    as.numeric(weights),
+    1 / laplace_density(residuals, scale),
+    tolerance = 1e-12
+  )
+
+  # The spread the weights were built at is the scale rather than the standard
+  # deviation, and these residuals tell the two apart.
+  rms <- sqrt(mean(residuals^2))
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    1 / laplace_density(residuals, rms),
+    tolerance = 1e-2
+  )))
+})
+
+test_that("a Laplace denominator asked for the root mean square is read at it", {
+  residuals <- continuous_laplace_residuals
+  rms <- sqrt(mean(residuals^2))
+
+  weights <- continuous_laplace_wt(
+    .density = dens_laplace(sigma_method = "rms")
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    1 / laplace_density(residuals, rms),
+    tolerance = 1e-12
+  )
+
+  # Which is the same ratio as the one a caller who supplied that number by hand
+  # would be given, since the estimator is the only thing the setting changes.
+  supplied <- continuous_laplace_wt(
+    .density = dens_laplace(sigma_method = "rms"),
+    .sigma = rms
+  )
+
+  expect_equal(as.numeric(weights), as.numeric(supplied), tolerance = 1e-12)
+})
+
+test_that("the marginal numerator of a Laplace ratio is read at the same estimator", {
+  exposure <- continuous_laplace_data$exposure
+  residuals <- continuous_laplace_residuals
+  scale <- mean(abs(residuals))
+  mu_a <- mean(exposure)
+  scale_a <- mean(abs(exposure - mu_a))
+
+  weights <- continuous_laplace_wt(
+    .density = dens_laplace(),
+    stabilize = TRUE
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    laplace_density(exposure - mu_a, scale_a) /
+      laplace_density(residuals, scale),
+    tolerance = 1e-12
+  )
+
+  # The numerator's location is the exposure's own mean, as it has always been;
+  # its spread alone is what the family decides. A numerator spread by the root
+  # mean square while the denominator is spread by the scale is a ratio of two
+  # densities of different widths, and is the ratio these weights are not.
+  sd_a <- sqrt(mean((exposure - mu_a)^2))
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    laplace_density(exposure - mu_a, sd_a) /
+      laplace_density(residuals, scale),
+    tolerance = 1e-3
+  )))
+})
+
+test_that("a Laplace ratio asked for the root mean square is read at it on both halves", {
+  # The estimator follows what the density asks for rather than the family it
+  # names, on the numerator as well as on the denominator. An estimator keyed on
+  # the family alone would spread the denominator by the root mean square, which
+  # is what was asked for, and the numerator by the mean absolute deviation,
+  # which is what the family implies, leaving the weights the ratio of neither
+  # request.
+  exposure <- continuous_laplace_data$exposure
+  residuals <- continuous_laplace_residuals
+  rms <- sqrt(mean(residuals^2))
+  mu_a <- mean(exposure)
+  sd_a <- sqrt(mean((exposure - mu_a)^2))
+
+  weights <- continuous_laplace_wt(
+    .density = dens_laplace(sigma_method = "rms"),
+    stabilize = TRUE
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    laplace_density(exposure - mu_a, sd_a) / laplace_density(residuals, rms),
+    tolerance = 1e-12
+  )
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    laplace_density(exposure - mu_a, mean(abs(exposure - mu_a))) /
+      laplace_density(residuals, rms),
+    tolerance = 1e-3
+  )))
+
+  # The two settings are two different sets of weights, so neither test above
+  # could be passing on the other's numbers.
+  under_mle <- continuous_laplace_wt(
+    .density = dens_laplace(),
+    stabilize = TRUE
+  )
+
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    as.numeric(under_mle),
+    tolerance = 1e-3
+  )))
+})
+
+test_that("a Laplace scale is fit on the residuals that are there", {
+  exposure <- continuous_laplace_data$exposure
+  exposure[c(5, 22)] <- NA
+  residuals <- exposure - continuous_laplace_data$mu
+  scale <- mean(abs(residuals), na.rm = TRUE)
+
+  weights <- continuous_laplace_wt(
+    exposure = exposure,
+    .density = dens_laplace()
+  )
+
+  # A unit with no exposure has no residual for the likelihood to read and no
+  # weight to be given, and it is the only unit that comes back missing.
+  expect_equal(
+    as.numeric(weights)[-c(5, 22)],
+    (1 / laplace_density(residuals, scale))[-c(5, 22)],
+    tolerance = 1e-12
+  )
+  expect_true(all(is.na(as.numeric(weights)[c(5, 22)])))
+})
+
+test_that("weights record the Laplace scale estimator they were built at", {
+  under_mle <- continuous_laplace_wt(.density = dens_laplace())
+  under_rms <- continuous_laplace_wt(
+    .density = dens_laplace(sigma_method = "rms")
+  )
+
+  # A scale estimated under the family is a source of its own, the one `ipw()`
+  # has an equation of its own to solve. It is estimated from the residuals, as
+  # the pooled spread is, so there is no constant to keep either.
+  expect_identical(density_meta(under_mle)$sigma, "mle")
+  expect_null(density_meta(under_mle)$sigma_value)
+  expect_identical(density_meta(under_rms)$sigma, "pooled")
+
+  # The string names the family at its default, which is the constructor at its
+  # default.
+  by_string <- continuous_laplace_wt(.density = "laplace")
+
+  expect_identical(density_meta(by_string)$sigma, "mle")
+  expect_equal(
+    as.numeric(by_string),
+    as.numeric(under_mle),
+    tolerance = 1e-12
+  )
+})
+
+test_that("a spread supplied and a Laplace scale estimated under itself are refused together", {
+  # `.sigma` says the spread is a number of the caller's own, and a family that
+  # estimates its scale under itself says it is read off the residuals: two
+  # instructions about the same quantity, one of which would go unread whichever
+  # way the pairing was resolved. It is the pairing that is refused rather than
+  # the family, so the moment estimator takes a supplied spread as it always
+  # has.
+  expect_error(
+    continuous_laplace_wt(.density = dens_laplace(), .sigma = 0.9),
+    class = "propensity_density_error"
+  )
+  expect_error(
+    continuous_laplace_wt(.density = "laplace", .sigma = 0.9),
+    class = "propensity_density_error"
+  )
+  expect_no_error(
+    continuous_laplace_wt(
+      .density = dens_laplace(sigma_method = "rms"),
+      .sigma = 0.9
+    )
+  )
+
+  # The check keys on the field rather than on the family, so it reads a Laplace
+  # exactly as it reads a t.
+  expect_error(
+    check_sigma_method(0.9, dens_laplace()),
+    class = "propensity_density_error"
+  )
+  expect_null(check_sigma_method(0.9, dens_laplace(sigma_method = "rms")))
+  expect_null(check_sigma_method(NULL, dens_laplace()))
 })
 
 # ---- a numerator model supplied to stabilize --------------------------------
@@ -3131,6 +3530,139 @@ test_that("censoring weights reach the numerator model route too", {
   expect_equal(as.numeric(weights), f_num / f_den, tolerance = 1e-12)
   expect_identical(density_meta(weights)$numerator, "model")
   expect_identical(density_meta(weights)$numerator_model, fit)
+})
+
+# ---- the spread a numerator model's density is read at ----------------------
+
+# Conditional numerators for the two problems whose residuals are not normal:
+# the exposure fit on a baseline covariate the propensity score model does not
+# read, so that the numerator model leaves residuals of its own and a spread of
+# its own for its half of the ratio to be read at.
+continuous_laplace_numerator_model <- local({
+  v <- withr::with_seed(
+    20260906,
+    stats::rnorm(length(continuous_laplace_data$exposure))
+  )
+  exposure <- continuous_laplace_data$exposure
+
+  stats::lm(exposure ~ v)
+})
+
+continuous_t_numerator_model <- local({
+  v <- withr::with_seed(
+    20260907,
+    stats::rnorm(length(continuous_t_data$exposure))
+  )
+  exposure <- continuous_t_data$exposure
+
+  stats::lm(exposure ~ v)
+})
+
+test_that("a Laplace numerator model is read at the scale of the Laplace", {
+  exposure <- continuous_laplace_data$exposure
+  fit <- continuous_laplace_numerator_model
+  numerator_residuals <- as.numeric(stats::residuals(fit))
+
+  denominator_scale <- mean(abs(continuous_laplace_residuals))
+  numerator_scale <- mean(abs(numerator_residuals))
+
+  weights <- wt_ate(
+    continuous_laplace_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit,
+    .density = dens_laplace()
+  )
+
+  # Both halves of the ratio are Laplace densities, so both are spread by the
+  # scale of a Laplace: the numerator by the scale of its own model's residuals,
+  # the denominator by the scale of the propensity score model's.
+  expect_equal(
+    as.numeric(weights),
+    laplace_density(numerator_residuals, numerator_scale) /
+      laplace_density(continuous_laplace_residuals, denominator_scale),
+    tolerance = 1e-12
+  )
+
+  # A numerator spread by the root mean square while the denominator is spread
+  # by the scale is a ratio of two densities of different widths, and is the
+  # ratio these weights are not.
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    laplace_density(
+      numerator_residuals,
+      sqrt(mean(numerator_residuals^2))
+    ) /
+      laplace_density(continuous_laplace_residuals, denominator_scale),
+    tolerance = 1e-3
+  )))
+})
+
+test_that("a numerator model asked for the root mean square is read at it", {
+  # The estimator follows what the density asks for rather than the family it
+  # names, on a fitted numerator as well as on a marginal one.
+  exposure <- continuous_laplace_data$exposure
+  fit <- continuous_laplace_numerator_model
+  numerator_residuals <- as.numeric(stats::residuals(fit))
+
+  weights <- wt_ate(
+    continuous_laplace_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit,
+    .density = dens_laplace(sigma_method = "rms")
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    laplace_density(
+      numerator_residuals,
+      sqrt(mean(numerator_residuals^2))
+    ) /
+      laplace_density(
+        continuous_laplace_residuals,
+        sqrt(mean(continuous_laplace_residuals^2))
+      ),
+    tolerance = 1e-12
+  )
+})
+
+test_that("a t numerator model is read at the scale of the t", {
+  exposure <- continuous_t_data$exposure
+  fit <- continuous_t_numerator_model
+  numerator_residuals <- as.numeric(stats::residuals(fit))
+
+  denominator_scale <- t_scale_mle(continuous_t_residuals, df = 4)
+  numerator_scale <- t_scale_mle(numerator_residuals, df = 4)
+
+  weights <- wt_ate(
+    continuous_t_data$mu,
+    exposure,
+    exposure_type = "continuous",
+    stabilize = fit,
+    .density = dens_t(df = 4)
+  )
+
+  expect_equal(
+    as.numeric(weights),
+    t_density(numerator_residuals, numerator_scale, df = 4) /
+      t_density(continuous_t_residuals, denominator_scale, df = 4),
+    tolerance = 1e-8
+  )
+
+  # The root mean square of residuals this heavy-tailed is far from the scale
+  # the likelihood reaches, so a numerator read at it is a numerator of a
+  # different width from the denominator it is divided by.
+  expect_false(isTRUE(all.equal(
+    as.numeric(weights),
+    t_density(
+      numerator_residuals,
+      sqrt(mean(numerator_residuals^2)),
+      df = 4
+    ) /
+      t_density(continuous_t_residuals, denominator_scale, df = 4),
+    tolerance = 1e-3
+  )))
 })
 
 # ---- the rows a gappy fit's numerator is read over --------------------------

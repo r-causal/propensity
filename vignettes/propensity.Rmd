@@ -300,7 +300,10 @@ density_meta(wts_dose)
 
 The default reads that ratio in the normal family, which is a strong claim
 about the residuals of a dose model. `.density` chooses another family, and a
-heavier tail holds down the weight of a unit whose dose the model fits poorly:
+heavier tail holds down the weight of a unit whose dose the model fits poorly.
+A family is a model of the residual distribution, so its scale is estimated
+under that family rather than by the root mean square, which is the scale of a
+normal alone; `dens_t()` and `dens_laplace()` do that by default:
 
 ```{r continuous-density}
 wts_t <- wt_ate(ps_dose, .density = dens_t(df = 4))

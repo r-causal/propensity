@@ -21,8 +21,8 @@
           reltol = 1e-14, maxit = 2000) 
       
       Outcome Model:
-        Call: glm(formula = fmla, family = quasibinomial(), data = dat, weights = wts, 
-          control = glm.control(epsilon = 1e-14, maxit = 200)) 
+        Call: glm(formula = y ~ a + x1, family = quasibinomial(), data = dat, 
+          weights = wts, control = glm.control(epsilon = 1e-14, maxit = 200)) 
       
       Marginal estimates:
                      estimate std.err     z ci.lower ci.upper conf.level p.value    

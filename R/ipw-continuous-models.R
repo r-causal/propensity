@@ -974,6 +974,7 @@ ipw_continuous_ratio_meta <- function(
 # stabilized components unable to tell which fit is refused.
 ipw_numerator_model_block <- function(
   numerator_model,
+  density,
   .data = NULL,
   component = NULL,
   call = rlang::caller_env()
@@ -1026,13 +1027,15 @@ ipw_numerator_model_block <- function(
     penalty = entry$penalty,
     coefs = stats::coef(numerator_model),
     # The spread the numerator's density was read at, taken the way
-    # `numerator_model_moments()` takes it: the mean square of the fit's own
-    # response-scale residuals, over the fit's own rows. The design above is
-    # rebuilt over the rows `.data` leaves, and the same moment read over those
-    # rows is a different spread from the one the weights carry.
-    sigma2_fit = mean(
-      as.numeric(stats::residuals(numerator_model, type = "response"))^2,
-      na.rm = TRUE
+    # `numerator_model_moments()` takes it: the estimator the family asks for,
+    # read on the fit's own response-scale residuals, over the fit's own rows.
+    # The design above is rebuilt over the rows `.data` leaves, and the same
+    # estimator read over those rows is a different spread from the one the
+    # weights carry.
+    sigma2_fit = ipw_continuous_sigma2_seed(
+      as.numeric(stats::residuals(numerator_model, type = "response")),
+      density,
+      call = call
     )
   )
 }
@@ -1258,13 +1261,14 @@ check_ipw_numerator_model <- function(
 }
 
 # The spread the stacked system reads the conditional density at. A pooled
-# spread is the residual moment the system estimates alongside the coefficients,
-# and a scale fit by maximum likelihood is the score of the t estimated in the
-# same place; a single spread the caller supplied is a constant it holds fixed,
-# carrying none of its uncertainty, which is what fixing it says. A spread
-# supplied for each observation is neither: it is a function of the data that no
-# parameter value here reproduces, so it is refused before anything is solved
-# rather than reported afterwards as two vectors that disagree.
+# spread is the residual moment the system estimates alongside the
+# coefficients, and a scale fit by maximum likelihood is the score of the
+# family it names, estimated in the same place; a single spread the caller
+# supplied is a constant it holds fixed, carrying none of its uncertainty,
+# which is what fixing it says. A spread supplied for each observation is
+# neither: it is a function of the data that no parameter value here
+# reproduces, so it is refused before anything is solved rather than reported
+# afterwards as two vectors that disagree.
 ipw_continuous_spread <- function(meta, call = rlang::caller_env()) {
   if (identical(meta$sigma, "pooled")) {
     return(list(kind = "pooled", value = NULL))

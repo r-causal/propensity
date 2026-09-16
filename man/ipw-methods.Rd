@@ -1251,8 +1251,8 @@ stacked at the values it was retuned to. That scale enters the location score
 as a known constant. It solves an equation of its own that the stacked system
 does not write, so none of its sampling variability is propagated, and the
 standard errors are those of a psi score read at a scale treated as fixed.
-The spread of the conditional density is a separate quantity, and is the
-pooled residual spread there as it is for every other class.
+The spread of the conditional density is a separate quantity, and comes from
+the estimator its family asks for, there as for every other class.
 
 \code{\link[MASS:psi.bisquare]{MASS::psi.bisquare()}} and \code{\link[MASS:psi.hampel]{MASS::psi.hampel()}} redescend, and that is worth
 knowing about the standard errors they get. A redescending psi's estimating
@@ -1349,22 +1349,25 @@ by hand, are read as the normal ratio the package built before the record
 existed.
 
 A numerator estimated by a model the caller passed to \code{\link[=wt_ate]{wt_ate()}}'s
-\code{stabilize} contributes that model: one parameter per coefficient, named with
-a \code{stab_} prefix so the terms it shares with the propensity score model stay
-apart from it, and one for the spread its density is read at, \code{sigma2_n}. Its
-score and the moment its spread is the root of are stacked alongside the
-propensity score model's, so the standard errors account for the numerator
-having been fitted, which is what separates this from a
-\code{stabilization_score}: a score the caller computed is carried as a known
-constant and contributes no parameter at all. The numerator model is read
-through the registry above, so a class, family, or link whose score this
-system cannot write is refused there in the terms that registry refuses a
-propensity score model in, naming \code{stabilize}. A model of a response other
-than the exposure, or one fit to a different set of observations, errors with
-class \code{propensity_ipw_numerator_error}. One fit with case weights errors with
-class \code{propensity_ipw_ps_weights_error}, for the reason a weighted propensity
-score model does: the block written for it is its unweighted score, and its
-coefficients are not at the root of that.
+\code{stabilize} contributes that model: one parameter per coefficient, named
+with a \code{stab_} prefix so the terms it shares with the propensity score model
+stay apart from it, and one for the spread its density is read at,
+\code{sigma2_n}. That parameter holds a squared scale rather than a variance,
+which are the same number only for a family whose scale is its standard
+deviation. Its score, and the equation that spread is the root of, which is
+the residual moment or the family's own score depending on what the density
+asks for, are stacked alongside the propensity score model's, so the
+standard errors account for the numerator having been fitted, which is what
+separates this from a \code{stabilization_score}: a score the caller computed is
+carried as a known constant and contributes no parameter at all. The
+numerator model is read through the registry above, so a class, family, or
+link whose score this system cannot write is refused there in the terms that
+registry refuses a propensity score model in, naming \code{stabilize}. A model of
+a response other than the exposure, or one fit to a different set of
+observations, errors with class \code{propensity_ipw_numerator_error}. One fit
+with case weights errors with class \code{propensity_ipw_ps_weights_error}, for
+the reason a weighted propensity score model does: the block written for it
+is its unweighted score, and its coefficients are not at the root of that.
 
 A dose numerator model's design is one of the designs \code{ipw()} rebuilds when
 \code{.data} is supplied, on the terms a discrete exposure's is: it is rebuilt
@@ -1609,17 +1612,18 @@ model. The outcome model weights must match the values implied by the
 propensity score model; a mismatch errors, on both standard error methods.
 
 For a continuous exposure that requirement bears on the spread of the
-conditional density. \code{ipw()} stacks a single pooled residual variance
-alongside the propensity score coefficients, so the weights it rebuilds are
-the ones \code{\link[=wt_ate]{wt_ate()}} produces with its pooled default. A single \code{.sigma} is
-taken instead as a known constant: the weights are rebuilt at the number that
-was supplied, and the stacked system carries none of that number's
-uncertainty, which is what fixing a spread says. Weights built with an
-observation-level \code{.sigma}, such as \code{influence(model)$sigma}, are a different
-function of the data with no counterpart in the stacked system, and are
-refused before anything is solved, with an error of class
-\code{propensity_ipw_sigma_error}. Rebuild the weights with the pooled default or
-with one number to use \code{ipw()}.
+conditional density. \code{ipw()} stacks a single conditional spread alongside
+the propensity score coefficients, by the moment the pooled spread is the
+root of or, for a density built with \code{sigma_method = "mle"}, by the score of
+the family it names, so the weights it rebuilds are the ones \code{\link[=wt_ate]{wt_ate()}}
+produces when no \code{.sigma} is given. A single \code{.sigma} is taken instead as a
+known constant: the weights are rebuilt at the number that was supplied, and
+the stacked system carries none of that number's uncertainty, which is what
+fixing a spread says. Weights built with an observation-level \code{.sigma}, such
+as \code{influence(model)$sigma}, are a different function of the data with no
+counterpart in the stacked system, and are refused before anything is
+solved, with an error of class \code{propensity_ipw_sigma_error}. Rebuild the
+weights with the pooled default or with one number to use \code{ipw()}.
 
 It bears on a \code{stabilization_score} in the same way. A score written per
 observation is one value per unit, so it does not survive the rows being

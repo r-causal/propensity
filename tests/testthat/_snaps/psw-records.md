@@ -12,10 +12,10 @@
       print(continuous_records_psw(.density = dens_t(4)))
     Output
       <psw{estimand = ate; stabilized}[6]>
-      [1] 0.13555778 0.10683962 0.15808856 0.12701939 0.19685396 0.07671633
+      [1] 0.13395369 0.10437312 0.16618639 0.12879842 0.20832037 0.07119641
       density:   t(df = 4)
       numerator: marginal
-      sigma:     pooled
+      sigma:     mle
     Code
       print(continuous_records_psw(stabilize = records_numerator_model()))
     Output
