@@ -174,6 +174,28 @@ test_that("ps_trim errors for unsupported methods with categorical", {
   )
 })
 
+test_that("ps_trim refuses the density method for a matrix of scores", {
+  fixture <- valid_trim_matrix_fixture()
+
+  # A matrix holds a probability for each level, and the density methods read
+  # the conditional density of a continuous exposure, which a matrix of
+  # categorical scores does not describe.
+  expect_error(
+    ps_trim(fixture$ps_matrix, method = "density"),
+    class = "propensity_method_error"
+  )
+  expect_error(
+    ps_trim(
+      fixture$ps_matrix,
+      .exposure = fixture$exposure,
+      method = "density"
+    ),
+    class = "propensity_method_error"
+  )
+
+  expect_propensity_error(ps_trim(fixture$ps_matrix, method = "density"))
+})
+
 test_that("ps_trim requires exposure for categorical", {
   n <- 20
   ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)

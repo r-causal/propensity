@@ -1058,6 +1058,151 @@ test_that("the modified-score methods refuse an exposure they resolve as continu
   }
 })
 
+test_that("a modified score in a data frame is refused for a continuous exposure", {
+  set.seed(23)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- 0.5 * x + rnorm(n)
+  scores <- plogis(0.5 * x)
+
+  modified <- list(
+    trimmed = ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8),
+    truncated = ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+    calibrated = ps_calibrate(scores, rbinom(n, 1, scores))
+  )
+  weight_fns <- list(wt_ate = wt_ate, wt_cens = wt_cens)
+
+  # A data frame column keeps the class of the score it holds, so the frame
+  # carries the same conditional mean modified as if it were a probability, and
+  # is refused on the same grounds as the score itself. That holds whether the
+  # type is declared or resolved, and whether the column is the only one or is
+  # selected from several.
+  for (modification in names(modified)) {
+    score <- modified[[modification]]
+    frames <- list(
+      alone = data.frame(ps = score),
+      selected = data.frame(other = scores, ps = score)
+    )
+
+    for (fn_name in names(weight_fns)) {
+      weight_fn <- weight_fns[[fn_name]]
+
+      for (exposure_type in c("continuous", "auto")) {
+        info <- paste(fn_name, modification, exposure_type)
+
+        expect_error(
+          weight_fn(frames$alone, exposure, exposure_type = exposure_type),
+          class = "propensity_modified_continuous_error",
+          info = info
+        )
+        expect_error(
+          weight_fn(
+            frames$selected,
+            exposure,
+            .propensity_col = "ps",
+            exposure_type = exposure_type
+          ),
+          class = "propensity_modified_continuous_error",
+          info = info
+        )
+      }
+    }
+  }
+
+  # The refusal names the modification and the weight function called, as it
+  # does for the score on its own.
+  expect_propensity_error(wt_ate(
+    data.frame(ps = modified$trimmed),
+    exposure,
+    exposure_type = "continuous"
+  ))
+  expect_propensity_error(wt_ate(
+    data.frame(ps = modified$truncated),
+    exposure,
+    exposure_type = "continuous"
+  ))
+  expect_propensity_error(wt_ate(
+    data.frame(ps = modified$calibrated),
+    exposure,
+    exposure_type = "continuous"
+  ))
+  expect_propensity_error(wt_cens(
+    data.frame(ps = modified$trimmed),
+    exposure,
+    exposure_type = "continuous"
+  ))
+  expect_propensity_error(wt_cens(
+    data.frame(ps = modified$truncated),
+    exposure,
+    exposure_type = "continuous"
+  ))
+  expect_propensity_error(wt_cens(
+    data.frame(ps = modified$calibrated),
+    exposure,
+    exposure_type = "continuous"
+  ))
+})
+
+test_that("a malformed exposure_type on a modified score is reported as malformed", {
+  set.seed(29)
+  n <- 40
+  x <- rnorm(n)
+  exposure <- 0.5 * x + rnorm(n)
+  scores <- plogis(0.5 * x)
+
+  modified <- list(
+    trimmed = ps_trim(scores, method = "ps", lower = 0.2, upper = 0.8),
+    truncated = ps_trunc(scores, method = "ps", lower = 0.2, upper = 0.8),
+    calibrated = ps_calibrate(scores, rbinom(n, 1, scores))
+  )
+  malformed <- c("continuous", "binary")
+
+  # Two types name no type, so the argument is at fault before anything is
+  # read from the score or the exposure. The modified-score methods report it
+  # the way the plain score's route does, rather than reading the argument as
+  # unset and refusing the score for the exposure it would then resolve to.
+  weight_fns <- list(wt_ate = wt_ate, wt_cens = wt_cens)
+  for (fn_name in names(weight_fns)) {
+    weight_fn <- weight_fns[[fn_name]]
+    plain <- rlang::catch_cnd(
+      weight_fn(scores, exposure, exposure_type = malformed),
+      classes = "error"
+    )
+    expect_match(
+      conditionMessage(plain),
+      "`exposure_type` must be one of",
+      fixed = TRUE,
+      info = fn_name
+    )
+
+    for (modification in names(modified)) {
+      info <- paste(fn_name, modification)
+      # Nothing is read before the argument is refused, so the unrefit trim
+      # does not get as far as warning that it was not refit.
+      cnd <- expect_no_warning(rlang::catch_cnd(
+        weight_fn(
+          modified[[modification]],
+          exposure,
+          exposure_type = malformed
+        ),
+        classes = "error"
+      ))
+
+      expect_s3_class(cnd, "error")
+      expect_false(
+        inherits(cnd, "propensity_modified_continuous_error"),
+        info = info
+      )
+      expect_identical(class(cnd), class(plain), info = info)
+      expect_identical(
+        conditionMessage(cnd),
+        conditionMessage(plain),
+        info = info
+      )
+    }
+  }
+})
+
 # ---- missing values ---------------------------------------------------------
 
 # A unit with no standardized residual has no weight, and the density is asked

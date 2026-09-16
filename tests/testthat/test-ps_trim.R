@@ -841,6 +841,46 @@ test_that("ps_refit() refuses a model of a dose for a trimmed score", {
   expect_propensity_error(ps_refit(trimmed, fits$gaussian, .data = dose_data))
 })
 
+test_that("ps_refit() still refits a trimmed score with any model of a probability", {
+  skip_if_not_installed("mgcv")
+
+  set.seed(39)
+  n <- 80
+  x <- rnorm(n)
+  z <- rbinom(n, 1, plogis(0.5 * x))
+  score_data <- data.frame(z = z, x = x)
+  trimmed <- ps_trim(plogis(0.5 * x), method = "ps", lower = 0.3, upper = 0.7)
+  meta <- ps_trim_meta(trimmed)
+  expect_gt(length(meta$trimmed_idx), 0)
+
+  # Refusing a model of a dose reads the family, and the families that fit a
+  # probability pass whatever class carries them.
+  fits <- list(
+    gam = mgcv::gam(z ~ s(x), family = binomial(), data = score_data),
+    quasibinomial = glm(z ~ x, family = quasibinomial(), data = score_data)
+  )
+
+  for (kind in names(fits)) {
+    refit <- ps_refit(trimmed, fits[[kind]], .data = score_data)
+
+    expect_s3_class(refit, "ps_trim")
+    expect_true(is_refit(refit), info = kind)
+    expect_true(all(is.na(refit[meta$trimmed_idx])), info = kind)
+    expect_false(anyNA(refit[meta$keep_idx]), info = kind)
+  }
+
+  # A quasibinomial fit estimates the same mean as a binomial one.
+  binomial_refit <- ps_refit(
+    trimmed,
+    glm(z ~ x, family = binomial(), data = score_data),
+    .data = score_data
+  )
+  expect_equal(
+    as.numeric(ps_refit(trimmed, fits$quasibinomial, .data = score_data)),
+    as.numeric(binomial_refit)
+  )
+})
+
 test_that("combining ps_trim objects drops the trimming record", {
   x <- trim_record_fixture()
 

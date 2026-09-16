@@ -1846,6 +1846,29 @@ test_that("ps_trunc() refuses a model of a dose and names the routes that work",
   expect_propensity_error(ps_trunc(fits$gaussian, method = "ps"))
 })
 
+test_that("ps_trunc() refuses a robust linear model of a dose", {
+  skip_if_not_installed("MASS")
+
+  set.seed(33)
+  n <- 60
+  x <- rnorm(n)
+  dose <- 0.5 * x + rnorm(n)
+  dose_data <- data.frame(dose = dose, x = x)
+  fit <- MASS::rlm(dose ~ x, data = dose_data)
+
+  # A robust fit is still a fit of the conditional mean, and it inherits from
+  # `lm`, so it is refused with the same remedy as a least squares fit.
+  cnd <- expect_error(
+    ps_trunc(fit, method = "ps"),
+    class = "propensity_model_family_error"
+  )
+  message <- gsub("[[:space:]]+", " ", conditionMessage(cnd))
+  expect_match(message, "ps_trim(method = \"density\")", fixed = TRUE)
+  expect_match(message, "wt_trunc()", fixed = TRUE)
+
+  expect_propensity_error(ps_trunc(fit, method = "ps"))
+})
+
 # The exposure is announced when it is read and not otherwise, so the message
 # reports a reading that happened. Bounding at a fixed threshold or a quantile
 # reads no exposure; the common range does, and so does every truncation of a

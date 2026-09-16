@@ -2378,6 +2378,184 @@ test_that("all wt_* functions work with data frames", {
   expect_equal(weights_entropy, expected_entropy)
 })
 
+# Weights from `weight_fn`, recording whether they warned that a trimmed score
+# was not refit. Any other warning is left to reach the test.
+weights_and_refit_warning <- function(weight_fn, ...) {
+  warned <- FALSE
+  weights <- withCallingHandlers(
+    weight_fn(...),
+    propensity_no_refit_warning = function(w) {
+      warned <<- TRUE
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  list(weights = weights, warned = warned)
+}
+
+test_that("a modified score in a data frame keeps its record for a binary exposure", {
+  set.seed(41)
+  n <- 60
+  x <- rnorm(n)
+  scores <- plogis(0.5 * x)
+  exposure <- rbinom(n, 1, scores)
+
+  # The bounds sit inside the range of the scores, so units are set aside and
+  # moved, and the frames below carry missing scores in the modified column
+  # while the other column stays whole.
+  trimmed <- ps_trim(scores, method = "ps", lower = 0.35, upper = 0.65)
+  truncated <- ps_trunc(scores, method = "ps", lower = 0.35, upper = 0.65)
+  trimmed_idx <- ps_trim_meta(trimmed)$trimmed_idx
+  expect_gt(length(trimmed_idx), 0)
+  expect_gt(length(ps_trunc_meta(truncated)$truncated_idx), 0)
+
+  refit <- ps_refit(trimmed, glm(exposure ~ x, family = binomial()))
+  expect_true(is_refit(refit))
+  expect_identical(which(is.na(refit)), trimmed_idx)
+
+  modified <- list(
+    trimmed = trimmed,
+    refit = refit,
+    truncated = truncated,
+    calibrated = ps_calibrate(scores, exposure)
+  )
+  weight_fns <- list(
+    wt_ate = wt_ate,
+    wt_att = wt_att,
+    wt_atu = wt_atu,
+    wt_atm = wt_atm,
+    wt_ato = wt_ato,
+    wt_entropy = wt_entropy,
+    wt_cens = wt_cens
+  )
+
+  # A data frame column keeps the class of the score it holds, so weights built
+  # from the frame were built from the same modified score as weights built
+  # from the column itself, and say so the same way: the estimand names the
+  # modification, the record travels, the units set aside have no weight, and
+  # a trimmed score that was not refit warns that it was not. That holds
+  # whether the type is declared or resolved by the frame route itself.
+  for (modification in names(modified)) {
+    score <- modified[[modification]]
+    set_aside <- modification %in% c("trimmed", "refit")
+    frames <- list(
+      alone = data.frame(ps = score),
+      positional = data.frame(control = 1 - scores, treated = score),
+      selected = data.frame(ps = score, other = scores)
+    )
+
+    for (fn_name in names(weight_fns)) {
+      weight_fn <- weight_fns[[fn_name]]
+
+      for (exposure_type in c("binary", "auto")) {
+        from_vector <- weights_and_refit_warning(
+          weight_fn,
+          score,
+          exposure,
+          exposure_type = exposure_type
+        )
+        vector_info <- paste(fn_name, modification, exposure_type, "vector")
+        expect_identical(
+          from_vector$warned,
+          identical(modification, "trimmed"),
+          info = vector_info
+        )
+        expect_identical(
+          which(is.na(from_vector$weights)),
+          if (set_aside) trimmed_idx else integer(0),
+          info = vector_info
+        )
+
+        for (frame in names(frames)) {
+          info <- paste(fn_name, modification, exposure_type, frame)
+          args <- list(frames[[frame]], exposure, exposure_type = exposure_type)
+          if (identical(frame, "selected")) {
+            args$.propensity_col <- "ps"
+          }
+          from_frame <- rlang::exec(
+            weights_and_refit_warning,
+            weight_fn,
+            !!!args
+          )
+
+          expect_identical(from_frame$warned, from_vector$warned, info = info)
+          expect_identical(
+            estimand(from_frame$weights),
+            estimand(from_vector$weights),
+            info = info
+          )
+          expect_identical(
+            is_ps_trimmed(from_frame$weights),
+            is_ps_trimmed(from_vector$weights),
+            info = info
+          )
+          expect_identical(
+            is_ps_truncated(from_frame$weights),
+            is_ps_truncated(from_vector$weights),
+            info = info
+          )
+          expect_identical(
+            is_ps_calibrated(from_frame$weights),
+            is_ps_calibrated(from_vector$weights),
+            info = info
+          )
+          expect_identical(
+            which(is.na(from_frame$weights)),
+            which(is.na(from_vector$weights)),
+            info = info
+          )
+          expect_equal(from_frame$weights, from_vector$weights, info = info)
+        }
+      }
+    }
+  }
+})
+
+test_that("a data frame of trimmed categorical scores still gives weights", {
+  set.seed(43)
+  n <- 100
+  exposure <- factor(sample(c("A", "B", "C"), n, replace = TRUE))
+  ps_matrix <- matrix(runif(n * 3), nrow = n, ncol = 3)
+  ps_matrix <- ps_matrix / rowSums(ps_matrix)
+  colnames(ps_matrix) <- levels(exposure)
+
+  modified <- list(
+    trimmed = ps_trim(ps_matrix, .exposure = exposure, lower = 0.1),
+    truncated = ps_trunc(ps_matrix, .exposure = exposure, lower = 0.1)
+  )
+
+  # A matrix of modified scores converts to a data frame of plain columns, so
+  # the frame holds the modified values without the record. The frame is still
+  # a categorical frame of scores, and its weights are the matrix's weights.
+  for (modification in names(modified)) {
+    score <- modified[[modification]]
+    from_matrix <- weights_and_refit_warning(
+      wt_ate,
+      score,
+      exposure,
+      exposure_type = "categorical"
+    )
+    expect_identical(
+      from_matrix$warned,
+      identical(modification, "trimmed"),
+      info = modification
+    )
+
+    from_frame <- wt_ate(
+      as.data.frame(score),
+      exposure,
+      exposure_type = "categorical"
+    )
+
+    expect_s3_class(from_frame, "psw")
+    expect_equal(
+      as.numeric(from_frame),
+      as.numeric(from_matrix$weights),
+      info = modification
+    )
+  }
+})
+
 # ---- data frame columns resolve by focal level name ------------------------
 
 # A data frame of per-level probabilities whose columns are named for the
