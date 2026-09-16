@@ -1083,22 +1083,25 @@
 #' existed.
 #'
 #' A numerator estimated by a model the caller passed to [wt_ate()]'s
-#' `stabilize` contributes that model: one parameter per coefficient, named with
-#' a `stab_` prefix so the terms it shares with the propensity score model stay
-#' apart from it, and one for the spread its density is read at, `sigma2_n`. Its
-#' score and the moment its spread is the root of are stacked alongside the
-#' propensity score model's, so the standard errors account for the numerator
-#' having been fitted, which is what separates this from a
-#' `stabilization_score`: a score the caller computed is carried as a known
-#' constant and contributes no parameter at all. The numerator model is read
-#' through the registry above, so a class, family, or link whose score this
-#' system cannot write is refused there in the terms that registry refuses a
-#' propensity score model in, naming `stabilize`. A model of a response other
-#' than the exposure, or one fit to a different set of observations, errors with
-#' class `propensity_ipw_numerator_error`. One fit with case weights errors with
-#' class `propensity_ipw_ps_weights_error`, for the reason a weighted propensity
-#' score model does: the block written for it is its unweighted score, and its
-#' coefficients are not at the root of that.
+#' `stabilize` contributes that model: one parameter per coefficient, named
+#' with a `stab_` prefix so the terms it shares with the propensity score model
+#' stay apart from it, and one for the spread its density is read at,
+#' `sigma2_n`. That parameter holds a squared scale rather than a variance,
+#' which are the same number only for a family whose scale is its standard
+#' deviation. Its score, and the equation that spread is the root of, which is
+#' the residual moment or the family's own score depending on what the density
+#' asks for, are stacked alongside the propensity score model's, so the
+#' standard errors account for the numerator having been fitted, which is what
+#' separates this from a `stabilization_score`: a score the caller computed is
+#' carried as a known constant and contributes no parameter at all. The
+#' numerator model is read through the registry above, so a class, family, or
+#' link whose score this system cannot write is refused there in the terms that
+#' registry refuses a propensity score model in, naming `stabilize`. A model of
+#' a response other than the exposure, or one fit to a different set of
+#' observations, errors with class `propensity_ipw_numerator_error`. One fit
+#' with case weights errors with class `propensity_ipw_ps_weights_error`, for
+#' the reason a weighted propensity score model does: the block written for it
+#' is its unweighted score, and its coefficients are not at the root of that.
 #'
 #' A dose numerator model's design is one of the designs `ipw()` rebuilds when
 #' `.data` is supplied, on the terms a discrete exposure's is: it is rebuilt

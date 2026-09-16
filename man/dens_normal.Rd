@@ -20,8 +20,10 @@ dens_fn(f)
 }
 \arguments{
 \item{sigma_method}{How the spread of the conditional density is estimated
-from the residuals of the propensity score model, either \code{"rms"} or
-\code{"mle"}. See the section below.}
+from the residuals of the propensity score model, either \code{"rms"}, the root
+mean square, or \code{"mle"}, the scale estimated under the family itself, which
+both \code{dens_laplace()} and \code{dens_t()} take by default. See the section
+below.}
 
 \item{df}{Degrees of freedom for Student's t, a single positive, finite
 number.}

@@ -572,7 +572,7 @@
   reports when an outcome is constant in one exposure group only; the
   weights-mismatch report no longer offers the focal level as a cause on the
   routes that resolve none; and the spread of a conditional density is named as
-  the pooled residual root mean square, which is what the package computes.
+  the spread its family estimates, which is what the package computes.
 
 * Weights for a continuous exposure now read a one-column matrix and a
   one-dimensional array of conditional means as the vector of one mean per unit
@@ -764,16 +764,16 @@
   `lm` method, which a `MASS::rlm()` reaches by inheritance, and their `glm`
   method reads a `gaussian()` fit under any of its links as well as an
   `mgcv::gam()` fit with it. Each of these classes reports its conditional mean
-  on the scale of the exposure, so a log, inverse, or square root link never has
-  to be undone, and every one of them uses the same pooled residual spread.
-  `rlm` reports a robust scale estimate of its own in `fit$s`, which resists the
-  extreme residuals rather than pooling all of them, and is used only when it is
-  asked for with `.sigma = fit$s`. A family whose spread changes with its fitted
-  values, such as `poisson()` or `quasi(variance = "mu")`, describes a different
-  density for every unit, which a single spread cannot stand in for, and is
-  refused with an error of class `propensity_model_family_error`.
-  `quasi(variance = "constant")` is the gaussian variance under another name and
-  is accepted.
+  on the scale of the exposure, so a log, inverse, or square root link never
+  has to be undone, and every one of them is spread by the same estimator.
+  `rlm` reports a robust scale estimate of its own in `fit$s`, which resists
+  the extreme residuals rather than pooling all of them, and is used only when
+  it is asked for with `.sigma = fit$s`. A family whose spread changes with its
+  fitted values, such as `poisson()` or `quasi(variance = "mu")`, describes a
+  different density for every unit, which a single spread cannot stand in for,
+  and is refused with an error of class `propensity_model_family_error`.
+  `quasi(variance = "constant")` is the gaussian variance under another name
+  and is accepted.
 
   The binary path is now held to the same rule from the other side, which
   changes what some calls return. Only `binomial()` and `quasibinomial()` fit
@@ -792,18 +792,20 @@
   `NULL` for weights built without an exposure to describe, such as those
   written with `psw()` directly. `density_meta()` describes the ratio a
   continuous exposure's weights are, and returns `NULL` for weights that are no
-  such ratio. Its elements are `density`, the specification of the
-  conditional density family; `numerator`, what stabilized the weights, which is
+  such ratio. Its elements are `density`, the specification of the conditional
+  density family; `numerator`, what stabilized the weights, which is
   `"marginal"` for the marginal density of the exposure, `"integrated"` for the
   conditional density marginalized over the units, `"score"` for a
   `stabilization_score` the caller supplied, and `"none"` for weights that were
-  not stabilized; `sigma`, where the residual spread came from, either
-  `"pooled"` or `"supplied"`; and `sigma_value`, the number a single supplied
-  spread was, which is `NULL` for a pooled spread and for one supplied per
-  observation. A spread that is one number is a constant the weights can be
-  rebuilt from, which is what `ipw()` needs of it; a spread that changes with
-  the observation is not, so the record holds where it came from and nothing
-  more.
+  not stabilized; `sigma`, where the residual spread came from, which is
+  `"pooled"` for the pooled residual root mean square, `"mle"` for a scale
+  estimated under the family that reads it, and `"supplied"` for one the caller
+  gave; and `sigma_value`, the number a single supplied spread was, which is
+  `NULL` for a spread estimated from the residuals, by either estimator, and
+  for one supplied per observation. A spread that is one number is a constant
+  the weights can be rebuilt from, which is what `ipw()` needs of it; a spread
+  that changes with the observation is not, so the record holds where it came
+  from and nothing more.
 
   Both records describe the exposure rather than the units, so neither holds a
   length of its own and both survive subsetting, arithmetic, and anything else
@@ -851,15 +853,15 @@
   than the sum of squares, so the stacked system carries the Huber score its
   coefficients are the root of, clipped where the fit itself clipped: at the
   psi's own constant, including one a caller passed as `k`, times the scale the
-  fit settled on. That scale enters the score as a known constant whose sampling
-  variability is not propagated, and the spread of the conditional density is
-  the pooled residual spread, as it is for every other class. A fit with a psi
-  other than Huber, and one fit with `method = "MM"`, which finishes on a
-  redescending psi, are refused with an error of class
-  `propensity_ipw_robust_psi_error`; one whose iteration stopped short of its
-  own tolerance is refused with `propensity_ipw_convergence_error`. The first
-  two point to a Huber refit or to a bootstrap of the whole fit written by hand;
-  the last points to a larger `maxit` or a looser `acc`.
+  fit settled on. That scale enters the score as a known constant whose
+  sampling variability is not propagated, and the spread of the conditional
+  density comes from the estimator its family asks for, there as for every
+  other class. A fit with a psi other than Huber, and one fit with `method =
+  "MM"`, which finishes on a redescending psi, are refused with an error of
+  class `propensity_ipw_robust_psi_error`; one whose iteration stopped short of
+  its own tolerance is refused with `propensity_ipw_convergence_error`. The
+  first two point to a Huber refit or to a bootstrap of the whole fit written
+  by hand; the last points to a larger `maxit` or a looser `acc`.
 
 * `wt_joint()` now reads each component's exposure type off the component
   rather than being told it. A weight function records the type of exposure it

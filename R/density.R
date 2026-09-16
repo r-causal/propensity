@@ -70,8 +70,10 @@ new_density_spec <- function(
 #' @param df Degrees of freedom for Student's t, a single positive, finite
 #'   number.
 #' @param sigma_method How the spread of the conditional density is estimated
-#'   from the residuals of the propensity score model, either `"rms"` or
-#'   `"mle"`. See the section below.
+#'   from the residuals of the propensity score model, either `"rms"`, the root
+#'   mean square, or `"mle"`, the scale estimated under the family itself, which
+#'   both `dens_laplace()` and `dens_t()` take by default. See the section
+#'   below.
 #' @param bw The bandwidth passed to [stats::density()]: a single positive
 #'   number, or the name of one of its selection rules
 #'   (`"nrd0"`, `"nrd"`, `"ucv"`, `"bcv"`, `"SJ"`, `"SJ-ste"`, or `"SJ-dpi"`).

@@ -849,15 +849,20 @@ exposure is held to the same rule from the other side: only \code{\link[=binomia
 a conditional mean is refused there whatever its fitted values happen to fall
 on, a linear probability model included.
 
-\eqn{\sigma} is the pooled residual spread
-\eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}} unless \code{.sigma} supplies a
-single standard deviation, or one for each unit, which the model methods do
-not do on their own. \code{\link[=dens_t]{dens_t()}} and \code{\link[=dens_laplace]{dens_laplace()}} offer a second
-estimator, the maximum likelihood scale of the family itself, through
-\code{sigma_method = "mle"}; see \strong{The spread of the conditional density} in
-\code{\link[=dens_t]{dens_t()}}'s documentation. A family that estimates its own scale spreads
-both densities of the ratio, so the marginal density is read at that scale
-too and the two halves are densities of one width rather than two.
+\eqn{\sigma} is the spread the family \code{.density} names asks for, read from
+the residuals of the propensity score model. For a family with no scale
+estimator of its own that is the pooled root mean square
+\eqn{\sqrt{\mathrm{mean}((A - \hat{A})^2)}}; for \code{\link[=dens_t]{dens_t()}} and
+\code{\link[=dens_laplace]{dens_laplace()}} it is the maximum likelihood scale of the family itself,
+which both take by default. \code{sigma_method = "rms"} asks either of them for
+the root mean square instead; see \strong{The spread of the conditional density}
+in \code{\link[=dens_t]{dens_t()}}'s documentation. \code{.sigma} supplies a spread of your own, a
+single standard deviation or one for each unit, which the model methods do
+not do on their own, and is refused alongside a family that estimates its
+own scale, being a second instruction about the same quantity. A family that
+estimates its own scale spreads both densities of the ratio, so the marginal
+density is read at that scale too and the two halves are densities of one
+width rather than two.
 
 Every model class is spread that same way, \code{\link[MASS:rlm]{MASS::rlm()}} included. \code{rlm}
 reports a robust scale estimate of its own in \code{fit$s}, which resists the
