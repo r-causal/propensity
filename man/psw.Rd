@@ -228,7 +228,10 @@ bounds, and whether the model was refit, so \code{\link[=is_refit]{is_refit()}},
 footer, and the bound comparison of a later combine still read it.
 Subassignment with \verb{[<-} and \verb{is.na<-} moves no unit and keeps the records
 whole; \verb{[<-} refuses a value whose records describe a different
-modification, and accepts one with no record. vctrs' own assignment, \code{\link[vctrs:vec_assign]{vctrs::vec_assign()}}, reaches the same restore
+modification, and accepts one with no record. A \verb{[<-} of a value modified
+the same way that writes a missing weight leaves that unit listed as
+retained in the record, as \verb{is.na<-} on a \code{psw} does; \verb{is.na<-} on a
+\code{ps_trim} score instead removes the unit from its retained set. vctrs' own assignment, \code{\link[vctrs:vec_assign]{vctrs::vec_assign()}}, reaches the same restore
 a slice does and cannot be told apart from one, so it drops the positions,
 and so do the helpers built on it or on a combine, such as
 \code{tidyr::replace_na()}, \code{dplyr::coalesce()}, \code{dplyr::if_else()}, and

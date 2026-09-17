@@ -143,7 +143,10 @@
 #' footer, and the bound comparison of a later combine still read it.
 #' Subassignment with `[<-` and `is.na<-` moves no unit and keeps the records
 #' whole; `[<-` refuses a value whose records describe a different
-#' modification, and accepts one with no record. vctrs' own assignment, [vctrs::vec_assign()], reaches the same restore
+#' modification, and accepts one with no record. A `[<-` of a value modified
+#' the same way that writes a missing weight leaves that unit listed as
+#' retained in the record, as `is.na<-` on a `psw` does; `is.na<-` on a
+#' `ps_trim` score instead removes the unit from its retained set. vctrs' own assignment, [vctrs::vec_assign()], reaches the same restore
 #' a slice does and cannot be told apart from one, so it drops the positions,
 #' and so do the helpers built on it or on a combine, such as
 #' `tidyr::replace_na()`, `dplyr::coalesce()`, `dplyr::if_else()`, and
@@ -2253,6 +2256,22 @@ vec_cast.psw.psw <- function(x, to, ...) {
 # nothing about what to do. The score belongs to the units of each vector, so
 # the value's cannot be written under the target's.
 cast_problem_details <- function(problem, x, to) {
+  # A record disagreement is not visible in the type labels, which can read the
+  # same on both sides, so the refusal says what to do about it.
+  if (
+    problem %in%
+      psw_record_problems &&
+      identical(vec_ptype_full(x), vec_ptype_full(to))
+  ) {
+    return(c(
+      problem,
+      i = paste(
+        "Assign `vec_data()` of the value to keep the target's record, or",
+        "rebuild the weights from one modification."
+      )
+    ))
+  }
+
   scores <- list(stabilization_score(x), stabilization_score(to))
   if (
     !identical(problem, psw_type_field_problems[["stabilization_score"]]) ||

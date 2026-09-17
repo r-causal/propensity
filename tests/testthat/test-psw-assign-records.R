@@ -61,6 +61,15 @@ test_that("assigning weights truncated at another bound is refused", {
     vctrs::vec_cast(value, target),
     class = "vctrs_error_cast"
   )
+  expect_error(
+    vctrs::vec_c(value, .ptype = target),
+    class = "vctrs_error_cast"
+  )
+
+  # The two types print alike, so the refusal says what to do.
+  expect_snapshot(error = TRUE, {
+    target[1:3] <- value[1:3]
+  })
 })
 
 test_that("assigning weights trimmed differently is refused", {

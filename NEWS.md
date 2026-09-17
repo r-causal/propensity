@@ -168,9 +168,11 @@
   trimming, truncation, or weight truncation record describes a different
   modification from the target's, with the cast error that a differing
   trimming or truncation flag already raises, naming the record that differs.
-  Such values were previously written under the target's record. A value that
-  carries no record, such as a plain number, is still accepted, and a value
-  modified the same way keeps the target's record unchanged.
+  `vctrs::vec_c(..., .ptype = )` with a prototype whose record differs from
+  an input's now refuses in the same way. Such values were previously written
+  under the target's record. A value that carries no record, such as a plain
+  number, is still accepted, and a value modified the same way keeps the
+  target's record unchanged.
 
 * `ps_refit()` on truncated scores, a vector or a matrix, now raises an error
   of class `propensity_method_error` that explains why: truncation keeps every
