@@ -104,13 +104,15 @@
 #'
 #' Combining `psw` objects with [c()] preserves the class only when all
 #' metadata matches; mismatched metadata produces a warning and falls back to a
-#' plain numeric vector. Concatenation appends one set of observations to
-#' another, so the positions a modification record names would describe units
-#' from the other input; those records are dropped from the result whether or
-#' not the inputs agree on them. Weights whose own values were truncated are
-#' combined only when the records they carry name the same bound, since weights
-#' bounded differently describe different estimands; a record already dropped
-#' agrees with any bound. The calibration record (`ps_calib_meta`) names the
+#' plain numeric vector. The trimming, truncation, and weight truncation
+#' records are compared by what they say about the modification: weights built
+#' from scores trimmed or truncated differently, from a refit and an unrefit
+#' trim, or truncated at different bounds describe different estimands and are
+#' combined only as numbers. Weights flagged as modified with no record agree
+#' with any record. Concatenation appends one set of observations to another, so
+#' the positions a record names would describe units from the other input; the
+#' result keeps each record without its positions, which [is_refit()], the
+#' printed footer, and a later combine still read. The calibration record (`ps_calib_meta`) names the
 #' curve the scores were calibrated with rather than any position, the
 #' categorical attributes name exposure levels, and the exposure records
 #' describe the exposure rather than any unit, so all of them carry by the
@@ -866,8 +868,9 @@ is_refit.psw <- function(x) {
 #' positions of the weights it moved. `is_unit_wt_truncated()` answers from
 #' those positions, so the record follows the rules [psw] describes for the
 #' records a modified propensity score leaves: it is kept through arithmetic
-#' and subassignment, re-indexed through the subscript of `[`, and dropped by
-#' any other slice and by a combine of several inputs. The `wt_truncated` flag describes the weights as
+#' and subassignment, re-indexed through the subscript of `[`, and loses its
+#' positions to any other slice and to a combine, which keeps the method and
+#' bounds. The `wt_truncated` flag describes the weights as
 #' a whole and is kept through all of those, so `is_wt_truncated()` keeps its
 #' answer where `is_unit_wt_truncated()` has none to give.
 #'
@@ -978,16 +981,63 @@ wt_trunc_parameters <- function(meta) {
   meta[c("method", "lower", "upper", "lower_value", "upper_value")]
 }
 
-# The bound a psw was truncated at, read from its record or, on a prototype in
-# the middle of a combine, from the bound the inputs before it agreed on. `NULL`
-# when neither is present, which agrees with any bound.
-psw_trunc_bound <- function(x) {
-  meta <- attr(x, "psw_trunc_meta")
-  if (!is.null(meta)) {
-    return(wt_trunc_parameters(unclass(meta)))
+# How each modification record a psw carries is described, as opposed to which
+# units it touched, and how a disagreement on it is named. A combine compares
+# these, since weights modified differently target different estimands. The
+# refit flag is part of a trimming's description: weights from a refit model and
+# from the model the trim was read off are different weights.
+psw_record_settings <- function(field, meta) {
+  switch(
+    field,
+    ps_trim_meta = c(trim_parameters(meta), list(refit = isTRUE(meta$refit))),
+    ps_trunc_meta = trunc_parameters(meta),
+    psw_trunc_meta = wt_trunc_parameters(unclass(meta))
+  )
+}
+
+psw_record_problems <- c(
+  ps_trim_meta = "different trimming parameters",
+  ps_trunc_meta = "different truncation parameters",
+  psw_trunc_meta = "different weight truncation bounds"
+)
+
+# The first record the two sets of weights describe differently, named the way
+# the coercion warning names it, or `NULL` when they agree. A record only one of
+# them carries has nothing to disagree with, as for the other carried
+# attributes: weights flagged as modified with no record agree with any record.
+psw_record_disagreement <- function(x, y) {
+  for (field in psw_modification_meta) {
+    x_meta <- attr(x, field)
+    y_meta <- attr(y, field)
+    if (
+      !is.null(x_meta) &&
+        !is.null(y_meta) &&
+        !identical(
+          psw_record_settings(field, x_meta),
+          psw_record_settings(field, y_meta)
+        )
+    ) {
+      return(psw_record_problems[[field]])
+    }
   }
 
-  attr(x, psw_trunc_bound_attr)
+  NULL
+}
+
+# The records a combined prototype carries: each input's description of its
+# modification, without the positions, which would name units of one input
+# among the combined observations. The inputs agree wherever both carry one, so
+# the first present is the one kept.
+combined_psw_records <- function(x, y) {
+  records <- lapply(psw_modification_meta, function(field) {
+    meta <- attr(x, field)
+    if (is.null(meta)) {
+      meta <- attr(y, field)
+    }
+    if (!is.null(meta)) drop_psw_record(field, meta)
+  })
+  names(records) <- psw_modification_meta
+  records
 }
 
 # The weight truncation record travels the routes the score-scale records
@@ -1550,12 +1600,6 @@ psw_carried_attrs <- c(
 # recorded here rather than guarded against.
 psw_conflicted_attr <- "psw_conflicted_attrs"
 
-# The bound parameters a fold has found its inputs to agree on so far. A
-# prototype carries no weight truncation record, since the record names
-# positions, so without this the third input of a combine would be compared
-# against a prototype with nothing to disagree with. It is copied and dropped
-# exactly as `psw_conflicted_attr` is.
-psw_trunc_bound_attr <- "psw_trunc_bound"
 
 conflicted_psw_attrs <- function(x) {
   out <- attr(x, psw_conflicted_attr)
@@ -1599,12 +1643,8 @@ aligned_psw_attrs <- function(to, n, in_place = FALSE, i = NULL) {
   # result that holds no observations is the one thing vctrs cannot tell apart
   # from the prototype it was built from, so it keeps the record; it names
   # nothing about observations there are none of.
-  #
-  # The bound a fold has agreed on is the same kind of record and is carried the
-  # same way, for the same reason.
   if (n == 0) {
     attrs[psw_conflicted_attr] <- list(attr(to, psw_conflicted_attr))
-    attrs[psw_trunc_bound_attr] <- list(attr(to, psw_trunc_bound_attr))
   }
 
   attrs
@@ -2099,25 +2139,26 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
     return(double())
   }
 
-  # Weights truncated at different bounds target different estimands, so they
-  # have no common type. Only a combine sees both inputs' records, which is why
-  # the bound is compared here and not in `psw_type_disagreement()`.
-  x_bound <- psw_trunc_bound(x)
-  y_bound <- psw_trunc_bound(y)
-  if (!is.null(x_bound) && !is.null(y_bound) && !identical(x_bound, y_bound)) {
-    warn_incompatible_metadata(x, y, "different weight truncation bounds")
+  # Weights trimmed or truncated differently, or truncated at different bounds,
+  # target different estimands, so they have no common type. Only a combine
+  # sees both inputs' records, which is why they are compared here and not in
+  # `psw_type_disagreement()`, which a cast also reads.
+  problem <- psw_record_disagreement(x, y)
+  if (!is.null(problem)) {
+    warn_incompatible_metadata(x, y, problem)
     return(double())
   }
 
   # The prototype is shared by inputs whose observations are appended one after
   # another, so the positions a modification record names would describe units
   # from the other input. Nothing rebuilding the combined vector is handed the
-  # offsets, so the records are left off the prototype whether or not the inputs
-  # agree on them. The calibration record names a curve rather than positions,
-  # the categorical attributes name exposure levels, the exposure records
-  # describe the exposure rather than any unit, and the joint record names the
-  # two components a product was built from, so all of them mean the same thing
-  # at the combined length.
+  # offsets, so the records reach the prototype without their positions, which
+  # keeps what they say about the modification for the next pair of a fold to
+  # compare and for the result to report. The calibration record names a curve
+  # rather than positions, the categorical attributes name exposure levels, the
+  # exposure records describe the exposure rather than any unit, and the joint
+  # record names the two components a product was built from, so all of them
+  # mean the same thing at the combined length.
   merged <- merge_psw_attrs(x, y, 0, fields = psw_length_free_attrs)
   if (length(merged$conflicts) > 0) {
     warn_conflicting_psw_attrs(merged$conflicts)
@@ -2133,6 +2174,7 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
     wt_truncated = is_wt_truncated(x),
     attrs = c(
       list(stabilization_score = stabilization_score(x)),
+      combined_psw_records(x, y),
       merged$attrs
     )
   )
@@ -2140,13 +2182,6 @@ vec_ptype2.psw.psw <- function(x, y, ...) {
   if (length(merged$conflicted) > 0) {
     attr(out, psw_conflicted_attr) <- merged$conflicted
   }
-
-  # The prototype drops the record, so the bound the two inputs agreed on is
-  # handed on separately for the next pair of the fold to compare against.
-  if (is.null(x_bound)) {
-    x_bound <- y_bound
-  }
-  attr(out, psw_trunc_bound_attr) <- x_bound
 
   out
 }

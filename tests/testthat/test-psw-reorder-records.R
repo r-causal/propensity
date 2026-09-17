@@ -392,8 +392,10 @@ test_that("a combine of reordered weights still compares their bounds", {
 
   out <- expect_silent(vctrs::vec_c(rev(a), a))
   expect_true(is_wt_truncated(out))
-  expect_null(attr(out, "psw_trunc_meta"))
-  expect_null(attr(out, "psw_trunc_bound"))
+  expect_positions_dropped(
+    attr(out, "psw_trunc_meta"),
+    attr(a, "psw_trunc_meta")
+  )
   expect_null(attr(out, "psw_conflicted_attrs"))
 
   expect_warning(

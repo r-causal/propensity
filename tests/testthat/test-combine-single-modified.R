@@ -162,17 +162,20 @@ test_that("c() of one calibrated-score psw keeps its calibration record", {
 
 # Two or more inputs ---------------------------------------------------------
 
-test_that("c() of two trimmed psw drops the positional records", {
+test_that("c() of two trimmed psw drops the records' positions", {
   w <- single_trimmed_psw()
 
   combined <- c(w, w)
 
   expect_length(combined, 2 * length(w))
-  expect_null(attr(combined, "ps_trim_meta"))
+  expect_positions_dropped(
+    attr(combined, "ps_trim_meta"),
+    attr(w, "ps_trim_meta")
+  )
   expect_true(is_ps_trimmed(combined))
 })
 
-test_that("c() of a psw split in two drops the records at the original length", {
+test_that("c() of a psw split in two drops the records' positions at the original length", {
   # The pieces add back up to the length the records were written for, but the
   # result is appended from two inputs, which nothing re-indexes.
   w <- single_trimmed_psw()
@@ -182,24 +185,33 @@ test_that("c() of a psw split in two drops the records at the original length", 
   combined <- c(first, second)
 
   expect_length(combined, length(w))
-  expect_null(attr(combined, "ps_trim_meta"))
+  expect_positions_dropped(
+    attr(combined, "ps_trim_meta"),
+    attr(w, "ps_trim_meta")
+  )
 })
 
-test_that("c() of two weight-truncated psw drops the weight truncation record", {
+test_that("c() of two weight-truncated psw drops the weight truncation record's positions", {
   w <- single_wt_truncated_psw()
 
   combined <- c(w, w)
 
-  expect_null(attr(combined, "psw_trunc_meta"))
+  expect_positions_dropped(
+    attr(combined, "psw_trunc_meta"),
+    attr(w, "psw_trunc_meta")
+  )
   expect_true(is_wt_truncated(combined))
 })
 
-test_that("c() of two truncated-score psw drops the truncation record", {
+test_that("c() of two truncated-score psw drops the truncation record's positions", {
   w <- single_truncated_psw()
 
   combined <- c(w, w)
 
-  expect_null(attr(combined, "ps_trunc_meta"))
+  expect_positions_dropped(
+    attr(combined, "ps_trunc_meta"),
+    attr(w, "ps_trunc_meta")
+  )
 })
 
 # A prototype or cast target supplied by the caller -------------------------

@@ -360,14 +360,14 @@ test_that("weights that differ in weight truncation status do not cast to each o
   )
 })
 
-test_that("combining weight-truncated psw objects keeps the flag and drops the record", {
+test_that("combining weight-truncated psw objects keeps the flag and the bound", {
   w <- wt_truncated_psw()
 
   out <- expect_silent(c(w, w))
   expect_s3_class(out, "psw")
   expect_length(out, 10)
   expect_true(is_wt_truncated(out))
-  expect_null(attr(out, "psw_trunc_meta"))
+  expect_positions_dropped(attr(out, "psw_trunc_meta"), wt_trunc_record())
 
   # The record's positions describe one input, so the combined weights have no
   # positional answer to give.
@@ -379,7 +379,7 @@ test_that("combining weight-truncated psw objects keeps the flag and drops the r
   proto <- expect_silent(vec_ptype2(w, w))
   expect_s3_class(proto, "psw")
   expect_true(is_wt_truncated(proto))
-  expect_null(attr(proto, "psw_trunc_meta"))
+  expect_positions_dropped(attr(proto, "psw_trunc_meta"), wt_trunc_record())
 })
 
 test_that("subassigning into weight-truncated weights keeps the record", {
@@ -496,7 +496,7 @@ test_that("weights bounded alike combine whichever units the bound moved", {
   expect_s3_class(out, "psw")
   expect_length(out, 11)
   expect_true(is_wt_truncated(out))
-  expect_null(attr(out, "psw_trunc_meta"))
+  expect_positions_dropped(attr(out, "psw_trunc_meta"), wt_trunc_record())
 })
 
 test_that("a weight-truncated psw with no record agrees with any bound", {
@@ -511,16 +511,19 @@ test_that("a weight-truncated psw with no record agrees with any bound", {
   expect_s3_class(out, "psw")
   expect_length(out, 7)
   expect_true(is_wt_truncated(out))
+  expect_positions_dropped(attr(out, "psw_trunc_meta"), wt_trunc_record())
 
   reversed <- expect_silent(c(alt_slice, w))
   expect_s3_class(reversed, "psw")
   expect_true(is_wt_truncated(reversed))
+  expect_positions_dropped(attr(reversed, "psw_trunc_meta"), wt_trunc_record())
 
+  # The prototype takes the one record there is.
   bare <- psw(c(1, 2), estimand = "ate", wt_truncated = TRUE)
   proto <- expect_silent(vec_ptype2(bare, w))
   expect_s3_class(proto, "psw")
   expect_true(is_wt_truncated(proto))
-  expect_null(attr(proto, "psw_trunc_meta"))
+  expect_positions_dropped(attr(proto, "psw_trunc_meta"), wt_trunc_record())
 })
 
 test_that("is_wt_truncated() answers FALSE for anything that is not a psw", {

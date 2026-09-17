@@ -1567,13 +1567,13 @@ test_that("a psw product records an estimand only one operand names", {
   expect_null(estimand(expect_silent(unnamed * unnamed)))
 })
 
-test_that("combining psw objects drops the modification records", {
+test_that("combining psw objects drops the modification records' positions", {
   w <- trimmed_psw()
 
   out <- expect_silent(c(w, w))
   expect_s3_class(out, "psw")
   expect_length(out, 10)
-  expect_null(ps_trim_meta(out))
+  expect_positions_dropped(ps_trim_meta(out), ps_trim_meta(w))
 
   # Everything that is not indexed by observation survives the concatenation.
   expect_true(is_ps_trimmed(out))
@@ -1583,7 +1583,7 @@ test_that("combining psw objects drops the modification records", {
 
   truncated <- truncated_psw()
   combined <- expect_silent(c(truncated, truncated))
-  expect_null(ps_trunc_meta(combined))
+  expect_positions_dropped(ps_trunc_meta(combined), ps_trunc_meta(truncated))
   expect_true(is_ps_truncated(combined))
 
   # The calibration record holds no positions, so it survives the
@@ -1594,20 +1594,21 @@ test_that("combining psw objects drops the modification records", {
   expect_true(is_ps_calibrated(combined))
 })
 
-test_that("combining psw objects drops modification records that disagree without comment", {
+test_that("combining psw objects trimmed at different cutoffs downgrades to numeric", {
   w <- trimmed_psw()
   alt <- alt_trimmed_psw()
   expect_false(identical(ps_trim_meta(w), ps_trim_meta(alt)))
 
-  # Concatenation drops every modification record for a reason that has nothing
-  # to do with whether the inputs agree, so two that disagree leave nothing to
-  # report. A warning here would name a record the result would have lost had
-  # the two been identical.
-  out <- expect_silent(c(w, alt))
-  expect_s3_class(out, "psw")
+  # Weights from scores trimmed at different cutoffs target different
+  # estimands, so they have no common type, as for any other disagreement
+  # about how the weights were built.
+  expect_warning(
+    out <- c(w, alt),
+    class = "propensity_coercion_warning"
+  )
+  expect_false(is_psw(out))
+  expect_type(out, "double")
   expect_length(out, 10)
-  expect_null(ps_trim_meta(out))
-  expect_true(is_ps_trimmed(out))
 })
 
 test_that("combining psw objects carries categorical attributes the inputs share", {

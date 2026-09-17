@@ -2153,12 +2153,16 @@ vec_arith.ps_trim.list <- function(op, x, y, ...) {
 # can still have been trimmed at different places. A trim of a dose model is
 # also described by the spread and the density family it was read at, and a
 # vector of scores by whether they are the complement of what the model reports,
-# since scores for different levels are not scores of one trimming.
+# since scores for different levels are not scores of one trimming. A trim of a
+# categorical score matrix is described by its threshold (`delta`) or by the
+# optimal cutoff it found (`lambda`).
 trim_parameters <- function(meta) {
   fields <- c(
     "method",
     "lower",
     "upper",
+    "delta",
+    "lambda",
     "cutoff",
     "q_lower",
     "q_upper",

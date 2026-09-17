@@ -189,13 +189,15 @@ comment.
 
 Combining \code{psw} objects with \code{\link[=c]{c()}} preserves the class only when all
 metadata matches; mismatched metadata produces a warning and falls back to a
-plain numeric vector. Concatenation appends one set of observations to
-another, so the positions a modification record names would describe units
-from the other input; those records are dropped from the result whether or
-not the inputs agree on them. Weights whose own values were truncated are
-combined only when the records they carry name the same bound, since weights
-bounded differently describe different estimands; a record already dropped
-agrees with any bound. The calibration record (\code{ps_calib_meta}) names the
+plain numeric vector. The trimming, truncation, and weight truncation
+records are compared by what they say about the modification: weights built
+from scores trimmed or truncated differently, from a refit and an unrefit
+trim, or truncated at different bounds describe different estimands and are
+combined only as numbers. Weights flagged as modified with no record agree
+with any record. Concatenation appends one set of observations to another, so
+the positions a record names would describe units from the other input; the
+result keeps each record without its positions, which \code{\link[=is_refit]{is_refit()}}, the
+printed footer, and a later combine still read. The calibration record (\code{ps_calib_meta}) names the
 curve the scores were calibrated with rather than any position, the
 categorical attributes name exposure levels, and the exposure records
 describe the exposure rather than any unit, so all of them carry by the

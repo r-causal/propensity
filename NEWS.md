@@ -164,6 +164,17 @@
   and `ps_refit()` now refuse such a result with an error of class
   `propensity_missing_meta_error`.
 
+* Combining `psw` objects now compares the trimming and truncation records of
+  the scores they were built from, including whether the trimmed model was
+  refit, as well as the weight truncation bound, and keeps each record without
+  its positions on the result. Weights trimmed at different cutoffs, or from a
+  refit and an unrefit trim, previously combined silently, and a combined result
+  lost its records entirely, so a later combine merged weights truncated at
+  different bounds without a warning and `is_refit()` refused the result.
+  Such combines now warn with a `propensity_coercion_warning` and return a
+  numeric vector, in one call or across nested ones, and `is_refit()` and the
+  printed footer read a combined result's records.
+
 * A per-observation `stabilization_score`, on a `psw` or inside the record of a
   `wt_joint()` product, now follows the weights through `[`, so `rev()`,
   `sort()`, and a data frame reordered with `order()` keep each unit's score
