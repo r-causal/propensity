@@ -217,11 +217,19 @@ a trimmed or truncated propensity score (\code{ps_trim_meta} and
 so it re-indexes each record onto the result: \code{rev()}, \code{sort()},
 \code{x[order(x)]}, and a shorter subset all return records naming the units at
 their new positions. Any other operation through vctrs is not handed a
-subscript, so it keeps the records only where every unit stays at its
-position, as in elementwise arithmetic, and otherwise drops them, at any
-length: \code{vctrs::vec_slice()}, \code{dplyr::arrange()}, \code{dplyr::filter()}, and
-\code{unique()} all return weights without them. Subassignment with \verb{[<-} moves
-no unit and keeps them. A \code{stabilization_score} with more than one value is
+subscript, so it keeps the positions only where every unit stays at its
+place, as in elementwise arithmetic, and otherwise drops them, at any
+length: \code{vctrs::vec_slice()}, \code{dplyr::arrange()}, \code{dplyr::filter()},
+\code{unique()}, \code{rep_len()}, and \code{vctrs::vec_c()} of a single input all return
+weights whose records name no units. A dropped record keeps its method, its
+bounds, and whether the model was refit, so \code{\link[=is_refit]{is_refit()}}, the printed
+footer, and the bound comparison of a later combine still read it.
+Subassignment with \verb{[<-} and \verb{is.na<-} moves no unit and keeps the records
+whole. vctrs' own assignment, \code{\link[vctrs:vec_assign]{vctrs::vec_assign()}}, reaches the same restore
+a slice does and cannot be told apart from one, so it drops the positions,
+and so do the helpers built on it or on a combine, such as
+\code{tidyr::replace_na()}, \code{dplyr::coalesce()}, \code{dplyr::if_else()}, and
+\code{dplyr::case_when()}. A \code{stabilization_score} with more than one value is
 carried when the result comes back at the length it was recorded on and
 dropped when it does not.
 

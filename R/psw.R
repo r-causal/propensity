@@ -132,11 +132,19 @@
 #' so it re-indexes each record onto the result: `rev()`, `sort()`,
 #' `x[order(x)]`, and a shorter subset all return records naming the units at
 #' their new positions. Any other operation through vctrs is not handed a
-#' subscript, so it keeps the records only where every unit stays at its
-#' position, as in elementwise arithmetic, and otherwise drops them, at any
-#' length: `vctrs::vec_slice()`, `dplyr::arrange()`, `dplyr::filter()`, and
-#' `unique()` all return weights without them. Subassignment with `[<-` moves
-#' no unit and keeps them. A `stabilization_score` with more than one value is
+#' subscript, so it keeps the positions only where every unit stays at its
+#' place, as in elementwise arithmetic, and otherwise drops them, at any
+#' length: `vctrs::vec_slice()`, `dplyr::arrange()`, `dplyr::filter()`,
+#' `unique()`, `rep_len()`, and `vctrs::vec_c()` of a single input all return
+#' weights whose records name no units. A dropped record keeps its method, its
+#' bounds, and whether the model was refit, so [is_refit()], the printed
+#' footer, and the bound comparison of a later combine still read it.
+#' Subassignment with `[<-` and `is.na<-` moves no unit and keeps the records
+#' whole. vctrs' own assignment, [vctrs::vec_assign()], reaches the same restore
+#' a slice does and cannot be told apart from one, so it drops the positions,
+#' and so do the helpers built on it or on a combine, such as
+#' `tidyr::replace_na()`, `dplyr::coalesce()`, `dplyr::if_else()`, and
+#' `dplyr::case_when()`. A `stabilization_score` with more than one value is
 #' carried when the result comes back at the length it was recorded on and
 #' dropped when it does not.
 #'
@@ -1352,27 +1360,60 @@ psw_exposure_attrs <- c("exposure_type", "density_meta", "numerator_model")
 # indices are kept only where the caller vouches that every unit is still at its
 # position (`in_place`): elementwise arithmetic, and truncating the weights
 # themselves. `[` knows its subscript and re-indexes the records itself
-# (`reindex_psw_records()`). Every other restore of observations drops them.
+# (`reindex_psw_records()`). Every other restore of observations drops their
+# positions.
 modification_meta_aligns <- function(n, to, in_place = FALSE) {
   n == 0 || (in_place && n == length(to))
 }
 
+# How each positional record is re-indexed onto a subscript, and how its
+# positions are dropped. What a record says about the modification itself, its
+# method, bounds, and whether the model was refit, names no unit and holds at
+# any length and in any order, so a drop leaves it for the flags, the footer, and
+# the bound comparison of a later combine to read.
+reindex_psw_record <- function(field, meta, i) {
+  if (identical(field, "ps_trim_meta")) {
+    reindex_trim_record(meta, i)
+  } else {
+    reindex_trunc_record(meta, i)
+  }
+}
+
+drop_psw_record <- function(field, meta) {
+  if (identical(field, "ps_trim_meta")) {
+    drop_trim_record(meta)
+  } else {
+    drop_trunc_record(meta)
+  }
+}
+
+drop_psw_record_positions <- function(attrs) {
+  for (field in psw_modification_meta) {
+    meta <- attrs[[field]]
+    if (!is.null(meta)) {
+      attrs[[field]] <- drop_psw_record(field, meta)
+    }
+  }
+
+  attrs
+}
+
 # `i` holds the positions in `x` the result is built from, in the order it holds
 # them. A record that covers `x` is re-indexed onto them; one that does not
-# cannot be placed and is dropped, as a restore drops it.
+# cannot be placed and loses its positions, as a restore drops them.
 reindex_psw_records <- function(attrs, x, i) {
   n_obs <- length(x)
-  reindex <- list(
-    ps_trim_meta = reindex_trim_record,
-    ps_trunc_meta = reindex_trunc_record,
-    psw_trunc_meta = reindex_trunc_record
-  )
 
   for (field in psw_modification_meta) {
     meta <- attr(x, field)
-    attrs[field] <- list(
-      if (record_covers(meta, n_obs)) reindex[[field]](meta, i)
-    )
+    if (is.null(meta)) {
+      next
+    }
+    attrs[[field]] <- if (record_covers(meta, n_obs)) {
+      reindex_psw_record(field, meta, i)
+    } else {
+      drop_psw_record(field, meta)
+    }
   }
 
   attrs
@@ -1496,7 +1537,7 @@ aligned_psw_attrs <- function(to, n, in_place = FALSE, i = NULL) {
   if (!is.null(i)) {
     attrs <- reindex_psw_records(attrs, to, i)
   } else if (!modification_meta_aligns(n, to, in_place)) {
-    attrs[psw_modification_meta] <- list(NULL)
+    attrs <- drop_psw_record_positions(attrs)
   }
 
   attrs[psw_joint_attr] <- list(
@@ -1876,6 +1917,15 @@ restore_psw <- function(x, to, in_place = FALSE) {
   }
 
   carry_psw_metadata(vec_data(out), x, i = i)
+}
+
+# Marking weights as missing moves no unit, so it goes through base `[<-`, which
+# keeps every attribute of the weights, rather than through vctrs' method, whose
+# restore cannot tell an assignment from a reordering and drops the positions.
+#' @export
+`is.na<-.psw` <- function(x, value) {
+  x[value] <- NA_real_
+  x
 }
 
 # What a psw is, as opposed to which observations it holds: the estimand the

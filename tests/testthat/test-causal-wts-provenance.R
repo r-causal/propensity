@@ -346,7 +346,7 @@ test_that("subsetting a trimmed psw re-indexes the unit-level trimming index", {
   # from it.
   sliced <- expect_silent(vctrs::vec_slice(wt, 1:2))
   expect_true(is_ps_trimmed(sliced))
-  expect_null(ps_trim_meta(sliced))
+  expect_positions_dropped(ps_trim_meta(sliced), ps_trim_meta(wt))
   expect_error(
     is_unit_trimmed(sliced),
     class = "propensity_missing_meta_error"

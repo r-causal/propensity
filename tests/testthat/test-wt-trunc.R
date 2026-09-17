@@ -789,7 +789,7 @@ test_that("the names on the weights are kept", {
   expect_identical(names(named_integer), c("a", "b", "c"))
 })
 
-test_that("a subset that drops the record prints a truncation line without counts", {
+test_that("a slice that drops the record's positions prints the bound without counts", {
   w <- psw(c(0.5, 1, 4, 2, 25), estimand = "ate")
 
   expect_snapshot(vctrs::vec_slice(wt_trunc(w, method = "wt", upper = 3), 1:3))

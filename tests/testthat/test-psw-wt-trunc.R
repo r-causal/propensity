@@ -163,9 +163,9 @@ test_that("a full-length psw subset keeps the weight truncation record", {
   expect_identical(is_unit_wt_truncated(whole), wt_truncated_units)
 
   # A slice is not handed to anything that knows its subscript, so even one
-  # that leaves every unit in place cannot vouch for the record.
+  # that leaves every unit in place cannot vouch for the record's positions.
   sliced <- expect_silent(vec_slice(w, seq_along(w)))
-  expect_null(attr(sliced, "psw_trunc_meta"))
+  expect_positions_dropped(attr(sliced, "psw_trunc_meta"), meta)
   expect_true(is_wt_truncated(sliced))
 })
 
@@ -184,16 +184,19 @@ test_that("shortening a psw re-indexes the weight truncation record through `[`"
   expect_identical(is_unit_wt_truncated(sub), c(FALSE, TRUE))
 })
 
-test_that("shortening a psw by a slice drops the weight truncation record and keeps the flag", {
+test_that("shortening a psw by a slice drops the record's positions and keeps the flag", {
   w <- wt_truncated_psw()
 
   sliced <- expect_silent(vec_slice(w, 1:2))
-  expect_null(attr(sliced, "psw_trunc_meta"))
+  expect_positions_dropped(
+    attr(sliced, "psw_trunc_meta"),
+    attr(w, "psw_trunc_meta")
+  )
   expect_true(is_wt_truncated(sliced))
   expect_identical(estimand(sliced), "ate")
 
-  # The record is gone, so the positional query has nothing to answer from and
-  # refuses rather than reporting every unit as untouched.
+  # The positions are gone, so the positional query has nothing to answer from
+  # and refuses rather than reporting every unit as untouched.
   expect_error(
     is_unit_wt_truncated(sliced),
     class = "propensity_missing_meta_error"
@@ -497,10 +500,10 @@ test_that("weights bounded alike combine whichever units the bound moved", {
 })
 
 test_that("a weight-truncated psw with no record agrees with any bound", {
-  # A record already dropped, by a slice or by an earlier combine, has nothing
-  # to disagree with, so only the flag is compared.
+  # Weights flagged as truncated with no record, as an earlier combine leaves
+  # them, have no bound to disagree with, so only the flag is compared.
   w <- wt_truncated_psw()
-  alt_slice <- vec_slice(alt_wt_truncated_psw(), 1:2)
+  alt_slice <- psw(c(1.2, 2.5), estimand = "ate", wt_truncated = TRUE)
   expect_null(attr(alt_slice, "psw_trunc_meta"))
   expect_true(is_wt_truncated(alt_slice))
 

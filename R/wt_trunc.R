@@ -670,14 +670,15 @@ abort_wt_trunc_range <- function(
 
 # One line describing the truncation for the printed footer, or `NULL` for
 # weights that were not truncated. The counts come from the record's positions,
-# so a record that no longer covers the weights is not read for them.
+# so a record that no longer covers the weights is read for its method and
+# bounds alone.
 format_psw_trunc_line <- function(x) {
   if (!is_wt_truncated(x)) {
     return(NULL)
   }
 
   meta <- attr(x, "psw_trunc_meta")
-  if (!record_covers(meta, length(x))) {
+  if (is.null(meta)) {
     return("truncation: weights truncated")
   }
 
@@ -697,15 +698,22 @@ format_psw_trunc_line <- function(x) {
     paste("upper", format(meta$upper_value, digits = 3))
   )
 
+  counts <- if (record_covers(meta, length(x))) {
+    paste0(
+      ", ",
+      length(meta$truncated_idx),
+      " of ",
+      meta$n_obs,
+      " weights truncated"
+    )
+  }
+
   paste0(
     "truncation: ",
     label,
     " (",
     paste(realized, collapse = ", "),
-    "), ",
-    length(meta$truncated_idx),
-    " of ",
-    meta$n_obs,
-    " weights truncated"
+    ")",
+    counts
   )
 }

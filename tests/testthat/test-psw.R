@@ -714,9 +714,9 @@ test_that("a full-length psw subset keeps the trimming record", {
   expect_identical(is_unit_trimmed(whole), c(TRUE, FALSE, FALSE, FALSE, TRUE))
 
   # A slice is not handed to anything that knows its subscript, so even one
-  # that leaves every unit in place cannot vouch for the record.
+  # that leaves every unit in place cannot vouch for the record's positions.
   sliced <- expect_silent(vec_slice(w, seq_along(w)))
-  expect_null(ps_trim_meta(sliced))
+  expect_positions_dropped(ps_trim_meta(sliced), meta)
   expect_true(is_ps_trimmed(sliced))
 })
 
@@ -746,14 +746,13 @@ test_that("shortening a psw with `[` re-indexes the trimming record", {
   expect_identical(estimand(sub), "ate; trimmed")
 })
 
-test_that("shortening a psw by a slice drops the trimming record silently", {
+test_that("shortening a psw by a slice drops the trimming record's positions silently", {
   w <- trimmed_psw()
 
   sliced <- expect_silent(vec_slice(w, 1:2))
   expect_s3_class(sliced, "psw")
   expect_length(sliced, 2)
-  expect_null(ps_trim_meta(sliced))
-  expect_null(attr(sliced, "ps_trim_meta"))
+  expect_positions_dropped(ps_trim_meta(sliced), ps_trim_meta(w))
 
   # Everything that is not indexed by observation is untouched by the drop.
   expect_true(is_ps_trimmed(sliced))
@@ -770,7 +769,7 @@ test_that("shortening a psw re-indexes the truncation record through `[` and a s
   expect_true(is_ps_truncated(sub))
 
   sliced <- expect_silent(vec_slice(truncated, 1:2))
-  expect_null(ps_trunc_meta(sliced))
+  expect_positions_dropped(ps_trunc_meta(sliced), meta)
   expect_true(is_ps_truncated(sliced))
   expect_identical(ps_trunc_meta(truncated), meta)
 })
@@ -946,7 +945,7 @@ test_that("shortening a psw with a score and a trimming record warns only for th
   out <- collect_warning_classes(vec_slice(w, 1:2))
   expect_identical(out$classes, "propensity_stabilization_score_warning")
   expect_null(stabilization_score(out$value))
-  expect_null(ps_trim_meta(out$value))
+  expect_positions_dropped(ps_trim_meta(out$value), ps_trim_meta(w))
   expect_true(is_stabilized(out$value))
   expect_true(is_ps_trimmed(out$value))
 
@@ -978,11 +977,11 @@ test_that("casting to a psw keeps a length-matched trimming record and drops a s
 
   # A cast takes its whole type from `to`, whose record describes `to`'s own
   # observations rather than the incoming data. A length it does not match is
-  # nothing the caller can act on, so the record goes without comment.
+  # nothing the caller can act on, so the record's positions go without comment.
   shorter <- expect_silent(vec_cast(c(1, 2), to = w))
   expect_s3_class(shorter, "psw")
   expect_length(shorter, 2)
-  expect_null(ps_trim_meta(shorter))
+  expect_positions_dropped(ps_trim_meta(shorter), meta)
 
   # Zero-length data takes the same exemption a per-observation score takes: it
   # lines up with nothing and so contradicts nothing, and the result is itself a

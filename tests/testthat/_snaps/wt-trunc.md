@@ -89,14 +89,14 @@
       ! For `method = 'count'`, `upper` must leave a weight below the ones it bounds.
       x `upper` is 9 and 9 weights are present.
 
-# a subset that drops the record prints a truncation line without counts
+# a slice that drops the record's positions prints the bound without counts
 
     Code
       vctrs::vec_slice(wt_trunc(w, method = "wt", upper = 3), 1:3)
     Output
       <psw{estimand = ate; weights truncated}[3]>
       [1] 0.5 1.0 3.0
-      truncation: weights truncated
+      truncation: wt (upper 3)
 
 # a subset re-indexes the record and prints the truncation counts
 

@@ -4,7 +4,8 @@
 # A subscript moves units to new positions, so `[` and everything built on it
 # (`rev()`, `sort()`, `x[order(x)]`) carry each record through the subscript.
 # A slice that reaches the restore without its subscript, such as `vec_slice()`
-# or `dplyr::arrange()`, cannot place the record and drops it silently.
+# or `dplyr::arrange()`, cannot place the record and drops its positions
+# silently, keeping what the record says about the modification itself.
 
 # Units 1 and 4 fall outside (0.1, 0.9); their weights are missing.
 reorder_trimmed_psw <- function() {
@@ -93,7 +94,11 @@ expect_reindexed <- function(out, fixture, i, label) {
 
 expect_record_dropped <- function(out, fixture, label) {
   expect_s3_class(out, "psw")
-  expect_null(attr(out, fixture$attr), info = label)
+  expect_positions_dropped(
+    attr(out, fixture$attr),
+    attr(fixture$weights, fixture$attr),
+    info = label
+  )
   expect_error(
     fixture$query(out),
     class = "propensity_missing_meta_error",
@@ -269,13 +274,14 @@ test_that("an empty subscript leaves the prototype as the restore builds it", {
   }
 })
 
-test_that("a record that does not cover the weights is dropped by a subscript", {
+test_that("a record that does not cover the weights loses its positions to a subscript", {
   w <- reorder_wt_truncated_psw()
+  meta <- attr(w, "psw_trunc_meta")
   w[12] <- 2
   expect_length(w, 12)
 
   out <- expect_silent(w[rev(seq_along(w))])
-  expect_null(attr(out, "psw_trunc_meta"))
+  expect_positions_dropped(attr(out, "psw_trunc_meta"), meta)
   expect_true(is_wt_truncated(out))
   expect_error(
     is_unit_wt_truncated(out),
@@ -283,7 +289,7 @@ test_that("a record that does not cover the weights is dropped by a subscript", 
   )
 })
 
-test_that("vec_slice() at the same length drops each position record silently", {
+test_that("vec_slice() at the same length drops each record's positions silently", {
   for (label in names(reorder_fixtures())) {
     fixture <- reorder_fixtures()[[label]]
     w <- fixture$weights
@@ -299,7 +305,7 @@ test_that("vec_slice() at the same length drops each position record silently", 
   expect_true(is_wt_truncated(out))
 })
 
-test_that("dplyr::arrange() on a psw column drops each position record silently", {
+test_that("dplyr::arrange() on a psw column drops each record's positions silently", {
   skip_if_not_installed("dplyr")
 
   for (label in names(reorder_fixtures())) {

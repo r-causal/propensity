@@ -171,11 +171,17 @@
   unchanged, so `is_unit_trimmed()`, `is_unit_truncated()`, and
   `is_unit_wt_truncated()` named the units that had been at those positions
   before; a shorter subset previously dropped them. A slice that is not handed
-  its subscript, such as `vctrs::vec_slice()`, `dplyr::arrange()`, or
-  `dplyr::filter()`, now drops the positions silently at any length, and the
-  positional queries refuse the result with an error of class
-  `propensity_missing_meta_error`. Elementwise arithmetic and subassignment
-  keep the records.
+  its subscript, such as `vctrs::vec_slice()`, `dplyr::arrange()`,
+  `dplyr::filter()`, `rep_len()`, or `vctrs::vec_c()` of a single input, now
+  drops the positions silently at any length, and the positional queries
+  refuse the result with an error of class `propensity_missing_meta_error`. A
+  record whose positions are dropped keeps its method, bounds, and refit flag,
+  so `is_refit()`, the printed footer, and the bound check of a later combine
+  still read it. Elementwise arithmetic, `[<-`, and `is.na<-` keep the records
+  whole. `vctrs::vec_assign()` cannot be told apart from a slice, so it and the
+  helpers built on it or on a combine, such as `tidyr::replace_na()`,
+  `dplyr::coalesce()`, `dplyr::if_else()`, and `dplyr::case_when()`, drop the
+  positions.
 
 * `unique()` of a `ps_trim` or `ps_trunc` now drops the positions in its
   record when it merges units whose status differs, such as a trimmed score and

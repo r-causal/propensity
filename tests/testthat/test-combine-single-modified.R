@@ -98,13 +98,16 @@ test_that("c() of one psw still refuses what vctrs refuses", {
   expect_error(c(x = w), "outer name")
 })
 
-test_that("vec_c() and list_unchop() of one trimmed psw drop the record", {
+test_that("vec_c() and list_unchop() of one trimmed psw drop the record's positions", {
   # vctrs restores the result against a zero-length prototype, which cannot be
   # told apart from one a caller supplied for data from elsewhere.
   w <- single_trimmed_psw()
 
   from_vec_c <- vctrs::vec_c(w)
-  expect_null(attr(from_vec_c, "ps_trim_meta"))
+  expect_positions_dropped(
+    attr(from_vec_c, "ps_trim_meta"),
+    attr(w, "ps_trim_meta")
+  )
   expect_true(is_ps_trimmed(from_vec_c))
   expect_error(
     is_unit_trimmed(from_vec_c),
@@ -112,7 +115,10 @@ test_that("vec_c() and list_unchop() of one trimmed psw drop the record", {
   )
 
   from_unchop <- vctrs::list_unchop(list(w))
-  expect_null(attr(from_unchop, "ps_trim_meta"))
+  expect_positions_dropped(
+    attr(from_unchop, "ps_trim_meta"),
+    attr(w, "ps_trim_meta")
+  )
   expect_error(
     is_unit_trimmed(from_unchop),
     class = "propensity_missing_meta_error"
@@ -200,14 +206,18 @@ test_that("c() of two truncated-score psw drops the truncation record", {
 
 # Each of these restores data that is not the weights' own, in their order,
 # against a zero-length prototype carrying the weights' records. None of the
-# records describes the result.
+# records' positions describes the result; what the records say about the
+# trimming still does.
 
 expect_trim_record_dropped <- function(x) {
-  expect_null(attr(x, "ps_trim_meta"))
+  expect_positions_dropped(
+    attr(x, "ps_trim_meta"),
+    attr(single_trimmed_psw(), "ps_trim_meta")
+  )
   expect_error(is_unit_trimmed(x), class = "propensity_missing_meta_error")
 }
 
-test_that("reordered pieces combined at a supplied prototype drop the record", {
+test_that("reordered pieces combined at a supplied prototype drop the record's positions", {
   w <- single_trimmed_psw()
   first <- suppressWarnings(w[1:10])
   second <- suppressWarnings(w[11:20])
@@ -218,14 +228,14 @@ test_that("reordered pieces combined at a supplied prototype drop the record", {
   expect_trim_record_dropped(vctrs::vec_c(second, first, .ptype = w))
 })
 
-test_that("other weights combined at a supplied prototype drop the record", {
+test_that("other weights combined at a supplied prototype drop the record's positions", {
   w <- single_trimmed_psw()
   other <- suppressWarnings(rev(w))
 
   expect_trim_record_dropped(vctrs::vec_c(other, .ptype = w))
 })
 
-test_that("a cast to or an initialization at the prototype drops the record", {
+test_that("a cast to or an initialization at the prototype drops the record's positions", {
   w <- single_trimmed_psw()
 
   expect_trim_record_dropped(
@@ -234,7 +244,7 @@ test_that("a cast to or an initialization at the prototype drops the record", {
   expect_trim_record_dropped(vctrs::vec_init(w[0], 20))
 })
 
-test_that("a supplied prototype drops the weight truncation record", {
+test_that("a supplied prototype drops the weight truncation record's positions", {
   w <- single_wt_truncated_psw()
   first <- suppressWarnings(w[1:10])
   second <- suppressWarnings(w[11:20])
@@ -243,14 +253,20 @@ test_that("a supplied prototype drops the weight truncation record", {
     list(second, first),
     ptype = vctrs::vec_ptype(w)
   )
-  expect_null(attr(unchopped, "psw_trunc_meta"))
+  expect_positions_dropped(
+    attr(unchopped, "psw_trunc_meta"),
+    attr(w, "psw_trunc_meta")
+  )
   expect_error(
     is_unit_wt_truncated(unchopped),
     class = "propensity_missing_meta_error"
   )
 
   cast <- vctrs::vec_cast(seq(1, 2, length.out = 20), vctrs::vec_ptype(w))
-  expect_null(attr(cast, "psw_trunc_meta"))
+  expect_positions_dropped(
+    attr(cast, "psw_trunc_meta"),
+    attr(w, "psw_trunc_meta")
+  )
   expect_error(
     is_unit_wt_truncated(cast),
     class = "propensity_missing_meta_error"
