@@ -125,15 +125,20 @@
 #' the result refuses it.
 #'
 #' Subsetting with `[` preserves class and attributes for vector subscripts.
-#' Two kinds of attribute hold one value per observation and so cannot be
-#' re-indexed for a subset: a `stabilization_score` with more than one value,
-#' and the records left by a trimmed or truncated propensity score
-#' (`ps_trim_meta` and `ps_trunc_meta`) or by truncating the weights
-#' themselves (`psw_trunc_meta`). Where an operation goes through
-#' vctrs, these are carried when the result comes back at the length they were
-#' recorded on and dropped when it does not. Any same-length operation keeps
-#' them, a reordering or a subscript with duplicates included, so the positions
-#' a record names can end up describing different observations than they did.
+#' Two kinds of attribute hold one value per observation. The records left by
+#' a trimmed or truncated propensity score (`ps_trim_meta` and
+#' `ps_trunc_meta`) or by truncating the weights themselves
+#' (`psw_trunc_meta`) name units by position, and `[` is handed the subscript,
+#' so it re-indexes each record onto the result: `rev()`, `sort()`,
+#' `x[order(x)]`, and a shorter subset all return records naming the units at
+#' their new positions. Any other operation through vctrs is not handed a
+#' subscript, so it keeps the records only where every unit stays at its
+#' position, as in elementwise arithmetic, and otherwise drops them, at any
+#' length: `vctrs::vec_slice()`, `dplyr::arrange()`, `dplyr::filter()`, and
+#' `unique()` all return weights without them. Subassignment with `[<-` moves
+#' no unit and keeps them. A `stabilization_score` with more than one value is
+#' carried when the result comes back at the length it was recorded on and
+#' dropped when it does not.
 #'
 #' Dropping the `stabilization_score` warns, because the score was supplied by
 #' the user and the weights can be recomputed on the subset. Dropping a
@@ -848,8 +853,8 @@ is_refit.psw <- function(x) {
 #' positions of the weights it moved. `is_unit_wt_truncated()` answers from
 #' those positions, so the record follows the rules [psw] describes for the
 #' records a modified propensity score leaves: it is kept through arithmetic
-#' and anything else that keeps the length of the weights, and dropped when a
-#' subset or [c()] changes it. The `wt_truncated` flag describes the weights as
+#' and subassignment, re-indexed through the subscript of `[`, and dropped by
+#' any other slice and by a combine of several inputs. The `wt_truncated` flag describes the weights as
 #' a whole and is kept through all of those, so `is_wt_truncated()` keeps its
 #' answer where `is_unit_wt_truncated()` has none to give.
 #'
@@ -1146,7 +1151,7 @@ vec_arith.psw.psw <- function(op, x, y, ...) {
 vec_arith.psw.MISSING <- function(op, x, y, ...) {
   switch(
     op,
-    `-` = vec_restore(-1 * vec_data(x), x), # Returns psw (preserves class)
+    `-` = restore_psw(-1 * vec_data(x), x, in_place = TRUE),
     `+` = x, # Returns psw unchanged
     stop_incompatible_op(op, x, y)
   )
@@ -1156,21 +1161,21 @@ vec_arith.psw.MISSING <- function(op, x, y, ...) {
 #' @method vec_arith.psw numeric
 vec_arith.psw.numeric <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
-  vec_restore(result, x)
+  restore_psw(result, x, in_place = TRUE)
 }
 
 #' @export
 #' @method vec_arith.numeric psw
 vec_arith.numeric.psw <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
-  vec_restore(result, y)
+  restore_psw(result, y, in_place = TRUE)
 }
 
 #' @export
 #' @method vec_arith.psw integer
 vec_arith.psw.integer <- function(op, x, y, ...) {
   result <- vec_arith_base(op, x, y)
-  vec_restore(result, x)
+  restore_psw(result, x, in_place = TRUE)
 }
 
 # The estimand a caller records, checked where it is recorded. It names the
@@ -1341,15 +1346,36 @@ psw_exposure_attrs <- c("exposure_type", "density_meta", "numerator_model")
 # that keeps the record lets the restore building the real result carry it on to
 # the observations.
 #
-# Any same-length operation keeps indices that may no longer point where they
-# did, a reordering or a subscript with duplicates included. Nothing rebuilding
-# a psw is handed the subscript, so neither can be told apart from an untouched
-# vector here. `is_unit_trimmed()` checks the record covers the vector it is
-# given, which catches a length change from any route, but a same-length
-# rearrangement is beyond what either can see and is documented rather than
-# guarded.
-modification_meta_aligns <- function(n, to) {
-  n == 0 || n == length(to)
+# Data at `to`'s length is not enough on its own. A slice that reorders the
+# units arrives at the same length as one that leaves them where they were, and
+# a restore is not handed the subscript that would tell the two apart. So the
+# indices are kept only where the caller vouches that every unit is still at its
+# position (`in_place`): elementwise arithmetic, and truncating the weights
+# themselves. `[` knows its subscript and re-indexes the records itself
+# (`reindex_psw_records()`). Every other restore of observations drops them.
+modification_meta_aligns <- function(n, to, in_place = FALSE) {
+  n == 0 || (in_place && n == length(to))
+}
+
+# `i` holds the positions in `x` the result is built from, in the order it holds
+# them. A record that covers `x` is re-indexed onto them; one that does not
+# cannot be placed and is dropped, as a restore drops it.
+reindex_psw_records <- function(attrs, x, i) {
+  n_obs <- length(x)
+  reindex <- list(
+    ps_trim_meta = reindex_trim_record,
+    ps_trunc_meta = reindex_trunc_record,
+    psw_trunc_meta = reindex_trunc_record
+  )
+
+  for (field in psw_modification_meta) {
+    meta <- attr(x, field)
+    attrs[field] <- list(
+      if (record_covers(meta, n_obs)) reindex[[field]](meta, i)
+    )
+  }
+
+  attrs
 }
 
 # What the joint record can still say once data has arrived at `n` observations.
@@ -1459,7 +1485,7 @@ conflicted_psw_attrs <- function(x) {
 # observations. One indexed by observation that does not describe `n` of them is
 # reported as absent, so a later read sees nothing rather than a record silently
 # misaligned with the weights.
-aligned_psw_attrs <- function(to, n) {
+aligned_psw_attrs <- function(to, n, in_place = FALSE, i = NULL) {
   attrs <- lapply(psw_carried_attrs, function(attribute) attr(to, attribute))
   names(attrs) <- psw_carried_attrs
 
@@ -1467,7 +1493,9 @@ aligned_psw_attrs <- function(to, n) {
     attrs["stabilization_score"] <- list(NULL)
   }
 
-  if (!modification_meta_aligns(n, to)) {
+  if (!is.null(i)) {
+    attrs <- reindex_psw_records(attrs, to, i)
+  } else if (!modification_meta_aligns(n, to, in_place)) {
     attrs[psw_modification_meta] <- list(NULL)
   }
 
@@ -1524,7 +1552,9 @@ build_psw <- function(
   out
 }
 
-carry_psw_metadata <- function(x, to) {
+# `in_place` and `i` say how the data relates to `to`'s units; see
+# `modification_meta_aligns()` and `reindex_psw_records()`.
+carry_psw_metadata <- function(x, to, in_place = FALSE, i = NULL) {
   build_psw(
     x,
     estimand = estimand(to),
@@ -1533,7 +1563,7 @@ carry_psw_metadata <- function(x, to) {
     truncated = is_ps_truncated(to),
     calibrated = is_ps_calibrated(to),
     wt_truncated = is_wt_truncated(to),
-    attrs = aligned_psw_attrs(to, length(x))
+    attrs = aligned_psw_attrs(to, length(x), in_place = in_place, i = i)
   )
 }
 
@@ -1585,8 +1615,9 @@ psw_numerator_record <- function(x, attrs) {
 # dropped, and is named in `conflicted` rather than `conflicts` so it is not
 # reported a second time.
 merge_psw_attrs <- function(x, y, n, fields = psw_carried_attrs) {
-  x_attrs <- aligned_psw_attrs(x, n)
-  y_attrs <- aligned_psw_attrs(y, n)
+  # Two operands combine elementwise, so each unit stays at its position.
+  x_attrs <- aligned_psw_attrs(x, n, in_place = TRUE)
+  y_attrs <- aligned_psw_attrs(y, n, in_place = TRUE)
   x_attrs["numerator_model"] <- list(psw_numerator_record(x, x_attrs))
   y_attrs["numerator_model"] <- list(psw_numerator_record(y, y_attrs))
   dropped <- union(conflicted_psw_attrs(x), conflicted_psw_attrs(y))
@@ -1775,6 +1806,13 @@ c.psw <- function(..., recursive = FALSE, use.names = TRUE) {
 
 #' @export
 vec_restore.psw <- function(x, to, ...) {
+  restore_psw(x, to)
+}
+
+# The restore, for callers that can say more about the data than vctrs can:
+# `in_place` vouches that every unit is still at its position, so the position
+# records stay.
+restore_psw <- function(x, to, in_place = FALSE) {
   # Extract numeric data if needed
   if (inherits(x, "psw")) {
     x <- vec_data(x)
@@ -1812,7 +1850,27 @@ vec_restore.psw <- function(x, to, ...) {
     )
   }
 
-  carry_psw_metadata(x, to)
+  carry_psw_metadata(x, to, in_place = in_place)
+}
+
+# `[` is the one slice that knows its subscript, so it carries the position
+# records through it rather than leaving the restore behind `NextMethod()` to
+# drop them. An empty result is left as that restore builds it, since a
+# prototype keeps the records it was sliced with.
+#' @export
+`[.psw` <- function(x, i, ...) {
+  out <- NextMethod()
+  if (!inherits(out, "psw") || length(out) == 0) {
+    return(out)
+  }
+
+  i <- if (missing(i)) {
+    seq_along(x)
+  } else {
+    vec_as_location(i, n = length(x), names = names(x))
+  }
+
+  carry_psw_metadata(vec_data(out), x, i = i)
 }
 
 # What a psw is, as opposed to which observations it holds: the estimand the
@@ -1951,7 +2009,10 @@ cast_to_psw <- function(x, to) {
   x <- vec_cast(vec_data(x), to = double())
   attributes(x) <- NULL
 
-  carry_psw_metadata(x, to)
+  # A cast moves no unit, so it leaves the records as it found them. Outside
+  # subassignment, where base R keeps the target's own attributes regardless,
+  # `to` is a prototype and holds no observations for a record to describe.
+  carry_psw_metadata(x, to, in_place = TRUE)
 }
 
 # A cast returns `x`'s values in `to`'s type, and a psw's type is the whole

@@ -36,9 +36,9 @@ all, rather than name truncated units at stale positions. Query the
 That check counts observations, which a reordering does not change, so it
 does not catch one. An operation that reorders through vctrs rather than
 through \code{[}, such as \code{vctrs::vec_slice(x, 5:1)} or \code{dplyr::arrange()},
-keeps a record written for the old order, and a \code{psw} keeps one through any
-same-length operation, a reordering included. \code{is_unit_truncated()} answers
-from those positions and names the wrong units. See \code{\link[=ps_trunc]{ps_trunc()}} and \link{psw}
+keeps a record written for the old order, and \code{is_unit_truncated()}
+answers from those positions and names the wrong units. A \code{psw} drops its
+record on those routes instead. See \code{\link[=ps_trunc]{ps_trunc()}} and \link{psw}
 for the whole contract.
 }
 \examples{

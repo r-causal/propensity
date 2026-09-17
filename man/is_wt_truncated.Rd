@@ -36,8 +36,8 @@ attribute, holding the method, the bound as given and as applied, and the
 positions of the weights it moved. \code{is_unit_wt_truncated()} answers from
 those positions, so the record follows the rules \link{psw} describes for the
 records a modified propensity score leaves: it is kept through arithmetic
-and anything else that keeps the length of the weights, and dropped when a
-subset or \code{\link[=c]{c()}} changes it. The \code{wt_truncated} flag describes the weights as
+and subassignment, re-indexed through the subscript of \code{[}, and dropped by
+any other slice and by a combine of several inputs. The \code{wt_truncated} flag describes the weights as
 a whole and is kept through all of those, so \code{is_wt_truncated()} keeps its
 answer where \code{is_unit_wt_truncated()} has none to give.
 

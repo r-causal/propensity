@@ -1403,9 +1403,9 @@ is_ps_truncated.ps_trunc_matrix <- function(x) {
 #'   That check counts observations, which a reordering does not change, so it
 #'   does not catch one. An operation that reorders through vctrs rather than
 #'   through `[`, such as `vctrs::vec_slice(x, 5:1)` or `dplyr::arrange()`,
-#'   keeps a record written for the old order, and a `psw` keeps one through any
-#'   same-length operation, a reordering included. `is_unit_truncated()` answers
-#'   from those positions and names the wrong units. See [ps_trunc()] and [psw]
+#'   keeps a record written for the old order, and `is_unit_truncated()`
+#'   answers from those positions and names the wrong units. A `psw` drops its
+#'   record on those routes instead. See [ps_trunc()] and [psw]
 #'   for the whole contract.
 #'
 #' @param x A `ps_trunc` object created by [ps_trunc()], or a [psw] vector built

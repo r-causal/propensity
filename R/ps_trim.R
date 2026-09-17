@@ -1895,9 +1895,9 @@ is_ps_trimmed.ps_trim_matrix <- function(x) {
 #'   That check counts observations, which a reordering does not change, so it
 #'   does not catch one. A `ps_trim` reordered through vctrs rather than through
 #'   `[`, by `vctrs::vec_slice(x, 5:1)` or `dplyr::arrange()`, keeps a record
-#'   written for the old order, and a `psw` keeps one through any same-length
-#'   operation, a reordering included. `is_unit_trimmed()` answers from those
-#'   positions and names the wrong units. See [ps_trim()] and [psw] for the
+#'   written for the old order, and `is_unit_trimmed()` answers from those
+#'   positions and names the wrong units. A `psw` drops its record on those
+#'   routes instead. See [ps_trim()] and [psw] for the
 #'   whole contract.
 #'
 #' @param x A `ps_trim` object created by [ps_trim()], or a [psw] vector built

@@ -37,9 +37,9 @@ object the record was written for instead.
 That check counts observations, which a reordering does not change, so it
 does not catch one. A \code{ps_trim} reordered through vctrs rather than through
 \code{[}, by \code{vctrs::vec_slice(x, 5:1)} or \code{dplyr::arrange()}, keeps a record
-written for the old order, and a \code{psw} keeps one through any same-length
-operation, a reordering included. \code{is_unit_trimmed()} answers from those
-positions and names the wrong units. See \code{\link[=ps_trim]{ps_trim()}} and \link{psw} for the
+written for the old order, and \code{is_unit_trimmed()} answers from those
+positions and names the wrong units. A \code{psw} drops its record on those
+routes instead. See \code{\link[=ps_trim]{ps_trim()}} and \link{psw} for the
 whole contract.
 }
 \examples{

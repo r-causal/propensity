@@ -210,15 +210,20 @@ and an ungrouped \code{dplyr::reframe()} all rebuild the column, so a later
 the result refuses it.
 
 Subsetting with \code{[} preserves class and attributes for vector subscripts.
-Two kinds of attribute hold one value per observation and so cannot be
-re-indexed for a subset: a \code{stabilization_score} with more than one value,
-and the records left by a trimmed or truncated propensity score
-(\code{ps_trim_meta} and \code{ps_trunc_meta}) or by truncating the weights
-themselves (\code{psw_trunc_meta}). Where an operation goes through
-vctrs, these are carried when the result comes back at the length they were
-recorded on and dropped when it does not. Any same-length operation keeps
-them, a reordering or a subscript with duplicates included, so the positions
-a record names can end up describing different observations than they did.
+Two kinds of attribute hold one value per observation. The records left by
+a trimmed or truncated propensity score (\code{ps_trim_meta} and
+\code{ps_trunc_meta}) or by truncating the weights themselves
+(\code{psw_trunc_meta}) name units by position, and \code{[} is handed the subscript,
+so it re-indexes each record onto the result: \code{rev()}, \code{sort()},
+\code{x[order(x)]}, and a shorter subset all return records naming the units at
+their new positions. Any other operation through vctrs is not handed a
+subscript, so it keeps the records only where every unit stays at its
+position, as in elementwise arithmetic, and otherwise drops them, at any
+length: \code{vctrs::vec_slice()}, \code{dplyr::arrange()}, \code{dplyr::filter()}, and
+\code{unique()} all return weights without them. Subassignment with \verb{[<-} moves
+no unit and keeps them. A \code{stabilization_score} with more than one value is
+carried when the result comes back at the length it was recorded on and
+dropped when it does not.
 
 Dropping the \code{stabilization_score} warns, because the score was supplied by
 the user and the weights can be recomputed on the subset. Dropping a

@@ -386,7 +386,7 @@ truncate_weights <- function(.weights, method, lower, upper, call) {
     n_obs = length(x)
   )
 
-  out <- vec_restore(x, .weights)
+  out <- restore_psw(x, .weights, in_place = TRUE)
   estimand <- estimand(.weights)
   if (!is.null(estimand)) {
     attr(out, "estimand") <- paste0(estimand, "; weights truncated")
